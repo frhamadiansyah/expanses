@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeHlc } from '../../src/sync/hlc';
-import { MAX_CHANGE_SET_BYTES, MAX_OPS_PER_CHANGE_SET, splitIntoChangeSets } from '../../src/sync/split';
+import { decodeHlc, stepHlcState } from '../../src/sync/hlc';
+import { countChangeSets, MAX_CHANGE_SET_BYTES, MAX_OPS_PER_CHANGE_SET, OpTooLargeError, splitIntoChangeSets } from '../../src/sync/split';
 import type { Op } from '../../src/sync/types';
 
 function upsert(id: string, fields: Record<string, unknown> = { a: 1 }): Op {
@@ -52,11 +52,38 @@ describe('splitIntoChangeSets', () => {
     expect(changeSets.flatMap((cs) => cs.ops)).toEqual(ops);
   });
 
-  it('still emits a lone op that alone is over the byte budget, rather than dropping it', () => {
+  it('refuses a lone op that alone is over the byte budget, rather than emitting it over budget (spec §6.2 ruling)', () => {
     const huge = 'x'.repeat(MAX_CHANGE_SET_BYTES + 1_000);
-    const ops = [upsert('a', { note: huge })];
-    const changeSets = splitIntoChangeSets(ops, 'member-1', { ms: 1, counter: 0, deviceId: 'device-a' });
-    expect(changeSets).toHaveLength(1);
-    expect(changeSets[0]!.ops).toEqual(ops);
+    const op = upsert('a', { note: huge });
+    expect(() => splitIntoChangeSets([op], 'member-1', { ms: 1, counter: 0, deviceId: 'device-a' })).toThrow(OpTooLargeError);
+  });
+
+  it('rolls the counter into ms on overflow, exactly as stepHlcState would', () => {
+    // A start right at the counter's max, and enough ops (over budget) to force a second change-set.
+    const big = 'x'.repeat(1_000);
+    const many = Array.from({ length: 200 }, (_, i) => upsert(`r-${i}`, { note: big }));
+    const cs = splitIntoChangeSets(many, 'member-1', { ms: 5, counter: 0xffff, deviceId: 'd' });
+    expect(cs.length).toBeGreaterThan(1);
+    const decoded = cs.map((c) => decodeHlc(c.hlc));
+    let state = { ms: 5, counter: 0xffff };
+    for (const [i, d] of decoded.entries()) {
+      if (i > 0) state = stepHlcState(state);
+      expect(d).toEqual({ ...state, deviceId: 'd' });
+    }
+    // The overflow step itself: the second change-set rolled ms forward and reset the counter.
+    expect(decoded[1]).toEqual({ ms: 6, counter: 0, deviceId: 'd' });
+  });
+});
+
+describe('countChangeSets', () => {
+  it('agrees with how many change-sets splitIntoChangeSets actually produces', () => {
+    const ops = Array.from({ length: 3_000 }, (_, i) => upsert(`row-${i}`));
+    const n = countChangeSets(ops, 'member-1', 'device-a');
+    expect(n).toBe(15);
+    expect(splitIntoChangeSets(ops, 'member-1', { ms: 1, counter: 0, deviceId: 'device-a' })).toHaveLength(n);
+  });
+
+  it('is 0 for no ops', () => {
+    expect(countChangeSets([], 'member-1', 'device-a')).toBe(0);
   });
 });

@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import type { NodeExecutor } from '../../src/node';
-import { compareHlc, decodeHlc, driftBlocks, encodeHlc, HLC_DRIFT_MS, localTick, receiveHlc } from '../../src/sync/hlc';
+import { settings } from '../../src/schema';
+import {
+  compareHlc,
+  decodeHlc,
+  driftBlocks,
+  encodeHlc,
+  HLC_DRIFT_MS,
+  localTick,
+  localTickRange,
+  MAX_HLC_COUNTER,
+  MAX_HLC_MS,
+  receiveHlc,
+  stepHlcState,
+} from '../../src/sync/hlc';
+import { splitIntoChangeSets } from '../../src/sync/split';
+import type { Op } from '../../src/sync/types';
 import { setupDb } from '../helpers';
+
+function upsert(id: string): Op {
+  return { entity: 'purchase', id, op: 'upsert', fields: { a: 1 } };
+}
 
 let executor: NodeExecutor | undefined;
 afterEach(() => {
@@ -29,6 +48,25 @@ describe('encodeHlc / decodeHlc', () => {
 
   it('rejects a string with no dash at the fixed position', () => {
     expect(() => decodeHlc('not-an-hlc')).toThrow();
+  });
+
+  it('throws on a counter or ms that would not fit its fixed width', () => {
+    expect(() => encodeHlc(0, MAX_HLC_COUNTER, 'd')).not.toThrow();
+    expect(() => encodeHlc(0, MAX_HLC_COUNTER + 1, 'd')).toThrow();
+    expect(() => encodeHlc(0, -1, 'd')).toThrow();
+    expect(() => encodeHlc(MAX_HLC_MS, 0, 'd')).not.toThrow();
+    expect(() => encodeHlc(MAX_HLC_MS + 1, 0, 'd')).toThrow();
+    expect(() => encodeHlc(-1, 0, 'd')).toThrow();
+  });
+});
+
+describe('stepHlcState', () => {
+  it('advances the counter at the same ms', () => {
+    expect(stepHlcState({ ms: 5, counter: 0 })).toEqual({ ms: 5, counter: 1 });
+  });
+
+  it('rolls into the next ms and resets the counter once the counter would overflow', () => {
+    expect(stepHlcState({ ms: 5, counter: MAX_HLC_COUNTER })).toEqual({ ms: 6, counter: 0 });
   });
 });
 
@@ -83,6 +121,59 @@ describe('localTick', () => {
     const [row] = await database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${'sync.hlc'}`);
     expect(row).toBeDefined();
   });
+
+  it('rolls ms forward and resets the counter once the counter would overflow', async () => {
+    const { database } = await fresh();
+    // Seed the clock state right at the counter's max, at a fixed ms.
+    await database.db.insert(settings).values({ key: 'sync.hlc', value: JSON.stringify({ ms: 1_000, counter: MAX_HLC_COUNTER }) });
+    const next = await localTick(database.db, 'device-a', 500); // clock behind: stays at the stored ms, steps the counter
+    expect(decodeHlc(next)).toEqual({ ms: 1_001, counter: 0, deviceId: 'device-a' });
+  });
+
+  it('never hands out the same hlc twice even when called concurrently on the same handle', async () => {
+    const { database } = await fresh();
+    const results = await Promise.all(Array.from({ length: 20 }, () => localTick(database.db, 'device-a', 1_000)));
+    expect(new Set(results).size).toBe(20);
+  });
+});
+
+describe('localTickRange', () => {
+  it('reserves n consecutive ticks and returns the first', async () => {
+    const { database } = await fresh();
+    const start = await localTickRange(database.db, 'device-a', 5, 1_000);
+    expect(start).toEqual({ ms: 1_000, counter: 0 });
+    // The reservation is consumed: the next ordinary tick starts after all 5 reserved steps, not after just 1.
+    const next = await localTick(database.db, 'device-a', 1_000);
+    let expected = start;
+    for (let i = 0; i < 5; i += 1) expected = stepHlcState(expected);
+    expect(decodeHlc(next)).toEqual({ ...expected, deviceId: 'device-a' });
+  });
+
+  it('rolls into the next ms mid-reservation on counter overflow, same as stepHlcState', async () => {
+    const { database } = await fresh();
+    // Seed the clock one step below the counter's max, then reserve across the boundary.
+    const seeded = JSON.stringify({ ms: 2_000, counter: MAX_HLC_COUNTER - 1 });
+    await database.db.insert(settings).values({ key: 'sync.hlc', value: seeded }).onConflictDoUpdate({ target: settings.key, set: { value: seeded } });
+    const first = await localTickRange(database.db, 'device-a', 1, 500); // clock behind: one step from the seeded state
+    expect(first).toEqual({ ms: 2_000, counter: MAX_HLC_COUNTER });
+    const second = await localTickRange(database.db, 'device-a', 1, 500); // one more step: rolls over
+    expect(second).toEqual({ ms: 2_001, counter: 0 });
+  });
+
+  it('a real localTick after a split never collides with any hlc the split used (regression: reserved counters must be consumed)', async () => {
+    const { database } = await fresh();
+    const ops = Array.from({ length: 450 }, (_, i) => upsert(`row-${i}`)); // needs 3 change-sets at 200/set
+    const n = 3;
+    const start = await localTickRange(database.db, 'device-a', n, 5_000);
+    const changeSets = splitIntoChangeSets(ops, 'member-1', { ...start, deviceId: 'device-a' });
+    expect(changeSets).toHaveLength(n);
+
+    const usedHlcs = changeSets.map((cs) => cs.hlc);
+    const nextTick = await localTick(database.db, 'device-a', 5_000); // same wall-clock reading as the split used
+
+    expect(usedHlcs).not.toContain(nextTick);
+    for (const used of usedHlcs) expect(compareHlc(nextTick, used)).toBeGreaterThan(0);
+  });
 });
 
 describe('receiveHlc', () => {
@@ -94,12 +185,39 @@ describe('receiveHlc', () => {
     expect(decodeHlc(next).ms).toBe(5_000);
   });
 
-  it('never moves the stored ms backwards', async () => {
+  it('never moves the stored ms backwards, and leaves the counter alone too', async () => {
     const { database } = await fresh();
-    await localTick(database.db, 'device-a', 10_000);
+    const own = await localTick(database.db, 'device-a', 10_000); // ms=10_000, counter=0
     await receiveHlc(database.db, encodeHlc(1_000, 9, 'device-b')); // older than what we already have
     const next = await localTick(database.db, 'device-a', 1);
-    expect(decodeHlc(next).ms).toBe(10_000);
+    expect(decodeHlc(next)).toEqual({ ms: 10_000, counter: decodeHlc(own).counter + 1, deviceId: 'device-a' });
+  });
+
+  it('adopts the remote counter too when ms ties (standard HLC receive), not just ms', async () => {
+    const { database } = await fresh();
+    await localTick(database.db, 'device-a', 1_000); // ms=1_000, counter=0
+    await receiveHlc(database.db, encodeHlc(1_000, 9, 'device-b')); // same ms, higher counter
+    const next = await localTick(database.db, 'device-a', 1_000);
+    expect(decodeHlc(next)).toEqual({ ms: 1_000, counter: 10, deviceId: 'device-a' });
+  });
+
+  it('does nothing when ms ties and the remote counter is not higher', async () => {
+    const { database } = await fresh();
+    await localTick(database.db, 'device-a', 1_000); // ms=1_000, counter=0
+    await receiveHlc(database.db, encodeHlc(1_000, 0, 'device-b')); // same ms, same counter
+    const next = await localTick(database.db, 'device-a', 1_000);
+    expect(decodeHlc(next)).toEqual({ ms: 1_000, counter: 1, deviceId: 'device-a' }); // as if the receive never happened
+  });
+
+  it('causality: a local write made right after receiving always sorts after what it received (the bug this fixes)', async () => {
+    const { database } = await fresh();
+    await localTick(database.db, 'device-a', 1_000);
+    const remote = encodeHlc(1_000, 5, 'device-b'); // same ms, higher counter than device-a has ticked to
+    await receiveHlc(database.db, remote);
+    const causallyAfter = await localTick(database.db, 'device-a', 1_000);
+    // Before the fix, the stored counter stayed at device-a's own (lower) value, so this could sort *before* `remote`
+    // despite happening causally after receiving it.
+    expect(compareHlc(causallyAfter, remote)).toBeGreaterThan(0);
   });
 });
 

@@ -6,6 +6,14 @@ Reviewed by: `2026-09-27-household-sharing-review.md` (v2). Every finding there 
 Checked against the code at `725f284` (step 0): `2026-09-27-household-sharing-v3-check.md`. Each correction is listed
 there by number, and each changed passage here says "(check #n)".
 
+**Task 2, fix round 1** corrected four more things once real code exposed them: §6.1's receive rule was the wrong
+half of standard HLC receive (kept only `ms`, not the counter too — a bug, not a design choice; see the task 2
+fix report); §6.1 gained the counter-overflow rule (roll into `ms`) and the requirement that a split reserve its
+hlcs before assigning any, so a later ordinary tick can't reuse one; §6.2 gained the same overflow rule and refuses
+a single over-budget op outright rather than emitting it alone over 64 KB; §3/§9.1–9.3 correct the duplicate-append
+contract to `200`, not `409` (`409` is only the rotation conflict) and the durable object's `seen` to a `Map` (of
+seq), matching what actually answers a replay.
+
 ## 0. What v3 changed
 
 v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
@@ -63,7 +71,7 @@ Each device's local SQLite is the truth. The relay is an append-only log per boo
 ```ts
 interface SyncTransport {
   createBook(device: DevicePublic): Promise<{ bookId: string }>;
-  append(bookId: string, entry: LogEntry): Promise<{ seq: number }>;          // 409 duplicate = success
+  append(bookId: string, entry: LogEntry): Promise<{ seq: number }>;          // duplicate (deviceId,hlc) -> 200, the original seq
   pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }>;
   putInvite(bookId: string, invite: InviteRecord): Promise<void>;
   previewInvite(inviteId: string): Promise<{ preview: Sealed; expiresAt: string; claimed: boolean }>;
@@ -328,8 +336,16 @@ the pinned key. Rotations seal for the devices in `book_devices`, never for a li
 hlc = hex(ms, 12 digits) + hex(counter, 4 digits) + '-' + deviceId          // compared as strings
 ```
 
-On a local write: `ms = max(nowMs, lastMs)`; if `ms == lastMs` then `counter += 1` else `counter = 0`. On applying
-a change-set: `lastMs = max(lastMs, its ms)`. `last` is kept in `settings` under `sync.hlc`.
+On a local write: `ms = max(nowMs, lastMs)`; if `ms == lastMs` then `counter += 1` else `counter = 0`. If `counter`
+would overflow its 4 hex digits (> 0xffff), it rolls into `ms` instead: `ms += 1, counter = 0`. On applying a
+change-set (standard HLC receive): if the remote `ms > lastMs`, adopt it wholesale — `lastMs = ms, counter =
+its counter`; if `ms == lastMs`, take the higher counter. An older or equal-and-not-higher message changes nothing.
+Keeping only `lastMs` here (an earlier draft of this rule) is wrong: it lets a local write made right after
+receiving sort *before* the change-set that caused it, when the two happen to tie on `ms`. `last` — `{ ms, counter
+}` — is kept in `settings` under `sync.hlc`.
+
+A local write cut into several change-sets (§6.2) reserves all of their hlcs from the clock in one step, before
+any is assigned, so a later ordinary local tick can never re-hand-out a counter a split already used.
 
 **Drift.** A change-set whose `ms` is more than **24 hours** ahead of the receiving device's clock is not applied
 and **blocks the cursor** (§7.1) until the device's own clock passes `ms − 24h`. A phone with a wrong clock cannot
@@ -347,8 +363,9 @@ type Op =
 A `purchase` is never `delete`d; it is voided by an upsert of `{ void: true }`.
 
 At most **200 ops** and **64 KB** of JSON per change-set. A local database transaction that produces more is split
-into several change-sets with consecutive HLCs (counter + 1 each), in op order. An import of 3,000 rows is fifteen
-entries.
+into several change-sets with consecutive HLCs (counter + 1 each, rolling into `ms` on overflow per §6.1), in op
+order. An import of 3,000 rows is fifteen entries. A single op whose own JSON already exceeds 64 KB is refused
+outright — never emitted alone over budget.
 
 ### 6.3 Capture
 
@@ -652,15 +669,16 @@ Refused: a timestamp more than 5 minutes off; an unknown or removed device; a ba
 `POST /invites/:id/claim` come from a device on no list and are verified against the JWK in their own body.
 `GET /invites/:id` is unauthenticated: the id is unguessable and the body is sealed.
 
-**Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `409` and stores nothing;
-the client treats `409` as accepted.
+**Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `200` with the seq the
+entry was already given, and stores nothing new — success, not an error, so the client never has to special-case
+it. `409` on this endpoint is reserved for the one real conflict: a `rotation` whose `epoch ≠ current + 1`.
 
 ### 9.2 Endpoints
 
 | Method and path | Who | Body → Response |
 |---|---|---|
 | `POST /books` | new device | `DevicePublic` → `201 { bookId }`; the caller is the only owner; `epoch = 1` |
-| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }`; `409` duplicate `(deviceId, hlc)`; `409` a `rotation` whose `epoch ≠ current + 1`; `413` over 128 KB |
+| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }` new; `200 { seq }` duplicate `(deviceId, hlc)`, the original entry's seq; `409` a `rotation` whose `epoch ≠ current + 1`; `413` over 128 KB |
 | `GET /books/:id/entries?since=N` | member | → `200 { entries: SequencedEntry[], latest }`, at most 500 |
 | `POST /books/:id/invites` | owner | `InviteRecord` → `201` |
 | `GET /invites/:id` | anyone | → `200 { preview, expiresAt, claimed }`; `404` |
@@ -677,7 +695,7 @@ owners:  Set<deviceId>
 epoch:   number                                  // raised by an accepted rotation
 seq:     number
 log:     Map<seq, LogEntry>
-seen:    Set<deviceId + ':' + hlc>
+seen:    Map<deviceId + ':' + hlc, seq>          // lets a duplicate append answer with the original seq
 invites: Map<inviteId, InviteRecord & { claimedAt? }>
 deleted: boolean
 ```

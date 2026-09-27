@@ -1,3 +1,4 @@
+import { fromBase64Url, toBase64Url } from './base64url';
 import type { ChangeSet, LogEntry } from './types';
 
 /*
@@ -21,14 +22,6 @@ export interface Sealer {
 
   /** Whether an entry's signature is valid. Never decrypts; callers check this before trusting `open`'s result. */
   verify(entry: LogEntry): Promise<boolean>;
-}
-
-function toBase64Url(text: string): string {
-  return Buffer.from(text, 'utf8').toString('base64url');
-}
-
-function fromBase64Url(text: string): string {
-  return Buffer.from(text, 'base64url').toString('utf8');
 }
 
 /**

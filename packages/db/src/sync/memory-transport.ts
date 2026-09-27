@@ -5,12 +5,14 @@ import { SyncTransportError } from './types';
 
 /*
  * The relay's semantics, in memory (spec §9.2, §9.3). This is the reference `RelayTransport` (task 6) must match:
- * same durable-object-shaped state per book, same statuses, same replay and rotation rules. Its methods carry one
- * extra, optional `actorDeviceId` beyond `SyncTransport`'s own signature (still assignable to it — an extra
- * optional parameter never breaks the interface): the real relay reads the caller off signed HTTP headers
- * (spec §9.1), which this in-process stand-in has no request to read, so a caller passes the acting device
- * explicitly instead. Omitting it skips authorisation, which only tests calling `MemoryTransport` directly (not
- * through the `SyncTransport` type) can do.
+ * same durable-object-shaped state per book, same statuses, same replay and rotation rules.
+ *
+ * `MemoryTransport` itself is not a `SyncTransport` — it is the shared relay, holding every book's state. A caller
+ * gets a `SyncTransport` bound to its own device identity via `relay.as(deviceId)`, mirroring how the real relay
+ * gets the caller off signed HTTP headers (spec §9.1) rather than a parameter the caller could omit. Every method
+ * on the bound client always authorises; there is no way to reach the relay's state without going through it, so
+ * a caller holding only the `SyncTransport` type (every caller other than a test) cannot skip authorisation the
+ * way an earlier version of this file allowed via an optional parameter.
  */
 
 const MAX_ENTRY_BYTES = 128 * 1024;
@@ -61,8 +63,13 @@ function byteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
-export class MemoryTransport implements SyncTransport {
+export class MemoryTransport {
   private readonly books = new Map<string, BookState>();
+
+  /** A `SyncTransport` acting as `deviceId` — every call it makes is authorised against that identity. */
+  as(deviceId: string): SyncTransport {
+    return new BoundTransport(this, deviceId);
+  }
 
   /** Test-only lookup so a fixture book can be inspected without a repository layer around it. */
   peek(bookId: string): Readonly<BookState> | undefined {
@@ -86,8 +93,10 @@ export class MemoryTransport implements SyncTransport {
     if (!state.owners.has(actor)) throw new SyncTransportError(403, 'owner only');
   }
 
-  async createBook(device: DevicePublic): Promise<{ bookId: string }> {
+  /** `callerDeviceId` must be the id its own `device` derives to — the relay verifies a new device against the JWK in its own body (spec §9.1), never a claim it takes on faith. */
+  async createBook(device: DevicePublic, callerDeviceId: string): Promise<{ bookId: string }> {
     const deviceId = await deviceIdOf(device);
+    if (deviceId !== callerDeviceId) throw new SyncTransportError(403, 'a device can only register itself');
     const bookId = uuidv7();
     const now = new Date().toISOString();
     this.books.set(bookId, {
@@ -103,13 +112,16 @@ export class MemoryTransport implements SyncTransport {
     return { bookId };
   }
 
-  async append(bookId: string, entry: LogEntry, actorDeviceId?: string): Promise<{ seq: number }> {
+  async append(bookId: string, entry: LogEntry, actorDeviceId: string): Promise<{ seq: number }> {
     const state = this.requireBook(bookId);
-    this.requireMember(state, actorDeviceId ?? entry.deviceId);
+    this.requireMember(state, actorDeviceId);
+    // A device only ever authors its own entries — never on another device's behalf (finding: bound identity).
+    if (entry.deviceId !== actorDeviceId) throw new SyncTransportError(403, 'a device can only append its own entries');
 
     const dedupeKey = `${entry.deviceId}:${entry.hlc}`;
     const already = state.seen.get(dedupeKey);
-    // A duplicate (deviceId, hlc) is success, not an error (spec §3's `append` comment, §9.1 "Replay").
+    // A duplicate (deviceId, hlc) answers with the original seq — success, not an error (spec §3, §9.1 "Replay").
+    // 409 on append is reserved for a rotation whose epoch is not current + 1.
     if (already !== undefined) return { seq: already };
 
     if (byteSize(entry) > MAX_ENTRY_BYTES) throw new SyncTransportError(413, 'entry over 128 KB');
@@ -125,9 +137,9 @@ export class MemoryTransport implements SyncTransport {
     return { seq };
   }
 
-  async pull(bookId: string, since: number, actorDeviceId?: string): Promise<{ entries: SequencedEntry[]; latest: number }> {
+  async pull(bookId: string, since: number, actorDeviceId: string): Promise<{ entries: SequencedEntry[]; latest: number }> {
     const state = this.requireBook(bookId);
-    if (actorDeviceId !== undefined) this.requireMember(state, actorDeviceId);
+    this.requireMember(state, actorDeviceId);
 
     const entries = [...state.log.entries()]
       .filter(([seq]) => seq > since)
@@ -141,9 +153,9 @@ export class MemoryTransport implements SyncTransport {
     return { entries, latest: state.seq };
   }
 
-  async putInvite(bookId: string, invite: InviteRecord, actorDeviceId?: string): Promise<void> {
+  async putInvite(bookId: string, invite: InviteRecord, actorDeviceId: string): Promise<void> {
     const state = this.requireBook(bookId);
-    if (actorDeviceId !== undefined) this.requireOwner(state, actorDeviceId);
+    this.requireOwner(state, actorDeviceId);
     state.invites.set(invite.inviteId, { ...invite });
   }
 
@@ -155,7 +167,11 @@ export class MemoryTransport implements SyncTransport {
     return { preview: invite.preview, expiresAt: invite.expiresAt, claimed: invite.claimedAt !== undefined };
   }
 
-  async claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult> {
+  /** `callerDeviceId` must be the id its own `device` derives to, exactly as `createBook` requires. */
+  async claimInvite(inviteId: string, device: DevicePublic, callerDeviceId: string): Promise<ClaimResult> {
+    const deviceId = await deviceIdOf(device);
+    if (deviceId !== callerDeviceId) throw new SyncTransportError(403, 'a device can only claim as itself');
+
     const found = this.findInvite(inviteId);
     if (!found) throw new SyncTransportError(404, 'no such invite');
     const { bookId, state, invite } = found;
@@ -167,7 +183,6 @@ export class MemoryTransport implements SyncTransport {
     const activeDevices = [...state.devices.values()].filter((d) => d.removedAt === undefined).length;
     if (activeDevices >= MAX_ACTIVE_DEVICES) throw new SyncTransportError(429, 'this book already has five devices');
 
-    const deviceId = await deviceIdOf(device);
     const now = new Date().toISOString();
     state.devices.set(deviceId, { signJwk: device.signJwk, agreeJwk: device.agreeJwk, addedAt: now });
     invite.claimedAt = now;
@@ -175,28 +190,27 @@ export class MemoryTransport implements SyncTransport {
     return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId };
   }
 
-  async removeDevice(bookId: string, deviceId: string, actorDeviceId?: string): Promise<void> {
+  async removeDevice(bookId: string, targetDeviceId: string, actorDeviceId: string): Promise<void> {
     const state = this.requireBook(bookId);
-    if (actorDeviceId !== undefined) {
-      // By an owner, for any device; by any device, for itself (spec §8.4).
-      if (actorDeviceId === deviceId) this.requireMember(state, actorDeviceId);
-      else this.requireOwner(state, actorDeviceId);
-    }
-    const device = state.devices.get(deviceId);
+    // By an owner, for any device; by any device, for itself (spec §8.4).
+    if (actorDeviceId === targetDeviceId) this.requireMember(state, actorDeviceId);
+    else this.requireOwner(state, actorDeviceId);
+
+    const device = state.devices.get(targetDeviceId);
     if (!device) throw new SyncTransportError(404, 'no such device');
     device.removedAt = new Date().toISOString();
-    state.owners.delete(deviceId);
+    state.owners.delete(targetDeviceId);
   }
 
-  async setOwners(bookId: string, deviceIds: string[], actorDeviceId?: string): Promise<void> {
+  async setOwners(bookId: string, deviceIds: string[], actorDeviceId: string): Promise<void> {
     const state = this.requireBook(bookId);
-    if (actorDeviceId !== undefined) this.requireOwner(state, actorDeviceId);
+    this.requireOwner(state, actorDeviceId);
     state.owners = new Set(deviceIds);
   }
 
-  async deleteBook(bookId: string, actorDeviceId?: string): Promise<void> {
+  async deleteBook(bookId: string, actorDeviceId: string): Promise<void> {
     const state = this.requireBook(bookId);
-    if (actorDeviceId !== undefined) this.requireOwner(state, actorDeviceId);
+    this.requireOwner(state, actorDeviceId);
     state.deleted = true;
   }
 
@@ -206,6 +220,50 @@ export class MemoryTransport implements SyncTransport {
       if (invite) return { bookId, state, invite };
     }
     return undefined;
+  }
+}
+
+/** A `SyncTransport` bound to one device identity, so every call it makes is authorised as that device — never skippable. */
+class BoundTransport implements SyncTransport {
+  constructor(
+    private readonly relay: MemoryTransport,
+    private readonly deviceId: string,
+  ) {}
+
+  createBook(device: DevicePublic): Promise<{ bookId: string }> {
+    return this.relay.createBook(device, this.deviceId);
+  }
+
+  append(bookId: string, entry: LogEntry): Promise<{ seq: number }> {
+    return this.relay.append(bookId, entry, this.deviceId);
+  }
+
+  pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }> {
+    return this.relay.pull(bookId, since, this.deviceId);
+  }
+
+  putInvite(bookId: string, invite: InviteRecord): Promise<void> {
+    return this.relay.putInvite(bookId, invite, this.deviceId);
+  }
+
+  previewInvite(inviteId: string): Promise<{ preview: Sealed; expiresAt: string; claimed: boolean }> {
+    return this.relay.previewInvite(inviteId);
+  }
+
+  claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult> {
+    return this.relay.claimInvite(inviteId, device, this.deviceId);
+  }
+
+  removeDevice(bookId: string, deviceId: string): Promise<void> {
+    return this.relay.removeDevice(bookId, deviceId, this.deviceId);
+  }
+
+  setOwners(bookId: string, deviceIds: string[]): Promise<void> {
+    return this.relay.setOwners(bookId, deviceIds, this.deviceId);
+  }
+
+  deleteBook(bookId: string): Promise<void> {
+    return this.relay.deleteBook(bookId, this.deviceId);
   }
 }
 
