@@ -1,7 +1,7 @@
 import type { PersonDebtRow } from '@expanses/db';
 import { Plus } from 'lucide-react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { isoDate } from '@expanses/core';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
@@ -14,12 +14,26 @@ import { newDebtPath, openingSide, type Side } from './sides';
 import { sideTotal } from './totals';
 
 /**
- * One side of the ledger.
+ * One side of the ledger, its people and, as the box's last row, their total.
  *
- * "Receivables" and "Payables" were headings *inside* cards; they are group headers now, outside and above what
- * they name, with the side's total beside them. That is the one thing the audit asks of this screen.
+ * On the phone the tab above already names the side, so the box has no header; the desktop shows both sides at once
+ * and keeps the side's name over each. The total closes the list like the foot of a receipt, on both.
  */
-function Column({ title, people, emptyText, currency, rates }: { title: string; people: PersonDebtRow[]; emptyText: string; currency: string; rates: Record<string, number> | undefined }) {
+function Column({
+  title,
+  people,
+  emptyText,
+  currency,
+  rates,
+  header,
+}: {
+  title: string;
+  people: PersonDebtRow[];
+  emptyText: string;
+  currency: string;
+  rates: Record<string, number> | undefined;
+  header: boolean;
+}) {
   const total = sideTotal(people, currency, rates ?? {});
   // Until the held rates are read, a foreign card has no figure yet; saying "no rate" then would be untrue.
   const figure =
@@ -30,9 +44,14 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
     );
   return (
     <div>
-      <PanelHeader title={title} trailing={<span data-testid={`debts-total-${title}`}>{figure}</span>} />
+      {header && <PanelHeader title={title} />}
       {people.length === 0 && <p className="px-[4px] pb-[18px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{emptyText}</p>}
-      {people.length > 0 && <PeopleRows people={people} />}
+      {people.length > 0 && (
+        <PeopleRows
+          people={people}
+          total={<span className="font-semibold text-[var(--ph-ink)]" data-testid={`debts-total-${title}`}>{figure}</span>}
+        />
+      )}
     </div>
   );
 }
@@ -45,7 +64,7 @@ const DUE_TONE = { late: 'text-[var(--ph-alarm)]', soon: 'text-[var(--ph-warn)]'
  * and what they owe in all. Nothing to press but the row itself — repaying, forgiving and changing a loan are on the
  * loan's own page, one tap further in, where they used to be buttons and a picker under every loan.
  */
-function PeopleRows({ people }: { people: PersonDebtRow[] }) {
+function PeopleRows({ people, total }: { people: PersonDebtRow[]; total?: ReactNode }) {
   const today = isoDate();
   return (
     <InsetGroup>
@@ -68,6 +87,7 @@ function PeopleRows({ people }: { people: PersonDebtRow[] }) {
           />
         );
       })}
+      {total ? <InsetRow key="total" title="Total" value={total} valueTone="ink" chevron={false} /> : null}
     </InsetGroup>
   );
 }
@@ -144,15 +164,15 @@ export function LendBorrowPage() {
             {/* The phone shows one list at a time, as the mockup draws it; the desktop keeps both side by side. */}
             <SegmentedControl segments={SIDES} value={shown} onChange={(key) => setSide(key as Side)} label="Lend & borrow" className="mb-[18px]" />
             {shown === 'owed' ? (
-              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
             ) : (
-              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
             )}
           </>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
-            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
+            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
           </div>
         ))}
 

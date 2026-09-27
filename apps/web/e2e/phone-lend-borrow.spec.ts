@@ -68,6 +68,9 @@ test('by thumb: the mockup’s control shows one side at a time, and one tap tur
   await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
   await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
+  // The tab names the side, so the box has no header of its own; its total is the box's last row.
+  await expect(page.getByRole('heading', { name: 'Receivables', level: 2 })).toHaveCount(0);
+  await expect(page.getByText('Total', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Payables', level: 2 })).toHaveCount(0);
   await expect(personRow(page, 'Dewi')).toHaveCount(0);
   await expect(page.getByTestId('debts-total-Payables')).toHaveCount(0);
