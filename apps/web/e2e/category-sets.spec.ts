@@ -39,9 +39,11 @@ function answerPrompts(page: Page, answers: string[]) {
 test('a set of your own can be made, added to, and drawn on by an event', async ({ page }) => {
   await addWallet(page);
 
+  // The list's Sets row leads to the sets, which are made from that page's corner.
   await page.goto('/categories');
+  await page.getByRole('link', { name: /^Sets/ }).click();
   answerPrompts(page, ['Wedding', 'Catering', 'Venue']);
-  await page.getByRole('button', { name: 'Add a set' }).click();
+  await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByTestId('set-Wedding')).toBeVisible();
 
   await page.getByRole('button', { name: 'Add a category to Wedding' }).click();
@@ -69,13 +71,22 @@ test('a set of your own can be made, added to, and drawn on by an event', async 
 });
 
 test('a set category can be renamed, and archiving it leaves the set', async ({ page }) => {
-  await page.goto('/categories');
+  await page.goto('/categories/sets');
   answerPrompts(page, ['Lodging & stays']);
 
-  await page.getByTestId('set-Holiday').getByRole('button', { name: 'Rename Lodging' }).click();
+  // A set category opens its own page, where it is renamed and archived like any other.
+  await page.getByTestId('set-Holiday').getByRole('link', { name: 'Lodging', exact: true }).click();
+  await expect(page.getByTestId('category-hero')).toContainText('in the Holiday set');
+  await page.getByRole('button', { name: 'Rename Lodging' }).click();
+  await expect(page.getByTestId('category-hero')).toContainText('Lodging & stays');
+  await page.getByRole('link', { name: 'Sets' }).first().click();
   await expect(page.getByTestId('set-Holiday')).toContainText('Lodging & stays');
 
-  await page.getByTestId('set-Holiday').getByRole('button', { name: 'Archive Photo' }).click();
+  await page.getByTestId('set-Holiday').getByRole('link', { name: 'Photo', exact: true }).click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Archive category' }).click();
+  // Archiving returns to where the category was reached from.
+  await expect(page).toHaveURL(/\/categories\/sets$/);
   await expect(page.getByTestId('set-Holiday')).not.toContainText('Photo');
 });
 
@@ -101,17 +112,20 @@ test('an event can be called done, and put back', async ({ page }) => {
 });
 
 test('a set category can be given a card MCC, so its spending earns the right rate', async ({ page }) => {
-  await page.goto('/categories');
+  await page.goto('/categories/sets');
   answerPrompts(page, ['4511']);
 
-  const holiday = page.getByTestId('set-Holiday');
-  await expect(holiday.getByText('No card MCC').first()).toBeVisible();
-  await holiday.getByRole('button', { name: 'Card MCC for Flights' }).click();
-  await expect(holiday).toContainText('MCC 4511 (yours)');
+  await page.getByTestId('set-Holiday').getByRole('link', { name: 'Flights', exact: true }).click();
+  const mcc = page.getByTestId('category-mcc');
+  await expect(mcc).toContainText('None');
+  await page.getByRole('button', { name: 'Card MCC for Flights' }).click();
+  await expect(mcc).toContainText('4511');
+  await expect(mcc).toContainText('set by you');
 
   // Clearing puts it back to having none, the same as the monthly categories behave.
-  await holiday.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
-  await expect(holiday).not.toContainText('MCC 4511');
+  await page.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
+  await expect(mcc).not.toContainText('4511');
+  await expect(mcc).toContainText('None');
 });
 
 test('an event records its spending in its own categories, from its own page', async ({ page }) => {

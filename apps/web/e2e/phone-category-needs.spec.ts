@@ -1,16 +1,20 @@
 import { expect, test } from '@playwright/test';
+import { expectNeed, markNeed, openCategory } from './categories';
 
 test('a parent’s mark reaches its children, a child can keep its own, and clearing hands it back', async ({ page }) => {
-  await page.goto('/categories');
-  await expect(page.getByTestId('need-Restaurants')).toHaveText('Essential');
+  await openCategory(page, 'Restaurants');
+  await expectNeed(page, 'Restaurants', 'Essential', 'Not marked, so essential');
 
-  await page.getByRole('button', { name: 'Mark Food and beverage lifestyle' }).click();
-  await expect(page.getByTestId('need-Restaurants')).toHaveText('Lifestyle (from parent)');
+  await markNeed(page, 'Food and beverage', 'Lifestyle');
+  await openCategory(page, 'Restaurants');
+  await expectNeed(page, 'Restaurants', 'Lifestyle', 'Follows Food and beverage');
 
-  await page.getByRole('button', { name: 'Mark School catering essential' }).click();
-  await expect(page.getByTestId('need-School catering')).toHaveText('Essential');
+  await markNeed(page, 'School catering', 'Essential');
 
   await page.getByRole('button', { name: 'Clear the mark on School catering' }).click();
-  await expect(page.getByTestId('need-School catering')).toHaveText('Lifestyle (from parent)');
-  await expect(page.getByTestId('need-Groceries')).toHaveText('Essential');
+  await expectNeed(page, 'School catering', 'Lifestyle', 'Follows Food and beverage');
+  await expect(page.getByRole('button', { name: 'Clear the mark on School catering' })).toHaveCount(0);
+
+  await openCategory(page, 'Groceries');
+  await expectNeed(page, 'Groceries', 'Essential', 'Not marked, so essential');
 });
