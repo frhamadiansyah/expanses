@@ -3,7 +3,9 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { personalBook, postTransaction, renameBook, voidTransaction } from '../../src/index';
 import { BookReadOnlyError, LastOwnerError } from '../../src/sync/capture';
-import { FrozenBookError, NotOwnerError } from '../../src/sync/engine';
+import { FrozenBookError, LeaveIncompleteError, NotOwnerError, SyncEngine } from '../../src/sync/engine';
+import { SyncTransportError, type LogEntry, type SyncTransport } from '../../src/sync/types';
+import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
 import { categoryOf, Household, projectBook, type Device } from './household';
 
@@ -160,6 +162,59 @@ describe('leave (§8.4)', () => {
     await expect(fandri.engine.leave(bookId)).rejects.toBeInstanceOf(LastOwnerError);
   });
 
+  it('a device following a leave writes a plain removal: a device re-invited meanwhile stays (P1b, fix round 2)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const offline = await secondDevice(home, fandri, dewi, bookId);
+    await home.settle([fandri, dewi, offline]);
+    await dewi.engine.leave(bookId);
+    await home.settle([fandri]);
+    // Dewi comes back on a new phone while the tablet, in before the leave, has not synced since.
+    const back = await home.device('Dewi3', dewi.memberId);
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    await back.engine.joinBook(code, { ws: back.ws, memberName: 'Dewi', deviceName: "Dewi's new phone" });
+    expect((await offline.engine.syncOnce(bookId)).ended).toBe('left');
+    const followed = [...home.relay.peek(home.relayBookId)!.log.values()].filter((e) => e.kind === 'removal' && e.deviceId === offline.deviceId);
+    expect(followed).toHaveLength(1);
+    expect(followed[0]).not.toHaveProperty('leave');
+    expect((await back.engine.syncOnce(bookId)).ended).toBeUndefined();
+    expect(await shared(back, bookId)).toEqual(['active', null]);
+    expect(await shared(offline, bookId)).toEqual(['unshared', dewi.memberId]);
+  });
+
+  it('two owners leaving at once: at most one leaves, and the book is not frozen (P5, fix round 2)', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    const results = await Promise.allSettled([fandri.engine.leave(bookId), dewi.engine.leave(bookId)]);
+    const refused = results.filter((r) => r.status === 'rejected');
+    expect(refused.length).toBeGreaterThanOrEqual(1);
+    for (const r of refused) expect((r as PromiseRejectedResult).reason).toBeInstanceOf(LastOwnerError);
+    await home.settle([budi]);
+    expect(await budi.engine.isFrozen(bookId)).toBe(false);
+    expect(relayRemoved(home, fandri.deviceId) && relayRemoved(home, dewi.deviceId)).toBe(false);
+  });
+
+  it('a step-down that reached the log with a removal that did not says so, and leave can be tried again (fix round 2)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    let fail = true;
+    const flaky: SyncTransport = Object.assign(Object.create(dewi.transport) as SyncTransport, {
+      append: async (relayBookId: string, entry: LogEntry) => {
+        if (fail && entry.kind === 'removal') throw new SyncTransportError(0, 'relay unreachable');
+        return dewi.transport.append(relayBookId, entry);
+      },
+    });
+    const engine = new SyncEngine(dewi.database, flaky, dewi.keys);
+    await expect(engine.leave(bookId)).rejects.toBeInstanceOf(LeaveIncompleteError);
+    await home.settle([fandri]);
+    expect(await roleOf(fandri, bookId, dewi.memberId)).toBe('member');
+    expect(await shared(dewi, bookId)).toEqual(['active', null]);
+    fail = false;
+    await engine.leave(bookId);
+    expect(relayRemoved(home, dewi.deviceId)).toBe(true);
+  });
+
   it('the last owner cannot leave until someone else is owner', async () => {
     const { home, fandri, dewi, bookId } = await household();
     await expect(fandri.engine.leave(bookId)).rejects.toBeInstanceOf(LastOwnerError);
@@ -250,8 +305,12 @@ describe('stop sharing (§8.6)', () => {
 describe('a frozen book (§8.5)', () => {
   async function frozen() {
     const h = await household();
-    // The only owner's only device removes itself: no owner device is left in the view.
-    await h.fandri.engine.removeDevice(h.bookId, h.fandri.deviceId);
+    // The only owner's only device removes itself behind the engine's back (the engine refuses it, fix round 2; a race
+    // of two owners can still get here): no owner device is left in the view.
+    const hlc = encodeHlc(Date.now(), 0, h.fandri.deviceId);
+    const removal = await h.fandri.engine.sealer.sign(h.bookId, { kind: 'removal' as const, deviceId: h.fandri.deviceId, epoch: 1, hlc, target: h.fandri.deviceId });
+    await h.fandri.transport.append(h.home.relayBookId, removal);
+    await h.fandri.transport.removeDevice(h.home.relayBookId, h.fandri.deviceId);
     await h.home.settle([h.dewi, h.budi]);
     return h;
   }
@@ -302,5 +361,45 @@ describe('the status line (§11)', () => {
     expect(await status()).toEqual({ state: 'waiting', changes: 2, syncedAt });
     expect(await status(Date.parse(syncedAt) + 6 * 60_000)).toEqual({ state: 'stale', since: syncedAt, changes: 2 });
     expect(await dewi.engine.bookSyncStatus('not-a-shared-book')).toBeNull();
+  });
+});
+
+describe('the last owner is the last owner with a device (P3, fix round 2)', () => {
+  it('an owner cannot step down while the only other owner has no device left', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    await fandri.engine.removeDevice(bookId, dewi.deviceId);
+    await home.settle([fandri, budi]);
+    await expect(
+      fandri.database.transaction((tx) =>
+        withCapture(tx, { entity: 'member', id: fandri.memberId, bookId }, async () => {
+          await tx.run(sql`UPDATE book_members SET role = 'member' WHERE book_id = ${bookId} AND member_id = ${fandri.memberId}`);
+        }),
+      ),
+    ).rejects.toBeInstanceOf(LastOwnerError);
+    expect(await roleOf(fandri, bookId, fandri.memberId)).toBe('owner');
+  });
+
+  it("the last owner device cannot remove itself (P3b)", async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await expect(fandri.engine.removeDevice(bookId, fandri.deviceId)).rejects.toBeInstanceOf(LastOwnerError);
+    expect(relayRemoved(home, fandri.deviceId)).toBe(false);
+    await home.settle([dewi]);
+    expect(await dewi.engine.isFrozen(bookId)).toBe(false);
+  });
+
+  it('a step-down past an owner with no device is refused on apply too, alike on every device', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    await fandri.engine.removeDevice(bookId, dewi.deviceId);
+    await home.settle([fandri, budi]);
+    const demote = { v: 1 as const, hlc: encodeHlc(Date.now() + 1000, 0, fandri.deviceId), member: fandri.memberId, ops: [{ entity: 'member', id: fandri.memberId, op: 'upsert' as const, fields: { role: 'member' } }] };
+    const entry = await fandri.engine.sealer.seal(bookId, await epochOf(fandri, bookId), demote);
+    await fandri.transport.append(home.relayBookId, entry);
+    await budi.engine.syncOnce(bookId);
+    expect(await roleOf(budi, bookId, fandri.memberId)).toBe('owner');
+    expect(await budi.engine.isFrozen(bookId)).toBe(false);
   });
 });

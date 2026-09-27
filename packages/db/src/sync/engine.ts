@@ -62,6 +62,17 @@ export class FrozenBookError extends SharingError {
 }
 
 /**
+ * Leave stepped this owner down to member, and the log has that, but the removal of this device did not reach the relay
+ * (fix round 2). The device is still in, as a member; `leave` again finishes it. `cause` is what failed.
+ */
+export class LeaveIncompleteError extends SharingError {
+  constructor(readonly cause: unknown) {
+    super('LEAVE_INCOMPLETE', "You're no longer an owner, but leaving didn't finish: try again");
+    this.name = 'LeaveIncompleteError';
+  }
+}
+
+/**
  * The status line of a shared book (§11), for the UI to word:
  * - `up_to_date` — "Up to date";
  * - `waiting` — "3 changes waiting" (`changes` is the outbox);
@@ -232,7 +243,7 @@ export class SyncEngine {
       result = merge(result, await this.pull(bookId, seen));
     }
     if (follow) {
-      await this.leaveNow(bookId);
+      await this.leaveNow(bookId, false);
       return { pushed, ...result, ended: 'left' };
     }
     await this.followOwners(bookId, ownersBefore);
@@ -411,6 +422,13 @@ export class SyncEngine {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     if (target !== this.deviceId && (await this.isFrozen(bookId))) throw new FrozenBookError();
+    if (target === this.deviceId) {
+      // Fix round 2: the last owner device never takes itself out; that would freeze the book (§8.5).
+      const owners = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
+      if (owners.includes(this.deviceId) && owners.length === 1) {
+        throw new LastOwnerError("This is the workspace's last owner device: make someone else an owner before removing it");
+      }
+    }
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
     const entry = await this.sealer.sign(bookId, { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target });
     await this.transport.append(shared.relayBookId, entry);
@@ -514,15 +532,32 @@ export class SyncEngine {
         }),
       );
       if ((await this.syncOnce(bookId)).ended) return;
+      // Fix round 2: another owner may have stepped down at the same moment, and the log took theirs first, refusing
+      // this one (the last owner is never demoted). Leave only as the log has it: a member now, past an owner with a device.
+      const stillOk = await this.database.transaction(
+        async (tx) => (await viewMember(tx, bookId, shared.memberId))?.role === 'member' && (await viewOtherActiveOwners(tx, bookId, shared.memberId)) > 0,
+      );
+      if (!stillOk) throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+      try {
+        await this.leaveNow(bookId, true);
+      } catch (error) {
+        throw new LeaveIncompleteError(error);
+      }
+      return;
     }
-    await this.leaveNow(bookId);
+    await this.leaveNow(bookId, true);
   }
 
-  /** The leave itself: the signed `leave` removal of this device, the relay drops it, and the book here ends. */
-  private async leaveNow(bookId: string): Promise<void> {
+  /**
+   * The leave itself: the signed removal of this device, the relay drops it, and the book here ends. `leave` marks it
+   * as the member leaving, which the member's other devices follow (§8.4); a device following one writes a plain
+   * removal of itself (fix round 2), so a device of the member re-invited since is never taken along.
+   */
+  private async leaveNow(bookId: string, leave: boolean): Promise<void> {
     const shared = (await this.sharedRow(bookId))!;
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
-    const entry = await this.sealer.sign(bookId, { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target: this.deviceId, leave: true as const });
+    const removal = { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target: this.deviceId };
+    const entry = await this.sealer.sign(bookId, leave ? { ...removal, leave: true as const } : removal);
     await this.transport.append(shared.relayBookId, entry);
     await this.transport.removeDevice(shared.relayBookId, this.deviceId);
     await this.endShared(bookId, shared.memberId);

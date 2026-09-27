@@ -100,6 +100,7 @@ export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
 export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';
 export {
   FrozenBookError,
+  LeaveIncompleteError,
   NotOwnerError,
   STALE_AFTER_MS,
   SyncEngine,

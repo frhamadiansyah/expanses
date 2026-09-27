@@ -911,7 +911,14 @@ every field; it counts only when `target` is the author) and drops itself from t
 same member (per the view) **that was in before that leave** — admitted at an earlier seq (`added_seq`; fix round 1) —
 applying that removal, does the same on its next sync and does not rotate on the way out (`syncOnce` answers
 `ended: 'left'`); every other device rotates as for any removal. A device of that member admitted after the leave — a
-same-member invite bringing someone back, or a restored phone rejoining (§8.7) — replays the old leave and stays. A device
+same-member invite bringing someone back, or a restored phone rejoining (§8.7) — replays the old leave and stays. A
+device that follows a leave writes a **plain** removal of itself, without `leave` (fix round 2), so nothing ever follows
+a follower: a device re-invited while an old device was offline is never taken along when that device comes back.
+After its step-down syncs, a leaving owner checks again (fix round 2): the view must have it as `'member'` and another
+owner with a device still in — two owners leaving at once both step down, the log takes the first demotion and refuses
+the second (the last owner is never demoted), so the second gets `LastOwnerError` and stays. If the removal then fails
+after the step-down is in the log, `leave` throws `LeaveIncompleteError` (`LEAVE_INCOMPLETE`): this device is a member
+now, still in, and `leave` again finishes it. A device
 of the leaving member that never syncs again keeps its keys until an owner removes it. On each device that left, the
 book stays with every row, `shared_books.state = 'unshared'`, `unshared_by` = its own member: read-only, as §8.6.
 
@@ -945,6 +952,13 @@ The relay keeps the set of owner **device ids** for authorising `putInvite`,
 `removeDevice` of another device, `setOwners`, `deleteBook`. **Make owner**: a `member` op setting `role`, and
 `setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
 and sync, nobody can invite or remove; rotation still works.
+
+**The last owner is the last owner with a device (task 9a fix round 2).** Everywhere the last-owner rule is read —
+`withCapture`'s guard, apply's decision (`viewIsLastOwner`), `leave`, and `removeDevice` of oneself — "the last owner"
+means an owner member with no other owner member that still has a device in the view. An owner whose every device is
+gone does not count: stepping down or leaving past one would freeze the book. The last owner device cannot remove
+itself either (`LastOwnerError`). A frozen book is then reached only by a race the log settles afterwards (two owners
+each taking out their own last device at once).
 
 **As built (task 9a).** `makeOwner(bookId, memberId)` checks this device is an owner's in the view (`NotOwnerError`),
 writes `role = 'owner'` through `withCapture`, and syncs when it can; the sync's pull takes the op into the view and

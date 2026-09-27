@@ -88,17 +88,13 @@ export async function viewRoleOfDevice(tx: Db, bookId: string, deviceId: string)
 }
 
 /**
- * Whether `memberId` is, per the view, the book's only owner — what `withCapture`'s last-owner guard reads, never this
- * device's own rows (fix round 3).
+ * Whether `memberId` is, per the view, the book's last owner — an owner, and no other owner member has a device still
+ * in (task 9a fix round 2: an owner whose devices are all gone cannot run the book, so it does not count). What
+ * `withCapture`'s last-owner guard reads, never this device's own rows (fix round 3), and what apply decides by.
  */
 export async function viewIsLastOwner(tx: Db, bookId: string, memberId: string): Promise<boolean> {
   const member = await viewMember(tx, bookId, memberId);
-  return member !== null && !member.deleted && member.role === 'owner' && (await ownerMembers(tx, bookId)) <= 1;
-}
-
-async function ownerMembers(tx: Db, bookId: string): Promise<number> {
-  const [row] = await tx.values<[number]>(sql`SELECT count(*) FROM sync_authority WHERE book_id = ${bookId} AND role = 'owner' AND deleted = 0`);
-  return Number(row?.[0] ?? 0);
+  return member !== null && !member.deleted && member.role === 'owner' && (await viewOtherActiveOwners(tx, bookId, memberId)) === 0;
 }
 
 /** The devices of owner members that are still in, per the view, by id — what the relay's owner set should be (§8.5). */
@@ -240,7 +236,7 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   const { bookId, hlc } = ctx;
   const view = await viewMember(tx, bookId, op.id);
   const owner = ctx.creator || (await viewRoleOfDevice(tx, bookId, ctx.author)) === 'owner';
-  const lastOwner = view !== null && !view.deleted && view.role === 'owner' && (await ownerMembers(tx, bookId)) <= 1;
+  const lastOwner = await viewIsLastOwner(tx, bookId, op.id);
 
   if (op.op === 'delete') {
     if (!owner) throw new AuthorityError('only an owner deletes a member');
