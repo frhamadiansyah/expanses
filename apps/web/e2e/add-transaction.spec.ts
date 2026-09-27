@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { personRow } from './people';
 import { openAccount, openTypes } from './accounts';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo } from './add-transaction';
 import { addEvent } from './event-plan';
@@ -801,7 +802,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/net-worth/lend-borrow');
-  await expect(page.getByRole('heading', { name: 'Andi' }).locator('xpath=following-sibling::span')).toContainText('42.500');
+  await expect(personRow(page, 'Andi')).toContainText('42.500');
 });
 
 test('a missing rate is asked for under Add more details, and the save then goes through', async ({ page }) => {
@@ -883,9 +884,9 @@ test('a bill split equally between three people leaves each of them owing their 
   // Three people on the books, not one, and each of them owing a quarter of the bill.
   await page.goto('/net-worth/lend-borrow');
   for (const person of ['Andi', 'Budi', 'Citra']) {
-    await expect(page.getByRole('heading', { name: person })).toBeVisible();
+    await expect(personRow(page, person)).toBeVisible();
     // The figure beside that person's own name: each of them owes a quarter, rather than one of them the lot.
-    await expect(page.getByRole('heading', { name: person }).locator('xpath=following-sibling::span')).toContainText('100.000');
+    await expect(personRow(page, person)).toContainText('100.000');
   }
 
   // The card was charged the whole 400.000 — what the restaurant took, not what the dinner cost the owner.
@@ -930,7 +931,7 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
   await expect(form).toHaveCount(0);
 
   await page.goto('/net-worth/lend-borrow');
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByText(/133\.333/).first()).toBeVisible();
 
   // 266.667, not 200.000: what is left of the bill, never half of it.

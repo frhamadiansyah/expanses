@@ -37,7 +37,9 @@ import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
 import { LendBorrowPage } from '../features/debts/LendBorrowPage';
+import { LoanPage } from '../features/debts/LoanPage';
 import { NewDebtPage } from '../features/debts/NewDebtPage';
+import { PersonPage } from '../features/debts/PersonPage';
 import { LoanDetailPage } from '../features/loans/LoanDetailPage';
 import { DebtsPage } from '../features/loans/DebtsPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
@@ -234,6 +236,10 @@ const routeTree = rootRoute.addChildren([
     component: () => <NewDebtPage direction="borrowed" />,
     validateSearch: lendBorrowSearch,
   }),
+  // One loan on its own page — repaid, forgiven or changed there — and one person, with each of their loans a row.
+  // `loan/…` is a fixed first segment, so it is matched before a side and a name.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow/loan/$accountId', component: LoanPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow/$side/$person', component: PersonPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/net-worth/debts',

@@ -59,7 +59,14 @@ export function DebtForm({
   const held = useHeldRates(foreign ? [currency] : [], draft.occurredOn > today ? today : draft.occurredOn);
   // Asked for when no rate is stored for the day, or when a Save found none; left out when one is known.
   const asksRate = foreign && (needsRate === currency || (held.data?.missing ?? []).includes(currency));
-  const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
+  /*
+   * Names already on the list that match what is typed, as chips under Person. The browser's own suggestions (a
+   * datalist) cost the field a dropdown arrow's width on iOS whatever CSS says, so Person's text stopped short of
+   * every other row's value; these are drawn by the app, and the field lines up.
+   */
+  const offered = (people.data ? personSuggestions(people.data, draft.personName) : [])
+    .filter((name) => name.toLowerCase() !== draft.personName.trim().toLowerCase())
+    .slice(0, 4);
   // Lending pays money out — the loan and its fee; borrowing brings it in and asks nothing.
   const lentMinor = lentOutflowMinor(draft, currency, today);
   // The fee is filed under Fees & charges until the reader picks another category.
@@ -133,7 +140,23 @@ export function DebtForm({
           label="Person"
           value={draft.personName}
           onChange={(e) => nameTyped(e.target.value)}
-          list="debt-people"
+          autoComplete="off"
+          hint={
+            offered.length > 0 ? (
+              <span className="flex flex-wrap gap-[6px]" aria-label="People already on your list">
+                {offered.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => nameTyped(name)}
+                    className="ph-focus rounded-full bg-[var(--ph-fill)] px-[10px] py-[4px] text-[13px] leading-[18px] text-[var(--ph-ink)]"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </span>
+            ) : undefined
+          }
           placeholder="Andi"
           required
         />
@@ -181,8 +204,8 @@ export function DebtForm({
           label={`Fee (${currency})`}
           info={
             draft.direction === 'lent'
-              ? 'Optional. A card or bank charge for sending it. It is your cost, counted as spending; what they owe stays the loan.'
-              : 'Optional. A charge taken from what arrived. It is your cost, counted as spending; you still owe the whole loan.'
+              ? 'Optional. A card or bank charge for sending the money. Counted as spending; the amount owed stays the loan.'
+              : 'Optional. A charge taken from the money received. Counted as spending; the whole loan is still owed.'
           }
           value={draft.fee}
           inputMode="decimal"
@@ -229,14 +252,13 @@ export function DebtForm({
         {detailsOpen && !draft.existingAccountId ? (
           <TextRow
             label="What it is for"
-            info="Shown on their card, so you remember."
             value={draft.reason}
             onChange={(e) => set({ reason: e.target.value })}
             placeholder="Motorcycle repair"
           />
         ) : null}
         {detailsOpen && !draft.existingAccountId ? (
-          <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+          <TextRow label="Due by" type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
         ) : null}
         {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
         {detailsOpen && !draft.existingAccountId && !known ? (
@@ -258,12 +280,6 @@ export function DebtForm({
         {detailsToggleLabel(detailsOpen)}
       </button>
 
-      {/* The datalist belongs to the Person box above; it draws nothing of its own. */}
-      <datalist id="debt-people">
-        {suggestions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
 
       {draft.moneyIsCard && (
         <InsetGroup header="What the card paid for" footer="Not spending: it only tells the points engine what the card paid for.">

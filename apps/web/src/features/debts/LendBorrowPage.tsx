@@ -2,12 +2,13 @@ import type { PersonDebtRow } from '@expanses/db';
 import { Plus } from 'lucide-react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
+import { isoDate } from '@expanses/core';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
-import { PersonCard } from './PersonCard';
+import { personDue, personParams, personSubtitle } from './lend-borrow-view';
 import { usePeopleDebts } from './queries';
 import { newDebtPath, openingSide, type Side } from './sides';
 import { sideTotal } from './totals';
@@ -31,10 +32,46 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
     <div>
       <PanelHeader title={title} trailing={<span data-testid={`debts-total-${title}`}>{figure}</span>} />
       {people.length === 0 && <p className="px-[4px] pb-[18px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{emptyText}</p>}
-      {people.map((person) => (
-        <PersonCard key={`${person.direction}-${person.personName}-${person.currency}`} person={person} />
-      ))}
+      {people.length > 0 && <PeopleRows people={people} />}
     </div>
+  );
+}
+
+/** The pill beside a due date, in the kit's own inks: overdue in alarm, soon in warning, later quiet. */
+const DUE_TONE = { late: 'text-[var(--ph-alarm)]', soon: 'text-[var(--ph-warn)]', later: 'text-[var(--ph-ink-3)]' } as const;
+
+/**
+ * One row per person: their initial, their name, their one loan's reason or how many loans, the most urgent due date,
+ * and what they owe in all. Nothing to press but the row itself — repaying, forgiving and changing a loan are on the
+ * loan's own page, one tap further in, where they used to be buttons and a picker under every loan.
+ */
+function PeopleRows({ people }: { people: PersonDebtRow[] }) {
+  const today = isoDate();
+  return (
+    <InsetGroup>
+      {people.map((person) => {
+        const due = personDue(person, today);
+        return (
+          <InsetRow
+            key={`${person.direction}-${person.personName}-${person.currency}`}
+            icon={<span className="text-[14px] leading-none font-semibold">{person.personName.trim().charAt(0).toUpperCase()}</span>}
+            iconColour="var(--ph-tint)"
+            title={person.personName}
+            subtitle={
+              <>
+                {personSubtitle(person)}
+                {due && <span className={`font-medium ${DUE_TONE[due.tone]}`}>{` · ${due.label}`}</span>}
+              </>
+            }
+            value={<Money minor={person.totalMinor} currency={person.currency} />}
+            valueTone="ink"
+            to="/net-worth/lend-borrow/$side/$person"
+            params={personParams(person)}
+            testId="person-row"
+          />
+        );
+      })}
+    </InsetGroup>
   );
 }
 
@@ -127,13 +164,7 @@ export function LendBorrowPage() {
           <InsetGroup>
             <InsetRow title={`${showSettled ? 'Hide' : 'Show'} settled (${settled.length})`} chevron={false} onClick={() => setShowSettled((open) => !open)} />
           </InsetGroup>
-          {showSettled && (
-            <div className="grid gap-x-6 md:grid-cols-2">
-              {settled.map((person) => (
-                <PersonCard key={`settled-${person.direction}-${person.personName}-${person.currency}`} person={person} />
-              ))}
-            </div>
-          )}
+          {showSettled && <PeopleRows people={settled} />}
         </>
       )}
 

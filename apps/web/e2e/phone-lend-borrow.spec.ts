@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openLoan, personRow } from './people';
 import { openAccount } from './accounts';
 import { openDrawers } from './drawers';
 
@@ -32,7 +33,7 @@ async function twoPeople(page: Page) {
   await page.getByLabel(/^Amount/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
 
   // On Payables the same + is New payable.
   await turnOver(page);
@@ -46,10 +47,10 @@ async function twoPeople(page: Page) {
      loaded machine Dewi is then missing, and no further read is coming. One reload settles it; the side is in the
      address, so it survives the reload. */
   try {
-    await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible({ timeout: 5_000 });
+    await expect(personRow(page, 'Dewi')).toBeVisible({ timeout: 5_000 });
   } catch {
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+    await expect(personRow(page, 'Dewi')).toBeVisible();
   }
   // Back to a freshly opened page, so each spec starts where a reader starts: on the segment the page chooses.
   await page.goto('/net-worth/lend-borrow');
@@ -63,15 +64,15 @@ test('by thumb: the mockup’s control shows one side at a time, and one tap tur
 
   // The mockup's own reading: the first segment, and only the list that belongs to it.
   await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
   await expect(page.getByRole('heading', { name: 'Payables', level: 2 })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Dewi' })).toHaveCount(0);
+  await expect(personRow(page, 'Dewi')).toHaveCount(0);
   await expect(page.getByTestId('debts-total-Payables')).toHaveCount(0);
 
   await sides(page).getByRole('radio', { name: 'Payables' }).tap();
   await expect(page.getByTestId('debts-total-Payables')).toHaveText('Rp 750.000');
-  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await expect(personRow(page, 'Dewi')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Receivables', level: 2 })).toHaveCount(0);
   await expect(page.getByTestId('debts-total-Receivables')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -87,7 +88,7 @@ test('by thumb: a person opened from Debts opens on the side they are on', async
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
   // Dewi is someone you owe, so the control opens on that side: the way in never lands on an empty list.
-  await expect(page.getByRole('heading', { name: 'Dewi', exact: true })).toBeVisible();
+  await expect(personRow(page, 'Dewi')).toBeVisible();
   await expect(page.getByTestId('debts-total-Payables')).toBeVisible();
 
   await page.getByRole('link', { name: 'Show everyone' }).tap();
@@ -97,11 +98,14 @@ test('by thumb: a person opened from Debts opens on the side they are on', async
 test('by thumb: settled items stay where they were, under the switch', async ({ page }) => {
   await twoPeople(page);
 
+  await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Forgive rest' }).tap();
-  // Andi is settled now: the switch stays on the side the reader was reading rather than turning itself over.
+  await expect(page.getByRole('button', { name: 'Forgive rest' })).toHaveCount(0);
+  // Back on the list, Andi is settled: it opens on Receivables rather than turning itself over to where people are.
+  await page.goto('/net-worth/lend-borrow');
   await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
   await page.getByRole('button', { name: /Show settled/ }).tap();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByRole('button', { name: /Hide settled/ })).toBeVisible();
 });
 test('+ adds on a screen of its own for the side the phone is showing, and a person shown comes along', async ({ page }) => {
@@ -138,13 +142,15 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
   // The notes live with the rows they explain, behind Add more details.
   await page.getByRole('button', { name: 'Add more details' }).tap();
 
-  // Fine print waits behind the ⓘ beside its label, and comes out only when asked for.
-  const note = page.getByText('Optional. You are warned three weeks before.');
+  // Fine print waits behind the ⓘ beside its label, and comes out only when asked for. What it is for and Due by
+  // need none, and carry none.
+  const note = page.getByText(/^Optional\. A card or bank charge for sending the money\./);
   await expect(note).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Due by' }).tap();
+  await page.getByRole('button', { name: 'About Fee (IDR)' }).tap();
   await expect(note).toBeVisible();
-  await expect(page.getByRole('button', { name: 'About Due by' })).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('button', { name: 'About What it is for' })).toBeVisible();
+  await expect(page.getByText(/\byou(r)?\b/i).filter({ hasText: /^Optional/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'About What it is for' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'About Due by' })).toHaveCount(0);
 
   // A tax ID, for whichever country's report it reaches.
   await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toBeVisible();
@@ -154,4 +160,17 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
 
   // The sub-category's line under it was the same choice again in Indonesian; it is gone.
   await expect(page.getByText(/Piutang|Utang/)).toHaveCount(0);
+});
+
+test('Person offers the names already on the list as chips, and lines up with the rows under it', async ({ page }) => {
+  await twoPeople(page);
+  await page.getByRole('link', { name: 'New receivable' }).tap();
+  const person = page.getByLabel('Person');
+  await person.fill('an');
+  // Andi is on the list; a chip under the field fills him in.
+  await page.getByRole('button', { name: 'Andi', exact: true }).tap();
+  await expect(person).toHaveValue('Andi');
+  await expect(page.getByRole('button', { name: 'Andi', exact: true })).toHaveCount(0);
+  // No browser suggestion list, which on iOS kept the text short of every other row's value.
+  await expect(person).not.toHaveAttribute('list', /.+/);
 });

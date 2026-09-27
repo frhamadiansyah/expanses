@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { personRow } from './people';
 import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
@@ -149,7 +150,7 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   await page.goto('/net-worth/lend-borrow');
   const total = page.getByTestId('debts-total-Receivables');
   await expect(total).toContainText('2.125.000');
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
 
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
   await page.goto('/net-worth/lend-borrow');

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openLoan, personRow } from './people';
 import { openAccount } from './accounts';
 import { closeDetails, shareWith } from './add-transaction';
 
@@ -28,7 +29,7 @@ async function lend(page: Page, person: string, amount: string, from: string) {
   await page.getByLabel(/^Amount/).fill(amount);
   await page.getByLabel('Paid from').selectOption({ label: from });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('heading', { name: person })).toBeVisible();
+  await expect(personRow(page, person)).toBeVisible();
 }
 
 test('lending on a credit card raises the card, earns points, and is never spending', async ({ page }) => {
@@ -44,7 +45,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
   await page.getByLabel('MCC').fill('5311');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByText(/4\.000\.000/).first()).toBeVisible();
 
   // The bank never moved, the card owes it, and net worth is unchanged: a loan is not spending.
@@ -69,6 +70,8 @@ test('records a repayment and the balance falls', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await lend(page, 'Andi', '10000000', 'BCA Tahapan (IDR)');
 
+  // Repaying is done on the loan's own page: Andi's row, then his loan.
+  await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
   await page.getByLabel(/How much came back/).fill('4000000');
   await page.getByRole('button', { name: 'Save repayment' }).click();
@@ -80,6 +83,7 @@ test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
+  await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
   await page.getByLabel(/How much came back/).fill('12000000');
   await page.getByRole('button', { name: 'Save repayment' }).click();
@@ -91,7 +95,11 @@ test('forgiving the rest closes the debt and takes it off the balance sheet', as
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await lend(page, 'Andi', '10000000', 'BCA Tahapan (IDR)');
 
+  await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Forgive rest' }).click();
+  // The loan closes on its own page, and Andi moves under Show settled on the list.
+  await expect(page.getByRole('button', { name: 'Forgive rest' })).toHaveCount(0);
+  await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('button', { name: /Show settled/ })).toBeVisible();
 
   // The money is gone from cash and no longer owed to anyone: net worth carries the loss once.
@@ -121,7 +129,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
 
   // Andi owes his part, and only your own share reached the category.
   await page.goto('/net-worth/lend-borrow');
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByText(/600\.000/).first()).toBeVisible();
 
   await page.goto('/spending');
@@ -136,7 +144,7 @@ async function borrow(page: Page, person: string, amount: string, into: string) 
   await page.getByLabel(/^Amount/).fill(amount);
   await page.getByLabel('Received into').selectOption({ label: into });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('heading', { name: person })).toBeVisible();
+  await expect(personRow(page, person)).toBeVisible();
 }
 
 test('the desktop keeps both sides in front of you, side by side', async ({ page }) => {
@@ -149,8 +157,8 @@ test('the desktop keeps both sides in front of you, side by side', async ({ page
   // so nothing the desktop could see before this is behind a tap now.
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Receivables', 'Payables']);
   await expect(page.getByRole('radiogroup', { name: 'Lend & borrow' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
+  await expect(personRow(page, 'Dewi')).toBeVisible();
   await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
   await expect(page.getByTestId('debts-total-Payables')).toHaveText('Rp 750.000');
 });
@@ -175,7 +183,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
   await page.getByLabel('Rate: IDR per 1 USD').fill('16250');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
   await expect(page.getByText(/No USD.IDR rate/)).toHaveCount(0);
   // Printed in dollars on their card, and converted at the typed rate in the side's total.
   await expect(page.getByText(/US\$\s?100/).first()).toBeVisible();
@@ -197,7 +205,7 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
   await page.getByLabel('Rate: IDR per 1 USD').fill('16000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
+  await expect(personRow(page, 'Budi')).toBeVisible();
   await expect(page.getByText(/US\$\s?50/).first()).toBeVisible();
   await expect(page.getByTestId('debts-total-Payables')).toContainText('800.000');
 });
@@ -231,7 +239,7 @@ test('+ asks which side, each opens on a screen of its own, and back and Save bo
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?.*side=owe/);
-  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await expect(personRow(page, 'Dewi')).toBeVisible();
   await expect(page.getByTestId('debts-total-Payables')).toContainText('750.000');
 });
 
@@ -245,7 +253,7 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Motorcycle repair');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
 
   // The same name again: New loan is the default, and the reason typed is kept — it used to be thrown away.
   await openNew(page, 'New receivable');
@@ -257,13 +265,16 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  // One card for Andi, two loans on it, each by its own reason.
-  await expect(page.getByRole('heading', { name: 'Andi' })).toHaveCount(1);
-  await expect(page.getByText('Motorcycle repair')).toBeVisible();
-  await expect(page.getByText('Laptop purchase')).toBeVisible();
+  // One row for Andi on the list, saying he has two loans; his page tells them apart by their reasons.
+  await expect(personRow(page, 'Andi')).toHaveCount(1);
+  await expect(personRow(page, 'Andi')).toContainText('2 loans');
   await expect(page.getByTestId('debts-total-Receivables')).toContainText('9.500.000');
+  await personRow(page, 'Andi').click();
+  await expect(page.getByTestId('loan-row').filter({ hasText: 'Motorcycle repair' })).toBeVisible();
+  await expect(page.getByTestId('loan-row').filter({ hasText: 'Laptop purchase' })).toBeVisible();
 
   // A third amount picked onto the laptop loan adds to it, and asks no reason of its own.
+  await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
   const loan = page.getByLabel('Loan', { exact: true });
@@ -277,7 +288,10 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('debts-total-Receivables')).toContainText('10.000.000');
   // Still two loans: the half million went onto the laptop, not into a third.
-  await expect(page.getByText(/Laptop purchase/)).toHaveCount(1);
+  await expect(personRow(page, 'Andi')).toContainText('2 loans');
+  await personRow(page, 'Andi').click();
+  await expect(page.getByTestId('loan-row')).toHaveCount(2);
+  await expect(page.getByTestId('loan-row').filter({ hasText: 'Laptop purchase' })).toContainText('8.500.000');
 });
 
 test('the rest of it folds into the same box behind Add more details, and opens by itself over anything filled in', async ({ page }) => {
@@ -296,7 +310,7 @@ test('the rest of it folds into the same box behind Add more details, and opens 
   await toggle.click();
   await expect(page.getByLabel('Sub category')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'What it is for' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'About Due by' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Due by' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
   await page.getByRole('button', { name: 'Fewer details' }).click();
@@ -308,4 +322,36 @@ test('the rest of it folds into the same box behind Add more details, and opens 
   await page.getByLabel(/^Amount/).fill('8000000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Laptop purchase')).toBeVisible();
+});
+
+test('a loan is changed on its own page, and a person’s tax ID on theirs', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '5000000', 'BCA Tahapan (IDR)');
+
+  // Written once at lending with no reason; added afterwards on the loan's page, where it used to be impossible.
+  await openLoan(page, 'Andi');
+  await expect(page.getByRole('heading', { name: 'No reason noted' })).toBeVisible();
+  const reason = page.getByRole('textbox', { name: 'What it is for' });
+  await reason.fill('Laptop for college');
+  await reason.blur();
+  await expect(page.getByRole('heading', { name: 'Laptop for college' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Due by' }).fill('2026-12-31');
+  await page.getByLabel('Sub category').selectOption({ label: 'Affiliate receivables' });
+
+  // The person's page reads it back: the new reason, in English, with the sub-category it now files as.
+  await page.getByRole('link', { name: /Andi/ }).first().click();
+  const loan = page.getByTestId('loan-row').filter({ hasText: 'Laptop for college' });
+  await expect(loan).toContainText('Affiliate receivables');
+  await expect(loan).not.toContainText(/Piutang/);
+
+  // A tax ID is the person's, set once for all their loans.
+  const taxId = page.getByRole('textbox', { name: 'Tax ID', exact: true });
+  await taxId.fill('3173010101900001');
+  await taxId.blur();
+  await page.reload();
+  await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toHaveValue('3173010101900001');
+
+  // And the list is one row, the reason under the name.
+  await page.goto('/net-worth/lend-borrow');
+  await expect(personRow(page, 'Andi')).toContainText('Laptop for college');
 });

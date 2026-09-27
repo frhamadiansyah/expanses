@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openLoan, personRow } from './people';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
@@ -271,10 +272,10 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await expect(save).toBeDisabled();
   // Enter in a field submits the form: it must not go round the question.
   await enterWaitsForTheQuestion(page, page.getByLabel('Person'));
-  await expect(page.getByRole('heading', { name: 'Andi' })).toHaveCount(0);
+  await expect(personRow(page, 'Andi')).toHaveCount(0);
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
   await expectRecordedOnce(page, /Andi/);
@@ -292,8 +293,9 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
   // Money coming in asks nothing.
   await expect(page.getByText(/more than is free/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
+  await expect(personRow(page, 'Budi')).toBeVisible();
 
+  await openLoan(page, 'Budi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
   await page.getByLabel(/How much you paid/).pressSequentially('6800000');
   await page.getByLabel('From').selectOption({ label: 'Jenius' });
