@@ -94,3 +94,4 @@ export * as healthSchema from './schema-health';
 export * from './repos/health-tables';
 export * from './repos/category-needs';
 export * as sharingSchema from './schema-sharing';
+export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';

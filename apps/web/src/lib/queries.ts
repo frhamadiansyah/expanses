@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { type AccountRow, categoryIdsOfBook, listAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
+import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
@@ -13,6 +13,21 @@ export function useAccounts() {
     queryKey: ['accounts', ws.workspaceId],
     queryFn: () => listAccounts(database, ws, { includeArchived: true }),
   });
+}
+
+/**
+ * Whether the open book is shared right now (spec §4.4 last line): the add form draws the currency flag disabled and
+ * offers no With row while this is true. `false` (never `undefined`) with no book open, so a personal workspace's
+ * form never briefly hides its own With row while the query is in flight.
+ */
+export function useIsBookShared(): boolean {
+  const { database, ws } = useApp();
+  const { data } = useQuery({
+    queryKey: ['book-shared', ws.bookId],
+    queryFn: () => isBookShared(database, ws.bookId!),
+    enabled: ws.bookId !== undefined,
+  });
+  return data ?? false;
 }
 
 /** The categories filed in the open book. Disabled when no book is open, which reads the whole workspace. */
