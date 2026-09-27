@@ -844,7 +844,7 @@ export function TransactionsPage() {
         <>
           {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
           <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
-          <div role="menu" className="absolute top-16 right-4 z-30 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
+          <div role="menu" className="absolute top-16 right-4 z-30 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
             {/* First, and always here: it is how a second workspace is made, and how you move between them. */}
             <button
               type="button"

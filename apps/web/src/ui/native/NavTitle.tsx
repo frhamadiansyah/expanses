@@ -120,11 +120,11 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
           <span
             role="menu"
             aria-label={label}
-            className="absolute right-0 z-20 mt-[6px] block w-60 overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]"
+            className="absolute right-0 z-20 mt-[6px] block w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]"
           >
             {actions.map((action) => {
               const item = cx(
-                'ph-focus-inset flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm',
+                'ph-focus-inset flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm whitespace-nowrap',
                 action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]',
               );
               // An action that is a journey stays a link behind the `…` too, for the same reason it does in the corner.
