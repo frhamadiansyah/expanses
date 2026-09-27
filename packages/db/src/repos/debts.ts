@@ -4,6 +4,7 @@ import {
   type DebtStatus,
   debtDescription,
   forgivePostings,
+  formatMinor,
   lendPostings,
   withLoanFee,
   type PostingLine,
@@ -12,14 +13,14 @@ import {
   splitBillPostings,
   statusFor,
 } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { debtProfiles } from '../schema-debts';
-import { createAccountTx } from './accounts';
+import { archiveAccountTx, createAccountTx } from './accounts';
 import { categoryIdsByKeyTx } from './categories';
-import { postTransactionTx } from './ledger';
+import { postTransactionTx, voidTransactionTx } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class DebtDbError extends Error {
@@ -350,7 +351,11 @@ export interface SplitBillInput {
 
 /** Money handed to a person, from a bank account or on a card. */
 export async function recordLoan(database: Database, ws: WorkspaceContext, input: RecordLoanInput): Promise<{ transactionId: string; debtAccountId: string }> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => recordLoanTx(tx, ws, input));
+}
+
+async function recordLoanTx(tx: Db, ws: WorkspaceContext, input: RecordLoanInput): Promise<{ transactionId: string; debtAccountId: string }> {
+  {
     const debtAccountId = input.debtAccountId ?? (input.person ? await openPersonTx(tx, ws, { ...input.person, coretaxCode: input.coretaxCode }) : null);
     if (!debtAccountId) throw new DebtDbError('Say who this debt is with');
     // A loan added to somebody already on the list still says what it is: the code is the person's, and this is where
@@ -390,7 +395,7 @@ export async function recordLoan(database: Database, ws: WorkspaceContext, input
     // Lending again to someone who had paid everything back puts them back on the open list.
     if (profile[0]?.status === 'settled') await setStatusTx(tx, ws, debtAccountId, 'open', null);
     return { transactionId, debtAccountId };
-  });
+  }
 }
 
 /** Money coming back, with interest kept apart from the principal. Settles the debt when nothing is left. */
@@ -399,7 +404,11 @@ export async function recordRepayment(
   ws: WorkspaceContext,
   input: RecordRepaymentInput,
 ): Promise<{ transactionId: string; balanceMinor: number; status: DebtStatus }> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => recordRepaymentTx(tx, ws, input));
+}
+
+async function recordRepaymentTx(tx: Db, ws: WorkspaceContext, input: RecordRepaymentInput): Promise<{ transactionId: string; balanceMinor: number; status: DebtStatus }> {
+  {
     const { direction, currency } = await debtAccountTx(tx, ws, input.debtAccountId);
     const [profile] = await tx
       .select({ personName: debtProfiles.personName, status: debtProfiles.status })
@@ -430,6 +439,170 @@ export async function recordRepayment(
     const status = statusFor(balanceMinor, profile.status);
     if (status !== profile.status) await setStatusTx(tx, ws, input.debtAccountId, status, input.occurredOn);
     return { transactionId, balanceMinor, status };
+  }
+}
+
+/** One line of a loan's history, as it was recorded: what an edit of it opens with. */
+export interface LoanEntry {
+  transactionId: string;
+  debtAccountId: string;
+  kind: 'lend' | 'repayment' | 'forgive';
+  occurredOn: string;
+  amountMinor: number;
+  moneyAccountId: string;
+  /** A lend's fee, your spending under `feeCategoryId`; 0 when there was none. */
+  feeMinor: number;
+  feeCategoryId: string | null;
+  /** A collection's or repayment's interest; 0 when there was none. */
+  interestMinor: number;
+}
+
+export interface EditLoanEntryInput {
+  occurredOn: string;
+  amountMinor: number;
+  moneyAccountId: string;
+  feeMinor?: number;
+  feeCategoryId?: string | null;
+  interestMinor?: number;
+  ratesToBase?: Record<string, number>;
+}
+
+/** Reads one history line back into the figures it was recorded with. */
+async function loanEntryTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<LoanEntry & { mcc: string | null; spendCategoryId: string | null }> {
+  const [row] = await tx
+    .select({ occurredOn: transactions.occurredOn, status: transactions.status, mcc: transactions.mcc })
+    .from(transactions)
+    .where(and(eq(transactions.id, transactionId), eq(transactions.workspaceId, ws.workspaceId)));
+  if (!row || row.status !== 'posted') throw new DebtDbError('That entry is not on the loan any more');
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, spendCategoryId: entries.spendCategoryId, kind: accounts.kind })
+    .from(entries)
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(eq(entries.transactionId, transactionId));
+  const profiles = await tx
+    .select({ accountId: debtProfiles.accountId })
+    .from(debtProfiles)
+    .where(and(eq(debtProfiles.workspaceId, ws.workspaceId), inArray(debtProfiles.accountId, lines.map((line) => line.accountId))));
+  if (profiles.length !== 1) throw new DebtDbError('That entry is not one loan’s own');
+  const debtAccountId = profiles[0]!.accountId;
+  const { direction } = await debtAccountTx(tx, ws, debtAccountId);
+  const debtLine = lines.find((line) => line.accountId === debtAccountId)!;
+  const signed = direction === 'lent' ? debtLine.amountMinor : -debtLine.amountMinor;
+  const others = lines.filter((line) => line.accountId !== debtAccountId);
+  const money = others.find((line) => line.kind === 'asset' || line.kind === 'liability');
+  const categoryLines = others.filter((line) => line.kind === 'income' || line.kind === 'expense');
+  const kind: LoanEntry['kind'] = signed > 0 ? 'lend' : money ? 'repayment' : 'forgive';
+  const fee = kind === 'lend' ? categoryLines.find((line) => line.kind === 'expense') : undefined;
+  return {
+    transactionId,
+    debtAccountId,
+    kind,
+    occurredOn: row.occurredOn,
+    amountMinor: Math.abs(signed),
+    moneyAccountId: money?.accountId ?? '',
+    feeMinor: fee ? Math.abs(fee.amountMinor) : 0,
+    feeCategoryId: fee?.accountId ?? null,
+    interestMinor: kind === 'repayment' ? categoryLines.reduce((total, line) => total + Math.abs(line.amountMinor), 0) : 0,
+    mcc: row.mcc,
+    spendCategoryId: money?.spendCategoryId ?? null,
+  };
+}
+
+export async function loanEntry(database: Database, ws: WorkspaceContext, transactionId: string): Promise<LoanEntry> {
+  return database.transaction(async (tx) => {
+    const { mcc: _mcc, spendCategoryId: _spend, ...entry } = await loanEntryTx(tx, ws, transactionId);
+    return entry;
+  });
+}
+
+/** After the history changed underneath it: open while something is owed, settled when nothing is. */
+async function restatusTx(tx: Db, ws: WorkspaceContext, debtAccountId: string, on: string): Promise<void> {
+  const { direction } = await debtAccountTx(tx, ws, debtAccountId);
+  const [profile] = await tx
+    .select({ status: debtProfiles.status })
+    .from(debtProfiles)
+    .where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+  if (!profile) return;
+  const status = statusFor(await owedNowTx(tx, ws, debtAccountId, direction), profile.status);
+  if (status !== profile.status) await setStatusTx(tx, ws, debtAccountId, status, status === 'open' ? null : on);
+}
+
+/** A forgiven loan's history is closed: its forgiveness was the whole of what was left, and an edit would unbalance it. */
+async function refuseForgivenTx(tx: Db, ws: WorkspaceContext, debtAccountId: string): Promise<void> {
+  const [profile] = await tx
+    .select({ status: debtProfiles.status })
+    .from(debtProfiles)
+    .where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+  if (profile?.status === 'forgiven') throw new DebtDbError('This loan was forgiven, so its history is kept as it is');
+}
+
+/**
+ * Changes one line of a loan's history — the money lent or borrowed, or a collection or repayment — by voiding it and
+ * recording it again with the new figures, in one transaction: every balance, a fee's spending and the interest move
+ * together, and a refusal leaves everything as it was. A loan cannot end up smaller than what has already come back.
+ */
+export async function editLoanEntry(database: Database, ws: WorkspaceContext, transactionId: string, input: EditLoanEntryInput): Promise<{ transactionId: string }> {
+  return database.transaction(async (tx) => {
+    const entry = await loanEntryTx(tx, ws, transactionId);
+    if (entry.kind === 'forgive') throw new DebtDbError('A forgiveness cannot be changed');
+    await refuseForgivenTx(tx, ws, entry.debtAccountId);
+    const { direction, currency } = await debtAccountTx(tx, ws, entry.debtAccountId);
+    await voidTransactionTx(tx, ws, transactionId);
+
+    if (entry.kind === 'lend') {
+      // A card loan keeps what it told the points engine, while it is still on the same card.
+      const sameMoney = input.moneyAccountId === entry.moneyAccountId;
+      const { transactionId: replaced } = await recordLoanTx(tx, ws, {
+        debtAccountId: entry.debtAccountId,
+        occurredOn: input.occurredOn,
+        amountMinor: input.amountMinor,
+        moneyAccountId: input.moneyAccountId,
+        feeMinor: input.feeMinor ?? 0,
+        feeCategoryId: input.feeCategoryId ?? null,
+        spendCategoryId: sameMoney ? entry.spendCategoryId : null,
+        mcc: sameMoney ? entry.mcc : null,
+        ratesToBase: input.ratesToBase,
+      });
+      const owed = await owedNowTx(tx, ws, entry.debtAccountId, direction);
+      if (owed < 0) {
+        // What came back is everything the loan's lines took off it: the collections, and any forgiveness.
+        const lines = await tx
+          .select({ amountMinor: entries.amountMinor })
+          .from(entries)
+          .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+          .where(and(eq(entries.accountId, entry.debtAccountId), eq(transactions.status, 'posted')));
+        const back = lines.map((line) => (direction === 'lent' ? line.amountMinor : -line.amountMinor)).filter((signed) => signed < 0);
+        const cameBack = -back.reduce((total, signed) => total + signed, 0);
+        throw new DebtDbError(`${formatMinor(cameBack, currency)} has already come back, so the loan cannot be less than that`);
+      }
+      await restatusTx(tx, ws, entry.debtAccountId, input.occurredOn);
+      return { transactionId: replaced };
+    }
+
+    const { transactionId: replaced } = await recordRepaymentTx(tx, ws, {
+      debtAccountId: entry.debtAccountId,
+      occurredOn: input.occurredOn,
+      amountMinor: input.amountMinor,
+      interestMinor: input.interestMinor ?? 0,
+      moneyAccountId: input.moneyAccountId,
+      ratesToBase: input.ratesToBase,
+    });
+    await restatusTx(tx, ws, entry.debtAccountId, input.occurredOn);
+    return { transactionId: replaced };
+  });
+}
+
+/**
+ * Takes one collection or repayment off a loan, leaving the loan: what came back is owed again. The money lent itself
+ * is never deleted this way — without it there is no loan, and that is `deleteLoan`.
+ */
+export async function deleteLoanEntry(database: Database, ws: WorkspaceContext, transactionId: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    const entry = await loanEntryTx(tx, ws, transactionId);
+    if (entry.kind !== 'repayment') throw new DebtDbError('Only money that came back can be taken off a loan; to remove the loan, delete it');
+    await refuseForgivenTx(tx, ws, entry.debtAccountId);
+    await voidTransactionTx(tx, ws, transactionId);
+    await restatusTx(tx, ws, entry.debtAccountId, entry.occurredOn);
   });
 }
 
@@ -457,6 +630,51 @@ export async function forgiveRemainder(database: Database, ws: WorkspaceContext,
     });
     await setStatusTx(tx, ws, input.debtAccountId, 'forgiven', input.occurredOn);
     return { transactionId };
+  });
+}
+
+/**
+ * Deletes a loan entered by mistake: every transaction that touched it — the money lent or borrowed with any fee, each
+ * collection or repayment with its interest, a forgiveness — is voided, the loan's profile goes, and its account is
+ * archived. Every balance reads as if the loan had never been recorded; the voided transactions stay in the ledger.
+ *
+ * Refused when one of those transactions also moved another person's loan — a split bill opens one per friend in a
+ * single transaction — since voiding it would take the others' shares with it.
+ */
+export async function deleteLoan(database: Database, ws: WorkspaceContext, debtAccountId: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    await debtAccountTx(tx, ws, debtAccountId);
+    const [profile] = await tx
+      .select({ accountId: debtProfiles.accountId })
+      .from(debtProfiles)
+      .where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+    if (!profile) throw new DebtDbError('That account is not a debt with anyone yet');
+
+    const touched = await tx
+      .selectDistinct({ id: transactions.id })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .where(and(eq(entries.workspaceId, ws.workspaceId), eq(entries.accountId, debtAccountId), eq(transactions.status, 'posted')));
+    const ids = touched.map((row) => row.id);
+
+    if (ids.length > 0) {
+      const shared = await tx
+        .selectDistinct({ accountId: entries.accountId })
+        .from(entries)
+        .innerJoin(debtProfiles, eq(debtProfiles.accountId, entries.accountId))
+        .where(and(inArray(entries.transactionId, ids), ne(entries.accountId, debtAccountId)));
+      if (shared.length > 0) {
+        throw new DebtDbError('This loan was recorded together with other people’s shares, as a split bill. Delete that bill in Cashflow instead.');
+      }
+    }
+
+    for (const id of ids) {
+      // A void can take others with it (a deposit event's own postings), so each is checked before it is voided.
+      const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, id));
+      if (row?.status === 'posted') await voidTransactionTx(tx, ws, id);
+    }
+    await tx.delete(debtProfiles).where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+    await archiveAccountTx(tx, ws, debtAccountId);
   });
 }
 

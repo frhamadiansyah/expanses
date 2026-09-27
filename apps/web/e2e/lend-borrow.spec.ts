@@ -25,7 +25,7 @@ async function openNew(page: Page, side: 'New receivable' | 'New payable') {
 async function lend(page: Page, person: string, amount: string, from: string) {
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill(person);
+  await page.getByLabel(/^(Borrower|Lender)$/).fill(person);
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill(amount);
   await page.getByLabel('Paid from').selectOption({ label: from });
@@ -39,7 +39,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
 
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('4000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA KrisFlyer (IDR)' });
@@ -86,10 +86,9 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  // Recording it is the first row of History, over the entries it adds to; forgiving is a red row at the foot.
+  // Recording it is the first row of History, over the entries it adds to.
   const record = page.getByRole('button', { name: 'Record collection' });
   expect((await page.getByText('History', { exact: true }).boundingBox())!.y).toBeLessThan((await record.boundingBox())!.y);
-  expect((await record.boundingBox())!.y).toBeLessThan((await page.getByRole('button', { name: 'Forgive the rest' }).boundingBox())!.y);
   await record.click();
   const sheet = page.getByRole('dialog', { name: 'Collection' });
   await expect(sheet).toBeVisible();
@@ -102,6 +101,10 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('loan-hero')).toContainText('9.000.000');
+  // The top is the amount alone; what was lent and what came back are rows in Details.
+  await expect(page.getByTestId('loan-hero')).not.toContainText(/lent|back/);
+  await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toHaveValue(/9\.000\.000/);
+  await expect(page.getByRole('textbox', { name: 'Money back', exact: true })).toHaveValue(/Rp\s?0$/);
 
   // ✓ saves the whole of it, and the loan is paid off.
   await page.getByRole('button', { name: 'Record collection' }).click();
@@ -110,8 +113,10 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Record collection' })).toHaveCount(0);
   // Money back on a loan you made is a collection, in the history too.
-  await expect(page.getByText('Collection', { exact: true })).toBeVisible();
-  await expect(page.getByText('Repayment', { exact: true })).toHaveCount(0);
+  // One line each, the date after the word.
+  await expect(page.getByText(/^Collection · /)).toBeVisible();
+  await expect(page.getByText(/^Lent · /)).toBeVisible();
+  await expect(page.getByText(/^Repayment/)).toHaveCount(0);
 });
 
 test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
@@ -131,9 +136,13 @@ test('forgiving the rest closes the debt and takes it off the balance sheet', as
   await lend(page, 'Andi', '10000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Forgive the rest' }).click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Forgive the rest' }).click();
   // The loan closes on its own page, and Andi moves under Show settled on the list.
-  await expect(page.getByRole('button', { name: 'Forgive the rest' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Forgive the rest' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Delete loan' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('button', { name: /Show settled/ })).toBeVisible();
 
@@ -175,7 +184,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
 async function borrow(page: Page, person: string, amount: string, into: string) {
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New payable');
-  await page.getByLabel('Person').fill(person);
+  await page.getByLabel(/^(Borrower|Lender)$/).fill(person);
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill(amount);
   await page.getByLabel('Received into').selectOption({ label: into });
@@ -213,7 +222,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
 
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
   await page.getByLabel('Money lent (USD)').fill('100');
@@ -232,7 +241,7 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
 
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New payable');
-  await page.getByLabel('Person').fill('Budi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Budi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel('Received into').selectOption({ label: 'Wise USD (USD)' });
   await page.getByLabel('Money borrowed (USD)').fill('50');
@@ -272,7 +281,7 @@ test('+ asks which side, each opens on a screen of its own, and back and Save bo
 
   // Save does too, with the new person on the side they were added to.
   await openNew(page, 'New payable');
-  await page.getByLabel('Person').fill('Dewi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Dewi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -286,7 +295,7 @@ test('a second loan to the same person is a loan of its own, and typing or picki
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByRole('textbox', { name: 'Loan', exact: true }).fill('Motorcycle repair');
   await page.getByLabel(/^Money (lent|borrowed)/).fill('1500000');
@@ -296,7 +305,7 @@ test('a second loan to the same person is a loan of its own, and typing or picki
 
   // The same name, a new purpose: a loan of its own. His open loans are not offered until something is typed.
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   const loan = page.getByRole('textbox', { name: 'Loan', exact: true });
   await expect(page.getByRole('button', { name: /^Motorcycle repair · / })).toHaveCount(0);
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
@@ -315,7 +324,7 @@ test('a second loan to the same person is a loan of its own, and typing or picki
   // Typing part of a reason offers that loan as a chip; picking it adds to it, and its sub category is the loan's.
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await loan.fill('lap');
   await page.getByRole('button', { name: /^Laptop purchase · .*8\.000\.000 left$/ }).click();
   await expect(loan).toHaveValue('Laptop purchase');
@@ -328,7 +337,7 @@ test('a second loan to the same person is a loan of its own, and typing or picki
 
   // Typing the whole reason does the same, without the chip.
   await openNew(page, 'New receivable');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await loan.fill('motorcycle repair');
   await expect(page.getByText(/^Adds to this open loan/)).toBeVisible();
   await page.getByLabel(/^Money (lent|borrowed)/).fill('100000');
@@ -347,10 +356,10 @@ test('the box asks in order, the ✓ waits for a sub category, and the rest fold
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
 
-  // Type, Person, Money lent, Paid from, Loan, Date — in that order, with no fee until the details open.
+  // Type, Borrower, Money lent, Paid from, Loan, Date — in that order, with no fee until the details open.
   const labels = await page.locator('form label').allInnerTexts();
   expect(labels.some((text) => text.trim().startsWith('Fee'))).toBe(false);
-  const order = ['Type', 'Person', 'Money lent', 'Paid from', 'Loan', 'Date'].map((name) =>
+  const order = ['Type', 'Borrower', 'Money lent', 'Paid from', 'Loan', 'Date'].map((name) =>
     labels.findIndex((text) => text.trim().startsWith(name)),
   );
   expect(order).toEqual([...order].sort((x, y) => x - y));
@@ -358,7 +367,7 @@ test('the box asks in order, the ✓ waits for a sub category, and the rest fold
 
   // Type starts blank and holds the ✓ back until one is chosen.
   await expect(page.getByLabel('Type', { exact: true })).toHaveValue('');
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel(/^Money (lent|borrowed)/).fill('8000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   const save = page.getByRole('button', { name: 'Save', exact: true });
@@ -394,8 +403,8 @@ test('a loan is changed on its own page, and a person’s tax ID on theirs', asy
   await openLoan(page, 'Andi');
   // The bar says only Loan; whose it is sits in Details, shown but not changed.
   await expect(page.getByRole('heading', { name: 'Loan', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Person', exact: true })).toHaveValue('Andi');
-  await expect(page.getByRole('textbox', { name: 'Person', exact: true })).not.toBeEditable();
+  await expect(page.getByRole('textbox', { name: 'Borrower', exact: true })).toHaveValue('Andi');
+  await expect(page.getByRole('textbox', { name: 'Borrower', exact: true })).not.toBeEditable();
   await expect(page.getByText(/still owes/)).toHaveCount(0);
   const reason = page.getByRole('textbox', { name: 'Loan', exact: true });
   await reason.fill('Laptop for college');
@@ -449,7 +458,7 @@ test('a person\'s initial turns red when a loan is overdue, and stays grey with 
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel(/^Money (lent|borrowed)/).fill('2000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Add more details' }).click();
@@ -461,4 +470,83 @@ test('a person\'s initial turns red when a loan is overdue, and stays grey with 
   await expect(initial('Budi')).toHaveAttribute('style', /--ph-fill/);
   // The colour says it; the row carries no second line.
   await expect(personRow(page, 'Andi')).not.toContainText(/overdue|Due/i);
+});
+
+test('a loan entered by mistake is deleted with everything it moved, and leaves nothing under Settled', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '1000000', 'BCA Tahapan (IDR)');
+  await lend(page, 'Andi', '2000000', 'BCA Tahapan (IDR)');
+
+  // Andi has two loans: deleting one goes back to his page, with the other still there.
+  await openLoan(page, 'Andi');
+  let asked = '';
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+  });
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete loan' }).click();
+  await expect(page.getByTestId('person-hero')).toBeVisible();
+  expect(asked).toMatch(/^Delete this loan\? Every balance goes back/);
+  await expect(page.getByTestId('loan-row')).toHaveCount(1);
+
+  // Deleting his last one goes back to Lend & borrow, and he is gone from it — not an empty loan under Settled.
+  await page.getByTestId('loan-row').click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete loan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
+  await expect(personRow(page, 'Andi')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Show settled/ })).toHaveCount(0);
+});
+
+test('a history line opens to be changed: the money lent, a collection, or taking a collection off', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '5000000', 'BCA Tahapan (IDR)');
+  await openLoan(page, 'Andi');
+  await page.getByRole('button', { name: 'Record collection' }).click();
+  const collectionSheet = page.getByRole('dialog', { name: 'Collection' });
+  await collectionSheet.getByLabel(/^Came back/).fill('500000');
+  await collectionSheet.getByRole('button', { name: 'Save collection' }).click();
+  const hero = page.getByTestId('loan-hero');
+  await expect(hero).toContainText('4.500.000');
+
+  // The collection, opened filled in and changed.
+  await page.getByRole('button', { name: /^Collection · / }).click();
+  await expect(collectionSheet.getByLabel(/^Came back/)).toHaveValue(/^500000/);
+  await collectionSheet.getByLabel(/^Came back/).fill('700000');
+  await collectionSheet.getByRole('button', { name: 'Save collection' }).click();
+  await expect(hero).toContainText('4.300.000');
+
+  // The money lent cannot go below what has come back; it says so, and nothing changes.
+  await page.getByRole('button', { name: /^Lent · / }).click();
+  const lentSheet = page.getByRole('dialog', { name: 'Lent' });
+  await expect(lentSheet.getByLabel(/^Money lent/)).toHaveValue(/^5000000/);
+  await lentSheet.getByLabel(/^Money lent/).fill('300000');
+  await lentSheet.getByRole('button', { name: 'Save' }).click();
+  await expect(lentSheet.getByText(/700\.000 has already come back, so the loan cannot be less than that/)).toBeVisible();
+  await lentSheet.getByLabel(/^Money lent/).fill('6000000');
+  await lentSheet.getByRole('button', { name: 'Save' }).click();
+  await expect(lentSheet).toHaveCount(0);
+  await expect(hero).toContainText('5.300.000');
+
+  // Taking the collection off: what it paid is owed again, and the loan stays.
+  await page.getByRole('button', { name: /^Collection · / }).click();
+  await collectionSheet.getByRole('button', { name: 'Delete this collection' }).click();
+  await expect(collectionSheet).toHaveCount(0);
+  await expect(hero).toContainText('6.000.000');
+  await expect(page.getByRole('button', { name: /^Collection · / })).toHaveCount(0);
+});
+
+test('a loan\'s history reads newest first, under Record collection', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '5000000', 'BCA Tahapan (IDR)');
+  await openLoan(page, 'Andi');
+  await page.getByRole('button', { name: 'Record collection' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Collection' });
+  await sheet.getByLabel(/^Came back/).fill('500000');
+  await sheet.getByRole('button', { name: 'Save collection' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  const collection = (await page.getByRole('button', { name: /^Collection · / }).boundingBox())!.y;
+  const lent = (await page.getByRole('button', { name: /^Lent · / }).boundingBox())!.y;
+  expect(collection).toBeLessThan(lent);
 });

@@ -56,3 +56,31 @@ export function loanSubtitle(loan: PersonLoanRow, codeLabel: string, today: stri
 
 /** Money coming back on a loan you made is a collection; money going back on one you took is a repayment. */
 export const repaymentWord = (direction: DebtDirection): string => (direction === 'lent' ? 'Collection' : 'Repayment');
+
+/** The two figures a loan's Details shows beside what is still owed: what first moved, and what has come back. */
+export const loanFigureLabels = (direction: DebtDirection): { given: string; back: string } =>
+  direction === 'lent' ? { given: 'Money lent', back: 'Money back' } : { given: 'Money borrowed', back: 'Paid back' };
+
+/**
+ * What Delete loan asks before it goes: what else goes with it, in the side's own word, and what happens to the
+ * money — "Delete this loan and its 2 collections? Every balance goes back as if it was never recorded."
+ */
+export function deleteLoanQuestion(direction: DebtDirection, moneyBackCount: number): string {
+  const word = repaymentWord(direction).toLowerCase();
+  const withIt = moneyBackCount === 0 ? '' : ` and its ${moneyBackCount === 1 ? word : `${moneyBackCount} ${word}s`}`;
+  return `Delete this loan${withIt}? Every balance goes back as if it was never recorded.`;
+}
+
+/**
+ * One line of a loan's history, from the owner's side: what it is called and which way the money went. Money coming
+ * back on a loan you made, or reaching you as a loan you took, flows in; money handed over flows out; a forgiveness
+ * moves no money at all.
+ */
+export function historyEntry(kind: 'lend' | 'repayment' | 'forgive', direction: DebtDirection): { title: string; flow: 'in' | 'out' | 'none' } {
+  if (kind === 'forgive') return { title: 'Forgiven', flow: 'none' };
+  if (kind === 'lend') return direction === 'lent' ? { title: 'Lent', flow: 'out' } : { title: 'Borrowed', flow: 'in' };
+  return { title: repaymentWord(direction), flow: direction === 'lent' ? 'in' : 'out' };
+}
+
+/** Who is on the other side of a loan — a person or a company alike: the Borrower of money lent, the Lender of money borrowed. */
+export const counterpartyLabel = (direction: DebtDirection): string => (direction === 'lent' ? 'Borrower' : 'Lender');

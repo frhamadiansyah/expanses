@@ -29,7 +29,7 @@ async function twoPeople(page: Page) {
   await page.goto('/net-worth/lend-borrow');
   // The phone shows one side, so + goes straight to that side's screen: Receivables opens on New receivable.
   await page.getByRole('link', { name: 'New receivable' }).tap();
-  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -39,7 +39,7 @@ async function twoPeople(page: Page) {
   // On Payables the same + is New payable.
   await turnOver(page);
   await page.getByRole('link', { name: 'New payable' }).tap();
-  await page.getByLabel('Person').fill('Dewi');
+  await page.getByLabel(/^(Borrower|Lender)$/).fill('Dewi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -104,8 +104,10 @@ test('by thumb: settled items stay where they were, under the switch', async ({ 
   await twoPeople(page);
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Forgive the rest' }).tap();
-  await expect(page.getByRole('button', { name: 'Forgive the rest' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More' }).tap();
+  await page.getByRole('menuitem', { name: 'Forgive the rest' }).tap();
+  await page.getByRole('button', { name: 'More' }).tap();
+  await expect(page.getByRole('menuitem', { name: 'Forgive the rest' })).toHaveCount(0);
   // Back on the list, Andi is settled: it opens on Receivables rather than turning itself over to where people are.
   await page.goto('/net-worth/lend-borrow');
   await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
@@ -128,7 +130,8 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
   // something is typed, as names are under Person — a loan with no reason under the words "No reason noted".
   await page.goto('/net-worth/lend-borrow?person=Dewi');
   await page.getByRole('link', { name: 'New payable' }).tap();
-  await expect(page.getByLabel('Person')).toHaveValue('Dewi');
+  // On Payables the other side is the Lender — a person or a company alike.
+  await expect(page.getByLabel('Lender', { exact: true })).toHaveValue('Dewi');
   const chip = page.getByRole('button', { name: /^No reason noted · .*750\.000 left$/ });
   await expect(chip).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Loan', exact: true }).fill('no');
@@ -170,7 +173,7 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
 test('Person offers the names already on the list as chips, and lines up with the rows under it', async ({ page }) => {
   await twoPeople(page);
   await page.getByRole('link', { name: 'New receivable' }).tap();
-  const person = page.getByLabel('Person');
+  const person = page.getByLabel(/^(Borrower|Lender)$/);
   await person.fill('an');
   // Andi is on the list; a chip under the field fills him in.
   await page.getByRole('button', { name: 'Andi', exact: true }).tap();

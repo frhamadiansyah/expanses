@@ -14,6 +14,7 @@ import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { type DebtDraft, debtDraftFor, debtDetailsFilled, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, loanNamed, openLoansWith, personSuggestions, subCategories } from './debts-form';
+import { counterpartyLabel } from './lend-borrow-view';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
 /**
@@ -169,7 +170,7 @@ export function DebtForm({
           ))}
         </SelectRow>
         <TextRow
-          label="Person"
+          label={counterpartyLabel(draft.direction)}
           value={draft.personName}
           onChange={(e) => nameTyped(e.target.value)}
           autoComplete="off"

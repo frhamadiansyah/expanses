@@ -85,6 +85,23 @@ export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
 }
 
 /**
+ * A line in a corner menu, drawn as Cashflow's ⋯ menu draws Lend & borrow: its glyph first, small and quiet (in alarm
+ * when the action is destructive), then its words.
+ */
+function MenuLine({ action }: { action: CornerAction }) {
+  return (
+    <>
+      {action.glyph ? (
+        <span className={cx('flex shrink-0 items-center', action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')} aria-hidden>
+          {action.glyph}
+        </span>
+      ) : null}
+      <span className="flex-1">{action.label}</span>
+    </>
+  );
+}
+
+/**
  * A corner button that opens a list of actions. The `…` is one; a + that offers two things to add is another.
  * One drawing for both, so a menu in the corner never looks two ways.
  */
@@ -103,13 +120,11 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
           <span
             role="menu"
             aria-label={label}
-            className="absolute right-0 z-20 mt-[6px] block min-w-[180px] overflow-hidden bg-[var(--ph-surface)] shadow-[0_10px_30px_-8px_rgb(0_0_0/0.35)]"
-            style={{ borderRadius: 11 }}
+            className="absolute right-0 z-20 mt-[6px] block w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]"
           >
-            {actions.map((action, index) => {
+            {actions.map((action) => {
               const item = cx(
-                'ph-focus-inset block w-full px-[13px] py-[11px] text-left text-[15px] leading-[20px]',
-                index > 0 && 'border-t-[0.5px] border-[var(--ph-hair)]',
+                'ph-focus-inset flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm whitespace-nowrap',
                 action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]',
               );
               // An action that is a journey stays a link behind the `…` too, for the same reason it does in the corner.
@@ -123,7 +138,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   onClick={() => setOpen(false)}
                   className={item}
                 >
-                  {action.label}
+                  <MenuLine action={action} />
                 </Link>
               ) : (
                 <button
@@ -136,7 +151,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   }}
                   className={item}
                 >
-                  {action.label}
+                  <MenuLine action={action} />
                 </button>
               );
             })}
