@@ -36,7 +36,7 @@ import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
-import { paymentOptions } from './quick-row';
+import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -44,14 +44,15 @@ import { ratesForSave, submitTrade } from './tx-save';
  * The accounts a money field may name — the old form's own list, unchanged, for the rows Tasks 11 and 12 turn
  * into sheets of their own (a transfer's To, and what a purchase was paid with).
  */
-function MoneyAccountOptions({ accounts, spendableOnly, keep }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string }) {
-  const money = moneyHolders(accounts).filter((a) => !spendableOnly || canPayWith(a, keep));
+function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string; placeholders?: ReadonlySet<string> }) {
+  // A placeholder (§4.4) is never offered; the one the row already names stays, as who paid (final review, minor 2).
+  const money = moneyHolders(accounts).filter((a) => (!spendableOnly || canPayWith(a, keep)) && (!placeholders?.has(a.id) || a.id === keep));
   return (
     <>
       <option value="">Choose…</option>
       <optgroup label="Accounts">
         {money.filter((a) => a.kind === 'asset').map((a) => (
-          <option key={a.id} value={a.id}>{`${a.name} (${a.currency})`}</option>
+          <option key={a.id} value={a.id}>{placeholders?.has(a.id) ? placeholderLabel(a.name) : `${a.name} (${a.currency})`}</option>
         ))}
       </optgroup>
       <optgroup label="Credit cards & debts">
@@ -153,6 +154,8 @@ function CardBody({
   // What this device lists, placeholders left out; `accounts` may also hold one the edited purchase names.
   const listed = useAccounts();
   const listedIds = new Set((listed.data ?? accounts).map((a) => a.id));
+  // The placeholders among `accounts`: what the edited purchase names that this device's own list leaves out (§4.4).
+  const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
   const [draft, setDraft] = useState<FormDraft>(() =>
     initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
@@ -200,9 +203,11 @@ function CardBody({
   const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
   const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId));
   // A card is a way to pay, never somewhere money arrives or moves to.
-  const payable: PaymentOption[] = paymentOptions(
-    money,
-    draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : [],
+  // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
+  const payable: PaymentOption[] = withoutPlaceholders(
+    paymentOptions(money, draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : []),
+    listedIds,
+    draft.moneyId,
   );
 
   /*
@@ -499,11 +504,11 @@ function CardBody({
               divided={purchase.mode === 'buy'}
               /* The options are a component, so there are no `<option>`s here to read the chosen one off; the
                  row is handed the very label `MoneyAccountOptions` gives that account. */
-              display={purchaseMoney ? `${purchaseMoney.name} (${purchaseMoney.currency})` : ''}
+              display={purchaseMoney ? (placeholders.has(purchaseMoney.id) ? placeholderLabel(purchaseMoney.name) : `${purchaseMoney.name} (${purchaseMoney.currency})`) : ''}
               value={purchase.moneyId}
               onChange={(moneyId) => setPurchase({ moneyId, moneyIsCard: byId.get(moneyId)?.subtype === 'credit_card', charged: '' })}
             >
-              <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} />
+              <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} placeholders={placeholders} />
             </SelectFormRow>
             {purchaseNeeds.charged && (
               <MoneyFieldRow
@@ -552,7 +557,7 @@ function CardBody({
               lead="value"
               icon={<RowGlyph>{payGlyph}</RowGlyph>}
               label={payLabel}
-              value={paying?.cardId ? paying.accountName : chosenPayment(payable, draft)}
+              value={paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)}
               caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel}
               onClick={() => setSheet('money')}
             />

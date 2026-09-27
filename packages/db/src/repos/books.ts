@@ -16,6 +16,7 @@ import { replanCatalogProgramsTx } from './catalog';
 import { ensureBookCategoryKeysTx } from './categories';
 import { categoryTotalsIn } from './reports';
 import { withCapture } from '../sync/capture';
+import { isBookShared } from '../sync/placeholder';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
 
@@ -310,6 +311,9 @@ export async function setBookEventsInBudget(database: Database, ws: WorkspaceCon
  */
 export async function setBookBaseCurrency(database: Database, ws: WorkspaceContext, bookId: string, currency: string): Promise<{ rate: number; onDate: string }> {
   if (!isSupportedCurrency(currency)) throw new BookError('BAD_CURRENCY', `${currency} is not a currency this app knows`);
+  // A shared workspace keeps the currency it was shared in (household sharing spec §6.5 step 0; final review, minor 3):
+  // every device joined on that currency, and a change here would read every other device's figures differently.
+  if (await isBookShared(database, bookId)) throw new BookError('SHARED', 'A shared workspace keeps the currency it was shared in');
   const book = await bookOf(database, ws, bookId);
   const today = isoDate();
   if (book.baseCurrency === currency) return { rate: 1, onDate: today };

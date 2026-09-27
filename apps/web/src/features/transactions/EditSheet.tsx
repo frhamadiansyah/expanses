@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, RowGroup } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -21,7 +21,7 @@ import { FormRow, FormRows } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useChangeable, useTransactionPhotoIds } from './queries';
-import { paymentOptions } from './quick-row';
+import { paymentOptions, withoutPlaceholders } from './quick-row';
 import { TwoTapDelete } from './TwoTapDelete';
 import { type FormDraft, formFromTransaction, formToPost } from './tx-form';
 import { ratesForSave } from './tx-save';
@@ -74,6 +74,8 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   const resolveRates = useResolveRates();
   const goals = useGoals().data ?? [];
   const allCards = useCards().data ?? [];
+  // What this device lists, placeholders left out; `accounts` may also hold one the edited purchase names (§4.4).
+  const listed = useAccounts();
   const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
   const { changeable } = useChangeable(tx);
 
@@ -95,9 +97,13 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   // money you can spend from or a card, income received into money you hold, a transfer's source. `canPayWith` and
   // friends keep the account already chosen even when the list no longer offers it.
   const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
-  const payable: PaymentOption[] = paymentOptions(
-    moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId)),
-    draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : [],
+  // Never a placeholder to choose; the one the row names stays as its current value, read as who paid (§4.4, minor 2).
+  const listedIds = new Set((listed.data ?? accounts).map((a) => a.id));
+  const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
+  const payable: PaymentOption[] = withoutPlaceholders(
+    paymentOptions(moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId)), draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : []),
+    listedIds,
+    draft.moneyId,
   );
   const categoryName = draft.categoryId ? (accounts.find((a) => a.id === draft.categoryId)?.name ?? '') : '';
   // Rates are resolved no later than today, exactly as the card resolves them.
@@ -171,7 +177,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
         </RowGroup>
 
         <FormRows>
-          <FormRow label="Paid with" value={chosenPayment(payable, draft)} onClick={() => setSheet('money')} />
+          <FormRow label="Paid with" value={chosenPayment(payable, draft, placeholders)} onClick={() => setSheet('money')} />
           <FormRow
             label="Category"
             icon={draft.categoryId ? <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="xs" /> : undefined}

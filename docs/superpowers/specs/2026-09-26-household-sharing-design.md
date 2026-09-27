@@ -319,7 +319,10 @@ member's name, `currency` = the currency of the lines it balances (the book's, n
 
 Placeholder accounts are excluded from the Accounts page, Net worth, every Paid-with and Transfer picker, the tax
 report, the health ratios, goal funding and idle cash. Their balance is never shown. Every other reader sees an
-ordinary transaction.
+ordinary transaction. **Editing another member's purchase (final review, minor 2):** the edit form reads the
+placeholder the purchase is posted against so the row can open as saved, but the Paid-with picker never offers it —
+only the account the row already names stays, as its current value, read as **"Paid by Dewi"**, never "Dewi (IDR)"
+(`withoutPlaceholders`, `placeholderLabel` in quick-row.ts; the card, the phone's edit sheet and the buy form alike).
 
 The exclusion is one shared predicate, `notPlaceholder(column)` = `column NOT IN (SELECT account_id FROM
 book_member_accounts)`, applied in each reader that lists asset accounts (check §3, fix round 1):
@@ -582,7 +585,9 @@ on its own.
 
 0. **Currency check (ruled O3).** If the book's `base_currency` is not the owner's workspace base currency, refuse
    with §8.2's sentence the other way round: *"This workspace keeps its money in SGD; this app keeps yours in IDR.
-   Sharing across currencies isn't supported yet."* Nothing is created.
+   Sharing across currencies isn't supported yet."* Nothing is created. Once shared, the book keeps that currency:
+   **Reads in** is not offered for a shared workspace and `setBookBaseCurrency` refuses it (`SHARED`; final review,
+   minor 3), since every device joined on it.
 
 1. Create the relay book; insert `shared_books`; mint epoch 1.
 2. Emit, in this order, upserts of every row in scope with **all** its fields: `book`, `member` (self), `device`

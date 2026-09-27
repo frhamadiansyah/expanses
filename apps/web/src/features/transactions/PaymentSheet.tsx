@@ -2,7 +2,7 @@ import { CreditCard, Landmark } from 'lucide-react';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
-import { paymentKey } from './quick-row';
+import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 
 /**
@@ -17,7 +17,9 @@ export function paymentLabel(option: PaymentOption): string {
 }
 
 /** What the Paid with row shows once something is chosen, or nothing when it is still empty. */
-export function chosenPayment(options: readonly PaymentOption[], draft: FormDraft): string {
+export function chosenPayment(options: readonly PaymentOption[], draft: FormDraft, placeholders: ReadonlySet<string> = new Set()): string {
+  // A placeholder the row names reads as who paid (§4.4, final review minor 2).
+  if (placeholders.has(draft.moneyId)) return placeholderLabel(options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
   const found = options.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   return found ? paymentLabel(found) : (options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
 }
