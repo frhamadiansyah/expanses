@@ -201,34 +201,6 @@ export function DebtForm({
           placeholder="Amount"
           required
         />
-        <TextRow
-          label="Loan"
-          value={draft.reason}
-          onChange={(e) => purposeTyped(e.target.value)}
-          autoComplete="off"
-          hint={
-            picked || loanChips.length > 0 ? (
-              <span className="flex flex-col gap-[6px]">
-                {picked ? <span>{`Adds to this open loan · ${picked.label.split(' · ').pop()}`}</span> : null}
-                {loanChips.length > 0 ? (
-                  <span className="flex flex-wrap gap-[6px]" aria-label="Open loans with this person">
-                    {loanChips.map((loan) => (
-                      <button
-                        key={loan.accountId}
-                        type="button"
-                        onClick={() => set({ reason: loan.reason, existingAccountId: loan.accountId })}
-                        className="ph-focus rounded-full bg-[var(--ph-fill)] px-[10px] py-[4px] text-[13px] leading-[18px] text-[var(--ph-ink)]"
-                      >
-                        {loan.label}
-                      </button>
-                    ))}
-                  </span>
-                ) : null}
-              </span>
-            ) : undefined
-          }
-          placeholder="Purpose"
-        />
         <SelectRow
           label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
           value={draft.moneyId}
@@ -258,6 +230,34 @@ export function DebtForm({
             placeholder="16250"
           />
         ) : null}
+        <TextRow
+          label="Loan"
+          value={draft.reason}
+          onChange={(e) => purposeTyped(e.target.value)}
+          autoComplete="off"
+          hint={
+            picked || loanChips.length > 0 ? (
+              <span className="flex flex-col gap-[6px]">
+                {picked ? <span>{`Adds to this open loan · ${picked.label.split(' · ').pop()}`}</span> : null}
+                {loanChips.length > 0 ? (
+                  <span className="flex flex-wrap gap-[6px]" aria-label="Open loans with this person">
+                    {loanChips.map((loan) => (
+                      <button
+                        key={loan.accountId}
+                        type="button"
+                        onClick={() => set({ reason: loan.reason, existingAccountId: loan.accountId })}
+                        className="ph-focus rounded-full bg-[var(--ph-fill)] px-[10px] py-[4px] text-[13px] leading-[18px] text-[var(--ph-ink)]"
+                      >
+                        {loan.label}
+                      </button>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+            ) : undefined
+          }
+          placeholder="Purpose"
+        />
         <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
         {/*
           The rest of it, folded into this box behind the toggle under it, as New transaction folds its details. Every

@@ -314,10 +314,10 @@ test('the box asks in order, the ✓ waits for a sub category, and the rest fold
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
 
-  // Type, Person, Money lent, Loan, Paid from, Date — in that order, with no fee until the details open.
+  // Type, Person, Money lent, Paid from, Loan, Date — in that order, with no fee until the details open.
   const labels = await page.locator('form label').allInnerTexts();
   expect(labels.some((text) => text.trim().startsWith('Fee'))).toBe(false);
-  const order = ['Type', 'Person', 'Money lent', 'Loan', 'Paid from', 'Date'].map((name) =>
+  const order = ['Type', 'Person', 'Money lent', 'Paid from', 'Loan', 'Date'].map((name) =>
     labels.findIndex((text) => text.trim().startsWith(name)),
   );
   expect(order).toEqual([...order].sort((x, y) => x - y));
