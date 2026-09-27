@@ -403,15 +403,21 @@ export class SyncEngine {
    *   relay book (recovery review, N1) must not be live — an `active` copy is refused (`STILL_SHARED`): stop sharing it
    *   here first — and the invite must come from a member who was an owner of the book in this copy's own rows
    *   (`INVITER_NOT_OWNER`); a rejoin of the same relay book (a restored phone, §8.7) is unchanged.
-   * - a plain book under that id: `ALREADY_SHARED`.
+   * - a plain book under that id is a rejoin as the member this device remembers from a share of it that ended here
+   *   (recovery review, N3: a copy kept as its own, §8.6) — always a move, so the owner check applies — and
+   *   `ALREADY_SHARED` for one that was never shared here.
    */
   private async copyHere(preview: InvitePreview): Promise<CopyHere> {
     const bookId = preview.bookId;
     const [book] = await this.database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`);
     if (!book) return { kind: 'none' };
-    const existing = await this.sharedRow(bookId);
     const here = new SharingError('ALREADY_SHARED', 'This workspace is already here');
-    if (!existing) return { kind: 'refused', error: here };
+    let existing = await this.sharedRow(bookId);
+    if (!existing) {
+      const [remembered] = await this.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${REMEMBERED_MEMBER_KEY(bookId)}`);
+      if (!remembered) return { kind: 'refused', error: here };
+      existing = { relayBookId: '', epoch: 0, memberId: remembered[0], state: 'own' };
+    }
     if (existing.state === 'active' && existing.relayBookId === preview.relayBookId) return { kind: 'refused', error: here };
     const moving = existing.relayBookId !== preview.relayBookId;
     if (moving) {
@@ -445,8 +451,8 @@ export class SyncEngine {
    * book and `shared_books`, the introduction (this device and, unless linking, this member), then a sync from 0.
    *
    * On a book already here (`copyHere`) this is the rejoin: `needs_invite` on the same relay book (§8.7), or a copy
-   * that is not live — `needs_invite` or `unshared` — moving onto a share made again by one of its owners (§8.6;
-   * recovery review, N1). The existing book row and member are kept, the old keys and sync state go, the cursor goes
+   * that is not live — `needs_invite`, `unshared`, or kept as its own with a remembered member (N3) — moving onto a
+   * share made again by one of its owners (§8.6; recovery review, N1). The existing book row and member are kept, the old keys and sync state go, the cursor goes
    * back to 0, and after the pull every local row in scope the log never mentioned is emitted as new. The invite must
    * name this device's member. Every refusal comes before the claim, and nothing is applied before it.
    */
@@ -494,9 +500,10 @@ export class SyncEngine {
         await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
         await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
         await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
-        await tx.run(
-          sql`UPDATE shared_books SET relay_book_id = ${claim.bookId}, epoch = ${epoch}, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL WHERE book_id = ${bookId}`,
-        );
+        // A copy kept as its own has no row left (N3): it gets one, as its remembered member.
+        await tx.run(sql`
+          INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})
+          ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
         await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
         await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
       } else {

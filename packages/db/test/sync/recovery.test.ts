@@ -2,6 +2,7 @@ import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { postTransaction, voidTransaction } from '../../src/index';
+import { REMEMBERED_MEMBER_KEY } from '../../src/sync/seed';
 import { categoryOf, headOf, Household, projectBook, skipsOf, type Device } from './household';
 
 /*
@@ -122,5 +123,77 @@ describe('a copy moves onto another relay book only when it is not live, and to 
     await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' });
     await home.settle();
     await converged(dewi, restored, bookId);
+  });
+});
+
+describe('a copy kept as its own rejoins the share made again (N3)', () => {
+  it('as the member it remembers, through an owner’s invite naming that member; what it recorded meanwhile goes out', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.settle();
+    await spend(dewi, bookId, 'Dewi, before');
+    await home.settle();
+    await fandri.engine.stopSharing(bookId);
+    expect((await dewi.engine.syncOnce(bookId)).ended).toBe('unshared');
+    await dewi.engine.forgetSharing(bookId);
+    await spend(dewi, bookId, 'Dewi, her own');
+
+    const again = await fandri.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'f' });
+    home.relayBookId = again.relayBookId;
+    await fandri.engine.syncOnce(bookId);
+    const { code: plain } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri' });
+    await expect(dewi.engine.joinBook(plain, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' })).rejects.toMatchObject({ code: 'INVITE_MISMATCH' });
+    expect(await claimed(dewi, plain)).toBe(false);
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    const joined = await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' });
+    expect(joined.memberId).toBe(dewi.memberId);
+    expect(await sharedRow(dewi, bookId)).toEqual(['active', again.relayBookId]);
+    await home.settle([fandri, dewi]);
+    await converged(fandri, dewi, bookId);
+    expect(await descriptions(fandri, bookId)).toEqual(['Dewi, before', 'Dewi, her own']);
+  });
+
+  it('refuses a share made by someone who was not an owner of it here, before the claim', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const budi = await home.device('Budi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.join(budi, fandri);
+    await home.settle();
+    await budi.engine.leave(bookId);
+    await budi.engine.forgetSharing(bookId);
+    await dewi.engine.leave(bookId);
+    await dewi.engine.forgetSharing(bookId);
+    await dewi.engine.shareBook(bookId, { memberName: 'Dewi', deviceName: 'x' });
+    await dewi.engine.syncOnce(bookId);
+    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: budi.memberId });
+    await expect(budi.engine.joinBook(code, { ws: budi.ws, memberName: 'Budi', deviceName: 'b' })).rejects.toMatchObject({ code: 'INVITER_NOT_OWNER' });
+    expect(await claimed(budi, code)).toBe(false);
+    expect(await sharedRow(budi, bookId)).toBeUndefined();
+  });
+
+  it('a plain workspace that was never shared here, under the same id, is still refused', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.settle();
+    await fandri.engine.stopSharing(bookId);
+    await dewi.engine.syncOnce(bookId);
+    await dewi.engine.forgetSharing(bookId);
+    // No remembered member: as a workspace that was never shared from here.
+    await dewi.database.db.run(sql`DELETE FROM settings WHERE key = ${REMEMBERED_MEMBER_KEY(bookId)}`);
+    const again = await fandri.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'f' });
+    home.relayBookId = again.relayBookId;
+    await fandri.engine.syncOnce(bookId);
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    await expect(dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' })).rejects.toMatchObject({ code: 'ALREADY_SHARED' });
+    expect(await claimed(dewi, code)).toBe(false);
   });
 });

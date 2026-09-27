@@ -95,9 +95,12 @@ export function stopConfirm(bookName: string): string {
 /** The row that ends a dead share on this device alone (final review, C1). */
 export const FORGET_ROW = 'Stop sharing on this device';
 
-/** Before that: what keeping the copy as your own does, and what it does not. */
+/**
+ * Before that: what keeping the copy as your own does, and what it does not. The way back is true (recovery review,
+ * N3): an owner's invite that links this device as you rejoins the share, and what you recorded meanwhile goes with it.
+ */
 export function forgetConfirm(bookName: string): string {
-  return `${bookName} becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join it again later, you will need a new invite.`;
+  return `${bookName} becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.`;
 }
 
 /** Under a device: "synced just now", "synced 2 min ago", "synced 3 h ago", "synced Tue". */

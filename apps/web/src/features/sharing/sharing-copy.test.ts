@@ -142,7 +142,7 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
   it('asks before keeping a dead share as your own copy, saying nobody else is touched (final review, C1)', () => {
     expect(FORGET_ROW).toBe('Stop sharing on this device');
     expect(forgetConfirm('Home')).toBe(
-      'Home becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join it again later, you will need a new invite.',
+      'Home becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.',
     );
   });
 });

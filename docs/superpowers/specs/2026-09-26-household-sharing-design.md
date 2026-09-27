@@ -1045,7 +1045,16 @@ rejoin path (§8.7) with an owner's link-a-device invite naming its member (the 
 id); a plain invite is still `INVITE_MISMATCH` before anything is claimed. A copy still `active` on a relay book the
 owner has moved on from (a restored owner's phone that kept the book and shared it again) is **not** moved while it is
 live (recovery review, N1; §8.2): its member leaves the old relay book first, or keeps the copy as its own, and then
-joins; and the new share must be one its owner made. The rejoin drops the old keys, outbox, skips and every other
+joins; and the new share must be one its owner made.
+
+**A copy kept as its own rejoins too (recovery review, N3).** `forgetSharing` leaves no `shared_books` row, so
+`joinBook` once refused such a copy as a plain book (`ALREADY_SHARED`) though the confirm promised a way back. A plain
+book with a remembered `sharing.member.<bookId>` is now a rejoin as that member: it needs an invite naming the member
+(a plain invite is `INVITE_MISMATCH`), is always a move onto another relay book, so (a) of §8.2's check holds by
+construction and (b) — the inviter was an owner here — is checked before the claim; the rejoin writes its
+`shared_books` row afresh. A plain book that was never shared here, under the same id, is still `ALREADY_SHARED`. The
+confirm says what is true: *"… To join the share again later, ask one of its owners for an invite that links this
+device as you."* The rejoin drops the old keys, outbox, skips and every other
 device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits as new what the
 new log never mentioned.
 
