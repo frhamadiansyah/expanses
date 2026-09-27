@@ -430,3 +430,19 @@ describe('capture: size', () => {
     expect(new Set(sets.map((s) => s.hlc)).size).toBe(sets.length);
   });
 });
+
+describe('the audit author (§7.3)', () => {
+  it("a replace writes the author into both its 'void' and its 'post' audit rows; a void with an author says so", async () => {
+    const { database, ws, bca, groceries } = await sharedHousehold();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 50_000, currency: 'IDR' });
+    const first = await postTransaction(database, ws, { occurredOn: '2026-09-10', description: 'Superindo', lines });
+    const { replaceTransactionTx } = await import('../../src/index');
+    const second = await database.transaction((tx) => replaceTransactionTx(tx, ws, first, { occurredOn: '2026-09-10', description: 'Superindo 2', lines, syncAuthor: 'member-dewi' }));
+    await database.transaction((tx) => voidTransactionTx(tx, ws, second, {}, 'member-dewi'));
+    const rows = await database.db.values<[string, string, string]>(sql`SELECT action, entity_id, payload_json FROM audit_log WHERE entity = 'transaction' ORDER BY rowid`);
+    const payload = (action: string, id: string) => JSON.parse(rows.find((r) => r[0] === action && r[1] === id)![2]) as { syncAuthor?: string };
+    expect(payload('void', first).syncAuthor).toBe('member-dewi');
+    expect(payload('post', second).syncAuthor).toBe('member-dewi');
+    expect(payload('void', second).syncAuthor).toBe('member-dewi');
+  });
+});

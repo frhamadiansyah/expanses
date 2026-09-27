@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createAccount, listAccounts, personalBook, postTransaction, renameAccount } from '../../src/index';
+import { createAccount, listAccounts, personalBook, postTransaction, postTransactionTx, renameAccount, saveBudget, voidTransactionTx } from '../../src/index';
 import { setupDb } from '../helpers';
 import { installCaptureTriggers, uncapturedWrites } from './capture-harness';
 import { shareBookForTest } from './sync-helpers';
@@ -20,7 +20,7 @@ describe('the capture harness (§6.4)', () => {
   it('names a write to a shared row that bypassed capture', async () => {
     const { database, book, groceries } = await watchedBook();
     await database.db.run(sql`UPDATE accounts SET name = 'Sneaky' WHERE id = ${groceries.id}`);
-    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id} (update): no category op`]);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
   });
 
   it('names a purchase posted with capture switched off', async () => {
@@ -39,6 +39,37 @@ describe('the capture harness (§6.4)', () => {
     await database.db.run(sql`UPDATE accounts SET name = 'Market' WHERE id = ${groceries.id}`);
     await database.db.run(sql`UPDATE accounts SET name = 'BCA Tahapan' WHERE id = ${bca.id}`);
     await postTransaction(database, ws, { occurredOn: '2026-09-01', description: 'x', lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 1, currency: 'IDR' }) });
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+  });
+
+  it('names a second, uncaptured write to a column of a row whose first write was captured', async () => {
+    const { database, ws, book, groceries } = await watchedBook();
+    await renameAccount(database, ws, groceries.id, 'Market');
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+    await database.db.run(sql`UPDATE accounts SET name = 'Sneaky' WHERE id = ${groceries.id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
+  });
+
+  it('names an uncaptured in-place write to a purchase: its flags, and an entry memo', async () => {
+    const { database, ws, book, bca, groceries } = await watchedBook();
+    const id = await postTransaction(database, ws, { occurredOn: '2026-09-01', description: 'x', lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 1, currency: 'IDR' }) });
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+    await database.db.run(sql`INSERT INTO transaction_flags (transaction_id, workspace_id, channel, excluded) VALUES (${id}, ${ws.workspaceId}, 'online', 0)`);
+    await database.db.run(sql`UPDATE entries SET memo = 'psst' WHERE transaction_id = ${id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([
+      `transaction_flags ${id}: purchase ${id} channel, excluded changed with no op`,
+      `entries ${id}: purchase ${id} money changed with no op`,
+    ]);
+  });
+
+  it('is quiet about a row deleted and written back as it was, and a purchase posted and voided in one transaction', async () => {
+    const { database, ws, book, bca, groceries } = await watchedBook();
+    await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 700_000, frequency: 'weekly' });
+    await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 700_000, frequency: 'weekly' });
+    await database.transaction(async (tx) => {
+      const id = await postTransactionTx(tx, ws, { occurredOn: '2026-09-01', description: 'x', lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 1, currency: 'IDR' }) });
+      await voidTransactionTx(tx, ws, id);
+    });
     expect(await uncapturedWrites(database, book.id)).toEqual([]);
   });
 });

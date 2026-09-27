@@ -421,12 +421,32 @@ A write outside a shared book emits nothing and costs one lookup.
 
 ### 6.4 Nothing escapes capture
 
-In the **test harness only**, `installCaptureTriggers(db)` creates `AFTER INSERT`, `AFTER UPDATE OF <the synced
-columns>` and `AFTER DELETE` triggers on every table named in `SHARED_ENTITIES`. They watch only the synced columns,
-so an in-place write to a column that never travels (check #15) is not a miss. Each trigger writes `(table, key, op)` to a temp table `__writes`. After every test, a
-global `afterEach` fails the test if `__writes` holds a row of a shared book that no op in `sync_outbox` accounts
-for. The whole existing suite, run against a database seeded with one shared book, is the completeness test; no
-repository function is called by hand.
+In the **test harness only** (`packages/db/test/sync/capture-harness.ts`), `installCaptureTriggers(db, bookId)` creates
+TEMP triggers on every table named in `SHARED_ENTITIES`: `AFTER INSERT`, `AFTER UPDATE OF <the synced columns>` (only
+when one of them really changed), and a delete trigger. They watch only the synced columns, so an in-place write to a
+column that never travels (check #15) is not a miss. A row entity's delete trigger is **`BEFORE DELETE`**: its scope
+test reads the row itself, which an `AFTER DELETE` trigger can no longer see (task 3 correction). Each trigger writes
+to a temp table `__writes` the table, the key, the op, the outbox's **high-water mark** at the time of the write
+(`max(rowid)` of `sync_outbox`), and what changed: a row entity's before-image, a purchase table's changed column names.
+
+After every test, a global `afterEach` fails the test if `__writes` holds a write to a row of the shared book that no
+op accounts for. **An op accounts for a write only if it was sealed after the write's high-water mark and carries the
+field the changed column feeds** (task 3 fix round 1; an earlier "any op for that id, ever" rule could not catch a
+second uncaptured write to a row already seen):
+
+- A row entity is judged by its end state: the first write's before-image against the row as it is now. Each field
+  whose column differs needs an upsert naming it; a row that is gone needs a delete; a new row needs an upsert. A row
+  deleted and written back as it was needs nothing.
+- A purchase row written in place (its transaction not inserted in the same batch) needs an op naming the purchase
+  field (`PurchaseEntity.fields`) of each changed column. Every touched lineage must have a `sync_lineage` row whose
+  head is the lineage's posted head in the book (that is how a void or a missed replacement is caught), unless it has
+  neither (a purchase posted and voided in one transaction, which no other device ever saw).
+- Raw SQL a test runs through `database.execScript` (a fixture such as "archive this row") is not a repository write
+  and is dropped from the watch. No repository writes data through `execScript`; only migrations use it.
+
+The whole existing suite, run against a database whose first workspace's Personal book is shared, is the completeness
+test; no repository function is called by hand. The command is **`npm run test:capture`** (in `packages/db`, or at the
+repo root).
 
 ### 6.5 Seeding — sharing a workspace that already has history
 

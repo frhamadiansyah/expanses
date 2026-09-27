@@ -359,7 +359,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
   const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
   // An edit voids without reopening a deposit event: the replacement carries on what the original was.
-  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged });
+  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor);
   // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
   const setAside = keepAnswer ? null : withSavedStage(answered, saved);
   // Keep import identity so re-importing the same statement still recognises the row.
