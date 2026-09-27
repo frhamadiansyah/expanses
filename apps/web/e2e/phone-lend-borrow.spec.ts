@@ -30,7 +30,7 @@ async function twoPeople(page: Page) {
   // The phone shows one side, so + goes straight to that side's screen: Receivables opens on New receivable.
   await page.getByRole('link', { name: 'New receivable' }).tap();
   await page.getByLabel('Person').fill('Andi');
-  await page.getByLabel('Sub category').selectOption({ index: 1 });
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
@@ -40,7 +40,7 @@ async function twoPeople(page: Page) {
   await turnOver(page);
   await page.getByRole('link', { name: 'New payable' }).tap();
   await page.getByLabel('Person').fill('Dewi');
-  await page.getByLabel('Sub category').selectOption({ index: 1 });
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
@@ -133,7 +133,7 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
 
   // Picked, the money adds to her loan: its sub category and due date are that loan's, so the form stops asking.
   await expect(page.getByText(/^Adds to this open loan/)).toBeVisible();
-  await expect(page.getByLabel('Sub category')).toBeDisabled();
+  await expect(page.getByLabel('Type', { exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Add more details' }).tap();
   await expect(page.getByRole('textbox', { name: 'Due by' })).toHaveCount(0);
 });

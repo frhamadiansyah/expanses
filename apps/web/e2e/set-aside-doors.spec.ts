@@ -265,7 +265,7 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
   await page.getByRole('menuitem', { name: 'New receivable' }).click();
   await page.getByLabel('Person').pressSequentially('Andi');
-  await page.getByLabel('Sub category').selectOption({ index: 1 });
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('6800000');
   await page.getByLabel('Paid from').selectOption({ label: 'Jenius (IDR)' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
@@ -289,7 +289,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
   await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
   await page.getByRole('menuitem', { name: 'New payable' }).click();
   await page.getByLabel('Person').pressSequentially('Budi');
-  await page.getByLabel('Sub category').selectOption({ index: 1 });
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('10000000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA (IDR)' });
   // Money coming in asks nothing.

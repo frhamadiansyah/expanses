@@ -38,7 +38,7 @@ describe('a draft for one side', () => {
 
   it('asks for a sub category on a new loan, and not on money added to one of theirs', () => {
     const base = { ...debtDraftFor('lent', '2026-09-27', 'Dewi'), amount: '100.000', moneyId: 'bca' };
-    expect(() => debtDraftToInput(base, 'IDR', '2026-09-27')).toThrow(/sub category/);
+    expect(() => debtDraftToInput(base, 'IDR', '2026-09-27')).toThrow(/Choose a type/);
     expect(debtDraftToInput({ ...base, subCategory: '0202' }, 'IDR', '2026-09-27').coretaxCode).toBe('0202');
     expect(debtDraftToInput({ ...base, existingAccountId: 'dewi-loan' }, 'IDR', '2026-09-27').debtAccountId).toBe('dewi-loan');
   });
@@ -164,6 +164,7 @@ describe('whether the details open by themselves', () => {
     expect(debtDetailsFilled({ ...blank, reason: 'Laptop' })).toBe(false);
     expect(debtDetailsFilled({ ...blank, dueOn: '2026-12-01' })).toBe(true);
     expect(debtDetailsFilled({ ...blank, personIdNumber: '123' })).toBe(true);
+    expect(debtDetailsFilled({ ...blank, fee: '2.500' })).toBe(true);
     expect(debtDetailsFilled({ ...blank, subCategory: '0209' })).toBe(false);
   });
 });

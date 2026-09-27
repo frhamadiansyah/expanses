@@ -151,6 +151,23 @@ export function DebtForm({
       />
       {/* No header over the box: the title says which side, and the amount row says which way the money went. */}
       <InsetGroup>
+        {/*
+          What a new loan files as — chosen, never assumed, and needed before ✓. Money added to one of their open loans
+          files as that loan does, so the row shows the loan's own and is not asked.
+        */}
+        <SelectRow
+          label="Type"
+          value={picked ? pickedCode : draft.subCategory}
+          disabled={Boolean(picked)}
+          onChange={(e) => set({ subCategory: e.target.value })}
+        >
+          <option value="">Choose…</option>
+          {subCategories(draft.direction).map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {choice.label}
+            </option>
+          ))}
+        </SelectRow>
         <TextRow
           label="Person"
           value={draft.personName}
@@ -175,23 +192,15 @@ export function DebtForm({
           placeholder="Name"
           required
         />
-        {/*
-          What a new loan files as — chosen, never assumed, and needed before ✓. Money added to one of their open loans
-          files as that loan does, so the row shows the loan's own and is not asked.
-        */}
-        <SelectRow
-          label="Sub category"
-          value={picked ? pickedCode : draft.subCategory}
-          disabled={Boolean(picked)}
-          onChange={(e) => set({ subCategory: e.target.value })}
-        >
-          <option value="">Choose…</option>
-          {subCategories(draft.direction).map((choice) => (
-            <option key={choice.code} value={choice.code}>
-              {choice.label}
-            </option>
-          ))}
-        </SelectRow>
+        {/* Named in the account's currency once there is an account: it decides what the figure is read in. */}
+        <TextRow
+          label={`${draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}${codeShown}`}
+          value={draft.amount}
+          inputMode="decimal"
+          onChange={(e) => set({ amount: e.target.value })}
+          placeholder="Amount"
+          required
+        />
         <TextRow
           label="Loan"
           value={draft.reason}
@@ -220,33 +229,6 @@ export function DebtForm({
           }
           placeholder="Purpose"
         />
-        {/* Named in the account's currency once there is an account: it decides what the figure is read in. */}
-        <TextRow
-          label={`${draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}${codeShown}`}
-          value={draft.amount}
-          inputMode="decimal"
-          onChange={(e) => set({ amount: e.target.value })}
-          placeholder="Amount"
-          required
-        />
-        {/* A fee on the money moved is the owner's cost, filed as spending; what the person owes stays the loan. */}
-        <TextRow
-          label={`Fee${codeShown}`}
-          info={
-            draft.direction === 'lent'
-              ? 'Optional. A card or bank charge for sending the money. Counted as spending; the amount owed stays the loan.'
-              : 'Optional. A charge taken from the money received. Counted as spending; the whole loan is still owed.'
-          }
-          value={draft.fee}
-          inputMode="decimal"
-          onChange={(e) => set({ fee: e.target.value })}
-          placeholder="Amount"
-        />
-        {draft.fee.trim() !== '' && draft.fee.trim() !== '0' ? (
-          <SelectRow label="Fee category" value={feeCategoryId} onChange={(e) => set({ feeCategoryId: e.target.value })}>
-            <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-          </SelectRow>
-        ) : null}
         <SelectRow
           label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
           value={draft.moneyId}
@@ -287,6 +269,26 @@ export function DebtForm({
         */}
         {detailsOpen && !draft.existingAccountId ? (
           <TextRow label="Due by" type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        ) : null}
+        {/* A fee on the money moved is the owner's cost, filed as spending; what the person owes stays the loan. */}
+        {detailsOpen ? (
+          <TextRow
+            label={`Fee${codeShown}`}
+            info={
+              draft.direction === 'lent'
+                ? 'Optional. A card or bank charge for sending the money. Counted as spending; the amount owed stays the loan.'
+                : 'Optional. A charge taken from the money received. Counted as spending; the whole loan is still owed.'
+            }
+            value={draft.fee}
+            inputMode="decimal"
+            onChange={(e) => set({ fee: e.target.value })}
+            placeholder="Amount"
+          />
+        ) : null}
+        {detailsOpen && draft.fee.trim() !== '' && draft.fee.trim() !== '0' ? (
+          <SelectRow label="Fee category" value={feeCategoryId} onChange={(e) => set({ feeCategoryId: e.target.value })}>
+            <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+          </SelectRow>
         ) : null}
         {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
         {detailsOpen && !draft.existingAccountId && !known ? (

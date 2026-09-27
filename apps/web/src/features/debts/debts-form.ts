@@ -108,7 +108,7 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   if (draft.occurredOn > today) throw new Error('A loan cannot be dated after today');
   if (!draft.moneyId) throw new Error('Choose which account the money came from');
   // A new loan files as something; money added to an existing loan keeps what that loan already files as.
-  if (!draft.existingAccountId && !draft.subCategory) throw new Error('Choose a sub category');
+  if (!draft.existingAccountId && !draft.subCategory) throw new Error('Choose a type');
 
   if (draft.amount.trim() === '') throw new Error('Enter how much');
   let amountMinor: number;
@@ -196,12 +196,13 @@ export function loanNamed(loans: LoanChoice[], typed: string): string {
 }
 
 /**
- * Whether anything behind "Add more details" is already filled in: a due date or a tax ID. The details open by
+ * Whether anything behind "Add more details" is already filled in: a due date, a fee or a tax ID. The details open by
  * themselves when it is, so nothing typed is ever out of sight.
  */
 export function debtDetailsFilled(draft: DebtDraft): boolean {
   return (
     draft.dueOn !== '' ||
+    draft.fee.trim() !== '' ||
     draft.personIdNumber.trim() !== ''
   );
 }

@@ -171,7 +171,7 @@ export function LoanPage() {
             value={profile.dueOn ?? ''}
             onChange={(e) => void saveField({ dueOn: e.target.value || null })}
           />
-          <SelectRow label="Sub category" value={profile.coretaxCode} onChange={(e) => void saveField({ coretaxCode: e.target.value })}>
+          <SelectRow label="Type" value={profile.coretaxCode} onChange={(e) => void saveField({ coretaxCode: e.target.value })}>
             {personCodeChoices(person.direction).map((choice) => (
               <option key={choice.code} value={choice.code}>
                 {choice.label}
