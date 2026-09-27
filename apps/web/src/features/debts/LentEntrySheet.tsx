@@ -17,7 +17,7 @@ import { loanFigureLabels } from './lend-borrow-view';
  * the day and any fee — the rows of New receivable that belong to the money. Saving replaces the entry, so every
  * balance and the fee's spending follow; a loan made smaller than what has already come back is refused in words.
  *
- * It has no delete of its own: without it there is no loan, and that is Delete loan behind ⋯.
+ * It has no delete of its own: without it there is no loan, and removing that is Delete loan behind ⋯.
  */
 export function LentEntrySheet({
   entry,
@@ -108,7 +108,6 @@ export function LentEntrySheet({
         ) : null}
       </InsetGroup>
       <ErrorBox error={error} />
-      <p className="px-4 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">To remove the whole loan, use Delete loan in ⋯.</p>
     </Sheet>
   );
 }

@@ -535,3 +535,18 @@ test('a history line opens to be changed: the money lent, a collection, or takin
   await expect(hero).toContainText('6.000.000');
   await expect(page.getByRole('button', { name: /^Collection · / })).toHaveCount(0);
 });
+
+test('a loan\'s history reads newest first, under Record collection', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '5000000', 'BCA Tahapan (IDR)');
+  await openLoan(page, 'Andi');
+  await page.getByRole('button', { name: 'Record collection' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Collection' });
+  await sheet.getByLabel(/^Came back/).fill('500000');
+  await sheet.getByRole('button', { name: 'Save collection' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  const collection = (await page.getByRole('button', { name: /^Collection · / }).boundingBox())!.y;
+  const lent = (await page.getByRole('button', { name: /^Lent · / }).boundingBox())!.y;
+  expect(collection).toBeLessThan(lent);
+});

@@ -235,7 +235,8 @@ export function LoanPage() {
               onClick={() => setRepaying(true)}
             />
           ) : null}
-          {(history.data ?? []).map((row) => {
+          {/* Newest first, straight under the + that adds the next one. */}
+          {[...(history.data ?? [])].reverse().map((row) => {
             const entry = historyEntry(row.kind, person.direction);
             // One line each: the circle says which way the money went, and the date follows the word in grey.
             return (
