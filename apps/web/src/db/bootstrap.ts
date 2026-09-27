@@ -13,9 +13,11 @@ import {
   migrate,
   type Migration,
   syncLinkedPrograms,
+  type KeyStore,
   upgradeCalculatorGoals,
   type WorkspaceContext,
 } from '@expanses/db';
+import { SyncService } from '../sync/sync-service';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
@@ -34,6 +36,12 @@ export interface AppDb {
   database: Database;
   ws: WorkspaceContext;
   workspaceName: string;
+  /**
+   * The app's sync service (household sharing spec §9.4), readied before the open's first write: a device holding a
+   * shared book has its engine — and so its device id, the one seam of §5.1 — before ensureCategoryKeys or anything
+   * else can write into that book, and a restored backup is caught (§8.7) before anything syncs (final review, I3).
+   */
+  sync: SyncService;
   /** Where this app's safety copies go. Absent only where a caller opened a database without a store. */
   safety?: Safety;
   /** Absent only where a caller opened a database without going through `openSafely`. */
@@ -64,9 +72,17 @@ export interface AppDb {
   release?: (letGo?: () => void) => void;
 }
 
-export async function openAppDb(database: Database, migrations?: Migration[]): Promise<AppDb> {
+export async function openAppDb(database: Database, migrations?: Migration[], options: { keyStore?: KeyStore } = {}): Promise<AppDb> {
   // The same list the opener was allowed to run: a blocked update must not be slipped in through the back door.
   await migrate(database, migrations);
+  /*
+   * Sync gets ready between the migration and the first write (final review, I3): with a shared book here, every
+   * change captured from now on carries this device's own id, and a restored backup goes to needs_invite before any
+   * of it. Local only — the keys and the database, never the relay — and a failure never stops the app opening; a
+   * write into a shared book would then refuse (`localDeviceId`) rather than stamp a stand-in id.
+   */
+  const sync = new SyncService({ database, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
+  await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
   let [workspace] = await listWorkspaces(database);
   if (!workspace) {
     await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
@@ -94,7 +110,7 @@ export async function openAppDb(database: Database, migrations?: Migration[]): P
   }
   // The set of books last open, or Personal. Owner-level screens ignore it; book-scoped ones read it.
   const opened = inBook(ws, await activeBookId(database, ws));
-  return { database, ws: opened, workspaceName: workspace!.name };
+  return { database, ws: opened, workspaceName: workspace!.name, sync };
 }
 
 export function createWorker(): Worker {

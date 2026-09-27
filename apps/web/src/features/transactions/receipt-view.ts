@@ -1,5 +1,5 @@
 import { formatMinor, monthName } from '@expanses/core';
-import type { AccountRow, CardRow, PersonDebtRow, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
 
@@ -28,6 +28,12 @@ export interface ReceiptInput {
   owed: readonly Pick<PersonDebtRow, 'personName' | 'totalMinor'>[];
   eventName?: string;
   goalName?: string;
+  /**
+   * Who paid, for a purchase in a shared workspace (household sharing spec §11): its "Paid with" is what the payer's
+   * own device called it, and a "Paid by" line names them. A purchase another member paid for is posted here against
+   * a placeholder account that is never named or linked, so this is the only place its payment is described.
+   */
+  payer?: PurchasePayer | null;
 }
 
 /** Money accounts: the two kinds whose entry says what was actually charged or received. */
@@ -91,7 +97,11 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const currency = paid?.currency ?? input.currency;
 
   const lines: ReceiptLine[] = [];
-  if (paid) lines.push({ label: left[0] ? 'Paid with' : 'Paid into', value: accountText(paid.accountId) });
+  const payer = input.payer ?? null;
+  if (payer) {
+    if (payer.paidLabel) lines.push({ label: 'Paid with', value: payer.paidLabel });
+    lines.push({ label: 'Paid by', value: payer.mine ? 'You' : (payer.payerName ?? 'Someone else') });
+  } else if (paid) lines.push({ label: left[0] ? 'Paid with' : 'Paid into', value: accountText(paid.accountId) });
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
   // bill, and the chart's treatment of it changes nothing about what the bank will ask for.

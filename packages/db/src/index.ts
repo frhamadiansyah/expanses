@@ -93,3 +93,45 @@ export * from './repos/transaction-extras';
 export * as healthSchema from './schema-health';
 export * from './repos/health-tables';
 export * from './repos/category-needs';
+export * as sharingSchema from './schema-sharing';
+// Household sharing: the HTTP transport to the relay and its request signer (spec §9)
+export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';
+export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
+export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';
+export {
+  FrozenBookError,
+  LeaveIncompleteError,
+  NotOwnerError,
+  SEEN_WRITE_MS,
+  STALE_AFTER_MS,
+  SyncEngine,
+  type BookSyncStatus,
+  type CreatedInvite,
+  type EndedReason,
+  type JoinInput,
+  type PreviewedInvite,
+  type ShareInput,
+  type SyncOnceResult,
+} from './sync/engine';
+export { BookReadOnlyError, LastOwnerError, SyncNotReadyError } from './sync/capture';
+export {
+  deviceKeysOf,
+  exportDeviceJwks,
+  generateDevice,
+  generateKeyPairs,
+  importDeviceJwks,
+  MemoryKeyStore,
+  publicJwk,
+  requestSignerOf,
+  type DeviceJwks,
+  type DeviceKeys,
+  type KeyStore,
+} from './sync/keys';
+export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from './sync/invite';
+export { deviceIdOf } from './sync/relay-signing';
+export { SharingError, type SharingErrorCode } from './sync/seed';
+export { type PullResult } from './sync/apply';
+export * from './repos/sharing';
+export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry, type SyncTransport } from './sync/types';
+// The in-memory relay, for the app's own tests of its sync wiring (it is the reference the real relay matches).
+export { MemoryTransport } from './sync/memory-transport';

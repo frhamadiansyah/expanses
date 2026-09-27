@@ -20,6 +20,7 @@ import {
   upsertRate,
 } from '../src/index';
 import { setupDb } from './helpers';
+import { shareBookForTest } from './sync/sync-helpers';
 
 describe('the money a workspace reads in', () => {
   it('does nothing at all when the workspace reads in the owner’s currency', async () => {
@@ -109,6 +110,15 @@ describe('the money a workspace reads in', () => {
     expect(newest!.entries.find((entry) => entry.accountId === meals.id)?.amountBaseMinor).toBe(99_600);
     // And the purchase itself still says what was paid.
     expect(newest!.entries.find((entry) => entry.accountId === meals.id)?.amountMinor).toBe(12_000_000);
+  });
+
+  it('refuses to change the currency of a shared workspace (final review, minor 3)', async () => {
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Ours', kind: 'family', baseCurrency: 'IDR' });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
+    await shareBookForTest(database, biz);
+    await expect(setBookBaseCurrency(database, ws, biz, 'SGD')).rejects.toMatchObject({ code: 'SHARED' });
+    expect((await listBooks(database, ws)).find((b) => b.id === biz)).toMatchObject({ baseCurrency: 'IDR' });
   });
 
   it('carries a workspace’s caps and expected income across when its currency changes, and refuses without a rate', async () => {

@@ -1,0 +1,1359 @@
+# Household sharing — design
+
+Status: draft v3 for review · 2026-09-27
+Builds on: `2026-09-17-workspaces-design.md` §5.4, `2026-09-18-data-safety-design.md`.
+Reviewed by: `2026-09-27-household-sharing-review.md` (v2). Every finding there is answered in §0.
+Checked against the code at `725f284` (step 0): `2026-09-27-household-sharing-v3-check.md`. Each correction is listed
+there by number, and each changed passage here says "(check #n)".
+
+**Task 2, fix round 1** corrected four more things once real code exposed them: §6.1's receive rule was the wrong
+half of standard HLC receive (kept only `ms`, not the counter too — a bug, not a design choice; see the task 2
+fix report); §6.1 gained the counter-overflow rule (roll into `ms`) and the requirement that a split reserve its
+hlcs before assigning any, so a later ordinary tick can't reuse one; §6.2 gained the same overflow rule and refuses
+a single over-budget op outright rather than emitting it alone over 64 KB; §3/§9.1–9.3 correct the duplicate-append
+contract to `200`, not `409` (`409` is only the rotation conflict) and the durable object's `seen` to a `Map` (of
+seq), matching what actually answers a replay.
+
+**Task 4 (apply, merge, seeding)** corrected these once apply ran against real ledgers: §4.3/§7.4 — a line in
+another currency is posted with its carried `amountBaseMinor` as it is, never re-derived from a rounded rate, and
+the rate the pair implies is units of base per *major* unit (the exponents differ: USD 2, IDR 0); §7.4 — the payer's
+own accounts are kept only while `money.paidBy` is still this member, and the difference goes on the largest entry
+*of each currency*; §4.4 — a bill's `payer` keeps a local account only while it is one of this device's own; §7.2/§7.3
+— the tombstone ruling (a row keyed by anything but its own id comes back when made again later), existence-only
+rows, rows whose uniqueness is wider than their id, and a parent that is gone; §6.4 — the harness watches only while
+the book is shared, leaves apply's writes out, and counts drained and applied change-sets; §6.5 — joined books are
+left out of the default-tree upkeep at app open. **Fix round 1:** §7.1 — apply skips only a refusal every
+receiver makes alike and records it in `sync_skipped` (§4.2); anything else rolls the entry back and stops; §6.2/§7.2 —
+a revivable row travels whole but names its changed fields (`Op.changed`), so rule 1 stays per field; §8.4 — a
+removal stamps `device.removedAt`'s clock. **Fix round 2:** §6.2/§7.2 — a revivable op carries each field's own hlc
+(`Op.clocks`), a delete keeps the row's last values beside its tombstone (`sync_tombstones.last_json`), and every
+carried field merges by its own clock (state-based per field), which closes the revive divergence round 1 left open;
+§7.1 — only SQLite CHECK and NOT NULL are skippable (UNIQUE and FOREIGN KEY stop), and a child of an ended parent is
+dropped, not recorded; §8.4 — applying a removal receives its hlc.
+
+**Task 5 (keys)** corrected these once real keys ran: §6.3/§6.6 — the outbox keeps **plaintext** change-sets and the
+engine seals and signs each one **when it drains**, under the book's epoch at that moment (controller ruling: the local
+database is plaintext already, a locked keychain never blocks a save, a rotation between capture and drain seals under
+the newer key); §5.1 — the raw key hashed for the device id is the uncompressed point `0x04 ‖ x ‖ y`, and one function
+(`deviceIdOf`, relay-signing.ts) serves the client, `MemoryTransport` and the relay; §5.4 — an introduction is an entry
+that *carries* the author's own `device` upsert (the seed's first change-set leads with the book and member, so "first
+op" was never true), checked against the relay's key by device id; §6.6 — `deflate` is zlib (RFC 1950) through
+`CompressionStream('deflate')`, needing no fallback on any target; §8.1 — the preview also carries the `bookId`, which
+the joiner needs because every device keeps the book under one id and the entry AAD binds it; §15 — the keychain plugin
+is `@aparajita/capacitor-secure-storage`. Each changed passage says "(task 5)".
+
+**Task 5, fix round 1** (security review; controller rulings C1–C3, I1–I4): §5.4 — a device row is its own device's
+alone: its keys are fixed by its introduction, `removedAt` is set only by a removal entry, and nobody pre-pins another
+device; §6.6 — every entry's signature covers its `bookId`; §8.2 — an introduction carries owner-signed invite terms and
+is checked before its device is pinned, once per invite, and the joiner checks locally before it claims; §8.4 — a
+removal of another device needs an owner, on the relay and in apply, and a removed device's later entries count for
+nothing; §8.5 — only an owner writes a role. All of it in migration `0056_household_sharing` (the once separate 0057 and 0058 were squashed into it before any build shipped; final review, minor 1). Each passage says "(fix round 1)".
+
+**Task 5, fix round 2** (re-review N1, N2, N4b; controller rulings): every authority decision reads the **authority
+view** (`sync_authority`, `sync_authority_devices`, in 0056), which changes only as log entries are applied in seq order —
+this device's own entries included, at their seq — so no local, unsynced edit can make one device decide differently
+from its peers (§7.1, §8.4, §8.5); deleting a member row, or making one again, is an owner's, and the last owner is
+never deleted or demoted (§8.5); a removed device is removed at its place in the log, whatever hlc it picks (§8.4); the
+relay's owners follow the view (§8.5); a reordering relay is recorded as a known gap (§15). Each passage says "(fix
+round 2)". **Fix round 3:** this device's own member edits the view refused are put back on this device, and the
+last-owner guard reads the view (§8.5); §15's gap is worded as needing only the relay.
+
+## 0. What v3 changed
+
+v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
+corrected against the code at `445a655`.
+
+| Finding | Answer in v3 |
+|---|---|
+| **B1** ledger is void-and-replace | The synced thing is a **purchase**, keyed by its **lineage id**; applying a change calls the ledger's own `post`, `replace` and `void` (§4.3, §7). Decided by the owner: option A. |
+| **B2** late joiner cannot read old epochs | The invite wraps **every** epoch key the book has had (§8.1). The cursor never passes an entry it could not apply (§7.1). |
+| **B3** racing rotations | The relay accepts a rotation only at `currentEpoch + 1`, else `409` (§8.4, §9.2). |
+| **B4** leaver mints the key | Removal and rotation are separate acts; a **remaining** device rotates (§8.4). |
+| **B5** synchronizable keychain | Keys are **device-only**. A restored or replaced phone rejoins by invite, always (§5.1). Decided by the owner. |
+| **B6** no initial upload | **Share** seeds the log with every row in scope before the invite is shown (§6.5). Decided by the owner: seed, not snapshots. |
+| **B7** join order | `GET /invites/:id` returns a preview encrypted under `S`; the currency check and the names come before the claim (§8.2). |
+| **M1–M6** tables, scope, keys, columns, `kind` | §4.1 names real tables with a scope rule, a key encoding and a column list each. Sharing state is `shared_books` only. |
+| **M7** shell not on `main` | `KeyStore` interface with a web and a native implementation (§5.2). Merging `feat/ios-testflight` is a precondition of step 2. |
+| **M8** change-set size | Capped at 200 ops and 64 KB; larger writes split (§6.2). |
+| **M9** completeness test | SQLite triggers in the test harness; the existing suite is the test (§6.4). |
+| Minor: drift, replay, pinning, names on relay, restore, cross-refs, pseudocode order, `createBook` | §6.1, §9.1, §5.4, §9.3, §8.7, fixed throughout. |
+| Minor 9: a member changes what the payer paid | **Yes, anything.** Decided by the owner. The history names who (§7.3). |
+
+Still dropped from this build, each behind a named seam: photo sync, snapshots, log retention, R2, websocket push,
+events, category sets, With shares, cross-currency books, entitlement verification, safety number, duplicate hint.
+
+## 1. Purpose
+
+Two people in one household record into one workspace, each paying from their own accounts, and both phones show
+the same book with the same numbers, offline or not.
+
+Decided with the owner: sharing is the **only** thing a server is for; the server **cannot read** anything; **no
+accounts**; the middle is **a relay we run**; the **owner pays**, members join free; the merge is
+**last-writer-wins per field, money as one atom, void wins, no conflict inbox**; any member may change anything in
+the book.
+
+Assumed: a small, trusting household (≤ 5 devices); offline recording untouched; Android is coming.
+
+## 2. Glossary
+
+| Word | Means |
+|---|---|
+| **workspace** (UI) / **book** (DB) | one `books` row; the unit of sharing |
+| **owner scope** | everything keyed by `workspace_id` that is not in a book |
+| **local workspace id** | this device's own `workspace_id`; it differs on every device and is never sent |
+| **purchase** | one expense or income in a book, across all its corrections; identified by its **lineage id** |
+| **lineage id** | the id of the first `transactions` row in a `replaces_transaction_id` chain |
+| **head** | the one row of a lineage whose `status = 'posted'`, or none when the purchase is void |
+| **device** | one install, identified by its signing public key |
+| **member** | a person; one or more devices |
+| **epoch** | one workspace key; rises by one at each rotation |
+
+## 3. Truth and transport
+
+Each device's local SQLite is the truth. The relay is an append-only log per book and a device allow-list.
+
+```ts
+interface SyncTransport {
+  createBook(device: DevicePublic): Promise<{ bookId: string }>;
+  append(bookId: string, entry: LogEntry): Promise<{ seq: number }>;          // duplicate (deviceId,hlc) -> 200, the original seq
+  pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }>;
+  putInvite(bookId: string, invite: InviteRecord): Promise<void>;
+  previewInvite(inviteId: string): Promise<{ preview: Sealed; expiresAt: string; claimed: boolean }>;
+  claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult>;
+  removeDevice(bookId: string, deviceId: string): Promise<void>;
+  setOwners(bookId: string, deviceIds: string[]): Promise<void>;
+  deleteBook(bookId: string): Promise<void>;
+}
+type DevicePublic = { signJwk: JsonWebKey; agreeJwk: JsonWebKey };
+type Sealed = { iv: string; ct: string };                                     // base64url
+```
+
+Implementations: `MemoryTransport` (tests), `RelayTransport` (§9).
+
+## 4. Data
+
+### 4.1 What syncs — `SHARED_ENTITIES`
+
+A constant in `packages/db/src/sync/shared-entities.ts`. One record per synced entity: its table, how a row is
+found to be in a book, how its `Op.id` is built, and **exactly** which fields travel. Nothing outside this list is
+ever sent. `workspace_id` is never sent; **apply stamps the local workspace id on every row it inserts**.
+
+| Entity | Table | In the book when | `Op.id` | Fields that travel |
+|---|---|---|---|---|
+| `book` | `books` | `id = bookId` | `id` | `name`, `base_currency`, `count_events_in_budget`, `archived_at` |
+| `category` | `accounts` | `id` is in `book_categories` for the book | `id` | `name`, `parent_id`, `kind`, `subtype`, `currency`, `icon`, `system_key`, `sort_order`, `archived_at` (check #1–3: there is no colour column) |
+| `category_need` | `category_needs` | `category_account_id` is a category of the book | `category_account_id` | `need` (ruled O4) |
+| `member` | `book_members` | `book_id = bookId` | `member_id` | `name`, `role`, `joined_at` |
+| `device` | `book_devices` | `book_id = bookId` | `device_id` | `member_id`, `name`, `sign_jwk`, `agree_jwk`, `added_at`, `removed_at` |
+| `budget` | `budgets` | `category_account_id` is a category of the book | `id` | `category_account_id`, `amount_minor` |
+| `budget_override` | `budget_overrides` | its `budget_id` is in the book | `id` | `budget_id`, `month`, `amount_minor` |
+| `budget_frequency` | `budget_frequencies` | its budget is in the book | `budget_id` | `frequency`, `amount_as_set_minor` (check #4) |
+| `book_income` | `book_budget_settings` | `book_id = bookId` | `book_id` | `expected_income_minor` |
+| `book_income_override` | `book_income_overrides` | `book_id = bookId` | `bookId + '\|' + month` | `amount_minor` |
+| `bill` | `expense_templates` | `category_account_id` is a category of the book | `id` | `name`, `category_account_id`, `amount_minor`, `day_of_month`, `active`, `archived_at`, **`payer`** (§4.4) |
+| `bill_window` | `bill_windows` | its `template_id` is in the book | `template_id` | `pay_by_day`, `starts_month` |
+| `bill_skip` | `bill_skips` | its `template_id` is in the book | `templateId + '\|' + month` | (existence only) |
+| `purchase` | `transactions` + `entries` + `book_transactions` + `transaction_flags` + `bill_payments` | the lineage's head is in `book_transactions` for the book (the ledger tags only a posting with an income or expense line; check #9) | **lineage id** | §4.3 |
+
+`book_categories` and `book_transactions` are not entities. Apply writes a `book_categories` row whenever it inserts a
+`category`. `postTransactionTx` writes `book_transactions` itself, from the categories' book (check #10).
+
+**Local on insert.** Some columns are `NOT NULL` with no default and never travel: every `created_at`, the
+`updated_at` of `budgets` and `book_budget_settings`, and `books.kind`. Apply writes a local value for them: now, and
+`'shared'` for `books.kind`. Each record's `localOnInsert` names them (check #7).
+
+**Composite keys** are joined with `|` in the column order shown, never including `workspace_id`.
+
+**Never syncs:** transfers between asset accounts (they belong to no book); every owner-scope table; `settings`,
+`fx_rates`; photos; `transactions.source`, `external_ref`, `event_id`, `card_id`, `goal_id`, `mcc`,
+`replaces_transaction_id`, `created_at`; `entries.id`, `spend_category_id`, `fx_rate_to_base` (`amount_base_minor` travels inside `money`, ruled O2);
+`books.kind`, `sort_order`, `created_at`; `accounts.valuation_mode`, `created_at`; every other `created_at` and
+`updated_at` (check #8). `NEVER_SYNCED_COLUMNS` in the constant is the complete list.
+
+Step 0 confirmed each row of this table against the code. `book_members` and `book_devices` come with migration
+0056 (check #11). The constant is the truth, and its test fails when a synced table gains a column nobody has sorted.
+
+### 4.2 New tables — migration `0056_household_sharing.sql`
+
+Side tables only; no column is added to any existing table.
+
+```sql
+CREATE TABLE shared_books (
+  book_id       TEXT PRIMARY KEY,
+  relay_book_id TEXT NOT NULL,
+  epoch         INTEGER NOT NULL,   -- the epoch this device writes under
+  member_id     TEXT NOT NULL,      -- this device's member
+  state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
+  shared_at     TEXT NOT NULL,
+  synced_at     TEXT,               -- task 9a: when this device last finished a sync of the book (§11)
+  unshared_by   TEXT,               -- task 9a: the member who ended the sharing here (§8.4, §8.6)
+  unshared_reason TEXT              -- final review I2: 'stopped' | 'left' | 'removed'
+);
+CREATE TABLE book_members (
+  book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
+  role TEXT NOT NULL,               -- 'owner' | 'member'
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY (book_id, member_id)
+);
+CREATE TABLE book_devices (
+  book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
+  sign_jwk TEXT NOT NULL, agree_jwk TEXT NOT NULL,     -- pinned public keys (§5.4)
+  added_at TEXT NOT NULL, removed_at TEXT,
+  PRIMARY KEY (book_id, device_id)
+);
+CREATE TABLE book_member_accounts (                     -- the hidden placeholder account per other member and currency
+  account_id TEXT PRIMARY KEY, book_id TEXT NOT NULL, member_id TEXT NOT NULL, currency TEXT NOT NULL,
+  UNIQUE (book_id, member_id, currency)                 -- ruled O2
+);
+CREATE TABLE book_epoch_keys (
+  book_id TEXT NOT NULL, epoch INTEGER NOT NULL, key_sealed TEXT NOT NULL,   -- §5.5
+  PRIMARY KEY (book_id, epoch)
+);
+CREATE TABLE sync_lineage (                             -- purchase -> its current head
+  lineage_id TEXT PRIMARY KEY, book_id TEXT NOT NULL,
+  head_transaction_id TEXT,                             -- NULL once void
+  paid_by TEXT NOT NULL, paid_label TEXT NOT NULL
+);
+CREATE INDEX sync_lineage_head ON sync_lineage (head_transaction_id);   -- final review, minor 1
+CREATE TABLE sync_outbox (
+  id TEXT PRIMARY KEY, book_id TEXT NOT NULL, hlc TEXT NOT NULL, entry_json TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX sync_outbox_book_hlc ON sync_outbox (book_id, hlc);        -- final review, minor 1
+CREATE TABLE sync_cursor (
+  book_id TEXT PRIMARY KEY, applied_seq INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE sync_field_clocks (
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id, field)
+);
+CREATE TABLE sync_kept_clocks (                         -- recovery review N2: clocks and values kept while a share is down (§8.6, §8.7)
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id, field)
+);
+CREATE TABLE sync_tombstones (
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
+  last_json TEXT,                                       -- fix round 2: a revivable row's last values, for a revive to merge with
+  PRIMARY KEY (book_id, entity, id)
+);
+CREATE TABLE sync_skipped (                             -- task 4 fix round 1: an op apply refused, never silent (§7.1)
+  book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
+);
+CREATE TABLE sync_invites_used (                        -- task 5 fix round 1: one device per invite (§8.2)
+  book_id TEXT NOT NULL, invite_id TEXT NOT NULL, device_id TEXT NOT NULL,
+  PRIMARY KEY (book_id, invite_id)
+);
+CREATE TABLE sync_authority (                           -- task 5 fix round 2: the authority view, members (§8.5)
+  book_id TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT NOT NULL, role_hlc TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0, row_hlc TEXT NOT NULL,
+  PRIMARY KEY (book_id, member_id)
+);
+CREATE TABLE sync_authority_devices (                   -- task 5 fix round 2: the authority view, devices (§8.4)
+  book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL,
+  removed_seq INTEGER,                                  -- the seq of the removal entry that removed it
+  added_seq   INTEGER,                                  -- task 9a fix round 1: the seq of the entry that admitted it
+  PRIMARY KEY (book_id, device_id)
+);
+```
+
+**Sharing state is `shared_books`, never `books.kind`.** `kind` is a label the owner picked and stays whatever it
+was on the owner's device. A joiner inserts the book with `kind = 'shared'`, so it is never the joiner's
+`'personal'` book and `personalBook()` stays unambiguous.
+
+### 4.3 A purchase
+
+A purchase is a lineage. The ledger edits by voiding a row and posting its replacement
+(`ledger.ts` — "Edit = void the original and post the replacement atomically"), so a purchase's row id changes at
+every correction and its lineage id never does. `sync_lineage` maps one to the other.
+
+Fields of a `purchase`, each with its own clock:
+
+| Field | From | Type |
+|---|---|---|
+| `occurredOn` | `transactions.occurred_on` | `YYYY-MM-DD` |
+| `description` | `transactions.description` | string |
+| `channel` | `transaction_flags.channel` | `'online' \| 'offline' \| null` |
+| `excluded` | `transaction_flags.excluded` | `0 \| 1` |
+| `bill` | `transactions.template_id` + `bill_payments` (check #5) | `{ templateId, billMonth } \| null` |
+| `money` | `entries` + two `transactions` columns | the atom below |
+| `void` | `transactions.status` of the head | `true`, written once |
+
+```ts
+type Money = {
+  lines: {                        // entries on income/expense accounts, signed as stored (check #6)
+    categoryId: string;
+    amountMinor: number;           // in `currency`
+    currency: string;
+    amountBaseMinor: number;       // the same line in the book's currency (ruled O2)
+    memo: string | null;
+  }[];
+  originalCurrency: string | null;
+  originalAmountMinor: number | null;
+  paidBy: string;      // member_id
+  paidLabel: string;   // "BCA KrisFlyer ···· 1467"
+};
+```
+
+The book's currency is every member's workspace base currency: §8.2 checks the joiner, and §6.5 refuses to share
+a book whose currency is not the owner's (ruled O3). So on every device, `entries.amount_base_minor` is the line in
+the book's currency, and a line in the book's currency has `fx_rate_to_base = 1` and needs no rate.
+
+A line in **another currency** is possible, for example in history paid from a USD card before sharing. It carries
+both figures: `amountMinor` in its `currency`, and `amountBaseMinor` (ruled O2). A receiver posts the line with its
+carried `amountBaseMinor` **as it is** (task 4 correction): `PostingLine.amountBaseMinor` tells `planPosting` to keep
+the figure and to put a currency's rounding difference only on a line that carries none. Re-deriving it from
+`amountBaseMinor / amountMinor` (v3) used a rounded ratio, so a receiver's figure could be off by one minor unit from
+the payer's, and the projections would never agree. `planPosting` balances each currency on its own, so the money side
+takes one placeholder entry per currency (§4.4, §7.4); its base figure is derived with the rate the pair implies —
+units of base per **major** unit, `|amountBaseMinor / amountMinor| × 10^(exp(currency) − exp(base))` (v3 left out the
+exponents) — and takes the currency's difference, so the atom balances exactly. A zero amount never occurs (`planPosting`
+refuses it), and a pair whose base is zero gives no rate (every line of that currency then carries its figure).
+
+**Category side and money side.** An entry on an account whose `kind` is `income` or `expense` is a `line`. Every
+other entry of the row is the **money side**. `paidLabel` is built on the payer's device from the money side: the
+account's name, plus `' ···· ' + last4` when `transactions.card_id` names a card; with more than one money-side
+account, the names joined by `' + '`.
+
+### 4.4 Placeholder accounts, and the bill's payer
+
+On a device that did not pay, the money side is posted against a **placeholder account** for the payer: one
+`accounts` row per other member, per book and per currency — `kind = 'asset'`, `subtype = 'cash'`, `name` = the
+member's name, `currency` = the currency of the lines it balances (the book's, nearly always) — with a
+`book_member_accounts` row keyed `(book_id, member_id, currency)` (ruled O2). An asset account must have a currency
+(`accounts` CHECK), so one placeholder cannot take them all. Created on first need.
+
+Placeholder accounts are excluded from the Accounts page, Net worth, every Paid-with and Transfer picker, the tax
+report, the health ratios, goal funding and idle cash. Their balance is never shown. Every other reader sees an
+ordinary transaction. **Editing another member's purchase (final review, minor 2):** the edit form reads the
+placeholder the purchase is posted against so the row can open as saved, but the Paid-with picker never offers it —
+only the account the row already names stays, as its current value, read as **"Paid by Dewi"**, never "Dewi (IDR)"
+(`withoutPlaceholders`, `placeholderLabel` in quick-row.ts; the card, the phone's edit sheet and the buy form alike).
+
+The exclusion is one shared predicate, `notPlaceholder(column)` = `column NOT IN (SELECT account_id FROM
+book_member_accounts)`, applied in each reader that lists asset accounts (check §3, fix round 1):
+
+- `listAccounts` (`accounts.ts`), with an `includePlaceholders` opt-in for the receipt and the sync code. It feeds
+  the Accounts page, the pickers, Net worth's money list and the tax report rows.
+- `assetValuesAt` (`asset-values.ts`). It feeds `netWorthAt`, `sheetInputsAt` (the health ratios),
+  `coretaxInputsFor`, goal funding and idle cash.
+- `coretaxInputsFor`'s own account read (`tax-inputs.ts`).
+
+`nativeBalances` keeps returning every account. Its consumers index it by accounts they listed through the readers
+above, and none of them iterates its keys.
+
+`expense_templates.money_account_id` is `NOT NULL` and names an owner's account. A `bill` therefore travels with
+the field **`payer`** `= { memberId, label }` in place of the column. Apply writes `money_account_id` = the
+existing local value when `memberId` is this device's member, the row already exists **and that value is one of this
+device's own accounts, not a placeholder** (task 4 correction: otherwise a bill handed back to its first payer would
+keep the other member's placeholder here and read as theirs); otherwise the placeholder account for `memberId`. That
+includes this device's own member on a device that has no account of theirs for it — a second device of the same
+person — which is why a placeholder can belong to this device's own member. The convergence test compares `payer` by
+member only: the label is the paying device's account name and is kept nowhere on the others. A member who pays a bill someone else set up picks their own account in the form, which
+changes `payer`.
+
+In a shared book the add form draws the currency flag **disabled** and offers no **With** row.
+
+## 5. Keys
+
+All WebCrypto; no library added.
+
+| Purpose | Algorithm |
+|---|---|
+| Device signing | ECDSA P-256 with SHA-256 |
+| Device agreement | ECDH P-256 |
+| Epoch key | AES-GCM, 256-bit, 32 random bytes |
+| Derivation | HKDF-SHA-256 |
+
+### 5.1 Device identity
+
+Two key pairs generated at first launch. `deviceId = hex(SHA-256(raw public signing key))[0:32]`, the raw key being
+WebCrypto's `raw` export of the P-256 point, `0x04 ‖ x ‖ y` (65 bytes). One function computes it everywhere —
+`deviceIdOf` in `relay-signing.ts`, for the client, `MemoryTransport` and the relay alike (task 5).
+
+**Device-only.** Never synchronised, never in the database, never in a backup. A phone that is replaced, or
+restored from a backup file, is a new device and rejoins every shared workspace by invite (§8.7). The Share screen
+says so in one line.
+
+### 5.2 `KeyStore`
+
+```ts
+interface KeyStore {
+  getOrCreateDevice(): Promise<{ deviceId: string; sign: CryptoKeyPair; agree: CryptoKeyPair; public: DevicePublic }>;
+  hasDevice(): Promise<boolean>;
+}
+```
+
+| Implementation | Used by | Stores |
+|---|---|---|
+| `WebKeyStore` | browsers, Playwright, the desktop web build | **non-extractable** `CryptoKey` pairs in IndexedDB, database `cicis-keys` |
+| `NativeKeyStore` | the Capacitor shell, iOS and later Android and Mac | JWK pairs in the platform keychain, iOS class `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` |
+
+Chosen by `isNative()`. The native implementation needs the Capacitor shell, which is on `feat/ios-testflight` and
+not on `main`: **merging that branch is a precondition of step 2.**
+
+**As built (task 5).** The interface, `generateDevice`, the keychain JWK round trip (`exportDeviceJwks` /
+`importDeviceJwks`, private keys imported back non-extractable) and `MemoryKeyStore` (Node and tests; a fresh instance
+is a fresh device) are in `packages/db/src/sync/keys.ts`. `WebKeyStore`, `NativeKeyStore` and `createKeyStore()` are in
+`apps/web/src/sync/key-store.ts`. `WebKeyStore` writes the pairs in one IndexedDB transaction that keeps whatever is
+already there, so two tabs at first launch end with one device. `NativeKeyStore` uses
+`@aparajita/capacitor-secure-storage` 8.x (Capacitor 8): key prefix `cicis-keys.`, `setSynchronize(false)` (no iCloud
+keychain), `KeychainAccess.afterFirstUnlockThisDeviceOnly` (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), and
+the keychain holds strings, so the pairs are generated extractable once, written as JWK and imported back without it.
+The device id reaches capture through one seam: the engine puts the KeyStore's `deviceId` in the capture config, and
+`localDeviceId(tx)` returns it. **The engine exists before the first write (final review, I3):** `openAppDb` readies
+`SyncService.prepare()` between the migration and `ensureCategoryKeys`, so nothing the open writes into a shared book
+is stamped before the id is known. A random stand-in in `settings` is minted only by a database that says it has no
+engine (`standInDeviceId` in the capture config — a capture-only test, the §6.4 harness); otherwise, with an active
+shared book and no id configured, `localDeviceId` throws rather than stamp a change with an id no key vouches for —
+`SyncNotReadyError`, in words for the screen that tried the write: *"Sharing isn't ready on this device yet, so this
+shared workspace can't be changed. Close the app, open it again, and try once more."* (recovery review, minor). And
+apply refuses, as a recorded skip, any entry whose change-set hlc names a device other than the entry's signed author.
+
+### 5.3 Sealing an epoch key for a device (rotation)
+
+```
+eph     = generate ECDH P-256 pair
+shared  = ECDH(eph.private, device.agreePublic) → 256 bits
+wrapKey = HKDF(shared, salt = utf8(bookId), info = utf8('cicis-epoch-v1')) → AES-GCM 256
+ct      = AES-GCM(wrapKey, iv = random(12), data = epochKey, aad = utf8(bookId + ':' + epoch + ':' + deviceId))
+record  = { deviceId, epoch, ephJwk, iv, ct }
+```
+
+### 5.4 Whose key is it — pinning
+
+A device trusts a signing key only if it is in its own `book_devices`. The relay's copy is used for one thing:
+checking the signature on the entry that introduces a device. That entry is an ordinary encrypted change-set that
+carries the `device` upsert of its own author, with the device's own `sign_jwk` and `agree_jwk` (task 5: "whose first
+op is" was never true of the seed, whose first change-set leads with the book and the owner's member). Writing it requires the epoch
+key, which requires `S`, which the relay never has — so the relay cannot introduce a device. Apply checks that the
+entry's signature verifies under the key **inside** it and that the relay-supplied key matches; from then on, only
+the pinned key. Rotations seal for the devices in `book_devices`, never for a list the relay supplies.
+
+**As built (task 5).** "Matches" is by device id: the key inside and the relay's key must both derive to the entry's
+`deviceId`. An unpinned device's `removal` or `rotation` is refused outright, as is a `change` without its author's
+`device` op; a refusal stops the loop at that entry with `bad signature` (§7.1). The change-set inside must carry the
+entry's own hlc.
+
+**A device row is its own device's (fix round 1, C1).** A `device` op is applied only when its author is that device;
+any other is a recorded skip, so nobody can pre-pin a device that never introduced itself or re-pin one that did.
+`signJwk`, `agreeJwk`, `memberId` and `addedAt` are written once, by the introduction, and the key must be the one the
+entry verified under (it derives to the device's id); later ops of the device carry them and they are dropped. A device
+op is never a delete. `removedAt` is never taken from an op — only a removal entry (§8.4) sets it. Capture and seeding
+emit only this device's own `device` row. An introduction is then admitted only on the terms of §8.2. `pinning.test.ts` covers a device on the
+relay that holds the epoch key but never introduced itself, an introduction carrying another key, and a relay that
+swaps a pinned device's key to pass a forged entry.
+
+### 5.5 At rest
+
+`book_epoch_keys.key_sealed` is the JSON of §5.3's record sealed for this device's own agreement key, with
+`info = 'cicis-at-rest-v1'`. Without the device key the epoch keys do not open.
+
+**As built (task 5).** `Sealer` (`seal.ts`) opens each on first use and keeps it in memory; one that does not open
+(another device's keys: a restored backup) reads as missing.
+
+## 6. Change-sets
+
+### 6.1 The clock
+
+```
+hlc = hex(ms, 12 digits) + hex(counter, 4 digits) + '-' + deviceId          // compared as strings
+```
+
+On a local write: `ms = max(nowMs, lastMs)`; if `ms == lastMs` then `counter += 1` else `counter = 0`. If `counter`
+would overflow its 4 hex digits (> 0xffff), it rolls into `ms` instead: `ms += 1, counter = 0`. On applying a
+change-set (standard HLC receive): if the remote `ms > lastMs`, adopt it wholesale — `lastMs = ms, counter =
+its counter`; if `ms == lastMs`, take the higher counter. An older or equal-and-not-higher message changes nothing.
+Keeping only `lastMs` here (an earlier draft of this rule) is wrong: it lets a local write made right after
+receiving sort *before* the change-set that caused it, when the two happen to tie on `ms`. `last` — `{ ms, counter
+}` — is kept in `settings` under `sync.hlc`.
+
+A local write cut into several change-sets (§6.2) reserves all of their hlcs from the clock in one step, before
+any is assigned, so a later ordinary local tick can never re-hand-out a counter a split already used.
+
+**Drift.** A change-set whose `ms` is more than **24 hours** ahead of the receiving device's clock is not applied
+and **blocks the cursor** (§7.1) until the device's own clock passes `ms − 24h`. A phone with a wrong clock cannot
+win every field for ever.
+
+### 6.2 Shape and size
+
+```ts
+type ChangeSet = { v: 1; hlc: string; member: string; ops: Op[] };
+type Op =
+  | { entity: string; id: string; op: 'upsert'; fields: Record<string, unknown>;    // only fields that changed …
+      changed?: string[];                                                           // … or, for a revivable row (§7.2), all, naming these,
+      clocks?: Record<string, string> }                                             // and the hlc each other carried field last changed at
+  | { entity: string; id: string; op: 'delete' };
+```
+
+A `purchase` is never `delete`d; it is voided by an upsert of `{ void: true }`.
+
+At most **200 ops** and **64 KB** of JSON per change-set. A local database transaction that produces more is split
+into several change-sets with consecutive HLCs (counter + 1 each, rolling into `ms` on overflow per §6.1), in op
+order. An import of 3,000 rows is fifteen entries. A single op whose own JSON already exceeds 64 KB is refused
+outright — never emitted alone over budget.
+
+### 6.3 Capture
+
+Two capture points, both in `packages/db/src/sync/capture.ts`, both running inside the caller's database
+transaction so a change-set is durable exactly when its rows are.
+
+**Rows edited in place** — every entity except `purchase`:
+
+```ts
+await withCapture(tx, { bookId, entity, id }, async () => { /* the existing write */ });
+```
+
+Reads the entity's fields before, runs the write, reads after; emits an upsert with the fields that differ, or a
+delete if the row is gone.
+
+**Purchases** — at the two places the ledger writes a transaction (check #14):
+
+| Ledger function | Records |
+|---|---|
+| `postTransactionTx` (every insert of `transactions` and `entries`) | the new row's lineage: `replacesTransactionId`'s lineage when it has one, else a new lineage whose id is the root of its `replaces_transaction_id` chain (the new id, for a fresh post) |
+| `markVoidTx` (the only writer of `status = 'void'`; reached from `voidTransactionTx` and `replaceTransaction`) | the voided row's lineage |
+
+Before the db transaction commits, each touched lineage of a shared book is resolved by its **net effect**:
+
+| Before → after | Emits |
+|---|---|
+| no lineage → a posted head in the book | upsert of every field; inserts `sync_lineage` with `head` = the new id and `paid_by` = this member |
+| a head → another posted head in the book | project both (§4.3); upsert the fields that differ; `sync_lineage.head` = the new id |
+| a head → no posted head in the book (voided, or re-filed with no category line; check #18) | upsert `{ void: true }`; `sync_lineage.head = NULL` |
+
+That one rule covers `replaceTransaction` (a `markVoidTx` then a `postTransactionTx` with `replacesTransactionId`).
+It also covers `trades.ts`, which replaces a recalculated sell with `voidTransactionTx` and then `postTransactionTx`,
+so the pair is not read as a void. And it covers the deposit-event recursion in `voidTransactionTx`. Hooking the
+three exported functions separately would read every replacement as a new lineage.
+
+**Where the flush runs (ruled O1).** `createDatabase().transaction` opens a capture session for each db
+transaction. The mutex already serialises transactions, so there is one current session per `Database`. The two
+capture points add the lineages they touch, and `withCapture` adds its row ops. After `fn` resolves and **before
+`COMMIT`**, the session is flushed. It resolves the lineages, writes `sync_field_clocks`, and cuts the change-sets and
+inserts them into `sync_outbox` as plaintext JSON, all inside the same transaction (task 5: sealing moved to drain,
+§6.6). If `fn` throws, the session is dropped along
+with the `ROLLBACK`. Writes through `database.db` outside a transaction are never ledger writes, so they open no
+session.
+
+Nothing else needs rerouting (check #15). `events.tagTransaction` (`event_id`), `set-aside-tx`
+`parkForGoalTx`/`carryTaggedTx` (`goal_id`) and `ledger.setTransactionMcc` (`mcc`) update in place only columns
+that never travel. Every other writer reaches the ledger through `postTransactionTx` or `voidTransactionTx`. The check
+lists them.
+
+After capture, for each emitted field: `sync_field_clocks[book, entity, id, field] = hlc`. At commit the ops are
+cut into change-sets (§6.2) and inserted into `sync_outbox`; each is sealed and signed (§6.6) when the engine drains it.
+
+A write outside a shared book emits nothing and costs one lookup.
+
+### 6.4 Nothing escapes capture
+
+In the **test harness only** (`packages/db/test/sync/capture-harness.ts`), `installCaptureTriggers(db, bookId)` creates
+TEMP triggers on every table named in `SHARED_ENTITIES`: `AFTER INSERT`, `AFTER UPDATE OF <the synced columns>` (only
+when one of them really changed), and a delete trigger. They watch only the synced columns, so an in-place write to a
+column that never travels (check #15) is not a miss. A row entity's delete trigger is **`BEFORE DELETE`**: its scope
+test reads the row itself, which an `AFTER DELETE` trigger can no longer see (task 3 correction). Each trigger writes
+to a temp table `__writes` the table, the key, the op, the outbox's **high-water mark** at the time of the write
+(`max(rowid)` of `sync_outbox`), and what changed: a row entity's before-image, a purchase table's changed column names.
+
+After every test, a global `afterEach` fails the test if `__writes` holds a write to a row of the shared book that no
+op accounts for. **An op accounts for a write only if it was sealed after the write's high-water mark and carries the
+field the changed column feeds** (task 3 fix round 1; an earlier "any op for that id, ever" rule could not catch a
+second uncaptured write to a row already seen):
+
+- A row entity is judged by its end state against what peers will end up with: for each synced field, the value in
+  the latest op after the mark that carries it, else the first write's before-image. Any difference is a miss, so a
+  captured A→B followed by an uncaptured B→A is caught (fix round 2). A row that is gone needs a delete; a new row
+  needs an upsert. A row deleted and written back as it was needs nothing.
+- A purchase row written in place (its transaction not inserted in the same batch) needs an op naming the purchase
+  field (`PurchaseEntity.fields`) of each changed column. Every touched lineage must have a `sync_lineage` row whose
+  head is the lineage's posted head in the book (that is how a void or a missed replacement is caught), unless it has
+  neither (a purchase posted and voided in one transaction, which no other device ever saw).
+  The head's projection must also read as the latest op's value for each field an op carried since the first write.
+- Raw SQL a test runs through `database.execScript` (a fixture such as "archive this row") is not a repository write
+  and is dropped from the watch. No repository writes data through `execScript`; only migrations use it.
+
+**As built (task 4).** Three refinements, each proven by `capture-harness.test.ts`: every trigger fires only while the
+watched book has an `active` `shared_books` row (a write to a book not yet shared needs no op — §6.3); a write made
+inside `withCapturePaused` (apply writing what another device emitted, §7.2) is left out — the capture config's
+`pausedWrites` observer marks those, and only those, in `temp.__apply_paused` — and the change-set being applied joins
+the ops a later local write is judged against, the latest **hlc** carrying a field being its end value; and the ops
+come from `temp.__sealed`, a copy of every change-set as it enters `sync_outbox`, so an entry the engine has drained to
+the relay still accounts for its writes (the mark is that table's seq, not the outbox's reusable rowid).
+
+The whole existing suite, run against a database whose first workspace's Personal book is shared, is the completeness
+test; no repository function is called by hand. The command is **`npm run test:capture`** (in `packages/db`, or at the
+repo root). `packages/db`'s `npm test` runs the plain suite and then the capture run (`vitest run && vitest run --config
+vitest.capture.config.ts`), so a red plain pass short-circuits the capture pass: fix it, or run `npm run test:capture`
+on its own.
+
+### 6.5 Seeding — sharing a workspace that already has history
+
+**Share this workspace**, before any invite exists:
+
+0. **Currency check (ruled O3).** If the book's `base_currency` is not the owner's workspace base currency, refuse
+   with §8.2's sentence the other way round: *"This workspace keeps its money in SGD; this app keeps yours in IDR.
+   Sharing across currencies isn't supported yet."* Nothing is created. Once shared, the book keeps that currency:
+   **Reads in** is not offered for a shared workspace and `setBookBaseCurrency` refuses it (`SHARED`; final review,
+   minor 3), since every device joined on it.
+
+1. Create the relay book; insert `shared_books`; mint epoch 1.
+2. Emit, in this order, upserts of every row in scope with **all** its fields: `book`, `member` (self), `device`
+   (self), `category` (parents before children) and its `category_need`, `budget` and its dependents, `bill` and its dependents, then every
+   non-void `purchase` oldest first with `paidBy` = this member.
+3. Cut into change-sets (§6.2), each with a fresh HLC; write `sync_field_clocks`; put in `sync_outbox`.
+4. Drain the outbox. Only when it is empty is the invite created and shown. While it drains the screen says
+   "Preparing 1,204 of 3,120".
+
+Voided rows are not seeded: a purchase that was void before sharing never existed for the other member.
+
+**Sharing again (recovery review, N2).** Step 3's "fresh HLC" is right for a book shared for the first time, and wrong
+for one shared before: a fresh clock on every field overwrote, on a member's rejoining copy, every edit that member made
+after the sharer's clocks stopped moving (a restored phone's backup, a stopped share) — the ruled C1 recovery left the
+two copies different for good. A book shared before is seeded at the clocks it **kept**: each field whose value is
+unchanged since goes at its own clock, a field changed while nothing was captured at a fresh one, and a field with no
+clock at the seed's (`Op.changed` names those; `Op.clocks` carries the rest, as for a revivable row, §7.2). Every
+purchase void here goes out as `{ void: true }` at its clock, and a row deleted while nothing was captured as a delete
+(`catchUpTx`, `seed.ts`), so a copy that rejoins ends as this one does and LWW decides every field alike everywhere.
+Clocks are kept — with each field's value then, in `sync_kept_clocks` — the moment this device stops keeping them: the
+book goes `needs_invite` (§8.7), or its sync state is dropped by Stop sharing or Keep as my own copy (§8.6)
+(`keepClocksTx`). On the next share or rejoin, a purchase voided or corrected meanwhile gets its `sync_lineage` head put
+right first, and the kept rows go.
+
+**As built (task 4).** `SyncEngine.shareBook` (`packages/db/src/sync/engine.ts`) runs step 0 before the relay book
+exists, then `seedBookTx` (`seed.ts`) writes steps 1–3 in one transaction; `syncOnce` drains. Task 5: epoch 1's key is
+minted and stored at rest in the seed's transaction, and a seed that fails deletes the relay book again, so a failed
+Share leaves nothing on the relay and can simply be tried again. The app's default-tree upkeep at open (`ensureCategoryKeys`, `ensureDefaultCategorySets`) skips a book this
+device **joined** — a `shared_books` row on a book it holds as `kind = 'shared'` — because its keyed and default
+categories arrive by sync under the owner's ids and category-set membership never syncs. The owner's own shared book is
+not skipped: what the owner's device adds to it is captured and reaches everyone once, and skipping it would stop the
+capture run's shared Personal book from getting its defaults.
+
+### 6.6 The log entry
+
+```ts
+type LogEntry =
+  | { kind: 'change';   deviceId: string; epoch: number; hlc: string; iv: string; ct: string; sig: string }
+  | { kind: 'removal';  deviceId: string; epoch: number; hlc: string; target: string; sig: string }
+  | { kind: 'rotation'; deviceId: string; epoch: number; hlc: string; sealed: SealedFor[]; sig: string };
+type SequencedEntry = LogEntry & { seq: number; signJwk: JsonWebKey };
+```
+
+`ct = AES-GCM(epochKey[epoch], iv = random(12), data = deflate(utf8(JSON(changeSet))), aad = utf8(bookId + ':' +
+epoch + ':' + deviceId))`. `sig = ECDSA(sign.private, SHA-256(utf8(JSON(entry without sig, keys sorted))))`.
+Everything binary is base64url. A `rotation`'s `epoch` is the **new** epoch.
+
+**Fix round 1 (I1).** The signed bytes are `canonicalJson({ ...entry without sig, bookId })`: every entry kind names the
+(local, shared) book it belongs to, so a device's signed `removal` or `rotation` cannot be replayed into another book it
+shares. A `change` was already bound to its book by its AAD.
+
+**As built (task 5).** A change-set is sealed **when the outbox drains**, not at capture (controller ruling): the outbox
+keeps it as plaintext — the local database holds the same rows in the clear — so a locked keychain never blocks a save,
+and a rotation between capture and drain seals it under the newer key. `deflate` is zlib (RFC 1950) through
+`CompressionStream('deflate')`, which browsers, WKWebView (iOS 16.4+), Node ≥ 18 and Workers all have: no fallback. The
+signed bytes leave out what the relay adds on the way back (`seq`, `signJwk`). `removal` and `rotation` entries are signed
+the same way. `SyncEngine.drain` reads `shared_books.epoch` and seals each outbox row under it; a retry after a lost
+answer seals again and the relay answers with the first seq (§9.1). **Never under an epoch the log has rotated past
+(final review, I1):** `syncOnce` pulls before it drains (pull → drain → pull), and both relays answer `409 { error:
+'stale epoch' }` to a `change` whose `epoch` is below the book's; on that answer `drain` pulls the rotation in and seals
+the same plaintext again under the new epoch. A device offline across a removal therefore never hands the removed device
+its backlog. `crypto.kat.test.ts` checks HKDF (RFC 5869),
+AES-GCM (the GCM specification's test cases 13, 14, 16), ECDSA P-256 (RFC 6979 A.2.5) and ECDH P-256 (NIST CAVS).
+
+No entry carries a name. Device and member names travel only inside `change` entries.
+
+## 7. Apply and merge
+
+### 7.1 The loop
+
+```
+entries = pull(bookId, applied_seq)
+for e in entries, in seq order:
+  verify e.sig                       # key pinned in book_devices; or, for a device's first entry, §5.4
+    on failure: stop; state = error 'bad signature at seq N'; do not advance
+  if e.kind == 'rotation':  open my record in e.sealed; store book_epoch_keys[e.epoch]; shared_books.epoch = e.epoch
+  if e.kind == 'removal':   book_devices[e.target].removed_at = now; maybeRotate()        # §8.4
+  if e.kind == 'change':
+    key = book_epoch_keys[e.epoch]; if missing: state = 'needs_invite'; stop
+    cs = JSON(inflate(decrypt(e)))
+    if ms(cs.hlc) > nowMs + 24h: stop                                                     # §6.1
+    apply(cs)                                                                             # §7.2, one db transaction
+  applied_seq = e.seq                 # same transaction as the apply
+```
+
+**The cursor never passes an entry that was not applied.** Every `stop` leaves `applied_seq` where it was; the next
+tick tries the same entry again.
+
+**The authority view (fix round 2).** Who may do what is never read from `book_members` or `book_devices`, which a
+local edit not yet synced can change, but from the authority view: `sync_authority` (each member's role and whether it
+is deleted, each with the hlc it last changed at) and `sync_authority_devices` (each admitted device, its member, and the
+seq of the removal that removed it). The view changes only as the loop applies entries, in seq order, and this device's
+**own** entries are opened and taken into the view at their seq too (their rows are already true here and are not
+written again; a refusal of one is recorded here as on every peer). Removal authority, the owner devices an invite's
+terms must verify under, role and member-row authority, I2, the devices a rotation seals for, and the relay's owner set
+all read it. A rejoin (§8.7) clears it and rebuilds it from seq 0.
+
+**As built (task 5).** `pullAndApply` takes the device's `Sealer`. A missing epoch key sets `state = 'needs_invite'` and
+stops with `needs invite`. A rotation not sealed for this device (added after the rotator last pulled) stores nothing;
+the next entry under the new epoch then stops the same way. `PullResult` reports the removals applied (with their epoch)
+and the devices first pinned, for §8.3 and §8.4.
+
+**As built (task 4).** `pullAndApply` (`packages/db/src/sync/apply.ts`). An entry this device wrote is already true
+here and only moves the cursor (a restored backup is a new device, §5.1, so this never skips anything it lacks). A
+removal is applied by its author too.
+
+**Skips (fix round 1).** Each op runs in a savepoint. Only a refusal every receiver makes alike from the carried data
+is skipped: a SQLite `CHECK` or `NOT NULL` failure (fix round 2: `UNIQUE` and `FOREIGN KEY` depend on rows only this
+device has, so they stop the loop like a bug); `PostingError` `TOO_FEW_LINES`, `ZERO_AMOUNT`, `UNBALANCED`, `NOT_INTEGER`;
+`LedgerError` `INVALID_DATE`, `INVALID_ORIGINAL`, `INVALID_MCC`, `INVALID_BILL_MONTH`; and a row whose parent is gone
+with nothing here to say why. A row whose parent's own tombstone ended it (a removed budget, or one that lost to a
+sibling) is dropped quietly on every device alike, as rule 3 drops ops for an ended row; it is not a skip.
+The op is rolled back to its savepoint, recorded in `sync_skipped` (book, seq, entity, id, error, when) and returned in
+`PullResult.skipped`, and the entry goes on. Anything else is a bug: it is rethrown, the entry's transaction rolls
+back, and the cursor stays before it — a stop like any other, retried on the next tick. The property tests require no
+skip at all.
+
+### 7.2 Applying one change-set
+
+Capture is switched off for the duration, so applying never re-emits.
+
+```
+for op in cs.ops, in order:
+  if op.entity == 'purchase': applyPurchase(op, cs); continue
+  T = tombstones[op.entity, op.id]; revivable = the entity's Op.id is not its own minted `id`
+  if op.op == 'delete':
+    if not revivable: tombstones[...] = max(T, cs.hlc); delete the row; continue            # rule 3
+    if T >= cs.hlc or clock[..., '@row'] > cs.hlc: continue      # made again after this delete: it lost
+    tombstones[...] = (cs.hlc, the row's last values); delete the row; continue   # values and clocks are kept
+  at(f) = f in (op.changed ?? keys(op.fields)) ? cs.hlc : min(op.clocks[f], cs.hlc)   # re-review NEW-1: never later than cs
+  winners = { f: op.fields[f] for f in keys(op.fields) if at(f) and (clock[op.entity, op.id, f] is null or at(f) > clock[...]) }
+  if T exists:
+    if not revivable: continue
+    if cs.hlc <= T: merge winners into the tombstone's kept values; record their clocks; continue   # still dead
+    (the row is made again later: alive again; the tombstone goes once it is inserted)
+  if revivable: clock[..., '@row'] = max(clock[..., '@row'], cs.hlc)
+  if the row exists: if winners is empty: continue; update it with winners
+  else:                                                           # an existence-only row (bill_skip) inserts here too
+    if its parent is gone: continue (ended parent) or skip (§7.1)   # an override of a budget that lost, …
+    if a sibling holds its unique slot: the lower id wins; the loser is deleted and tombstoned here
+    insert it with, per field, the winner's value else the tombstone's kept value else op.fields', the local
+    workspace id, localOnInsert values, and its tag row
+  for f in winners: clock[op.entity, op.id, f] = at(f)
+```
+
+```
+applyPurchase(op, cs):
+  L = sync_lineage[op.id]
+  if L exists and L.head is null: return                          # void wins, for ever
+  winners = fields of op that beat their clocks, each at at(f), as above   # recovery review N2: clocks honoured
+  if winners is empty: return
+  if L does not exist and winners.void:                           # N2: a void for a purchase never posted here
+    insert sync_lineage(op.id, head = null); record clocks; return
+  if winners.void:
+    voidTransactionTx(L.head); L.head = null; record clocks; return
+  state = (L exists ? project(L.head) : {}) merged with winners   # the purchase as it should now read
+  input = ledgerInput(state, moneySide(L, state.money))           # §7.4
+  if L does not exist:
+    id = postTransactionTx(tx, input with id = op.id)             # the lineage id is the first row's id
+    insert sync_lineage(op.id, head = id, paid_by, paid_label)
+  else:
+    id = replaceTransactionTx(tx, L.head, input); L.head = id
+  record clocks for winners
+```
+
+**Tombstones (controller ruling, task 4).** An entity keyed by its own minted `id` (`book`, `category`, `budget`,
+`budget_override`, `bill`) is never made again under that id, so its tombstone wins for ever (rule 3). One keyed by
+anything else — a natural key (`bill_skip`, `book_income_override`) or another row's id (`category_need`,
+`budget_frequency`, `bill_window`, `book_income`, `member`, `device`) — is made again under the same `Op.id` (skip,
+take back, skip again). For those, capture always emits the **whole** row and records the row's existence clock
+`@row` in `sync_field_clocks`, and a delete and a re-make race by hlc like any field: whichever is later wins on every
+device. A fragment never arrives for a revivable row, because a fragment could not be inserted where the row was gone.
+The op names the fields that really changed in `changed` (fix round 1), and carries in `clocks` the hlc each other
+field last changed at on the sending device (fix round 2). Apply merges **every** carried field by its own hlc against
+the local field clock — state-based per-field last-writer-wins — and takes that hlc as the field's clock when it wins.
+A revivable delete keeps the row's last values in `sync_tombstones.last_json` beside the tombstone (field clocks are
+never dropped), and an op that arrives while the row is dead still merges its winning fields into those kept values.
+A revive then inserts, field by field, the winner's value, else the kept value, else the op's. **A carried clock is never
+later than its change-set (re-review, NEW-1).** An honest sender's `clocks` come from its own `sync_field_clocks`, which
+never run ahead of the hlc it seals them under; a clock that does — a modified client sending `{ money, clocks: { money:
+now + 10 years } }` to pin a field against every later correction — is taken at the change-set's hlc, by apply for rows
+and purchases alike, by the sender's own `recordClocks`, and by a rejoin's `SeenLog`, so every device decides it the same. So rule 1 stays per
+field through a delete and a re-make: a rename made before a delete on one device and a role edit made on another
+that had not seen either end the same on both (round 1's "known limit" was a real, permanent divergence, reproduced by
+the re-review; `revive-divergence.test.ts`).
+
+**Uniqueness wider than the id.** `budgets` is unique per category and `budget_overrides` per budget and month, so two
+devices can each make "the" budget of one category offline under different ids. The lower id wins on every device;
+the other is deleted with what depended on it and tombstoned, so its later ops are dropped.
+
+`postTransactionTx` mints its own id today. Step 1 adds an optional `id` to `PostTransactionInput`, which only this
+call uses; `replaceTransactionTx` drops it from the input it spreads (check #12). `replaceTransaction` opens its own
+db transaction under a mutex that is not reentrant. Step 1 therefore extracts `replaceTransactionTx(tx, ws, id,
+input)`, and `replaceTransaction` wraps it (check #13).
+
+A purchase whose fields arrive in two change-sets (split by §6.2) is posted by the first that carries `money` and
+replaced by the second; an op for an unknown lineage without `money` is held in memory until the rest of the
+pulled page is applied, then dropped as a recorded skip if `money` never came (final review, minor 6). A **void** for an
+unknown lineage is not held (recovery review, N2): void wins for ever, so the lineage is recorded as void, and money that
+arrives for it later is dropped by it. A share made again sends every void it holds (§6.5), and a joiner that never had
+the purchase then reads it as void like everyone else.
+
+### 7.3 The six rules
+
+1. **Per field, the later HLC wins.** The clock comparison.
+2. **Money is one atom.** `money` is one field; a replacement posts every line of the winner.
+3. **Void wins.** A lineage with no head accepts nothing more. For every other entity, a tombstone does the same.
+4. **Structure never destroys money.** If a `line`'s `categoryId` is tombstoned or unknown locally, the line is
+   posted against the book's **Uncategorised** expense category — `id = uuidv5(bookId, 'uncategorised')`, created
+   on demand, identical on every device.
+5. **Two ids are two purchases.** Nothing merges lineages. Two devices correcting the same purchase offline produce
+   two `money` values for **one** lineage; the later wins and the purchase is counted once.
+6. **Idempotent.** An entry at or below `applied_seq` is skipped; a change-set applied again wins no field.
+
+**A local conversion voids a shared purchase (known behaviour, ruled O5).** Turning a purchase into an investment
+buy (`convert.ts`) voids it and posts a trade, which belongs to no book. Void wins, so the purchase disappears from
+every member's copy of the book. That is right: it stopped being spending. The history shows the void and who made
+it.
+
+**Who changed what.** `postTransactionTx` writes `audit_log` (`'post'`, payload = its input), and so does
+`markVoidTx` (`'void'`), which means a replace writes one of each. Step 1 adds an optional `syncAuthor` (a member id)
+to `PostTransactionInput`, which lands in the `'post'` payload, and an optional author argument to
+`voidTransactionTx` for the `'void'` payload. Apply passes the author's `member` so the history reads "amount
+changed by Dewi" (check #16). The owner decided any member may change any
+purchase, including one the other person paid; this is that decision's record.
+
+### 7.4 The money side on apply
+
+```
+moneySide(L, money):                                                                # corrected in task 4
+  own = money.paidBy is this device's member and L exists
+        ? L.head's money-side entries on non-placeholder accounts : none
+  for each currency c in money.lines:                                               # ruled O2
+    if own has entries in c: keep them; if their total is not −sum(lines in c), put the whole difference on the
+                             entry in c with the largest |amount| (an entry left at zero is dropped)
+    else:                    one entry of −sum(lines in c) on placeholderAccount(bookId, money.paidBy, c)
+  lines post with their carried amountBaseMinor (§4.3); every other entry's base figure uses
+  ratesToBase = { c: |amountBaseMinor / amountMinor| × 10^(exp(c) − exp(base)) of the first line in c }
+```
+
+On the payer's device the head's own money-side accounts are kept, each in its own currency. Their rates come
+from the carried pairs in the same way. They are kept only while `money.paidBy` is still this member: any member may
+change anything (§0, minor 9), including who paid — a member who says "I paid that" posts the money side on their own
+account and sends `paidBy` = themselves — and then the first payer's device moves the money side off its own account
+onto the new payer's placeholder (v3 kept the old account, so the two devices read different payers).
+
+On the payer's device the correction therefore goes through `replaceTransactionTx` against the payer's real account.
+Everything that function carries across a correction is carried exactly as when the payer edits it themselves: a
+set-aside answer, a tagged goal, a bill payment, the card and its statement, point actuals, photos, event items
+(confirmed, check #17). It carries a fact only when the input field is **`undefined`**. So `ledgerInput` leaves every
+field that is not a winner `undefined`, never `null`: above all `setAside`, `templateId`, `billMonth`, `cardId`,
+`eventId` and `mcc`. A `null` clears the fact.
+
+## 8. Invites, devices, ownership
+
+### 8.1 Create an invite (owner's device)
+
+1. `inviteId = uuidv7()`; `S = random(16)`; `expiresAt = now + 7 days`.
+2. `inviteKey = HKDF(ikm = S, salt = utf8(inviteId), info = utf8('cicis-invite-v1'))` → AES-GCM 256.
+3. `keys = AES-GCM(inviteKey, iv, data = utf8(JSON([{ epoch, key }, … every epoch the book has had])))`.
+4. `preview = AES-GCM(inviteKey, iv, data = utf8(JSON({ bookId, bookName, inviterName, baseCurrency })))` (task 5:
+   `bookId` added — every device keeps the book under the owner's id, and the entry AAD binds it).
+5. `putInvite(bookId, { inviteId, keys, preview, expiresAt, sameMember, memberId?, sig })`.
+6. Show the **code** — `base32crockford(inviteId bytes (16) ‖ S (16))`, 52 characters in groups of four — and the
+   **link** `cicis://join/<code>`, with a **Share** button. `S` is in neither the relay nor any log.
+
+### 8.2 Join (the other device)
+
+1. Parse the code into `inviteId` and `S`.
+2. `previewInvite(inviteId)` → open `preview` with `inviteKey`. Expired or claimed: say so and stop.
+3. **Currency check.** `baseCurrency` differs from this device's workspace base currency: refuse — *"This workspace
+   keeps its money in IDR; this app keeps yours in SGD. Sharing across currencies isn't supported yet."* Nothing
+   was claimed, nothing is stored, the invite is still good for someone else.
+4. Show **bookName**, **inviterName**, and **Join**.
+5. On Join: `claimInvite(inviteId, devicePublic)` → `{ bookId, epoch, keys, sameMember, memberId }`. The relay
+   allow-lists the device and marks the invite claimed.
+6. Open `keys`; store every epoch key (§5.5). Insert the `books` row (`kind = 'shared'`) and `shared_books`
+   (`member_id = sameMember ? memberId : uuidv7()`, `state = 'active'`).
+7. Append the introduction: a change-set whose ops are this `device` (with its public keys) and, unless
+   `sameMember`, this `member` with the name the person typed.
+8. `pull(bookId, 0)` and apply everything.
+
+**Invite terms (fix round 1, C3).** The owner device signs the invite's **terms** — `{ inviteId, sameMember,
+memberId? }` for this book, `sig = ECDSA(sign.private, canonicalJson({ purpose: 'cicis-invite-terms-v1', bookId,
+inviteId, sameMember, memberId? }))` — and seals them in the preview. The joiner puts them, as `ChangeSet.invite`, on
+its introduction (one change-set of its own, written directly rather than captured, carrying its `device` op and, for a
+new member, its `member` op). Every device, applying an introduction after the log's first entry, checks before pinning:
+the terms verify under the pinned key of a current device of an **owner** member; `sameMember` introduces exactly the
+`memberId` they name, and otherwise a member id not already in `book_members`; and no earlier device used the invite
+(`sync_invites_used`: first by seq wins). A refused introduction is a recorded skip, and so is every later
+entry of that device (not a stop, which would let it block the book). The log's first entry is the creator's seed and
+needs no terms; `createInvite` drains the outbox first (§6.5 step 4), so the seed is always there before any invite.
+The keys and the preview are sealed with additional data `keys:<inviteId>` / `preview:<inviteId>`, so neither opens as the
+other, and an invite with no keys is never made.
+
+**Before the claim (fix round 1, I4).** The claim spends the invite, so the joiner checks everything local first: the
+currency, a book already held under that id (shared or not), and, for a rejoin (§8.7), that the terms name this
+device's member. A local failure after the claim needs a fresh invite from an owner — the recovery is to ask again.
+
+**A copy moves onto another relay book only when it is not live, and to an owner's share (recovery review, N1).** The
+seq-1 creator of any relay book is trusted as its owner (§8.5), so an invite that moved a copy onto another relay book
+would hand that copy to whoever made the share: an ex-member who kept the book, shared it again and "linked" a healthy
+owner's device took over that owner's copy with one tap — roles flipped, a purchase voided. A rejoin onto a
+**different** relay book than the copy's own is therefore allowed only when both hold, checked before the claim from
+local rows and the sealed preview alone, so a refusal claims nothing and applies nothing:
+
+- (a) the copy is not live: `needs_invite`, `unshared`, or kept as its own (no `shared_books` row, with a remembered
+  member; §8.6). An `active` copy is refused (`STILL_SHARED`): *"This workspace is still shared on this device. To move
+  it to this invite's share, stop sharing it here first: leave it, stop sharing it if you are its owner, or keep it as
+  your own copy."* (A sole owner can neither leave nor keep a live copy as its own; stopping the share is its way.)
+- (b) the inviter's member was an `owner` in this copy's own `book_members`. The preview carries it
+  (`inviterMemberId`, sealed like the rest); otherwise `INVITER_NOT_OWNER` — *"Dewi was not an owner of this workspace
+  here. Only a share made by one of its owners can take the place of this one."*
+
+The preview tells the screen when a join would move the copy (`PreviewedInvite.replaces`, the book's name here), and
+Join asks first: *"This replaces the sharing of Home on this device with Fandri's share. Your rows stay and are
+merged."* A rejoin onto the **same** relay book (§8.7's `needs_invite`) is unchanged: no confirm, no owner check.
+`inviterMemberId` is what the inviting device says; a modified client could name an owner's member id when it shares
+again, so (b) guards the ordinary app, and (a) — a live copy never moves — is what keeps a healthy owner's copy where
+it is (§15).
+
+**As built (task 5).** `SyncEngine.previewInvite(code)` and `joinBook(code, { ws, memberName, deviceName })` in
+`engine.ts`; the code helpers in `invite.ts`. A mistyped code (the preview does not open) is `BAD_CODE`; a claimed or
+expired invite says so before claiming. `shared_books.epoch` is the claim's epoch when the invite carried its key, else
+the newest it carried. The introduction is its own transaction so capture sees the book shared; then `syncOnce` drains
+it and pulls from 0.
+
+### 8.3 Link your own device
+
+**Link a device**, on your own member row: §8.1 with `sameMember: true` and your `memberId`. If the inviter is an
+owner, the inviter follows the claim with `setOwners` including the new device.
+
+**Owners only (task 7 fix round 1, ruled).** Every invite is an owner's, Link a device included: the relay keeps
+`putInvite` to owner devices (§8.5), so a member who replaces or adds a phone asks an owner, who links it with
+`createInvite(…, { sameMember: true, memberId })`. `createInvite` and `linkDevice` sync first — the pull brings the
+authority view up to the log — then refuse a device the view does not have as an owner's with `SharingError('NOT_OWNER')`,
+before anything reaches the relay. The screens offer Link a device and Invite someone to owners only; a member sees
+"Ask an owner to link a new device".
+
+**As built (task 5).** `linkDevice`. The inviter learns of the claim when the new device's introduction arrives: a sync
+that pins a device of an owner member, on an owner's device, calls `setOwners` with every current device of every owner
+member.
+
+### 8.4 Remove a device, and rotate
+
+Two acts, by design done by different devices when someone leaves.
+
+**Removal** — by an owner for any device, by any device for itself (**Leave** removes each of the member's
+devices). Applying a removal (fix round 1) writes `book_devices.removed_at` = the entry's hlc time and stamps
+`sync_field_clocks[device, target, removedAt]` = the entry's hlc, and the device's clock receives that hlc (§6.1) (fix
+round 2), so a later edit of another field by a device that had
+not seen the removal cannot undo it:
+
+1. `append({ kind: 'removal', target })`.
+2. `removeDevice(bookId, target)` — the relay drops it from the allow-list; it can no longer append or pull.
+
+**Rotation** — `maybeRotate()`, run by **any remaining device** when it applies a `removal` (or makes one for
+another device) and `shared_books.epoch` is still the removal's epoch:
+
+1. `next = epoch + 1`; mint a key; seal it (§5.3) for every device in `book_devices` with `removed_at` null.
+2. `append({ kind: 'rotation', epoch: next, sealed })`.
+3. `201`: store the key, `shared_books.epoch = next`. `409` (someone rotated first): pull; the winner's rotation
+   arrives; do nothing more.
+
+A device never rotates on its own removal. Between a removal and its rotation, writes continue under the old
+epoch; the removed device cannot pull them, which is the relay's doing until the rotation makes it cryptography's.
+**The removed device is told (final review, I2):** its next call, signed with its own key, is answered `403 { error:
+'removed' }` — never the `401` a clock five minutes off gets — and `syncOnce` ends the book here (`ended: 'removed'`,
+`shared_books.state = 'unshared'`, `unshared_reason = 'removed'`, outbox cleared): read-only, with the status line
+**"You were removed from this workspace"**. It is no longer polled.
+
+**Who may remove (fix round 1, C2).** A removal entry counts only when its target is its author, or its author's member
+is an owner (`book_members.role`, at apply time). Anything else is a recorded skip: never applied, never a reason to
+rotate. The relay refuses such an append (`403`) with its own owner set, as `DELETE /devices` does, and so does
+`MemoryTransport`. **A removed device's later entries (I2; fix round 2):** an entry whose author the view already has as
+removed — its removal is earlier in the log — is a recorded skip on every device, whatever hlc it carries (an hlc is the
+author's own choice, so round 1's hlc comparison let a removed device backdate). Both checks read the authority view
+(§7.1), so an owner's local, unsynced demotion of the remover cannot make one device skip a removal its peers apply.
+
+**As built (task 5).** `removeDevice(bookId, target)` appends the signed removal, calls the relay, and for another
+device syncs at once, which applies the removal and rotates. `syncOnce` runs `maybeRotate` after its pull loop, once per
+removal applied, and pulls again after a `201` or a `409`; running it after the loop rather than mid-loop means a
+rotation already in the same page wins without a `409`. A device whose own row is removed never seals.
+
+**Leave, as built (task 9a).** The relay knows no members, and only an owner removes another device, so a plain member
+cannot remove its other devices itself. `SyncEngine.leave(bookId)` syncs first (the outbox goes out). An owner may
+leave only while another owner member still has a device in the view (`LastOwnerError` otherwise; fix round 1 — an
+owner whose devices are all gone does not count, or leaving past it would freeze the book), and first steps down: it
+writes its own role `'member'` and syncs, so the demotion is in the log before the removal and no departed owner is
+named in the view or asked for an invite (§8.7). Then it appends a removal of itself carrying `leave: true` (signed like
+every field; it counts only when `target` is the author) and drops itself from the relay. Every other device of the
+same member (per the view) **that was in before that leave** — admitted at an earlier seq (`added_seq`; fix round 1) —
+applying that removal, does the same on its next sync and does not rotate on the way out (`syncOnce` answers
+`ended: 'left'`); every other device rotates as for any removal. A device of that member admitted after the leave — a
+same-member invite bringing someone back, or a restored phone rejoining (§8.7) — replays the old leave and stays. A
+device that follows a leave writes a **plain** removal of itself, without `leave` (fix round 2), so nothing ever follows
+a follower: a device re-invited while an old device was offline is never taken along when that device comes back.
+After its step-down syncs, a leaving owner checks again (fix round 2): the view must have it as `'member'` and another
+owner with a device still in — two owners leaving at once both step down, the log takes the first demotion and refuses
+the second (the last owner is never demoted), so the second gets `LastOwnerError` and stays. If the removal then fails
+after the step-down is in the log, `leave` throws `LeaveIncompleteError` (`LEAVE_INCOMPLETE`): this device is a member
+now, still in, and `leave` again finishes it. A device
+of the leaving member that never syncs again keeps its keys until an owner removes it. On each device that left, the
+book stays with every row, `shared_books.state = 'unshared'`, `unshared_by` = its own member: read-only, as §8.6.
+
+### 8.5 Ownership
+
+`book_members.role`, synced. **Only an owner writes it (fix round 1, C3):** a `member` op naming `role` among its
+changed fields is applied only when its author's member is an owner — or the op is the creator's own member in the
+log's first entry, or a new member's own introduction naming itself `'member'`; any other is a recorded skip. A role a
+non-owner's op merely carries (a whole revivable row) loses its clock and can only ever insert as `'member'`.
+
+**Member rows (fix round 2, N1).** Deleting a member row, and making one again (an op naming every field, on a row the
+view has as deleted), is accepted only from an owner author; a non-owner's edit that crossed a delete stays dead — it
+merges into what the tombstone kept and moves no existence clock, here and on the device that made it, so every device
+ends alike. The **last owner** is never deleted or made a member: `withCapture` refuses the local write
+(`LastOwnerError`) when either the authority view has that member as the book's only owner (the log's say, which a
+local self-promotion cannot change; fix round 3) or this device's `book_members` would be left with no owner at all
+(an owner's own earlier demotion still on its way to the log, or one statement demoting every owner; fix round 4), and
+rolls it back before anything is emitted; apply refuses it as a recorded skip. **This device's own refused edits are
+put back (fix rounds 3–4):** when the loop takes in one of this device's own entries, every member row that entry
+touched is set to what the view decided — its role, and its existence with the values it last had — with the role
+clock and the existence clock set to the view's, so a refused edit, or one made from a view that lagged (a rename
+whose existence clock crossed an owner's delete), no longer leaves this device's `book_members` different from its
+peers'. A member row the view has never known — one this device made and the log refused (only an owner makes a
+member) — is deleted here outright, with its field clocks, existence clock and tombstone, as if never written (fix
+round 4). Nothing is re-emitted. All of it is decided by the authority view (§7.1), never by
+this device's own rows. **The relay's owners follow the view:** after a pull changes the set of owner devices in the
+view — a promotion, a demotion, a linked owner device — an owner device calls `setOwners` with the new set (a device the
+relay does not yet count as an owner gets `403` and leaves it to one that is).
+
+The relay keeps the set of owner **device ids** for authorising `putInvite`,
+`removeDevice` of another device, `setOwners`, `deleteBook`. **Make owner**: a `member` op setting `role`, and
+`setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
+and sync, nobody can invite or remove; rotation still works.
+
+**The last owner is the last owner with a device (task 9a fix round 2).** Everywhere the last-owner rule is read —
+`withCapture`'s guard, apply's decision (`viewIsLastOwner`), `leave`, and `removeDevice` of oneself — "the last owner"
+means an owner member with no other owner member that still has a device in the view. An owner whose every device is
+gone does not count: stepping down or leaving past one would freeze the book. The last owner device cannot remove
+itself either (`LastOwnerError`). A frozen book is then reached only by a race the log settles afterwards (two owners
+each taking out their own last device at once).
+
+**As built (task 9a).** `makeOwner(bookId, memberId)` checks this device is an owner's in the view (`NotOwnerError`),
+writes `role = 'owner'` through `withCapture`, and syncs when it can; the sync's pull takes the op into the view and
+`followOwners` calls `setOwners` with the promoted member's devices added — the same path as any role change. **Frozen**
+is `isFrozen(bookId)`: the view holds at least one device and no owner device (a book never pulled is not frozen).
+`createInvite`, `removeDevice` of another device and `makeOwner` refuse a frozen book with `FrozenBookError`; a device
+removing itself, recording, syncing and rotating carry on.
+
+### 8.6 Stop sharing
+
+Owner: `deleteBook`. Every other device, on the next call answered `410`, sets `state = 'unshared'`: the book
+stays, read-only, labelled *"No longer shared by Fandri"*. Nobody's rows are deleted by someone else's tap.
+
+**As built (task 9a).** `stopSharing(bookId)`, by an owner in the view (`NotOwnerError`). *Pending changes:* the owner's outbox is drained first, when the relay can be reached (fix round 1). *Who stopped
+it:* the relay keeps the deleting device (`deletedBy`); a later `410` names it only to a caller whose signature
+verifies against its stored, not removed, device key — before that the `410` is bare (§9.2; fix round 1); a device answered `410`
+maps it to a member through its pinned `book_devices` and keeps it in `shared_books.unshared_by`, clears its outbox
+(nothing can drain it) and keeps everything else. A `410` on any sync call — drain or pull — does this (`syncOnce`
+answers `ended: 'unshared'`). *Read-only* is enforced in capture, the one place every writer of a book's rows already
+passes: `withCapture` refuses any change to a row of an `unshared` book, and the ledger doors refuse a post into it, a
+replace or a void of a row in it — `BookReadOnlyError`, inside the writing transaction, so it rolls back. It is found by
+the same one `shared_books` lookup capture already makes. *The owner's own device (new decision):* the book becomes an
+ordinary local book again — `shared_books` and the book's sync state (`sync_outbox`, `sync_cursor`, `book_epoch_keys`,
+field clocks, tombstones, skips, `book_devices`, the authority view) go; every row stays, and so do `book_members`,
+`book_member_accounts` (another member's money stays hidden, §4.4) and `sync_lineage` (who paid). The field clocks are
+kept first, with their values (`sync_kept_clocks`, recovery review N2; §6.5). Sharing it again seeds at those clocks:
+the sharer is its owner again — as the same member, which the device remembers in `settings` (final
+review, C1) — and any other remembered member comes back as a member.
+
+**The way out of a dead share (final review, C1).** `forgetSharing(bookId)` does on any device what stopping does on
+the owner's: `shared_books` and every piece of sync state go, every row stays, and so do the members, the placeholders
+and who paid; the relay is not told. It is allowed for a book in `needs_invite`, `unshared`, or `active` and frozen (§8.5, by
+`isFrozen`: devices in the view and no owner device among them), and refused (`STILL_SHARED`) otherwise — while an owner
+device is in, and while the view is still empty (a share made here and not yet synced back is live; recovery review,
+minor) — then the way out is Leave. On the screens it is **Stop sharing on this device**, behind a confirm ("Keep as my own copy"). **A copy
+rejoins a share made again.** A member's copy left `unshared` by a stop rejoins the new share through the existing
+rejoin path (§8.7) with an owner's link-a-device invite naming its member (the invite's preview carries the relay book
+id); a plain invite is still `INVITE_MISMATCH` before anything is claimed. A copy still `active` on a relay book the
+owner has moved on from (a restored owner's phone that kept the book and shared it again) is **not** moved while it is
+live (recovery review, N1; §8.2): its member leaves the old relay book first, or keeps the copy as its own, and then
+joins; and the new share must be one its owner made.
+
+**A copy kept as its own rejoins too (recovery review, N3).** `forgetSharing` leaves no `shared_books` row, so
+`joinBook` once refused such a copy as a plain book (`ALREADY_SHARED`) though the confirm promised a way back. A plain
+book with a remembered `sharing.member.<bookId>` is now a rejoin as that member: it needs an invite naming the member
+(a plain invite is `INVITE_MISMATCH`), is always a move onto another relay book, so (a) of §8.2's check holds by
+construction and (b) — the inviter was an owner here — is checked before the claim; the rejoin writes its
+`shared_books` row afresh. A plain book that was never shared here, under the same id, is still `ALREADY_SHARED`. The
+confirm says what is true: *"… To join the share again later, ask one of its owners for an invite that links this
+device as you."* The rejoin drops the old keys, outbox, skips and every other
+device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits what the new
+log does not say (§8.7, recovery review N2).
+
+### 8.7 A restored backup
+
+A backup is the whole database, so it carries `shared_books` and `sync_*` and none of the keys. On open, for each
+`shared_books` row: if `KeyStore` has no device key whose `deviceId` is in that book's `book_devices`, or
+`book_epoch_keys` does not open, set `state = 'needs_invite'` and clear that book's `sync_outbox`. The workspace
+shows **"Ask Dewi for a new invite to keep sharing"**; its rows are all there and recording works, locally.
+
+**As built (task 5).** `SyncEngine.checkRestore()` at open (and a guard at the top of `syncOnce`). Rejoining is
+`joinBook` on a book in `needs_invite`, with an invite whose terms name this member (`createInvite(…, { sameMember:
+true, memberId })` by an owner; fix round 1): the old epoch keys are dropped, the cursor goes to 0, and after the pull every
+row in scope whose `Op.id` the pull never saw is emitted as new (`emitUnknownRowsTx`, sharing the seed's row walk).
+Recording while waiting works and is captured by nothing (capture watches `active` books only); the rejoin emits it.
+
+**S4 (task 9a).** An edit the log refused (a plain member's role, say) that the backup made and drained before it was
+taken comes back in the rejoin's pull under the old device's id, which is no longer this device's own: apply refuses it
+like anyone's, and the row the backup holds kept the refused value. After the rejoin's pull, every member row of the
+book here is set to the view's (`reconcileAllMembersTx`, the put-back of §8.5 over all of them), before the unknown
+rows are emitted. The status line's "Ask Dewi" names an owner of the book other than this member (§11).
+
+**The only owner's phone restored (final review, C1).** With one owner and one member, an owner's phone that is
+replaced or restored goes `needs_invite` and no device can invite it back: the status line's "Ask an owner" names
+nobody. The way out is `forgetSharing` (§8.6): the restored phone keeps the book as its own, shares it again as the
+same member, and links the member's device with an invite naming them; the member's copy — still `active` on the
+orphaned relay book — leaves it first (a live copy never moves, recovery review N1; §8.2), then rejoins the new share
+through the rejoin path. The restored phone's seed goes at the clocks its backup kept, and what the member changed or
+recorded meanwhile goes out at its own (N2), so both copies end the same with no skips (`recovery.test.ts`, including a
+property run over random edits before the backup, after it on the lost phone, on both sides while the share is down,
+and on the restored phone's own copy).
+
+Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
+then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
+local row in scope whose id appears in no op pulled.
+
+**The rejoin's catch-up and emit (recovery review, N2).** The ruled C1 recovery never converged: the rejoin dropped the
+member's outbox, the emit sent only rows the new log never named, and the owner's re-share seed overwrote with fresh
+clocks what the member had changed on the orphaned relay book — a void, a correction, a rename stayed on one copy only.
+Now, before the pull, the rejoin catches up (`catchUpTx`, §6.5): a field changed while nothing was captured
+(`needs_invite`, or a copy kept as its own) gets a fresh clock, so the log's older value does not overwrite it — this
+replaces the old rule that such an edit "is lost to the log's value" — and a copy kept as its own gets back the clocks
+it kept. During the pull, `SeenLog` notes, per field, the latest clock the log gives it (the ops the authority view
+refused left out). After it, `emitNewerTx` sends, each at its own clock: every row the log never names; every field
+whose clock here is newer than the log's (the member's edits on the orphaned relay book, and the lost phone's own edits
+there that its backup never had); every void here the log has not got, named by the log or not; and a delete for a row
+deleted here that the log still has alive. Only what the author may write goes: no device row, and no role, new member
+row or member delete unless this member is an owner in the view (§8.5).
+
+## 9. The relay
+
+One Cloudflare Worker, one Durable Object per book, Durable Object storage only. Source in `apps/relay/`.
+
+### 9.1 Authentication
+
+```
+X-Device:    <deviceId>
+X-Timestamp: <unix ms>
+X-Signature: base64url(ECDSA(sign.private, SHA-256(utf8(method + '\n' + path + '\n' + timestamp + '\n' + hex(SHA-256(body))))))
+```
+
+Refused: a timestamp more than 5 minutes off; an unknown or removed device; a bad signature. `POST /books` and
+`POST /invites/:id/claim` come from a device on no list and are verified against the JWK in their own body.
+`GET /invites/:id` is unauthenticated: the id is unguessable and the body is sealed.
+
+**As built (task 6).** Every refusal above answers `401`, and so does a missing header — except a device the book has
+removed, which is answered `403 { error: 'removed' }` once its signature verifies under its stored key (final review,
+I2; §8.4), so a client can tell being removed from a clock that is off. `path` is the request
+target as sent — pathname plus query string (`/books/B/entries?since=12`) — so the `since` of a pull is signed too.
+"ECDSA(sign.private, SHA-256(m))" is WebCrypto's `ECDSA` with `hash: 'SHA-256'` over `m` (the algorithm hashes); the
+signature is WebCrypto's raw r ‖ s (64 bytes), base64url. On `POST /books` and the claim, an `X-Device` that is not
+the id derived from the body's `signJwk` answers `403`, a signature that does not verify under that key `401`. For a
+member, the book's `404`/`410` are answered before the device check, as `MemoryTransport` does. One file holds the
+signing string, the canonical JSON and the verifier for both ends: `packages/db/src/sync/relay-signing.ts`.
+
+An invite's `sig` (§5.4) is ECDSA P-256/SHA-256 over `utf8(JSON(invite without sig, keys sorted))` — the same form
+as an entry's (§6.6) — checked at claim time against the pinned key of each current owner device; none verifies:
+`403`. Task 5: the stub `stub-sig:` convention is gone; `MemoryTransport` checks invites with the relay's own function
+(`inviteSignedByAnOwner`), and a client bound with `relay.as(signer)` has every request signed and verified the §9.1 way
+(the 5-minute window, the pinned key, the body's own key on `POST /books` and a claim, `403` before `401` for a body key
+that is not the caller's).
+
+**Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `200` with the seq the
+entry was already given, and stores nothing new — success, not an error, so the client never has to special-case
+it. `409` on this endpoint means one of two things: a `rotation` whose `epoch ≠ current + 1`, or (final review, I1)
+a `change` whose `epoch` is below the book's current epoch — `{ error: 'stale epoch' }` — which the client answers by
+pulling and sealing again.
+
+### 9.2 Endpoints
+
+| Method and path | Who | Body → Response |
+|---|---|---|
+| `POST /books` | new device | `DevicePublic` → `201 { bookId }`; the caller is the only owner; `epoch = 1` |
+| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }` new; `200 { seq }` duplicate `(deviceId, hlc)`, the original entry's seq; `409` a `rotation` whose `epoch ≠ current + 1`, or a `change` under an epoch below the current (`stale epoch`); `413` over 128 KB |
+| `GET /books/:id/entries?since=N` | member | → `200 { entries: SequencedEntry[], latest }`, at most 500 |
+| `POST /books/:id/invites` | owner | `InviteRecord` → `201` |
+| `GET /invites/:id` | anyone | → `200 { preview, expiresAt, claimed }`; `404` |
+| `POST /invites/:id/claim` | new device | `DevicePublic` → `200 { bookId, epoch, keys, sameMember, memberId }`; `409` claimed; `410` expired; `403` bad owner signature; `429` five devices |
+| `DELETE /books/:id/devices/:deviceId` | owner, or the device itself | → `204` |
+| `PUT /books/:id/owners` | owner | `{ deviceIds }` → `204` |
+| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410`; to a device of the book whose signature verifies, `410 { error, deletedBy }` (task 9a, fix round 1) |
+
+**As built (task 6)**, the statuses every endpoint can also answer, each the one `MemoryTransport` throws: `401` per
+§9.1; `404` an unknown book, invite, device or path; `400` a body or `since` of the wrong shape; `405` a method a path
+does not take; `403` a non-owner on an owner-only call, and an append whose `deviceId` is not the caller;
+`403 { error: 'removed' }` to a removed device on every member call (I2); `409` on `POST /books/:id/invites` when another book already holds that invite id; `410` on `GET /invites/:id` and
+the claim once the invite's book is deleted; `413` a request body over 1 MB, refused before it is parsed. A removed
+device frees its place among the five. The Worker answers CORS preflights and stamps `Access-Control-Allow-Origin`
+for the origins in `wrangler.toml`'s `ALLOWED_ORIGINS` (the Vite dev server and preview, `capacitor://localhost`),
+allowing `Content-Type`, `X-Device`, `X-Timestamp`, `X-Signature`.
+
+### 9.3 Durable Object state — all of it
+
+```
+devices: Map<deviceId, { signJwk, agreeJwk, addedAt, removedAt? }>
+owners:  Set<deviceId>
+epoch:   number                                  // raised by an accepted rotation
+seq:     number
+log:     Map<seq, LogEntry>
+seen:    Map<deviceId + ':' + hlc, seq>          // lets a duplicate append answer with the original seq
+invites: Map<inviteId, InviteRecord & { claimedAt? }>
+deleted: boolean
+deletedBy?: deviceId                             // task 9a: named by every later 410 (§8.6)
+```
+
+No name, no currency, no plaintext, no receipt. What the relay can observe: how many devices a book has, when each
+writes, and how much.
+
+**As built (task 6).** Each row is its own storage key (`meta` holds `epoch`, `seq`, `owners`, `deleted` and the
+book's id; `device:`, `log:`, `seen:`, `invite:` the rest), so an append writes three small values, never the log.
+One more Durable Object class exists, one per invite id, holding only the id of the book that keeps the invite: the
+invite endpoints arrive with nothing but the invite id, and a per-book object cannot be searched the way
+`MemoryTransport` scans every book in memory. It holds no invite content.
+
+### 9.4 Client behaviour
+
+`RelayTransport` pulls from `applied_seq`, drains `sync_outbox` in `hlc` order under the epoch that pull left, and
+pulls again (final review, I1), when the app comes to the foreground and every 30 s while open. A failure leaves the outbox as it was; retry with exponential backoff capped
+at 5 minutes. No screen waits on the relay.
+
+**As built (task 6).** `SyncScheduler` (`apps/web/src/sync/sync-scheduler.ts`) owns the timing: a run at start and
+on every `trigger()` (foreground, or a local write), then every 30 s after a success; after `n` failures in a row the
+wait is `min(30 s × 2ⁿ, 5 min)` — 60, 120, 240, then 300 s. One run at a time: a trigger during a run queues one
+follow-up. What a run does is a `syncOnce` callback, built with the engine (tasks 3–4) and wired in task 7.
+`RelayTransport` maps every non-2xx answer to `SyncTransportError` with its status, and a relay it cannot reach to
+status `0`. The base URL is `VITE_RELAY_URL`, else `http://localhost:8787`.
+
+## 10. Entitlement
+
+`verifyEntitlement(bookId): Promise<boolean>` in `apps/relay/src/entitlement.ts` **returns `true`**. Called on
+`POST /books` and on owner appends. When tiers exist: the owner's device sends its StoreKit 2 signed transaction on
+`POST /books`; the Worker verifies the chain and keeps `{ entitledUntil }` only; a lapse makes the book read-only
+on the relay after 30 days; nothing is deleted. Members never present a receipt. Android: a second verifier behind
+the same function. As built, a `false` answers `402` (on `POST /books`, and on an owner's append); it cannot happen
+while the function returns `true`.
+
+## 11. Screens
+
+Native kit only.
+
+**Settings → Workspaces → a workspace**
+
+| Row | Shown when | Does |
+|---|---|---|
+| **Share this workspace** | no `shared_books` row | refuses a book whose currency is not the owner's (§6.5 step 0, ruled O3); otherwise explains what the other person will and will not see, and that a replaced phone needs a new invite; seeds (§6.5); then code, link, **Share** |
+| **Members** | `state = 'active'` | a row per member: name, role; under it a row per device: name, "synced 2 min ago", **Remove** |
+| **Link a device** | on your own member | §8.3 |
+| **Make owner** | you are an owner, on another member | §8.5 |
+| **Leave** | you are a member, on yourself | §8.4 |
+| **Stop sharing** | you are an owner | confirm, then §8.6 |
+| **Stop sharing on this device** | `state ≠ 'active'`, or frozen | confirm ("Keep as my own copy"), then `forgetSharing` (§8.6, final review C1) |
+| status line | any `shared_books` row | "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" · frozen: no owner device left |
+
+**Status, as built (task 9a).** `SyncEngine.bookSyncStatus(bookId)` returns the line's state, first match wins:
+`unshared` (who, and whether it was this member leaving) · `needs_invite` (an owner's name to ask) · `frozen` · `stale`
+(no sync finished within 5 minutes, the scheduler's longest wait — "Not synced since `synced_at`") · `waiting` (the
+outbox count) · `up_to_date`; `null` for a book not shared here. `synced_at` is written when a `syncOnce` finishes
+without a stop.
+
+**Workspace switcher.** A shared book's subtitle: **Shared with Dewi**. The **+** menu gains **Join a workspace**:
+paste a code or arrive by `cicis://join/…`; then §8.2 steps 2–8.
+
+**A purchase in a shared book.** Subtitle: `paidLabel`, and `· paid by Dewi` when `paidBy` is not you. The receipt
+shows both. No link in a shared book leads to an account, card, statement or balance.
+
+## 12. Privacy
+
+- Whether end-to-end encrypted content is "collected" under App Privacy is checked against Apple's definitions at
+  the submission that carries sharing, and answered truthfully either way.
+- `PrivacyInfo.xcprivacy` is unchanged.
+- The relay stores §9.3 and nothing else, and sees no name. Deleting a book deletes all of it.
+
+## 13. Tests
+
+Mutate-twice review on every step.
+
+| File | Proves |
+|---|---|
+| global `afterEach` + `installCaptureTriggers` | §6.4: no write to a shared row without an op, across the whole existing suite |
+| `convergence.property.test.ts` | N databases, random local programs (post, correct, void, budget, bill, category) with offline stretches, `MemoryTransport` in random interleavings → every `SHARED_ENTITIES` projection identical on all. Includes a book **seeded** with history before the second device joins. ≥ 200 programs. |
+| `money-atom.property.test.ts` | after every apply: each posted row's entries sum to zero; each lineage has at most one posted row; every money-side entry names a real local account or the payer's placeholder |
+| `same-purchase.test.ts` | two devices correct one purchase offline → one lineage, one posted row, the later `money`; the Cashflow total counts it once |
+| `void-wins.test.ts` | correct→void and void→correct, every arrival order → void on all |
+| `idempotent.test.ts` | any entry twice ≡ once |
+| `payer-ledger.test.ts` | a member's correction of the payer's purchase moves the payer's account balance, keeps its set-aside answer and its bill payment |
+| `tombstones.test.ts` (task 4) | a skip taken back and made again is back everywhere; a need cleared and set again: the later wins; a removed budget stays removed; two budgets on one category keep the lower id |
+| `joined-bootstrap.test.ts` (task 4) | app-open default-tree upkeep never writes into a joined book |
+| `rotation.test.ts` | removed at epoch n cannot open n+1; a remaining device opens both; two devices rotating at once → one `201`, one `409`, one epoch; the leaving device never seals |
+| `join.test.ts` | a joiner after two rotations reads the whole history; a currency mismatch claims nothing |
+| `restore.test.ts` | §8.7: `needs_invite`, then rejoin converges |
+| `hlc.test.ts` | monotonic under clock jumps; total order; the 24 h rule blocks and then releases |
+| `pinning.test.ts` | an entry signed by a key the relay supplied but no `device` op introduced is refused |
+| `crypto.kat.test.ts` | HKDF-SHA-256, AES-GCM, ECDSA P-256, ECDH P-256 against published vectors |
+| `relay.test.ts` (Miniflare, to be installed) | every status code in §9.2 |
+| `sharing.spec.ts` (Playwright, phone and desktop, `WebKeyStore`) | two contexts, a local Worker: share a book with history, join, record on both, correct each other's, remove, rotate, same Cashflow total |
+
+## 14. Build order
+
+| # | Step | Done when |
+|---|---|---|
+| 0 | **Confirm `SHARED_ENTITIES`** against the code: every table, key, scope rule and column in §4.1; correct the spec where the code differs. | the constant exists with a test that each named table and column exists in the schema |
+| 1 | **Capture and merge, no network.** Migration 0056; `withCapture`; the three ledger doors; `sync_lineage`; HLC; seeding; `apply`, `applyPurchase`, `moneySide`; placeholder accounts; `MemoryTransport`; the trigger harness. Keys are a stub that seals with the identity function. | capture harness, `convergence`, `money-atom`, `same-purchase`, `void-wins`, `idempotent`, `payer-ledger`, `hlc` green; the existing suite green and unchanged |
+| 2 | **Keys.** Precondition: `feat/ios-testflight` merged. `KeyStore` both ways; epoch keys; sealing; entry encrypt, sign, verify; pinning; at rest. | `crypto.kat`, `rotation`, `pinning`, `join`, `restore` green; step 1's tests green with real sealing |
+| 3 | **The relay.** `apps/relay`; every endpoint; `RelayTransport`; outbox; polling. | `relay.test.ts` green; two simulators converge through a local Worker |
+| 4 | **Screens.** §11. | `sharing.spec.ts` green on both projects |
+| 5 | **Hiding.** The anti-join on every reader named in §4.4; the disabled flag; no With row. | one e2e per excluded page |
+| 6 | **Edges.** Make owner, Leave, Stop sharing, frozen, `410`, `needs_invite`. | covered in `sharing.spec.ts` and `restore.test.ts` |
+
+## 15. Left open
+
+- **A relay that reorders the log (known gap, fix rounds 2–3 — deferred by ruling).** Authority is decided in log order
+  (§7.1), and the log's order is the relay's. The relay alone can make devices diverge: serving one device a reordered
+  prefix (a removal moved before the promotion that authorised it, say) makes that device decide differently from its
+  peers, and no colluding device is needed for that. A removed device matters only because the divergent device may then
+  seal a rotation for it, handing it the new epoch key — that is the consequence: **a rotation sealed for a removed
+  device**. It reaches every device that builds its view from a prefix the relay chose: a new joiner, and equally a
+  restored phone rejoining (§8.7), whose view is rebuilt from seq 0. Fix sketch: the owner-signed invite terms carry an
+  **anchor** — the seq and a running hash of the entry signing bytes up to it — that the joiner checks as it pulls; later,
+  devices compare running hashes to detect a forked log.
+- **Who made a share made again is the inviter's word (recovery review, N1).** A copy moves onto another relay book only
+  when it is not live and the invite's `inviterMemberId` was an owner in the copy's own rows (§8.2). That member id is
+  sealed in the preview but chosen by the inviting device, and a share's seq-1 creator names its own member: a modified
+  client that shares a kept copy again under an owner's member id passes (b). It still cannot move a live copy (a), and
+  the join screen names the inviter before anything is claimed. Fix sketch: sign `inviterMemberId` into the invite
+  terms, and have the joiner check, after the claim and before applying, that the device whose key verifies them was
+  introduced as that member in the new log.
+- **An edit made while nothing was captured wins at the rejoin (recovery review, N2).** A field changed on a copy in
+  `needs_invite`, or kept as its own, gets a fresh clock when it is shared again or rejoins — later than any edit the
+  other side made meanwhile, even one made later in wall time. The alternative is to keep a clock that no longer
+  matches its value, which diverged. A row deleted in that time goes out as a delete; a member row deleted by a
+  non-owner's device does not (only an owner deletes a member, §8.5), and comes back from the log.
+- **A member's delete of a revivable row on the orphaned relay book is undone by the re-share (re-review).** The
+  restored phone's seed makes the row again at a fresh change-set hlc, and `@row` (the existence clock) is not among the
+  clocks kept, so the re-make is later than the member's delete and revives it on the member's copy. The copies stay
+  identical; the delete is lost.
+- **The put-back's transient window (known gap, fix round 4).** Putting this device's member rows back to the view
+  (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
+  back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
+  back the same way. Seconds on a synced device; accepted.
+- ~~An `unshared` book can't be archived (task 9a).~~ Settled by the final review (C1): **Stop sharing on this device**
+  (`forgetSharing`, §8.6) makes the copy the device's own, to be renamed, archived or shared again.
+- **A leaving member's device that never syncs again (task 9a).** Leave reaches a member's other devices when they
+  next sync (§8.4); one that never does keeps its keys and its place among the five until an owner removes it.
+- ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
+  Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
+  iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.
+- The relay's domain and the Cloudflare account (before step 3).
+- The App Privacy wording (at submission).
+- **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a
+  household's finances wherever it lands.

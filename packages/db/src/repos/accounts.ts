@@ -5,8 +5,10 @@ import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookCategories } from '../schema-books';
 import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
+import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { hasBooks, personalBookIdTx } from './books';
 import { postTransactionTx } from './ledger';
+import { withCapture } from '../sync/capture';
 
 export type AccountRow = typeof accounts.$inferSelect;
 export type AccountSubtype = AccountRow['subtype'];
@@ -107,12 +109,19 @@ async function writeAudit(tx: Db, ws: WorkspaceContext, action: string, entityId
 export async function listAccounts(
   database: Database,
   ws: WorkspaceContext,
-  opts: { includeArchived?: boolean } = {},
+  opts: { includeArchived?: boolean; includePlaceholders?: boolean } = {},
 ): Promise<AccountRow[]> {
+  const hidePlaceholders = !opts.includePlaceholders && (await sharingTablesExist(database.db));
   return database.db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), opts.includeArchived ? undefined : isNull(accounts.archivedAt)))
+    .where(
+      and(
+        eq(accounts.workspaceId, ws.workspaceId),
+        opts.includeArchived ? undefined : isNull(accounts.archivedAt),
+        hidePlaceholders ? notPlaceholder(accounts.id) : undefined,
+      ),
+    )
     .orderBy(asc(accounts.kind), asc(accounts.sortOrder), asc(accounts.name));
 }
 
@@ -175,12 +184,14 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
       if (!parent || parent.kind !== row.kind) throw new AccountError('Parent must be an account of the same kind');
       if (row.kind === 'asset' || row.kind === 'liability') await checkPocketTx(tx, ws, row, parent);
     }
-    await tx.insert(accounts).values(row);
-    if ((row.kind === 'income' || row.kind === 'expense') && (await hasBooks(tx))) {
-      // A category belongs to a set of books: the one the context names, or the workspace's first (Personal).
-      const bookId = ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
-      if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId });
-    }
+    await withCapture(tx, { entity: 'category', id: row.id }, async () => {
+      await tx.insert(accounts).values(row);
+      if ((row.kind === 'income' || row.kind === 'expense') && (await hasBooks(tx))) {
+        // A category belongs to a set of books: the one the context names, or the workspace's first (Personal).
+        const bookId = ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
+        if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId });
+      }
+    });
     const opening = input.openingBalanceMinor ?? 0;
     if (opening !== 0 && (row.kind === 'asset' || row.kind === 'liability')) {
       await postTransactionTx(tx, ws, {
@@ -206,7 +217,9 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   if (!trimmed) throw new AccountError('Name is required');
   await database.transaction(async (tx) => {
     const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
-    await tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    await withCapture(tx, { entity: 'category', id }, () =>
+      tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId))),
+    );
     if (before) {
       // Pockets still named after the account follow it; one the owner renamed keeps its own name.
       const pockets = await tx
@@ -261,7 +274,7 @@ export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string)
       throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
     }
   }
-  await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
+  await withCapture(tx, { entity: 'category', id }, () => tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id)));
   await writeAudit(tx, ws, 'archive', id, {});
 }
 
@@ -276,7 +289,7 @@ export async function unarchiveAccountTx(tx: Db, ws: WorkspaceContext, id: strin
     .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
   if (!account) throw new AccountError('Account not found');
   if (account.archivedAt === null) return;
-  await tx.update(accounts).set({ archivedAt: null }).where(eq(accounts.id, id));
+  await withCapture(tx, { entity: 'category', id }, () => tx.update(accounts).set({ archivedAt: null }).where(eq(accounts.id, id)));
   await writeAudit(tx, ws, 'unarchive', id, {});
 }
 

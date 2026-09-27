@@ -5,6 +5,7 @@ import { bookBudgetSettings, bookIncomeOverrides } from '../schema-books';
 import { budgetIncomeOverrides, budgetSettings } from '../schema-budget';
 import { BudgetError } from './budgets';
 import { hasBooks, personalBookIdTx } from './books';
+import { withCapture } from '../sync/capture';
 
 export interface BudgetIncome {
   /** What an ordinary month is expected to bring in. */
@@ -59,10 +60,12 @@ export async function saveExpectedIncome(database: Database, ws: WorkspaceContex
       }
     }
     if (bookId) {
-      await tx
-        .insert(bookBudgetSettings)
-        .values({ bookId, workspaceId: ws.workspaceId, expectedIncomeMinor: amountMinor, updatedAt: now })
-        .onConflictDoUpdate({ target: bookBudgetSettings.bookId, set: { expectedIncomeMinor: amountMinor, updatedAt: now } });
+      await withCapture(tx, { entity: 'book_income', id: bookId }, () =>
+        tx
+          .insert(bookBudgetSettings)
+          .values({ bookId, workspaceId: ws.workspaceId, expectedIncomeMinor: amountMinor, updatedAt: now })
+          .onConflictDoUpdate({ target: bookBudgetSettings.bookId, set: { expectedIncomeMinor: amountMinor, updatedAt: now } }),
+      );
     }
   });
 }
@@ -89,10 +92,12 @@ export async function setIncomeOverride(database: Database, ws: WorkspaceContext
       }
     }
     if (bookId) {
-      await tx
-        .insert(bookIncomeOverrides)
-        .values({ bookId, workspaceId: ws.workspaceId, month: input.month, amountMinor: input.amountMinor })
-        .onConflictDoUpdate({ target: [bookIncomeOverrides.bookId, bookIncomeOverrides.month], set: { amountMinor: input.amountMinor } });
+      await withCapture(tx, { entity: 'book_income_override', id: `${bookId}|${input.month}` }, () =>
+        tx
+          .insert(bookIncomeOverrides)
+          .values({ bookId, workspaceId: ws.workspaceId, month: input.month, amountMinor: input.amountMinor })
+          .onConflictDoUpdate({ target: [bookIncomeOverrides.bookId, bookIncomeOverrides.month], set: { amountMinor: input.amountMinor } }),
+      );
     }
   });
 }
@@ -106,7 +111,9 @@ export async function clearIncomeOverride(database: Database, ws: WorkspaceConte
       await tx.delete(budgetIncomeOverrides).where(and(eq(budgetIncomeOverrides.workspaceId, ws.workspaceId), eq(budgetIncomeOverrides.month, month)));
     }
     if (bookId) {
-      await tx.delete(bookIncomeOverrides).where(and(eq(bookIncomeOverrides.bookId, bookId), eq(bookIncomeOverrides.month, month)));
+      await withCapture(tx, { entity: 'book_income_override', id: `${bookId}|${month}` }, () =>
+        tx.delete(bookIncomeOverrides).where(and(eq(bookIncomeOverrides.bookId, bookId), eq(bookIncomeOverrides.month, month))),
+      );
     }
   });
 }

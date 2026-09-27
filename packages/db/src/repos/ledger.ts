@@ -1,12 +1,13 @@
 import { isMcc, isSupportedCurrency, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Db } from '../database';
+import type { Database, Db, Tx } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
+import { captureVoidingTx, capturePostedTx } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
@@ -78,6 +79,13 @@ export interface PostTransactionInput {
    * undefined on `replaceTransaction` means "carry the original's", null means none.
    */
   setAside?: SetAsideChoice | null;
+  /**
+   * The row's id, when the caller must choose it: only household sharing's apply, posting a purchase's first row under
+   * its lineage id (spec §7.2). Everyone else lets the ledger mint one. `replaceTransaction` never passes it on.
+   */
+  id?: string;
+  /** The member whose change this posting applies (spec §7.3): lands in the audit 'post' payload, as all input does. */
+  syncAuthor?: string;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -165,7 +173,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // checked before any insert below, so a refused posting leaves nothing behind.
   const bookId = (await hasBooks(tx)) ? await bookOfCategories(tx, found) : undefined;
 
-  const id = uuidv7();
+  const id = input.id ?? uuidv7();
   await tx.insert(transactions).values({
     id,
     workspaceId: ws.workspaceId,
@@ -217,6 +225,8 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
   if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
+  // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
+  await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null);
   await audit(tx, ws, 'post', id, input);
   return id;
 }
@@ -230,29 +240,35 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
  * answer are taken back, unless `keep` says an edit carries them on (set-aside rulings I1, I2, I4). What else a void
  * means (a deposit event reopened) is `voidTransactionTx`'s; an edit keeps that (`replaceTransaction`).
  */
-async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
+async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string): Promise<void> {
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
   if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
   if (row.status === 'void') throw new LedgerError('ALREADY_VOID', `Transaction ${id} is already void`);
+  // Household sharing: read the lineage before its head changes; the flush decides whether this is a void or a
+  // correction (a replace posts the next head in the same transaction).
+  await captureVoidingTx(tx, id);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
   // A transfer tagged to a goal parked what it landed: that comes back out, whichever door deletes or edits it — as far
   // as it is still there. An edit that still moves between the same two accounts keeps it and carries the difference.
   const arrival = row.goalId && !keep.tagged ? await takeBackTaggedArrivalTx(tx, ws, id, row.goalId) : null;
   // What an answer did to a goal is a fact about the same money: it goes when the money goes.
   if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id, arrival, keep);
-  await audit(tx, ws, 'void', id, {});
+  await audit(tx, ws, 'void', id, author ? { syncAuthor: author } : {});
 }
 
-/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
-export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
-  await markVoidTx(tx, ws, id, keep);
+/**
+ * Voids inside an open transaction, so a caller can void and repost several transactions atomically. `author` is the
+ * member whose change this applies (household sharing, spec §7.3), recorded in the audit 'void' payload.
+ */
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string): Promise<void> {
+  await markVoidTx(tx, ws, id, keep, author);
   // A deposit event this posted is reopened, and the rest of what that event posted is voided with it (whole: `{}`).
   for (const other of await reopenDepositEventTx(tx, ws, id)) {
     const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));
-    if (row?.status === 'posted') await voidTransactionTx(tx, ws, other);
+    if (row?.status === 'posted') await voidTransactionTx(tx, ws, other, {}, author);
   }
 }
 
@@ -267,120 +283,128 @@ export function replaceTransaction(
   id: string,
   input: PostTransactionInput,
 ): Promise<string> {
-  return database.transaction(async (tx) => {
-    const [original] = await tx
-      .select({
-        source: transactions.source,
-        externalRef: transactions.externalRef,
-        originalCurrency: transactions.originalCurrency,
-        originalAmountMinor: transactions.originalAmountMinor,
-        mcc: transactions.mcc,
-        cardId: transactions.cardId,
-        eventId: transactions.eventId,
-        templateId: transactions.templateId,
-        goalId: transactions.goalId,
-      })
-      .from(transactions)
-      .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
-    const [settles] = (await billTablesExist(tx))
-      ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
-      : [];
-    // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
-    // spending, so it stays where it was filed: a category from another workspace is refused here, before
-    // anything is voided, whatever form or import offered it.
-    if (await hasBooks(tx)) {
-      const [filed] = await tx
-        .select({ bookId: bookTransactions.bookId })
-        .from(bookTransactions)
-        .where(and(eq(bookTransactions.transactionId, id), eq(bookTransactions.workspaceId, ws.workspaceId)));
-      if (filed) {
-        const lineIds = [...new Set(input.lines.map((line) => line.accountId))];
-        const lineAccounts = lineIds.length
-          ? await tx
-              .select({ id: accounts.id, kind: accounts.kind })
-              .from(accounts)
-              .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, lineIds)))
-          : [];
-        const replacementBook = await bookOfCategories(tx, lineAccounts);
-        if (replacementBook && replacementBook !== filed.bookId) {
-          throw new LedgerError('OTHER_BOOK', 'That category belongs to another workspace. A transaction stays in the workspace it was filed in.');
-        }
+  return database.transaction((tx) => replaceTransactionTx(tx, ws, id, input));
+}
+
+/**
+ * `replaceTransaction` inside a transaction already running (check #13: apply corrects a purchase inside its own db
+ * transaction, and the mutex is not reentrant). The replacement always gets a fresh id: `input.id` is dropped.
+ */
+export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: string, withId: PostTransactionInput): Promise<string> {
+  const { id: _ignored, ...input } = withId;
+  void _ignored;
+  const [original] = await tx
+    .select({
+      source: transactions.source,
+      externalRef: transactions.externalRef,
+      originalCurrency: transactions.originalCurrency,
+      originalAmountMinor: transactions.originalAmountMinor,
+      mcc: transactions.mcc,
+      cardId: transactions.cardId,
+      eventId: transactions.eventId,
+      templateId: transactions.templateId,
+      goalId: transactions.goalId,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+  const [settles] = (await billTablesExist(tx))
+    ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
+    : [];
+  // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
+  // spending, so it stays where it was filed: a category from another workspace is refused here, before
+  // anything is voided, whatever form or import offered it.
+  if (await hasBooks(tx)) {
+    const [filed] = await tx
+      .select({ bookId: bookTransactions.bookId })
+      .from(bookTransactions)
+      .where(and(eq(bookTransactions.transactionId, id), eq(bookTransactions.workspaceId, ws.workspaceId)));
+    if (filed) {
+      const lineIds = [...new Set(input.lines.map((line) => line.accountId))];
+      const lineAccounts = lineIds.length
+        ? await tx
+            .select({ id: accounts.id, kind: accounts.kind })
+            .from(accounts)
+            .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, lineIds)))
+        : [];
+      const replacementBook = await bookOfCategories(tx, lineAccounts);
+      if (replacementBook && replacementBook !== filed.bookId) {
+        throw new LedgerError('OTHER_BOOK', 'That category belongs to another workspace. A transaction stays in the workspace it was filed in.');
       }
     }
-    // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
-    // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
-    const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
-    // Read before the void. An edit carries the saved answer by the difference, never by undoing and redoing it (rulings
-    // I1, I2): an edit that does not mention it (a category re-file), or gives the same one again (an edit form), keeps
-    // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
-    const tables = await setAsideTablesExist(tx);
-    const oldLines = await tx
-      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
-      .from(entries)
-      .where(and(eq(entries.transactionId, id), eq(entries.workspaceId, ws.workspaceId)));
-    const saved = tables ? await setAsideChoiceOfTx(tx, ws, id) : null;
-    const carried = input.setAside === undefined ? saved : null;
-    // A carried answer is dropped when the edit no longer pays from its account (or, a move, into its destination), or
-    // its goal was archived since: an edit that does not mention it is never refused over it.
-    const answered =
-      input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await goalActiveTx(tx, ws, carried.goalId)) ? carried : null;
-    const keepAnswer = !!answered && !!saved && sameAnswer(answered, saved) && carryable(answered, input.lines) && (await goalActiveTx(tx, ws, answered.goalId));
-    // A transfer tagged to a goal stays tagged when it is corrected. Between the same two accounts it is carried by the
-    // difference; to another account, the old one is taken back and the new one parked.
-    const [taggedGoal] = original?.goalId
-      ? await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)))
-      : [];
-    const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
-    const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
-    const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
-    // An edit voids without reopening a deposit event: the replacement carries on what the original was.
-    await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged });
-    // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
-    const setAside = keepAnswer ? null : withSavedStage(answered, saved);
-    // Keep import identity so re-importing the same statement still recognises the row.
-    const replacement = await postTransactionTx(tx, ws, {
-      ...input,
-      source: input.source ?? original?.source,
-      externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
-      replacesTransactionId: id,
-      // Omitting both original fields keeps the original purchase currency; null clears it.
-      ...(input.originalCurrency === undefined && input.originalAmountMinor === undefined
-        ? { originalCurrency: original?.originalCurrency ?? null, originalAmountMinor: original?.originalAmountMinor ?? null }
-        : {}),
-      ...(input.mcc === undefined ? { mcc: original?.mcc ?? null } : {}),
-      ...(input.cardId === undefined ? { cardId: original?.cardId ?? null } : {}),
-      // Correcting a bill payment must not make the bill ask to be paid again.
-      ...(input.templateId === undefined ? { templateId: original?.templateId ?? null } : {}),
-      // …nor change which month's bill it settled.
-      ...(input.billMonth === undefined && settles ? { billMonth: settles.billMonth } : {}),
-      ...(input.channel === undefined ? { channel: extras?.channel ?? null } : {}),
-      ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
-      // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
-      ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
-      setAside,
-    });
-    if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
-    if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
-    else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);
-    // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
-    // facts about the same money: they follow the correction.
-    await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
-    await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
-    await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
-    // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
-    await tx
-      .update(transactionPointActuals)
-      .set({ transactionId: replacement, editedAfterCheck: 1 })
-      .where(and(eq(transactionPointActuals.transactionId, id), eq(transactionPointActuals.workspaceId, ws.workspaceId)));
-    // The pictures follow the correction, as the card postings do: they are rows about the same money.
-    if (await extrasTablesExist(tx)) await movePhotosTx(tx, ws, id, replacement);
-    // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
-    // fit when the correction is smaller.
-    await carryEventItemTx(tx, ws, id, replacement);
-    // A deposit event it posted stays done, and its log takes the edited figures.
-    await followDepositEventTx(tx, ws, id, replacement);
-    return replacement;
+  }
+  // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
+  // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
+  const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
+  // Read before the void. An edit carries the saved answer by the difference, never by undoing and redoing it (rulings
+  // I1, I2): an edit that does not mention it (a category re-file), or gives the same one again (an edit form), keeps
+  // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
+  const tables = await setAsideTablesExist(tx);
+  const oldLines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .from(entries)
+    .where(and(eq(entries.transactionId, id), eq(entries.workspaceId, ws.workspaceId)));
+  const saved = tables ? await setAsideChoiceOfTx(tx, ws, id) : null;
+  const carried = input.setAside === undefined ? saved : null;
+  // A carried answer is dropped when the edit no longer pays from its account (or, a move, into its destination), or
+  // its goal was archived since: an edit that does not mention it is never refused over it.
+  const answered =
+    input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await goalActiveTx(tx, ws, carried.goalId)) ? carried : null;
+  const keepAnswer = !!answered && !!saved && sameAnswer(answered, saved) && carryable(answered, input.lines) && (await goalActiveTx(tx, ws, answered.goalId));
+  // A transfer tagged to a goal stays tagged when it is corrected. Between the same two accounts it is carried by the
+  // difference; to another account, the old one is taken back and the new one parked.
+  const [taggedGoal] = original?.goalId
+    ? await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)))
+    : [];
+  const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
+  const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
+  const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
+  // An edit voids without reopening a deposit event: the replacement carries on what the original was.
+  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor);
+  // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
+  const setAside = keepAnswer ? null : withSavedStage(answered, saved);
+  // Keep import identity so re-importing the same statement still recognises the row.
+  const replacement = await postTransactionTx(tx, ws, {
+    ...input,
+    source: input.source ?? original?.source,
+    externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
+    replacesTransactionId: id,
+    // Omitting both original fields keeps the original purchase currency; null clears it.
+    ...(input.originalCurrency === undefined && input.originalAmountMinor === undefined
+      ? { originalCurrency: original?.originalCurrency ?? null, originalAmountMinor: original?.originalAmountMinor ?? null }
+      : {}),
+    ...(input.mcc === undefined ? { mcc: original?.mcc ?? null } : {}),
+    ...(input.cardId === undefined ? { cardId: original?.cardId ?? null } : {}),
+    // Correcting a bill payment must not make the bill ask to be paid again.
+    ...(input.templateId === undefined ? { templateId: original?.templateId ?? null } : {}),
+    // …nor change which month's bill it settled.
+    ...(input.billMonth === undefined && settles ? { billMonth: settles.billMonth } : {}),
+    ...(input.channel === undefined ? { channel: extras?.channel ?? null } : {}),
+    ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
+    // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
+    ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
+    setAside,
   });
+  if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
+  if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
+  else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);
+  // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
+  // facts about the same money: they follow the correction.
+  await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
+  await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
+  await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
+  // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
+  await tx
+    .update(transactionPointActuals)
+    .set({ transactionId: replacement, editedAfterCheck: 1 })
+    .where(and(eq(transactionPointActuals.transactionId, id), eq(transactionPointActuals.workspaceId, ws.workspaceId)));
+  // The pictures follow the correction, as the card postings do: they are rows about the same money.
+  if (await extrasTablesExist(tx)) await movePhotosTx(tx, ws, id, replacement);
+  // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
+  // fit when the correction is smaller.
+  await carryEventItemTx(tx, ws, id, replacement);
+  // A deposit event it posted stays done, and its log takes the edited figures.
+  await followDepositEventTx(tx, ws, id, replacement);
+  return replacement;
 }
 
 /** Sets or clears a purchase's typed MCC in place: merchant metadata, not amounts, so nothing is reposted. */

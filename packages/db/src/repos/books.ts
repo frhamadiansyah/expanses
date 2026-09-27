@@ -15,6 +15,8 @@ import { healthTablesExist } from './health-tables';
 import { replanCatalogProgramsTx } from './catalog';
 import { ensureBookCategoryKeysTx } from './categories';
 import { categoryTotalsIn } from './reports';
+import { withCapture } from '../sync/capture';
+import { isBookShared } from '../sync/placeholder';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
 
@@ -96,6 +98,20 @@ export async function personalBookIdTx(tx: Db, workspaceId: string): Promise<str
     .where(and(eq(books.workspaceId, workspaceId), isNull(books.archivedAt)))
     .orderBy(asc(books.sortOrder), asc(books.createdAt));
   return (rows.find((row) => row.kind === 'personal') ?? rows[0])?.id ?? null;
+}
+
+/**
+ * Whether this device joined the book from someone else's share (household sharing): a `shared_books` row, on a book
+ * this device holds as `kind = 'shared'`. Its categories arrive by sync under the owner's ids, so the default-tree
+ * upkeep at app open must never make its own copies there. The owner's own shared book (kept as it was, usually
+ * `'personal'`) is not joined: what the owner's device adds to it is captured and reaches everyone. False on a
+ * database from before sharing.
+ */
+export async function isJoinedBookTx(tx: Db, bookId: string): Promise<boolean> {
+  const tables = await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`);
+  if (tables.length === 0) return false;
+  const rows = await tx.values(sql`SELECT 1 FROM shared_books s JOIN books b ON b.id = s.book_id WHERE s.book_id = ${bookId} AND b.kind = 'shared'`);
+  return rows.length > 0;
 }
 
 /** Makes the Personal book for a workspace being created. Used inside createWorkspace's transaction. */
@@ -241,7 +257,9 @@ export async function renameBook(database: Database, ws: WorkspaceContext, bookI
   await bookOf(database, ws, bookId);
   const trimmed = name.trim();
   if (!trimmed) throw new BookError('NAME_REQUIRED', 'A workspace needs a name');
-  await database.db.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () => tx.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)))),
+  );
 }
 
 export async function archiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
@@ -249,7 +267,11 @@ export async function archiveBook(database: Database, ws: WorkspaceContext, book
   if (book.kind === 'personal') throw new BookError('PERSONAL_BOOK', 'Personal is where categories and expected income fall back to, so it stays');
   const open = await listBooks(database, ws);
   if (open.length <= 1) throw new BookError('LAST_BOOK', 'The last workspace cannot be archived');
-  await database.db.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
+    ),
+  );
 }
 
 const activeKey = (ws: WorkspaceContext) => `active_book:${ws.workspaceId}`;
@@ -271,7 +293,11 @@ export async function setActiveBook(database: Database, ws: WorkspaceContext, bo
 /** Whether this workspace's monthly caps count spending tagged to an event. */
 export async function setBookEventsInBudget(database: Database, ws: WorkspaceContext, bookId: string, on: boolean): Promise<void> {
   await bookOf(database, ws, bookId);
-  await database.db.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
+    ),
+  );
 }
 
 /**
@@ -285,6 +311,9 @@ export async function setBookEventsInBudget(database: Database, ws: WorkspaceCon
  */
 export async function setBookBaseCurrency(database: Database, ws: WorkspaceContext, bookId: string, currency: string): Promise<{ rate: number; onDate: string }> {
   if (!isSupportedCurrency(currency)) throw new BookError('BAD_CURRENCY', `${currency} is not a currency this app knows`);
+  // A shared workspace keeps the currency it was shared in (household sharing spec §6.5 step 0; final review, minor 3):
+  // every device joined on that currency, and a change here would read every other device's figures differently.
+  if (await isBookShared(database, bookId)) throw new BookError('SHARED', 'A shared workspace keeps the currency it was shared in');
   const book = await bookOf(database, ws, bookId);
   const today = isoDate();
   if (book.baseCurrency === currency) return { rate: 1, onDate: today };
@@ -294,7 +323,16 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
   const into = (amountMinor: number) => convertMinor(amountMinor, book.baseCurrency, currency, found.rate);
   const now = new Date().toISOString();
 
-  await database.transaction(async (tx) => {
+  // Every figure in the book's plan is rewritten here: captured whole, narrowed to this book (spec §6.3).
+  const captured = [
+    { entity: 'book', id: bookId },
+    { entity: 'budget', bookId },
+    { entity: 'budget_frequency', bookId },
+    { entity: 'budget_override', bookId },
+    { entity: 'book_income', id: bookId },
+    { entity: 'book_income_override', bookId },
+  ];
+  await database.transaction((tx) => withCapture(tx, captured, async () => {
     // The old, workspace-wide budget tables are Personal's own copy — budget-settings.ts writes both whenever
     // Personal is written — so they move when Personal moves and are left alone for any other workspace.
     const personalId = await personalBookIdTx(tx, ws.workspaceId);
@@ -385,7 +423,7 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
       payloadJson: JSON.stringify({ from: book.baseCurrency, to: currency, rate: found.rate, onDate: found.onDate }),
       createdAt: now,
     });
-  });
+  }));
   return { rate: found.rate, onDate: found.onDate };
 }
 

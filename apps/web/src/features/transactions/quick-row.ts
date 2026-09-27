@@ -141,6 +141,20 @@ export function paymentOptions(accounts: readonly AccountRow[], cards: readonly 
 export const paymentKey = (accountId: string, cardId: string | null | undefined) => (cardId ? `${accountId}:${cardId}` : accountId);
 
 /**
+ * A placeholder — an account another member's purchase is posted against here, which this device's own list leaves
+ * out (household sharing spec §4.4) — is never offered as a way to pay: only the one the row already names stays, as
+ * its current value (final review, minor 2). `listed` is what this device lists; `current` the account the row names.
+ */
+export function withoutPlaceholders(options: readonly PaymentOption[], listed: ReadonlySet<string>, current: string): PaymentOption[] {
+  return options.filter((option) => listed.has(option.accountId) || option.accountId === current);
+}
+
+/** How a row reads the placeholder it names: who paid, never an account of yours ("Dewi (IDR)"). */
+export function placeholderLabel(memberName: string): string {
+  return `Paid by ${memberName}`;
+}
+
+/**
  * The paid-with choices for one row: everything that can pay, and — always — the account the row already names.
  *
  * The cell says what paid, so it offers only what can: never a locked deposit, never a house. But a purchase

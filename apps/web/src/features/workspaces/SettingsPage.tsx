@@ -9,6 +9,8 @@ import { usePhone } from '../../app/use-phone';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { useSharedBooks } from '../sharing/queries';
+import { SharingSection } from '../sharing/SharingSection';
 import { useBooks } from './queries';
 import { WorkspaceDot } from './WorkspaceBadge';
 
@@ -33,6 +35,9 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [note, setNote] = useState<string | null>(null);
+  // A shared workspace keeps the currency it was shared in (sharing spec §6.5 step 0; final review, minor 3): the row is
+  // not offered, and the repository refuses it anyway.
+  const shared = (useSharedBooks().data ?? []).some((each) => each.bookId === book.id);
 
   // What today's rate would do, read before anything is written: a plan converted at a rate nobody was shown is
   // a plan nobody can check.
@@ -100,6 +105,11 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
         <InsetRow title="Save" chevron={false} onClick={() => !busy && rename()} className={busy ? 'opacity-40' : undefined} />
       </InsetGroup>
 
+      {shared ? (
+        <InsetGroup wide footer="A shared workspace keeps the currency it was shared in.">
+          <ReadOnlyRow label="Reads in" value={book.baseCurrency} />
+        </InsetGroup>
+      ) : (
       <InsetGroup
         wide
         footer={
@@ -125,6 +135,7 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
           <InsetRow title="Change currency" chevron={false} onClick={() => !busy && changeCurrency()} className={busy ? 'opacity-40' : undefined} />
         ) : null}
       </InsetGroup>
+      )}
 
       <InsetGroup wide>
         <SwitchRow
@@ -133,6 +144,9 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
           onChange={(checked) => !busy && void setEvents(checked)}
         />
       </InsetGroup>
+
+      {/* Household sharing (spec §11): Share this workspace, or, once shared, its status, members and devices. */}
+      <SharingSection book={book} />
 
       {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
       <InsetGroup wide>

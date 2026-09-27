@@ -1,10 +1,13 @@
 import { formatMinor } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
-import { Check, Plus, Settings } from 'lucide-react';
+import { Check, LogIn, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
+import { JoinSheet } from '../sharing/JoinSheet';
+import { useSharedBooks } from '../sharing/queries';
+import { endedLine, sharedWith } from '../sharing/sharing-copy';
 import { NewWorkspaceSheet } from './NewWorkspaceSheet';
 import { WorkspaceDot } from './WorkspaceBadge';
 import { useBooks, useSpentThisMonth } from './queries';
@@ -23,6 +26,18 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const shared = useSharedBooks();
+  /** A shared book's subtitle (spec §11): who it is shared with, or that it no longer is. */
+  const sharing = (bookId: string) => {
+    const book = (shared.data ?? []).find((each) => each.bookId === bookId);
+    if (!book) return null;
+    if (book.state === 'unshared') {
+      const byName = book.members.find((member) => member.memberId === book.unsharedBy)?.name ?? null;
+      return endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId, removed: book.unsharedReason === 'removed' });
+    }
+    return sharedWith(book.members, book.memberId);
+  };
 
   async function choose(bookId: string) {
     if (bookId === ws.bookId) return onClose();
@@ -41,6 +56,7 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
   // One sheet at a time: making a workspace ends in another one being open, so the list behind it would be
   // answering about a workspace that is no longer the one on the screen.
   if (creating) return <NewWorkspaceSheet onClose={onClose} />;
+  if (joining) return <JoinSheet onClose={onClose} />;
 
   return (
     <Sheet title="Workspaces" onClose={onClose}>
@@ -65,6 +81,11 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
                   <span className="min-w-0 flex-1">
                     <span className={cx('block truncate text-sm', open && 'font-semibold')}>{book.name}</span>
                     {/* Each workspace's own currency, as that workspace's own screens show it. */}
+                    {sharing(book.id) && (
+                      <span data-testid="workspace-shared-with" className="block truncate text-xs text-slate-600">
+                        {sharing(book.id)}
+                      </span>
+                    )}
                     <span className="block text-xs text-slate-500">
                       {spent.isSuccess
                         ? `Spent ${formatMinor(spent.data[book.id]?.amountMinor ?? 0, spent.data[book.id]?.currency ?? book.baseCurrency)} this month`
@@ -87,6 +108,15 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
         >
           <Plus size={18} aria-hidden className="shrink-0 text-slate-500" />
           New workspace
+        </button>
+        {/* Household sharing (spec §11): someone else's workspace, by the code or link they sent. */}
+        <button
+          type="button"
+          onClick={() => setJoining(true)}
+          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-left text-sm font-medium hover:bg-slate-50"
+        >
+          <LogIn size={18} aria-hidden className="shrink-0 text-slate-500" />
+          Join a workspace
         </button>
         <Link
           to="/settings"

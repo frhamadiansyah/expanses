@@ -268,13 +268,24 @@ export function extraRowRefusal(row: ExtraRow, draft: FormDraft): string | null 
 export function extraRows(
   draft: FormDraft,
   accounts: readonly AccountRow[],
-  { missingRate }: { missingRate: { from: string; to: string; onDate: string } | null },
+  {
+    missingRate,
+    sharedBook = false,
+  }: {
+    missingRate: { from: string; to: string; onDate: string } | null;
+    /**
+     * Household sharing spec §4.4 last line: in a shared book there is no With row. A purchase paid by someone
+     * else already names its payer — sharing is what the book itself is — and With's own receivable would be a
+     * second, informal ledger of who owes whom laid over the one the book already keeps.
+     */
+    sharedBook?: boolean;
+  },
 ): ExtraRow[] {
   const outward = draft.mode === 'expense' || draft.mode === 'income';
   const rows: ExtraRow[] = outward ? ['event'] : [];
   if (draft.mode === 'expense') {
     rows.push('split');
-    if (!draft.editing) rows.push('with');
+    if (!draft.editing && !sharedBook) rows.push('with');
     if (accountOf(draft, accounts)?.subtype === 'credit_card') rows.push('mcc');
   }
   // Online or offline is how money left for the outside world; it says nothing about money moved between your
