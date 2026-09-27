@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useEscape } from './use-escape';
 
@@ -19,6 +19,7 @@ export function Sheet({
   onClose,
   children,
   grouped = false,
+  confirm,
 }: {
   title: string;
   onClose: () => void;
@@ -29,6 +30,11 @@ export function Sheet({
    * surface.
    */
   grouped?: boolean;
+  /**
+   * A sheet that saves: ✕ at the left, the title in the middle and ✓ at the right, dim until it can save —
+   * the same ✓ a pushed form carries, so the sheet needs no Save button at its foot.
+   */
+  confirm?: { label: string; disabled?: boolean; run: () => void };
 }) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -63,17 +69,40 @@ export function Sheet({
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
-          >
-            <X size={18} aria-hidden />
-          </button>
-        </div>
+        {confirm ? (
+          <div className="mb-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)]"
+            >
+              <X size={18} aria-hidden />
+            </button>
+            <h2 className="flex-1 text-center text-base font-semibold">{title}</h2>
+            <button
+              type="button"
+              onClick={confirm.run}
+              disabled={confirm.disabled}
+              aria-label={confirm.label}
+              className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] disabled:opacity-40"
+            >
+              <Check size={20} aria-hidden />
+            </button>
+          </div>
+        ) : (
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
+            >
+              <X size={18} aria-hidden />
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>

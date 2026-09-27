@@ -6,8 +6,9 @@ import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
+import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
@@ -15,8 +16,8 @@ import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from 
 /**
  * Money coming back on one loan, or going back on one: the amount, any interest, the day and the account.
  *
- * It was drawn inside the person's card, under every loan, in boxed fields; it is a group of rows on the loan's own
- * page now. Paying back money you borrowed takes it out of an account — the amount and any interest — so it asks
+ * It rises as a sheet over the loan's page, so the page under it never jumps and the loan stays in sight; the
+ * sheet's corner, its backdrop and Escape all close it without saving. Paying back money you borrowed takes it out of an account — the amount and any interest — so it asks
  * the set-aside question; money coming back brings money in and asks nothing. A loan in another currency is repaid
  * at the day's rate, asked for when none is stored, as lending does.
  */
@@ -63,6 +64,9 @@ export function RepaymentForm({
     }
   })();
   const setAside = useSetAside(direction === 'borrowed' ? spendingDoor(moneyId, outflowMinor) : null);
+  // The ✓ is dim until there is an amount; anything else wrong with it is said in words when ✓ is pressed, since a
+  // dim ✓ alone could not say that Andi owes less than was typed.
+  const ready = draft.amount.trim() !== '';
 
   async function save() {
     if (!setAside.ready || busy) return;
@@ -91,14 +95,14 @@ export function RepaymentForm({
   }
 
   return (
-    <>
-      <InsetGroup header={direction === 'lent' ? 'Money that came back' : 'Money you paid back'}>
+    <Sheet grouped title="Repayment" onClose={onDone} confirm={{ label: 'Save repayment', disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
+      <InsetGroup>
         <TextRow
-          label={`How much ${direction === 'lent' ? 'came back' : 'you paid'} (${currency})`}
+          label={`${direction === 'lent' ? 'Came back' : 'Paid back'} (${currency})`}
           value={draft.amount}
           inputMode="decimal"
           onChange={(e) => set({ amount: e.target.value })}
-          placeholder="3.000.000"
+          placeholder="Amount"
         />
         <TextRow
           label={`Interest (${currency})`}
@@ -129,10 +133,6 @@ export function RepaymentForm({
       </InsetGroup>
       {setAside.node}
       <ErrorBox error={error} />
-      <InsetGroup>
-        <InsetRow title="Save repayment" chevron={false} disabled={busy || !setAside.ready} onClick={() => void save()} />
-        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
-      </InsetGroup>
-    </>
+    </Sheet>
   );
 }

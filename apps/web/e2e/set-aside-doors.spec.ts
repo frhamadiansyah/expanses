@@ -299,7 +299,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 
   await openLoan(page, 'Budi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/How much you paid/).pressSequentially('6800000');
+  await page.getByLabel(/^Paid back/).pressSequentially('6800000');
   await page.getByLabel('From').selectOption({ label: 'Jenius' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save repayment' });

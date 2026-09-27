@@ -75,10 +75,36 @@ test('records a repayment and the balance falls', async ({ page }) => {
   // Repaying is done on the loan's own page: Andi's row, then his loan.
   await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/How much came back/).fill('4000000');
+  await page.getByLabel(/^Came back/).fill('4000000');
   await page.getByRole('button', { name: 'Save repayment' }).click();
 
   await expect(page.getByText(/6\.000\.000/).first()).toBeVisible();
+});
+
+test('a repayment opens in a sheet over the loan, and closes without saving', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
+
+  await openLoan(page, 'Andi');
+  await page.getByRole('button', { name: 'Record repayment' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Repayment' });
+  await expect(sheet).toBeVisible();
+  // The loan stays under it, and ✓ waits for an amount.
+  await expect(page.getByTestId('loan-hero')).toBeAttached();
+  await expect(sheet.getByRole('button', { name: 'Save repayment' })).toBeDisabled();
+
+  // ✕ throws the typed amount away.
+  await sheet.getByLabel(/^Came back/).fill('4500000');
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('loan-hero')).toContainText('9.000.000');
+
+  // ✓ saves the whole of it, and the loan is paid off.
+  await page.getByRole('button', { name: 'Record repayment' }).click();
+  await sheet.getByLabel(/^Came back/).fill('9000000');
+  await sheet.getByRole('button', { name: 'Save repayment' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record repayment' })).toHaveCount(0);
 });
 
 test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
@@ -87,7 +113,7 @@ test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
 
   await openLoan(page, 'Andi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/How much came back/).fill('12000000');
+  await page.getByLabel(/^Came back/).fill('12000000');
   await page.getByRole('button', { name: 'Save repayment' }).click();
 
   await expect(page.getByText(/Andi owes Rp\s?9\.000\.000/)).toBeVisible();
@@ -377,7 +403,9 @@ test('a loan is changed on its own page, and a person’s tax ID on theirs', asy
   const taxId = page.getByRole('textbox', { name: 'Tax ID', exact: true });
   await taxId.fill('3173010101900001');
   await taxId.blur();
-  await page.reload();
+  // Away and back inside the app, as a person would: a reload straight after the blur could cut the save short.
+  await page.getByRole('link', { name: /Lend & borrow/ }).first().click();
+  await personRow(page, 'Andi').click();
   await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toHaveValue('3173010101900001');
 
   // And the list is one row: the name and the figure, with no second line when nothing is due.

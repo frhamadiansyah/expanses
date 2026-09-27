@@ -1,7 +1,8 @@
 import { isoDate } from '@expanses/core';
 import { forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
-import { useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -122,22 +123,18 @@ export function LoanPage() {
         )}
       </section>
 
-      {loan.status === 'open' && !repaying && (
-        <div className="mb-[22px] flex gap-[10px] md:max-w-md">
-          <button
-            type="button"
-            onClick={() => setRepaying(true)}
-            className="ph-focus min-h-11 flex-1 rounded-[12px] bg-[var(--ph-tint)] text-[15px] font-semibold text-white"
-          >
-            Record repayment
-          </button>
-          <button
-            type="button"
-            onClick={() => void forgive()}
-            className="ph-focus min-h-11 flex-1 rounded-[12px] bg-[var(--ph-surface)] text-[15px] font-semibold text-[var(--ph-ink)]"
-          >
-            Forgive rest
-          </button>
+      {/*
+        The loan's two actions as round buttons under the figure they change, as Wallet and Contacts draw theirs: the
+        repayment filled in the app's green, forgiving on a plain surface in red. Repaying opens a sheet over the page.
+      */}
+      {loan.status === 'open' && (
+        <div className="mb-[22px] flex justify-center gap-[44px]">
+          <RoundAction label="Repayment" name="Record repayment" onClick={() => setRepaying(true)} filled>
+            <Plus size={24} aria-hidden />
+          </RoundAction>
+          <RoundAction label="Forgive" name="Forgive rest" onClick={() => void forgive()}>
+            <X size={24} aria-hidden />
+          </RoundAction>
         </div>
       )}
       {repaying && (
@@ -210,5 +207,25 @@ export function LoanPage() {
       )}
 
     </div>
+  );
+}
+
+/** A round button with its word under it: `name` is what it does in full, for a screen reader and a test. */
+function RoundAction({ label, name, onClick, filled = false, children }: { label: string; name: string; onClick: () => void; filled?: boolean; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={name} className="ph-focus flex flex-col items-center gap-[6px] rounded-[12px]">
+      <span
+        className={
+          filled
+            ? 'flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]'
+            : 'flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-alarm)]'
+        }
+      >
+        {children}
+      </span>
+      <span className="text-[12px] leading-[16px] text-[var(--ph-ink-2)]" aria-hidden>
+        {label}
+      </span>
+    </button>
   );
 }
