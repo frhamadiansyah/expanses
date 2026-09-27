@@ -9,6 +9,7 @@ import { usePhone } from '../../app/use-phone';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { SharingSection } from '../sharing/SharingSection';
 import { useBooks } from './queries';
 import { WorkspaceDot } from './WorkspaceBadge';
 
@@ -133,6 +134,9 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
           onChange={(checked) => !busy && void setEvents(checked)}
         />
       </InsetGroup>
+
+      {/* Household sharing (spec §11): Share this workspace, or, once shared, its status, members and devices. */}
+      <SharingSection book={book} />
 
       {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
       <InsetGroup wide>

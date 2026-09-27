@@ -58,6 +58,7 @@ import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
+import { JoinPage } from '../features/sharing/JoinPage';
 import { Layout } from './Layout';
 
 export interface CardSearch {
@@ -260,6 +261,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  // Household sharing: where a `cicis://join/<code>` link lands, in the shell and on the web alike (spec §11).
+  createRoute({ getParentRoute: () => rootRoute, path: '/join/$code', component: JoinPage }),
   // Linked from nowhere: the owner reaches it by its address, to switch on what the app cannot sell yet.
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
