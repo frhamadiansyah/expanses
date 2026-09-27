@@ -40,6 +40,8 @@ export interface TableHandlers {
    * with, and a purchase another member paid for is corrected in the full form rather than in cells.
    */
   payerOf?: (transactionId: string) => PurchasePayer | null;
+  /** Posted here against another member's placeholder, known before the payers query answers. */
+  paidByOther?: (tx: TransactionView) => boolean;
 }
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
@@ -241,7 +243,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <span className="truncate px-2 text-slate-600">
           {handlers.payerOf?.(tx.id) ? (
             payerLine(handlers.payerOf(tx.id)!)
-          ) : (
+          ) : handlers.paidByOther?.(tx) ? null : (
             <>
               {row.accountLabel}
               {row.last4 && <span className="tabular ml-1 text-xs font-semibold">{row.last4}</span>}
@@ -319,8 +321,7 @@ export function TransactionsTable({
           // categories, so saving one would move it. It waits for its own workspace to be opened.
           // A purchase another member paid for is posted here against their placeholder, which no cell offers: it is
           // corrected in the full form, which keeps them as its payer (household sharing spec §4.4).
-          const payer = row.kind === 'draft' ? null : (handlers.payerOf?.(row.id) ?? null);
-          const theirs = payer !== null && !payer.mine;
+          const theirs = row.kind !== 'draft' && (handlers.paidByOther?.(row.tx!) ?? false);
           if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!) && !theirs)) {
             return <EditableRow key={key} row={row} options={options} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} />;
           }

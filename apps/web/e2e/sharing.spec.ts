@@ -153,7 +153,9 @@ test('two people share a workspace: join, record on both, correct each other, re
   // Dewi joins on her own device: by the switcher's + on a wide screen, by the link on a phone.
   await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
   if (phone) {
-    await dewi.goto(`/join/${code}`);
+    // The link's code rides in the fragment, which no server sees, and leaves the address as soon as it is read.
+    await dewi.goto(`/join#${code}`);
+    await expect(dewi).toHaveURL(/\/join$/);
   } else {
     await dewi.goto('/transactions');
     await openSwitcher(dewi, false);
@@ -192,6 +194,13 @@ test('two people share a workspace: join, record on both, correct each other, re
   await expect(receipt.locator('a[href*="/accounts/"], a[href*="/cards/"], a[href*="account="], a[href*="/net-worth/assets/"]')).toHaveCount(0);
   await dewi.goto('/transactions');
   await expect(rowOf(dewi, 'History lunch').locator('a[href*="/accounts/"], a[href*="/cards/"], a[href*="account="]')).toHaveCount(0);
+
+  // Invites are an owner's: Dewi, a member, is told to ask an owner rather than offered Link a device.
+  await openWorkspaceSettings(dewi, 'Home');
+  await expect(dewi.getByTestId('ask-owner-to-link')).toBeVisible({ timeout: 15_000 });
+  await expect(dewi.getByRole('button', { name: 'Link a device' })).toHaveCount(0);
+  await expect(dewi.getByRole('button', { name: 'Invite someone' })).toHaveCount(0);
+  await dewi.goto('/transactions');
 
   // Both record. Each sees the other's purchase, labelled with what the other paid with.
   await addTransaction(dewi, { description: 'Dewi groceries', paidWith: 'Dewi Bank', category: 'Groceries', amount: '20000' });

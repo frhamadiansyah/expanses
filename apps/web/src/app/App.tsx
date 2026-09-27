@@ -29,8 +29,9 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
       sync.stop();
     };
   }, [sync, queryClient]);
-  // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace.
-  useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join/$code', params: { code } })), []);
+  // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace, the code in
+  // the fragment rather than the path.
+  useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);
   // The day's safety copy, queued for the first idle moment after this screen has painted. It never
   // blocks a paint, and it is what stands behind "Restore the last good copy" on a device that has not
   // had an update in months.

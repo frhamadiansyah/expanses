@@ -17,6 +17,8 @@ describe('a join link (spec §8.1, §11)', () => {
     expect(joinCodeOf('cicis://join/')).toBeNull();
     expect(joinCodeOf('https://example.com/join/abc')).toBeNull();
     expect(joinCodeOf('cicis://settings')).toBeNull();
+    // A broken escape in the link is no code at all, never a thrown error inside the URL handler.
+    expect(joinCodeOf('cicis://join/%E0%A4%A')).toBeNull();
   });
 
   it('is not listened for outside the shell', () => {

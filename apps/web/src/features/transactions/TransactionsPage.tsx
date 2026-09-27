@@ -58,7 +58,7 @@ import { Unconverted } from '../workspaces/Unconverted';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { usePurchasePayers } from '../sharing/queries';
-import { payerLine } from '../sharing/sharing-copy';
+import { payerLine, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 const route = getRouteApi('/transactions');
 
@@ -267,11 +267,14 @@ export function TransactionsPage() {
   );
   /**
    * Paid for by another member: posted here against their placeholder, which no quick editor, table cell or re-file
-   * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer.
+   * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer. Decided from
+   * the row and the accounts first, so it holds before the payers query answers (fix round 1).
    */
-  const paidByOther = (transactionId: string) => {
-    const payer = payerOf(transactionId);
-    return payer !== null && !payer.mine;
+  const knownAccounts = new Set(accounts.map((account) => account.id));
+  const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
+  const paidByOther = (tx: TransactionView) => {
+    const payer = payerOf(tx.id);
+    return onPlaceholder(tx) || (payer !== null && !payer.mine);
   };
   /** The workspace a row would have to be opened in before it could be edited; null when this one will do. */
   const elsewhereOf = (transactionId: string) => editInsteadIn(badgeOf(transactionId), ws.bookId);
@@ -393,7 +396,7 @@ export function TransactionsPage() {
       setElsewhereId(tx.id);
       return;
     }
-    if (isQuickEditable(tx) && !paidByOther(tx.id)) {
+    if (isQuickEditable(tx) && !paidByOther(tx)) {
       setEditingId(null);
       setEditing({ kind: 'tx', id: tx.id, values: quickFromTransaction(tx, today) });
     } else {
@@ -697,7 +700,7 @@ export function TransactionsPage() {
         // write it already asked for is going out.
         busy={busy === tx.id}
         // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
-        onRecategorise={clickable && recategorise.offers(row) && !paidByOther(tx.id) ? recategorise.start : undefined}
+        onRecategorise={clickable && recategorise.offers(row) && !paidByOther(tx) ? recategorise.start : undefined}
         // Under a category the group already shows the icon, so each row's circle carries its day instead.
         iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
         label={
@@ -716,7 +719,7 @@ export function TransactionsPage() {
             {tx.description ? `${tx.description} · ` : ''}
             {payerOf(tx.id) ? (
               payerLine(payerOf(tx.id)!)
-            ) : (
+            ) : onPlaceholder(tx) ? null : (
               <>
                 {row.accountLabel}
                 {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
@@ -771,6 +774,7 @@ export function TransactionsPage() {
     elsewhereOf,
     filingKnown,
     payerOf,
+    paidByOther,
   };
 
   /**

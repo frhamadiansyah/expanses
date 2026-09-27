@@ -261,8 +261,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
-  // Household sharing: where a `cicis://join/<code>` link lands, in the shell and on the web alike (spec §11).
-  createRoute({ getParentRoute: () => rootRoute, path: '/join/$code', component: JoinPage }),
+  // Household sharing: where a `cicis://join/<code>` link lands, in the shell and on the web alike (spec §11). The code is
+  // the fragment, `/join#<code>`: half of it is the invite's secret, and a fragment is never sent to a server.
+  createRoute({ getParentRoute: () => rootRoute, path: '/join', component: JoinPage }),
   // Linked from nowhere: the owner reaches it by its address, to switch on what the app cannot sell yet.
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives

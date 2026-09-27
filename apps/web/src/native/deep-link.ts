@@ -9,7 +9,13 @@ import { isNative } from '../lib/pwa';
 export function joinCodeOf(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed.toLowerCase().startsWith(JOIN_LINK_PREFIX)) return null;
-  const code = decodeURIComponent(trimmed.slice(JOIN_LINK_PREFIX.length)).replace(/^\/+|\/+$/g, '');
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(trimmed.slice(JOIN_LINK_PREFIX.length));
+  } catch {
+    return null;
+  }
+  const code = decoded.replace(/^\/+|\/+$/g, '');
   return code || null;
 }
 

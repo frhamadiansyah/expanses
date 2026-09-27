@@ -14,7 +14,7 @@ import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, 
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
@@ -150,6 +150,9 @@ function CardBody({
   const allCards = useCards().data ?? [];
   const goals = useGoals().data ?? [];
   const assetValues = useAssetValues();
+  // What this device lists, placeholders left out; `accounts` may also hold one the edited purchase names.
+  const listed = useAccounts();
+  const listedIds = new Set((listed.data ?? accounts).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
   const [draft, setDraft] = useState<FormDraft>(() =>
     initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
@@ -264,7 +267,9 @@ function CardBody({
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land, as the From list draws its own: accounts first, then cards and debts it can pay down.
-  const landing = moneyHolders(transferTargets(accounts, assetValues.data ?? []));
+  // Only what this device lists: a placeholder the edited purchase names (useAccountsFor) is never a place money can
+  // be moved to (spec §4.4, fix round 1).
+  const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? []));
   const transferGroups = [
     { title: 'Accounts', kind: 'asset' as const },
     { title: 'Credit cards & debts', kind: 'liability' as const },
