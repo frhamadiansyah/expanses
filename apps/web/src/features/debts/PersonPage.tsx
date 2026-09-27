@@ -83,7 +83,7 @@ export function PersonPage() {
 
       {rows.length > 0 && (
         <section className="flex flex-col items-center gap-1 pb-[22px] text-center" data-testid="person-hero">
-          <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{owesLine(direction, name)}</span>
+          <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{owesLine(direction)}</span>
           {rows.map((row) => (
             <Money key={row.currency} minor={row.totalMinor} currency={row.currency} className="text-[34px] leading-[40px] font-bold tracking-[-0.02em]" />
           ))}

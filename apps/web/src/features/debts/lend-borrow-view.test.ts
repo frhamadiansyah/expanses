@@ -61,8 +61,9 @@ describe('one loan', () => {
   });
 
   it('says whose money it is in the words of the side', () => {
-    expect(owesLine('lent', 'Andi')).toBe('Andi owes you');
-    expect(owesLine('borrowed', 'Dewi')).toBe('You owe Dewi');
+    // The person's page is titled with their name, so the line under it does not say it again.
+    expect(owesLine('lent')).toBe('Owes you');
+    expect(owesLine('borrowed')).toBe('You owe');
     expect(stillOwesLine('lent', 'Andi')).toBe('Andi still owes');
     expect(stillOwesLine('borrowed', 'Dewi')).toBe('You still owe Dewi');
   });

@@ -54,8 +54,8 @@ export function loanSubtitle(loan: PersonLoanRow, codeLabel: string, today: stri
   return parts.join(' · ');
 }
 
-/** "Andi owes you", "You owe Dewi": whose money it is, said the way the person reads it. */
-export const owesLine = (direction: DebtDirection, name: string): string => (direction === 'lent' ? `${name} owes you` : `You owe ${name}`);
+/** "Owes you", "You owe": whose money it is, under a title that already names the person. */
+export const owesLine = (direction: DebtDirection): string => (direction === 'lent' ? 'Owes you' : 'You owe');
 
 /** "Andi still owes", "You still owe Dewi", for one loan's page. */
 export const stillOwesLine = (direction: DebtDirection, name: string): string =>
