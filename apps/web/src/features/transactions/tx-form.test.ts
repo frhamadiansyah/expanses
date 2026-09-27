@@ -22,6 +22,7 @@ import {
   formToPost,
   KEYPAD_KEYS,
   keypadAction,
+  keypadKeys,
   keypadPress,
   postingCurrency,
   prefilledCharge,
@@ -658,6 +659,29 @@ describe('the keypad', () => {
     expect(KEYPAD_KEYS).toEqual(['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00']);
     expect(KEYPAD_KEYS).not.toContain('Save');
   });
+
+  it('gives a currency with cents a decimal comma in place of 00, and keeps 00 for the rupiah', () => {
+    expect(keypadKeys('IDR')).toContain('00');
+    expect(keypadKeys('IDR')).not.toContain(',');
+    expect(keypadKeys('USD')).toContain(',');
+    expect(keypadKeys('USD')).not.toContain('00');
+    expect(keypadKeys('USD')).toHaveLength(KEYPAD_KEYS.length);
+  });
+
+  it('types one comma per figure, and a leading one as 0,', () => {
+    expect(keypadPress('12', ',')).toBe('12,');
+    expect(keypadPress('12,5', ',')).toBe('12,5');
+    expect(keypadPress('', ',')).toBe('0,');
+    expect(keypadPress('12,5+', ',')).toBe('12,5+0,');
+    expect(keypadPress('12,5+3', ',')).toBe('12,5+3,');
+  });
+
+  it('reads dollars and cents typed on the dock as dollars and cents', () => {
+    let text = '';
+    for (const key of ['1', '2', ',', '5', '0'] as const) text = keypadAction(text, 'USD', key).text;
+    const done = keypadAction(text, 'USD', 'DONE');
+    expect(done.close).toBe(true);
+    expect(parseMajor(done.text, 'USD')).toBe(1250);  });
 
   it('appends, clears and backspaces what was typed', () => {
     expect(keypadPress('85', '000')).toBe('85000');

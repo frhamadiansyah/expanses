@@ -427,3 +427,25 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
   await sheet.getByRole('button', { name: 'Jago Syariah', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago Syariah');
 });
+
+test('the dock has a decimal comma for dollars, and keeps 00 for rupiah', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  const keypad = page.getByTestId('keypad');
+
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await expect(keypad.getByRole('button', { name: '00', exact: true })).toBeVisible();
+  await expect(keypad.getByRole('button', { name: ',', exact: true })).toHaveCount(0);
+  await keypad.getByRole('button', { name: 'Close keypad' }).click();
+
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise USD', exact: true }).click();
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
+  for (const key of ['1', '2', ',', '5', '0']) await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('12,50');
+});

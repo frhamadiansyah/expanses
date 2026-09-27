@@ -825,12 +825,27 @@ export function amountFace(value: string, currency: string): string {
 /** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
 export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00'] as const;
 
-export type KeypadKey = (typeof KEYPAD_KEYS)[number];
+export type KeypadKey = (typeof KEYPAD_KEYS)[number] | ',';
+
+/**
+ * The dock's keys for one currency. A currency with cents — dollars, euros — trades the 00 key for a decimal comma,
+ * the separator the app writes amounts with; one without (the rupiah, by product decision) keeps 00, which is how
+ * rupiah amounts are typed.
+ */
+export function keypadKeys(currency: string): readonly KeypadKey[] {
+  return currencyInfo(currency).exponent > 0 ? KEYPAD_KEYS.map((key) => (key === '00' ? ',' : key)) : KEYPAD_KEYS;
+}
 
 /** What one key does to the typed text. DONE is not here; `amountAfterDone` is what DONE does. */
 export function keypadPress(value: string, key: Exclude<KeypadKey, 'DONE'>): string {
   if (key === 'C') return '';
   if (key === '⌫') return value.slice(0, -1);
+  if (key === ',') {
+    // One comma per figure: the figure being typed is what follows the last operator.
+    const current = value.split(/[+−×÷]/).pop() ?? '';
+    if (current.includes(',')) return value;
+    return value + (current === '' ? '0,' : ',');
+  }
   return value + key;
 }
 
