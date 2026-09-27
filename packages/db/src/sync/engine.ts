@@ -24,7 +24,7 @@ import {
 import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import { MissingEpochKeyError, Sealer } from './seal';
-import { assertShareableTx, emitUnknownRowsTx, SharingError, seedBookTx } from './seed';
+import { assertShareableTx, emitUnknownRowsTx, REMEMBERED_MEMBER_KEY, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
 import { removedFromBook, SyncTransportError } from './types';
 
@@ -100,7 +100,7 @@ export type EndedReason = 'stopped' | 'left' | 'removed';
 export interface ShareInput {
   memberName: string;
   deviceName: string;
-  /** This person's member id in the book. A fresh one when omitted. */
+  /** This person's member id in the book. When omitted: the one this device remembers from a share of this book it ended (§8.6, C1), else a fresh one. */
   memberId?: string;
 }
 
@@ -170,7 +170,8 @@ export class SyncEngine {
   async shareBook(bookId: string, input: ShareInput): Promise<{ relayBookId: string; memberId: string; changeSets: number }> {
     await this.database.transaction((tx) => assertShareableTx(tx, bookId));
     const { bookId: relayBookId } = await this.transport.createBook(this.device.public);
-    const memberId = input.memberId ?? uuidv7();
+    const [remembered] = await this.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${REMEMBERED_MEMBER_KEY(bookId)}`);
+    const memberId = input.memberId ?? remembered?.[0] ?? uuidv7();
     const key = randomBytes(32);
     try {
       const changeSets = await this.database.transaction(async (tx) => {
@@ -322,7 +323,7 @@ export class SyncEngine {
       termsSigningBytes(bookId, { inviteId, sameMember, memberId }) as BufferSource,
     );
     const terms: InviteTerms = { inviteId, sameMember, ...(memberId === undefined ? {} : { memberId }), sig: bytesToBase64Url(new Uint8Array(termsSig)) };
-    const preview: InvitePreview = { bookId, bookName: book[0], inviterName: input.inviterName, baseCurrency: book[1], terms };
+    const preview: InvitePreview = { bookId, relayBookId: shared.relayBookId, bookName: book[0], inviterName: input.inviterName, baseCurrency: book[1], terms };
     const expiresAt = new Date(this.now() + INVITE_TTL_MS).toISOString();
     const unsigned: Omit<InviteRecord, 'sig'> = {
       inviteId,
@@ -362,8 +363,11 @@ export class SyncEngine {
    * §8.2 steps 1–8: preview, the currency check (nothing claimed on a mismatch), claim, every epoch key at rest, the
    * book and `shared_books`, the introduction (this device and, unless linking, this member), then a sync from 0.
    *
-   * On a book in `needs_invite` (§8.7) this is the rejoin: the existing book row and member are kept, the cursor goes
-   * back to 0, and after the pull every local row in scope the log never mentioned is emitted as new.
+   * On a book already here that is not active on this very relay book — `needs_invite` (§8.7), `unshared` (its owner
+   * stopped and shared again, §8.6), or active on an older relay book the owner has moved on from (a restored owner
+   * phone that kept the book as its own and shared it again; final review, C1) — this is the rejoin: the existing book
+   * row and member are kept, the old keys and sync state go, the cursor goes back to 0, and after the pull every local
+   * row in scope the log never mentioned is emitted as new. The invite must name this device's member.
    */
   async joinBook(code: string, input: JoinInput): Promise<{ bookId: string; memberId: string; result: SyncOnceResult }> {
     const preview = await this.previewInvite(code);
@@ -380,7 +384,7 @@ export class SyncEngine {
     const terms = preview.terms;
     if (!terms || terms.inviteId !== preview.inviteId) throw new SharingError('BAD_CODE', 'That invite is not complete');
     const existing = await this.sharedRow(preview.bookId);
-    if (existing && existing.state !== 'needs_invite') throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
+    if (existing && existing.state === 'active' && existing.relayBookId === preview.relayBookId) throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
     const rejoin = existing !== undefined;
     if (!rejoin && (await this.database.db.values(sql`SELECT 1 FROM books WHERE id = ${preview.bookId}`)).length > 0) {
       throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
@@ -403,7 +407,17 @@ export class SyncEngine {
     await this.database.transaction(async (tx) => {
       if (rejoin) {
         await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
-        await tx.run(sql`UPDATE shared_books SET relay_book_id = ${claim.bookId}, epoch = ${epoch}, state = 'active' WHERE book_id = ${bookId}`);
+        await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // what waited for the old relay book goes out again as unknown rows below
+        await tx.run(sql`DELETE FROM sync_skipped WHERE book_id = ${bookId}`); // replayed refusals are recorded once, not twice (final review, minor 5)
+        // Every other device is pinned again by its introduction in the log this rejoin pulls (§5.4): a device row
+        // from before — a device the new share never admitted, or one admitted afresh at another time — would keep its
+        // fixed fields (C1 of the authority rules) and leave this copy different from its peers'.
+        await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
+        await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
+        await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
+        await tx.run(
+          sql`UPDATE shared_books SET relay_book_id = ${claim.bookId}, epoch = ${epoch}, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL WHERE book_id = ${bookId}`,
+        );
         await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
         await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
       } else {
@@ -424,9 +438,11 @@ export class SyncEngine {
       if (newMember) {
         await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${memberId}, ${input.memberName}, 'member', ${now})`);
       }
+      // The same device rejoining (an unshared copy, C1) already has its row: it is this device's again.
       await tx.run(sql`
         INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)`);
+        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)
+        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL`);
       const book = { bookId, memberId, epoch };
       const ops = [
         ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),
@@ -621,14 +637,39 @@ export class SyncEngine {
       throw error;
     }
     this.sealer.forget();
-    await this.database.transaction(async (tx) => {
-      // `shared_books` first: from here on the book is not shared, and nothing below is a change to a shared row.
-      await tx.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
-      for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices']) {
-        await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
-      }
-      await clearAuthorityTx(tx, bookId);
-    });
+    await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+  }
+
+  /**
+   * Keep the book as this device's own (final review, C1): the way out of a share that is dead here. Allowed for a
+   * book in `needs_invite` (a restored phone nobody can invite back — the only owner's, say), `unshared` (its owner
+   * stopped it, this member left, or this device was removed), or `active` with no owner device left in the view
+   * (frozen, §8.5). Refused (`STILL_SHARED`) while an owner device is in: leave, or ask an owner to stop sharing.
+   * Locally it is what `stopSharing` does: `shared_books` and every piece of sync state go; every row stays, and so
+   * do `book_members`, `book_member_accounts` and `sync_lineage`. The relay is not told; the book can be shared again.
+   */
+  async forgetSharing(bookId: string): Promise<void> {
+    const shared = await this.sharedRow(bookId);
+    if (!shared) throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
+    if (shared.state === 'active' && (await this.database.transaction((tx) => viewOwnerDevices(tx, bookId))).length > 0) {
+      throw new SharingError('STILL_SHARED', 'This workspace is still shared and has an owner: leave it, or ask an owner to stop sharing');
+    }
+    this.sealer.forget();
+    await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+  }
+
+  /**
+   * §8.6: the book becomes an ordinary local book again. `shared_books` first: from here on the book is not shared,
+   * and nothing below is a change to a shared row. This device's member is remembered, so sharing the book again is
+   * as the same person (C1).
+   */
+  private async dropSyncStateTx(tx: Tx, bookId: string, memberId: string): Promise<void> {
+    await tx.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+    for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices']) {
+      await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
+    }
+    await clearAuthorityTx(tx, bookId);
+    await tx.run(sql`INSERT INTO settings (key, value) VALUES (${REMEMBERED_MEMBER_KEY(bookId)}, ${memberId}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
   }
 
   /**

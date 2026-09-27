@@ -20,6 +20,8 @@ const CODE_CHARS = 52;
 /** What the preview carries, sealed under the invite key (§8.1 step 4; `bookId` and `terms` added in task 5, see §8.1). */
 export interface InvitePreview {
   bookId: string;
+  /** The book's id on the relay (final review, C1): a copy already active on another relay book may rejoin through this invite. */
+  relayBookId: string;
   bookName: string;
   inviterName: string;
   baseCurrency: string;

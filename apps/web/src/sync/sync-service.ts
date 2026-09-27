@@ -324,6 +324,11 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.stopSharing(bookId));
   }
 
+  /** Keep the book as this device's own (final review, C1): the way out of a share that is dead here. Local only. */
+  async forgetSharing(bookId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.forgetSharing(bookId));
+  }
+
   /* ------------------------------------------------------------- internals */
 
   /** An act that may change the book's state: whatever it did, the schedule follows `shared_books` and screens re-read. */

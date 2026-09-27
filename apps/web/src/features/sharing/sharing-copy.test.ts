@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BookReadOnlyError, FrozenBookError, LastOwnerError, LeaveIncompleteError, NotOwnerError, SharingError, SyncTransportError } from '@expanses/db';
-import { currencyRefusal, endedLine, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
+import { currencyRefusal, endedLine, FORGET_ROW, forgetConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
 const dewi = { memberId: 'd', name: 'Dewi', role: 'member' as const };
@@ -137,6 +137,13 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
   it('asks before leaving and before stopping, saying what stays', () => {
     expect(leaveConfirm('Home')).toBe('You stop receiving Home, and the others stop seeing your new changes. What is here stays, read-only.');
     expect(stopConfirm('Home')).toBe('Home stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being yours alone.');
+  });
+
+  it('asks before keeping a dead share as your own copy, saying nobody else is touched (final review, C1)', () => {
+    expect(FORGET_ROW).toBe('Stop sharing on this device');
+    expect(forgetConfirm('Home')).toBe(
+      'Home becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join it again later, you will need a new invite.',
+    );
   });
 });
 

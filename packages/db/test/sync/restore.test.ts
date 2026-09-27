@@ -28,6 +28,9 @@ const descriptions = async (d: Device, bookId: string) =>
     .filter((p) => p !== 'void')
     .map((p) => (p as { description: string }).description)
     .sort();
+/** What is posted into the book on this device, whether or not it is shared here. */
+const posted = async (d: Device, bookId: string) =>
+  (await d.database.db.values<[string]>(sql`SELECT t.description FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id WHERE bt.book_id = ${bookId} AND t.status = 'posted' ORDER BY t.description`)).map((r) => r[0]);
 
 describe('a restored backup (§8.7)', () => {
   it('goes to needs_invite with its outbox cleared, keeps recording locally, and a rejoin converges', async () => {
@@ -74,6 +77,63 @@ describe('a restored backup (§8.7)', () => {
     const expected = ['Dewi, while the phone was away', 'in the backup, never drained', 'recorded while waiting', 'synced before the backup'];
     expect(await descriptions(restored, bookId)).toEqual(expected);
     expect(await descriptions(dewi, bookId)).toEqual(expected);
+    expect(await projectBook(restored.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+  });
+
+  it('sole owner restores, forgets sharing, shares again, member rejoins and converges (final review, C1)', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.settle();
+    await spend(fandri, bookId, 'Fandri, before');
+    await spend(dewi, bookId, 'Dewi, before');
+    await home.settle();
+    const backup = await fandri.database.exportBytes();
+
+    // The only owner's phone is restored: needs_invite, and nobody can invite it back — a dead end without forgetSharing.
+    const restored = await home.restore(fandri, backup);
+    expect(await restored.engine.checkRestore()).toEqual([bookId]);
+    expect(await restored.engine.bookSyncStatus(bookId)).toEqual({ state: 'needs_invite', askName: null });
+    await expect(restored.engine.createInvite(bookId, { inviterName: 'Fandri' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(restored.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'new phone' })).rejects.toMatchObject({ code: 'ALREADY_SHARED' });
+
+    // Meanwhile Dewi's copy is active on the orphaned relay book, and she keeps recording into it.
+    await spend(dewi, bookId, 'Dewi, while orphaned');
+    await dewi.engine.syncOnce(bookId);
+
+    // The way out: the restored phone keeps the book as its own, then shares it again.
+    await restored.engine.forgetSharing(bookId);
+    expect(await state(restored, bookId).catch(() => 'gone')).toBe('gone');
+    for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices', 'sync_authority', 'sync_authority_devices']) {
+      expect((await restored.database.db.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE book_id = ${bookId}`)).length).toBe(0);
+    }
+    // Every row stays, and so do the members (Dewi is remembered), the placeholders and who paid.
+    expect(await posted(restored, bookId)).toEqual(['Dewi, before', 'Fandri, before']);
+    expect((await restored.database.db.values(sql`SELECT 1 FROM book_members WHERE book_id = ${bookId}`)).length).toBe(2);
+    expect((await restored.database.db.values(sql`SELECT 1 FROM book_member_accounts WHERE book_id = ${bookId}`)).length).toBe(1);
+    await spend(restored, bookId, 'Fandri, my own again');
+    expect(await outbox(restored, bookId)).toBe(0);
+
+    // Shared again — as the same member, without being told which (the device remembers) — and Dewi's active copy on
+    // the old relay book joins the new share through a link-a-device invite for her.
+    const again = await restored.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'new phone' });
+    expect(again.memberId).toBe(fandri.memberId);
+    home.relayBookId = again.relayBookId;
+    await restored.engine.syncOnce(bookId);
+    const { code } = await restored.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    const joined = await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: "Dewi's phone" });
+    expect(joined.memberId).toBe(dewi.memberId);
+    expect(await state(dewi, bookId)).toBe('active');
+    await home.settle([restored, dewi]);
+    const expected = ['Dewi, before', 'Dewi, while orphaned', 'Fandri, before', 'Fandri, my own again'];
+    expect(await descriptions(restored, bookId)).toEqual(expected);
+    expect(await descriptions(dewi, bookId)).toEqual(expected);
+    expect(await projectBook(restored.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+    // And it keeps working both ways.
+    await spend(dewi, bookId, 'Dewi, after');
+    await home.settle([restored, dewi]);
     expect(await projectBook(restored.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
   });
 

@@ -358,3 +358,66 @@ test('an owner stops sharing: the other side says who stopped it, and can add no
   await openSwitcher(dewi, phone);
   await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('No longer shared by Fandri');
 });
+
+/** C1 (final review): a share the owner ended and made again is rejoined by the member's read-only copy, and both converge. */
+test("an owner stops and shares again: the member's read-only copy rejoins through a link-a-device invite, and both converge", async ({ page, browser }, info) => {
+  const phone = phoneProject(info);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const dewi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+  await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
+  await page.goto('/transactions');
+  await shareAndJoin(page, dewi);
+  await dewi.goto('/transactions');
+  await addTransaction(dewi, { description: 'Dewi before', paidWith: 'Dewi Bank', category: 'Groceries', amount: '20000' });
+  await eventually(page, () => expect(rowOf(page, 'Dewi before')).toContainText('paid by Dewi', { timeout: 1_000 }));
+
+  // Fandri stops sharing; Dewi's copy goes read-only.
+  await openWorkspaceSettings(page, 'Home');
+  await confirmDestructive(page, 'Stop sharing', 'Stop sharing?', 'Stop sharing');
+  await expect(page.getByRole('button', { name: /Share this workspace/ })).toBeVisible({ timeout: 30_000 });
+  await openWorkspaceSettings(dewi, 'Home');
+  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
+  await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
+
+  // Fandri shares it again, as the same person: the members are Fandri and the remembered Dewi, nobody twice.
+  await openWorkspaceSettings(page, 'Home');
+  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  const form = page.getByRole('form', { name: 'Share this workspace' });
+  await form.getByLabel('Your name').fill('Fandri');
+  await form.getByRole('button', { name: 'Share', exact: true }).click();
+  const first = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
+  const section = page.getByTestId('sharing-section');
+  await expect(section.getByTestId('sharing-member')).toHaveCount(2);
+  await expect(section.getByTestId('sharing-member').filter({ hasText: 'Fandri (you)' })).toContainText('Owner');
+  await expect(section.getByTestId('sharing-member').filter({ hasText: 'Dewi' })).toContainText('Member');
+  // Dewi's copy rejoins as Dewi: an invite that links a device for her.
+  await section.getByRole('button', { name: 'Link a device for Dewi' }).click();
+  await expect(page.getByTestId('invite-code')).not.toHaveText(first, { timeout: 30_000 });
+  const code = (await page.getByTestId('invite-code').textContent())!.trim();
+  await shot(page, info, '11-link-for-dewi');
+
+  await dewi.goto(`/join#${code}`);
+  const join = dewi.getByTestId('join-workspace');
+  await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(join.getByText('This device joins as Dewi.')).toBeVisible();
+  await join.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(join).toHaveCount(0, { timeout: 60_000 });
+
+  // Shared again on Dewi's side: syncing, no longer read-only, and everything from before is still there.
+  await openWorkspaceSettings(dewi, 'Home');
+  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('Up to date', { timeout: 1_000 }));
+  await shot(dewi, info, '12-rejoined');
+  await dewi.goto('/transactions');
+  await expect(dewi.getByTestId('read-only-notice')).toHaveCount(0);
+  await expect(rowOf(dewi, 'Dewi before')).toBeVisible();
+
+  // Both record again, and each sees the other's.
+  await addTransaction(dewi, { description: 'Dewi after', paidWith: 'Dewi Bank', category: 'Groceries', amount: '15000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Fandri after', paidWith: 'Fandri Bank', category: 'Restaurants', amount: '30000' });
+  await eventually(page, () => expect(rowOf(page, 'Dewi after')).toContainText('Dewi Bank · paid by Dewi', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(rowOf(dewi, 'Fandri after')).toContainText('Fandri Bank · paid by Fandri', { timeout: 1_000 }));
+  await cashflowTotal(page, 'Rp 65.000');
+  await cashflowTotal(dewi, 'Rp 65.000');
+});

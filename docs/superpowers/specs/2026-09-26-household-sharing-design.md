@@ -1006,7 +1006,21 @@ the same one `shared_books` lookup capture already makes. *The owner's own devic
 ordinary local book again — `shared_books` and the book's sync state (`sync_outbox`, `sync_cursor`, `book_epoch_keys`,
 field clocks, tombstones, skips, `book_devices`, the authority view) go; every row stays, and so do `book_members`,
 `book_member_accounts` (another member's money stays hidden, §4.4) and `sync_lineage` (who paid). Sharing it again
-seeds afresh: the sharer is its owner again and any other remembered member comes back as a member.
+seeds afresh: the sharer is its owner again — as the same member, which the device remembers in `settings` (final
+review, C1) — and any other remembered member comes back as a member.
+
+**The way out of a dead share (final review, C1).** `forgetSharing(bookId)` does on any device what stopping does on
+the owner's: `shared_books` and every piece of sync state go, every row stays, and so do the members, the placeholders
+and who paid; the relay is not told. It is allowed for a book in `needs_invite`, `unshared`, or `active` with no owner
+device left in the view (frozen, §8.5), and refused (`STILL_SHARED`) while an owner device is in — then the way out is
+Leave. On the screens it is **Stop sharing on this device**, behind a confirm ("Keep as my own copy"). **A copy
+rejoins a share made again.** A member's copy left `unshared` by a stop, or still `active` on a relay book the owner has
+moved on from (a restored owner's phone that kept the book and shared it again), rejoins the new share through the
+existing rejoin path (§8.7) with an owner's link-a-device invite naming its member: `joinBook` refuses only a copy
+already active on that very relay book (the invite's preview now carries the relay book id), and a plain invite is
+still `INVITE_MISMATCH` before anything is claimed. The rejoin drops the old keys, outbox, skips and every other
+device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits as new what the
+new log never mentioned.
 
 ### 8.7 A restored backup
 
@@ -1026,6 +1040,12 @@ taken comes back in the rejoin's pull under the old device's id, which is no lon
 like anyone's, and the row the backup holds kept the refused value. After the rejoin's pull, every member row of the
 book here is set to the view's (`reconcileAllMembersTx`, the put-back of §8.5 over all of them), before the unknown
 rows are emitted. The status line's "Ask Dewi" names an owner of the book other than this member (§11).
+
+**The only owner's phone restored (final review, C1).** With one owner and one member, an owner's phone that is
+replaced or restored goes `needs_invite` and no device can invite it back: the status line's "Ask an owner" names
+nobody. The way out is `forgetSharing` (§8.6): the restored phone keeps the book as its own, shares it again as the
+same member, and links the member's device with an invite naming them; the member's copy — still `active` on the
+orphaned relay book — rejoins the new share through the rejoin path, and what it recorded meanwhile goes out as new.
 
 Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
 then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
@@ -1154,6 +1174,7 @@ Native kit only.
 | **Make owner** | you are an owner, on another member | §8.5 |
 | **Leave** | you are a member, on yourself | §8.4 |
 | **Stop sharing** | you are an owner | confirm, then §8.6 |
+| **Stop sharing on this device** | `state ≠ 'active'`, or frozen | confirm ("Keep as my own copy"), then `forgetSharing` (§8.6, final review C1) |
 | status line | any `shared_books` row | "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" · frozen: no owner device left |
 
 **Status, as built (task 9a).** `SyncEngine.bookSyncStatus(bookId)` returns the line's state, first match wins:
@@ -1226,9 +1247,8 @@ Mutate-twice review on every step.
   (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
   back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
   back the same way. Seconds on a synced device; accepted.
-- **An `unshared` book can't be archived (task 9a).** Read-only covers the `book` row too, so archiving or renaming an
-  unshared copy is refused. If people want the copy gone or made their own, that needs its own act (drop `shared_books`,
-  as the owner's device does on stop).
+- ~~An `unshared` book can't be archived (task 9a).~~ Settled by the final review (C1): **Stop sharing on this device**
+  (`forgetSharing`, §8.6) makes the copy the device's own, to be renamed, archived or shared again.
 - **A leaving member's device that never syncs again (task 9a).** Leave reaches a member's other devices when they
   next sync (§8.4); one that never does keeps its keys and its place among the five until an owner removes it.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —

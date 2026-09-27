@@ -10,7 +10,22 @@ import type { DevicePublic, Op } from './types';
  * change-sets with fresh hlcs and their field clocks written. Step 4 (draining, and the invite after it) is the caller's.
  */
 
-export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS' | 'NOT_OWNER' | 'FROZEN' | 'LEAVE_INCOMPLETE';
+export type SharingErrorCode =
+  | 'CURRENCY'
+  | 'ALREADY_SHARED'
+  | 'NOT_FOUND'
+  | 'BAD_CODE'
+  | 'INVITE_CLAIMED'
+  | 'INVITE_EXPIRED'
+  | 'INVITE_MISMATCH'
+  | 'NO_KEYS'
+  | 'NOT_OWNER'
+  | 'FROZEN'
+  | 'LEAVE_INCOMPLETE'
+  | 'STILL_SHARED';
+
+/** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
+export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;
 
 export class SharingError extends Error {
   constructor(

@@ -296,6 +296,69 @@ describe('stop sharing (§8.6)', () => {
     expect(await count(budi, 'sync_outbox', bookId)).toBe(0);
   });
 
+  it("owner stops, shares again, member's unshared copy rejoins and converges (final review, C1)", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await spend(dewi, bookId, 'Dewi, before');
+    await home.settle();
+    await fandri.engine.stopSharing(bookId);
+    expect((await dewi.engine.syncOnce(bookId)).ended).toBe('unshared');
+    await spend(fandri, bookId, 'Fandri, in between');
+
+    // Shared again, as the same member without being told which; Dewi is remembered, so an owner links her device.
+    const again = await fandri.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: "Fandri's phone" });
+    expect(again.memberId).toBe(fandri.memberId);
+    home.relayBookId = again.relayBookId;
+    await fandri.engine.syncOnce(bookId);
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    // A plain invite would make her someone else: refused before anything is claimed (§8.2, I4).
+    const { code: plain } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri' });
+    await expect(dewi.engine.joinBook(plain, { ws: dewi.ws, memberName: 'Dewi', deviceName: "Dewi's phone" })).rejects.toMatchObject({ code: 'INVITE_MISMATCH' });
+    const joined = await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: "Dewi's phone" });
+    expect(joined.memberId).toBe(dewi.memberId);
+    expect(await shared(dewi, bookId)).toEqual(['active', null]);
+    expect(await dewi.engine.bookSyncStatus(bookId)).toMatchObject({ state: 'up_to_date' });
+    await home.settle([fandri, dewi]);
+    expect(await projectBook(dewi.database, bookId)).toEqual(await projectBook(fandri.database, bookId));
+    // Read-only no more: she records, and it reaches the owner.
+    await spend(dewi, bookId, 'Dewi, after');
+    await home.settle([fandri, dewi]);
+    expect(await projectBook(dewi.database, bookId)).toEqual(await projectBook(fandri.database, bookId));
+    expect(Object.values((await projectBook(fandri.database, bookId)).purchase!).filter((p) => p !== 'void')).toHaveLength(3);
+    // Budi's copy, still unshared, is untouched by any of it.
+    expect((await budi.engine.syncOnce(bookId)).ended).toBe('unshared');
+  });
+
+  it('forgetSharing keeps the book as this device’s own: allowed once the share is dead here, refused while an owner device is in (final review, C1)', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await expect(dewi.engine.forgetSharing(bookId)).rejects.toMatchObject({ code: 'STILL_SHARED' });
+    expect(await shared(dewi, bookId)).toEqual(['active', null]);
+    // Budi leaves: his copy is unshared, and he may keep it as his own.
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    await budi.engine.leave(bookId);
+    expect(await shared(budi, bookId)).toEqual(['unshared', budi.memberId]);
+    await budi.engine.forgetSharing(bookId);
+    expect(await shared(budi, bookId)).toBeUndefined();
+    await expect(spend(budi, bookId, 'mine now')).resolves.toEqual(expect.any(String));
+    expect(await count(budi, 'sync_outbox', bookId)).toBe(0);
+    // Frozen — every owner device gone, as the race §8.5 describes leaves it (here: both owner devices take themselves
+    // out by hand, past the guard): a member's copy may be kept as its own too.
+    const budi2 = await home.device('Budi2');
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri' });
+    await budi2.engine.joinBook(code, { ws: budi2.ws, memberName: 'Budi2', deviceName: 'Budi2 phone', memberId: budi2.memberId });
+    await home.settle([fandri, dewi, budi2]);
+    for (const owner of [fandri, dewi]) {
+      const hlc = encodeHlc(Date.now(), 0, owner.deviceId);
+      await owner.transport.append(home.relayBookId, await owner.engine.sealer.sign(bookId, { kind: 'removal' as const, deviceId: owner.deviceId, epoch: await epochOf(owner, bookId), hlc, target: owner.deviceId }));
+      await owner.transport.removeDevice(home.relayBookId, owner.deviceId);
+    }
+    await budi2.engine.syncOnce(bookId);
+    expect(await budi2.engine.isFrozen(bookId)).toBe(true);
+    await budi2.engine.forgetSharing(bookId);
+    expect(await shared(budi2, bookId)).toBeUndefined();
+    await expect(spend(budi2, bookId, 'mine now too')).resolves.toEqual(expect.any(String));
+  });
+
   it("drains the owner's outbox before the relay book goes (fix round 1)", async () => {
     const { home, fandri, bookId } = await household();
     await spend(fandri, bookId, 'last words');

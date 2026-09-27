@@ -7,12 +7,13 @@ import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from './InviteCard';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
-import { currencyRefusal, deviceName, FROZEN_NOTE, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, syncedAgo } from './sharing-copy';
+import { currencyRefusal, deviceName, FORGET_ROW, forgetConfirm, FROZEN_NOTE, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, syncedAgo } from './sharing-copy';
 
 /*
  * Settings → Workspaces → a workspace, the sharing rows (household sharing spec §11): Share this workspace, then the
- * status line, the members with their devices and Remove, Link a device. Make owner, Leave and Stop sharing are not
- * here yet. Every row is the native kit's own; the same section draws in the phone's sheet and the desktop's panel.
+ * status line, the members with their devices and Remove, Link a device, Make owner, Leave, Stop sharing, and — once
+ * a share is dead here — Stop sharing on this device (C1). Every row is the native kit's own; the same section draws
+ * in the phone's sheet and the desktop's panel.
  */
 
 const NAME_KEY = 'cicis.sharing.name';
@@ -130,7 +131,7 @@ export function SharingSection({ book }: { book: BookRow }) {
   );
 }
 
-type Confirming = { kind: 'leave' } | { kind: 'stop' } | null;
+type Confirming = { kind: 'leave' } | { kind: 'stop' } | { kind: 'forget' } | null;
 
 function Shared({
   book,
@@ -158,6 +159,9 @@ function Shared({
   const active = detail.state === 'active';
   // What an owner may do to others, and only while an owner device is left (§8.5): a frozen book offers none of it.
   const steering = active && detail.owner && !frozen;
+  // A share that is dead here — ended, waiting for an invite nobody may be able to give, or frozen — can be kept as
+  // this device's own copy (final review, C1). While an owner device is in, the way out is Leave.
+  const forgettable = !active || frozen;
 
   const line = status ? statusLineOf(status, { failing: live.failing, now }) : 'Checking…';
   const note = status?.state === 'frozen' ? FROZEN_NOTE : status?.state === 'unshared' ? READ_ONLY_NOTE : active ? 'Tap to sync now' : undefined;
@@ -338,9 +342,32 @@ function Shared({
         </InsetGroup>
       ) : null}
 
+      {/* Keep as my own copy (C1): the way out of a share that is dead here. Local only, confirmed. */}
+      {forgettable ? (
+        <InsetGroup wide footer="Keeps everything here as a workspace of your own. Nobody else's copy is touched.">
+          <DestructiveRow label={FORGET_ROW} onClick={() => setConfirming({ kind: 'forget' })} />
+        </InsetGroup>
+      ) : null}
+
       {confirming?.kind === 'leave' ? (
         <Sheet title="Leave this workspace?" onClose={() => setConfirming(null)} confirm={{ label: 'Leave', disabled: busy, run: () => void leave() }}>
           <p className="text-[15px] leading-[20px]">{leaveConfirm(book.name)}</p>
+        </Sheet>
+      ) : null}
+      {confirming?.kind === 'forget' ? (
+        <Sheet
+          title="Keep as your own copy?"
+          onClose={() => setConfirming(null)}
+          confirm={{
+            label: 'Keep as my own copy',
+            disabled: busy,
+            run: () => {
+              setConfirming(null);
+              void run(() => sync.forgetSharing(book.id));
+            },
+          }}
+        >
+          <p className="text-[15px] leading-[20px]">{forgetConfirm(book.name)}</p>
         </Sheet>
       ) : null}
       {confirming?.kind === 'stop' ? (

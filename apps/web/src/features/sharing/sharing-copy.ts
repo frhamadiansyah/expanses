@@ -92,6 +92,14 @@ export function stopConfirm(bookName: string): string {
   return `${bookName} stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being yours alone.`;
 }
 
+/** The row that ends a dead share on this device alone (final review, C1). */
+export const FORGET_ROW = 'Stop sharing on this device';
+
+/** Before that: what keeping the copy as your own does, and what it does not. */
+export function forgetConfirm(bookName: string): string {
+  return `${bookName} becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join it again later, you will need a new invite.`;
+}
+
 /** Under a device: "synced just now", "synced 2 min ago", "synced 3 h ago", "synced Tue". */
 export function syncedAgo(ms: number | null, now: number): string {
   if (ms === null) return 'not synced yet';
