@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
-import { loanSubtitle, owesLine } from './lend-borrow-view';
+import { loanSubtitle } from './lend-borrow-view';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 import { newDebtPath, type Side } from './sides';
 
@@ -82,14 +82,11 @@ export function PersonPage() {
       {people.isSuccess && rows.length === 0 && <Empty>Nothing is owed between you and {name} any more.</Empty>}
 
       {rows.length > 0 && (
+        // The total alone under their name, as Wallet draws a payment: the list below says the rest.
         <section className="flex flex-col items-center gap-1 pb-[22px] text-center" data-testid="person-hero">
-          <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{owesLine(direction)}</span>
           {rows.map((row) => (
             <Money key={row.currency} minor={row.totalMinor} currency={row.currency} className="text-[34px] leading-[40px] font-bold tracking-[-0.02em]" />
           ))}
-          <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-            {openLoans.length === 1 ? 'on 1 open loan' : `across ${openLoans.length} open loans`}
-          </span>
         </section>
       )}
 
