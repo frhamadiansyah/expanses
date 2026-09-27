@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { openAmount, addForm, saveButton, chooseTo } from './add-transaction';
+import { openAmount, addForm, saveButton, chooseTo, choosePayment } from './add-transaction';
 import { openAssets } from './drawers';
 import { openGoalForm } from './goals';
 
@@ -103,7 +103,7 @@ export async function openExpense(page: Page, paidWith: string) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: paidWith, exact: true }).click();
+  await choosePayment(page, paidWith);
   return form;
 }
 

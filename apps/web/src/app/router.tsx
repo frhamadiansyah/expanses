@@ -256,7 +256,16 @@ const routeTree = rootRoute.addChildren([
   }),
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
-  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/debts/new',
+    component: AddDebtPage,
+    // From Paid with's Credit cards tab: the card form opens straight away, and saving goes back to the transaction.
+    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction'; item?: string } => ({
+      returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined,
+      item: typeof search.item === 'string' ? search.item : undefined,
+    }),
+  }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),

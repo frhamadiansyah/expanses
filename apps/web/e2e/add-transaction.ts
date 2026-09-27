@@ -26,6 +26,20 @@ export async function chooseGoal(form: Locator, goal: string) {
   await form.page().getByRole('dialog', { name: 'For goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
 }
 
+/**
+ * Picks what paid — or received — in its sheet. Paid with keeps accounts and credit cards on two tabs and opens on
+ * Accounts until a card is chosen, so a card not on the open tab is found by switching to Credit cards, as a person
+ * would. Received into and From have no tabs and never need the switch.
+ */
+export async function choosePayment(page: Page, name: string, sheet: string | RegExp = /^(Paid with|Received into|From)$/) {
+  const dialog = page.getByRole('dialog', { name: sheet });
+  const option = dialog.getByRole('button', { name, exact: true });
+  const cardsTab = dialog.getByRole('radio', { name: 'Credit cards' });
+  await expect(dialog.getByTestId('payment-sections')).toBeVisible();
+  if (!(await option.isVisible()) && (await cardsTab.count()) > 0) await cardsTab.click();
+  await option.click();
+}
+
 export const addForm = (page: Page): Locator =>
   page.getByRole('dialog', { name: 'Add a transaction' }).or(page.getByRole('form', { name: 'Add a transaction' }));
 
@@ -57,7 +71,7 @@ export async function addTransaction(
   await openAmount(form);
   await fillAmount(page, form, tx.amount, tx.keyByKey);
   await form.getByRole('button', { name: /^(Paid with|Received into)/ }).click();
-  await page.getByRole('dialog', { name: /^(Paid with|Received into)$/ }).getByRole('button', { name: tx.paidWith, exact: true }).click();
+  await choosePayment(page, tx.paidWith);
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: tx.category, exact: true }).click();
   await form.getByLabel('Note').fill(tx.description);

@@ -166,10 +166,14 @@ function CardBody({
     return added && fits(added, '') ? { ...handoff.draft, moneyId: added.id, cardId: '' } : handoff.draft;
   });
   const navigate = useNavigate();
-  /** Off to New account with what is typed set aside; saving there, or going back, returns here with it. */
-  const addAccount = () => {
+  /**
+   * Off to New account — or, from the Credit cards tab, straight to a new credit card — with what is typed set aside;
+   * saving there, or going back, returns here with it.
+   */
+  const addAccount = (kind: 'accounts' | 'cards') => {
     stashDraft(draft);
-    void navigate({ to: '/accounts/new', search: { returnTo: 'transaction' } });
+    if (kind === 'cards') void navigate({ to: '/debts/new', search: { returnTo: 'transaction', item: 'credit_card' } });
+    else void navigate({ to: '/accounts/new', search: { returnTo: 'transaction' } });
   };
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
@@ -799,6 +803,9 @@ function CardBody({
           title={payLabel}
           options={payable}
           accounts={accounts}
+          chosenAccountId={draft.moneyId}
+          chosenCardId={draft.cardId}
+          cards={draft.mode === 'expense'}
           onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
           onClose={() => setSheet(null)}
           // Only a new transaction on its own screen: an edit, or the card in a sheet, has nowhere to come back to.

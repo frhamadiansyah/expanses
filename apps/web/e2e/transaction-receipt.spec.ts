@@ -4,7 +4,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset } from './add-asset';
-import { addTransaction, closeDetails, shareWith } from './add-transaction';
+import { addTransaction, closeDetails, shareWith, choosePayment } from './add-transaction';
 import { openDrawers } from './drawers';
 
 /** A credit card, so there is something to charge a purchase to. */
@@ -211,7 +211,7 @@ test('a split bill says which figure is the share and which is the bill', async 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const split = page.getByRole('dialog', { name: 'Add a transaction' });
   await split.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await split.getByLabel('Amount', { exact: true }).fill('400000');
   await split.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

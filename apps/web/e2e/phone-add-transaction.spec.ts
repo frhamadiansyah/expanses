@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -115,7 +115,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -172,7 +172,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await expect(amount).toHaveText('155.000');
 
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -200,7 +200,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
 
   await page.goto('/transactions/new');
   await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   // No second figure while both sides are IDR: what was typed is what the account was charged.
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveCount(0);
 
@@ -273,7 +273,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   // Putting the flag back where it was takes the row away with it: there is nothing left to ask.
   await page.goto('/transactions/new');
   await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await page.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveCount(1);
@@ -300,7 +300,7 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   for (const key of '85000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -442,10 +442,74 @@ test('the dock has a decimal comma for dollars, and keeps 00 for rupiah', async 
   await keypad.getByRole('button', { name: 'Close keypad' }).click();
 
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise USD', exact: true }).click();
+  await choosePayment(page, 'Wise USD');
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
   for (const key of ['1', '2', ',', '5', '0']) await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('12,50');
+});
+
+test('Paid with has tabs for accounts and cards, and its search looks across both', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'credit_card', name: 'BCA KrisFlyer', balance: '0', last4: '1234' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const tabs = sheet.getByRole('radiogroup', { name: 'Paid with: which kind' });
+
+  // Nothing chosen yet: Accounts, with the way to add one as the list's own last row.
+  await expect(tabs.getByRole('radio', { name: 'Accounts' })).toBeChecked();
+  await expect(tabs.getByRole('radio', { name: 'All' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
+
+  // Credit cards: only cards, and the last row adds a card.
+  await tabs.getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Add credit card' })).toBeVisible();
+
+  // A search looks across both, under their headings, whatever tab is open; the ✕ clears it.
+  await sheet.getByRole('textbox', { name: 'Search Paid with' }).fill('bca');
+  await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Clear search' }).click();
+  await expect(sheet.getByRole('textbox', { name: 'Search Paid with' })).toHaveValue('');
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+
+  // Nothing chosen yet, so nothing is marked.
+  await expect(sheet.locator('[aria-current="true"]')).toHaveCount(0);
+
+  // Chosen by card, the sheet opens on Credit cards next time, with that card marked.
+  await sheet.getByRole('button', { name: /^BCA KrisFlyer/ }).click();
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
+  await expect(sheet.locator('[aria-current="true"]')).toHaveCount(1);
+  await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toHaveAttribute('aria-current', 'true');
+});
+
+test('Add credit card on the Credit cards tab opens the card form, and the card comes back picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByLabel('Note').fill('Hotel');
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByText('No credit cards yet.')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Add credit card' }).click();
+
+  // Straight to the card's own form, not the list of debts.
+  await expect(page).toHaveURL(/\/debts\/new/);
+  await page.getByLabel('Name', { exact: true }).fill('UOB PRVI');
+  await page.getByLabel('Last 4 digits').fill('3310');
+  await page.getByRole('button', { name: 'Add card' }).click();
+
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Hotel');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
 });
