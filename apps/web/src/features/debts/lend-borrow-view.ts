@@ -70,3 +70,14 @@ export function deleteLoanQuestion(direction: DebtDirection, moneyBackCount: num
   const withIt = moneyBackCount === 0 ? '' : ` and its ${moneyBackCount === 1 ? word : `${moneyBackCount} ${word}s`}`;
   return `Delete this loan${withIt}? Every balance goes back as if it was never recorded.`;
 }
+
+/**
+ * One line of a loan's history, from the owner's side: what it is called and which way the money went. Money coming
+ * back on a loan you made, or reaching you as a loan you took, flows in; money handed over flows out; a forgiveness
+ * moves no money at all.
+ */
+export function historyEntry(kind: 'lend' | 'repayment' | 'forgive', direction: DebtDirection): { title: string; flow: 'in' | 'out' | 'none' } {
+  if (kind === 'forgive') return { title: 'Forgiven', flow: 'none' };
+  if (kind === 'lend') return direction === 'lent' ? { title: 'Lent', flow: 'out' } : { title: 'Borrowed', flow: 'in' };
+  return { title: repaymentWord(direction), flow: direction === 'lent' ? 'in' : 'out' };
+}

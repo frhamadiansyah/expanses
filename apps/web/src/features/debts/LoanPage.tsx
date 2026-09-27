@@ -1,18 +1,27 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteLoan, forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { deleteLoanQuestion, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { deleteLoanQuestion, historyEntry, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
-const HISTORY_TITLES: Record<string, string> = { lend: 'Lent', repayment: 'Repayment', forgive: 'Forgiven' };
+/**
+ * Each history line's circle: money in is green, money out red, a forgiveness grey — and the + that records the next
+ * one grey too, so it reads as the next line rather than as money.
+ */
+const FLOW_GLYPH = {
+  in: <ArrowDown size={15} strokeWidth={2.5} aria-hidden />,
+  out: <ArrowUp size={15} strokeWidth={2.5} aria-hidden />,
+  none: <Gift size={15} aria-hidden />,
+} as const;
+const FLOW_COLOUR = { in: 'var(--ph-tint)', out: 'var(--ph-alarm)', none: undefined } as const;
 
 /**
  * One loan, on a page of its own: what is left of it, the two things to do about it, what it is and what happened.
@@ -197,31 +206,38 @@ export function LoanPage() {
             <InsetRow
               key="record"
               icon={<Plus size={16} strokeWidth={2.5} aria-hidden />}
-              iconColour="var(--ph-tint)"
               title={`Record ${repaymentWord(person.direction).toLowerCase()}`}
               chevron={false}
               onClick={() => setRepaying(true)}
             />
           ) : null}
-          {(history.data ?? []).map((row) => (
-            <InsetRow
-              key={row.transactionId}
-              title={row.kind === 'repayment' ? repaymentWord(person.direction) : (HISTORY_TITLES[row.kind] ?? row.kind)}
-              subtitle={
-                row.interestMinor > 0 ? (
+          {(history.data ?? []).map((row) => {
+            const entry = historyEntry(row.kind, person.direction);
+            // One line each: the circle says which way the money went, and the date follows the word in grey.
+            return (
+              <InsetRow
+                key={row.transactionId}
+                icon={FLOW_GLYPH[entry.flow]}
+                iconColour={FLOW_COLOUR[entry.flow]}
+                title={
                   <>
-                    {shortDay(row.occurredOn, today)}
-                    {' · interest '}
-                    <Money minor={row.interestMinor} currency={loan.currency} />
+                    {entry.title}
+                    <span className="font-normal text-[var(--ph-ink-3)]">
+                      {` · ${shortDay(row.occurredOn, today)}`}
+                      {row.interestMinor > 0 ? (
+                        <>
+                          {' · interest '}
+                          <Money minor={row.interestMinor} currency={loan.currency} />
+                        </>
+                      ) : null}
+                    </span>
                   </>
-                ) : (
-                  shortDay(row.occurredOn, today)
-                )
-              }
-              value={<Money minor={row.amountMinor} currency={loan.currency} />}
-              chevron={false}
-            />
-          ))}
+                }
+                value={<Money minor={row.amountMinor} currency={loan.currency} />}
+                chevron={false}
+              />
+            );
+          })}
         </InsetGroup>
       )}
 

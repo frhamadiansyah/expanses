@@ -113,8 +113,10 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Record collection' })).toHaveCount(0);
   // Money back on a loan you made is a collection, in the history too.
-  await expect(page.getByText('Collection', { exact: true })).toBeVisible();
-  await expect(page.getByText('Repayment', { exact: true })).toHaveCount(0);
+  // One line each, the date after the word.
+  await expect(page.getByText(/^Collection · /)).toBeVisible();
+  await expect(page.getByText(/^Lent · /)).toBeVisible();
+  await expect(page.getByText(/^Repayment/)).toHaveCount(0);
 });
 
 test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
