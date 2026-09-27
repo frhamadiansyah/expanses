@@ -150,6 +150,35 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   };
 }
 
+/** One of a person's open loans, as the Loan row offers it. */
+export interface LoanChoice {
+  accountId: string;
+  /** "Motorcycle repair · Rp 1.500.000 left" — the reason, or that none was noted, and what is still owed. */
+  label: string;
+}
+
+/**
+ * The loans already open with this person on this side, which a new amount could be added to.
+ *
+ * A person can hold several loans — the motorcycle repair and the laptop are two, each with its own reason and due
+ * date, listed apart on their card — so a name the workspace already knows is not one loan to add to but a choice
+ * between them and a new one. Only open loans are offered: one that was settled or forgiven is finished, and money
+ * lent again is a new loan. Matched on the name without regard to capitals, as the Person field is.
+ */
+export function openLoansWith(people: PeopleDebts | undefined, direction: DebtDirection, personName: string): LoanChoice[] {
+  const name = personName.trim().toLowerCase();
+  if (!people || !name) return [];
+  const side = direction === 'lent' ? people.owedToYou : people.youOwe;
+  return side
+    .filter((person) => person.personName.trim().toLowerCase() === name)
+    .flatMap((person) => person.loans)
+    .filter((loan) => loan.status === 'open')
+    .map((loan) => ({
+      accountId: loan.accountId,
+      label: `${loan.reason?.trim() || 'No reason noted'} · ${formatMinor(loan.balanceMinor, loan.currency)} left`,
+    }));
+}
+
 /**
  * Whether the ✓ can save: everything `debtDraftToInput` requires is there — a person, a date that is not in the
  * future, an account, an amount above zero, and a category for any fee. Asked of the very function Save calls, so the

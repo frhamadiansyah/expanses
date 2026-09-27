@@ -1,7 +1,7 @@
 import { type DebtDirection, isoDate } from '@expanses/core';
 import { recordLoan } from '@expanses/db';
 import { Check } from 'lucide-react';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -12,7 +12,7 @@ import { InsetGroup, PushedTitle, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type DebtDraft, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, personSuggestions, subCategories } from './debts-form';
+import { type DebtDraft, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith, personSuggestions, subCategories } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
 /**
@@ -62,24 +62,25 @@ export function DebtForm({
   // The fee is filed under Fees & charges until the reader picks another category.
   const feesCategoryId = accounts.find((account) => account.kind === 'expense' && account.systemKey === 'miscellaneous.fees_charges')?.id ?? '';
   const feeCategoryId = draft.feeCategoryId || feesCategoryId;
-  // The ✓ is dim until the draft is one Save would take, as New transaction's is.
-  const complete = debtDraftReady({ ...draft, feeCategoryId }, currency, today);
   const setAside = useSetAside(draft.direction === 'lent' ? spendingDoor(draft.moneyId, lentMinor) : null);
 
-  /** Typing a name the workspace already knows uses that account instead of opening a second one. */
+  /*
+   * A name the workspace already knows is not one loan to add to: Andi can owe for a motorcycle repair and for a
+   * laptop, each its own loan with its own reason and due date. So a known name brings the Loan row, and a new amount
+   * is a new loan until the reader picks one of theirs. Changing the name drops the pick — it was one of the old
+   * person's loans.
+   */
   function nameTyped(personName: string) {
-    const match = (profiles.data ?? []).find(
-      (profile) => profile.direction === draft.direction && profile.personName.toLowerCase() === personName.trim().toLowerCase() && profile.status !== 'forgiven',
-    );
-    set({ personName, existingAccountId: match?.accountId ?? '' });
+    set({ personName, existingAccountId: '' });
   }
-
-  // A person named on the way in is matched against the people already on this side once they have loaded, so their
-  // debt is added to rather than a second account opened for the same name. Typing afterwards matches as it goes.
-  useEffect(() => {
-    if (draft.personName && profiles.data) nameTyped(draft.personName);
-    // Once, when the profiles arrive: every later change of name goes through `nameTyped` itself.
-  }, [profiles.data]);
+  const loans = openLoansWith(people.data, draft.direction, draft.personName);
+  const known = (profiles.data ?? []).find(
+    (profile) => profile.direction === draft.direction && profile.personName.trim().toLowerCase() === draft.personName.trim().toLowerCase(),
+  );
+  // A person's tax ID is theirs, not one loan's: a new loan for someone already on the list carries it over.
+  const withKnownId = (current: DebtDraft): DebtDraft => (current.personIdNumber || !known?.personIdNumber ? current : { ...current, personIdNumber: known.personIdNumber });
+  // The ✓ is dim until the draft is one Save would take, as New transaction's is.
+  const complete = debtDraftReady(withKnownId({ ...draft, feeCategoryId }), currency, today);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -88,7 +89,7 @@ export function DebtForm({
     setError(null);
     setBusy(true);
     try {
-      const input = debtDraftToInput({ ...draft, feeCategoryId }, currency, today);
+      const input = debtDraftToInput(withKnownId({ ...draft, feeCategoryId }), currency, today);
       const ratesToBase = await ratesForSave({
         database,
         ws,
@@ -127,13 +128,22 @@ export function DebtForm({
       <InsetGroup header={draft.direction === 'lent' ? 'Money you lent' : 'Money you borrowed'}>
         <TextRow
           label="Person"
-          hint={draft.existingAccountId ? 'Adding to what they already owe.' : 'A new person gets their own account.'}
           value={draft.personName}
           onChange={(e) => nameTyped(e.target.value)}
           list="debt-people"
           placeholder="Andi"
           required
         />
+        {loans.length > 0 ? (
+          <SelectRow label="Loan" value={draft.existingAccountId} onChange={(e) => set({ existingAccountId: e.target.value })}>
+            <option value="">New loan</option>
+            {loans.map((loan) => (
+              <option key={loan.accountId} value={loan.accountId}>
+                {loan.label}
+              </option>
+            ))}
+          </SelectRow>
+        ) : null}
         <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
         <SelectRow
           label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
@@ -221,15 +231,21 @@ export function DebtForm({
             </option>
           ))}
         </SelectRow>
-        <TextRow
-          label="What it is for"
-          info="Shown on their card, so you remember."
-          value={draft.reason}
-          onChange={(e) => set({ reason: e.target.value })}
-          placeholder="Motorcycle repair"
-        />
-        <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        {/* A reason and a due date belong to a loan. Adding to one of theirs, they are that loan's, changed from its card. */}
         {!draft.existingAccountId ? (
+          <>
+          <TextRow
+            label="What it is for"
+            info="Shown on their card, so you remember."
+            value={draft.reason}
+            onChange={(e) => set({ reason: e.target.value })}
+            placeholder="Motorcycle repair"
+          />
+          <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+          </>
+        ) : null}
+        {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
+        {!draft.existingAccountId && !known ? (
           <TextRow
             label="Tax ID"
             info="Their national or tax ID number. Optional, and only needed when this reaches your tax report."

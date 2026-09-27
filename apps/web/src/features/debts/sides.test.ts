@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts } from './debts-form';
+import { debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith } from './debts-form';
 import { newDebtPath, openingSide, sideOf } from './sides';
 
 describe('the two sides of Lend & borrow', () => {
@@ -110,5 +110,31 @@ describe('whether the ✓ can save', () => {
     expect(debtDraftReady({ ...filled, fee: '100.000' }, 'IDR', today)).toBe(false);
     expect(debtDraftReady({ ...filled, fee: '100.000', feeCategoryId: 'fees' }, 'IDR', today)).toBe(true);
     expect(debtDraftReady({ ...filled, occurredOn: '2026-09-28' }, 'IDR', today)).toBe(false);
+  });
+});
+
+describe('the loans a new amount could be added to', () => {
+  const loan = (accountId: string, reason: string | null, balanceMinor: number, status: 'open' | 'settled' | 'forgiven' = 'open') => ({
+    accountId, reason, openedOn: '2026-09-01', originalMinor: balanceMinor, balanceMinor, repaidMinor: 0, dueOn: null, dueState: 'none' as const, dueLabel: '', status, currency: 'IDR',
+  });
+  const people = {
+    owedToYou: [{ personName: 'Andi', direction: 'lent' as const, currency: 'IDR', totalMinor: 0, dueState: 'none' as const,
+      loans: [loan('moto', 'Motorcycle repair', 1_500_000), loan('old', 'Phone', 0, 'settled'), loan('laptop', null, 8_000_000)] }],
+    youOwe: [{ personName: 'Andi', direction: 'borrowed' as const, currency: 'IDR', totalMinor: 0, dueState: 'none' as const, loans: [loan('mine', 'Rent', 2_000_000)] }],
+    settled: [],
+  };
+
+  it('offers each open loan with this person on this side, by its reason and what is left', () => {
+    const choices = openLoansWith(people, 'lent', ' andi ');
+    expect(choices.map((c) => c.accountId)).toEqual(['moto', 'laptop']);
+    expect(choices[0]!.label).toMatch(/^Motorcycle repair · .*1\.500\.000 left$/);
+    expect(choices[1]!.label).toMatch(/^No reason noted · /);
+  });
+
+  it('never offers a finished loan, the other side, or anyone for a name nobody has', () => {
+    expect(openLoansWith(people, 'lent', 'Andi').map((c) => c.accountId)).not.toContain('old');
+    expect(openLoansWith(people, 'borrowed', 'Andi').map((c) => c.accountId)).toEqual(['mine']);
+    expect(openLoansWith(people, 'lent', 'Budi')).toEqual([]);
+    expect(openLoansWith(undefined, 'lent', 'Andi')).toEqual([]);
   });
 });

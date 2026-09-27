@@ -115,11 +115,20 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
   await page.getByRole('link', { name: /Lend & borrow/ }).first().tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
 
-  // Lend & borrow showing only Dewi: + there starts with her name, and adds to what she is already owed.
+  // Lend & borrow showing only Dewi: + there starts with her name. She already has a loan, so the Loan row offers it
+  // — but a new amount is a new loan until one of hers is picked, with a reason and a due date of its own.
   await page.goto('/net-worth/lend-borrow?person=Dewi');
   await page.getByRole('link', { name: 'New payable' }).tap();
   await expect(page.getByLabel('Person')).toHaveValue('Dewi');
-  await expect(page.getByText('Adding to what they already owe.')).toBeVisible();
+  const loan = page.getByLabel('Loan', { exact: true });
+  await expect(loan).toHaveValue('');
+  await expect(loan.locator('option')).toHaveText(['New loan', /^No reason noted · .*750\.000 left$/]);
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toBeVisible();
+
+  // Picking her loan adds to it, and its reason and due date are that loan's, so the form stops asking for them.
+  await loan.selectOption({ index: 1 });
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'About Due by' })).toHaveCount(0);
 });
 
 test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is not one country\'s', async ({ page }) => {

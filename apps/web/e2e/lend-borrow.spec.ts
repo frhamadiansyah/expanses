@@ -234,3 +234,44 @@ test('+ asks which side, each opens on a screen of its own, and back and Save bo
   await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
   await expect(page.getByTestId('debts-total-Payables')).toContainText('750.000');
 });
+
+test('a second loan to the same person is a loan of its own, with its own reason', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await page.goto('/net-worth/lend-borrow');
+  await openNew(page, 'New receivable');
+  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel(/^Amount/).fill('1500000');
+  await page.getByRole('textbox', { name: 'What it is for' }).fill('Motorcycle repair');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+
+  // The same name again: New loan is the default, and the reason typed is kept — it used to be thrown away.
+  await openNew(page, 'New receivable');
+  await page.getByLabel('Person').fill('Andi');
+  await expect(page.getByLabel('Loan', { exact: true })).toHaveValue('');
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel(/^Amount/).fill('8000000');
+  await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  // One card for Andi, two loans on it, each by its own reason.
+  await expect(page.getByRole('heading', { name: 'Andi' })).toHaveCount(1);
+  await expect(page.getByText('Motorcycle repair')).toBeVisible();
+  await expect(page.getByText('Laptop purchase')).toBeVisible();
+  await expect(page.getByTestId('debts-total-Receivables')).toContainText('9.500.000');
+
+  // A third amount picked onto the laptop loan adds to it, and asks no reason of its own.
+  await openNew(page, 'New receivable');
+  await page.getByLabel('Person').fill('Andi');
+  const loan = page.getByLabel('Loan', { exact: true });
+  const laptop = await loan.locator('option', { hasText: /^Laptop purchase/ }).getAttribute('value');
+  await loan.selectOption(laptop!);
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel(/^Amount/).fill('500000');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('debts-total-Receivables')).toContainText('10.000.000');
+  // Still two loans: the half million went onto the laptop, not into a third.
+  await expect(page.getByText(/Laptop purchase/)).toHaveCount(1);
+});
