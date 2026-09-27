@@ -1,12 +1,13 @@
-import type { BookRow, CreatedInvite, SharedDevice, SharedMemberDetail, SharingDetail } from '@expanses/db';
-import { Laptop, Link2, RefreshCw, Smartphone, User, UserPlus, Users } from 'lucide-react';
+import { type BookRow, type CreatedInvite, LeaveIncompleteError, type SharedDevice, type SharedMemberDetail, type SharingDetail } from '@expanses/db';
+import { Crown, Laptop, Link2, RefreshCw, Smartphone, User, UserPlus, Users } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from './InviteCard';
-import { useSharingDetail, useSyncStatus } from './queries';
-import { currencyRefusal, deviceName, preparing, sayError, statusLine, syncedAgo } from './sharing-copy';
+import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
+import { currencyRefusal, deviceName, FROZEN_NOTE, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, syncedAgo } from './sharing-copy';
 
 /*
  * Settings → Workspaces → a workspace, the sharing rows (household sharing spec §11): Share this workspace, then the
@@ -47,7 +48,7 @@ export function SharingSection({ book }: { book: BookRow }) {
   const { ws, sync } = useApp();
   const detail = useSharingDetail(book.id);
   const [flow, setFlow] = useState<Flow | null>(null);
-  const [invite, setInvite] = useState<{ invite: CreatedInvite; kind: 'someone' | 'device' } | null>(null);
+  const [invite, setInvite] = useState<{ invite: CreatedInvite; kind: 'someone' | 'device'; forName?: string } | null>(null);
   const [name, setName] = useState(rememberedName);
   const [error, setError] = useState<unknown>(null);
 
@@ -129,6 +130,8 @@ export function SharingSection({ book }: { book: BookRow }) {
   );
 }
 
+type Confirming = { kind: 'leave' } | { kind: 'stop' } | null;
+
 function Shared({
   book,
   detail,
@@ -137,42 +140,57 @@ function Shared({
 }: {
   book: BookRow;
   detail: SharingDetail;
-  invite: { invite: CreatedInvite; kind: 'someone' | 'device' } | null;
-  onInvite: (invite: { invite: CreatedInvite; kind: 'someone' | 'device' } | null) => void;
+  invite: { invite: CreatedInvite; kind: 'someone' | 'device'; forName?: string } | null;
+  onInvite: (invite: { invite: CreatedInvite; kind: 'someone' | 'device'; forName?: string } | null) => void;
 }) {
   const { sync } = useApp();
-  const status = useSyncStatus(book.id);
+  const live = useSyncStatus(book.id);
+  const engineStatus = useBookStatus(book.id);
   const [armed, setArmed] = useState<{ device: SharedDevice; member: SharedMemberDetail } | null>(null);
+  const [confirming, setConfirming] = useState<Confirming>(null);
+  const [retryLeave, setRetryLeave] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const me = detail.members.find((member) => member.me) ?? null;
-  const mine = me?.devices.find((device) => device.mine) ?? null;
   const now = Date.now();
+  const status = engineStatus.data?.status ?? null;
+  const frozen = engineStatus.data?.frozen ?? false;
+  const active = detail.state === 'active';
+  // What an owner may do to others, and only while an owner device is left (§8.5): a frozen book offers none of it.
+  const steering = active && detail.owner && !frozen;
 
-  const line = statusLine({
-    state: detail.state,
-    members: detail.members,
-    me: detail.memberId,
-    waiting: detail.waiting,
-    lastSyncedAt: status.lastSyncedAt ?? mine?.seenAt ?? null,
-    failing: status.failing,
-    now,
-  });
+  const line = status ? statusLineOf(status, { failing: live.failing, now }) : 'Checking…';
+  const note = status?.state === 'frozen' ? FROZEN_NOTE : status?.state === 'unshared' ? READ_ONLY_NOTE : active ? 'Tap to sync now' : undefined;
 
-  async function run(work: () => Promise<void>) {
-    if (busy) return;
+  async function run(work: () => Promise<void>): Promise<boolean> {
+    if (busy) return false;
     setBusy(true);
     setError(null);
     try {
       await work();
+      return true;
     } catch (failure) {
       setError(sayError(failure));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  const active = detail.state === 'active';
+  async function leave() {
+    setConfirming(null);
+    let incomplete = false;
+    await run(async () => {
+      try {
+        await sync.leave(book.id);
+      } catch (failure) {
+        incomplete = failure instanceof LeaveIncompleteError;
+        throw failure;
+      }
+    });
+    setRetryLeave(incomplete);
+  }
+
   const rows = detail.members.flatMap((member) => [
     <InsetRow
       key={`m:${member.memberId}`}
@@ -183,7 +201,7 @@ function Shared({
       chevron={false}
     />,
     ...member.devices.map((device) => {
-      const removable = detail.owner && !device.mine;
+      const removable = steering && !device.mine;
       return (
         <InsetRow
           key={`d:${device.deviceId}`}
@@ -191,24 +209,47 @@ function Shared({
           label={`${device.name}, ${member.name}`}
           icon={/phone|iPhone|Android/i.test(device.name) ? <Smartphone size={15} aria-hidden /> : <Laptop size={15} aria-hidden />}
           title={device.name}
-          subtitle={device.mine ? `This device · ${syncedAgo(device.seenAt ?? status.lastSyncedAt, now)}` : syncedAgo(device.seenAt, now)}
+          subtitle={device.mine ? `This device · ${syncedAgo(device.seenAt ?? live.lastSyncedAt, now)}` : syncedAgo(device.seenAt, now)}
           chevron={removable}
           className="pl-[28px]"
           onClick={removable ? () => setArmed((was) => (was?.device.deviceId === device.deviceId ? null : { device, member })) : undefined}
         />
       );
     }),
-    // Invites are an owner's, Link a device included (spec §8.3, fix round 1): a member asks an owner instead.
-    ...(member.me && active
+    // Make owner (§8.5): an owner, on another member who is not one yet.
+    ...(steering && !member.me && member.role !== 'owner'
       ? [
-          detail.owner ? (
+          <InsetRow
+            key={`o:${member.memberId}`}
+            className="pl-[28px]"
+            icon={<Crown size={15} aria-hidden />}
+            label={`Make ${member.name} an owner`}
+            title="Make owner"
+            chevron={false}
+            onClick={() => void run(() => sync.makeOwner(book.id, member.memberId))}
+          />,
+        ]
+      : []),
+    // Link a device (§8.3): an owner's invite, for their own member or, for a replaced phone, another's (fix round 1).
+    ...(active && (member.me || steering)
+      ? [
+          steering ? (
             <InsetRow
-              key="link"
+              key={`l:${member.memberId}`}
               className="pl-[28px]"
               icon={<Link2 size={15} aria-hidden />}
-              title="Link a device"
+              label={member.me ? 'Link a device' : `Link a device for ${member.name}`}
+              title={member.me ? 'Link a device' : `Link a device for ${member.name}`}
               chevron={false}
-              onClick={() => void run(async () => onInvite({ invite: await sync.linkDevice(book.id, member.name), kind: 'device' }))}
+              onClick={() =>
+                void run(async () =>
+                  onInvite({
+                    invite: member.me ? await sync.linkDevice(book.id, member.name) : await sync.linkDeviceFor(book.id, me?.name ?? '', member.memberId),
+                    kind: 'device',
+                    forName: member.me ? undefined : member.name,
+                  }),
+                )
+              }
             />
           ) : (
             <InsetRow
@@ -217,7 +258,7 @@ function Shared({
               className="pl-[28px]"
               icon={<Link2 size={15} aria-hidden />}
               title="Ask an owner to link a new device"
-              subtitle="Only an owner can invite a device into this workspace"
+              subtitle={frozen ? 'No owner has a device here any more' : 'Only an owner can invite a device into this workspace'}
               chevron={false}
             />
           ),
@@ -233,11 +274,11 @@ function Shared({
           testId="sharing-status"
           icon={<RefreshCw size={15} aria-hidden />}
           title={line}
-          subtitle={active ? 'Tap to sync now' : undefined}
+          subtitle={note}
           chevron={false}
           onClick={active ? () => void sync.syncNow(book.id) : undefined}
         />
-        {active && detail.owner ? (
+        {steering ? (
           <InsetRow
             icon={<UserPlus size={15} aria-hidden />}
             title="Invite someone"
@@ -247,15 +288,17 @@ function Shared({
         ) : null}
       </InsetGroup>
 
-      {invite && active ? (
+      {invite && active && !frozen ? (
         <InviteCard
           invite={invite.invite}
           bookName={book.name}
           inviterName={me?.name ?? ''}
-          header={invite.kind === 'device' ? 'Link a device' : 'Invite'}
+          header={invite.kind === 'device' ? (invite.forName ? `Link a device for ${invite.forName}` : 'Link a device') : 'Invite'}
           footer={
             invite.kind === 'device'
-              ? 'On your other device, choose Join a workspace and enter this code. It joins as you.'
+              ? invite.forName
+                ? `On ${invite.forName}’s new device, choose Join a workspace and enter this code. It joins as ${invite.forName}.`
+                : 'On your other device, choose Join a workspace and enter this code. It joins as you.'
               : 'Send this to the person you are sharing with. On their phone they choose Join a workspace and enter the code, or open the link.'
           }
         />
@@ -267,7 +310,7 @@ function Shared({
         </InsetGroup>
       ) : null}
 
-      {armed && active ? (
+      {armed && steering ? (
         <InsetGroup wide footer={`${armed.device.name} stops receiving ${book.name}, and cannot read anything written after. What it already holds stays on it.`}>
           <DestructiveRow
             label={busy ? 'Removing…' : `Remove ${armed.member.name}’s ${armed.device.name}`}
@@ -279,6 +322,42 @@ function Shared({
             }
           />
         </InsetGroup>
+      ) : null}
+
+      {/* Leave (§8.4): anyone, on themselves; the last owner is told to make someone else owner first. */}
+      {active ? (
+        <InsetGroup wide footer={retryLeave ? 'Leaving did not finish. Try again.' : undefined}>
+          <DestructiveRow label={retryLeave ? 'Try leaving again' : 'Leave this workspace'} onClick={() => (retryLeave ? void leave() : setConfirming({ kind: 'leave' }))} />
+        </InsetGroup>
+      ) : null}
+
+      {/* Stop sharing (§8.6): owners only, confirmed. */}
+      {active && detail.owner ? (
+        <InsetGroup wide>
+          <DestructiveRow label="Stop sharing" onClick={() => setConfirming({ kind: 'stop' })} />
+        </InsetGroup>
+      ) : null}
+
+      {confirming?.kind === 'leave' ? (
+        <Sheet title="Leave this workspace?" onClose={() => setConfirming(null)} confirm={{ label: 'Leave', disabled: busy, run: () => void leave() }}>
+          <p className="text-[15px] leading-[20px]">{leaveConfirm(book.name)}</p>
+        </Sheet>
+      ) : null}
+      {confirming?.kind === 'stop' ? (
+        <Sheet
+          title="Stop sharing?"
+          onClose={() => setConfirming(null)}
+          confirm={{
+            label: 'Stop sharing',
+            disabled: busy,
+            run: () => {
+              setConfirming(null);
+              void run(() => sync.stopSharing(book.id));
+            },
+          }}
+        >
+          <p className="text-[15px] leading-[20px]">{stopConfirm(book.name)}</p>
+        </Sheet>
       ) : null}
     </div>
   );

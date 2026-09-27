@@ -27,6 +27,8 @@ export interface SharedBookSummary {
   /** This device's member. */
   memberId: string;
   members: SharedBookMember[];
+  /** For an `unshared` book, the member who ended it here: whoever stopped sharing, or this device's own on a leave. */
+  unsharedBy: string | null;
 }
 
 export interface SharedDevice {
@@ -68,12 +70,12 @@ async function membersOf(database: Database, bookId: string): Promise<SharedBook
 /** Every book this device holds a `shared_books` row for, whatever its state, with its members. */
 export async function listSharedBooks(database: Database): Promise<SharedBookSummary[]> {
   if (!(await sharingTablesExist(database.db))) return [];
-  const rows = await database.db.values<[string, string, string, string]>(
-    sql`SELECT book_id, relay_book_id, state, member_id FROM shared_books ORDER BY shared_at, book_id`,
+  const rows = await database.db.values<[string, string, string, string, string | null]>(
+    sql`SELECT book_id, relay_book_id, state, member_id, unshared_by FROM shared_books ORDER BY shared_at, book_id`,
   );
   const out: SharedBookSummary[] = [];
-  for (const [bookId, relayBookId, state, memberId] of rows) {
-    out.push({ bookId, relayBookId, state: state as SharedBookState, memberId, members: await membersOf(database, bookId) });
+  for (const [bookId, relayBookId, state, memberId, unsharedBy] of rows) {
+    out.push({ bookId, relayBookId, state: state as SharedBookState, memberId, members: await membersOf(database, bookId), unsharedBy });
   }
   return out;
 }

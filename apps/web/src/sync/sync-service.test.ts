@@ -224,4 +224,67 @@ describe('SyncService', () => {
     expect(fandri.service.syncing()).not.toContain(bookId);
     fandri.service.stop();
   });
+
+  describe('the edges (task 9b)', () => {
+    async function household() {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+      const invite = await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      await fandri.service.syncNow(bookId);
+      return { fandri, dewi, bookId };
+    }
+    const memberOf = async (p: Phone, bookId: string, name: string) =>
+      (await sharingDetail(p.database, bookId, await p.service.deviceId()))!.members.find((m) => m.name === name)!;
+
+    it('make owner: the new owner can invite', async () => {
+      const { fandri, dewi, bookId } = await household();
+      await expect(dewi.service.invite(bookId, 'Dewi')).rejects.toMatchObject({ code: 'NOT_OWNER' });
+      await fandri.service.makeOwner(bookId, (await memberOf(fandri, bookId, 'Dewi')).memberId);
+      await dewi.service.syncNow(bookId);
+      expect((await memberOf(dewi, bookId, 'Dewi')).role).toBe('owner');
+      await expect(dewi.service.invite(bookId, 'Dewi')).resolves.toMatchObject({ code: expect.any(String) });
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('an owner links a device for another member: the invite joins as that member', async () => {
+      const { fandri, dewi, bookId } = await household();
+      const dewiId = (await memberOf(fandri, bookId, 'Dewi')).memberId;
+      const link = await fandri.service.linkDeviceFor(bookId, 'Fandri', dewiId);
+      expect((await dewi.service.preview(link.code)).terms).toMatchObject({ sameMember: true, memberId: dewiId });
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('leave: the leaver keeps the book, unshared and no longer polled; the last owner may not leave', async () => {
+      const { fandri, dewi, bookId } = await household();
+      await expect(fandri.service.leave(bookId)).rejects.toMatchObject({ name: 'LastOwnerError' });
+      dewi.applied.mockClear();
+      await dewi.service.leave(bookId);
+      expect(await dewi.service.bookStatus(bookId)).toMatchObject({ state: 'unshared', byYou: true });
+      expect(dewi.service.syncing()).not.toContain(bookId);
+      expect(dewi.applied).toHaveBeenCalled();
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('stop sharing: the other side learns on its next run who stopped it, and stops polling', async () => {
+      const { fandri, dewi, bookId } = await household();
+      await fandri.service.stopSharing(bookId);
+      expect(await fandri.service.bookStatus(bookId)).toBeNull();
+      expect(fandri.service.syncing()).not.toContain(bookId);
+      dewi.applied.mockClear();
+      await dewi.service.syncNow(bookId);
+      expect(await dewi.service.bookStatus(bookId)).toMatchObject({ state: 'unshared', byName: 'Fandri', byYou: false });
+      expect(dewi.service.syncing()).not.toContain(bookId);
+      expect(dewi.applied).toHaveBeenCalled();
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+  });
 });

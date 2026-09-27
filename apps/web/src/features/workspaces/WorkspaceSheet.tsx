@@ -7,7 +7,7 @@ import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
 import { JoinSheet } from '../sharing/JoinSheet';
 import { useSharedBooks } from '../sharing/queries';
-import { sharedWith, statusLine } from '../sharing/sharing-copy';
+import { endedLine, sharedWith } from '../sharing/sharing-copy';
 import { NewWorkspaceSheet } from './NewWorkspaceSheet';
 import { WorkspaceDot } from './WorkspaceBadge';
 import { useBooks, useSpentThisMonth } from './queries';
@@ -33,7 +33,8 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
     const book = (shared.data ?? []).find((each) => each.bookId === bookId);
     if (!book) return null;
     if (book.state === 'unshared') {
-      return statusLine({ state: book.state, members: book.members, me: book.memberId, waiting: 0, lastSyncedAt: null, failing: false, now: Date.now() });
+      const byName = book.members.find((member) => member.memberId === book.unsharedBy)?.name ?? null;
+      return endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId });
     }
     return sharedWith(book.members, book.memberId);
   };

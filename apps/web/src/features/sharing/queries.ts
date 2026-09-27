@@ -49,3 +49,22 @@ export function usePurchasePayers(transactionIds: readonly string[], shared: boo
   });
   return (transactionId: string) => (shared ? (query.data?.[transactionId] ?? null) : null);
 }
+
+/** The engine's status line state for a book (§11) and whether it is frozen (§8.5), re-read after every run. */
+export function useBookStatus(bookId: string) {
+  const { sync } = useApp();
+  return useQuery({
+    queryKey: ['sharing', bookId, 'status'],
+    queryFn: async () => ({ status: await sync.bookStatus(bookId), frozen: await sync.isFrozen(bookId) }),
+  });
+}
+
+/**
+ * Whether the open workspace is a share that ended here (§8.6): kept as it was, read-only. Every way in that writes
+ * to it hides or refuses; capture refuses the write itself whatever the screen does (`BookReadOnlyError`).
+ */
+export function useOpenBookReadOnly(): boolean {
+  const { ws } = useApp();
+  const shared = useSharedBooks();
+  return (shared.data ?? []).some((book) => book.bookId === ws.bookId && book.state === 'unshared');
+}

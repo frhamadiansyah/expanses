@@ -1,4 +1,5 @@
 import {
+  type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
   type Database,
   type DeviceKeys,
@@ -290,7 +291,52 @@ export class SyncService {
     this.onApplied();
   }
 
+  /** Link another member's device (§8.3, §8.7): an owner's invite that joins as that member. */
+  async linkDeviceFor(bookId: string, inviterName: string, memberId: string): Promise<CreatedInvite> {
+    const engine = await this.engine();
+    return this.exclusive(bookId, () => engine.createInvite(bookId, { inviterName, sameMember: true, memberId }));
+  }
+
+  /** The status line's state (§11), from the engine; null for a book not shared here, or before any engine exists. */
+  async bookStatus(bookId: string): Promise<EngineBookStatus | null> {
+    if (!this.engineMade) return null;
+    return (await this.engine()).bookSyncStatus(bookId);
+  }
+
+  /** Whether no owner device is left (§8.5): invites, removing others and Make owner are not offered. */
+  async isFrozen(bookId: string): Promise<boolean> {
+    if (!this.engineMade) return false;
+    return (await this.engine()).isFrozen(bookId);
+  }
+
+  /** Make owner (§8.5), then the screens re-read. */
+  async makeOwner(bookId: string, memberId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.makeOwner(bookId, memberId));
+  }
+
+  /** Leave (§8.4): the book stays here, read-only; it is no longer polled. */
+  async leave(bookId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.leave(bookId));
+  }
+
+  /** Stop sharing (§8.6), by an owner: the book is an ordinary one here again; the others go read-only on their next run. */
+  async stopSharing(bookId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.stopSharing(bookId));
+  }
+
   /* ------------------------------------------------------------- internals */
+
+  /** An act that may change the book's state: whatever it did, the schedule follows `shared_books` and screens re-read. */
+  private async act(bookId: string, work: (engine: SyncEngine) => Promise<void>): Promise<void> {
+    const engine = await this.engine();
+    try {
+      await this.exclusive(bookId, () => work(engine));
+    } finally {
+      await this.refresh().catch((error: unknown) => this.onError(error));
+      this.emit();
+      this.onApplied();
+    }
+  }
 
   private async drainWithProgress(engine: SyncEngine, bookId: string, onProgress?: (done: number, total: number) => void): Promise<void> {
     const total = await outboxOps(this.database, bookId);
@@ -341,9 +387,9 @@ export class SyncService {
       this.onError(error);
     }
     // A run that stopped short may have moved the book out of `active` (needs_invite): it is no longer polled.
-    if (result?.stopped) await this.refresh().catch((error: unknown) => this.onError(error));
+    if (result?.stopped || result?.ended) await this.refresh().catch((error: unknown) => this.onError(error));
     this.emit();
-    if (result && (result.applied > 0 || result.rotated !== undefined || result.stopped?.reason === 'needs invite')) this.onApplied();
+    if (result && (result.applied > 0 || result.rotated !== undefined || result.ended !== undefined || result.stopped?.reason === 'needs invite')) this.onApplied();
   }
 
   private hear(relayBookId: string, entries: SequencedEntry[]): void {

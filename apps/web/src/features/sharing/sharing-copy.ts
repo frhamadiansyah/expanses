@@ -1,4 +1,14 @@
-import { type PurchasePayer, type SharedBookMember, type SharedBookState, SharingError, SyncTransportError } from '@expanses/db';
+import {
+  BookReadOnlyError,
+  type BookSyncStatus,
+  FrozenBookError,
+  LastOwnerError,
+  LeaveIncompleteError,
+  type PurchasePayer,
+  type SharedBookMember,
+  SharingError,
+  SyncTransportError,
+} from '@expanses/db';
 
 /*
  * What the sharing screens say (household sharing spec §11), worked out away from the screens so every sentence can
@@ -34,30 +44,47 @@ export function sinceWhen(ms: number, now: number): string {
   return then.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-export interface StatusInput {
-  state: SharedBookState;
-  members: readonly SharedBookMember[];
-  me: string;
-  /** Change-sets waiting in the outbox. */
-  waiting: number;
-  /** The last run that reached the relay, this session or before. */
-  lastSyncedAt: number | null;
-  failing: boolean;
-  now: number;
+/** One-line explanations under the status line. */
+export const FROZEN_NOTE = 'Nobody can invite, remove a device or make an owner. Recording and syncing go on.';
+export const READ_ONLY_NOTE = 'Kept here as it was, read-only: nothing can be added or changed.';
+
+/** An ended share, in the switcher and on the status line: who stopped it, or that you left. */
+export function endedLine(ended: { byName: string | null; byYou: boolean }): string {
+  if (ended.byYou) return 'You left this workspace';
+  return ended.byName ? `No longer shared by ${ended.byName}` : 'No longer shared';
 }
 
 /**
- * The status line (§11): "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to
- * keep sharing" · "No longer shared by Fandri".
+ * The status line (§11), from the engine's `bookSyncStatus`: "Up to date" · "3 changes waiting" · "Not synced since
+ * Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" · frozen. A run failing right now
+ * says so at once, before the five minutes after which the engine calls the book stale.
  */
-export function statusLine(input: StatusInput): string {
-  const owner = ownerName(input.members, input.me);
-  if (input.state === 'unshared') return owner ? `No longer shared by ${owner}` : 'No longer shared';
-  if (input.state === 'needs_invite') return owner ? `Ask ${owner} for a new invite to keep sharing` : 'Ask for a new invite to keep sharing';
-  if (input.failing) return input.lastSyncedAt === null ? 'Not synced yet' : `Not synced since ${sinceWhen(input.lastSyncedAt, input.now)}`;
-  if (input.waiting > 0) return `${input.waiting} ${input.waiting === 1 ? 'change' : 'changes'} waiting`;
-  if (input.lastSyncedAt === null) return 'Not synced yet';
-  return 'Up to date';
+export function statusLineOf(status: BookSyncStatus, live: { failing: boolean; now: number }): string {
+  switch (status.state) {
+    case 'unshared':
+      return endedLine(status);
+    case 'needs_invite':
+      return `Ask ${status.askName ?? 'an owner'} for a new invite to keep sharing`;
+    case 'frozen':
+      return 'Frozen: no owner has a device here';
+    case 'stale':
+      return `Not synced since ${sinceWhen(Date.parse(status.since), live.now)}`;
+    default: {
+      if (live.failing) return status.syncedAt ? `Not synced since ${sinceWhen(Date.parse(status.syncedAt), live.now)}` : 'Not synced yet';
+      if (status.state === 'waiting') return `${status.changes} ${status.changes === 1 ? 'change' : 'changes'} waiting`;
+      return 'Up to date';
+    }
+  }
+}
+
+/** Before Leave: what leaving does, and what stays. */
+export function leaveConfirm(bookName: string): string {
+  return `You stop receiving ${bookName}, and the others stop seeing your new changes. What is here stays, read-only.`;
+}
+
+/** Before Stop sharing: what stopping does to everyone. */
+export function stopConfirm(bookName: string): string {
+  return `${bookName} stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being yours alone.`;
 }
 
 /** Under a device: "synced just now", "synced 2 min ago", "synced 3 h ago", "synced Tue". */
@@ -109,6 +136,10 @@ const UNREACHABLE = "Couldn't reach the sharing service. Check the connection an
  * relay's answers in words rather than status codes, and anything else as it came.
  */
 export function sayError(error: unknown): unknown {
+  if (error instanceof LastOwnerError) return new Error('Make someone else owner first.');
+  if (error instanceof LeaveIncompleteError) return new Error('You are no longer an owner, but leaving did not finish. Try again.');
+  if (error instanceof FrozenBookError) return new Error('Nobody can do that: no owner has a device in this workspace any more.');
+  if (error instanceof BookReadOnlyError) return new Error('This workspace is no longer shared and is kept read-only. Nothing in it can be changed.');
   if (error instanceof SharingError) return error;
   if (error instanceof SyncTransportError) {
     if (error.status === 0) return new Error(UNREACHABLE);
