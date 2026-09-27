@@ -30,6 +30,7 @@ async function twoPeople(page: Page) {
   // The phone shows one side, so + goes straight to that side's screen: Receivables opens on New receivable.
   await page.getByRole('link', { name: 'New receivable' }).tap();
   await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel('Sub category').selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
@@ -39,6 +40,7 @@ async function twoPeople(page: Page) {
   await turnOver(page);
   await page.getByRole('link', { name: 'New payable' }).tap();
   await page.getByLabel('Person').fill('Dewi');
+  await page.getByLabel('Sub category').selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
@@ -119,21 +121,21 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
   await page.getByRole('link', { name: /Lend & borrow/ }).first().tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
 
-  // Lend & borrow showing only Dewi: + there starts with her name. She already has a loan, so the Loan row offers it
-  // — but a new amount is a new loan until one of hers is picked, with a reason and a due date of its own.
+  // Lend & borrow showing only Dewi: + there starts with her name. Her open loan is offered under Loan once
+  // something is typed, as names are under Person — a loan with no reason under the words "No reason noted".
   await page.goto('/net-worth/lend-borrow?person=Dewi');
   await page.getByRole('link', { name: 'New payable' }).tap();
   await expect(page.getByLabel('Person')).toHaveValue('Dewi');
-  const loan = page.getByLabel('Loan', { exact: true });
-  await expect(loan).toHaveValue('');
-  await expect(loan.locator('option')).toHaveText(['New loan', /^No reason noted · .*750\.000 left$/]);
-  await page.getByRole('button', { name: 'Add more details' }).tap();
-  await expect(page.getByRole('textbox', { name: 'What it is for' })).toBeVisible();
+  const chip = page.getByRole('button', { name: /^No reason noted · .*750\.000 left$/ });
+  await expect(chip).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Loan', exact: true }).fill('no');
+  await chip.tap();
 
-  // Picking her loan adds to it, and its reason and due date are that loan's, so the form stops asking for them.
-  await loan.selectOption({ index: 1 });
-  await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'About Due by' })).toHaveCount(0);
+  // Picked, the money adds to her loan: its sub category and due date are that loan's, so the form stops asking.
+  await expect(page.getByText(/^Adds to this open loan/)).toBeVisible();
+  await expect(page.getByLabel('Sub category')).toBeDisabled();
+  await page.getByRole('button', { name: 'Add more details' }).tap();
+  await expect(page.getByRole('textbox', { name: 'Due by' })).toHaveCount(0);
 });
 
 test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is not one country\'s', async ({ page }) => {
@@ -142,14 +144,14 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
   // The notes live with the rows they explain, behind Add more details.
   await page.getByRole('button', { name: 'Add more details' }).tap();
 
-  // Fine print waits behind the ⓘ beside its label, and comes out only when asked for. What it is for and Due by
-  // need none, and carry none.
+  // Fine print waits behind the ⓘ beside its label, and comes out only when asked for. Loan and Due by need none,
+  // and carry none.
   const note = page.getByText(/^Optional\. A card or bank charge for sending the money\./);
   await expect(note).toHaveCount(0);
   await page.getByRole('button', { name: 'About Fee' }).tap();
   await expect(note).toBeVisible();
   await expect(page.getByText(/\byou(r)?\b/i).filter({ hasText: /^Optional/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'About What it is for' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'About Loan' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'About Due by' })).toHaveCount(0);
 
   // A tax ID, for whichever country's report it reaches.

@@ -13,7 +13,7 @@ import { detailsToggleLabel } from '../transactions/tx-form';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type DebtDraft, debtDraftFor, debtDetailsFilled, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith, personSuggestions, subCategories } from './debts-form';
+import { type DebtDraft, debtDraftFor, debtDetailsFilled, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, loanNamed, openLoansWith, personSuggestions, subCategories } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
 /**
@@ -78,15 +78,26 @@ export function DebtForm({
   const setAside = useSetAside(draft.direction === 'lent' ? spendingDoor(draft.moneyId, lentMinor) : null);
 
   /*
-   * A name the workspace already knows is not one loan to add to: Andi can owe for a motorcycle repair and for a
-   * laptop, each its own loan with its own reason and due date. So a known name brings the Loan row, and a new amount
-   * is a new loan until the reader picks one of theirs. Changing the name drops the pick — it was one of the old
-   * person's loans.
+   * A name the workspace already knows is not one loan to add to: one person can owe for two things, each its own
+   * loan with its own reason and due date. So the Loan row says which: their open loans are chips under it, and
+   * picking one — or typing its reason — puts the money on that loan, as picking or typing a name picks the person.
+   * Changing the name picks again, among the new person's loans.
    */
+  const loansOf = (personName: string) => openLoansWith(people.data, draft.direction, personName);
   function nameTyped(personName: string) {
-    set({ personName, existingAccountId: '' });
+    set({ personName, existingAccountId: loanNamed(loansOf(personName), draft.reason) });
   }
-  const loans = openLoansWith(people.data, draft.direction, draft.personName);
+  function purposeTyped(reason: string) {
+    set({ reason, existingAccountId: loanNamed(loans, reason) });
+  }
+  const loans = loansOf(draft.personName);
+  const picked = loans.find((loan) => loan.accountId === draft.existingAccountId);
+  // Offered only once something is typed, as names are under Person: a reason that matches, or "No reason noted".
+  const needle = draft.reason.trim().toLowerCase();
+  const loanChips = needle
+    ? loans.filter((loan) => loan !== picked && (loan.reason || 'No reason noted').toLowerCase().includes(needle))
+    : [];
+  const pickedCode = (profiles.data ?? []).find((profile) => profile.accountId === picked?.accountId)?.coretaxCode ?? '';
   const known = (profiles.data ?? []).find(
     (profile) => profile.direction === draft.direction && profile.personName.trim().toLowerCase() === draft.personName.trim().toLowerCase(),
   );
@@ -161,40 +172,55 @@ export function DebtForm({
               </span>
             ) : undefined
           }
-          placeholder="Andi"
+          placeholder="Name"
           required
         />
-        {loans.length > 0 ? (
-          <SelectRow label="Loan" value={draft.existingAccountId} onChange={(e) => set({ existingAccountId: e.target.value })}>
-            <option value="">New loan</option>
-            {loans.map((loan) => (
-              <option key={loan.accountId} value={loan.accountId}>
-                {loan.label}
-              </option>
-            ))}
-          </SelectRow>
-        ) : null}
-        <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
+        {/*
+          What a new loan files as — chosen, never assumed, and needed before ✓. Money added to one of their open loans
+          files as that loan does, so the row shows the loan's own and is not asked.
+        */}
         <SelectRow
-          label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
-          value={draft.moneyId}
-          onChange={(e) => set({ moneyId: e.target.value, moneyIsCard: money.find((account) => account.id === e.target.value)?.subtype === 'credit_card' })}
+          label="Sub category"
+          value={picked ? pickedCode : draft.subCategory}
+          disabled={Boolean(picked)}
+          onChange={(e) => set({ subCategory: e.target.value })}
         >
           <option value="">Choose…</option>
-          <optgroup label="Accounts">
-            {money.filter((account) => account.kind === 'asset').map((account) => (
-              <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-            ))}
-          </optgroup>
-          {draft.direction === 'lent' && (
-            <optgroup label="Credit cards">
-              {money.filter((account) => account.subtype === 'credit_card').map((account) => (
-                <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-              ))}
-            </optgroup>
-          )}
+          {subCategories(draft.direction).map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {choice.label}
+            </option>
+          ))}
         </SelectRow>
-        {/* After the account, which decides the currency the figure is read in. */}
+        <TextRow
+          label="Loan"
+          value={draft.reason}
+          onChange={(e) => purposeTyped(e.target.value)}
+          autoComplete="off"
+          hint={
+            picked || loanChips.length > 0 ? (
+              <span className="flex flex-col gap-[6px]">
+                {picked ? <span>{`Adds to this open loan · ${picked.label.split(' · ').pop()}`}</span> : null}
+                {loanChips.length > 0 ? (
+                  <span className="flex flex-wrap gap-[6px]" aria-label="Open loans with this person">
+                    {loanChips.map((loan) => (
+                      <button
+                        key={loan.accountId}
+                        type="button"
+                        onClick={() => set({ reason: loan.reason, existingAccountId: loan.accountId })}
+                        className="ph-focus rounded-full bg-[var(--ph-fill)] px-[10px] py-[4px] text-[13px] leading-[18px] text-[var(--ph-ink)]"
+                      >
+                        {loan.label}
+                      </button>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+            ) : undefined
+          }
+          placeholder="Purpose"
+        />
+        {/* Named in the account's currency once there is an account: it decides what the figure is read in. */}
         <TextRow
           label={`${draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}${codeShown}`}
           value={draft.amount}
@@ -221,6 +247,25 @@ export function DebtForm({
             <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
           </SelectRow>
         ) : null}
+        <SelectRow
+          label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
+          value={draft.moneyId}
+          onChange={(e) => set({ moneyId: e.target.value, moneyIsCard: money.find((account) => account.id === e.target.value)?.subtype === 'credit_card' })}
+        >
+          <option value="">Choose…</option>
+          <optgroup label="Accounts">
+            {money.filter((account) => account.kind === 'asset').map((account) => (
+              <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+            ))}
+          </optgroup>
+          {draft.direction === 'lent' && (
+            <optgroup label="Credit cards">
+              {money.filter((account) => account.subtype === 'credit_card').map((account) => (
+                <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+              ))}
+            </optgroup>
+          )}
+        </SelectRow>
         {asksRate ? (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
@@ -231,36 +276,15 @@ export function DebtForm({
             placeholder="16250"
           />
         ) : null}
+        <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
         {/*
           The rest of it, folded into this box behind the toggle under it, as New transaction folds its details. Every
           row is its own child of the group — never wrapped — so the group still draws the line between each.
         */}
-        {detailsOpen ? (
-          <SelectRow
-            label="Sub category"
-            value={draft.subCategory}
-            onChange={(e) => set({ subCategory: e.target.value })}
-          >
-            {subCategories(draft.direction).map((choice) => (
-              <option key={choice.code} value={choice.code}>
-                {choice.label}
-              </option>
-            ))}
-          </SelectRow>
-        ) : null}
         {/*
-          A reason and a due date belong to a loan: adding to one of theirs, they are that loan's, changed from its
-          card. Each is its own child of the group, never wrapped together — the group draws the line between rows by
+          A due date belongs to a loan: adding to one of theirs, it is that loan's, changed from the loan's page. Each is its own child of the group, never wrapped together — the group draws the line between rows by
           counting its children, and a wrapper around two rows reads to it as one.
         */}
-        {detailsOpen && !draft.existingAccountId ? (
-          <TextRow
-            label="What it is for"
-            value={draft.reason}
-            onChange={(e) => set({ reason: e.target.value })}
-            placeholder="Motorcycle repair"
-          />
-        ) : null}
         {detailsOpen && !draft.existingAccountId ? (
           <TextRow label="Due by" type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
         ) : null}

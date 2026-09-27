@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { debtDetailsFilled, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith } from './debts-form';
+import { debtDetailsFilled, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, loanNamed, openLoansWith } from './debts-form';
 import { newDebtPath, openingSide, sideOf } from './sides';
 
 describe('the two sides of Lend & borrow', () => {
@@ -26,14 +26,21 @@ describe('the two sides of Lend & borrow', () => {
 });
 
 describe('a draft for one side', () => {
-  it('takes the side from the screen, with the sub-category that belongs to it', () => {
+  it('takes the side from the screen, and leaves the sub-category for the reader to choose', () => {
     const lent = debtDraftFor('lent', '2026-09-27');
     const borrowed = debtDraftFor('borrowed', '2026-09-27');
     expect(lent.direction).toBe('lent');
     expect(borrowed.direction).toBe('borrowed');
-    // A piutang code never stands over money you owe, nor an utang code over money owed to you.
-    expect(lent.subCategory).toBe('0201');
-    expect(borrowed.subCategory).toBe('109');
+    // Blank, never assumed: ✓ stays dim until one is picked.
+    expect(lent.subCategory).toBe('');
+    expect(borrowed.subCategory).toBe('');
+  });
+
+  it('asks for a sub category on a new loan, and not on money added to one of theirs', () => {
+    const base = { ...debtDraftFor('lent', '2026-09-27', 'Dewi'), amount: '100.000', moneyId: 'bca' };
+    expect(() => debtDraftToInput(base, 'IDR', '2026-09-27')).toThrow(/sub category/);
+    expect(debtDraftToInput({ ...base, subCategory: '0202' }, 'IDR', '2026-09-27').coretaxCode).toBe('0202');
+    expect(debtDraftToInput({ ...base, existingAccountId: 'dewi-loan' }, 'IDR', '2026-09-27').debtAccountId).toBe('dewi-loan');
   });
 
   it('starts with the person Lend & borrow was showing, and with nobody otherwise', () => {
@@ -67,7 +74,7 @@ describe('the accounts a loan moves through', () => {
 });
 
 describe('a fee typed on a loan', () => {
-  const base = { ...debtDraftFor('lent', '2026-09-27', 'Toko Fandri'), amount: '4.000.000', moneyId: 'card' };
+  const base = { ...debtDraftFor('lent', '2026-09-27', 'Toko Fandri'), amount: '4.000.000', moneyId: 'card', subCategory: '0201' };
 
   it('travels as its own figure and category, and the loan stays the loan', () => {
     const input = debtDraftToInput({ ...base, fee: '100.000', feeCategoryId: 'fees' }, 'IDR', '2026-09-27');
@@ -83,26 +90,27 @@ describe('a fee typed on a loan', () => {
   it('weighs the loan and its fee when asking whether the money was free', () => {
     expect(lentOutflowMinor({ ...base, fee: '100.000', feeCategoryId: 'fees' }, 'IDR', '2026-09-27')).toBe(4_100_000);
     expect(lentOutflowMinor(base, 'IDR', '2026-09-27')).toBe(4_000_000);
-    expect(lentOutflowMinor({ ...debtDraftFor('borrowed', '2026-09-27'), amount: '1000', moneyId: 'bca' }, 'IDR', '2026-09-27')).toBe(0);
+    expect(lentOutflowMinor({ ...debtDraftFor('borrowed', '2026-09-27'), amount: '1000', moneyId: 'bca', subCategory: '109' }, 'IDR', '2026-09-27')).toBe(0);
   });
 
   it('refuses a fee with no category, and a borrowing fee that takes everything that arrived', () => {
     expect(() => debtDraftToInput({ ...base, fee: '100.000' }, 'IDR', '2026-09-27')).toThrow(/category for the fee/);
-    const borrowed = { ...debtDraftFor('borrowed', '2026-09-27', 'Dewi'), amount: '100.000', moneyId: 'bca', fee: '100.000', feeCategoryId: 'fees' };
+    const borrowed = { ...debtDraftFor('borrowed', '2026-09-27', 'Dewi'), amount: '100.000', moneyId: 'bca', fee: '100.000', feeCategoryId: 'fees', subCategory: '109' };
     expect(() => debtDraftToInput(borrowed, 'IDR', '2026-09-27')).toThrow(/all of what you borrowed/);
   });
 });
 
 describe('whether the ✓ can save', () => {
   const today = '2026-09-27';
-  const filled = { ...debtDraftFor('lent', today, 'Toko Fandri'), amount: '4.000.000', moneyId: 'card' };
+  const filled = { ...debtDraftFor('lent', today, 'Toko Fandri'), amount: '4.000.000', moneyId: 'card', subCategory: '0201' };
 
-  it('stays dim until a person, an account and an amount are there', () => {
+  it('stays dim until a person, an account, an amount and a sub category are there', () => {
     expect(debtDraftReady(debtDraftFor('lent', today), 'IDR', today)).toBe(false);
     expect(debtDraftReady({ ...filled, personName: '' }, 'IDR', today)).toBe(false);
     expect(debtDraftReady({ ...filled, moneyId: '' }, 'IDR', today)).toBe(false);
     expect(debtDraftReady({ ...filled, amount: '' }, 'IDR', today)).toBe(false);
     expect(debtDraftReady({ ...filled, amount: '0' }, 'IDR', today)).toBe(false);
+    expect(debtDraftReady({ ...filled, subCategory: '' }, 'IDR', today)).toBe(false);
     expect(debtDraftReady(filled, 'IDR', today)).toBe(true);
   });
 
@@ -137,17 +145,25 @@ describe('the loans a new amount could be added to', () => {
     expect(openLoansWith(people, 'lent', 'Budi')).toEqual([]);
     expect(openLoansWith(undefined, 'lent', 'Andi')).toEqual([]);
   });
+
+  it('adds to the loan whose reason is typed, and makes a new loan of anything else', () => {
+    const choices = openLoansWith(people, 'lent', 'Andi');
+    expect(loanNamed(choices, ' motorcycle REPAIR ')).toBe('moto');
+    expect(loanNamed(choices, 'Motorcycle')).toBe('');
+    expect(loanNamed(choices, 'Laptop')).toBe('');
+    // A loan with no reason is picked from its chip, never by typing nothing.
+    expect(loanNamed(choices, '')).toBe('');
+  });
 });
 
 describe('whether the details open by themselves', () => {
   const blank = debtDraftFor('lent', '2026-09-27', 'Andi');
   it('stay folded over nothing, and open over anything filled in', () => {
     expect(debtDetailsFilled(blank)).toBe(false);
-    expect(debtDetailsFilled({ ...blank, reason: 'Laptop' })).toBe(true);
+    // What it is for and the sub category sit in the main box, so filling them opens nothing.
+    expect(debtDetailsFilled({ ...blank, reason: 'Laptop' })).toBe(false);
     expect(debtDetailsFilled({ ...blank, dueOn: '2026-12-01' })).toBe(true);
     expect(debtDetailsFilled({ ...blank, personIdNumber: '123' })).toBe(true);
-    expect(debtDetailsFilled({ ...blank, subCategory: '0209' })).toBe(true);
-    // The side's own sub-category is the default, not something the reader chose.
-    expect(debtDetailsFilled(debtDraftFor('borrowed', '2026-09-27'))).toBe(false);
+    expect(debtDetailsFilled({ ...blank, subCategory: '0209' })).toBe(false);
   });
 });

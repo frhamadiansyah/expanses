@@ -79,7 +79,8 @@ export function loanMoneyAccounts<T extends { kind: string; subtype: string }>(m
 export const debtDraftFor = (direction: DebtDirection, today: string, personName = ''): DebtDraft => ({
   ...emptyDebtDraft(today),
   direction,
-  subCategory: DEFAULT_SUB_CATEGORY[direction],
+  // Chosen, never assumed: what a loan files as in a tax report is the reader's call, so the row starts blank.
+  subCategory: '',
   personName,
 });
 
@@ -106,6 +107,8 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A loan cannot be dated after today');
   if (!draft.moneyId) throw new Error('Choose which account the money came from');
+  // A new loan files as something; money added to an existing loan keeps what that loan already files as.
+  if (!draft.existingAccountId && !draft.subCategory) throw new Error('Choose a sub category');
 
   if (draft.amount.trim() === '') throw new Error('Enter how much');
   let amountMinor: number;
@@ -150,9 +153,11 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   };
 }
 
-/** One of a person's open loans, as the Loan row offers it. */
+/** One of a person's open loans, offered as a chip under What it is for. */
 export interface LoanChoice {
   accountId: string;
+  /** What the loan is for, as written; empty when none was noted. */
+  reason: string;
   /** "Motorcycle repair · Rp 1.500.000 left" — the reason, or that none was noted, and what is still owed. */
   label: string;
 }
@@ -175,18 +180,27 @@ export function openLoansWith(people: PeopleDebts | undefined, direction: DebtDi
     .filter((loan) => loan.status === 'open')
     .map((loan) => ({
       accountId: loan.accountId,
+      reason: loan.reason?.trim() ?? '',
       label: `${loan.reason?.trim() || 'No reason noted'} · ${formatMinor(loan.balanceMinor, loan.currency)} left`,
     }));
 }
 
 /**
- * Whether anything behind "Add more details" is already filled in: a sub-category other than the side's own, a
- * reason, a due date or a tax ID. The details open by themselves when it is, so nothing typed is ever out of sight.
+ * The open loan a typed purpose names, as a typed name names a person: the same words (ignoring capitals and spaces
+ * at the ends) as one of theirs means more money on that loan. Anything else, or nothing, is a new loan.
+ */
+export function loanNamed(loans: LoanChoice[], typed: string): string {
+  const words = typed.trim().toLowerCase();
+  if (!words) return '';
+  return loans.find((loan) => loan.reason.toLowerCase() === words)?.accountId ?? '';
+}
+
+/**
+ * Whether anything behind "Add more details" is already filled in: a due date or a tax ID. The details open by
+ * themselves when it is, so nothing typed is ever out of sight.
  */
 export function debtDetailsFilled(draft: DebtDraft): boolean {
   return (
-    draft.subCategory !== DEFAULT_SUB_CATEGORY[draft.direction] ||
-    draft.reason.trim() !== '' ||
     draft.dueOn !== '' ||
     draft.personIdNumber.trim() !== ''
   );

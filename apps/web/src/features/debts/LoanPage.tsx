@@ -159,7 +159,7 @@ export function LoanPage() {
             key={`reason-${profile.reason ?? ''}`}
             label="What it is for"
             defaultValue={profile.reason ?? ''}
-            placeholder="Motorcycle repair"
+            placeholder="Purpose"
             onBlur={(e) => {
               const reason = e.target.value.trim() || null;
               if (reason !== (profile.reason ?? null)) void saveField({ reason });
