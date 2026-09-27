@@ -97,3 +97,4 @@ export * as sharingSchema from './schema-sharing';
 // Household sharing: the HTTP transport to the relay and its request signer (spec §9)
 export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';
 export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
+export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';

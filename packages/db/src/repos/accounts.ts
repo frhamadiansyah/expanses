@@ -5,6 +5,7 @@ import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookCategories } from '../schema-books';
 import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
+import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { hasBooks, personalBookIdTx } from './books';
 import { postTransactionTx } from './ledger';
 import { withCapture } from '../sync/capture';
@@ -108,12 +109,19 @@ async function writeAudit(tx: Db, ws: WorkspaceContext, action: string, entityId
 export async function listAccounts(
   database: Database,
   ws: WorkspaceContext,
-  opts: { includeArchived?: boolean } = {},
+  opts: { includeArchived?: boolean; includePlaceholders?: boolean } = {},
 ): Promise<AccountRow[]> {
+  const hidePlaceholders = !opts.includePlaceholders && (await sharingTablesExist(database.db));
   return database.db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), opts.includeArchived ? undefined : isNull(accounts.archivedAt)))
+    .where(
+      and(
+        eq(accounts.workspaceId, ws.workspaceId),
+        opts.includeArchived ? undefined : isNull(accounts.archivedAt),
+        hidePlaceholders ? notPlaceholder(accounts.id) : undefined,
+      ),
+    )
     .orderBy(asc(accounts.kind), asc(accounts.sortOrder), asc(accounts.name));
 }
 
