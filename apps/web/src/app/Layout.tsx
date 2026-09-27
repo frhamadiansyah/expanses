@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
 import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
@@ -9,6 +9,7 @@ import { usePendingDraftCount } from '../features/review/queries';
 import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
+import { cx } from '../ui';
 import { useApp } from './context';
 import { AccountSheet } from './AccountSheet';
 import { TabBar } from './TabBar';
@@ -80,6 +81,17 @@ export function Layout() {
     void sweepPhotosAtStart(database).catch((error: unknown) => console.warn('Photos were not swept', error));
   }, [database]);
 
+  // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
+  const top = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const sentinel = top.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setScrolled(entry ? !entry.isIntersecting : false));
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
       className="min-h-dvh md:flex"
@@ -128,8 +140,20 @@ export function Layout() {
           ))}
         </div>
       </aside>
+      {/* Frosted glass over the status bar, as iOS draws it: the page scrolls under the clock and battery
+          rather than into them. Only as tall as the inset, so a desktop (inset 0) draws nothing. */}
+      <div
+        aria-hidden
+        className={cx(
+          'pointer-events-none fixed inset-x-0 top-0 z-30 transition-colors duration-150 md:hidden',
+          scrolled && 'border-b-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-chrome)] backdrop-blur-xl',
+        )}
+        style={{ height: 'env(safe-area-inset-top)' }}
+      />
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
-      <main className="flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <main className="relative flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
+        <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         <div className="mx-auto max-w-4xl p-4 md:p-8">
           <InstallHint />
           {/* What just happened to their data comes before the standing reminder about backing it up. */}
