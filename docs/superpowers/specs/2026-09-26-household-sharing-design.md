@@ -392,8 +392,12 @@ already there, so two tabs at first launch end with one device. `NativeKeyStore`
 keychain), `KeychainAccess.afterFirstUnlockThisDeviceOnly` (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), and
 the keychain holds strings, so the pairs are generated extractable once, written as JWK and imported back without it.
 The device id reaches capture through one seam: the engine puts the KeyStore's `deviceId` in the capture config, and
-`localDeviceId(tx)` returns it (a random stand-in in `settings` is used only by a database no engine was made for — a
-capture-only test — and nothing with it can reach a relay).
+`localDeviceId(tx)` returns it. **The engine exists before the first write (final review, I3):** `openAppDb` readies
+`SyncService.prepare()` between the migration and `ensureCategoryKeys`, so nothing the open writes into a shared book
+is stamped before the id is known. A random stand-in in `settings` is minted only by a database that says it has no
+engine (`standInDeviceId` in the capture config — a capture-only test, the §6.4 harness); otherwise, with an active
+shared book and no id configured, `localDeviceId` throws rather than stamp a change with an id no key vouches for. And
+apply refuses, as a recorded skip, any entry whose change-set hlc names a device other than the entry's signed author.
 
 ### 5.3 Sealing an epoch key for a device (rotation)
 

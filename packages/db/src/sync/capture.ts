@@ -66,6 +66,11 @@ export interface CaptureConfig {
   /** The clock's wall time, for tests. */
   now?: () => number;
   /**
+   * Tests only (final review, I3): let `localDeviceId` mint and keep a random stand-in id in `settings` when no engine
+   * has configured one. The app never sets it: a write to a shared book before the engine exists is a bug, and throws.
+   */
+  standInDeviceId?: boolean;
+  /**
    * Told when a transaction writes with capture deliberately off (`withCapturePaused`: apply writing what another
    * device already emitted). The §6.4 test harness uses it to leave those writes out of its watch, and only those.
    */
@@ -99,13 +104,18 @@ export function configureCapture(database: Database, patch: Partial<CaptureConfi
 
 /**
  * This device's id for sync — the one seam. It is the `KeyStore`'s `deviceId` (spec §5.1), which the sync engine puts in
- * the capture config when it is made. Only a database no engine was ever made for (a test of capture alone, the §6.4
- * harness) falls back to a random stand-in kept in `settings`; nothing with such an id can reach a relay, because only
- * the engine seals and appends.
+ * the capture config when it is made; the app makes the engine before its first write (`openAppDb`, §5.1). Only a
+ * database no engine was ever made for, and that says so (`standInDeviceId`: a test of capture alone, the §6.4
+ * harness), falls back to a random stand-in kept in `settings`. Otherwise, with a shared book here and no id
+ * configured, this throws rather than stamp a change with an id no key vouches for (final review, I3).
  */
 export async function localDeviceId(tx: Db): Promise<string> {
-  const configured = (sessions.get(tx)?.config ?? configs.get(tx))?.deviceId;
-  if (configured) return configured;
+  const config = sessions.get(tx)?.config ?? configs.get(tx);
+  if (config?.deviceId) return config.deviceId;
+  if (!config?.standInDeviceId) {
+    const shared = await tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`);
+    if (shared.length > 0) throw new Error('localDeviceId: a book is shared here but no device is configured; the sync engine must be made before the first write');
+  }
   const rows = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${DEVICE_SETTINGS_KEY}`);
   if (rows[0]) return rows[0][0];
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));

@@ -10,7 +10,6 @@ import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { registerServiceWorker } from './lib/pwa';
-import { SyncService } from './sync/sync-service';
 import './styles.css';
 
 registerServiceWorker();
@@ -84,14 +83,8 @@ async function start() {
       if (wantsOverBudget()) await pushOverBudget(app.database, app.ws);
     }
     if (!gate.mountable()) return;
-    /*
-     * A device that holds a shared book makes its sync engine before the first screen can write, so every change it
-     * captures carries this device's own id (spec §5.1), and a restored backup is caught before anything syncs (§8.7).
-     * Local only — the keys and the database, never the relay — and a failure here never stops the app opening.
-     */
-    const sync = new SyncService({ database: app.database });
-    await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
-    if (!gate.mountable()) return;
+    // Sync was readied inside the open, before its first write (`openAppDb`, spec §5.1, §8.7): the app takes it from there.
+    const sync = app.sync;
     root.render(
       <StrictMode>
         {/*

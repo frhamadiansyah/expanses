@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AppDb } from '../db/bootstrap';
 import { scheduleDailyCopy } from '../db/snapshots';
 import { listenForJoinLinks } from '../native/deep-link';
-import { SyncService } from '../sync/sync-service';
+import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
 import { router } from './router';
 
@@ -16,7 +16,8 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // The open workspace is state rather than something read once at startup, so choosing another one re-reads
   // every book-scoped screen without reloading the app.
   const [bookId, setBookId] = useState(app.ws.bookId);
-  const [sync] = useState(() => given ?? new SyncService({ database: app.database }));
+  // The open readied it before its first write (`openAppDb`, spec §5.1); a test may hand one in instead.
+  const [sync] = useState(() => given ?? app.sync);
   /*
    * Sharing syncs behind every screen and never in front of one (spec §9.4): a run that applied another device's
    * changes drops every cached figure, so whatever is on screen re-reads. With nothing shared, `start` sends nothing.

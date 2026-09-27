@@ -45,6 +45,23 @@ async function sharedHousehold() {
   return { ...t, book, bca, groceries, dining };
 }
 
+describe('capture: the device id', () => {
+  it('refuses to mint a stand-in id while a book is shared and no device is configured (final review, I3)', async () => {
+    const { database, ws } = await setupDb();
+    const book = await personalBook(database, ws);
+    // Straight into the table, without the test helper's leave to use the stand-in: as the app would stand if it wrote
+    // to a shared book before its engine existed.
+    await database.db.run(
+      sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${book.id}, 'relay-x', 1, 'member-x', 'active', '2026-09-01T00:00:00.000Z')`,
+    );
+    await expect(database.transaction((tx) => localDeviceId(tx))).rejects.toThrow(/no device/);
+    expect(await database.db.values(sql`SELECT value FROM settings WHERE key = 'sync.device'`)).toEqual([]);
+    // Configured (as the engine does when it is made), it is that id.
+    configureCapture(database, { deviceId: 'the-engine-device' });
+    expect(await database.transaction((tx) => localDeviceId(tx))).toBe('the-engine-device');
+  });
+});
+
 describe('capture: outside a shared book', () => {
   it('emits nothing and makes no clock', async () => {
     const { database, ws } = await setupDb();

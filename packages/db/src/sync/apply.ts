@@ -637,6 +637,15 @@ export interface PullResult {
   introduced: string[];
 }
 
+/** The device id an hlc carries, or null for one that is not an hlc at all. */
+function hlcDeviceOf(hlc: string): string | null {
+  try {
+    return decodeHlc(hlc).deviceId;
+  } catch {
+    return null;
+  }
+}
+
 async function cursorOf(database: Database, bookId: string): Promise<number> {
   const [row] = await database.db.values<[number]>(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${bookId}`);
   return row ? Number(row[0]) : 0;
@@ -743,6 +752,12 @@ export async function pullAndApply(
         }
         // The change-set inside must be the one the signed envelope names.
         if (changeSet.hlc !== entry.hlc) return finish({ seq: entry.seq, reason: 'bad signature' });
+        // …and its hlc must carry the author's own id (§6.1): one stamped under another id — a stand-in minted before
+        // the engine existed, say — is a recorded skip on every device alike (final review, I3).
+        if (hlcDeviceOf(changeSet.hlc) !== entry.deviceId) {
+          await skipEntry(entry, 'change', entry.deviceId, 'AUTHORITY: its hlc names another device than its author');
+          continue;
+        }
         if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
         if (seen && !own) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
       }

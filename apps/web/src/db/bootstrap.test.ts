@@ -13,9 +13,12 @@ import {
   listAccounts,
   listCategorySets,
   listEarnRules,
+  listSharedBooks,
+  MemoryKeyStore,
   migrate,
   personalBook,
 } from '@expanses/db';
+import { sql } from 'drizzle-orm';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { type AppDb, bootstrap, openAppDb } from './bootstrap';
@@ -96,6 +99,30 @@ describe('bootstrap', () => {
 });
 
 describe('openAppDb', () => {
+  it('readies sync before its first write, so a device holding a shared book never mints a stand-in id (final review, I3)', async () => {
+    const executor = createNodeExecutor();
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+      const book = await personalBook(database, ws);
+      // A shared book, restored from a backup onto this device: its keys are not here, and its categories are from
+      // before category keys, so the open's ensureCategoryKeys has something to write into it.
+      await database.execScript(`UPDATE accounts SET system_key = NULL WHERE subtype = 'category'`);
+      await database.db.run(
+        sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${book.id}, 'relay-1', 1, 'member-1', 'active', '2026-09-01T00:00:00.000Z')`,
+      );
+      const keyStore = new MemoryKeyStore();
+      const app = await openAppDb(database, undefined, { keyStore });
+      // The engine was made first (the KeyStore's id is the one seam, §5.1) and the restore was caught (§8.7) before any write.
+      expect(await app.sync.deviceId()).toBe((await keyStore.getOrCreateDevice()).deviceId);
+      expect((await listSharedBooks(database)).map((b) => b.state)).toEqual(['needs_invite']);
+      expect(await database.db.values(sql`SELECT value FROM settings WHERE key = 'sync.device'`)).toEqual([]);
+    } finally {
+      executor.close();
+    }
+  });
+
   it('migrates a database of its own, up to the newest schema the build carries', async () => {
     const executor = createNodeExecutor();
     try {

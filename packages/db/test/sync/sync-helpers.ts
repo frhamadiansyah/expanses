@@ -1,11 +1,14 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../../src/database';
 import { sharedBooks, syncOutbox } from '../../src/schema-sharing';
+import { configureCapture } from '../../src/sync/capture';
 import { decodeHlc } from '../../src/sync/hlc';
 import type { ChangeSet, Op } from '../../src/sync/types';
 
 /** Marks a book shared on this device (the minimal stand-in for Share, which is task 4/5's). */
 export async function shareBookForTest(database: Database, bookId: string, memberId = 'member-me', epoch = 1): Promise<void> {
+  // A test of capture alone has no engine: the stand-in device id is allowed here, and nowhere in the app (final review, I3).
+  configureCapture(database, { standInDeviceId: true });
   await database.db.insert(sharedBooks).values({ bookId, relayBookId: `relay-${bookId}`, epoch, memberId, state: 'active', sharedAt: new Date().toISOString() });
 }
 

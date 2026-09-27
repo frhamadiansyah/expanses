@@ -36,6 +36,24 @@ const purchase = (id: string, occurredOn: string, money: unknown): Op => ({
 });
 
 describe('what apply skips, and what it refuses to', () => {
+  it('an entry whose change-set hlc names another device than its author is a recorded skip, and the log goes on (final review, I3)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
+    const money = { lines: [{ categoryId: groceries, amountMinor: 1_000, currency: 'IDR', amountBaseMinor: 1_000, memo: null }], originalCurrency: null, originalAmountMinor: null, paidBy: fandri.memberId, paidLabel: 'BCA' };
+    // Signed and sealed by Fandri's device, but the hlc inside carries Dewi's id: what a change captured under a stand-in
+    // id and sealed by the engine would look like.
+    const forged = encodeHlc(Date.now(), (tick += 1), dewi.deviceId);
+    const entry = await fandri.engine.sealer.seal(home.bookId, 1, { v: 1, hlc: forged, member: fandri.memberId, ops: [purchase('01a0e100-0000-7000-8000-0000000000a1', '2026-09-10', money)] });
+    const bad = (await fandri.transport.append(home.relayBookId, entry)).seq;
+    const good = await appendOps(home, fandri, [purchase('01a0e100-0000-7000-8000-0000000000a2', '2026-09-10', money)]);
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped.map((s) => [s.seq, s.entity, s.id])).toEqual([[bad, 'change', fandri.deviceId]]);
+    expect(result.skipped[0]!.error).toMatch(/hlc/);
+    expect(await cursor(dewi, bookId)).toBe(good);
+    expect((await dewi.database.db.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = '01a0e100-0000-7000-8000-0000000000a1'`)).length).toBe(0);
+    expect((await dewi.database.db.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = '01a0e100-0000-7000-8000-0000000000a2'`)).length).toBe(1);
+  });
+
   it('a refusal every receiver makes alike is skipped, recorded, and reported; the entries after it still apply', async () => {
     const { home, fandri, dewi, bookId } = await household();
     const groceries = await categoryOf(dewi.database, bookId, 'Groceries');

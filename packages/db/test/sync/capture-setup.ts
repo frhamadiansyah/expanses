@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { afterEach, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
+import { configureCapture } from '../../src/sync/capture';
 import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
 
 /*
@@ -19,6 +20,8 @@ async function shareFirstBook(database: Database, workspaceId: string): Promise<
   const [book] = await database.db.values<[string]>(sql`SELECT id FROM books WHERE workspace_id = ${workspaceId} AND kind = 'personal'`);
   if (!book) return;
   const bookId = book[0];
+  // The harness has no engine: the stand-in device id is allowed here, and nowhere in the app (final review, I3).
+  configureCapture(database, { standInDeviceId: true });
   await database.db.run(
     sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${`relay-${bookId}`}, 1, 'member-harness', 'active', ${new Date().toISOString()})`,
   );
