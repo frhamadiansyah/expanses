@@ -167,6 +167,8 @@ export function watchPausedWrites(database: Database): void {
         if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
       },
       end: async (tx: Db) => void (await tx.run(sql`DELETE FROM temp.__apply_paused`)),
+      applied: async (tx: Db, changeSet: ChangeSet) =>
+        void (await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`)),
     },
   });
 }

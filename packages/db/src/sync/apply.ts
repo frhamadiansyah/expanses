@@ -5,7 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
-import { authorisedOp, introductionRefusal, removalRefusal, removedBefore, wasRefused } from './authority';
+import { AuthorityError, decideOpsTx, NO_REVIVE, introductionRefusal, recordRemovalTx, removalRefusal, removedInView, viewDevice, wasRefused } from './authority';
 import { openSealedKey } from './crypto';
 import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
@@ -309,9 +309,12 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
   const record = async () => {
     for (const [field, { hlc: at }] of winners) await setClock(tx, ctx, entity.entity, op.id, field, at);
   };
+  // A non-owner's member edit never brings a deleted row back nor moves its existence clock (fix round 2, N1).
+  const noRevive = NO_REVIVE.has(op);
+  if (noRevive && !exists && tomb === null) return;
   if (tomb !== null) {
     if (!revivable) return;
-    if (hlc <= tomb) {
+    if (hlc <= tomb || noRevive) {
       // Still dead here, but its fields merge into what the tombstone kept, so a later revive reads them.
       if (winners.size === 0) return;
       const retained = await retainedOf(tx, ctx, entity.entity, op.id);
@@ -321,7 +324,7 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
       return;
     }
   }
-  if (revivable) {
+  if (revivable && !noRevive) {
     const alive = await clockOf(tx, ctx, entity.entity, op.id, ROW_CLOCK);
     if (alive === null || hlc > alive) await setClock(tx, ctx, entity.entity, op.id, ROW_CLOCK, hlc);
   }
@@ -549,6 +552,8 @@ export interface ApplyRun {
   creator?: boolean;
   /** The member an admitted introduction joins as, which it may write with the role 'member' (§8.5). */
   introducedMember?: string;
+  /** Each op as the authority view decided it (`decideOpsTx`); worked out here when a test applies directly. */
+  decisions?: (Op | AuthorityError)[];
 }
 
 let savepoints = 0;
@@ -582,7 +587,11 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
 export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: ChangeSet, held: HeldOps = new Map(), run: ApplyRun = { seq: 0, skipped: [] }): Promise<void> {
   await receiveHlc(tx, changeSet.hlc);
   const author = run.author ?? decodeHlc(changeSet.hlc).deviceId;
-  for (const op of changeSet.ops) {
+  const decisions =
+    run.decisions ?? (await decideOpsTx(tx, { bookId: ctx.bookId, author, hlc: changeSet.hlc, creator: run.creator ?? false, introducedMember: run.introducedMember }, changeSet.ops));
+  for (const [index, original] of changeSet.ops.entries()) {
+    const decision = decisions[index]!;
+    const op = decision instanceof AuthorityError ? original : decision;
     const entity = entityOf(op.entity);
     if (entity.kind === 'purchase') {
       if (op.op !== 'upsert') continue; // a purchase is never deleted, only voided
@@ -591,8 +600,11 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       });
       continue;
     }
-    // Who may write what (task 5 fix round 1): a refused op is a recorded skip, the same on every device.
-    await guarded(tx, ctx, run, op, async () => applyRowOp(tx, ctx, entity, await authorisedOp(tx, ctx.bookId, op, author, run.creator ?? false, run.introducedMember), changeSet.hlc));
+    // Who may write what (task 5 fix rounds 1–2): a refused op is a recorded skip, the same on every device.
+    await guarded(tx, ctx, run, op, async () => {
+      if (decision instanceof AuthorityError) throw decision;
+      await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
+    });
   }
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
   for (const [lineageId, ops] of [...held]) {
@@ -717,7 +729,10 @@ export async function pullAndApply(
         changeSet = opened;
         introducing = true;
       }
-      if (entry.kind === 'change' && entry.deviceId !== self) {
+      const own = entry.deviceId === self;
+      if (entry.kind === 'change') {
+        // Our own entries are opened too: their rows are already true here, but the authority view takes them in at
+        // their seq like anyone's (fix round 2).
         if (!changeSet) {
           const opened = await openChange();
           if (opened === 'missing') return needsInvite(entry.seq);
@@ -725,10 +740,8 @@ export async function pullAndApply(
         }
         // The change-set inside must be the one the signed envelope names.
         if (changeSet.hlc !== entry.hlc) return finish({ seq: entry.seq, reason: 'bad signature' });
-        if (driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
-        if (seen) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
-      } else if (entry.kind === 'change') {
-        changeSet = null; // our own: already true here
+        if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
+        if (seen && !own) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
       }
       let rotationKey: Uint8Array | null = null;
       if (entry.kind === 'rotation') {
@@ -737,49 +750,75 @@ export async function pullAndApply(
       }
       let removal: { epoch: number; target: string } | null = null;
       let admitted = false;
+      let applyingDecisions: (Op | AuthorityError)[] | undefined;
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
-          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId, creator: introducing && entry.seq === 1 };
+          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId };
           const refuse = async (entity: string, id: string, error: string) => {
             const skip: SkippedOp = { seq: entry.seq, entity, id, error };
             await tx.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${entry.seq}, ${entity}, ${id}, ${error}, ${new Date().toISOString()})`);
             run.skipped.push(skip);
           };
-          const removedFirst = await removedBefore(tx, bookId, entry.deviceId, entry.hlc);
-          const introWhy = !removedFirst && introducing && changeSet ? await introductionRefusal(tx, bookId, entry.deviceId, entry.seq, changeSet) : null;
-          if (removedFirst) {
-            // I2: written after its author's removal. Counts for nothing, anywhere.
+          const known = await viewDevice(tx, bookId, entry.deviceId);
+          const viewIntro = entry.kind === 'change' && known === null;
+          if (known?.removedSeq != null || (await removedInView(tx, bookId, entry.deviceId))) {
+            // I2: its author was removed earlier in the log, whatever hlc it picked. Counts for nothing, anywhere.
             await refuse(entry.kind, entry.deviceId, 'AUTHORITY: written after its device was removed');
-          } else if (introWhy) {
-            await refuse('device', entry.deviceId, introWhy);
+          } else if (entry.kind !== 'change' && known === null) {
+            await refuse(entry.kind, entry.deviceId, 'AUTHORITY: its device was never admitted');
           } else {
-            admitted = introducing;
-            if (introducing && changeSet) {
-              const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === entry.deviceId && op.op === 'upsert');
-              if (intro && intro.op === 'upsert' && typeof intro.fields.memberId === 'string') run.introducedMember = intro.fields.memberId;
-            }
-            if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
-            if (entry.kind === 'removal') {
-              const why = await removalRefusal(tx, bookId, entry.deviceId, entry.target);
-              if (why) await refuse('removal', entry.target, why);
-              else {
-                await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
-                removal = { epoch: entry.epoch, target: entry.target };
+            const introWhy = viewIntro && changeSet ? await introductionRefusal(tx, bookId, entry.deviceId, entry.seq, changeSet) : null;
+            if (introWhy) {
+              await refuse('device', entry.deviceId, introWhy);
+            } else {
+              admitted = viewIntro && !own;
+              if (viewIntro && changeSet) {
+                const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === entry.deviceId && op.op === 'upsert');
+                if (intro && intro.op === 'upsert' && typeof intro.fields.memberId === 'string') run.introducedMember = intro.fields.memberId;
               }
-            }
-            if (entry.kind === 'rotation') {
-              await receiveHlc(tx, entry.hlc);
-              // Not sealed for this device: it was added after the rotator last pulled. Its next entry under the new
-              // epoch stops the loop as `needs invite`.
-              if (rotationKey) {
-                await sealer.storeEpochKeyTx(tx, bookId, entry.epoch, rotationKey);
-                await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${entry.epoch}) WHERE book_id = ${bookId}`);
+              run.creator = viewIntro && entry.seq === 1;
+              if (changeSet) {
+                run.decisions = applyingDecisions = await decideOpsTx(
+                  tx,
+                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember },
+                  changeSet.ops,
+                );
+                if (!own) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
+                else {
+                  // Our own rows are already as we wrote them; what peers refuse is recorded here too.
+                  for (const [i, decision] of run.decisions.entries()) {
+                    if (decision instanceof AuthorityError) await refuse(changeSet.ops[i]!.entity, changeSet.ops[i]!.id, `SkipOp: ${decision.message}`);
+                  }
+                }
+              }
+              if (entry.kind === 'removal') {
+                const why = await removalRefusal(tx, bookId, entry.deviceId, entry.target);
+                if (why) await refuse('removal', entry.target, why);
+                else {
+                  await recordRemovalTx(tx, bookId, entry.target, entry.seq);
+                  await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+                  removal = { epoch: entry.epoch, target: entry.target };
+                }
+              }
+              if (entry.kind === 'rotation') {
+                await receiveHlc(tx, entry.hlc);
+                // Not sealed for this device: it was added after the rotator last pulled. Its next entry under the new
+                // epoch stops the loop as `needs invite`.
+                if (rotationKey) {
+                  await sealer.storeEpochKeyTx(tx, bookId, entry.epoch, rotationKey);
+                  await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${entry.epoch}) WHERE book_id = ${bookId}`);
+                }
               }
             }
           }
           skipped.push(...run.skipped);
           await setCursorTx(tx, bookId, entry.seq);
-        }, changeSet ?? undefined),
+        }, () => {
+          // What apply took in from another device, without the ops the authority view refused (§6.4 harness).
+          const decisions = applyingDecisions;
+          if (own || !changeSet || !decisions) return undefined; // our own, or refused as a whole
+          return { ...changeSet, ops: changeSet.ops.filter((_, i) => !(decisions[i] instanceof AuthorityError)) };
+        }),
       );
       if (admitted) introduced.push(entry.deviceId);
       if (removal) removals.push(removal);

@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, type PullResult } from './apply';
+import { clearAuthorityTx, viewActiveDevices, viewOwnerDevices } from './authority';
 import { captureConfigOf, configureCapture, rowUpsertsTx, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
@@ -157,6 +158,7 @@ export class SyncEngine {
   async syncOnce(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
     const pushed = await this.drain(bookId);
+    const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
     let rotated: number | undefined;
     for (const removal of result.removals) {
@@ -167,7 +169,7 @@ export class SyncEngine {
       // Our own rotation, or on a 409 the one that won: either way the next pull brings it (§8.4 step 3).
       result = merge(result, await this.pull(bookId, seen));
     }
-    await this.addOwnerDevices(bookId, result.introduced);
+    await this.followOwners(bookId, ownersBefore);
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
   }
 
@@ -288,6 +290,7 @@ export class SyncEngine {
         await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
         await tx.run(sql`UPDATE shared_books SET relay_book_id = ${claim.bookId}, epoch = ${epoch}, state = 'active' WHERE book_id = ${bookId}`);
         await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
+        await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
       } else {
         await tx.run(sql`
           INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at)
@@ -351,13 +354,16 @@ export class SyncEngine {
   async maybeRotate(bookId: string, removalEpoch: number): Promise<number | 'skipped' | 'conflict'> {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active' || shared.epoch !== removalEpoch) return 'skipped';
-    const [self] = await this.database.db.values<[string | null]>(sql`SELECT removed_at FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`);
-    if (!self || self[0] !== null) return 'skipped'; // a removed device never seals
+    // Who is in comes from the authority view — the log's word, never a local edit (fix round 2).
+    const active = await this.database.transaction((tx) => viewActiveDevices(tx, bookId));
+    if (!active.includes(this.deviceId)) return 'skipped'; // a removed device never seals
     const next = shared.epoch + 1;
     const key = randomBytes(32);
-    const devices = await this.database.db.values<[string, string]>(
-      sql`SELECT device_id, agree_jwk FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL ORDER BY device_id`,
-    );
+    const devices: [string, string][] = [];
+    for (const deviceId of active) {
+      const [row] = await this.database.db.values<[string]>(sql`SELECT agree_jwk FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`);
+      if (row) devices.push([deviceId, row[0]]);
+    }
     const sealed = await Promise.all(devices.map(([deviceId, agree]) => sealKeyFor({ deviceId, agreeJwk: JSON.parse(agree) as JsonWebKey }, bookId, next, key)));
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
     const entry = await this.sealer.sign(bookId, { kind: 'rotation' as const, deviceId: this.deviceId, epoch: next, hlc, sealed });
@@ -374,19 +380,18 @@ export class SyncEngine {
     return next;
   }
 
-  /** §8.3: a device newly introduced for an owner member joins the relay's owners, when this device is an owner's. */
-  private async addOwnerDevices(bookId: string, introduced: readonly string[]): Promise<void> {
-    if (introduced.length === 0) return;
+  /**
+   * §8.3, §8.5 (fix round 2): the relay's owners follow the authority view. When a pull changed the set of owner
+   * devices — a promotion, a demotion, a linked device of an owner — an owner device tells the relay the new set. A
+   * device of an owner member that is not yet an owner on the relay is told so with 403, and leaves it to one that is.
+   */
+  private async followOwners(bookId: string, before: readonly string[]): Promise<void> {
     const shared = await this.sharedRow(bookId);
-    if (!shared) return;
-    const ownerDevices = await this.database.db.values<[string]>(sql`
-      SELECT d.device_id FROM book_devices d JOIN book_members m ON m.book_id = d.book_id AND m.member_id = d.member_id
-      WHERE d.book_id = ${bookId} AND d.removed_at IS NULL AND m.role = 'owner' ORDER BY d.device_id`);
-    const ids = ownerDevices.map(([id]) => id);
-    if (!ids.includes(this.deviceId) || !introduced.some((id) => ids.includes(id))) return;
-    // A device of an owner member that is not yet an owner on the relay (a linked device pulling the book for the first
-    // time) is told so with 403, and leaves it to the devices that are.
-    await this.transport.setOwners(shared.relayBookId, ids).catch((error: unknown) => {
+    if (!shared || shared.state !== 'active') return;
+    const after = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
+    if (!after.includes(this.deviceId)) return;
+    if (after.length === before.length && after.every((id, i) => id === before[i])) return;
+    await this.transport.setOwners(shared.relayBookId, after).catch((error: unknown) => {
       if (!(error instanceof SyncTransportError && error.status === 403)) throw error;
     });
   }

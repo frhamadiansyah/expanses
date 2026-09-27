@@ -166,3 +166,102 @@ describe("a removed device's later entries count for nothing (I2)", () => {
     expect((await dewi.database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`))[0]![0]).toBe('Personal');
   });
 });
+
+/* ------------------------------------------------------------------ fix round 2 */
+
+async function writeMember(d: Device, bookId: string, memberId: string, statement: string) {
+  const { withCapture } = await import('../../src/sync/capture');
+  await d.database.transaction((tx) => withCapture(tx, { entity: 'member', id: memberId, bookId }, async () => void (await tx.run(sql.raw(statement)))));
+}
+
+describe('a member row is an owner’s to delete or make again (N1, fix round 2)', () => {
+  it("a plain member's delete of the owner's member row is skipped everywhere; the owner keeps every power", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    const del: ChangeSet = { v: 1, hlc: encodeHlc(Date.now() + 1000, 0, dewi.deviceId), member: dewi.memberId, ops: [{ entity: 'member', id: fandri.memberId, op: 'delete' }] };
+    await dewi.transport.append(home.relayBookId, await dewi.engine.sealer.seal(bookId, 1, del));
+    await home.settle();
+    for (const d of [fandri, budi]) expect(await roleOf(d, bookId, fandri.memberId)).toBe('owner');
+    expect((await skips(budi, bookId)).map(([e, id]) => [e, id])).toEqual([['member', fandri.memberId]]);
+    await fandri.engine.removeDevice(bookId, budi.deviceId);
+    await home.settle([fandri, dewi]);
+    expect(await removedAt(dewi, bookId, budi.deviceId)).not.toBeNull();
+    expect(await epochOf(dewi, bookId)).toBe(2);
+  });
+
+  it("a plain member's delete of any member row is skipped, even one that is not the last owner", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${budi.memberId}'`);
+    await home.settle();
+    const del: ChangeSet = { v: 1, hlc: encodeHlc(Date.now() + 1000, 0, dewi.deviceId), member: dewi.memberId, ops: [{ entity: 'member', id: budi.memberId, op: 'delete' }] };
+    await dewi.transport.append(home.relayBookId, await dewi.engine.sealer.seal(bookId, 1, del));
+    await fandri.engine.syncOnce(bookId);
+    expect(await roleOf(fandri, bookId, budi.memberId)).toBe('owner');
+    expect((await skips(fandri, bookId)).map(([e, id]) => [e, id])).toEqual([['member', budi.memberId]]);
+  });
+
+  it('a plain member cannot make a deleted member row again', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await writeMember(fandri, bookId, budi.memberId, `DELETE FROM book_members WHERE member_id = '${budi.memberId}'`);
+    await home.settle();
+    const remake: ChangeSet = {
+      v: 1,
+      hlc: encodeHlc(Date.now() + 1000, 0, dewi.deviceId),
+      member: dewi.memberId,
+      ops: [{ entity: 'member', id: budi.memberId, op: 'upsert', fields: { name: 'Budi', role: 'member', joinedAt: '2026-09-01' } }],
+    };
+    await dewi.transport.append(home.relayBookId, await dewi.engine.sealer.seal(bookId, 1, remake));
+    await fandri.engine.syncOnce(bookId);
+    expect(await roleOf(fandri, bookId, budi.memberId)).toBeUndefined();
+    expect((await skips(fandri, bookId)).map(([e, id]) => [e, id])).toEqual([['member', budi.memberId]]);
+  });
+
+  it('the last owner cannot be deleted or demoted: on this device the write is refused, and on apply it is skipped', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await expect(writeMember(fandri, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`)).rejects.toThrow(/last owner/);
+    await expect(writeMember(fandri, bookId, fandri.memberId, `DELETE FROM book_members WHERE member_id = '${fandri.memberId}'`)).rejects.toThrow(/last owner/);
+    const demote: ChangeSet = { v: 1, hlc: encodeHlc(Date.now() + 1000, 0, fandri.deviceId), member: fandri.memberId, ops: [{ entity: 'member', id: fandri.memberId, op: 'upsert', fields: { role: 'member' } }] };
+    await fandri.transport.append(home.relayBookId, await fandri.engine.sealer.seal(bookId, 1, demote));
+    await dewi.engine.syncOnce(bookId);
+    expect(await roleOf(dewi, bookId, fandri.memberId)).toBe('owner');
+    expect((await skips(dewi, bookId)).map(([e, id]) => [e, id])).toEqual([['member', fandri.memberId]]);
+  });
+});
+
+describe('authority follows the log, never a local edit not yet synced (N2, fix round 2)', () => {
+  it('an owner demoting a co-owner locally while that co-owner removes a device: every device agrees on the removal', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${budi.memberId}'`);
+    await home.settle();
+    expect(home.relay.peek(home.relayBookId)!.owners.has(budi.deviceId)).toBe(true); // relay owners follow the log
+    await budi.engine.removeDevice(bookId, dewi.deviceId);
+    await new Promise((r) => setTimeout(r, 3));
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${budi.memberId}'`);
+    await fandri.engine.syncOnce(bookId);
+    await home.settle([fandri, budi]);
+    await home.settle([fandri, budi]);
+    expect(await removedAt(fandri, bookId, dewi.deviceId)).not.toBeNull();
+    expect(await removedAt(budi, bookId, dewi.deviceId)).toBe(await removedAt(fandri, bookId, dewi.deviceId));
+    expect(await roleOf(budi, bookId, budi.memberId)).toBe('member');
+    expect(home.relay.peek(home.relayBookId)!.owners.has(budi.deviceId)).toBe(false); // and a demotion leaves them
+    await fandri.engine.removeDevice(bookId, budi.deviceId);
+    const rotations = [...home.relay.peek(home.relayBookId)!.log.values()].filter((e): e is Extract<LogEntry, { kind: 'rotation' }> => e.kind === 'rotation');
+    for (const rotation of rotations) expect(rotation.sealed.map((s) => s.deviceId)).not.toContain(dewi.deviceId);
+  });
+});
+
+describe('a removed device is removed at its place in the log, whatever hlc it picks (N4b, fix round 2)', () => {
+  it('an entry backdated just under its removal, but after it in the log, is skipped', async () => {
+    const { fandri, dewi, budi, bookId } = await household();
+    await fandri.engine.removeDevice(bookId, budi.deviceId);
+    await dewi.engine.syncOnce(bookId);
+    const [[removalHlc]] = (await dewi.database.db.values<[string]>(
+      sql`SELECT hlc FROM sync_field_clocks WHERE entity = 'device' AND id = ${budi.deviceId} AND field = 'removedAt'`,
+    )) as [[string]];
+    const { decodeHlc } = await import('../../src/sync/hlc');
+    const late: ChangeSet = { v: 1, hlc: encodeHlc(decodeHlc(removalHlc).ms - 1, 0, budi.deviceId), member: budi.memberId, ops: [{ entity: 'book', id: bookId, op: 'upsert', fields: { name: 'Budi was here' } }] };
+    const entry = await budi.engine.sealer.seal(bookId, 1, late);
+    const result = await pullAndApply(dewi.database, injecting(dewi, [entry], () => budi.public.signJwk), dewi.engine.sealer, bookId);
+    expect(result.skipped.map((s) => [s.entity, s.id])).toEqual([['change', budi.deviceId]]);
+    expect((await dewi.database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`))[0]![0]).toBe('Personal');
+  });
+});

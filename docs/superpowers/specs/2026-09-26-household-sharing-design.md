@@ -49,6 +49,14 @@ is checked before its device is pinned, once per invite, and the joiner checks l
 removal of another device needs an owner, on the relay and in apply, and a removed device's later entries count for
 nothing; §8.5 — only an owner writes a role. Migration `0057_sync_invites_used`. Each passage says "(fix round 1)".
 
+**Task 5, fix round 2** (re-review N1, N2, N4b; controller rulings): every authority decision reads the **authority
+view** (`sync_authority`, `sync_authority_devices`, in 0057), which changes only as log entries are applied in seq order —
+this device's own entries included, at their seq — so no local, unsynced edit can make one device decide differently
+from its peers (§7.1, §8.4, §8.5); deleting a member row, or making one again, is an owner's, and the last owner is
+never deleted or demoted (§8.5); a removed device is removed at its place in the log, whatever hlc it picks (§8.4); the
+relay's owners follow the view (§8.5); a reordering relay is recorded as a known gap (§15). Each passage says "(fix
+round 2)".
+
 ## 0. What v3 changed
 
 v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
@@ -223,6 +231,16 @@ CREATE TABLE sync_skipped (                             -- task 4 fix round 1: a
 CREATE TABLE sync_invites_used (                        -- 0057, task 5 fix round 1: one device per invite (§8.2)
   book_id TEXT NOT NULL, invite_id TEXT NOT NULL, device_id TEXT NOT NULL,
   PRIMARY KEY (book_id, invite_id)
+);
+CREATE TABLE sync_authority (                           -- 0057, fix round 2: the authority view, members (§8.5)
+  book_id TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT NOT NULL, role_hlc TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0, row_hlc TEXT NOT NULL,
+  PRIMARY KEY (book_id, member_id)
+);
+CREATE TABLE sync_authority_devices (                   -- 0057, fix round 2: the authority view, devices (§8.4)
+  book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL,
+  removed_seq INTEGER,                                  -- the seq of the removal entry that removed it
+  PRIMARY KEY (book_id, device_id)
 );
 ```
 
@@ -625,6 +643,15 @@ for e in entries, in seq order:
 **The cursor never passes an entry that was not applied.** Every `stop` leaves `applied_seq` where it was; the next
 tick tries the same entry again.
 
+**The authority view (fix round 2).** Who may do what is never read from `book_members` or `book_devices`, which a
+local edit not yet synced can change, but from the authority view: `sync_authority` (each member's role and whether it
+is deleted, each with the hlc it last changed at) and `sync_authority_devices` (each admitted device, its member, and the
+seq of the removal that removed it). The view changes only as the loop applies entries, in seq order, and this device's
+**own** entries are opened and taken into the view at their seq too (their rows are already true here and are not
+written again; a refusal of one is recorded here as on every peer). Removal authority, the owner devices an invite's
+terms must verify under, role and member-row authority, I2, the devices a rotation seals for, and the relay's owner set
+all read it. A rejoin (§8.7) clears it and rebuilds it from seq 0.
+
 **As built (task 5).** `pullAndApply` takes the device's `Sealer`. A missing epoch key sets `state = 'needs_invite'` and
 stops with `needs invite`. A rotation not sealed for this device (added after the rotator last pulled) stores nothing;
 the next entry under the new epoch then stops the same way. `PullResult` reports the removals applied (with their epoch)
@@ -860,8 +887,10 @@ epoch; the removed device cannot pull them, which is the relay's doing until the
 **Who may remove (fix round 1, C2).** A removal entry counts only when its target is its author, or its author's member
 is an owner (`book_members.role`, at apply time). Anything else is a recorded skip: never applied, never a reason to
 rotate. The relay refuses such an append (`403`) with its own owner set, as `DELETE /devices` does, and so does
-`MemoryTransport`. **A removed device's later entries (I2)**: an entry whose author was removed at an hlc before the
-entry's own is a recorded skip on every device, however it reached the log.
+`MemoryTransport`. **A removed device's later entries (I2; fix round 2):** an entry whose author the view already has as
+removed — its removal is earlier in the log — is a recorded skip on every device, whatever hlc it carries (an hlc is the
+author's own choice, so round 1's hlc comparison let a removed device backdate). Both checks read the authority view
+(§7.1), so an owner's local, unsynced demotion of the remover cannot make one device skip a removal its peers apply.
 
 **As built (task 5).** `removeDevice(bookId, target)` appends the signed removal, calls the relay, and for another
 device syncs at once, which applies the removal and rotates. `syncOnce` runs `maybeRotate` after its pull loop, once per
@@ -873,8 +902,18 @@ rotation already in the same page wins without a `409`. A device whose own row i
 `book_members.role`, synced. **Only an owner writes it (fix round 1, C3):** a `member` op naming `role` among its
 changed fields is applied only when its author's member is an owner — or the op is the creator's own member in the
 log's first entry, or a new member's own introduction naming itself `'member'`; any other is a recorded skip. A role a
-non-owner's op merely carries (a whole revivable row) loses its clock and can only ever insert as `'member'`. The relay
-keeps the set of owner **device ids** for authorising `putInvite`,
+non-owner's op merely carries (a whole revivable row) loses its clock and can only ever insert as `'member'`.
+
+**Member rows (fix round 2, N1).** Deleting a member row, and making one again (an op naming every field, on a row the
+view has as deleted), is accepted only from an owner author; a non-owner's edit that crossed a delete stays dead — it
+merges into what the tombstone kept and moves no existence clock, here and on the device that made it, so every device
+ends alike. The **last owner** is never deleted or made a member: `withCapture` refuses the local write
+(`LastOwnerError`) and apply refuses it as a recorded skip. All of it is decided by the authority view (§7.1), never by
+this device's own rows. **The relay's owners follow the view:** after a pull changes the set of owner devices in the
+view — a promotion, a demotion, a linked owner device — an owner device calls `setOwners` with the new set (a device the
+relay does not yet count as an owner gets `403` and leaves it to one that is).
+
+The relay keeps the set of owner **device ids** for authorising `putInvite`,
 `removeDevice` of another device, `setOwners`, `deleteBook`. **Make owner**: a `member` op setting `role`, and
 `setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
 and sync, nobody can invite or remove; rotation still works.
@@ -1072,6 +1111,11 @@ Mutate-twice review on every step.
 
 ## 15. Left open
 
+- **A relay that reorders the log (known gap, fix round 2 — deferred by ruling).** Authority is decided in log order, and
+  the log's order is the relay's. A malicious relay colluding with a removed device could serve a new joiner a
+  reordered prefix (a removal moved before a promotion, say) and so make that joiner decide differently. Fix sketch:
+  the owner-signed invite terms carry an **anchor** — the seq and a running hash of the entry signing bytes up to it —
+  that the joiner checks as it pulls; later, devices compare running hashes to detect a forked log.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
   Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
   iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.

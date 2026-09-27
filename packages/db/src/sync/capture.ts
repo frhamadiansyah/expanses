@@ -2,6 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
+import { makesMember, viewRoleOfDevice } from './authority';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -27,6 +28,18 @@ import type { ChangeSet, Op } from './types';
  * nothing. Apply runs with capture switched off: `pauseCapture(tx)`.
  */
 
+async function selfIsOwner(tx: Db, bookId: string): Promise<boolean> {
+  return (await viewRoleOfDevice(tx, bookId, await localDeviceId(tx))) === 'owner';
+}
+
+/** A write that would leave a shared book with no owner (§8.5). */
+export class LastOwnerError extends Error {
+  constructor() {
+    super("A shared workspace needs an owner: the last owner can't be removed or made a member");
+    this.name = 'LastOwnerError';
+  }
+}
+
 /** The settings key of the stand-in device id used only while no `KeyStore` identity is configured (see `localDeviceId`). */
 export const DEVICE_SETTINGS_KEY = 'sync.device';
 
@@ -44,7 +57,12 @@ export interface CaptureConfig {
    * Told when a transaction writes with capture deliberately off (`withCapturePaused`: apply writing what another
    * device already emitted). The §6.4 test harness uses it to leave those writes out of its watch, and only those.
    */
-  pausedWrites?: { begin(tx: Db, changeSet?: ChangeSet): Promise<void>; end(tx: Db): Promise<void> };
+  pausedWrites?: {
+    begin(tx: Db, changeSet?: ChangeSet): Promise<void>;
+    end(tx: Db): Promise<void>;
+    /** The ops apply actually took in, when they are known only after it ran (authority refusals left out). */
+    applied?(tx: Db, changeSet: ChangeSet): Promise<void>;
+  };
 }
 
 export function defaultCaptureConfig(): CaptureConfig {
@@ -300,12 +318,16 @@ export function pauseCapture(tx: Db): void {
  * where those writes begin and end, and which change-set they apply. Apply's door: what it writes was emitted by the
  * device that made the change.
  */
-export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applying?: ChangeSet): Promise<T> {
+export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applying?: ChangeSet | (() => ChangeSet | undefined)): Promise<T> {
   const session = sessionOf(tx);
   session?.pause();
   const observer = session?.config.pausedWrites;
-  await observer?.begin(tx, applying);
+  await observer?.begin(tx, typeof applying === 'function' ? undefined : applying);
   const result = await fn();
+  if (typeof applying === 'function') {
+    const taken = applying();
+    if (taken) await observer?.applied?.(tx, taken);
+  }
   await observer?.end(tx);
   return result;
 }
@@ -347,6 +369,18 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   const slot = session.reserveRowSlot();
   const before = await snapshot(tx, books, targets);
   const result = await fn();
+  // §8.5 (fix round 2): a shared book always keeps an owner. Deleting or demoting its last owner is refused here, before
+  // anything is emitted, and rolls the write back.
+  for (const t of targets) {
+    if (t.entity !== 'member') continue;
+    for (const book of books) {
+      if (t.bookId && t.bookId !== book.bookId) continue;
+      const [had] = await tx.values<[number]>(sql`SELECT count(*) FROM book_members WHERE book_id = ${book.bookId} AND role = 'owner'`);
+      if (Number(had?.[0] ?? 0) === 0 && [...before.values()].some((b) => b.bookId === book.bookId && b.entity.entity === 'member' && b.values.role === 'owner')) {
+        throw new LastOwnerError();
+      }
+    }
+  }
   const after = await snapshot(tx, books, targets);
   for (const [key, was] of before) {
     const now = after.get(key);
@@ -487,7 +521,10 @@ export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string):
   await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = ${op.entity} AND id = ${op.id}`);
   const entity = entityOf(op.entity);
   const named = op.changed ?? Object.keys(op.fields);
-  const fields = entity.kind === 'row' && isRevivable(entity) ? [...named, ROW_CLOCK] : named;
+  // A member row's existence is an owner's (§8.5, fix round 2): a non-owner's edit of one does not move its existence
+  // clock here either, so an owner's delete that crossed it wins on this device as it does everywhere.
+  const existence = entity.kind === 'row' && isRevivable(entity) && (op.entity !== 'member' || makesMember(op) || (await selfIsOwner(tx, bookId)));
+  const fields = existence ? [...named, ROW_CLOCK] : named;
   for (const field of fields) {
     await tx.run(
       sql`INSERT INTO sync_field_clocks (book_id, entity, id, field, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${field}, ${hlc}) ON CONFLICT (book_id, entity, id, field) DO UPDATE SET hlc = excluded.hlc`,
