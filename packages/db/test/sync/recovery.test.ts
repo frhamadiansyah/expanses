@@ -334,3 +334,12 @@ describe('what changed while the share was down reaches both sides (N2)', () => 
     );
   }, 1_800_000);
 });
+
+describe('forgetSharing (recovery review, minor)', () => {
+  it('refuses an active book whose view is still empty: a share made here and not yet synced is live', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(fandri);
+    await expect(fandri.engine.forgetSharing(bookId)).rejects.toMatchObject({ code: 'STILL_SHARED' });
+  });
+});

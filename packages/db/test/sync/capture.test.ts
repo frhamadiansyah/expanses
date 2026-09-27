@@ -29,7 +29,7 @@ import {
   voidTransactionTx,
 } from '../../src/index';
 import { budgets } from '../../src/schema-budget';
-import { configureCapture, localDeviceId, pauseCapture, withCapture } from '../../src/sync/capture';
+import { configureCapture, localDeviceId, pauseCapture, SyncNotReadyError, withCapture } from '../../src/sync/capture';
 import { setupDb } from '../helpers';
 import { clearOutbox, fieldClock, lineageRow, outboxChangeSets, outboxOps, shareBookForTest } from './sync-helpers';
 
@@ -54,7 +54,10 @@ describe('capture: the device id', () => {
     await database.db.run(
       sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${book.id}, 'relay-x', 1, 'member-x', 'active', '2026-09-01T00:00:00.000Z')`,
     );
-    await expect(database.transaction((tx) => localDeviceId(tx))).rejects.toThrow(/no device/);
+    // Said in plain words, for the screen that tried the write (recovery review, minor): never the raw seam's name.
+    const refused = database.transaction((tx) => localDeviceId(tx));
+    await expect(refused).rejects.toBeInstanceOf(SyncNotReadyError);
+    await expect(refused).rejects.toThrow("Sharing isn't ready on this device yet, so this shared workspace can't be changed. Close the app, open it again, and try once more.");
     expect(await database.db.values(sql`SELECT value FROM settings WHERE key = 'sync.device'`)).toEqual([]);
     // Configured (as the engine does when it is made), it is that id.
     configureCapture(database, { deviceId: 'the-engine-device' });

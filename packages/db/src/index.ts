@@ -113,7 +113,7 @@ export {
   type ShareInput,
   type SyncOnceResult,
 } from './sync/engine';
-export { BookReadOnlyError, LastOwnerError } from './sync/capture';
+export { BookReadOnlyError, LastOwnerError, SyncNotReadyError } from './sync/capture';
 export {
   deviceKeysOf,
   exportDeviceJwks,

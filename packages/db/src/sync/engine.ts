@@ -733,15 +733,17 @@ export class SyncEngine {
   /**
    * Keep the book as this device's own (final review, C1): the way out of a share that is dead here. Allowed for a
    * book in `needs_invite` (a restored phone nobody can invite back — the only owner's, say), `unshared` (its owner
-   * stopped it, this member left, or this device was removed), or `active` with no owner device left in the view
-   * (frozen, §8.5). Refused (`STILL_SHARED`) while an owner device is in: leave, or ask an owner to stop sharing.
+   * stopped it, this member left, or this device was removed), or `active` and frozen (`isFrozen`, §8.5: devices in
+   * the view, no owner device among them). Refused (`STILL_SHARED`) while an owner device is in: leave, or ask an owner to stop sharing.
    * Locally it is what `stopSharing` does: `shared_books` and every piece of sync state go; every row stays, and so
    * do `book_members`, `book_member_accounts` and `sync_lineage`. The relay is not told; the book can be shared again.
    */
   async forgetSharing(bookId: string): Promise<void> {
     const shared = await this.sharedRow(bookId);
     if (!shared) throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
-    if (shared.state === 'active' && (await this.database.transaction((tx) => viewOwnerDevices(tx, bookId))).length > 0) {
+    // Active is allowed only when frozen, by the same test the status line uses (recovery review, minor): a view with
+    // no device in yet — a share made here and not synced back — is live, not dead.
+    if (shared.state === 'active' && !(await this.isFrozen(bookId))) {
       throw new SharingError('STILL_SHARED', 'This workspace is still shared and has an owner: leave it, or ask an owner to stop sharing');
     }
     this.sealer.forget();

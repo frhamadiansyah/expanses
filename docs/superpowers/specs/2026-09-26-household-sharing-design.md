@@ -404,7 +404,9 @@ The device id reaches capture through one seam: the engine puts the KeyStore's `
 `SyncService.prepare()` between the migration and `ensureCategoryKeys`, so nothing the open writes into a shared book
 is stamped before the id is known. A random stand-in in `settings` is minted only by a database that says it has no
 engine (`standInDeviceId` in the capture config — a capture-only test, the §6.4 harness); otherwise, with an active
-shared book and no id configured, `localDeviceId` throws rather than stamp a change with an id no key vouches for. And
+shared book and no id configured, `localDeviceId` throws rather than stamp a change with an id no key vouches for —
+`SyncNotReadyError`, in words for the screen that tried the write: *"Sharing isn't ready on this device yet, so this
+shared workspace can't be changed. Close the app, open it again, and try once more."* (recovery review, minor). And
 apply refuses, as a recorded skip, any entry whose change-set hlc names a device other than the entry's signed author.
 
 ### 5.3 Sealing an epoch key for a device (rotation)
@@ -1061,9 +1063,10 @@ review, C1) — and any other remembered member comes back as a member.
 
 **The way out of a dead share (final review, C1).** `forgetSharing(bookId)` does on any device what stopping does on
 the owner's: `shared_books` and every piece of sync state go, every row stays, and so do the members, the placeholders
-and who paid; the relay is not told. It is allowed for a book in `needs_invite`, `unshared`, or `active` with no owner
-device left in the view (frozen, §8.5), and refused (`STILL_SHARED`) while an owner device is in — then the way out is
-Leave. On the screens it is **Stop sharing on this device**, behind a confirm ("Keep as my own copy"). **A copy
+and who paid; the relay is not told. It is allowed for a book in `needs_invite`, `unshared`, or `active` and frozen (§8.5, by
+`isFrozen`: devices in the view and no owner device among them), and refused (`STILL_SHARED`) otherwise — while an owner
+device is in, and while the view is still empty (a share made here and not yet synced back is live; recovery review,
+minor) — then the way out is Leave. On the screens it is **Stop sharing on this device**, behind a confirm ("Keep as my own copy"). **A copy
 rejoins a share made again.** A member's copy left `unshared` by a stop rejoins the new share through the existing
 rejoin path (§8.7) with an owner's link-a-device invite naming its member (the invite's preview carries the relay book
 id); a plain invite is still `INVITE_MISMATCH` before anything is claimed. A copy still `active` on a relay book the

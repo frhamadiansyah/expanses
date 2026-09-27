@@ -52,6 +52,18 @@ export class BookReadOnlyError extends Error {
   }
 }
 
+/**
+ * A write into a shared book before this device's sync engine is ready (`prepare()` failed at open — a key store that
+ * would not open, say; final review I3): refused rather than stamped with an id no key vouches for, and said in words a
+ * person can act on (recovery review, minor), since it reaches whatever screen tried the write.
+ */
+export class SyncNotReadyError extends Error {
+  constructor() {
+    super("Sharing isn't ready on this device yet, so this shared workspace can't be changed. Close the app, open it again, and try once more.");
+    this.name = 'SyncNotReadyError';
+  }
+}
+
 /** The settings key of the stand-in device id used only while no `KeyStore` identity is configured (see `localDeviceId`). */
 export const DEVICE_SETTINGS_KEY = 'sync.device';
 
@@ -114,7 +126,8 @@ export async function localDeviceId(tx: Db): Promise<string> {
   if (config?.deviceId) return config.deviceId;
   if (!config?.standInDeviceId) {
     const shared = await tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`);
-    if (shared.length > 0) throw new Error('localDeviceId: a book is shared here but no device is configured; the sync engine must be made before the first write');
+    // A book is shared here but no device is configured: the sync engine must be made before the first write.
+    if (shared.length > 0) throw new SyncNotReadyError();
   }
   const rows = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${DEVICE_SETTINGS_KEY}`);
   if (rows[0]) return rows[0][0];
