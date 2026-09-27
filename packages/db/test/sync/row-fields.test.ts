@@ -53,4 +53,18 @@ describe('per-field merge on rows that travel whole', () => {
     }
     expect(views[0]).toEqual(views[1]);
   });
+
+  it('a removal moves the clock past its hlc, so the next local write sorts after it (fix round 2)', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.settle();
+    const ahead = Date.now() + 60 * 60 * 1000;
+    await fandri.transport.append(home.relayBookId, { kind: 'removal', deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(ahead, 5, fandri.deviceId), target: dewi.deviceId, sig: stubSign(fandri.deviceId) });
+    await dewi.engine.syncOnce(bookId);
+    const [[clock]] = (await dewi.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = 'sync.hlc'`)) as [[string]];
+    expect(JSON.parse(clock)).toEqual({ ms: ahead, counter: 5 });
+  });
 });

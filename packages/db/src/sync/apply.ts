@@ -62,10 +62,24 @@ async function tombstoneOf(tx: Db, ctx: BookContext, entity: string, id: string)
   return rows[0]?.[0] ?? null;
 }
 
-async function setTombstone(tx: Db, ctx: BookContext, entity: string, id: string, hlc: string): Promise<void> {
+async function setTombstone(tx: Db, ctx: BookContext, entity: string, id: string, hlc: string, last: Record<string, unknown> | null = null): Promise<void> {
   await tx.run(
-    sql`INSERT INTO sync_tombstones (book_id, entity, id, hlc) VALUES (${ctx.bookId}, ${entity}, ${id}, ${hlc}) ON CONFLICT (book_id, entity, id) DO UPDATE SET hlc = max(hlc, excluded.hlc)`,
+    sql`INSERT INTO sync_tombstones (book_id, entity, id, hlc, last_json) VALUES (${ctx.bookId}, ${entity}, ${id}, ${hlc}, ${last ? JSON.stringify(last) : null}) ON CONFLICT (book_id, entity, id) DO UPDATE SET hlc = max(hlc, excluded.hlc), last_json = coalesce(excluded.last_json, last_json)`,
   );
+}
+
+/** The values a revivable row had when it was deleted here, kept beside its tombstone (§7.2). */
+async function retainedOf(tx: Db, ctx: BookContext, entity: string, id: string): Promise<Record<string, unknown>> {
+  const rows = await tx.values<[string | null]>(sql`SELECT last_json FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = ${entity} AND id = ${id}`);
+  return rows[0]?.[0] ? (JSON.parse(rows[0][0]) as Record<string, unknown>) : {};
+}
+
+/** A row's synced field values, by field name (a revivable entity's fields are all plain columns). */
+async function rowValuesOf(tx: Db, entity: RowEntity, where: SQL): Promise<Record<string, unknown>> {
+  const fields = Object.entries(entity.fields);
+  if (fields.length === 0) return {};
+  const [row] = await tx.values<unknown[]>(sql`SELECT ${sql.raw(fields.map(([, c]) => c).join(', '))} FROM ${sql.raw(entity.table)} WHERE ${where}`);
+  return row ? Object.fromEntries(fields.map(([f], i) => [f, row[i]])) : {};
 }
 
 /**
@@ -80,6 +94,27 @@ async function winnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert
     const value = op.fields[field];
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || hlc > clock) winners[field] = value;
+  }
+  return winners;
+}
+
+/**
+ * A row op's winning fields, each with the hlc it wins at (rule 1). A revivable row's op carries every field, each at
+ * its own hlc: the named (`changed`) ones at the change-set's, the rest at the clock the sender's `clocks` gives them
+ * (state-based per-field last-writer-wins, task 4 fix round 2). A field whose clock the sender did not know competes
+ * only against no clock at all.
+ */
+async function rowWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Map<string, { value: unknown; hlc: string }>> {
+  const winners = new Map<string, { value: unknown; hlc: string }>();
+  const changed = op.changed ?? Object.keys(op.fields);
+  for (const [field, value] of Object.entries(op.fields)) {
+    const at = changed.includes(field) ? hlc : op.clocks?.[field];
+    const clock = await clockOf(tx, ctx, op.entity, op.id, field);
+    if (at === undefined) {
+      if (clock === null && !op.changed) winners.set(field, { value, hlc });
+      continue;
+    }
+    if (clock === null || at > clock) winners.set(field, { value, hlc: at });
   }
   return winners;
 }
@@ -204,12 +239,21 @@ async function insertRow(tx: Db, ctx: BookContext, entity: RowEntity, key: Recor
   }
 }
 
-async function parentMissing(tx: Db, entity: RowEntity, key: Record<string, string>, fields: Record<string, unknown>): Promise<boolean> {
+/** The entity a parent table's rows are, for reading its tombstone. */
+const PARENT_ENTITY: Record<string, string> = { accounts: 'category', budgets: 'budget', expense_templates: 'bill' };
+
+/**
+ * Whether a row's parent is absent here: `'ended'` when the parent's own tombstone says it is gone for good (a deleted
+ * budget, or one that lost to a sibling) — every device drops the child alike, as rule 3 drops ops for an ended row —
+ * and `'unknown'` when nothing here explains it, which is recorded as a skip.
+ */
+async function parentMissing(tx: Db, ctx: BookContext, entity: RowEntity, key: Record<string, string>, fields: Record<string, unknown>): Promise<'ended' | 'unknown' | null> {
   const parent = PARENTS[entity.entity];
   const id = parent ? (parent.from === 'key' ? key[parent.name] : fields[parent.name]) : entity.entity === 'category' ? fields.parentId : null;
-  if (id === null || id === undefined) return false;
+  if (id === null || id === undefined) return null;
   const table = parent?.table ?? 'accounts';
-  return (await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE id = ${id as string}`)).length === 0;
+  if ((await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE id = ${id as string}`)).length > 0) return null;
+  return (await tombstoneOf(tx, ctx, PARENT_ENTITY[table]!, id as string)) !== null ? 'ended' : 'unknown';
 }
 
 /**
@@ -252,24 +296,35 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
     if (tomb !== null && tomb >= hlc) return;
     const alive = await clockOf(tx, ctx, entity.entity, op.id, ROW_CLOCK);
     if (alive !== null && alive > hlc) return; // made again after this delete: the delete lost
-    await setTombstone(tx, ctx, entity.entity, op.id, hlc);
+    // Its last values and field clocks stay, so a later revive merges with them field by field.
+    await setTombstone(tx, ctx, entity.entity, op.id, hlc, exists ? await rowValuesOf(tx, entity, where) : null);
     if (exists) await deleteRow(tx, entity, where, key);
     return;
   }
 
+  const winners = await rowWinnersOf(tx, ctx, op, hlc);
+  const record = async () => {
+    for (const [field, { hlc: at }] of winners) await setClock(tx, ctx, entity.entity, op.id, field, at);
+  };
   if (tomb !== null) {
-    if (!revivable || hlc <= tomb) return;
-    // Made again after it was deleted (controller ruling): alive again, as the device that made it has it.
-    await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = ${entity.entity} AND id = ${op.id}`);
+    if (!revivable) return;
+    if (hlc <= tomb) {
+      // Still dead here, but its fields merge into what the tombstone kept, so a later revive reads them.
+      if (winners.size === 0) return;
+      const retained = await retainedOf(tx, ctx, entity.entity, op.id);
+      for (const [field, { value }] of winners) retained[field] = value;
+      await tx.run(sql`UPDATE sync_tombstones SET last_json = ${JSON.stringify(retained)} WHERE book_id = ${ctx.bookId} AND entity = ${entity.entity} AND id = ${op.id}`);
+      await record();
+      return;
+    }
   }
   if (revivable) {
     const alive = await clockOf(tx, ctx, entity.entity, op.id, ROW_CLOCK);
     if (alive === null || hlc > alive) await setClock(tx, ctx, entity.entity, op.id, ROW_CLOCK, hlc);
   }
-  const winners = await winnersOf(tx, ctx, op, hlc);
   if (exists) {
-    if (Object.keys(winners).length === 0) return;
-    const sets = await columnValues(tx, ctx, entity, winners, where, true);
+    if (winners.size === 0) return;
+    const sets = await columnValues(tx, ctx, entity, Object.fromEntries([...winners].map(([f, { value }]) => [f, value])), where, true);
     if (sets.length) {
       await tx.run(
         sql`UPDATE ${sql.raw(entity.table)} SET ${sql.join(
@@ -278,12 +333,22 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
         )} WHERE ${where}`,
       );
     }
-  } else {
-    if (await parentMissing(tx, entity, key, op.fields)) throw new SkipOp('its parent is gone here');
-    if (await settleSiblings(tx, ctx, entity, op, hlc)) return;
-    await insertRow(tx, ctx, entity, key, op.fields, where);
+    await record();
+    return;
   }
-  for (const field of Object.keys(winners)) await setClock(tx, ctx, entity.entity, op.id, field, hlc);
+  const orphan = await parentMissing(tx, ctx, entity, key, op.fields);
+  if (orphan === 'ended') return;
+  if (orphan === 'unknown') throw new SkipOp('its parent is gone here');
+  if (await settleSiblings(tx, ctx, entity, op, hlc)) return;
+  // Made again (a revive), or new here: each field is the winner's value, else what the tombstone kept, else the op's.
+  const retained = tomb !== null ? await retainedOf(tx, ctx, entity.entity, op.id) : {};
+  const values: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(op.fields)) {
+    values[field] = winners.has(field) ? winners.get(field)!.value : field in retained ? retained[field] : value;
+  }
+  if (tomb !== null) await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = ${entity.entity} AND id = ${op.id}`);
+  await insertRow(tx, ctx, entity, key, values, where);
+  await record();
 }
 
 /* ------------------------------------------------------------------ purchases */
@@ -448,15 +513,19 @@ class SkipOp extends Error {
 const SKIPPABLE_POSTING = new Set(['TOO_FEW_LINES', 'ZERO_AMOUNT', 'UNBALANCED', 'NOT_INTEGER']);
 const SKIPPABLE_LEDGER = new Set(['INVALID_DATE', 'INVALID_ORIGINAL', 'INVALID_MCC', 'INVALID_BILL_MONTH']);
 
-function deterministicRefusal(error: unknown): boolean {
+/** The refusal in an error's cause chain that every receiver would make alike, or null (a bug: rethrow). */
+function deterministicRefusal(error: unknown): { name?: string; code?: string; message?: string } | null {
   for (let e: unknown = error, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth += 1) {
-    const { name, code } = e as { name?: string; code?: string };
-    if (name === 'SkipOp') return true;
-    if (name === 'PostingError' && code && SKIPPABLE_POSTING.has(code)) return true;
-    if (name === 'LedgerError' && code && SKIPPABLE_LEDGER.has(code)) return true;
-    if (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT')) return true;
+    const found = e as { name?: string; code?: string; message?: string };
+    const { name, code } = found;
+    if (name === 'SkipOp') return found;
+    if (name === 'PostingError' && code && SKIPPABLE_POSTING.has(code)) return found;
+    if (name === 'LedgerError' && code && SKIPPABLE_LEDGER.has(code)) return found;
+    // CHECK and NOT NULL follow from the carried data alone; UNIQUE and FOREIGN KEY depend on rows only this device
+    // has, so they stop the loop instead (task 4 fix round 2).
+    if (code === 'SQLITE_CONSTRAINT_CHECK' || code === 'SQLITE_CONSTRAINT_NOTNULL') return found;
   }
-  return false;
+  return null;
 }
 
 /** One op apply skipped: recorded in `sync_skipped` and reported by `pullAndApply`. */
@@ -489,8 +558,9 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
   } catch (error) {
     await tx.run(sql`ROLLBACK TO ${name}`);
     await tx.run(sql`RELEASE ${name}`);
-    if (!deterministicRefusal(error)) throw error;
-    const message = error instanceof Error ? `${(error as { code?: string }).code ?? error.name}: ${error.message}` : String(error);
+    const refusal = deterministicRefusal(error);
+    if (!refusal) throw error;
+    const message = `${refusal.code ?? refusal.name}: ${refusal.message}`;
     const skip: SkippedOp = { seq: run.seq, entity: op.entity, id: op.id, error: message };
     await tx.run(
       sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${ctx.bookId}, ${skip.seq}, ${skip.entity}, ${skip.id}, ${skip.error}, ${new Date().toISOString()})`,
@@ -603,7 +673,8 @@ export async function pullAndApply(
  * another field from a device that has not seen the removal cannot undo it. The value is the entry's own time, the same
  * on every device. The author applies its own removal too.
  */
-async function applyRemovalTx(tx: Db, ctx: BookContext, deviceId: string, hlc: string): Promise<void> {
+async function applyRemovalTx(tx: Tx, ctx: BookContext, deviceId: string, hlc: string): Promise<void> {
+  await receiveHlc(tx, hlc);
   const clock = await clockOf(tx, ctx, 'device', deviceId, 'removedAt');
   if (clock !== null && clock >= hlc) return;
   const at = new Date(decodeHlc(hlc).ms).toISOString();

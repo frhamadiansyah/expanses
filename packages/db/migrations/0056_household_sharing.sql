@@ -54,6 +54,7 @@ CREATE TABLE sync_field_clocks (
 
 CREATE TABLE sync_tombstones (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
+  last_json TEXT,                                       -- a revivable row's last values, kept for a revive to merge with
   PRIMARY KEY (book_id, entity, id)
 );
 

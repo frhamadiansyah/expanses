@@ -1,5 +1,6 @@
 import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
+import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
 import { projectPurchase, withCapture } from '../../src/sync/capture';
@@ -13,6 +14,10 @@ import type { DevicePublic, SyncTransport } from '../../src/sync/types';
  * stand-in the task allows — the book, `shared_books`, and the device's own member and device rows written directly —
  * because the real invite and join are task 5's.
  */
+
+// A household test builds two or three databases and syncs them several times: under a loaded machine that passes the
+// default 5 s, so every test file that builds one gets more room.
+vi.setConfig({ testTimeout: 30_000 });
 
 let template: Uint8Array | undefined;
 

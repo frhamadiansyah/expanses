@@ -29,6 +29,12 @@ export type Op =
        * fix round 1). Absent: every field in `fields` changed.
        */
       changed?: string[];
+      /**
+       * For a revivable row: the hlc each carried field that is not in `changed` last changed at on the sending
+       * device (a field with no clock there is left out). Named fields are at the change-set's hlc. A receiver merges
+       * every carried field by its own hlc (§7.2, task 4 fix round 2).
+       */
+      clocks?: Record<string, string>;
     }
   | { entity: string; id: string; op: 'delete' };
 

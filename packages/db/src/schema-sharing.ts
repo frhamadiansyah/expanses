@@ -97,6 +97,8 @@ export const syncTombstones = sqliteTable(
     entity: text('entity').notNull(),
     id: text('id').notNull(),
     hlc: text('hlc').notNull(),
+    /** A revivable row's last field values, kept beside its tombstone so a revive merges with them (§7.2). */
+    lastJson: text('last_json'),
   },
   (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id] })],
 );

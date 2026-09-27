@@ -333,7 +333,10 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   for (const [key, was] of before) {
     const now = after.get(key);
     if (!now || now.bookId !== was.bookId) {
-      slot.ops.push({ bookId: was.bookId, op: { entity: was.entity.entity, id: was.id, op: 'delete' } });
+      const gone: Op = { entity: was.entity.entity, id: was.id, op: 'delete' };
+      // A revivable row's last values stay beside its tombstone, for a revive to merge with (§7.2).
+      if (isRevivable(was.entity)) retainedValues.set(gone, was.values);
+      slot.ops.push({ bookId: was.bookId, op: gone });
       if (now) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
       continue;
     }
@@ -342,7 +345,13 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (Object.keys(fields).length === 0) continue;
     // A revivable row travels whole, so a re-make after a delete never arrives as a fragment (see isRevivable).
     // It names what changed: only those fields win on a receiver (rule 1 stays per field).
-    if (isRevivable(now.entity)) slot.ops.push({ bookId: now.bookId, op: { ...(await fullUpsert(tx, now, books)), changed: Object.keys(fields) } as Op });
+    // Every other field it carries says the hlc it last changed at, so a receiver merges it by that clock (§7.2).
+    if (isRevivable(now.entity)) {
+      const whole = (await fullUpsert(tx, now, books)) as Extract<Op, { op: 'upsert' }>;
+      const changed = Object.keys(fields);
+      const clocks = await fieldClocksOf(tx, now.bookId, now.entity.entity, now.id, Object.keys(whole.fields).filter((f) => !changed.includes(f)));
+      slot.ops.push({ bookId: now.bookId, op: { ...whole, changed, ...(Object.keys(clocks).length ? { clocks } : {}) } });
+    }
     else slot.ops.push({ bookId: now.bookId, op: { entity: now.entity.entity, id: now.id, op: 'upsert', fields } });
   }
   for (const [key, now] of after) {
@@ -435,10 +444,24 @@ function diffFields(before: Record<string, unknown> | null, after: Record<string
   return out;
 }
 
+/** The values a revivable row had when this device deleted it: never sent, kept beside the tombstone. */
+const retainedValues = new WeakMap<Op, Record<string, unknown>>();
+
+/** This device's clocks for some fields of a row, as an op carries them (fields with no clock are left out). */
+async function fieldClocksOf(tx: Db, bookId: string, entity: string, id: string, fields: readonly string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const field of fields) {
+    const rows = await tx.values<[string]>(sql`SELECT hlc FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = ${entity} AND id = ${id} AND field = ${field}`);
+    if (rows[0]) out[field] = rows[0][0];
+  }
+  return out;
+}
+
 export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string): Promise<void> {
   if (op.op === 'delete') {
+    const last = retainedValues.get(op);
     await tx.run(
-      sql`INSERT INTO sync_tombstones (book_id, entity, id, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${hlc}) ON CONFLICT (book_id, entity, id) DO UPDATE SET hlc = excluded.hlc`,
+      sql`INSERT INTO sync_tombstones (book_id, entity, id, hlc, last_json) VALUES (${bookId}, ${op.entity}, ${op.id}, ${hlc}, ${last ? JSON.stringify(last) : null}) ON CONFLICT (book_id, entity, id) DO UPDATE SET hlc = excluded.hlc, last_json = coalesce(excluded.last_json, last_json)`,
     );
     return;
   }

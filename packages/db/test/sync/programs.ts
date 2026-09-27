@@ -23,6 +23,7 @@ import {
   unskipBill,
   voidTransaction,
 } from '../../src/index';
+import { withCapture } from '../../src/sync/capture';
 import type { Device, Household } from './household';
 
 /*
@@ -43,6 +44,7 @@ export type Step =
   | { kind: 'category'; device: number; pick: number; name: number }
   | { kind: 'income'; device: number; month: number | null; amount: number; clear: boolean }
   | { kind: 'book'; device: number; name: number }
+  | { kind: 'extra'; device: number; action: 'rename' | 'role' | 'toggle'; name: number }
   | { kind: 'sync'; device: number };
 
 export interface Program {
@@ -71,6 +73,7 @@ function stepArb(devices: number): fc.Arbitrary<Step> {
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('category' as const), device, pick: small, name: fc.nat({ max: 99 }) }) },
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('income' as const), device, month: fc.option(fc.nat({ max: 1 })), amount: fc.integer({ min: 1, max: 99 }), clear: fc.boolean() }) },
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('book' as const), device, name: fc.nat({ max: 9 }) }) },
+    { weight: 2, arbitrary: fc.record({ kind: fc.constant('extra' as const), device, action: fc.constantFrom('rename' as const, 'role' as const, 'toggle' as const), name: fc.nat({ max: 9 }) }) },
     { weight: 5, arbitrary: fc.record({ kind: fc.constant('sync' as const), device }) },
   );
 }
@@ -87,6 +90,9 @@ export function programArb(opts: { maxSteps: number; maxHistory: number }): fc.A
       ),
   );
 }
+
+/** A member row nobody's device belongs to, for the revivable-row steps. */
+const EXTRA = 'member-extra';
 
 const FIXED = ['Groceries', 'Supplies', 'Takeaways', 'Restaurants', 'Fuel cost'];
 const MONTHS = ['2026-09', '2026-10', '2026-11'];
@@ -291,6 +297,24 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         else if (step.clear) await clearIncomeOverride(database, ws, MONTHS[step.month]!);
         else await setIncomeOverride(database, ws, { month: MONTHS[step.month]!, amountMinor: step.amount * 1_000_000 });
         return true;
+      case 'extra': {
+        // A revivable row (keyed by member id) renamed, re-roled, deleted and made again on any device: the
+        // rename-then-delete against a concurrent partial edit that fix round 2 is about.
+        const [row] = await database.db.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
+        await database.transaction((tx) =>
+          withCapture(tx, { entity: 'member', id: EXTRA, bookId }, async () => {
+            if (step.action === 'toggle') {
+              if (row) await tx.run(sql`DELETE FROM book_members WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
+              else await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${EXTRA}, ${`Extra ${step.name}`}, 'member', '2026-09-01')`);
+            } else if (row && step.action === 'rename') {
+              await tx.run(sql`UPDATE book_members SET name = ${`Extra ${step.name}`} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
+            } else if (row) {
+              await tx.run(sql`UPDATE book_members SET role = ${row[0] === 'owner' ? 'member' : 'owner'} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
+            }
+          }),
+        );
+        return true;
+      }
       case 'book':
         await renameBook(database, d.ws, bookId, `Rumah ${step.name}`);
         return true;

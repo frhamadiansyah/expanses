@@ -67,4 +67,21 @@ describe('what apply skips, and what it refuses to', () => {
     expect(await cursor(dewi, bookId)).toBe(before);
     expect(await dewi.database.db.values(sql`SELECT 1 FROM sync_skipped`)).toEqual([]);
   });
+
+  it('a CHECK the carried data breaks is skipped; a UNIQUE clash with a row only this device has stops the loop (fix round 2)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await (await import('../../src/index')).saveBudget(fandri.database, (await import('../../src/index')).inBook(fandri.ws, bookId), { categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), amountMinor: 100_000 });
+    await home.settle();
+    const [[budgetId]] = (await dewi.database.db.values<[string]>(sql`SELECT id FROM budgets`)) as [[string]];
+    const check = await appendOps(home, fandri, [{ entity: 'budget_frequency', id: budgetId, op: 'upsert', fields: { frequency: 'hourly', amountAsSetMinor: 5 } }]);
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped.map((s) => [s.seq, s.entity])).toEqual([[check, 'budget_frequency']]);
+    expect(result.skipped[0]!.error).toMatch(/CHECK/);
+
+    const before = await cursor(dewi, bookId);
+    // A category with an equity system key: unique per workspace, and Dewi's own workspace already has one.
+    await appendOps(home, fandri, [{ entity: 'category', id: '01a0e100-0000-7000-8000-00000000beef', op: 'upsert', fields: { name: 'Clash', parentId: null, kind: 'equity', subtype: 'equity', currency: 'IDR', icon: null, systemKey: 'opening_balance', sortOrder: 0, archivedAt: null } }]);
+    await expect(dewi.engine.syncOnce(bookId)).rejects.toMatchObject({ cause: { code: expect.stringMatching(/UNIQUE/) } });
+    expect(await cursor(dewi, bookId)).toBe(before);
+  });
 });

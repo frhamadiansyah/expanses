@@ -147,3 +147,55 @@ Changed:
 ## Remaining concern
 
 When a revive inserts a row that is absent here, its unnamed fields take the reviving device's values. Those can be older than a concurrent edit another device made before it saw the delete. The spec now states this limit. The property tests have not hit it.
+
+---
+
+# Fix round 2
+
+## Rulings, as implemented
+
+1. **A revive now merges every field by its own hlc.**
+   - `Op.upsert` gained `clocks?: Record<field, hlc>`. For a revivable op, capture fills it with the local clock of every carried field that is *not* in `changed`. The named fields are at the change-set's hlc. The map is omitted when empty.
+   - Apply's `rowWinnersOf` merges **every** carried field by its own hlc against the local field clock, and stamps the winning field with that hlc rather than the change-set's.
+   - A revivable delete now keeps the row's last values in the new column `sync_tombstones.last_json`. I added the column to migration 0056 and to `schema-sharing.ts`. Capture keeps the values through a `WeakMap<Op, values>`, so they never travel. Apply reads them from the row before deleting it. Field clocks are never dropped.
+   - An op that arrives while the row is dead (hlc ≤ tombstone) merges its winning fields into those kept values and records their clocks.
+   - A revive inserts each field from, in order of preference: the winner's value, the kept value, the op's value.
+   - The `@row` existence clock is unchanged.
+2. **Only CHECK and NOT NULL are skippable.** `deterministicRefusal` now returns the matching error in the cause chain, and the skip message uses its code, for example `SQLITE_CONSTRAINT_CHECK: …`. UNIQUE and FOREIGN KEY errors are rethrown: the entry's transaction rolls back and the cursor stays.
+3. **A removal now moves this device's clock.** `applyRemovalTx` calls `receiveHlc(tx, hlc)` before anything else.
+
+Two further changes:
+
+- **Children of an ended parent are dropped quietly.** With the sibling rule, a budget that loses to its sibling on every device is tombstoned. Its frequency and overrides then arrive to find no parent. The richer generator hit this (seed 20260928) and it made money-atom fail on "zero skips". Such children are now dropped without recording a skip, like any op for an ended row; every device drops them alike. A parent that is missing with no tombstone is still a recorded skip.
+- **Household tests get a longer timeout.** `household.ts` sets `vi.setConfig({ testTimeout: 30_000 })`. These tests build 2–3 databases each, and under load 30–58 two void-wins tests took about 6 s and failed the default 5 s timeout.
+
+## TDD
+
+- **`revive-divergence.test.ts`**: the re-review's scratch test, adapted. It failed before the fix: `expected { name: 'X', role: 'owner' } … name: 'X renamed'` (Fandri revived with the stale 'X'). It passes after.
+- **`skips.test.ts`**: new test "CHECK is skipped, UNIQUE stops". A `budget_frequency` with `frequency: 'hourly'` is skipped with `SQLITE_CONSTRAINT_CHECK`. A category op with the equity system key `opening_balance` fails on UNIQUE, `syncOnce` rejects, and the cursor does not move.
+- **`row-fields.test.ts`**: new test "a removal moves the clock past its hlc". It applies a removal at now + 1 h with counter 5 and checks that `sync.hlc` becomes that value.
+- **Mutation checks.** I went back to the old code (catching every SQLite constraint error, and not calling `receiveHlc` on a removal): both new tests failed. With the fix restored, both pass.
+- **Revive mutation.** I made the revive insert take the op's values instead of the kept ones. `revive-divergence.test.ts` catches it. The property test does not:
+  - I added `extra` steps to the generator: rename, re-role, or toggle-delete/recreate of a member row nobody's device belongs to. They stay in, at weight 2.
+  - Even a dedicated property of only `extra` and `sync` steps (300 runs, about 46 s) did not catch the mutation. The exact interleaving needed is rare: one device renames, deletes and pushes, and another device that has not pulled then edits.
+  - A property-level guard is therefore not cheap, and I removed the dedicated property. The regression test is the guard.
+
+## Commands and results
+
+- `npx vitest run test/sync/`: 22 files, 193 tests passed, 73.6 s at load about 30.
+  - The two property files together took 33.3 s: convergence with 200 runs, money-atom with 100.
+- `npm test` in packages/db:
+  - Plain pass: 150 files, **1943 passed**.
+  - Capture pass: 1908 passed, 3 timed out. They were ledger "caps at 500" and set-aside-sequences seeds 1039 and 1046, known to be load-flaky; load was 43–58 at the time.
+  - Rerun alone under the capture config: set-aside-sequences passed (192), and ledger "caps at 500" passed on a second solo run.
+  - An earlier run also timed out two void-wins tests; the 30 s household timeout fixed those.
+- Root `npm run typecheck`: exit 0.
+
+## Spec
+
+- §0 header: fix round 2 paragraph.
+- §4.2: `sync_tombstones.last_json`.
+- §6.2: `Op.clocks`.
+- §7.1: only CHECK and NOT NULL are skippable; UNIQUE and FOREIGN KEY stop; a child of an ended parent is dropped, not recorded.
+- §7.2: pseudocode (`at(f)`, merging into the kept values while dead, a revive inserting from winner, then kept, then op values) and the Tombstones paragraph. Round 1's "known limit" is replaced with the state-based merge and a pointer to the regression test.
+- §8.4: applying a removal receives its hlc.
