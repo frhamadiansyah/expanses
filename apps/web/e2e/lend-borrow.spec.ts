@@ -74,9 +74,9 @@ test('records a repayment and the balance falls', async ({ page }) => {
 
   // Repaying is done on the loan's own page: Andi's row, then his loan.
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Record repayment' }).click();
+  await page.getByRole('button', { name: 'Record collection' }).click();
   await page.getByLabel(/^Came back/).fill('4000000');
-  await page.getByRole('button', { name: 'Save repayment' }).click();
+  await page.getByRole('button', { name: 'Save collection' }).click();
 
   await expect(page.getByText(/6\.000\.000/).first()).toBeVisible();
 });
@@ -86,12 +86,12 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Record repayment' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Repayment' });
+  await page.getByRole('button', { name: 'Record collection' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Collection' });
   await expect(sheet).toBeVisible();
   // The loan stays under it, and ✓ waits for an amount.
   await expect(page.getByTestId('loan-hero')).toBeAttached();
-  await expect(sheet.getByRole('button', { name: 'Save repayment' })).toBeDisabled();
+  await expect(sheet.getByRole('button', { name: 'Save collection' })).toBeDisabled();
 
   // ✕ throws the typed amount away.
   await sheet.getByLabel(/^Came back/).fill('4500000');
@@ -100,11 +100,14 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await expect(page.getByTestId('loan-hero')).toContainText('9.000.000');
 
   // ✓ saves the whole of it, and the loan is paid off.
-  await page.getByRole('button', { name: 'Record repayment' }).click();
+  await page.getByRole('button', { name: 'Record collection' }).click();
   await sheet.getByLabel(/^Came back/).fill('9000000');
-  await sheet.getByRole('button', { name: 'Save repayment' }).click();
+  await sheet.getByRole('button', { name: 'Save collection' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Record repayment' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record collection' })).toHaveCount(0);
+  // Money back on a loan you made is a collection, in the history too.
+  await expect(page.getByText('Collection', { exact: true })).toBeVisible();
+  await expect(page.getByText('Repayment', { exact: true })).toHaveCount(0);
 });
 
 test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
@@ -112,9 +115,9 @@ test('refuses a repayment bigger than the debt, by name', async ({ page }) => {
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Record repayment' }).click();
+  await page.getByRole('button', { name: 'Record collection' }).click();
   await page.getByLabel(/^Came back/).fill('12000000');
-  await page.getByRole('button', { name: 'Save repayment' }).click();
+  await page.getByRole('button', { name: 'Save collection' }).click();
 
   await expect(page.getByText(/Andi owes Rp\s?9\.000\.000/)).toBeVisible();
 });

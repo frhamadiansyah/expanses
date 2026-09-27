@@ -11,6 +11,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
+import { repaymentWord } from './lend-borrow-view';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
 
 /**
@@ -95,7 +96,7 @@ export function RepaymentForm({
   }
 
   return (
-    <Sheet grouped title="Repayment" onClose={onDone} confirm={{ label: 'Save repayment', disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
+    <Sheet grouped title={repaymentWord(direction)} onClose={onDone} confirm={{ label: `Save ${repaymentWord(direction).toLowerCase()}`, disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
       <InsetGroup>
         <TextRow
           label={`${direction === 'lent' ? 'Came back' : 'Paid back'} (${currency})`}

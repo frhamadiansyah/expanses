@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { personParams, shortDay, stillOwesLine } from './lend-borrow-view';
+import { personParams, repaymentWord, shortDay, stillOwesLine } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
@@ -129,7 +129,12 @@ export function LoanPage() {
       */}
       {loan.status === 'open' && (
         <div className="mb-[22px] flex justify-center gap-[44px]">
-          <RoundAction label="Repayment" name="Record repayment" onClick={() => setRepaying(true)} filled>
+          <RoundAction
+            label={repaymentWord(person.direction)}
+            name={`Record ${repaymentWord(person.direction).toLowerCase()}`}
+            onClick={() => setRepaying(true)}
+            filled
+          >
             <Plus size={24} aria-hidden />
           </RoundAction>
           <RoundAction label="Forgive" name="Forgive rest" onClick={() => void forgive()}>
@@ -187,7 +192,7 @@ export function LoanPage() {
           {(history.data ?? []).map((row) => (
             <InsetRow
               key={row.transactionId}
-              title={HISTORY_TITLES[row.kind] ?? row.kind}
+              title={row.kind === 'repayment' ? repaymentWord(person.direction) : (HISTORY_TITLES[row.kind] ?? row.kind)}
               subtitle={
                 row.interestMinor > 0 ? (
                   <>
