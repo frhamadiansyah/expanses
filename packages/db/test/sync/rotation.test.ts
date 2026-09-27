@@ -59,8 +59,8 @@ describe('rotation (§8.4)', () => {
     // The removed device, handed the log by some other means, still opens epoch 1 and cannot open epoch 2.
     await expect(budi.engine.sealer.open(bookId, before)).resolves.toBeTruthy();
     await expect(budi.engine.sealer.open(bookId, after)).rejects.toBeInstanceOf(MissingEpochKeyError);
-    // And the relay no longer lets it pull at all.
-    await expect(budi.transport.pull(home.relayBookId, 0)).rejects.toMatchObject({ status: 401 });
+    // And the relay no longer lets it pull at all, saying why (final review, I2).
+    await expect(budi.transport.pull(home.relayBookId, 0)).rejects.toMatchObject({ status: 403, message: 'removed' });
     // The remaining device opens both.
     await expect(dewi.engine.sealer.open(bookId, before)).resolves.toBeTruthy();
     await expect(dewi.engine.sealer.open(bookId, after)).resolves.toBeTruthy();

@@ -115,9 +115,10 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
     expect(line({ state: 'stale', since: new Date(2026, 8, 29, 9, 30).toISOString(), changes: 0 })).toBe('Not synced since Tue');
     expect(line({ state: 'needs_invite', askName: 'Dewi' })).toBe('Ask Dewi for a new invite to keep sharing');
     expect(line({ state: 'needs_invite', askName: null })).toBe('Ask an owner for a new invite to keep sharing');
-    expect(line({ state: 'unshared', byMemberId: 'f', byName: 'Fandri', byYou: false })).toBe('No longer shared by Fandri');
-    expect(line({ state: 'unshared', byMemberId: 'd', byName: 'Dewi', byYou: true })).toBe('You left this workspace');
-    expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false })).toBe('No longer shared');
+    expect(line({ state: 'unshared', byMemberId: 'f', byName: 'Fandri', byYou: false, reason: 'stopped' })).toBe('No longer shared by Fandri');
+    expect(line({ state: 'unshared', byMemberId: 'd', byName: 'Dewi', byYou: true, reason: 'left' })).toBe('You left this workspace');
+    expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'stopped' })).toBe('No longer shared');
+    expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'removed' })).toBe('You were removed from this workspace');
     expect(line({ state: 'frozen', changes: 0, syncedAt: at(14) })).toBe('Frozen: no owner has a device here');
   });
 
@@ -130,6 +131,7 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
     expect(FROZEN_NOTE).toBe('Nobody can invite, remove a device or make an owner. Recording and syncing go on.');
     expect(READ_ONLY_NOTE).toBe('Kept here as it was, read-only: nothing can be added or changed.');
     expect(endedLine({ byName: 'Fandri', byYou: false })).toBe('No longer shared by Fandri');
+    expect(endedLine({ byName: null, byYou: false, removed: true })).toBe('You were removed from this workspace');
   });
 
   it('asks before leaving and before stopping, saying what stays', () => {

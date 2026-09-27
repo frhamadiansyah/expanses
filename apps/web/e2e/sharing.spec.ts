@@ -240,10 +240,11 @@ test('two people share a workspace: join, record on both, correct each other, re
     owner.close();
   }
 
-  // Dewi's device can no longer sync, and says so; what it already holds stays.
+  // Dewi's device is told it was removed (final review, I2), and keeps what it already holds, read-only.
   await openWorkspaceSettings(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('Not synced', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('You were removed from this workspace', { timeout: 1_000 }));
   await shot(dewi, info, '6-removed-status');
+  await expectReadOnly(dewi, phone, 'You were removed from this workspace');
 
   // And both still read the same Cashflow total.
   await cashflowTotal(page, 'Rp 110.000');

@@ -83,12 +83,19 @@ describe('§9.1 authentication', () => {
     await expect(stranger.transport.append(bookId, change(stranger.deviceId, 'h1'))).rejects.toMatchObject({ status: 401 });
   });
 
-  it('401s a removed device on pull and append', async () => {
+  it('403s a removed device on pull and append with { error: "removed" } (final review, I2), once its signature verifies', async () => {
     const { bookId, owner } = await bookWithOwner();
     const { joiner } = await join(bookId, owner);
     await owner.transport.removeDevice(bookId, joiner.deviceId);
-    await expect(joiner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 401 });
-    await expect(joiner.transport.append(bookId, change(joiner.deviceId, 'h1'))).rejects.toMatchObject({ status: 401 });
+    await expect(joiner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 403, message: 'removed' });
+    await expect(joiner.transport.append(bookId, change(joiner.deviceId, 'h1'))).rejects.toMatchObject({ status: 403, message: 'removed' });
+    const res = await raw(base, { method: 'GET', path: `/books/${bookId}/entries?since=0`, signer: joiner.signer });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'removed' });
+    // Nothing about the device is told to a request its key did not sign.
+    const impostor = await makeDevice(base);
+    const forged = await raw(base, { method: 'GET', path: `/books/${bookId}/entries?since=0`, signer: impostor.signer, deviceId: joiner.deviceId });
+    expect(forged.status).toBe(401);
   });
 
   it("401s a member's id signed with someone else's key", async () => {
@@ -426,7 +433,7 @@ describe('§9.2 DELETE /books/:id/devices/:deviceId', () => {
     const { bookId, owner } = await bookWithOwner();
     const { joiner } = await join(bookId, owner);
     await expect(joiner.transport.removeDevice(bookId, joiner.deviceId)).resolves.toBeUndefined();
-    await expect(joiner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 401 });
+    await expect(joiner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 403, message: 'removed' });
   });
 
   it('403s a member removing someone else', async () => {

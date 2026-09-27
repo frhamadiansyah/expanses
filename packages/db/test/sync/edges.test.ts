@@ -229,6 +229,26 @@ describe('leave (§8.4)', () => {
   });
 });
 
+describe('a removed device (§8.4, final review I2)', () => {
+  it('learns it was removed on its next sync: the book ends here, read-only, and the status says so', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await spend(dewi, bookId, 'never leaves');
+    const before = await projectBook(dewi.database, bookId);
+    await fandri.engine.removeDevice(bookId, dewi.deviceId);
+    // The relay answers the removed device 403 { error: 'removed' } — not the 401 a clock five minutes off gets.
+    await expect(dewi.transport.pull(home.relayBookId, 0)).rejects.toMatchObject({ status: 403, message: 'removed' });
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.ended).toBe('removed');
+    expect(await shared(dewi, bookId)).toEqual(['unshared', null]);
+    expect(await count(dewi, 'sync_outbox', bookId)).toBe(0);
+    expect(await dewi.engine.bookSyncStatus(bookId)).toEqual({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'removed' });
+    await expect(spend(dewi, bookId, 'after')).rejects.toBeInstanceOf(BookReadOnlyError);
+    expect(await projectBook(dewi.database, bookId)).toEqual(before);
+    // A second sync of an ended book does nothing more.
+    expect(await dewi.engine.syncOnce(bookId)).toMatchObject({ pushed: 0, applied: 0 });
+  });
+});
+
 describe('stop sharing (§8.6)', () => {
   it("the owner's book is an ordinary local book again; every other device goes unshared on its next call, keeping every row", async () => {
     const { home, fandri, dewi, budi, bookId } = await household();
@@ -252,7 +272,7 @@ describe('stop sharing (§8.6)', () => {
     expect(result.ended).toBe('unshared');
     expect(await shared(dewi, bookId)).toEqual(['unshared', fandri.memberId]);
     expect(await projectBook(dewi.database, bookId)).toEqual(before);
-    expect(await dewi.engine.bookSyncStatus(bookId)).toEqual({ state: 'unshared', byMemberId: fandri.memberId, byName: 'Fandri', byYou: false });
+    expect(await dewi.engine.bookSyncStatus(bookId)).toEqual({ state: 'unshared', byMemberId: fandri.memberId, byName: 'Fandri', byYou: false, reason: 'stopped' });
 
     // Read-only: every writer refuses, in the transaction that tried.
     await expect(spend(dewi, bookId, 'after')).rejects.toBeInstanceOf(BookReadOnlyError);

@@ -104,18 +104,20 @@ export class Book {
   }
 
   /**
-   * The signing key to verify a member's request against: 401 for a device the book never had or has removed —
-   * `MemoryTransport.requireMember`. Book checks (404/410) come first, as there.
+   * The signing key to verify a member's request against: 401 for a device the book never had —
+   * `MemoryTransport.requireMember`. Book checks (404/410) come first, as there. A device the book has removed still
+   * gets its key back, flagged: the caller verifies the signature under it and only then answers `403 removed`
+   * (§8.4, final review I2), so nothing about the device is told to a request its key did not sign.
    */
-  async memberKey(actor: string): Promise<JsonWebKey> {
+  async memberKey(actor: string): Promise<{ signJwk: JsonWebKey; removed: boolean }> {
     await this.requireBook();
     const device = await this.store.get<DeviceRecord>(deviceKey(actor));
-    if (!device || device.removedAt) throw new RelayError(401, 'unknown or removed device');
-    return device.signJwk;
+    if (!device) throw new RelayError(401, 'unknown device');
+    return { signJwk: device.signJwk, removed: device.removedAt !== undefined };
   }
 
   private async requireMember(actor: string): Promise<Meta> {
-    await this.memberKey(actor);
+    if ((await this.memberKey(actor)).removed) throw new RelayError(403, 'removed');
     return this.requireBook();
   }
 

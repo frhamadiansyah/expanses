@@ -136,6 +136,15 @@ export class SyncTransportError extends Error {
 }
 
 /**
+ * The relay's answer to a device the book has removed (§8.4, final review I2): `403 { error: 'removed' }`, given only
+ * once the request's signature verifies under the device's stored key. A clock five minutes off, or a device the book
+ * never had, is `401` instead; so a client can tell "I was removed" from "try again later".
+ */
+export function removedFromBook(error: unknown): boolean {
+  return error instanceof SyncTransportError && error.status === 403 && error.message === 'removed';
+}
+
+/**
  * Each device's local SQLite is the truth; the relay is an append-only log per book and a device allow-list
  * (spec §3). `append` treats a duplicate `(deviceId, hlc)` as success (idempotent replay), never as an error.
  */

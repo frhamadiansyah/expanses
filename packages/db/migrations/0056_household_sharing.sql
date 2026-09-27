@@ -8,7 +8,8 @@ CREATE TABLE shared_books (
   state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
   shared_at     TEXT NOT NULL,
   synced_at     TEXT,               -- when this device last finished a sync of the book (§11)
-  unshared_by   TEXT                -- the member who ended the sharing here (§8.4, §8.6): the owner who stopped it, or this device's own member when it left
+  unshared_by   TEXT,               -- the member who ended the sharing here (§8.4, §8.6): the owner who stopped it, or this device's own member when it left
+  unshared_reason TEXT              -- how it ended: 'stopped' (§8.6) | 'left' (§8.4) | 'removed' (this device was removed, §8.4)
 );
 
 CREATE TABLE book_members (

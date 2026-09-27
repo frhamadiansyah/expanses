@@ -141,9 +141,13 @@ describe('SyncService', () => {
     expect(Number(epoch![0])).toBe(2);
     expect((await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!.members.flatMap((m) => m.devices)).toHaveLength(1);
 
-    // Dewi's next run is refused by the relay: the status line says it is failing, and nothing throws.
+    // Dewi's next run is told she was removed (final review, I2): the book ends here, read-only, and is no longer polled.
+    dewi.applied.mockClear();
     await dewi.service.syncNow(bookId);
-    expect(dewi.service.status(bookId).failing).toBe(true);
+    expect(dewi.service.status(bookId).failing).toBe(false);
+    expect(dewi.applied).toHaveBeenCalled();
+    expect((await listSharedBooks(dewi.database))[0]).toMatchObject({ bookId, state: 'unshared', unsharedReason: 'removed' });
+    expect(dewi.service.syncing()).toEqual([]);
 
     fandri.service.stop();
     dewi.service.stop();

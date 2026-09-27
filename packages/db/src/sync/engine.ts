@@ -26,7 +26,7 @@ import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, emitUnknownRowsTx, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
-import { SyncTransportError } from './types';
+import { removedFromBook, SyncTransportError } from './types';
 
 /*
  * The household-sharing engine: the one thing the app (task 7's SyncScheduler callback and screens) calls. It holds
@@ -79,7 +79,8 @@ export class LeaveIncompleteError extends SharingError {
  * - `stale` — "Not synced since Tue" (`since`: the last finished sync; none has finished for longer than the stale
  *   window, 5 minutes by default — the scheduler's longest backoff);
  * - `needs_invite` — "Ask Dewi for a new invite to keep sharing" (`askName`: an owner of the book other than this member);
- * - `unshared` — "No longer shared by Fandri" (`byYou`: this device's own member left);
+ * - `unshared` — "No longer shared by Fandri" (`byYou`: this device's own member left; `reason: 'removed'`: this
+ *   device was removed, final review I2 — "You were removed from this workspace");
  * - `frozen` — no owner device is left (§8.5).
  */
 export type BookSyncStatus =
@@ -87,11 +88,14 @@ export type BookSyncStatus =
   | { state: 'waiting'; changes: number; syncedAt: string | null }
   | { state: 'stale'; since: string; changes: number }
   | { state: 'needs_invite'; askName: string | null }
-  | { state: 'unshared'; byMemberId: string | null; byName: string | null; byYou: boolean }
+  | { state: 'unshared'; byMemberId: string | null; byName: string | null; byYou: boolean; reason: EndedReason }
   | { state: 'frozen'; changes: number; syncedAt: string | null };
 
 /** How long since the last finished sync before the status line says "Not synced since …": the scheduler's longest wait. */
 export const STALE_AFTER_MS = 5 * 60_000;
+
+/** How a share ended on this device: its owner stopped it (§8.6), this member left (§8.4), or this device was removed (§8.4). */
+export type EndedReason = 'stopped' | 'left' | 'removed';
 
 export interface ShareInput {
   memberName: string;
@@ -107,9 +111,10 @@ export interface SyncOnceResult extends PullResult {
   rotated?: number;
   /**
    * The sharing ended here during this call (task 9a): `unshared` — the relay answered `410`, its owner stopped sharing
-   * (§8.6); `left` — another device of this member left, and this one followed (§8.4). The book is read-only after.
+   * (§8.6); `left` — another device of this member left, and this one followed (§8.4); `removed` — the relay answered
+   * `403 removed`: an owner removed this device (§8.4, final review I2). The book is read-only after.
    */
-  ended?: 'unshared' | 'left';
+  ended?: 'unshared' | 'left' | 'removed';
 }
 
 export interface CreatedInvite {
@@ -237,8 +242,9 @@ export class SyncEngine {
     try {
       return await this.syncActive(bookId, seen);
     } catch (error) {
-      if (!(await this.endIfGone(bookId, error))) throw error;
-      return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], ended: 'unshared' };
+      const ended = await this.endIfGone(bookId, error);
+      if (!ended) throw error;
+      return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], ended: ended === 'stopped' ? 'unshared' : 'removed' };
     }
   }
 
@@ -590,7 +596,7 @@ export class SyncEngine {
     const entry = await this.sealer.sign(bookId, leave ? { ...removal, leave: true as const } : removal);
     await this.transport.append(shared.relayBookId, entry);
     await this.transport.removeDevice(shared.relayBookId, this.deviceId);
-    await this.endShared(bookId, shared.memberId);
+    await this.endShared(bookId, shared.memberId, 'left');
   }
 
   /**
@@ -640,14 +646,17 @@ export class SyncEngine {
 
   /** The status line of a shared book (§11); `null` for a book not shared on this device. */
   async bookSyncStatus(bookId: string, options: { now?: number; staleAfterMs?: number } = {}): Promise<BookSyncStatus | null> {
-    const [row] = await this.database.db.values<[string, string, string | null, string | null]>(
-      sql`SELECT state, member_id, synced_at, unshared_by FROM shared_books WHERE book_id = ${bookId}`,
+    const [row] = await this.database.db.values<[string, string, string | null, string | null, EndedReason | null]>(
+      sql`SELECT state, member_id, synced_at, unshared_by, unshared_reason FROM shared_books WHERE book_id = ${bookId}`,
     );
     if (!row) return null;
-    const [state, memberId, syncedAt, unsharedBy] = row;
+    const [state, memberId, syncedAt, unsharedBy, reason] = row;
     const nameOf = async (id: string | null) =>
       id === null ? null : ((await this.database.db.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${id}`))[0]?.[0] ?? null);
-    if (state === 'unshared') return { state: 'unshared', byMemberId: unsharedBy, byName: await nameOf(unsharedBy), byYou: unsharedBy === memberId };
+    if (state === 'unshared') {
+      const byYou = unsharedBy === memberId;
+      return { state: 'unshared', byMemberId: unsharedBy, byName: await nameOf(unsharedBy), byYou, reason: reason ?? (byYou ? 'left' : 'stopped') };
+    }
     if (state === 'needs_invite') {
       // An owner to ask: per the view, else per this device's rows (a view a restore brought back).
       const [owner] = await this.database.db.values<[string]>(sql`
@@ -699,24 +708,30 @@ export class SyncEngine {
   }
 
   /**
-   * §8.6: a `410` for the book — its owner stopped sharing. The book goes `unshared`, naming the member whose device
-   * deleted it (the relay says which device; this device's pinned list says whose). Whether it was that.
+   * The relay's word that this device is out of the book, on any call: a `410` — its owner stopped sharing (§8.6), and
+   * the book goes `unshared` naming the member whose device deleted it (the relay says which device; this device's
+   * pinned list says whose) — or a `403 removed` — an owner removed this device (§8.4, final review I2). Which it was,
+   * or `false` for any other error.
    */
-  private async endIfGone(bookId: string, error: unknown): Promise<boolean> {
-    if (!(error instanceof SyncTransportError && error.status === 410)) return false;
+  private async endIfGone(bookId: string, error: unknown): Promise<'stopped' | 'removed' | false> {
+    const stopped = error instanceof SyncTransportError && error.status === 410;
+    if (!stopped && !removedFromBook(error)) return false;
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') return false;
-    const [by] = error.deletedBy
-      ? await this.database.db.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${error.deletedBy}`)
-      : [];
-    await this.endShared(bookId, by?.[0] ?? null);
-    return true;
+    if (!stopped) {
+      await this.endShared(bookId, null, 'removed');
+      return 'removed';
+    }
+    const deletedBy = (error as SyncTransportError).deletedBy;
+    const [by] = deletedBy ? await this.database.db.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deletedBy}`) : [];
+    await this.endShared(bookId, by?.[0] ?? null, 'stopped');
+    return 'stopped';
   }
 
-  /** The sharing ended here: read-only from now on (capture refuses every write), with who ended it. */
-  private async endShared(bookId: string, by: string | null): Promise<void> {
+  /** The sharing ended here: read-only from now on (capture refuses every write), with who ended it and how. */
+  private async endShared(bookId: string, by: string | null, reason: EndedReason): Promise<void> {
     await this.database.transaction(async (tx) => {
-      await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by} WHERE book_id = ${bookId}`);
+      await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by}, unshared_reason = ${reason} WHERE book_id = ${bookId}`);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
   }

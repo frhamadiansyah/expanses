@@ -5,6 +5,7 @@ import {
   LastOwnerError,
   LeaveIncompleteError,
   type PurchasePayer,
+  removedFromBook,
   type SharedBookMember,
   SharingError,
   SyncTransportError,
@@ -48,8 +49,12 @@ export function sinceWhen(ms: number, now: number): string {
 export const FROZEN_NOTE = 'Nobody can invite, remove a device or make an owner. Recording and syncing go on.';
 export const READ_ONLY_NOTE = 'Kept here as it was, read-only: nothing can be added or changed.';
 
-/** An ended share, in the switcher and on the status line: who stopped it, or that you left. */
-export function endedLine(ended: { byName: string | null; byYou: boolean }): string {
+/** The status line once an owner removed this device (§8.4, final review I2). */
+export const REMOVED_LINE = 'You were removed from this workspace';
+
+/** An ended share, in the switcher and on the status line: who stopped it, that you left, or that this device was removed. */
+export function endedLine(ended: { byName: string | null; byYou: boolean; removed?: boolean }): string {
+  if (ended.removed) return REMOVED_LINE;
   if (ended.byYou) return 'You left this workspace';
   return ended.byName ? `No longer shared by ${ended.byName}` : 'No longer shared';
 }
@@ -62,7 +67,7 @@ export function endedLine(ended: { byName: string | null; byYou: boolean }): str
 export function statusLineOf(status: BookSyncStatus, live: { failing: boolean; now: number }): string {
   switch (status.state) {
     case 'unshared':
-      return endedLine(status);
+      return endedLine({ ...status, removed: status.reason === 'removed' });
     case 'needs_invite':
       return `Ask ${status.askName ?? 'an owner'} for a new invite to keep sharing`;
     case 'frozen':
@@ -143,6 +148,7 @@ export function sayError(error: unknown): unknown {
   if (error instanceof SharingError) return error;
   if (error instanceof SyncTransportError) {
     if (error.status === 0) return new Error(UNREACHABLE);
+    if (removedFromBook(error)) return new Error(`${REMOVED_LINE}.`);
     if (error.status === 403) return new Error('Only an owner of this workspace can do that.');
     if (error.status === 410) return new Error('This workspace is no longer shared.');
     return error;

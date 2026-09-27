@@ -54,8 +54,9 @@ export class BookObject extends DurableObject<Env> {
     return this.serial(async () => {
       const gone = await this.book.deletedAnswer(call.deviceId, (key) => verifySignature(key, call.signingBytes, call.signature));
       if (gone) throw gone;
-      const key = await this.book.memberKey(call.deviceId);
-      if (!(await verifySignature(key, call.signingBytes, call.signature))) throw new RelayError(401, 'bad signature');
+      const { signJwk, removed } = await this.book.memberKey(call.deviceId);
+      if (!(await verifySignature(signJwk, call.signingBytes, call.signature))) throw new RelayError(401, 'bad signature');
+      if (removed) throw new RelayError(403, 'removed'); // §8.4, final review I2: told only to the device's own key
       const actor = call.deviceId;
       switch (op.type) {
         case 'append': {

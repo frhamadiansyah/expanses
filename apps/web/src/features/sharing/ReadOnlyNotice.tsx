@@ -13,7 +13,7 @@ export function ReadOnlyNotice() {
   const byName = book.members.find((member) => member.memberId === book.unsharedBy)?.name ?? null;
   return (
     <p role="status" data-testid="read-only-notice" className="mb-3 rounded-[10px] bg-[var(--ph-surface)] px-[13px] py-[10px] text-[13px] leading-[18px] text-[var(--ph-ink-2)]">
-      <span className="font-semibold text-[var(--ph-ink)]">{endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId })}.</span> {READ_ONLY_NOTE}
+      <span className="font-semibold text-[var(--ph-ink)]">{endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId, removed: book.unsharedReason === 'removed' })}.</span> {READ_ONLY_NOTE}
     </p>
   );
 }

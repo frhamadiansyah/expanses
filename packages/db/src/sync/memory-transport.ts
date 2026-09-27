@@ -85,8 +85,13 @@ export class MemoryTransport {
       }
       const state = this.requireBook(bookId);
       const device = state.devices.get(signed.deviceId);
-      if (!device || device.removedAt) throw new SyncTransportError(401, 'unknown or removed device');
+      if (!device) throw new SyncTransportError(401, 'unknown device');
       key = device.signJwk;
+      // A removed device is told so (final review, I2) — but only once its own key signed the request, as the relay does.
+      if (device.removedAt) {
+        if (!(await verifySignature(key, signed.bytes, signed.signature))) throw new SyncTransportError(401, 'bad signature');
+        throw new SyncTransportError(403, 'removed');
+      }
     }
     if (!key || !(await verifySignature(key, signed.bytes, signed.signature))) throw new SyncTransportError(401, 'bad signature');
   }
@@ -118,7 +123,8 @@ export class MemoryTransport {
 
   private requireMember(state: BookState, actor: string): void {
     const device = state.devices.get(actor);
-    if (!device || device.removedAt) throw new SyncTransportError(401, 'unknown or removed device');
+    if (!device) throw new SyncTransportError(401, 'unknown device');
+    if (device.removedAt) throw new SyncTransportError(403, 'removed'); // §8.4, final review I2
   }
 
   private requireOwner(state: BookState, actor: string): void {

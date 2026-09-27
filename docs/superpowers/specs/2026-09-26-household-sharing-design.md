@@ -186,7 +186,8 @@ CREATE TABLE shared_books (
   state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
   shared_at     TEXT NOT NULL,
   synced_at     TEXT,               -- task 9a: when this device last finished a sync of the book (§11)
-  unshared_by   TEXT                -- task 9a: the member who ended the sharing here (§8.4, §8.6)
+  unshared_by   TEXT,               -- task 9a: the member who ended the sharing here (§8.4, §8.6)
+  unshared_reason TEXT              -- final review I2: 'stopped' | 'left' | 'removed'
 );
 CREATE TABLE book_members (
   book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -900,6 +901,10 @@ another device) and `shared_books.epoch` is still the removal's epoch:
 
 A device never rotates on its own removal. Between a removal and its rotation, writes continue under the old
 epoch; the removed device cannot pull them, which is the relay's doing until the rotation makes it cryptography's.
+**The removed device is told (final review, I2):** its next call, signed with its own key, is answered `403 { error:
+'removed' }` — never the `401` a clock five minutes off gets — and `syncOnce` ends the book here (`ended: 'removed'`,
+`shared_books.state = 'unshared'`, `unshared_reason = 'removed'`, outbox cleared): read-only, with the status line
+**"You were removed from this workspace"**. It is no longer polled.
 
 **Who may remove (fix round 1, C2).** A removal entry counts only when its target is its author, or its author's member
 is an owner (`book_members.role`, at apply time). Anything else is a recorded skip: never applied, never a reason to
@@ -1040,7 +1045,9 @@ Refused: a timestamp more than 5 minutes off; an unknown or removed device; a ba
 `POST /invites/:id/claim` come from a device on no list and are verified against the JWK in their own body.
 `GET /invites/:id` is unauthenticated: the id is unguessable and the body is sealed.
 
-**As built (task 6).** Every refusal above answers `401`, and so does a missing header. `path` is the request
+**As built (task 6).** Every refusal above answers `401`, and so does a missing header — except a device the book has
+removed, which is answered `403 { error: 'removed' }` once its signature verifies under its stored key (final review,
+I2; §8.4), so a client can tell being removed from a clock that is off. `path` is the request
 target as sent — pathname plus query string (`/books/B/entries?since=12`) — so the `since` of a pull is signed too.
 "ECDSA(sign.private, SHA-256(m))" is WebCrypto's `ECDSA` with `hash: 'SHA-256'` over `m` (the algorithm hashes); the
 signature is WebCrypto's raw r ‖ s (64 bytes), base64url. On `POST /books` and the claim, an `X-Device` that is not
@@ -1078,7 +1085,7 @@ pulling and sealing again.
 **As built (task 6)**, the statuses every endpoint can also answer, each the one `MemoryTransport` throws: `401` per
 §9.1; `404` an unknown book, invite, device or path; `400` a body or `since` of the wrong shape; `405` a method a path
 does not take; `403` a non-owner on an owner-only call, and an append whose `deviceId` is not the caller;
-`409` on `POST /books/:id/invites` when another book already holds that invite id; `410` on `GET /invites/:id` and
+`403 { error: 'removed' }` to a removed device on every member call (I2); `409` on `POST /books/:id/invites` when another book already holds that invite id; `410` on `GET /invites/:id` and
 the claim once the invite's book is deleted; `413` a request body over 1 MB, refused before it is parsed. A removed
 device frees its place among the five. The Worker answers CORS preflights and stamps `Access-Control-Allow-Origin`
 for the origins in `wrangler.toml`'s `ALLOWED_ORIGINS` (the Vite dev server and preview, `capacitor://localhost`),

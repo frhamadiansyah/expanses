@@ -154,14 +154,17 @@ describe('MemoryTransport: append (POST /books/:id/entries)', () => {
     await expect(owner.append(bookId, entry)).rejects.toMatchObject({ status: 413 });
   });
 
-  it('refuses a removed device', async () => {
+  it('403s a removed device, saying so (final review, I2): a device the book never had stays 401', async () => {
     const transport = new MemoryTransport();
     const { bookId, owner } = await bookWithOwner(transport);
     const other = (await fixtureDevice());
     const otherId = await deviceIdOf(other);
     await claimAs(transport, bookId, owner, other);
     await owner.removeDevice(bookId, otherId);
-    await expect(transport.as(otherId).append(bookId, changeEntry(otherId, 1, 'hlc-1'))).rejects.toMatchObject({ status: 401 });
+    await expect(transport.as(otherId).append(bookId, changeEntry(otherId, 1, 'hlc-1'))).rejects.toMatchObject({ status: 403, message: 'removed' });
+    await expect(transport.as(otherId).pull(bookId, 0)).rejects.toMatchObject({ status: 403, message: 'removed' });
+    const stranger = await deviceIdOf(await fixtureDevice());
+    await expect(transport.as(stranger).pull(bookId, 0)).rejects.toMatchObject({ status: 401 });
   });
 
   it('gone (410) once the book is deleted', async () => {

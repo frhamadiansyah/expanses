@@ -13,6 +13,8 @@ export const sharedBooks = sqliteTable('shared_books', {
   syncedAt: text('synced_at'),
   /** The member who ended the sharing here, for "No longer shared by …" (§8.6). */
   unsharedBy: text('unshared_by'),
+  /** How it ended (final review, I2): its owner stopped it, this member left, or this device was removed. */
+  unsharedReason: text('unshared_reason', { enum: ['stopped', 'left', 'removed'] }),
 });
 
 export const bookMembers = sqliteTable(

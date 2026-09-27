@@ -29,6 +29,8 @@ export interface SharedBookSummary {
   members: SharedBookMember[];
   /** For an `unshared` book, the member who ended it here: whoever stopped sharing, or this device's own on a leave. */
   unsharedBy: string | null;
+  /** For an `unshared` book, how: its owner stopped it, this member left, or this device was removed (final review, I2). */
+  unsharedReason: 'stopped' | 'left' | 'removed' | null;
 }
 
 export interface SharedDevice {
@@ -70,12 +72,12 @@ async function membersOf(database: Database, bookId: string): Promise<SharedBook
 /** Every book this device holds a `shared_books` row for, whatever its state, with its members. */
 export async function listSharedBooks(database: Database): Promise<SharedBookSummary[]> {
   if (!(await sharingTablesExist(database.db))) return [];
-  const rows = await database.db.values<[string, string, string, string, string | null]>(
-    sql`SELECT book_id, relay_book_id, state, member_id, unshared_by FROM shared_books ORDER BY shared_at, book_id`,
+  const rows = await database.db.values<[string, string, string, string, string | null, SharedBookSummary['unsharedReason']]>(
+    sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
   );
   const out: SharedBookSummary[] = [];
-  for (const [bookId, relayBookId, state, memberId, unsharedBy] of rows) {
-    out.push({ bookId, relayBookId, state: state as SharedBookState, memberId, members: await membersOf(database, bookId), unsharedBy });
+  for (const [bookId, relayBookId, state, memberId, unsharedBy, unsharedReason] of rows) {
+    out.push({ bookId, relayBookId, state: state as SharedBookState, memberId, members: await membersOf(database, bookId), unsharedBy, unsharedReason });
   }
   return out;
 }

@@ -34,7 +34,7 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
     if (!book) return null;
     if (book.state === 'unshared') {
       const byName = book.members.find((member) => member.memberId === book.unsharedBy)?.name ?? null;
-      return endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId });
+      return endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId, removed: book.unsharedReason === 'removed' });
     }
     return sharedWith(book.members, book.memberId);
   };
