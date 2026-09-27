@@ -4,11 +4,11 @@ import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
-import { cx, ErrorBox, InputRow, Money, RowHint, SelectRow } from '../../ui';
+import { ErrorBox, InputRow, Money, RowHint, SelectRow } from '../../ui';
 import { useSetAsideChoiceOf } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { FormRows, ROW_BODY_FLUSH, RowLead } from '../transactions/FormRow';
+import { FormRows, MoneyFieldRow } from '../transactions/FormRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { usePostedTradeMoney } from './queries';
 import { draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, waitingForPostedMoney } from './trade-form';
@@ -33,47 +33,6 @@ export interface TradeFormProps {
   templateId?: string | null;
   onSaved: (message: string) => void;
   onCancel?: () => void;
-}
-
-const FLAG_CIRCLE = 'flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[19px] leading-none';
-const FIGURE = 'ph-focus-inset tabular min-w-0 flex-1 border-0 bg-transparent p-0 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none';
-
-/**
- * A money figure drawn as the Add Transaction card's amount row draws one: the currency's flag in the lead, the
- * figure where a row's title goes, the code as the caption. The flag is only drawn — the currency is the holding's
- * (or the paying account's), never a choice here. `label` is the field's accessible name.
- */
-function MoneyRow({
-  label,
-  currency,
-  caption,
-  value,
-  onChange,
-  placeholder,
-  divided,
-}: {
-  label: string;
-  currency: string;
-  caption?: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  /** Draw the hairline above by hand, for a row the group's "every row but the first" rule cannot see. */
-  divided?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-[10px] pl-[10px]">
-      <RowLead>
-        <span aria-hidden className={FLAG_CIRCLE}>
-          {currencyFlag(currency)}
-        </span>
-      </RowLead>
-      <span className={cx(ROW_BODY_FLUSH, divided && 'border-t-[0.5px] border-[var(--ph-hair)]')}>
-        <input aria-label={label} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={FIGURE} />
-        <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{caption ?? currency}</span>
-      </span>
-    </div>
-  );
 }
 
 export function TradeForm({ holdings, goals, cashAccounts, positions, editing, initial, templateId, onSaved, onCancel }: TradeFormProps) {
@@ -196,7 +155,14 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         </SelectRow>
         {draft.kind !== 'unit_change' && (
           // The row carries no label of its own, as the Add Transaction card's amount row does not: the placeholder says what it is.
-          <MoneyRow label={amountLabel} currency={currency} value={draft.gross} onChange={(gross) => change({ gross })} placeholder={amountLabel.replace(/ \(.*\)$/, '')} />
+          <MoneyFieldRow
+            label={amountLabel}
+            currency={currency}
+            flag={currencyFlag(currency)}
+            value={draft.gross}
+            onChange={(gross) => change({ gross })}
+            placeholder={amountLabel.replace(/ \(.*\)$/, '')}
+          />
         )}
         {draft.kind !== 'income' && (
           <InputRow
@@ -232,24 +198,23 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
           <option value="">Opening balance</option>
         </SelectRow>
         {asksCharged && (
-          <div>
-            <MoneyRow
-              label={`Charged in ${cashCurrency}`}
-              caption={`Charged in ${cashCurrency}`}
-              currency={cashCurrency}
-              value={charged}
-              onChange={setCharged}
-              placeholder="0"
-              divided
-            />
-            <p className="pr-[13px] pb-2 pl-[54px] text-[12px] leading-4 text-[var(--ph-ink-3)]">
-              {draft.kind === 'buy'
+          <MoneyFieldRow
+            label={`Charged in ${cashCurrency}`}
+            caption={`Charged in ${cashCurrency}`}
+            currency={cashCurrency}
+            flag={currencyFlag(cashCurrency)}
+            value={charged}
+            onChange={setCharged}
+            placeholder="0"
+            divided
+            hint={
+              draft.kind === 'buy'
                 ? `What left ${where}, in ${cashCurrency}.`
                 : nothingReaches
                   ? `Nothing reaches ${where}: the fees take all of the sale, so leave this empty.`
-                  : `What reached ${where}, in ${cashCurrency}.`}
-            </p>
-          </div>
+                  : `What reached ${where}, in ${cashCurrency}.`
+            }
+          />
         )}
         <InputRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
       </FormRows>
