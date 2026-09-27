@@ -56,12 +56,14 @@ function Column({
   );
 }
 
-/** The pill beside a due date, in the kit's own inks: overdue in alarm, soon in warning, later quiet. */
-const DUE_TONE = { late: 'text-[var(--ph-alarm)]', soon: 'text-[var(--ph-warn)]', later: 'text-[var(--ph-ink-3)]' } as const;
+/**
+ * The colour of a person's initial says how soon they are due, in the kit's own inks: red when a loan is overdue,
+ * orange when one is due soon. No date, or one far off, leaves the circle grey like every other row's.
+ */
+const DUE_COLOUR = { late: 'var(--ph-alarm)', soon: 'var(--ph-warn)', later: undefined } as const;
 
 /**
- * One row per person: their initial, their name, their one loan's reason or how many loans, the most urgent due date,
- * and what they owe in all. Nothing to press but the row itself — repaying, forgiving and changing a loan are on the
+ * One row per person: their initial, coloured by their most urgent due date, their name, and what they owe in all. Nothing to press but the row itself — repaying, forgiving and changing a loan are on the
  * loan's own page, one tap further in, where they used to be buttons and a picker under every loan.
  */
 function PeopleRows({ people, total }: { people: PersonDebtRow[]; total?: ReactNode }) {
@@ -74,11 +76,8 @@ function PeopleRows({ people, total }: { people: PersonDebtRow[]; total?: ReactN
           <InsetRow
             key={`${person.direction}-${person.personName}-${person.currency}`}
             icon={<span className="text-[14px] leading-none font-semibold">{person.personName.trim().charAt(0).toUpperCase()}</span>}
-            iconColour="var(--ph-tint)"
+            iconColour={due ? DUE_COLOUR[due.tone] : undefined}
             title={person.personName}
-            // Only a due date earns a second line: the name and the figure say the rest, and the loans are told
-            // apart on the person's own page.
-            subtitle={due ? <span className={`font-medium ${DUE_TONE[due.tone]}`}>{due.label}</span> : undefined}
             value={<Money minor={person.totalMinor} currency={person.currency} />}
             valueTone="ink"
             to="/net-worth/lend-borrow/$side/$person"

@@ -433,3 +433,24 @@ test('the figures name a currency only once an account decides it', async ({ pag
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await expect(page.getByRole('textbox', { name: 'Money lent (IDR)', exact: true })).toBeVisible();
 });
+
+test('a person\'s initial turns red when a loan is overdue, and stays grey with no date', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Budi', '1000000', 'BCA Tahapan (IDR)');
+
+  await page.goto('/net-worth/lend-borrow');
+  await openNew(page, 'New receivable');
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
+  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('2000000');
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByRole('button', { name: 'Add more details' }).click();
+  await page.getByRole('textbox', { name: 'Due by' }).fill('2026-01-01');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  const initial = (name: string) => personRow(page, name).locator('span.rounded-full[aria-hidden]').first();
+  await expect(initial('Andi')).toHaveAttribute('style', /--ph-alarm/);
+  await expect(initial('Budi')).toHaveAttribute('style', /--ph-fill/);
+  // The colour says it; the row carries no second line.
+  await expect(personRow(page, 'Andi')).not.toContainText(/overdue|Due/i);
+});
