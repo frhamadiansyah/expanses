@@ -242,7 +242,7 @@ export function DebtForm({
         {detailsOpen && !draft.existingAccountId && !known ? (
           <TextRow
             label="Tax ID"
-            info="Their national or tax ID number. Optional, and only needed when this reaches your tax report."
+            info="A national ID or tax ID number. Optional; needed only when this loan appears in a tax report."
             value={draft.personIdNumber}
             inputMode="numeric"
             onChange={(e) => set({ personIdNumber: e.target.value })}

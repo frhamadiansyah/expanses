@@ -150,7 +150,7 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
   await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toBeVisible();
   await expect(page.getByText(/NIK|NPWP|SPT/)).toHaveCount(0);
   await page.getByRole('button', { name: 'About Tax ID' }).tap();
-  await expect(page.getByText(/only needed when this reaches your tax report/)).toBeVisible();
+  await expect(page.getByText(/needed only when this loan appears in a tax report/)).toBeVisible();
 
   // The sub-category's line under it was the same choice again in Indonesian; it is gone.
   await expect(page.getByText(/Piutang|Utang/)).toHaveCount(0);
