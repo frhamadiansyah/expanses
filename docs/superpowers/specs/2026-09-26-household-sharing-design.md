@@ -1,507 +1,686 @@
 # Household sharing — design
 
-Status: draft v2 for review · 2026-09-27
+Status: draft v3 for review · 2026-09-27
 Builds on: `2026-09-17-workspaces-design.md` §5.4, `2026-09-18-data-safety-design.md`.
+Reviewed by: `2026-09-27-household-sharing-review.md` (v2). Every finding there is answered in §0.
 
-## 0. What v2 changed from v1
+## 0. What v3 changed
 
-v1 argued the decisions. v2 keeps them and cuts everything that is not needed to prove them, then states what remains
-exactly enough to implement without guessing. Dropped from this build, each recoverable later behind a seam that is
-named here:
+v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
+corrected against the code at `445a655`.
 
-| Dropped | Why | Comes back through |
-|---|---|---|
-| Photo sync | blobs, lazy loading and downscaling, for a receipt the other person rarely needs | `SyncTransport.putBlob/getBlob` |
-| Snapshots for late joiners | a household's whole log is a few MB; replaying it takes seconds | a `snapshot` log entry kind |
-| Log retention / acks | needed only once snapshots exist | same |
-| R2 storage | with no blobs and no snapshots, the Durable Object's own storage holds everything | same |
-| WebSocket push | polling on foreground and every 30 s is enough to test the model | `SyncTransport.subscribe` |
-| Events, category sets, "With" shares | events' scope is unclear; shares create receivables, which are owner scope | the `SHARED_TABLES` list |
-| Cross-currency books | a book must have the members' base currency; FX never enters sync | the join check in §8.3 |
-| Ed25519 / X25519 | not in every WebView yet; P-256 has been everywhere for a decade and is no weaker here | none needed |
-| Entitlement verification | tiers do not exist in the app yet | `verifyEntitlement()` returns `true` |
-| Safety number, duplicate hint, second owner prompt | nice; not load-bearing | later steps |
+| Finding | Answer in v3 |
+|---|---|
+| **B1** ledger is void-and-replace | The synced thing is a **purchase**, keyed by its **lineage id**; applying a change calls the ledger's own `post`, `replace` and `void` (§4.3, §7). Decided by the owner: option A. |
+| **B2** late joiner cannot read old epochs | The invite wraps **every** epoch key the book has had (§8.1). The cursor never passes an entry it could not apply (§7.1). |
+| **B3** racing rotations | The relay accepts a rotation only at `currentEpoch + 1`, else `409` (§8.4, §9.2). |
+| **B4** leaver mints the key | Removal and rotation are separate acts; a **remaining** device rotates (§8.4). |
+| **B5** synchronizable keychain | Keys are **device-only**. A restored or replaced phone rejoins by invite, always (§5.1). Decided by the owner. |
+| **B6** no initial upload | **Share** seeds the log with every row in scope before the invite is shown (§6.5). Decided by the owner: seed, not snapshots. |
+| **B7** join order | `GET /invites/:id` returns a preview encrypted under `S`; the currency check and the names come before the claim (§8.2). |
+| **M1–M6** tables, scope, keys, columns, `kind` | §4.1 names real tables with a scope rule, a key encoding and a column list each. Sharing state is `shared_books` only. |
+| **M7** shell not on `main` | `KeyStore` interface with a web and a native implementation (§5.2). Merging `feat/ios-testflight` is a precondition of step 2. |
+| **M8** change-set size | Capped at 200 ops and 64 KB; larger writes split (§6.2). |
+| **M9** completeness test | SQLite triggers in the test harness; the existing suite is the test (§6.4). |
+| Minor: drift, replay, pinning, names on relay, restore, cross-refs, pseudocode order, `createBook` | §6.1, §9.1, §5.4, §9.3, §8.7, fixed throughout. |
+| Minor 9: a member changes what the payer paid | **Yes, anything.** Decided by the owner. The history names who (§7.3). |
+
+Still dropped from this build, each behind a named seam: photo sync, snapshots, log retention, R2, websocket push,
+events, category sets, With shares, cross-currency books, entitlement verification, safety number, duplicate hint.
 
 ## 1. Purpose
 
 Two people in one household record into one workspace, each paying from their own accounts, and both phones show
 the same book with the same numbers, offline or not.
 
-Decided with the user (2026-09-26): sharing is the **only** thing a server is for; the server **cannot read**
-anything; there are **no accounts**; the middle is **a relay we run**; the **owner pays**, members join free; the
-merge is **last-writer-wins per field, money as one atom, delete wins, no conflict inbox**.
+Decided with the owner: sharing is the **only** thing a server is for; the server **cannot read** anything; **no
+accounts**; the middle is **a relay we run**; the **owner pays**, members join free; the merge is
+**last-writer-wins per field, money as one atom, void wins, no conflict inbox**; any member may change anything in
+the book.
 
-Assumed, correct if wrong: a small, trusting household (≤ 5 devices); any member may edit anything in the book,
-including the other person's purchases; offline recording is untouched; Android is coming, so nothing Apple-only.
+Assumed: a small, trusting household (≤ 5 devices); offline recording untouched; Android is coming.
 
 ## 2. Glossary
 
 | Word | Means |
 |---|---|
 | **workspace** (UI) / **book** (DB) | one `books` row; the unit of sharing |
-| **owner scope** | everything keyed by `workspace_id` that is not in a book: accounts, cards, net worth, goals, settings |
-| **device** | one install, identified by its P-256 signing public key |
+| **owner scope** | everything keyed by `workspace_id` that is not in a book |
+| **local workspace id** | this device's own `workspace_id`; it differs on every device and is never sent |
+| **purchase** | one expense or income in a book, across all its corrections; identified by its **lineage id** |
+| **lineage id** | the id of the first `transactions` row in a `replaces_transaction_id` chain |
+| **head** | the one row of a lineage whose `status = 'posted'`, or none when the purchase is void |
+| **device** | one install, identified by its signing public key |
 | **member** | a person; one or more devices |
-| **epoch** | one workspace key; bumps on every device removal |
-| **change-set** | one encrypted, signed record of one local database transaction |
-| **relay** | the Cloudflare Worker; one Durable Object per shared book |
+| **epoch** | one workspace key; rises by one at each rotation |
 
 ## 3. Truth and transport
 
-Each device's local SQLite is the truth. The relay is an append-only log per book plus the device allow-list; it
-never holds a usable key or a readable field. If the relay is gone, every member still has everything.
-
-The app talks to one interface, so the engine is tested with no network:
+Each device's local SQLite is the truth. The relay is an append-only log per book and a device allow-list.
 
 ```ts
 interface SyncTransport {
-  createBook(ownerDevice: DeviceKeys): Promise<{ bookId: string }>;
-  append(bookId: string, entry: LogEntry): Promise<{ seq: number }>;
-  pull(bookId: string, since: number): Promise<{ entries: LogEntry[]; latest: number }>;
+  createBook(device: DevicePublic): Promise<{ bookId: string }>;
+  append(bookId: string, entry: LogEntry): Promise<{ seq: number }>;          // 409 duplicate = success
+  pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }>;
   putInvite(bookId: string, invite: InviteRecord): Promise<void>;
-  claimInvite(inviteId: string, device: DeviceKeys, deviceName: string): Promise<ClaimResult>;
+  previewInvite(inviteId: string): Promise<{ preview: Sealed; expiresAt: string; claimed: boolean }>;
+  claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult>;
   removeDevice(bookId: string, deviceId: string): Promise<void>;
   setOwners(bookId: string, deviceIds: string[]): Promise<void>;
   deleteBook(bookId: string): Promise<void>;
 }
+type DevicePublic = { signJwk: JsonWebKey; agreeJwk: JsonWebKey };
+type Sealed = { iv: string; ct: string };                                     // base64url
 ```
 
-Two implementations: `MemoryTransport` (tests) and `RelayTransport` (§9).
+Implementations: `MemoryTransport` (tests), `RelayTransport` (§9).
 
 ## 4. Data
 
-### 4.1 What syncs
+### 4.1 What syncs — `SHARED_ENTITIES`
 
-`SHARED_TABLES`, a named constant in `packages/db/src/sync/shared-tables.ts`. Every row in these tables that belongs
-to a shared book syncs; nothing else does.
+A constant in `packages/db/src/sync/shared-entities.ts`. One record per synced entity: its table, how a row is
+found to be in a book, how its `Op.id` is built, and **exactly** which fields travel. Nothing outside this list is
+ever sent. `workspace_id` is never sent; **apply stamps the local workspace id on every row it inserts**.
 
-| table | scope rule |
-|---|---|
-| `books` | the shared row itself: `name`, `base_currency`, `count_events_in_budget`, `archived_at` |
-| `accounts` | only rows tagged to the book by `book_categories` (categories) |
-| `book_categories` | rows for the book |
-| `budgets`, `budget_overrides`, `budget_frequencies`, `book_budget_settings` | rows for the book |
-| `bills`, `bill_windows`, `bill_skips`, `bill_payments` | rows for the book |
-| `transactions` | rows tagged by `book_transactions`; **the money projection replaces `entries`** (§4.3) |
-| `book_transactions`, `transaction_flags` | rows for those transactions |
+| Entity | Table | In the book when | `Op.id` | Fields that travel |
+|---|---|---|---|---|
+| `book` | `books` | `id = bookId` | `id` | `name`, `base_currency`, `count_events_in_budget`, `archived_at` |
+| `category` | `accounts` | `id` is in `book_categories` for the book | `id` | `name`, `parent_id`, `kind`, `subtype`, `currency`, icon and colour columns, `archived_at` |
+| `member` | `book_members` | `book_id = bookId` | `member_id` | `name`, `role`, `joined_at` |
+| `device` | `book_devices` | `book_id = bookId` | `device_id` | `member_id`, `name`, `sign_jwk`, `agree_jwk`, `added_at`, `removed_at` |
+| `budget` | `budgets` | `category_account_id` is a category of the book | `id` | `category_account_id`, `amount_minor` |
+| `budget_override` | `budget_overrides` | its `budget_id` is in the book | `id` | `budget_id`, `month`, `amount_minor` |
+| `budget_frequency` | `budget_frequencies` | its budget is in the book | the table's key, as step 1 finds it | its value columns |
+| `book_income` | `book_budget_settings` | `book_id = bookId` | `book_id` | `expected_income_minor` |
+| `book_income_override` | `book_income_overrides` | `book_id = bookId` | `bookId + '\|' + month` | `amount_minor` |
+| `bill` | `expense_templates` | `category_account_id` is a category of the book | `id` | `name`, `category_account_id`, `amount_minor`, `day_of_month`, `active`, `archived_at`, **`payer`** (§4.4) |
+| `bill_window` | `bill_windows` | its `template_id` is in the book | `template_id` | `pay_by_day`, `starts_month` |
+| `bill_skip` | `bill_skips` | its `template_id` is in the book | `templateId + '\|' + month` | (existence only) |
+| `purchase` | `transactions` + `entries` + `book_transactions` + `transaction_flags` + `bill_payments` | the lineage's rows are in `book_transactions` for the book, and it has at least one income or expense entry | **lineage id** | §4.3 |
 
-Step 1 confirms each table's book scoping against the code and corrects this list; the list in code is the truth.
+`book_categories` and `book_transactions` are not entities: apply writes the tag row whenever it inserts a
+`category` or posts a `purchase`.
 
-**Never syncs:** `entries` as such, every owner-scope table, `settings`, `fx_rates`, photos, other books.
+**Composite keys** are joined with `|` in the column order shown, never including `workspace_id`.
+
+**Never syncs:** transfers between asset accounts (they belong to no book); every owner-scope table; `settings`,
+`fx_rates`; photos; `transactions.source`, `external_ref`, `event_id`, `card_id`, `goal_id`, `mcc`,
+`replaces_transaction_id`; `entries.spend_category_id`, `fx_rate_to_base`, `amount_base_minor`; `books.kind`.
+
+Step 1 confirms each row of this table against the code and corrects the constant; the constant is the truth.
 
 ### 4.2 New tables — migration `0056_household_sharing.sql`
 
-Side tables only. No column is added to any existing table (workspaces design §4).
+Side tables only; no column is added to any existing table.
 
 ```sql
 CREATE TABLE shared_books (
-  book_id      TEXT PRIMARY KEY,
+  book_id       TEXT PRIMARY KEY,
   relay_book_id TEXT NOT NULL,
-  epoch        INTEGER NOT NULL,          -- current epoch this device writes under
-  role         TEXT NOT NULL,             -- 'owner' | 'member'
-  member_id    TEXT NOT NULL,             -- this device's member
-  shared_at    TEXT NOT NULL,
-  unshared_at  TEXT                       -- set when the owner stops sharing; book becomes read-only
+  epoch         INTEGER NOT NULL,   -- the epoch this device writes under
+  member_id     TEXT NOT NULL,      -- this device's member
+  state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
+  shared_at     TEXT NOT NULL
 );
 CREATE TABLE book_members (
-  book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL, joined_at TEXT NOT NULL,
+  book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
+  role TEXT NOT NULL,               -- 'owner' | 'member'
+  joined_at TEXT NOT NULL,
   PRIMARY KEY (book_id, member_id)
 );
 CREATE TABLE book_devices (
   book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
+  sign_jwk TEXT NOT NULL, agree_jwk TEXT NOT NULL,     -- pinned public keys (§5.4)
   added_at TEXT NOT NULL, removed_at TEXT,
   PRIMARY KEY (book_id, device_id)
 );
-CREATE TABLE book_member_accounts (       -- the hidden placeholder account per other member (§4.3)
+CREATE TABLE book_member_accounts (                     -- the hidden placeholder account per other member
   account_id TEXT PRIMARY KEY, book_id TEXT NOT NULL, member_id TEXT NOT NULL
 );
-CREATE TABLE book_epoch_keys (            -- AES key bytes, encrypted at rest by the device key (§5.3)
-  book_id TEXT NOT NULL, epoch INTEGER NOT NULL, key_wrapped BLOB NOT NULL,
+CREATE TABLE book_epoch_keys (
+  book_id TEXT NOT NULL, epoch INTEGER NOT NULL, key_sealed TEXT NOT NULL,   -- §5.5
   PRIMARY KEY (book_id, epoch)
 );
-CREATE TABLE sync_outbox (                -- change-sets written locally, not yet accepted by the relay
-  id TEXT PRIMARY KEY, book_id TEXT NOT NULL, hlc TEXT NOT NULL, body BLOB NOT NULL, created_at TEXT NOT NULL
+CREATE TABLE sync_lineage (                             -- purchase -> its current head
+  lineage_id TEXT PRIMARY KEY, book_id TEXT NOT NULL,
+  head_transaction_id TEXT,                             -- NULL once void
+  paid_by TEXT NOT NULL, paid_label TEXT NOT NULL
+);
+CREATE TABLE sync_outbox (
+  id TEXT PRIMARY KEY, book_id TEXT NOT NULL, hlc TEXT NOT NULL, entry_json TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE sync_cursor (
   book_id TEXT PRIMARY KEY, applied_seq INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE sync_field_clocks (
-  entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
-  PRIMARY KEY (entity, id, field)
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id, field)
 );
 CREATE TABLE sync_tombstones (
-  entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
-  PRIMARY KEY (entity, id)
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id)
 );
 ```
 
-`book_members`, `book_devices` and the placeholder rows are themselves synced (they travel as ops in change-sets),
-so every device knows every member and device by name. `shared_books`, `book_epoch_keys`, `sync_*` are local only.
+**Sharing state is `shared_books`, never `books.kind`.** `kind` is a label the owner picked and stays whatever it
+was on the owner's device. A joiner inserts the book with `kind = 'shared'`, so it is never the joiner's
+`'personal'` book and `personalBook()` stays unambiguous.
 
-### 4.3 The money projection
+### 4.3 A purchase
 
-A purchase is `transactions` + `entries`. Entries name the payer's accounts, which the other member does not have.
-So a synced transaction carries, instead of entries, one field named **`money`**:
+A purchase is a lineage. The ledger edits by voiding a row and posting its replacement
+(`ledger.ts` — "Edit = void the original and post the replacement atomically"), so a purchase's row id changes at
+every correction and its lineage id never does. `sync_lineage` maps one to the other.
+
+Fields of a `purchase`, each with its own clock:
+
+| Field | From | Type |
+|---|---|---|
+| `occurredOn` | `transactions.occurred_on` | `YYYY-MM-DD` |
+| `description` | `transactions.description` | string |
+| `channel` | `transaction_flags.channel` | `'online' \| 'offline' \| null` |
+| `excluded` | `transaction_flags.excluded` | `0 \| 1` |
+| `bill` | `bill_payments` | `{ templateId, billMonth } \| null` |
+| `money` | `entries` + two `transactions` columns | the atom below |
+| `void` | `transactions.status` of the head | `true`, written once |
 
 ```ts
 type Money = {
-  lines: { categoryId: string; amountMinor: number }[]; // category side, in the book's currency
-  originalCurrency: string | null;                       // display only, as on transactions today
+  lines: { categoryId: string; amountMinor: number; memo: string | null }[];  // entries on income/expense accounts, signed as stored
+  originalCurrency: string | null;
   originalAmountMinor: number | null;
-  paidLabel: string;                                     // "BCA KrisFlyer ···· 1467", built by the payer's device
-  paidBy: string;                                        // member_id of the payer
+  paidBy: string;      // member_id
+  paidLabel: string;   // "BCA KrisFlyer ···· 1467"
 };
 ```
 
-Amounts are in the book's currency, which equals every member's base currency (§8.3), so `amountBaseMinor` is the
-same number and no rate is ever needed on apply.
+Amounts are in the book's currency, which is every member's base currency (§8.2): `amount_base_minor =
+amount_minor` and `fx_rate_to_base = 1` on every device, and no rate is needed to apply.
 
-**Applying `money` on a device:**
+**Category side and money side.** An entry on an account whose `kind` is `income` or `expense` is a `line`. Every
+other entry of the row is the **money side**. `paidLabel` is built on the payer's device from the money side: the
+account's name, plus `' ···· ' + last4` when `transactions.card_id` names a card; with more than one money-side
+account, the names joined by `' + '`.
 
-1. Delete the transaction's existing `entries`.
-2. Insert one entry per `line` against `categoryId`, `currency = book.base_currency`, `fx_rate_to_base = 1`,
-   `amount_base_minor = amountMinor`.
-3. Insert the balancing entry for `-sum(lines)` against **the asset account**: if the transaction already had an
-   asset-side entry on this device against a non-placeholder account (this device is the payer), keep that account;
-   otherwise the placeholder account for `paidBy` (create it if missing: `accounts` row, `kind='asset'`,
-   `subtype='cash'`, `name = member name`, plus a `book_member_accounts` row).
+### 4.4 Placeholder accounts, and the bill's payer
 
-**Placeholder accounts** are excluded, by joining `book_member_accounts`, from: the Accounts page, Net worth, the
-Paid-with picker, Transfer's From/To, the tax report, backup reminders. Their balance is never shown. Every other
-reader (Cashflow, budgets, bills, the day list, receipts) sees an ordinary transaction.
+On a device that did not pay, the money side is posted against a **placeholder account** for the payer: one
+`accounts` row per other member per book — `kind = 'asset'`, `subtype = 'cash'`, `name` = the member's name,
+`currency` = the book's — with a `book_member_accounts` row. Created on first need.
 
-**Building `paidLabel` on the payer's device:** account name, and for a card `' ···· ' + last4` of the card that paid
-(the `cards` row named by the purchase), else the account name alone.
+Placeholder accounts are excluded, by an anti-join on `book_member_accounts`, from: the Accounts page, Net worth,
+every Paid-with and Transfer picker, the tax report, and the health ratios. Their balance is never shown. Every
+other reader sees an ordinary transaction.
 
-In a shared book the **currency flag is drawn but disabled** (there is no "Charged in" — the book is in the base
-currency and so is the payer's account by §8.3), and the **With** row is not offered.
+`expense_templates.money_account_id` is `NOT NULL` and names an owner's account. A `bill` therefore travels with
+the field **`payer`** `= { memberId, label }` in place of the column. Apply writes `money_account_id` = the
+existing local value when `memberId` is this device's member and the row already exists; otherwise the placeholder
+account for `memberId`. A member who pays a bill someone else set up picks their own account in the form, which
+changes `payer`.
+
+In a shared book the add form draws the currency flag **disabled** and offers no **With** row.
 
 ## 5. Keys
 
-All WebCrypto; no library.
+All WebCrypto; no library added.
 
-| Purpose | Algorithm | Stored as |
-|---|---|---|
-| Device signing | ECDSA P-256, SHA-256 | JWK pair in the keychain plugin, key `cicis.device.sign` |
-| Device agreement | ECDH P-256 | JWK pair in the keychain plugin, key `cicis.device.agree` |
-| Workspace (epoch) key | AES-GCM 256, 32 random bytes | `book_epoch_keys`, encrypted under the device key (§5.3) |
-| Key derivation | HKDF-SHA-256 | — |
+| Purpose | Algorithm |
+|---|---|
+| Device signing | ECDSA P-256 with SHA-256 |
+| Device agreement | ECDH P-256 |
+| Epoch key | AES-GCM, 256-bit, 32 random bytes |
+| Derivation | HKDF-SHA-256 |
 
 ### 5.1 Device identity
 
-`deviceId = hex(SHA-256(rawPublicKey(sign)))[0:32]`. Generated on first launch; **never** written to the database
-or the backup file (backups are plaintext today). iOS Keychain item marked synchronizable; a phone restored from a
-backup file alone rejoins by invite, and the Share screen says so in one line.
+Two key pairs generated at first launch. `deviceId = hex(SHA-256(raw public signing key))[0:32]`.
 
-### 5.2 Wrapping an epoch key for a device (rotation, §8.5)
+**Device-only.** Never synchronised, never in the database, never in a backup. A phone that is replaced, or
+restored from a backup file, is a new device and rejoins every shared workspace by invite (§8.7). The Share screen
+says so in one line.
 
-`ephemeral = ECDH.generateKey()`; `shared = ECDH.deriveBits(ephemeral.private, device.agree.public, 256)`;
-`wrapKey = HKDF(shared, salt = utf8(bookId), info = utf8('cicis-epoch-v1'), 256)`;
-`ct = AES-GCM(wrapKey, iv = random(12), plaintext = epochKey, aad = utf8(\`${bookId}:${epoch}:${deviceId}\`))`.
-Record: `{ deviceId, epoch, ephemeralPublicJwk, iv, ct }`.
+### 5.2 `KeyStore`
 
-### 5.3 Wrapping an epoch key for an invite (§8.1)
+```ts
+interface KeyStore {
+  getOrCreateDevice(): Promise<{ deviceId: string; sign: CryptoKeyPair; agree: CryptoKeyPair; public: DevicePublic }>;
+  hasDevice(): Promise<boolean>;
+}
+```
 
-`wrapKey = HKDF(ikm = S, salt = utf8(inviteId), info = utf8('cicis-invite-v1'), 256)`; then AES-GCM as above with
-`aad = utf8(\`${bookId}:${epoch}\`)`. Record: `{ epoch, iv, ct }`. `S` never leaves the two devices.
+| Implementation | Used by | Stores |
+|---|---|---|
+| `WebKeyStore` | browsers, Playwright, the desktop web build | **non-extractable** `CryptoKey` pairs in IndexedDB, database `cicis-keys` |
+| `NativeKeyStore` | the Capacitor shell, iOS and later Android and Mac | JWK pairs in the platform keychain, iOS class `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` |
 
-### 5.4 At rest
+Chosen by `isNative()`. The native implementation needs the Capacitor shell, which is on `feat/ios-testflight` and
+not on `main`: **merging that branch is a precondition of step 2.**
 
-`book_epoch_keys.key_wrapped` is the epoch key AES-GCM-encrypted under a key derived from the device's agreement
-private key with `info = 'cicis-at-rest-v1'`; the same construction as §5.2 with the device's own public key as the
-peer. Losing the keychain therefore loses the epoch keys too, which is the intended property.
+### 5.3 Sealing an epoch key for a device (rotation)
+
+```
+eph     = generate ECDH P-256 pair
+shared  = ECDH(eph.private, device.agreePublic) → 256 bits
+wrapKey = HKDF(shared, salt = utf8(bookId), info = utf8('cicis-epoch-v1')) → AES-GCM 256
+ct      = AES-GCM(wrapKey, iv = random(12), data = epochKey, aad = utf8(bookId + ':' + epoch + ':' + deviceId))
+record  = { deviceId, epoch, ephJwk, iv, ct }
+```
+
+### 5.4 Whose key is it — pinning
+
+A device trusts a signing key only if it is in its own `book_devices`. The relay's copy is used for one thing:
+checking the signature on the entry that introduces a device. That entry is an ordinary encrypted change-set whose
+first op is the `device` upsert carrying the device's own `sign_jwk` and `agree_jwk`. Writing it requires the epoch
+key, which requires `S`, which the relay never has — so the relay cannot introduce a device. Apply checks that the
+entry's signature verifies under the key **inside** it and that the relay-supplied key matches; from then on, only
+the pinned key. Rotations seal for the devices in `book_devices`, never for a list the relay supplies.
+
+### 5.5 At rest
+
+`book_epoch_keys.key_sealed` is the JSON of §5.3's record sealed for this device's own agreement key, with
+`info = 'cicis-at-rest-v1'`. Without the device key the epoch keys do not open.
 
 ## 6. Change-sets
 
 ### 6.1 The clock
 
-HLC string, lexicographically ordered:
-
 ```
-hlc = hex(ms, 12 digits) + hex(counter, 4 digits) + '-' + deviceId
+hlc = hex(ms, 12 digits) + hex(counter, 4 digits) + '-' + deviceId          // compared as strings
 ```
 
-Rule: `next = max(now_ms, last_ms)`; if equal to `last_ms`, `counter += 1`, else `counter = 0`. Persist `last`
-in `settings` under `sync.hlc`. On receiving a change-set, `last_ms = max(last_ms, its ms)`.
+On a local write: `ms = max(nowMs, lastMs)`; if `ms == lastMs` then `counter += 1` else `counter = 0`. On applying
+a change-set: `lastMs = max(lastMs, its ms)`. `last` is kept in `settings` under `sync.hlc`.
 
-### 6.2 Shape
+**Drift.** A change-set whose `ms` is more than **24 hours** ahead of the receiving device's clock is not applied
+and **blocks the cursor** (§7.1) until the device's own clock passes `ms − 24h`. A phone with a wrong clock cannot
+win every field for ever.
+
+### 6.2 Shape and size
 
 ```ts
-type ChangeSet = {
-  v: 1;
-  hlc: string;
-  member: string;                 // member_id of the author
-  ops: Op[];
-};
+type ChangeSet = { v: 1; hlc: string; member: string; ops: Op[] };
 type Op =
   | { entity: string; id: string; op: 'upsert'; fields: Record<string, unknown> }   // only fields that changed
   | { entity: string; id: string; op: 'delete' };
 ```
 
-`entity` is the table name. `fields` for `transactions` may include `money` (§4.3); it never includes
-`workspace_id`, `created_at`, or any owner-scope column. One change-set per committed local database transaction.
+A `purchase` is never `delete`d; it is voided by an upsert of `{ void: true }`.
 
-### 6.3 Capture — `withCapture`
+At most **200 ops** and **64 KB** of JSON per change-set. A local database transaction that produces more is split
+into several change-sets with consecutive HLCs (counter + 1 each), in op order. An import of 3,000 rows is fifteen
+entries.
 
-`audit_log` is not the capture point: 5 of 64 repositories write it. Capture is a wrapper every write to a
-`SHARED_TABLES` row goes through, in `packages/db/src/sync/capture.ts`:
+### 6.3 Capture
+
+Two capture points, both in `packages/db/src/sync/capture.ts`, both running inside the caller's database
+transaction so a change-set is durable exactly when its rows are.
+
+**Rows edited in place** — every entity except `purchase`:
 
 ```ts
 await withCapture(tx, { bookId, entity, id }, async () => { /* the existing write */ });
 ```
 
-It reads the row (and, for `transactions`, its money projection) **before**, runs the write, reads **after**, and
-emits an op with only the fields whose values differ (`delete` when the row is gone). Ops from one database
-transaction are collected and, at commit, encrypted (§6.4) and inserted into `sync_outbox` in that same transaction
-— the change-set is durable exactly when its rows are. A write outside a shared book emits nothing.
+Reads the entity's fields before, runs the write, reads after; emits an upsert with the fields that differ, or a
+delete if the row is gone.
 
-**Completeness test** (`capture.test.ts`): for every exported function of every repository under `repos/`, run it
-against an in-memory database seeded with one shared book, snapshot all `SHARED_TABLES` before and after, and fail
-if any row changed without an op describing it. A repository that fails this cannot be merged.
+**Purchases** — at the three ledger doors, because an edit replaces the row:
 
-### 6.4 The log entry
+| Ledger function | Emits |
+|---|---|
+| `postTransactionTx` | upsert of every field; inserts `sync_lineage` with `lineage_id = head = the new id`, `paid_by` = this member |
+| `replaceTransaction` | project the old head and the new head (§4.3); upsert the fields that differ; `sync_lineage.head` = the new id |
+| `voidTransactionTx`, when not part of a replace | upsert `{ void: true }`; `sync_lineage.head = NULL` |
+
+`events.ts` and `set-aside-tx.ts` also insert or update `transactions`; step 1 routes each through one of the
+three doors or wraps it the same way.
+
+After capture, for each emitted field: `sync_field_clocks[book, entity, id, field] = hlc`. At commit the ops are
+cut into change-sets (§6.2), each sealed and signed (§6.6) and inserted into `sync_outbox`.
+
+A write outside a shared book emits nothing and costs one lookup.
+
+### 6.4 Nothing escapes capture
+
+In the **test harness only**, `installCaptureTriggers(db)` creates `AFTER INSERT/UPDATE/DELETE` triggers on every
+table named in `SHARED_ENTITIES`, each writing `(table, key, op)` to a temp table `__writes`. After every test, a
+global `afterEach` fails the test if `__writes` holds a row of a shared book that no op in `sync_outbox` accounts
+for. The whole existing suite, run against a database seeded with one shared book, is the completeness test; no
+repository function is called by hand.
+
+### 6.5 Seeding — sharing a workspace that already has history
+
+**Share this workspace**, before any invite exists:
+
+1. Create the relay book; insert `shared_books`; mint epoch 1.
+2. Emit, in this order, upserts of every row in scope with **all** its fields: `book`, `member` (self), `device`
+   (self), `category` (parents before children), `budget` and its dependents, `bill` and its dependents, then every
+   non-void `purchase` oldest first with `paidBy` = this member.
+3. Cut into change-sets (§6.2), each with a fresh HLC; write `sync_field_clocks`; put in `sync_outbox`.
+4. Drain the outbox. Only when it is empty is the invite created and shown. While it drains the screen says
+   "Preparing 1,204 of 3,120".
+
+Voided rows are not seeded: a purchase that was void before sharing never existed for the other member.
+
+### 6.6 The log entry
 
 ```ts
 type LogEntry =
-  | { kind: 'change';   seq?: number; deviceId: string; epoch: number; hlc: string; iv: string; ct: string; sig: string }
-  | { kind: 'rotation'; seq?: number; deviceId: string; epoch: number; wrapped: WrappedFor[]; sig: string }
-  | { kind: 'member';   seq?: number; deviceId: string; memberId: string; deviceName: string; sig: string };
+  | { kind: 'change';   deviceId: string; epoch: number; hlc: string; iv: string; ct: string; sig: string }
+  | { kind: 'removal';  deviceId: string; epoch: number; hlc: string; target: string; sig: string }
+  | { kind: 'rotation'; deviceId: string; epoch: number; hlc: string; sealed: SealedFor[]; sig: string };
+type SequencedEntry = LogEntry & { seq: number; signJwk: JsonWebKey };
 ```
 
-`ct = AES-GCM(epochKey[epoch], iv, deflate(JSON(changeSet)), aad = utf8(\`${bookId}:${epoch}:${deviceId}\`))`.
-`sig = ECDSA(device.sign, SHA-256(utf8(kind + bookId + epoch + hlc) ‖ ct))` (for `rotation`/`member`, over the JSON
-of the entry without `sig`). Base64url throughout. The relay assigns `seq`.
+`ct = AES-GCM(epochKey[epoch], iv = random(12), data = deflate(utf8(JSON(changeSet))), aad = utf8(bookId + ':' +
+epoch + ':' + deviceId))`. `sig = ECDSA(sign.private, SHA-256(utf8(JSON(entry without sig, keys sorted))))`.
+Everything binary is base64url. A `rotation`'s `epoch` is the **new** epoch.
+
+No entry carries a name. Device and member names travel only inside `change` entries.
 
 ## 7. Apply and merge
 
-Pull returns entries in `seq` order. For each `change` entry: check `sig` against a device that was on the
-allow-list at that `seq` (the relay includes the device's public key in the pull response); decrypt with
-`book_epoch_keys[epoch]` (skip and retry later if that epoch's key has not arrived yet); apply in one local database
-transaction:
+### 7.1 The loop
 
 ```
-for op in cs.ops (in order):
+entries = pull(bookId, applied_seq)
+for e in entries, in seq order:
+  verify e.sig                       # key pinned in book_devices; or, for a device's first entry, §5.4
+    on failure: stop; state = error 'bad signature at seq N'; do not advance
+  if e.kind == 'rotation':  open my record in e.sealed; store book_epoch_keys[e.epoch]; shared_books.epoch = e.epoch
+  if e.kind == 'removal':   book_devices[e.target].removed_at = now; maybeRotate()        # §8.4
+  if e.kind == 'change':
+    key = book_epoch_keys[e.epoch]; if missing: state = 'needs_invite'; stop
+    cs = JSON(inflate(decrypt(e)))
+    if ms(cs.hlc) > nowMs + 24h: stop                                                     # §6.1
+    apply(cs)                                                                             # §7.2, one db transaction
+  applied_seq = e.seq                 # same transaction as the apply
+```
+
+**The cursor never passes an entry that was not applied.** Every `stop` leaves `applied_seq` where it was; the next
+tick tries the same entry again.
+
+### 7.2 Applying one change-set
+
+Capture is switched off for the duration, so applying never re-emits.
+
+```
+for op in cs.ops, in order:
+  if op.entity == 'purchase': applyPurchase(op, cs); continue
   if tombstones[op.entity, op.id] exists: continue
   if op.op == 'delete':
-    tombstones[op.entity, op.id] = cs.hlc
-    delete row and its dependent rows (entries, book_transactions, transaction_flags for a transaction)
-    continue
-  for (field, value) in op.fields:
-    cur = field_clocks[op.entity, op.id, field]
-    if cur == null or cs.hlc > cur:
-      if field == 'money': applyMoney(op.id, value)      // §4.3
-      else: write column field = value
-      field_clocks[op.entity, op.id, field] = cs.hlc
-  if the row did not exist: insert it with the written fields plus the table's defaults, and the book tag row
-sync_cursor.applied_seq = entry.seq
+    tombstones[op.entity, op.id] = cs.hlc; delete the row; continue
+  winners = { f: v for (f, v) in op.fields if clock[op.entity, op.id, f] is null or cs.hlc > clock[...] }
+  if winners is empty: continue
+  if the row does not exist: insert it with winners, the table's defaults, the local workspace id, and its tag row
+  else: update it with winners
+  for f in winners: clock[op.entity, op.id, f] = cs.hlc
 ```
 
-The six rules, as this algorithm enforces them:
+```
+applyPurchase(op, cs):
+  L = sync_lineage[op.id]
+  if L exists and L.head is null: return                          # void wins, for ever
+  winners = fields of op that beat their clocks, as above
+  if winners is empty: return
+  if winners.void:
+    voidTransactionTx(L.head); L.head = null; record clocks; return
+  state = (L exists ? project(L.head) : {}) merged with winners   # the purchase as it should now read
+  input = ledgerInput(state, moneySide(L, state.money))           # §7.4
+  if L does not exist:
+    id = postTransactionTx(input with id = op.id)                 # the lineage id is the first row's id
+    insert sync_lineage(op.id, head = id, paid_by, paid_label)
+  else:
+    id = replaceTransaction(L.head, input); L.head = id
+  record clocks for winners
+```
 
-1. **Per field, later HLC wins** — the `field_clocks` comparison.
-2. **Money is one atom** — `money` is a single field with a single clock; `applyMoney` replaces every entry.
-3. **Delete wins, no resurrection** — a tombstone short-circuits every later op on that row, whatever its HLC.
-4. **Structure never destroys money** — a category deleted while a purchase was filed into it: `applyMoney` writes
-   the line against the category id; if that `accounts` row is now a tombstone, the line is written against the
-   book's **Uncategorised** category (created on demand, one per book, id derived as `uuidv5(bookId, 'uncategorised')`
-   so every device makes the same one).
-5. **Duplicates are not conflicts** — two ids are two rows; nothing merges rows.
-6. **Idempotent** — re-applying an entry with `seq ≤ applied_seq` is skipped; re-applying a change-set otherwise
-   changes nothing because every clock comparison fails.
+A purchase whose fields arrive in two change-sets (split by §6.2) is posted by the first that carries `money` and
+replaced by the second; an op for an unknown lineage without `money` is held in memory until the rest of the
+pulled page is applied, then dropped with a logged warning if `money` never came.
 
-Local writes go through the same path: a local op is applied to the local database directly by the repository, and
-its clock recorded in `field_clocks` by `withCapture`, so a later incoming op is compared against it.
+### 7.3 The six rules
 
-**Applying to the payer's own transaction** (someone else edited money you paid): `applyMoney` keeps the existing
-asset account (§4.3 step 3), so the card's statement and balance move as if the payer had typed it.
+1. **Per field, the later HLC wins.** The clock comparison.
+2. **Money is one atom.** `money` is one field; a replacement posts every line of the winner.
+3. **Void wins.** A lineage with no head accepts nothing more. For every other entity, a tombstone does the same.
+4. **Structure never destroys money.** If a `line`'s `categoryId` is tombstoned or unknown locally, the line is
+   posted against the book's **Uncategorised** expense category — `id = uuidv5(bookId, 'uncategorised')`, created
+   on demand, identical on every device.
+5. **Two ids are two purchases.** Nothing merges lineages. Two devices correcting the same purchase offline produce
+   two `money` values for **one** lineage; the later wins and the purchase is counted once.
+6. **Idempotent.** An entry at or below `applied_seq` is skipped; a change-set applied again wins no field.
+
+**Who changed what.** Every `replaceTransaction` and `voidTransactionTx` already writes `audit_log`; apply passes
+the author's `member` so the history reads "amount changed by Dewi". The owner decided any member may change any
+purchase, including one the other person paid; this is that decision's record.
+
+### 7.4 The money side on apply
+
+```
+moneySide(L, money):
+  if L exists and L.head has money-side entries on non-placeholder accounts:        # this device paid
+    keep those accounts; if the total changed, put the whole difference on the entry with the largest |amount|
+  else:
+    one entry of −sum(lines) on placeholderAccount(bookId, money.paidBy)
+```
+
+On the payer's device the correction therefore goes through `replaceTransaction` against the payer's real account,
+and everything that function carries across a correction — a set-aside answer, a tagged goal, a bill payment, the
+card and its statement — is carried exactly as when the payer edits it themselves.
 
 ## 8. Invites, devices, ownership
 
-### 8.1 Invite a person
+### 8.1 Create an invite (owner's device)
 
-Owner's device:
+1. `inviteId = uuidv7()`; `S = random(16)`; `expiresAt = now + 7 days`.
+2. `inviteKey = HKDF(ikm = S, salt = utf8(inviteId), info = utf8('cicis-invite-v1'))` → AES-GCM 256.
+3. `keys = AES-GCM(inviteKey, iv, data = utf8(JSON([{ epoch, key }, … every epoch the book has had])))`.
+4. `preview = AES-GCM(inviteKey, iv, data = utf8(JSON({ bookName, inviterName, baseCurrency })))`.
+5. `putInvite(bookId, { inviteId, keys, preview, expiresAt, sameMember, memberId?, sig })`.
+6. Show the **code** — `base32crockford(inviteId bytes (16) ‖ S (16))`, 52 characters in groups of four — and the
+   **link** `cicis://join/<code>`, with a **Share** button. `S` is in neither the relay nor any log.
 
-1. `inviteId = uuidv7()`, `S = random(16 bytes)`, `expiresAt = now + 7 days`.
-2. Wrap the current epoch key under `S` (§5.3).
-3. `putInvite(bookId, { inviteId, wrapped, expiresAt, sameMember: false, sig })`, `sig` over the JSON without `sig`.
-4. Show the **code**: `base32crockford(inviteIdBytes(16) ‖ S(16))` = 52 chars, drawn in groups of 4; and the
-   **link**: `cicis://join/<code>`. A **Share** button hands the link to the share sheet.
+### 8.2 Join (the other device)
 
-Joining device:
+1. Parse the code into `inviteId` and `S`.
+2. `previewInvite(inviteId)` → open `preview` with `inviteKey`. Expired or claimed: say so and stop.
+3. **Currency check.** `baseCurrency` differs from this device's workspace base currency: refuse — *"This workspace
+   keeps its money in IDR; this app keeps yours in SGD. Sharing across currencies isn't supported yet."* Nothing
+   was claimed, nothing is stored, the invite is still good for someone else.
+4. Show **bookName**, **inviterName**, and **Join**.
+5. On Join: `claimInvite(inviteId, devicePublic)` → `{ bookId, epoch, keys, sameMember, memberId }`. The relay
+   allow-lists the device and marks the invite claimed.
+6. Open `keys`; store every epoch key (§5.5). Insert the `books` row (`kind = 'shared'`) and `shared_books`
+   (`member_id = sameMember ? memberId : uuidv7()`, `state = 'active'`).
+7. Append the introduction: a change-set whose ops are this `device` (with its public keys) and, unless
+   `sameMember`, this `member` with the name the person typed.
+8. `pull(bookId, 0)` and apply everything.
 
-5. Parse the code; `claimInvite(inviteId, deviceKeys, deviceName)`. The relay checks the owner's `sig`, expiry, and
-   that the invite is unclaimed and the book has fewer than 5 devices; allow-lists the device; marks the invite
-   claimed; returns `{ bookId, epoch, wrapped, sameMember, memberId? }`.
-6. Unwrap the epoch key with `S`; store it (§5.4); insert `shared_books` with `role='member'`, `member_id =
-   sameMember ? memberId : uuidv7()`; append a `member` log entry with its name.
-7. `pull(bookId, 0)` and apply everything.
+### 8.3 Link your own device
 
-### 8.2 Link your own device
+**Link a device**, on your own member row: §8.1 with `sameMember: true` and your `memberId`. If the inviter is an
+owner, the inviter follows the claim with `setOwners` including the new device.
 
-**Link a device**, under Members on the owner's or a member's own row: identical to §8.1 with `sameMember: true`
-and `memberId` = the inviter's. The joining device becomes another device of that member. Owner status follows the
-member (the relay's owner set gains the new device when the inviter is an owner).
+### 8.4 Remove a device, and rotate
 
-### 8.3 The join check
+Two acts, by design done by different devices when someone leaves.
 
-Before step 6, the joiner compares the book's `base_currency` (sent in the claim result, in the clear — a currency
-code is not a secret) with its own workspace base currency. Different → refuse: *"This workspace keeps its money in
-IDR; this app keeps yours in SGD. Sharing across currencies isn't supported yet."* Nothing is stored.
+**Removal** — by an owner for any device, by any device for itself (**Leave** removes each of the member's
+devices):
 
-### 8.4 Remove a device
+1. `append({ kind: 'removal', target })`.
+2. `removeDevice(bookId, target)` — the relay drops it from the allow-list; it can no longer append or pull.
 
-Owner removes any device; a member removes their own (also **Leave**, which removes all of their devices).
+**Rotation** — `maybeRotate()`, run by **any remaining device** when it applies a `removal` (or makes one for
+another device) and `shared_books.epoch` is still the removal's epoch:
 
-1. `removeDevice(bookId, deviceId)` — the relay drops it from the allow-list (no more append or pull).
-2. Mint `epochKey[n+1]`; wrap it for every remaining device (§5.2); `append({ kind: 'rotation', epoch: n+1, wrapped })`.
-3. Every later change-set from this device uses epoch `n+1`. Other devices, on pulling the rotation, unwrap their
-   copy, store it, and switch. A device offline through two rotations applies both in `seq` order.
+1. `next = epoch + 1`; mint a key; seal it (§5.3) for every device in `book_devices` with `removed_at` null.
+2. `append({ kind: 'rotation', epoch: next, sealed })`.
+3. `201`: store the key, `shared_books.epoch = next`. `409` (someone rotated first): pull; the winner's rotation
+   arrives; do nothing more.
 
-The removed device keeps what it downloaded and cannot read epoch `n+1`. A lost phone is this, done from any other
-device.
+A device never rotates on its own removal. Between a removal and its rotation, writes continue under the old
+epoch; the removed device cannot pull them, which is the relay's doing until the rotation makes it cryptography's.
 
 ### 8.5 Ownership
 
-`shared_books.role`. The relay keeps the set of **owner device ids** for authorising `removeDevice`, `setOwners`,
-`putInvite`, `deleteBook`. **Make owner** on a member: `setOwners(bookId, [...owners, ...thatMember'sDevices])` and a
-`book_members` op setting `role`. If every owner device is gone, the book is **frozen**: members keep recording
-locally and syncing among themselves but nobody can invite, remove or rotate. **Stop sharing** (owner):
-`deleteBook`; every other device, on the next failed pull (`410 Gone`), sets `unshared_at` and shows the book as
-read-only, *"No longer shared by Fandri"*. Nothing is deleted on anyone's phone.
+`book_members.role`, synced. The relay keeps the set of owner **device ids** for authorising `putInvite`,
+`removeDevice` of another device, `setOwners`, `deleteBook`. **Make owner**: a `member` op setting `role`, and
+`setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
+and sync, nobody can invite or remove; rotation still works.
+
+### 8.6 Stop sharing
+
+Owner: `deleteBook`. Every other device, on the next call answered `410`, sets `state = 'unshared'`: the book
+stays, read-only, labelled *"No longer shared by Fandri"*. Nobody's rows are deleted by someone else's tap.
+
+### 8.7 A restored backup
+
+A backup is the whole database, so it carries `shared_books` and `sync_*` and none of the keys. On open, for each
+`shared_books` row: if `KeyStore` has no device key whose `deviceId` is in that book's `book_devices`, or
+`book_epoch_keys` does not open, set `state = 'needs_invite'` and clear that book's `sync_outbox`. The workspace
+shows **"Ask Dewi for a new invite to keep sharing"**; its rows are all there and recording works, locally.
+
+Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
+then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
+local row in scope whose id appears in no op pulled. A local edit newer than the backup that never reached the
+relay, on a row the log already knows, is lost to the log's value — the restored database is by definition the
+older one.
 
 ## 9. The relay
 
-One Cloudflare Worker, one Durable Object per book, DO storage only. Source lives in `apps/relay/`.
+One Cloudflare Worker, one Durable Object per book, Durable Object storage only. Source in `apps/relay/`.
 
 ### 9.1 Authentication
-
-Every request carries:
 
 ```
 X-Device:    <deviceId>
 X-Timestamp: <unix ms>
-X-Signature: base64url(ECDSA(device.sign, SHA-256(method + "\n" + path + "\n" + timestamp + "\n" + hex(SHA-256(body)))))
+X-Signature: base64url(ECDSA(sign.private, SHA-256(utf8(method + '\n' + path + '\n' + timestamp + '\n' + hex(SHA-256(body))))))
 ```
 
-The Worker rejects a timestamp more than 5 minutes off, an unknown device, a removed device, or a bad signature.
-`POST /books` and `POST /invites/:id/claim` are the two calls made by a device not yet on any allow-list; they carry
-the device's public JWKs in the body and are verified against those.
+Refused: a timestamp more than 5 minutes off; an unknown or removed device; a bad signature. `POST /books` and
+`POST /invites/:id/claim` come from a device on no list and are verified against the JWK in their own body.
+`GET /invites/:id` is unauthenticated: the id is unguessable and the body is sealed.
+
+**Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `409` and stores nothing;
+the client treats `409` as accepted.
 
 ### 9.2 Endpoints
 
-| Method and path | Auth | Body → Response |
+| Method and path | Who | Body → Response |
 |---|---|---|
-| `POST /books` | new device | `{ signJwk, agreeJwk, deviceName, baseCurrency }` → `201 { bookId }`; caller becomes the sole owner |
-| `POST /books/:id/entries` | member | `LogEntry` without `seq` → `201 { seq }` |
-| `GET /books/:id/entries?since=N` | member | → `200 { entries: (LogEntry & { seq, signJwk })[], latest }` — at most 500 per page |
+| `POST /books` | new device | `DevicePublic` → `201 { bookId }`; the caller is the only owner; `epoch = 1` |
+| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }`; `409` duplicate `(deviceId, hlc)`; `409` a `rotation` whose `epoch ≠ current + 1`; `413` over 128 KB |
+| `GET /books/:id/entries?since=N` | member | → `200 { entries: SequencedEntry[], latest }`, at most 500 |
 | `POST /books/:id/invites` | owner | `InviteRecord` → `201` |
-| `POST /invites/:id/claim` | new device | `{ signJwk, agreeJwk, deviceName }` → `200 { bookId, epoch, wrapped, sameMember, memberId, baseCurrency }`; `409` if claimed, `410` if expired, `403` bad owner sig, `429` if 5 devices |
+| `GET /invites/:id` | anyone | → `200 { preview, expiresAt, claimed }`; `404` |
+| `POST /invites/:id/claim` | new device | `DevicePublic` → `200 { bookId, epoch, keys, sameMember, memberId }`; `409` claimed; `410` expired; `403` bad owner signature; `429` five devices |
 | `DELETE /books/:id/devices/:deviceId` | owner, or the device itself | → `204` |
 | `PUT /books/:id/owners` | owner | `{ deviceIds }` → `204` |
-| `DELETE /books/:id` | owner | → `204`; every later call on the book answers `410` |
+| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410` |
 
-### 9.3 Durable Object state
+### 9.3 Durable Object state — all of it
 
 ```
-devices: Map<deviceId, { signJwk, agreeJwk, name, addedAt, removedAt? }>
+devices: Map<deviceId, { signJwk, agreeJwk, addedAt, removedAt? }>
 owners:  Set<deviceId>
+epoch:   number                                  // raised by an accepted rotation
 seq:     number
-log:     Map<seq, LogEntry>               // DO storage, one key per seq
+log:     Map<seq, LogEntry>
+seen:    Set<deviceId + ':' + hlc>
 invites: Map<inviteId, InviteRecord & { claimedAt? }>
-baseCurrency: string
 deleted: boolean
 ```
 
-Nothing else. No names beyond a device's own label, no emails, no receipts, no plaintext.
+No name, no currency, no plaintext, no receipt. What the relay can observe: how many devices a book has, when each
+writes, and how much.
 
 ### 9.4 Client behaviour
 
-`RelayTransport` drains `sync_outbox` in `hlc` order whenever the app is foregrounded and every 30 s while open;
-on success deletes the row. It pulls from `applied_seq` at the same times. A failed request leaves the outbox
-intact and is retried on the next tick with exponential backoff capped at 5 minutes. Nothing in the UI ever waits
-on the relay.
+`RelayTransport` drains `sync_outbox` in `hlc` order and pulls from `applied_seq`, when the app comes to the
+foreground and every 30 s while open. A failure leaves the outbox as it was; retry with exponential backoff capped
+at 5 minutes. No screen waits on the relay.
 
 ## 10. Entitlement
 
-`verifyEntitlement(bookId): Promise<boolean>` in `apps/relay/src/entitlement.ts` **returns `true`** in this build.
-It is called on `POST /books` and on `POST /books/:id/entries` from owner devices, and its result is the only thing
-that will gate them later. When tiers arrive: the owner's device sends its StoreKit 2 signed transaction on
-`POST /books`, the Worker verifies the chain and keeps `{ entitledUntil }` only; a lapse makes the book read-only
-on the relay after 30 days. Members never present a receipt. Android gets a second verifier behind the same seam.
+`verifyEntitlement(bookId): Promise<boolean>` in `apps/relay/src/entitlement.ts` **returns `true`**. Called on
+`POST /books` and on owner appends. When tiers exist: the owner's device sends its StoreKit 2 signed transaction on
+`POST /books`; the Worker verifies the chain and keeps `{ entitledUntil }` only; a lapse makes the book read-only
+on the relay after 30 days; nothing is deleted. Members never present a receipt. Android: a second verifier behind
+the same function.
 
 ## 11. Screens
 
-Native kit only; rows and sheets, no new components.
+Native kit only.
 
-**Settings → Workspaces → *a workspace***
+**Settings → Workspaces → a workspace**
 
-| Row | When | Does |
+| Row | Shown when | Does |
 |---|---|---|
-| **Share this workspace** | owner scope, `books.kind != 'shared'` or not yet in `shared_books` | one explanatory paragraph (what the other person will and will not see; the backup-file line from §5.1), then the code, the link, **Share** |
-| **Members** group | shared | one row per member, name + role; under it one row per device: name, "last synced 2 min ago", **Remove** (owner, or own device) |
-| **Link a device** | shared, on your own member row | §8.2 |
-| **Make owner** | owner, on another member | §8.5 |
-| **Leave** | member, on own row | §8.4 for all own devices |
-| **Stop sharing** | owner | confirm sheet, then `deleteBook` |
-| **Sync** line under the name | shared | "Up to date" / "3 changes waiting" / "Not synced since Tue" / "No longer shared by Fandri" |
+| **Share this workspace** | no `shared_books` row | explains what the other person will and will not see, and that a replaced phone needs a new invite; seeds (§6.5); then code, link, **Share** |
+| **Members** | `state = 'active'` | a row per member: name, role; under it a row per device: name, "synced 2 min ago", **Remove** |
+| **Link a device** | on your own member | §8.3 |
+| **Make owner** | you are an owner, on another member | §8.5 |
+| **Leave** | you are a member, on yourself | §8.4 |
+| **Stop sharing** | you are an owner | confirm, then §8.6 |
+| status line | any `shared_books` row | "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" |
 
-**Workspace switcher:** a shared book's subtitle reads **Shared with Dewi** (names of the other members). Its **+**
-menu gains **Join a workspace**: paste a code (or arrive by `cicis://join/…`), see the book's name and the inviter's
-name, **Join**, then the currency check (§8.3).
+**Workspace switcher.** A shared book's subtitle: **Shared with Dewi**. The **+** menu gains **Join a workspace**:
+paste a code or arrive by `cicis://join/…`; then §8.2 steps 2–8.
 
-**On a transaction in a shared book:** the row's subtitle carries `paidLabel`, and `· paid by Dewi` when
-`paidBy` is not this device's member. The receipt shows the same two facts. No link anywhere in a shared book leads
-to an account, a card, a statement or a balance.
-
-**The add form in a shared book:** currency flag drawn but disabled; no With row; otherwise unchanged.
+**A purchase in a shared book.** Subtitle: `paidLabel`, and `· paid by Dewi` when `paidBy` is not you. The receipt
+shows both. No link in a shared book leads to an account, card, statement or balance.
 
 ## 12. Privacy
 
-- App Privacy: whether end-to-end encrypted content counts as "collected" is verified against Apple's current
-  definitions at the submission that carries sharing, and answered truthfully either way. If declared: *Other User
-  Content — not linked to identity — not used for tracking*.
-- `PrivacyInfo.xcprivacy`: unchanged; the relay is a first-party domain, not a tracking domain.
-- What the relay stores is exactly §9.3, and deleting a book deletes all of it.
+- Whether end-to-end encrypted content is "collected" under App Privacy is checked against Apple's definitions at
+  the submission that carries sharing, and answered truthfully either way.
+- `PrivacyInfo.xcprivacy` is unchanged.
+- The relay stores §9.3 and nothing else, and sees no name. Deleting a book deletes all of it.
 
 ## 13. Tests
 
-Money paths: mutate-twice review applies to every step.
+Mutate-twice review on every step.
 
-| Test | Proves |
+| File | Proves |
 |---|---|
-| `convergence.property.test.ts` | N in-memory databases, random local edits with offline stretches, `MemoryTransport` delivering in random interleavings → identical `SHARED_TABLES` on all. ≥ 200 programs per run. |
-| `money-atom.property.test.ts` | after every apply in the above: every transaction's category entries sum to minus its asset entry, and every asset entry names either a real local account or the payer's placeholder |
-| `delete-wins.test.ts` | edit→delete and delete→edit, every arrival order; the row is gone on all devices |
-| `idempotent.test.ts` | applying any entry twice ≡ once |
-| `capture.test.ts` | §6.3 completeness, over every exported repository function |
-| `rotation.test.ts` | a device removed at epoch n cannot decrypt any entry at n+1; a device present throughout reads both; two rotations racing both apply |
-| `hlc.test.ts` | never goes backwards under random wall-clock jumps; ordering is total |
+| global `afterEach` + `installCaptureTriggers` | §6.4: no write to a shared row without an op, across the whole existing suite |
+| `convergence.property.test.ts` | N databases, random local programs (post, correct, void, budget, bill, category) with offline stretches, `MemoryTransport` in random interleavings → every `SHARED_ENTITIES` projection identical on all. Includes a book **seeded** with history before the second device joins. ≥ 200 programs. |
+| `money-atom.property.test.ts` | after every apply: each posted row's entries sum to zero; each lineage has at most one posted row; every money-side entry names a real local account or the payer's placeholder |
+| `same-purchase.test.ts` | two devices correct one purchase offline → one lineage, one posted row, the later `money`; the Cashflow total counts it once |
+| `void-wins.test.ts` | correct→void and void→correct, every arrival order → void on all |
+| `idempotent.test.ts` | any entry twice ≡ once |
+| `payer-ledger.test.ts` | a member's correction of the payer's purchase moves the payer's account balance, keeps its set-aside answer and its bill payment |
+| `rotation.test.ts` | removed at epoch n cannot open n+1; a remaining device opens both; two devices rotating at once → one `201`, one `409`, one epoch; the leaving device never seals |
+| `join.test.ts` | a joiner after two rotations reads the whole history; a currency mismatch claims nothing |
+| `restore.test.ts` | §8.7: `needs_invite`, then rejoin converges |
+| `hlc.test.ts` | monotonic under clock jumps; total order; the 24 h rule blocks and then releases |
+| `pinning.test.ts` | an entry signed by a key the relay supplied but no `device` op introduced is refused |
 | `crypto.kat.test.ts` | HKDF-SHA-256, AES-GCM, ECDSA P-256, ECDH P-256 against published vectors |
-| `relay.test.ts` (Miniflare) | every `4xx` in §9.2; signature and allow-list refusals; one-time claim; 5-device cap; `410` after delete; owner-only calls |
-| `sharing.spec.ts` (Playwright, phone + desktop) | two browser contexts, one local Worker: share, join, record on both, edit each other's, remove a device, rotate, same Cashflow total on both |
+| `relay.test.ts` (Miniflare, to be installed) | every status code in §9.2 |
+| `sharing.spec.ts` (Playwright, phone and desktop, `WebKeyStore`) | two contexts, a local Worker: share a book with history, join, record on both, correct each other's, remove, rotate, same Cashflow total |
 
 ## 14. Build order
 
-Each step lands green, reviewed, before the next.
-
 | # | Step | Done when |
 |---|---|---|
-| 1 | **Capture and merge, no network.** Migration 0056; `SHARED_TABLES`; `withCapture` in every book-scoped repository; HLC; `applyEntry`; `applyMoney`; placeholder accounts; `MemoryTransport`. | `capture`, `convergence`, `money-atom`, `delete-wins`, `idempotent`, `hlc` tests green; full existing suite untouched. |
-| 2 | **Keys.** Keychain plugin chosen and wired; device keys; epoch keys; wrap/unwrap for device and invite; at-rest encryption; log entry encrypt/sign/verify. | `crypto.kat`, `rotation` green; step-1 tests still green with encryption on. |
-| 3 | **The relay.** `apps/relay`, Worker + DO, every endpoint, signed requests; `RelayTransport`; outbox draining; polling. | `relay.test.ts` green under Miniflare; two real simulator installs converge through a local Worker. |
-| 4 | **Screens.** Everything in §11. | `sharing.spec.ts` green on both projects. |
-| 5 | **Hiding.** Placeholder accounts excluded from every owner-scope reader listed in §4.3; disabled flag and no With row in a shared book. | one e2e per excluded page asserting the placeholder is absent. |
-| 6 | **Ownership edges.** Make owner, Leave, Stop sharing, the frozen and `410` cases. | covered in `sharing.spec.ts`. |
-
-Estimate at the fast-track cadence: step 1 is the largest; steps 2–3 together about the size of step 1; 4–6
-together smaller than 1.
+| 0 | **Confirm `SHARED_ENTITIES`** against the code: every table, key, scope rule and column in §4.1; correct the spec where the code differs. | the constant exists with a test that each named table and column exists in the schema |
+| 1 | **Capture and merge, no network.** Migration 0056; `withCapture`; the three ledger doors; `sync_lineage`; HLC; seeding; `apply`, `applyPurchase`, `moneySide`; placeholder accounts; `MemoryTransport`; the trigger harness. Keys are a stub that seals with the identity function. | capture harness, `convergence`, `money-atom`, `same-purchase`, `void-wins`, `idempotent`, `payer-ledger`, `hlc` green; the existing suite green and unchanged |
+| 2 | **Keys.** Precondition: `feat/ios-testflight` merged. `KeyStore` both ways; epoch keys; sealing; entry encrypt, sign, verify; pinning; at rest. | `crypto.kat`, `rotation`, `pinning`, `join`, `restore` green; step 1's tests green with real sealing |
+| 3 | **The relay.** `apps/relay`; every endpoint; `RelayTransport`; outbox; polling. | `relay.test.ts` green; two simulators converge through a local Worker |
+| 4 | **Screens.** §11. | `sharing.spec.ts` green on both projects |
+| 5 | **Hiding.** The anti-join on every reader named in §4.4; the disabled flag; no With row. | one e2e per excluded page |
+| 6 | **Edges.** Make owner, Leave, Stop sharing, frozen, `410`, `needs_invite`. | covered in `sharing.spec.ts` and `restore.test.ts` |
 
 ## 15. Left open
 
-- The keychain plugin (step 2 picks; must support iOS synchronizable items).
-- The exact membership of `SHARED_TABLES` (step 1 confirms each against the code).
-- The relay's domain and Cloudflare account (before step 3).
-- App Privacy wording for E2E content (at submission).
-- **Encrypted backups** — separate work, and the moment they exist the device keys can travel in them. Independently
-  urgent: today's backup file is a plaintext copy of a household's finances wherever it lands.
-- Everything in §0's table, each behind its named seam.
+- The keychain plugin for `NativeKeyStore` (step 2).
+- `budget_frequencies`' key and columns (step 0).
+- The relay's domain and the Cloudflare account (before step 3).
+- The App Privacy wording (at submission).
+- **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a
+  household's finances wherever it lands.
