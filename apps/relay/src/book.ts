@@ -117,6 +117,8 @@ export class Book {
     if (already !== undefined) return { seq: already, created: false };
 
     if (byteSize(entry) > MAX_ENTRY_BYTES) throw new RelayError(413, 'entry over 128 KB');
+    // A removal of another device needs an owner, as DELETE /devices does (spec §8.4, task 5 fix round 1).
+    if (entry.kind === 'removal' && entry.target !== actor && !meta.owners.includes(actor)) throw new RelayError(403, 'only an owner removes another device');
     if (entry.kind === 'rotation' && entry.epoch !== meta.epoch + 1) {
       throw new RelayError(409, 'a rotation must raise the epoch by exactly one');
     }

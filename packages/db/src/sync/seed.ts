@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../database';
-import { lineageOfTransaction, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
+import { lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
 import type { DevicePublic, Op } from './types';
 
 /*
@@ -10,7 +10,7 @@ import type { DevicePublic, Op } from './types';
  * change-sets with fresh hlcs and their field clocks written. Step 4 (draining, and the invite after it) is the caller's.
  */
 
-export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED';
+export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS';
 
 export class SharingError extends Error {
   constructor(
@@ -91,7 +91,9 @@ export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, inp
 async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: string, id: string) => boolean): Promise<Op[]> {
   const ops: Op[] = [];
   const rows = async (entity: string) => (await rowUpsertsTx(tx, book, entity)).filter((op) => keep(op.entity, op.id));
-  ops.push(...(await rows('book')), ...(await rows('member')), ...(await rows('device')));
+  // A device row is written by its own device only (§5.4, task 5 fix round 1): only this device's goes out.
+  const self = await localDeviceId(tx);
+  ops.push(...(await rows('book')), ...(await rows('member')), ...(await rows('device')).filter((op) => op.id === self));
   ops.push(...parentsFirst(await rows('category')), ...(await rows('category_need')));
   ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));

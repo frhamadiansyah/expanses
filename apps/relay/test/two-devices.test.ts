@@ -60,7 +60,7 @@ describe('two devices through the local relay', () => {
       const opened = await Promise.all(
         entries.map((e) => (e.kind === 'change' ? openChangeSet(epochKey, bookId, e) : Promise.reject(new Error(e.kind)))),
       );
-      for (const e of entries) await expect(verifyEntry(e.signJwk, e)).resolves.toBe(true);
+      for (const e of entries) await expect(verifyEntry(e.signJwk, bookId, e)).resolves.toBe(true);
       expect(opened).toEqual(sent.map(([, set]) => set));
       expect(entries[0]?.signJwk).toEqual(dewi.devicePublic.signJwk);
       expect(entries[1]?.signJwk).toEqual(fandri.devicePublic.signJwk);

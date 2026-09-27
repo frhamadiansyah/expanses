@@ -192,3 +192,30 @@ describe('sharing (§6.5) leaves nothing on the relay when the seed fails', () =
     await expect(fandri.engine.shareBook(book.id, { memberName: 'Fandri', deviceName: 'phone' })).resolves.toMatchObject({ changeSets: 1 });
   });
 });
+
+describe('what joining checks before it claims (I4, task 5 fix round 1)', () => {
+  it('a book this device already holds is refused before the claim, so the invite is not spent', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(fandri);
+    const { code, inviteId } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri' });
+    // The owner's own device opening its own invite: the book is here already.
+    await expect(fandri.engine.joinBook(code, { ws: fandri.ws, memberName: 'x', deviceName: 'x' })).rejects.toMatchObject({ code: 'ALREADY_SHARED' });
+    // A device holding a book under that id that is not shared (a copy of the owner's file, say).
+    const copy = await home.device('Copy');
+    await copy.database.execScript(
+      `INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at) VALUES ('${bookId}', '${copy.ws.workspaceId}', 'Personal', 'personal', 'IDR', 0, 5, NULL, '2026-01-01')`,
+    );
+    await expect(copy.engine.joinBook(code, { ws: copy.ws, memberName: 'x', deviceName: 'x' })).rejects.toMatchObject({ code: 'ALREADY_SHARED' });
+    await expect(fandri.transport.previewInvite(inviteId)).resolves.toMatchObject({ claimed: false });
+  });
+
+  it("the invite's keys and its preview are sealed apart: neither opens as the other", async () => {
+    const { inviteKeyOf, openInviteJson, sealInviteJson, inviteAad } = await import('../../src/sync/invite');
+    const key = await inviteKeyOf(new Uint8Array(16), 'invite-1');
+    const keys = await sealInviteJson(key, [{ epoch: 1, key: 'k' }], inviteAad('keys', 'invite-1'));
+    await expect(openInviteJson(key, keys, inviteAad('preview', 'invite-1'))).rejects.toThrow();
+    await expect(openInviteJson(key, keys, inviteAad('keys', 'invite-2'))).rejects.toThrow();
+    await expect(openInviteJson(key, keys, inviteAad('keys', 'invite-1'))).resolves.toEqual([{ epoch: 1, key: 'k' }]);
+  });
+});

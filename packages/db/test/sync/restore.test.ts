@@ -56,7 +56,11 @@ describe('a restored backup (§8.7)', () => {
     expect(await restored.engine.syncOnce(bookId)).toMatchObject({ pushed: 0, applied: 0 });
 
     const [[memberBefore]] = (await restored.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`)) as [[string]];
-    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi' });
+    // A restored phone rejoins as the member it was: the owner's invite names that member (§8.7, task 5 fix round 1).
+    const { code: wrong } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi' });
+    await expect(restored.engine.joinBook(wrong, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' })).rejects.toMatchObject({ code: 'INVITE_MISMATCH' });
+    await expect(restored.transport.previewInvite((await restored.engine.previewInvite(wrong)).inviteId)).resolves.toMatchObject({ claimed: false });
+    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: memberBefore });
     const { memberId } = await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' });
     expect(memberId).toBe(memberBefore);
     expect(await state(restored, bookId)).toBe('active');

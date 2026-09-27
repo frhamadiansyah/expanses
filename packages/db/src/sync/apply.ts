@@ -5,6 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
+import { authorisedOp, introductionRefusal, removalRefusal, removedBefore, wasRefused } from './authority';
 import { openSealedKey } from './crypto';
 import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
@@ -542,6 +543,12 @@ export interface SkippedOp {
 export interface ApplyRun {
   seq: number;
   skipped: SkippedOp[];
+  /** Who wrote the entry (its signed `deviceId`); from the change-set's hlc when a test applies one directly. */
+  author?: string;
+  /** The book's first entry: its creator's seed, whose own member may be written as owner (§8.5). */
+  creator?: boolean;
+  /** The member an admitted introduction joins as, which it may write with the role 'member' (§8.5). */
+  introducedMember?: string;
 }
 
 let savepoints = 0;
@@ -574,6 +581,7 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
 /** §7.2, inside the caller's transaction, capture already off. Held purchase ops go into `held`. */
 export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: ChangeSet, held: HeldOps = new Map(), run: ApplyRun = { seq: 0, skipped: [] }): Promise<void> {
   await receiveHlc(tx, changeSet.hlc);
+  const author = run.author ?? decodeHlc(changeSet.hlc).deviceId;
   for (const op of changeSet.ops) {
     const entity = entityOf(op.entity);
     if (entity.kind === 'purchase') {
@@ -583,7 +591,8 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       });
       continue;
     }
-    await guarded(tx, ctx, run, op, () => applyRowOp(tx, ctx, entity, op, changeSet.hlc));
+    // Who may write what (task 5 fix round 1): a refused op is a recorded skip, the same on every device.
+    await guarded(tx, ctx, run, op, async () => applyRowOp(tx, ctx, entity, await authorisedOp(tx, ctx.bookId, op, author, run.creator ?? false, run.introducedMember), changeSet.hlc));
   }
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
   for (const [lineageId, ops] of [...held]) {
@@ -644,14 +653,14 @@ const jwkOf = (value: unknown): JsonWebKey | null => {
  * whose change-set upserts the author's own `device` row, whose `signJwk` is the key the relay supplied, derives to the
  * author's id, and verifies the entry's signature. Anything else from an unpinned device is refused.
  */
-async function verifiesAsIntroduction(entry: SequencedEntry, changeSet: ChangeSet): Promise<boolean> {
+async function verifiesAsIntroduction(bookId: string, entry: SequencedEntry, changeSet: ChangeSet): Promise<boolean> {
   const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === entry.deviceId && op.op === 'upsert');
   if (!intro || intro.op !== 'upsert') return false;
   const inner = jwkOf(intro.fields.signJwk);
   if (!inner) return false;
   const [innerId, relayId] = await Promise.all([deviceIdOf({ signJwk: inner }).catch(() => null), deviceIdOf({ signJwk: entry.signJwk }).catch(() => null)]);
   if (innerId !== entry.deviceId || relayId !== entry.deviceId) return false;
-  return verifyEntry(inner, entry);
+  return verifyEntry(inner, bookId, entry);
 }
 
 /**
@@ -693,15 +702,20 @@ export async function pullAndApply(
         }
       };
       const pinned = await pinnedKeyOf(database, bookId, entry.deviceId);
+      let introducing = false;
       if (pinned) {
-        if (!(await verifyEntry(pinned, entry))) return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (!(await verifyEntry(pinned, bookId, entry))) return finish({ seq: entry.seq, reason: 'bad signature' });
+      } else if (await wasRefused(database.db, bookId, entry.deviceId)) {
+        // Its introduction was refused: what it writes after is refused the same way, not a stop that blocks the book.
+        await skipEntry(entry, entry.kind, entry.deviceId, 'AUTHORITY: its device was never admitted');
+        continue;
       } else {
         if (entry.kind !== 'change') return finish({ seq: entry.seq, reason: 'bad signature' });
         const opened = await openChange().catch(() => null);
         if (opened === 'missing') return needsInvite(entry.seq);
-        if (!opened || !(await verifiesAsIntroduction(entry, opened))) return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (!opened || !(await verifiesAsIntroduction(bookId, entry, opened))) return finish({ seq: entry.seq, reason: 'bad signature' });
         changeSet = opened;
-        introduced.push(entry.deviceId);
+        introducing = true;
       }
       if (entry.kind === 'change' && entry.deviceId !== self) {
         if (!changeSet) {
@@ -709,6 +723,8 @@ export async function pullAndApply(
           if (opened === 'missing') return needsInvite(entry.seq);
           changeSet = opened;
         }
+        // The change-set inside must be the one the signed envelope names.
+        if (changeSet.hlc !== entry.hlc) return finish({ seq: entry.seq, reason: 'bad signature' });
         if (driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
         if (seen) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
       } else if (entry.kind === 'change') {
@@ -719,31 +735,70 @@ export async function pullAndApply(
         const mine = entry.sealed.find((sealed) => sealed.deviceId === self && sealed.epoch === entry.epoch);
         rotationKey = mine ? await openSealedKey(sealer.device.agree.privateKey, bookId, mine).catch(() => null) : null;
       }
+      let removal: { epoch: number; target: string } | null = null;
+      let admitted = false;
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
-          const run: ApplyRun = { seq: entry.seq, skipped: [] };
-          if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
-          if (entry.kind === 'removal') await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
-          if (entry.kind === 'rotation') {
-            await receiveHlc(tx, entry.hlc);
-            // Not sealed for this device: it was added after the rotator last pulled. Its next entry under the new
-            // epoch stops the loop as `needs invite`.
-            if (rotationKey) {
-              await sealer.storeEpochKeyTx(tx, bookId, entry.epoch, rotationKey);
-              await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${entry.epoch}) WHERE book_id = ${bookId}`);
+          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId, creator: introducing && entry.seq === 1 };
+          const refuse = async (entity: string, id: string, error: string) => {
+            const skip: SkippedOp = { seq: entry.seq, entity, id, error };
+            await tx.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${entry.seq}, ${entity}, ${id}, ${error}, ${new Date().toISOString()})`);
+            run.skipped.push(skip);
+          };
+          const removedFirst = await removedBefore(tx, bookId, entry.deviceId, entry.hlc);
+          const introWhy = !removedFirst && introducing && changeSet ? await introductionRefusal(tx, bookId, entry.deviceId, entry.seq, changeSet) : null;
+          if (removedFirst) {
+            // I2: written after its author's removal. Counts for nothing, anywhere.
+            await refuse(entry.kind, entry.deviceId, 'AUTHORITY: written after its device was removed');
+          } else if (introWhy) {
+            await refuse('device', entry.deviceId, introWhy);
+          } else {
+            admitted = introducing;
+            if (introducing && changeSet) {
+              const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === entry.deviceId && op.op === 'upsert');
+              if (intro && intro.op === 'upsert' && typeof intro.fields.memberId === 'string') run.introducedMember = intro.fields.memberId;
+            }
+            if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
+            if (entry.kind === 'removal') {
+              const why = await removalRefusal(tx, bookId, entry.deviceId, entry.target);
+              if (why) await refuse('removal', entry.target, why);
+              else {
+                await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+                removal = { epoch: entry.epoch, target: entry.target };
+              }
+            }
+            if (entry.kind === 'rotation') {
+              await receiveHlc(tx, entry.hlc);
+              // Not sealed for this device: it was added after the rotator last pulled. Its next entry under the new
+              // epoch stops the loop as `needs invite`.
+              if (rotationKey) {
+                await sealer.storeEpochKeyTx(tx, bookId, entry.epoch, rotationKey);
+                await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${entry.epoch}) WHERE book_id = ${bookId}`);
+              }
             }
           }
           skipped.push(...run.skipped);
           await setCursorTx(tx, bookId, entry.seq);
         }, changeSet ?? undefined),
       );
-      if (entry.kind === 'removal') removals.push({ epoch: entry.epoch, target: entry.target });
+      if (admitted) introduced.push(entry.deviceId);
+      if (removal) removals.push(removal);
       since = entry.seq;
       applied += 1;
     }
   }
   return finish();
 
+  /** An entry refused as a whole, before anything of it is opened: recorded, and the cursor moves past it. */
+  async function skipEntry(entry: SequencedEntry, entity: string, id: string, error: string): Promise<void> {
+    await database.transaction(async (tx) => {
+      await tx.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${entry.seq}, ${entity}, ${id}, ${error}, ${new Date().toISOString()})`);
+      await setCursorTx(tx, bookId, entry.seq);
+    });
+    skipped.push({ seq: entry.seq, entity, id, error });
+    since = entry.seq;
+    applied += 1;
+  }
   async function needsInvite(seq: number): Promise<PullResult> {
     await database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
     return finish({ seq, reason: 'needs invite' });

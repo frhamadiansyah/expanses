@@ -233,6 +233,16 @@ describe('§9.2 POST /books/:id/entries', () => {
     await expect(owner.transport.append(bookId, change(joiner.deviceId, 'h1'))).rejects.toMatchObject({ status: 403 });
   });
 
+  it('403s a removal of another device by a member who is not an owner; a device may remove itself, an owner anyone', async () => {
+    const { bookId, owner } = await bookWithOwner();
+    const { joiner } = await join(bookId, owner);
+    const { joiner: other } = await join(bookId, owner);
+    const removal = (by: TestDevice, target: string, hlc: string) => ({ kind: 'removal' as const, deviceId: by.deviceId, epoch: 1, hlc, target, sig: 'sig' });
+    await expect(joiner.transport.append(bookId, removal(joiner, other.deviceId, 'x1'))).rejects.toMatchObject({ status: 403 });
+    await expect(joiner.transport.append(bookId, removal(joiner, joiner.deviceId, 'x2'))).resolves.toMatchObject({ seq: 1 });
+    await expect(owner.transport.append(bookId, removal(owner, other.deviceId, 'x3'))).resolves.toMatchObject({ seq: 2 });
+  });
+
   it('400s a body that is not a LogEntry', async () => {
     const { bookId, owner } = await bookWithOwner();
     const res = await raw(base, { method: 'POST', path: `/books/${bookId}/entries`, signer: owner.signer, body: { kind: 'nope' } });

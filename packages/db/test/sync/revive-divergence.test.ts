@@ -25,12 +25,13 @@ describe('reviving a row keeps what each field last said', () => {
     const id = 'member-X';
     await write(fandri, bookId, id, `INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES ('${bookId}', '${id}', 'X', 'member', '2026-01-01')`);
     await home.settle();
-    await write(fandri, bookId, id, `UPDATE book_members SET name = 'X renamed' WHERE member_id = '${id}'`);
+    // Dewi renames and deletes; Fandri, the owner (only an owner writes a role, §8.5), edits the role unaware.
+    await write(dewi, bookId, id, `UPDATE book_members SET name = 'X renamed' WHERE member_id = '${id}'`);
     await pause();
-    await write(fandri, bookId, id, `DELETE FROM book_members WHERE member_id = '${id}'`);
-    await fandri.engine.syncOnce(bookId);
+    await write(dewi, bookId, id, `DELETE FROM book_members WHERE member_id = '${id}'`);
+    await dewi.engine.syncOnce(bookId);
     await pause();
-    await write(dewi, bookId, id, `UPDATE book_members SET role = 'owner' WHERE member_id = '${id}'`);
+    await write(fandri, bookId, id, `UPDATE book_members SET role = 'owner' WHERE member_id = '${id}'`);
     await home.settle();
     await home.settle();
     const f = (await projectBook(fandri.database, bookId)).member![id];

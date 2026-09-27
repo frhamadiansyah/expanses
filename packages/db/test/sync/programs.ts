@@ -301,6 +301,10 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         // A revivable row (keyed by member id) renamed, re-roled, deleted and made again on any device: the
         // rename-then-delete against a concurrent partial edit that fix round 2 is about.
         const [row] = await database.db.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
+        // Only an owner writes a role, and making the row again writes one (§8.5, task 5 fix round 1): a member's
+        // device only renames.
+        const [mine] = await database.db.values<[string]>(sql`SELECT m.role FROM book_members m JOIN shared_books s ON s.book_id = m.book_id AND s.member_id = m.member_id WHERE m.book_id = ${bookId}`);
+        if (step.action !== 'rename' && mine?.[0] !== 'owner') return false;
         await database.transaction((tx) =>
           withCapture(tx, { entity: 'member', id: EXTRA, bookId }, async () => {
             if (step.action === 'toggle') {

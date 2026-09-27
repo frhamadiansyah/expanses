@@ -42,6 +42,13 @@ op" was never true), checked against the relay's key by device id; §6.6 — `de
 the joiner needs because every device keeps the book under one id and the entry AAD binds it; §15 — the keychain plugin
 is `@aparajita/capacitor-secure-storage`. Each changed passage says "(task 5)".
 
+**Task 5, fix round 1** (security review; controller rulings C1–C3, I1–I4): §5.4 — a device row is its own device's
+alone: its keys are fixed by its introduction, `removedAt` is set only by a removal entry, and nobody pre-pins another
+device; §6.6 — every entry's signature covers its `bookId`; §8.2 — an introduction carries owner-signed invite terms and
+is checked before its device is pinned, once per invite, and the joiner checks locally before it claims; §8.4 — a
+removal of another device needs an owner, on the relay and in apply, and a removed device's later entries count for
+nothing; §8.5 — only an owner writes a role. Migration `0057_sync_invites_used`. Each passage says "(fix round 1)".
+
 ## 0. What v3 changed
 
 v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
@@ -213,6 +220,10 @@ CREATE TABLE sync_tombstones (
 CREATE TABLE sync_skipped (                             -- task 4 fix round 1: an op apply refused, never silent (§7.1)
   book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
 );
+CREATE TABLE sync_invites_used (                        -- 0057, task 5 fix round 1: one device per invite (§8.2)
+  book_id TEXT NOT NULL, invite_id TEXT NOT NULL, device_id TEXT NOT NULL,
+  PRIMARY KEY (book_id, invite_id)
+);
 ```
 
 **Sharing state is `shared_books`, never `books.kind`.** `kind` is a label the owner picked and stays whatever it
@@ -381,7 +392,15 @@ the pinned key. Rotations seal for the devices in `book_devices`, never for a li
 
 **As built (task 5).** "Matches" is by device id: the key inside and the relay's key must both derive to the entry's
 `deviceId`. An unpinned device's `removal` or `rotation` is refused outright, as is a `change` without its author's
-`device` op; a refusal stops the loop at that entry with `bad signature` (§7.1). `pinning.test.ts` covers a device on the
+`device` op; a refusal stops the loop at that entry with `bad signature` (§7.1). The change-set inside must carry the
+entry's own hlc.
+
+**A device row is its own device's (fix round 1, C1).** A `device` op is applied only when its author is that device;
+any other is a recorded skip, so nobody can pre-pin a device that never introduced itself or re-pin one that did.
+`signJwk`, `agreeJwk`, `memberId` and `addedAt` are written once, by the introduction, and the key must be the one the
+entry verified under (it derives to the device's id); later ops of the device carry them and they are dropped. A device
+op is never a delete. `removedAt` is never taken from an op — only a removal entry (§8.4) sets it. Capture and seeding
+emit only this device's own `device` row. An introduction is then admitted only on the terms of §8.2. `pinning.test.ts` covers a device on the
 relay that holds the epoch key but never introduced itself, an introduction carrying another key, and a relay that
 swaps a pinned device's key to pass a forged entry.
 
@@ -568,6 +587,10 @@ type SequencedEntry = LogEntry & { seq: number; signJwk: JsonWebKey };
 `ct = AES-GCM(epochKey[epoch], iv = random(12), data = deflate(utf8(JSON(changeSet))), aad = utf8(bookId + ':' +
 epoch + ':' + deviceId))`. `sig = ECDSA(sign.private, SHA-256(utf8(JSON(entry without sig, keys sorted))))`.
 Everything binary is base64url. A `rotation`'s `epoch` is the **new** epoch.
+
+**Fix round 1 (I1).** The signed bytes are `canonicalJson({ ...entry without sig, bookId })`: every entry kind names the
+(local, shared) book it belongs to, so a device's signed `removal` or `rotation` cannot be replayed into another book it
+shares. A `change` was already bound to its book by its AAD.
 
 **As built (task 5).** A change-set is sealed **when the outbox drains**, not at capture (controller ruling): the outbox
 keeps it as plaintext — the local database holds the same rows in the clear — so a locked keychain never blocks a save,
@@ -778,6 +801,23 @@ field that is not a winner `undefined`, never `null`: above all `setAside`, `tem
    `sameMember`, this `member` with the name the person typed.
 8. `pull(bookId, 0)` and apply everything.
 
+**Invite terms (fix round 1, C3).** The owner device signs the invite's **terms** — `{ inviteId, sameMember,
+memberId? }` for this book, `sig = ECDSA(sign.private, canonicalJson({ purpose: 'cicis-invite-terms-v1', bookId,
+inviteId, sameMember, memberId? }))` — and seals them in the preview. The joiner puts them, as `ChangeSet.invite`, on
+its introduction (one change-set of its own, written directly rather than captured, carrying its `device` op and, for a
+new member, its `member` op). Every device, applying an introduction after the log's first entry, checks before pinning:
+the terms verify under the pinned key of a current device of an **owner** member; `sameMember` introduces exactly the
+`memberId` they name, and otherwise a member id not already in `book_members`; and no earlier device used the invite
+(`sync_invites_used`, migration 0057: first by seq wins). A refused introduction is a recorded skip, and so is every later
+entry of that device (not a stop, which would let it block the book). The log's first entry is the creator's seed and
+needs no terms; `createInvite` drains the outbox first (§6.5 step 4), so the seed is always there before any invite.
+The keys and the preview are sealed with additional data `keys:<inviteId>` / `preview:<inviteId>`, so neither opens as the
+other, and an invite with no keys is never made.
+
+**Before the claim (fix round 1, I4).** The claim spends the invite, so the joiner checks everything local first: the
+currency, a book already held under that id (shared or not), and, for a rejoin (§8.7), that the terms name this
+device's member. A local failure after the claim needs a fresh invite from an owner — the recovery is to ask again.
+
 **As built (task 5).** `SyncEngine.previewInvite(code)` and `joinBook(code, { ws, memberName, deviceName })` in
 `engine.ts`; the code helpers in `invite.ts`. A mistyped code (the preview does not open) is `BAD_CODE`; a claimed or
 expired invite says so before claiming. `shared_books.epoch` is the claim's epoch when the invite carried its key, else
@@ -817,6 +857,12 @@ another device) and `shared_books.epoch` is still the removal's epoch:
 A device never rotates on its own removal. Between a removal and its rotation, writes continue under the old
 epoch; the removed device cannot pull them, which is the relay's doing until the rotation makes it cryptography's.
 
+**Who may remove (fix round 1, C2).** A removal entry counts only when its target is its author, or its author's member
+is an owner (`book_members.role`, at apply time). Anything else is a recorded skip: never applied, never a reason to
+rotate. The relay refuses such an append (`403`) with its own owner set, as `DELETE /devices` does, and so does
+`MemoryTransport`. **A removed device's later entries (I2)**: an entry whose author was removed at an hlc before the
+entry's own is a recorded skip on every device, however it reached the log.
+
 **As built (task 5).** `removeDevice(bookId, target)` appends the signed removal, calls the relay, and for another
 device syncs at once, which applies the removal and rotates. `syncOnce` runs `maybeRotate` after its pull loop, once per
 removal applied, and pulls again after a `201` or a `409`; running it after the loop rather than mid-loop means a
@@ -824,7 +870,11 @@ rotation already in the same page wins without a `409`. A device whose own row i
 
 ### 8.5 Ownership
 
-`book_members.role`, synced. The relay keeps the set of owner **device ids** for authorising `putInvite`,
+`book_members.role`, synced. **Only an owner writes it (fix round 1, C3):** a `member` op naming `role` among its
+changed fields is applied only when its author's member is an owner — or the op is the creator's own member in the
+log's first entry, or a new member's own introduction naming itself `'member'`; any other is a recorded skip. A role a
+non-owner's op merely carries (a whole revivable row) loses its clock and can only ever insert as `'member'`. The relay
+keeps the set of owner **device ids** for authorising `putInvite`,
 `removeDevice` of another device, `setOwners`, `deleteBook`. **Make owner**: a `member` op setting `role`, and
 `setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
 and sync, nobody can invite or remove; rotation still works.
@@ -842,7 +892,8 @@ A backup is the whole database, so it carries `shared_books` and `sync_*` and no
 shows **"Ask Dewi for a new invite to keep sharing"**; its rows are all there and recording works, locally.
 
 **As built (task 5).** `SyncEngine.checkRestore()` at open (and a guard at the top of `syncOnce`). Rejoining is
-`joinBook` on a book in `needs_invite`: the old epoch keys are dropped, the cursor goes to 0, and after the pull every
+`joinBook` on a book in `needs_invite`, with an invite whose terms name this member (`createInvite(…, { sameMember:
+true, memberId })` by an owner; fix round 1): the old epoch keys are dropped, the cursor goes to 0, and after the pull every
 row in scope whose `Op.id` the pull never saw is emitted as new (`emitUnknownRowsTx`, sharing the seed's row walk).
 Recording while waiting works and is captured by nothing (capture watches `active` books only); the rejoin emits it.
 
@@ -1022,8 +1073,8 @@ Mutate-twice review on every step.
 ## 15. Left open
 
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
-  Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Not yet run on a
-  device: `cap sync` and an Xcode build are task 7's.
+  Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
+  iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.
 - The relay's domain and the Cloudflare account (before step 3).
 - The App Privacy wording (at submission).
 - **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a

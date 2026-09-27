@@ -40,7 +40,7 @@ describe('Sealer', () => {
     expect(JSON.stringify(entry)).not.toContain('cat-1');
     expect(base64UrlToBytes(entry.iv)).toHaveLength(12);
     await expect(sealer.open('book-1', entry)).resolves.toEqual(changeSet);
-    await expect(verifyEntry(device.public.signJwk, entry)).resolves.toBe(true);
+    await expect(verifyEntry(device.public.signJwk, 'book-1', entry)).resolves.toBe(true);
   });
 
   it('a fresh iv every time: the same change-set never seals to the same bytes', async () => {
@@ -65,19 +65,21 @@ describe('Sealer', () => {
   it('the signature covers every field and verifies under no other key', async () => {
     const { sealer, device } = await sealerWithKey();
     const entry = await sealer.seal('book-1', 1, changeSet);
-    await expect(verifyEntry(device.public.signJwk, { ...entry, hlc: '000001912d59a2ac0001-device-a' })).resolves.toBe(false);
-    await expect(verifyEntry(device.public.signJwk, { ...entry, epoch: 2 })).resolves.toBe(false);
+    await expect(verifyEntry(device.public.signJwk, 'book-1', { ...entry, hlc: '000001912d59a2ac0001-device-a' })).resolves.toBe(false);
+    await expect(verifyEntry(device.public.signJwk, 'book-1', { ...entry, epoch: 2 })).resolves.toBe(false);
     const other = await generateDevice();
-    await expect(verifyEntry(other.public.signJwk, entry)).resolves.toBe(false);
+    await expect(verifyEntry(other.public.signJwk, 'book-1', entry)).resolves.toBe(false);
     // What the relay adds on the way back (seq, the author's key) is not signed and does not break the signature.
-    await expect(verifyEntry(device.public.signJwk, { ...entry, seq: 4, signJwk: device.public.signJwk } as LogEntry)).resolves.toBe(true);
+    await expect(verifyEntry(device.public.signJwk, 'book-1', { ...entry, seq: 4, signJwk: device.public.signJwk } as LogEntry)).resolves.toBe(true);
   });
 
   it('removal and rotation entries are signed the same way', async () => {
     const { sealer, device } = await sealerWithKey();
-    const removal = await sealer.sign({ kind: 'removal' as const, deviceId: device.deviceId, epoch: 1, hlc: changeSet.hlc, target: 'x' });
-    await expect(verifyEntry(device.public.signJwk, removal)).resolves.toBe(true);
-    await expect(verifyEntry(device.public.signJwk, { ...removal, target: 'y' })).resolves.toBe(false);
+    const removal = await sealer.sign('book-1', { kind: 'removal' as const, deviceId: device.deviceId, epoch: 1, hlc: changeSet.hlc, target: 'x' });
+    await expect(verifyEntry(device.public.signJwk, 'book-1', removal)).resolves.toBe(true);
+    await expect(verifyEntry(device.public.signJwk, 'book-1', { ...removal, target: 'y' })).resolves.toBe(false);
+    // The book is signed too (I1): the same removal replayed into another book does not verify there.
+    await expect(verifyEntry(device.public.signJwk, 'book-2', removal)).resolves.toBe(false);
   });
 
   it('without the epoch key it says so, rather than failing some other way', async () => {

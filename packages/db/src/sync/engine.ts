@@ -3,11 +3,12 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, type PullResult } from './apply';
-import { captureConfigOf, configureCapture, withCapture, writeChangeSetsTx } from './capture';
+import { captureConfigOf, configureCapture, rowUpsertsTx, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
 import {
   encodeInviteCode,
+  inviteAad,
   INVITE_TTL_MS,
   inviteKeyOf,
   inviteLink,
@@ -15,6 +16,7 @@ import {
   openInviteJson,
   parseInviteCode,
   sealInviteJson,
+  termsSigningBytes,
   type InviteKey,
   type InvitePreview,
 } from './invite';
@@ -22,7 +24,7 @@ import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, emitUnknownRowsTx, SharingError, seedBookTx } from './seed';
-import type { ChangeSet, InviteRecord, LogEntry, SyncTransport } from './types';
+import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
 import { SyncTransportError } from './types';
 
 /*
@@ -177,27 +179,41 @@ export class SyncEngine {
 
   /**
    * §8.1: an invite to the book, sealing every epoch key this device holds and a preview under a key derived from a
-   * fresh secret that only the code carries. `sameMember` links another device of this device's own member (§8.3).
+   * fresh secret that only the code carries. `sameMember` links another device of a member that already exists: this
+   * device's own (§8.3), or `memberId` — a restored phone of another member rejoining (§8.7). The terms — which member
+   * the new device may join as — are signed by this device and travel sealed in the preview to the joiner, and in its
+   * introduction to everyone, who check them before pinning it (§8.2, task 5 fix round 1).
    */
-  async createInvite(bookId: string, input: { inviterName: string; sameMember?: boolean }): Promise<CreatedInvite> {
+  async createInvite(bookId: string, input: { inviterName: string; sameMember?: boolean; memberId?: string }): Promise<CreatedInvite> {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     const [book] = await this.database.db.values<[string, string]>(sql`SELECT name, base_currency FROM books WHERE id = ${bookId}`);
     if (!book) throw new SharingError('NOT_FOUND', 'That workspace is not here');
+    // §6.5 step 4: the outbox is drained before any invite exists, so the creator's seed is always the log's first
+    // entry — the one introduction that needs no invite (§8.2) — and every joiner finds the book already there.
+    await this.drain(bookId);
     const inviteId = uuidv7();
     const secret = newInviteSecret();
     const key = await inviteKeyOf(secret, inviteId);
     const epochKeys: InviteKey[] = (await this.sealer.epochKeysOf(bookId)).map(({ epoch, key: k }) => ({ epoch, key: bytesToBase64Url(k) }));
-    const preview: InvitePreview = { bookId, bookName: book[0], inviterName: input.inviterName, baseCurrency: book[1] };
-    const expiresAt = new Date(this.now() + INVITE_TTL_MS).toISOString();
+    if (epochKeys.length === 0) throw new SharingError('NO_KEYS', "This device can't open this workspace's keys; it can't invite anyone");
     const sameMember = input.sameMember ?? false;
+    const memberId = sameMember ? (input.memberId ?? shared.memberId) : undefined;
+    const termsSig = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      this.device.sign.privateKey,
+      termsSigningBytes(bookId, { inviteId, sameMember, memberId }) as BufferSource,
+    );
+    const terms: InviteTerms = { inviteId, sameMember, ...(memberId === undefined ? {} : { memberId }), sig: bytesToBase64Url(new Uint8Array(termsSig)) };
+    const preview: InvitePreview = { bookId, bookName: book[0], inviterName: input.inviterName, baseCurrency: book[1], terms };
+    const expiresAt = new Date(this.now() + INVITE_TTL_MS).toISOString();
     const unsigned: Omit<InviteRecord, 'sig'> = {
       inviteId,
-      keys: await sealInviteJson(key, epochKeys),
-      preview: await sealInviteJson(key, preview),
+      keys: await sealInviteJson(key, epochKeys, inviteAad('keys', inviteId)),
+      preview: await sealInviteJson(key, preview, inviteAad('preview', inviteId)),
       expiresAt,
       sameMember,
-      ...(sameMember ? { memberId: shared.memberId } : {}),
+      ...(memberId === undefined ? {} : { memberId }),
     };
     const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, this.device.sign.privateKey, inviteSigningBytes(unsigned) as BufferSource);
     await this.transport.putInvite(shared.relayBookId, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
@@ -219,7 +235,7 @@ export class SyncEngine {
       if (error instanceof SyncTransportError && error.status === 410) throw new SharingError('INVITE_EXPIRED', 'That workspace is no longer shared');
       throw error;
     });
-    const preview = await openInviteJson<InvitePreview>(key, found.preview).catch(() => {
+    const preview = await openInviteJson<InvitePreview>(key, found.preview, inviteAad('preview', inviteId)).catch(() => {
       throw new SharingError('BAD_CODE', 'That is not the whole invite code');
     });
     return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now() };
@@ -242,16 +258,27 @@ export class SyncEngine {
         `This workspace keeps its money in ${preview.baseCurrency}; this app keeps yours in ${input.ws.baseCurrency}. Sharing across currencies isn't supported yet.`,
       );
     }
+    // Everything that can refuse locally is checked before the claim, which spends the invite (I4). A local failure
+    // after it — the disk, say — needs a fresh invite from the owner (§8.2).
+    const terms = preview.terms;
+    if (!terms || terms.inviteId !== preview.inviteId) throw new SharingError('BAD_CODE', 'That invite is not complete');
     const existing = await this.sharedRow(preview.bookId);
     if (existing && existing.state !== 'needs_invite') throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
     const rejoin = existing !== undefined;
+    if (!rejoin && (await this.database.db.values(sql`SELECT 1 FROM books WHERE id = ${preview.bookId}`)).length > 0) {
+      throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
+    }
+    if (rejoin && !(terms.sameMember && terms.memberId === existing.memberId)) {
+      throw new SharingError('INVITE_MISMATCH', 'This invite is for someone else; ask for an invite to rejoin as yourself');
+    }
 
     const { inviteId, secret } = parseCode(code);
     const claim = await this.transport.claimInvite(inviteId, this.device.public);
-    const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(secret, inviteId), claim.keys);
+    const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(secret, inviteId), claim.keys, inviteAad('keys', inviteId));
+    if (keys.length === 0) throw new SharingError('NO_KEYS', 'That invite carries no keys; ask for a new one');
     const held = new Set(keys.map((k) => k.epoch));
     const epoch = held.has(claim.epoch) ? claim.epoch : Math.max(...held);
-    const memberId = rejoin ? existing.memberId : claim.sameMember ? claim.memberId : (input.memberId ?? uuidv7());
+    const memberId = rejoin ? existing.memberId : terms.sameMember ? terms.memberId! : (input.memberId ?? uuidv7());
     const bookId = preview.bookId;
     const now = new Date(this.now()).toISOString();
 
@@ -272,17 +299,22 @@ export class SyncEngine {
       }
       for (const k of keys) await this.sealer.storeEpochKeyTx(tx, bookId, k.epoch, base64UrlToBytes(k.key));
     });
-    // The introduction (§8.2 step 7, §5.4): its own transaction, so capture sees the book shared and emits it.
+    // The introduction (§8.2 step 7, §5.4): this device, unless linking or rejoining this member, and the signed terms
+    // it joins on. Written as one change-set of its own, so the terms travel with the device op they vouch for.
     await this.database.transaction(async (tx) => {
-      const targets = [{ entity: 'device', id: this.deviceId, bookId }, ...(claim.sameMember || rejoin ? [] : [{ entity: 'member', id: memberId, bookId }])];
-      await withCapture(tx, targets, async () => {
-        if (!claim.sameMember && !rejoin) {
-          await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${memberId}, ${input.memberName}, 'member', ${now})`);
-        }
-        await tx.run(sql`
-          INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-          VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)`);
-      });
+      const newMember = !terms.sameMember && !rejoin;
+      if (newMember) {
+        await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${memberId}, ${input.memberName}, 'member', ${now})`);
+      }
+      await tx.run(sql`
+        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
+        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)`);
+      const book = { bookId, memberId, epoch };
+      const ops = [
+        ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),
+        ...(newMember ? (await rowUpsertsTx(tx, book, 'member')).filter((op) => op.id === memberId) : []),
+      ];
+      await writeChangeSetsTx(tx, captureConfigOf(this.database), book, ops, { invite: terms });
     });
 
     const seen = rejoin ? new Set<string>() : undefined;
@@ -305,7 +337,7 @@ export class SyncEngine {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
-    const entry = await this.sealer.sign({ kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target });
+    const entry = await this.sealer.sign(bookId, { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target });
     await this.transport.append(shared.relayBookId, entry);
     await this.transport.removeDevice(shared.relayBookId, target);
     if (target !== this.deviceId) await this.syncOnce(bookId);
@@ -328,7 +360,7 @@ export class SyncEngine {
     );
     const sealed = await Promise.all(devices.map(([deviceId, agree]) => sealKeyFor({ deviceId, agreeJwk: JSON.parse(agree) as JsonWebKey }, bookId, next, key)));
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
-    const entry = await this.sealer.sign({ kind: 'rotation' as const, deviceId: this.deviceId, epoch: next, hlc, sealed });
+    const entry = await this.sealer.sign(bookId, { kind: 'rotation' as const, deviceId: this.deviceId, epoch: next, hlc, sealed });
     try {
       await this.transport.append(shared.relayBookId, entry);
     } catch (error) {
@@ -352,7 +384,11 @@ export class SyncEngine {
       WHERE d.book_id = ${bookId} AND d.removed_at IS NULL AND m.role = 'owner' ORDER BY d.device_id`);
     const ids = ownerDevices.map(([id]) => id);
     if (!ids.includes(this.deviceId) || !introduced.some((id) => ids.includes(id))) return;
-    await this.transport.setOwners(shared.relayBookId, ids);
+    // A device of an owner member that is not yet an owner on the relay (a linked device pulling the book for the first
+    // time) is told so with 403, and leaves it to the devices that are.
+    await this.transport.setOwners(shared.relayBookId, ids).catch((error: unknown) => {
+      if (!(error instanceof SyncTransportError && error.status === 403)) throw error;
+    });
   }
 
   /* ---------------------------------------------------------------- restore */

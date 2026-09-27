@@ -44,6 +44,19 @@ export interface ChangeSet {
   hlc: string;
   member: string;
   ops: Op[];
+  /** On a device's introduction only: the invite terms an owner signed (§8.2, task 5 fix round 1). */
+  invite?: InviteTerms;
+}
+
+/**
+ * What an owner's invite allows, signed by the owner device (spec §8.1–8.2, task 5 fix round 1): travels sealed inside
+ * the preview to the joiner, and inside the joiner's introduction to every device, which checks it before pinning.
+ */
+export interface InviteTerms {
+  inviteId: string;
+  sameMember: boolean;
+  memberId?: string;
+  sig: string; // base64url ECDSA P-256 over `termsSigningBytes`
 }
 
 /** An epoch key sealed for one device by ECDH + HKDF (spec §5.3), carried inside a `rotation` entry. */

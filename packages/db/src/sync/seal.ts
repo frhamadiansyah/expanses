@@ -32,28 +32,32 @@ export class MissingEpochKeyError extends Error {
 
 const entryAad = (bookId: string, epoch: number, deviceId: string) => utf8(`${bookId}:${epoch}:${deviceId}`);
 
-/** The bytes an entry's `sig` covers: the entry without `sig` (and without what the relay adds), keys sorted (§6.6). */
-export function entrySigningBytes(entry: UnsignedEntry | LogEntry | (LogEntry & { seq?: number; signJwk?: JsonWebKey })): Uint8Array {
+/**
+ * The bytes an entry's `sig` covers: the entry without `sig` (and without what the relay adds), with the book it belongs
+ * to, keys sorted (§6.6; the book since task 5 fix round 1, so a removal or rotation cannot be replayed into another
+ * book the same device shares).
+ */
+export function entrySigningBytes(entry: UnsignedEntry | LogEntry | (LogEntry & { seq?: number; signJwk?: JsonWebKey }), bookId: string): Uint8Array {
   const { sig: _sig, seq: _seq, signJwk: _signJwk, ...rest } = entry as LogEntry & { seq?: number; signJwk?: JsonWebKey };
-  return utf8(canonicalJson(rest));
+  return utf8(canonicalJson({ ...rest, bookId }));
 }
 
-export async function signEntry<U extends UnsignedEntry>(device: DeviceKeys, unsigned: U): Promise<U & { sig: string }> {
-  const bytes = entrySigningBytes(unsigned);
+export async function signEntry<U extends UnsignedEntry>(device: DeviceKeys, bookId: string, unsigned: U): Promise<U & { sig: string }> {
+  const bytes = entrySigningBytes(unsigned, bookId);
   const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, device.sign.privateKey, bytes as BufferSource));
   return { ...unsigned, sig: bytesToBase64Url(sig) };
 }
 
-/** Whether `entry.sig` verifies under `signJwk`. Never throws. */
-export function verifyEntry(signJwk: JsonWebKey, entry: LogEntry): Promise<boolean> {
-  return verifySignature(signJwk, entrySigningBytes(entry), entry.sig);
+/** Whether `entry.sig` verifies under `signJwk` for `bookId`. Never throws. */
+export function verifyEntry(signJwk: JsonWebKey, bookId: string, entry: LogEntry): Promise<boolean> {
+  return verifySignature(signJwk, entrySigningBytes(entry, bookId), entry.sig);
 }
 
 /** §6.6 under a key in hand: deflate, AES-GCM bound to `bookId:epoch:deviceId`, sign. What `Sealer.seal` does once it has the key. */
 export async function sealChangeSet(device: DeviceKeys, key: Uint8Array, bookId: string, epoch: number, changeSet: ChangeSet): Promise<ChangeLogEntry> {
   const iv = randomBytes(12);
   const ct = await aesGcmEncrypt(key, iv, await deflate(utf8(JSON.stringify(changeSet))), entryAad(bookId, epoch, device.deviceId));
-  return signEntry(device, { kind: 'change' as const, deviceId: device.deviceId, epoch, hlc: changeSet.hlc, iv: bytesToBase64Url(iv), ct: bytesToBase64Url(ct) });
+  return signEntry(device, bookId, { kind: 'change' as const, deviceId: device.deviceId, epoch, hlc: changeSet.hlc, iv: bytesToBase64Url(iv), ct: bytesToBase64Url(ct) });
 }
 
 /** The inverse of `sealChangeSet`. Throws on a wrong key or anything altered; checks no signature. */
@@ -129,7 +133,7 @@ export class Sealer {
   }
 
   /** Signs a `removal` or `rotation` entry as this device. */
-  sign<U extends UnsignedEntry>(unsigned: U): Promise<U & { sig: string }> {
-    return signEntry(this.device, unsigned);
+  sign<U extends UnsignedEntry>(bookId: string, unsigned: U): Promise<U & { sig: string }> {
+    return signEntry(this.device, bookId, unsigned);
   }
 }

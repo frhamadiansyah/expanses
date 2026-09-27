@@ -251,11 +251,19 @@ export class CaptureSession {
  * field clocks — what a flush does, and what seeding (§6.5 step 3) does with every row in scope. Inside the caller's
  * transaction. Returns how many change-sets it wrote.
  */
-export async function writeChangeSetsTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, book: SharedBook, ops: readonly Op[]): Promise<number> {
+export async function writeChangeSetsTx(
+  tx: Tx,
+  config: Pick<CaptureConfig, 'now'>,
+  book: SharedBook,
+  ops: readonly Op[],
+  attach?: Pick<ChangeSet, 'invite'>,
+): Promise<number> {
   if (ops.length === 0) return 0;
   const deviceId = await localDeviceId(tx);
   const createdAt = new Date().toISOString();
   const changeSets = await reserveAndSplit(tx, deviceId, book.memberId, ops, config.now?.());
+  // An introduction's invite terms ride on its first change-set, beside the device op they vouch for (§8.2).
+  if (attach && changeSets[0]) changeSets[0] = { ...changeSets[0], ...attach };
   for (const changeSet of changeSets) {
     // Plaintext: the engine seals it when it drains (§6.3, §6.6).
     await tx.run(

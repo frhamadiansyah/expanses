@@ -72,7 +72,7 @@ describe('rotation (§8.4)', () => {
     // The removal goes in by hand (not `removeDevice`, which rotates straight away), so both remaining devices apply
     // it at epoch 1 and both decide to rotate before either sees the other's rotation.
     const { home: home2, fandri: a, dewi: b, budi: c, bookId: book2 } = await threeDevices();
-    const removal = await a.engine.sealer.sign({ kind: 'removal' as const, deviceId: a.deviceId, epoch: 1, hlc: encodeHlc(Date.now(), 0, a.deviceId), target: c.deviceId });
+    const removal = await a.engine.sealer.sign(book2, { kind: 'removal' as const, deviceId: a.deviceId, epoch: 1, hlc: encodeHlc(Date.now(), 0, a.deviceId), target: c.deviceId });
     await a.transport.append(home2.relayBookId, removal);
     await a.transport.removeDevice(home2.relayBookId, c.deviceId);
     for (const d of [a, b]) await pullAndApply(d.database, d.transport, d.engine.sealer, book2);

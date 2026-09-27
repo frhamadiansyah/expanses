@@ -1,6 +1,6 @@
 import { aesGcmDecrypt, aesGcmEncrypt, fromUtf8, hexToBytes, bytesToHex, hkdf, randomBytes, utf8 } from './crypto';
-import { base64UrlToBytes, bytesToBase64Url } from './relay-signing';
-import type { Sealed } from './types';
+import { base64UrlToBytes, bytesToBase64Url, canonicalJson } from './relay-signing';
+import type { InviteTerms, Sealed } from './types';
 
 /*
  * Invites (spec §8.1–8.3). The code is the invite's id and a 16-byte secret `S`, in Crockford base32: 32 bytes, 52
@@ -17,12 +17,19 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_BYTES = 32;
 const CODE_CHARS = 52;
 
-/** What the preview carries, sealed under the invite key (§8.1 step 4; `bookId` added in task 5, see §8.1). */
+/** What the preview carries, sealed under the invite key (§8.1 step 4; `bookId` and `terms` added in task 5, see §8.1). */
 export interface InvitePreview {
   bookId: string;
   bookName: string;
   inviterName: string;
   baseCurrency: string;
+  terms: InviteTerms;
+}
+
+/** The bytes an invite's terms signature covers: the terms without `sig` and the book, keys sorted. */
+export function termsSigningBytes(bookId: string, terms: Omit<InviteTerms, 'sig'> & { sig?: string }): Uint8Array {
+  const { inviteId, sameMember, memberId } = terms;
+  return utf8(canonicalJson({ purpose: 'cicis-invite-terms-v1', bookId, inviteId, sameMember, ...(memberId === undefined ? {} : { memberId }) }));
 }
 
 /** One epoch key as an invite carries it (§8.1 step 3). */
@@ -115,13 +122,16 @@ export function inviteKeyOf(secret: Uint8Array, inviteId: string): Promise<Uint8
   return hkdf(secret, utf8(inviteId), utf8(INVITE_INFO));
 }
 
-export async function sealInviteJson(key: Uint8Array, value: unknown): Promise<Sealed> {
+/** What each sealed part of an invite is bound to, so the keys can never be opened as the preview or the other way. */
+export const inviteAad = (part: 'keys' | 'preview', inviteId: string) => `${part}:${inviteId}`;
+
+export async function sealInviteJson(key: Uint8Array, value: unknown, aad: string): Promise<Sealed> {
   const iv = randomBytes(12);
-  const ct = await aesGcmEncrypt(key, iv, utf8(JSON.stringify(value)));
+  const ct = await aesGcmEncrypt(key, iv, utf8(JSON.stringify(value)), utf8(aad));
   return { iv: bytesToBase64Url(iv), ct: bytesToBase64Url(ct) };
 }
 
 /** Throws when the key is wrong (a mistyped code) or the sealed value was altered. */
-export async function openInviteJson<T>(key: Uint8Array, sealed: Sealed): Promise<T> {
-  return JSON.parse(fromUtf8(await aesGcmDecrypt(key, base64UrlToBytes(sealed.iv), base64UrlToBytes(sealed.ct)))) as T;
+export async function openInviteJson<T>(key: Uint8Array, sealed: Sealed, aad: string): Promise<T> {
+  return JSON.parse(fromUtf8(await aesGcmDecrypt(key, base64UrlToBytes(sealed.iv), base64UrlToBytes(sealed.ct), utf8(aad)))) as T;
 }
