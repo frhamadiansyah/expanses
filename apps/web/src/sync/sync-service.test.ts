@@ -1,0 +1,167 @@
+import { expenseLines } from '@expanses/core';
+import {
+  createAccount,
+  createDatabase,
+  createWorkspace,
+  type Database,
+  type DeviceKeys,
+  listSharedBooks,
+  MemoryKeyStore,
+  MemoryTransport,
+  migrate,
+  personalBook,
+  postTransaction,
+  requestSignerOf,
+  sharingDetail,
+  type SyncTransport,
+  type WorkspaceContext,
+} from '@expanses/db';
+import { createNodeExecutor } from '@expanses/db/node';
+import { sql } from 'drizzle-orm';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../lib/pwa', () => ({ isNative: () => false }));
+
+import { SyncService } from './sync-service';
+
+/*
+ * The app's sync wiring (spec §9.4, §11): no keys and no request while nothing is shared; Share drains the whole history
+ * before the invite, reporting "Preparing N of M" as it goes; a joined book syncs, and a run that applied something
+ * tells the screens to re-read; a removal rotates the key.
+ */
+
+vi.setConfig({ testTimeout: 30_000 });
+
+interface Phone {
+  database: Database;
+  ws: WorkspaceContext;
+  bank: string;
+  service: SyncService;
+  applied: ReturnType<typeof vi.fn>;
+  transports: (device: DeviceKeys) => SyncTransport;
+  keys: MemoryKeyStore & { made: ReturnType<typeof vi.fn> };
+}
+
+async function phone(relay: MemoryTransport, name: string): Promise<Phone> {
+  const database = createDatabase(createNodeExecutor());
+  await migrate(database);
+  const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+  const bank = await createAccount(database, ws, { name: `${name} Bank`, kind: 'asset', subtype: 'bank', currency: 'IDR' });
+  const store = new MemoryKeyStore();
+  const made = vi.fn();
+  const keys = Object.assign(store, {
+    made,
+    getOrCreateDevice: ((original) => () => {
+      made();
+      return original();
+    })(store.getOrCreateDevice.bind(store)),
+  });
+  const applied = vi.fn();
+  const transports = vi.fn((device: DeviceKeys): SyncTransport => relay.as(requestSignerOf(device)));
+  const service = new SyncService({ database, keyStore: keys, transportFor: transports, onApplied: applied, onError: () => {}, intervalMs: 60 * 60_000 });
+  return { database, ws, bank: bank.id, service, applied, transports, keys };
+}
+
+/** An expense category of the book, the same one on every device (categories sync under the owner's ids). */
+async function groceries(database: Database, bookId: string): Promise<string> {
+  const [row] = await database.db.values<[string]>(
+    sql`SELECT a.id FROM accounts a JOIN book_categories bc ON bc.category_account_id = a.id WHERE bc.book_id = ${bookId} AND a.kind = 'expense' ORDER BY a.name LIMIT 1`,
+  );
+  return row![0];
+}
+
+describe('SyncService', () => {
+  it('makes no keys and sends nothing while no book is shared', async () => {
+    const relay = new MemoryTransport();
+    const alone = await phone(relay, 'Alone');
+    await alone.service.start();
+    alone.service.nudge();
+    expect(alone.keys.made).not.toHaveBeenCalled();
+    expect(vi.mocked(alone.transports)).not.toHaveBeenCalled();
+    alone.service.stop();
+  });
+
+  it('shares with its history drained first, joins, syncs both ways, and a removal rotates the key', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    const dewi = await phone(relay, 'Dewi');
+    await fandri.service.start();
+    await dewi.service.start();
+
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: '2026-09-01',
+      description: 'history',
+      lines: expenseLines({ categoryAccountId: await groceries(fandri.database, bookId), paymentAccountId: fandri.bank, amountMinor: 10_000, currency: 'IDR' }),
+    });
+
+    const progress: [number, number][] = [];
+    const invite = await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' }, (done, total) => progress.push([done, total]));
+    expect(invite.code).toMatch(/^([0-9A-Z]{4}-){12}[0-9A-Z]{4}$/);
+    expect(invite.link).toBe(`cicis://join/${invite.code}`);
+    const total = progress[0]![1];
+    expect(total).toBeGreaterThan(1);
+    expect(progress[0]).toEqual([0, total]);
+    expect(progress.at(-1)).toEqual([total, total]);
+    expect((await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!.waiting).toBe(0);
+
+    const preview = await dewi.service.preview(invite.code);
+    expect(preview).toMatchObject({ bookName: 'Personal', inviterName: 'Fandri', baseCurrency: 'IDR' });
+    await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+    expect(dewi.applied).toHaveBeenCalled();
+    const [joined] = await listSharedBooks(dewi.database);
+    expect(joined).toMatchObject({ bookId, state: 'active' });
+    expect(joined!.members.map((m) => m.name)).toEqual(['Fandri', 'Dewi']);
+    expect(dewi.service.status(bookId)).toMatchObject({ failing: false, lastSyncedAt: expect.any(Number) });
+
+    // Dewi records; a nudge sends it, and Fandri's next run applies it and tells the screens.
+    const dewiWs = { ...dewi.ws, bookId };
+    await postTransaction(dewi.database, dewiWs, {
+      occurredOn: '2026-09-02',
+      description: 'from Dewi',
+      lines: expenseLines({ categoryAccountId: await groceries(dewi.database, bookId), paymentAccountId: dewi.bank, amountMinor: 5_000, currency: 'IDR' }),
+    });
+    await dewi.service.syncNow(bookId);
+    fandri.applied.mockClear();
+    await fandri.service.syncNow(bookId);
+    expect(fandri.applied).toHaveBeenCalled();
+    const onFandri = await fandri.database.db.values<[string]>(sql`SELECT description FROM transactions WHERE status = 'posted' ORDER BY description`);
+    expect(onFandri.map(([d]) => d)).toContain('from Dewi');
+
+    // Both devices are listed on each side, and each has been heard from.
+    const detail = (await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!;
+    const devices = detail.members.flatMap((m) => m.devices);
+    expect(devices).toHaveLength(2);
+    for (const device of devices) expect(device.seenAt).toEqual(expect.any(Number));
+
+    // The owner removes Dewi's phone: the relay drops it, and the owner rotates to epoch 2.
+    const dewiDevice = devices.find((d) => !d.mine)!;
+    await fandri.service.removeDevice(bookId, dewiDevice.deviceId);
+    const [epoch] = await fandri.database.db.values<[number]>(sql`SELECT epoch FROM shared_books WHERE book_id = ${bookId}`);
+    expect(Number(epoch![0])).toBe(2);
+    expect((await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!.members.flatMap((m) => m.devices)).toHaveLength(1);
+
+    // Dewi's next run is refused by the relay: the status line says it is failing, and nothing throws.
+    await dewi.service.syncNow(bookId);
+    expect(dewi.service.status(bookId).failing).toBe(true);
+
+    fandri.service.stop();
+    dewi.service.stop();
+  });
+
+  it('at open, a device holding a shared book makes its engine before anything is written', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    await fandri.service.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+    fandri.service.stop();
+
+    // The same database opened again, by a new service over the same keys.
+    const again = new SyncService({ database: fandri.database, keyStore: fandri.keys, transportFor: fandri.transports, onError: () => {} });
+    expect(await again.deviceId()).toBeNull();
+    await again.prepare();
+    expect(await again.deviceId()).toBe((await fandri.keys.getOrCreateDevice()).deviceId);
+    again.stop();
+  });
+});

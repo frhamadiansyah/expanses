@@ -116,3 +116,7 @@ export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from '
 export { deviceIdOf } from './sync/relay-signing';
 export { SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
+export * from './repos/sharing';
+export { SyncTransportError, type LogEntry, type SequencedEntry, type SyncTransport } from './sync/types';
+// The in-memory relay, for the app's own tests of its sync wiring (it is the reference the real relay matches).
+export { MemoryTransport } from './sync/memory-transport';
