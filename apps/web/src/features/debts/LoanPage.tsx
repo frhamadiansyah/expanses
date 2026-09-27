@@ -125,9 +125,9 @@ export function LoanPage() {
             glyph: <MoreHorizontal size={20} aria-hidden />,
             menu: [
               ...(loan.status === 'open'
-                ? [{ key: 'forgive', label: 'Forgive the rest', glyph: <Gift size={18} aria-hidden />, destructive: true, run: () => void forgive() }]
+                ? [{ key: 'forgive', label: 'Forgive the rest', glyph: <Gift size={17} aria-hidden />, destructive: true, run: () => void forgive() }]
                 : []),
-              { key: 'delete', label: 'Delete loan', glyph: <Trash2 size={18} aria-hidden />, destructive: true, run: () => void remove() },
+              { key: 'delete', label: 'Delete loan', glyph: <Trash2 size={17} aria-hidden />, destructive: true, run: () => void remove() },
             ],
           },
         ]}
