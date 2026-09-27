@@ -3,7 +3,10 @@ import { sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { inBook, postTransaction, renameAccount, replaceTransaction, voidTransaction } from '../../src/index';
+import { captureConfigOf, projectPurchase, rowUpsertsTx, writeChangeSetsTx } from '../../src/sync/capture';
+import { encodeHlc } from '../../src/sync/hlc';
 import { REMEMBERED_MEMBER_KEY } from '../../src/sync/seed';
+import type { Op } from '../../src/sync/types';
 import { categoryOf, headOf, Household, projectBook, skipsOf, type Device } from './household';
 import { runStep, stepArb, type Step } from './programs';
 
@@ -342,4 +345,50 @@ describe('forgetSharing (recovery review, minor)', () => {
     const bookId = await home.share(fandri);
     await expect(fandri.engine.forgetSharing(bookId)).rejects.toMatchObject({ code: 'STILL_SHARED' });
   });
+});
+
+describe('a field clock later than its change-set is taken at the change-set’s (re-review, NEW-1)', () => {
+  it('a member’s far-future clock pins neither a purchase’s money nor a row field: the owner’s later correction wins everywhere', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const budi = await home.device('Budi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    await home.join(budi, fandri);
+    await home.settle();
+    const groceries = await categoryOf(fandri.database, bookId, 'Groceries');
+    const x = await spend(fandri, bookId, 'X');
+    await home.settle();
+
+    // A modified client: money and a category name sent with a clock ten years ahead, under a change-set of now.
+    const book = { bookId, memberId: dewi.memberId, epoch: 1 };
+    const future = encodeHlc(Date.now() + 10 * 365 * 86_400_000, 0, dewi.deviceId);
+    const dewiHead = (await headOf(dewi.database, x))!;
+    await dewi.database.transaction(async (tx) => {
+      const [[paidBy, paidLabel]] = (await tx.values<[string, string]>(sql`SELECT paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${x}`)) as [[string, string]];
+      const money = (await projectPurchase(tx, dewiHead, dewi.memberId, { paidBy, paidLabel }))!.money;
+      for (const line of money.lines) line.amountMinor = Math.sign(line.amountMinor) * 99_000;
+      const category = (await rowUpsertsTx(tx, book, 'category')).find((op) => op.id === groceries) as Extract<Op, { op: 'upsert' }>;
+      await writeChangeSetsTx(tx, captureConfigOf(dewi.database), book, [
+        { entity: 'purchase', id: x, op: 'upsert', fields: { money }, changed: [], clocks: { money: future } },
+        { ...category, fields: { ...category.fields, name: 'PINNED' }, changed: [], clocks: { name: future } },
+      ]);
+    });
+    await home.settle();
+
+    // The owner corrects both; the correction is later than the forged change-set, and wins on every device.
+    const head = (await headOf(fandri.database, x))!;
+    const entries = await fandri.database.db.values<[string, number, string]>(sql`SELECT account_id, amount_minor, currency FROM entries WHERE transaction_id = ${head} ORDER BY rowid`);
+    await replaceTransaction(fandri.database, fandri.ws, head, { occurredOn: '2026-09-10', description: 'X', lines: entries.map(([accountId, a, currency]) => ({ accountId, amountMinor: Math.sign(Number(a)) * 50_000, currency })) });
+    await renameAccount(fandri.database, inBook(fandri.ws, bookId), groceries, 'Groceries, fixed');
+    await home.settle();
+    await home.settle();
+    for (const d of [fandri, dewi, budi]) {
+      const purchase = (await purchaseOf(d, bookId, x)) as { money: { lines: { amountMinor: number }[] } };
+      expect(purchase.money.lines.map((l) => l.amountMinor)).toEqual([50_000]);
+      expect(await d.database.db.values(sql`SELECT name FROM accounts WHERE id = ${groceries}`)).toEqual([['Groceries, fixed']]);
+      expect(await skipsOf(d.database)).toEqual([]);
+    }
+  }, 300_000);
 });

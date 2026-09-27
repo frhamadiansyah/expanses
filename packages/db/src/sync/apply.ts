@@ -87,6 +87,15 @@ async function rowValuesOf(tx: Db, entity: RowEntity, where: SQL): Promise<Recor
 }
 
 /**
+ * The clock a carried field is sent at (`op.clocks`), never later than its change-set (re-review, NEW-1): an honest
+ * sender's clocks come from its own `sync_field_clocks` and are never ahead of the hlc it seals them under, so one that
+ * is — a modified client pinning a field with a far-future clock — is taken at the change-set's hlc, alike on every device.
+ */
+export function carriedAt(at: string | undefined, hlc: string): string | undefined {
+  return at !== undefined && at > hlc ? hlc : at;
+}
+
+/**
  * A purchase op's fields that beat their clocks (rule 1): no clock yet, or an older one, each field at the change-set's
  * hlc when the op names it as changed, else at the clock `clocks` gives it (a seed or a rejoin sending what it kept at
  * its own clock, recovery review N2). A field with neither does not compete.
@@ -95,7 +104,7 @@ async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op:
   const winners = new Map<string, { value: unknown; hlc: string }>();
   const named = op.changed ?? Object.keys(op.fields);
   for (const [field, value] of Object.entries(op.fields)) {
-    const at = named.includes(field) ? hlc : op.clocks?.[field];
+    const at = named.includes(field) ? hlc : carriedAt(op.clocks?.[field], hlc);
     if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || at > clock) winners.set(field, { value, hlc: at });
@@ -113,7 +122,7 @@ async function rowWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'ups
   const winners = new Map<string, { value: unknown; hlc: string }>();
   const changed = op.changed ?? Object.keys(op.fields);
   for (const [field, value] of Object.entries(op.fields)) {
-    const at = changed.includes(field) ? hlc : op.clocks?.[field];
+    const at = changed.includes(field) ? hlc : carriedAt(op.clocks?.[field], hlc);
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (at === undefined) {
       if (clock === null && !op.changed) winners.set(field, { value, hlc });

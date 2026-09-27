@@ -426,7 +426,7 @@ export class SyncEngine {
           kind: 'refused',
           error: new SharingError(
             'STILL_SHARED',
-            'This workspace is still shared on this device. To move it to this invite’s share, stop sharing it here first: leave it, or keep it as your own copy.',
+            'This workspace is still shared on this device. To move it to this invite’s share, stop sharing it here first: leave it, stop sharing it if you are its owner, or keep it as your own copy.',
           ),
         };
       }

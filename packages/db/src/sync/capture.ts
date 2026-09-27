@@ -608,8 +608,10 @@ export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string):
   }
   // A field sent at its own clock (a revivable row's other fields; a seed or rejoin at the clocks it kept, N2) is at
   // that clock here too, as on every receiver that takes it.
-  for (const [field, at] of Object.entries(op.clocks ?? {})) {
+  // Never later than the change-set (re-review, NEW-1), as every receiver takes it.
+  for (const [field, carried] of Object.entries(op.clocks ?? {})) {
     if (named.includes(field)) continue;
+    const at = carried > hlc ? hlc : carried;
     await tx.run(
       sql`INSERT INTO sync_field_clocks (book_id, entity, id, field, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${field}, ${at}) ON CONFLICT (book_id, entity, id, field) DO UPDATE SET hlc = max(hlc, excluded.hlc)`,
     );

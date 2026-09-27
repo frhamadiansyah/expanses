@@ -342,7 +342,7 @@ export class SeenLog {
         if (was === undefined || hlc > was) this.fields.set(k, hlc);
       };
       for (const field of op.changed ?? Object.keys(op.fields)) at(field, changeSet.hlc);
-      for (const [field, hlc] of Object.entries(op.clocks ?? {})) at(field, hlc);
+      for (const [field, hlc] of Object.entries(op.clocks ?? {})) at(field, hlc > changeSet.hlc ? changeSet.hlc : hlc); // as apply takes it (NEW-1)
     });
   }
 

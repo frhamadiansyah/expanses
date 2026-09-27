@@ -724,7 +724,7 @@ for op in cs.ops, in order:
     if not revivable: tombstones[...] = max(T, cs.hlc); delete the row; continue            # rule 3
     if T >= cs.hlc or clock[..., '@row'] > cs.hlc: continue      # made again after this delete: it lost
     tombstones[...] = (cs.hlc, the row's last values); delete the row; continue   # values and clocks are kept
-  at(f) = f in (op.changed ?? keys(op.fields)) ? cs.hlc : op.clocks[f]
+  at(f) = f in (op.changed ?? keys(op.fields)) ? cs.hlc : min(op.clocks[f], cs.hlc)   # re-review NEW-1: never later than cs
   winners = { f: op.fields[f] for f in keys(op.fields) if at(f) and (clock[op.entity, op.id, f] is null or at(f) > clock[...]) }
   if T exists:
     if not revivable: continue
@@ -772,7 +772,11 @@ field last changed at on the sending device (fix round 2). Apply merges **every*
 the local field clock — state-based per-field last-writer-wins — and takes that hlc as the field's clock when it wins.
 A revivable delete keeps the row's last values in `sync_tombstones.last_json` beside the tombstone (field clocks are
 never dropped), and an op that arrives while the row is dead still merges its winning fields into those kept values.
-A revive then inserts, field by field, the winner's value, else the kept value, else the op's. So rule 1 stays per
+A revive then inserts, field by field, the winner's value, else the kept value, else the op's. **A carried clock is never
+later than its change-set (re-review, NEW-1).** An honest sender's `clocks` come from its own `sync_field_clocks`, which
+never run ahead of the hlc it seals them under; a clock that does — a modified client sending `{ money, clocks: { money:
+now + 10 years } }` to pin a field against every later correction — is taken at the change-set's hlc, by apply for rows
+and purchases alike, by the sender's own `recordClocks`, and by a rejoin's `SeenLog`, so every device decides it the same. So rule 1 stays per
 field through a delete and a re-make: a rename made before a delete on one device and a role edit made on another
 that had not seen either end the same on both (round 1's "known limit" was a real, permanent divergence, reproduced by
 the re-review; `revive-divergence.test.ts`).
@@ -899,7 +903,8 @@ local rows and the sealed preview alone, so a refusal claims nothing and applies
 
 - (a) the copy is not live: `needs_invite`, `unshared`, or kept as its own (no `shared_books` row, with a remembered
   member; §8.6). An `active` copy is refused (`STILL_SHARED`): *"This workspace is still shared on this device. To move
-  it to this invite's share, stop sharing it here first: leave it, or keep it as your own copy."*
+  it to this invite's share, stop sharing it here first: leave it, stop sharing it if you are its owner, or keep it as
+  your own copy."* (A sole owner can neither leave nor keep a live copy as its own; stopping the share is its way.)
 - (b) the inviter's member was an `owner` in this copy's own `book_members`. The preview carries it
   (`inviterMemberId`, sealed like the rest); otherwise `INVITER_NOT_OWNER` — *"Dewi was not an owner of this workspace
   here. Only a share made by one of its owners can take the place of this one."*
@@ -1333,6 +1338,10 @@ Mutate-twice review on every step.
   other side made meanwhile, even one made later in wall time. The alternative is to keep a clock that no longer
   matches its value, which diverged. A row deleted in that time goes out as a delete; a member row deleted by a
   non-owner's device does not (only an owner deletes a member, §8.5), and comes back from the log.
+- **A member's delete of a revivable row on the orphaned relay book is undone by the re-share (re-review).** The
+  restored phone's seed makes the row again at a fresh change-set hlc, and `@row` (the existence clock) is not among the
+  clocks kept, so the re-make is later than the member's delete and revives it on the member's copy. The copies stay
+  identical; the delete is lost.
 - **The put-back's transient window (known gap, fix round 4).** Putting this device's member rows back to the view
   (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
   back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
