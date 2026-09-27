@@ -1,4 +1,5 @@
-import { CreditCard, Landmark, Plus } from 'lucide-react';
+import { CreditCard, Landmark, Plus, Search } from 'lucide-react';
+import { useState } from 'react';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
@@ -14,6 +15,16 @@ import type { FormDraft } from './tx-form';
  */
 export function paymentLabel(option: PaymentOption): string {
   return option.cardId ? `${option.accountName} ···· ${option.last4 ?? '????'}` : option.accountName;
+}
+
+/**
+ * Whether a Paid with row answers what was typed: its name (with a card's last digits), whose it is, or its
+ * currency — "bca", "7788", "andi", "usd". Nothing typed keeps every row.
+ */
+export function matchesPayment(option: PaymentOption, currency: string | null | undefined, typed: string): boolean {
+  const wanted = typed.trim().toLowerCase();
+  if (!wanted) return true;
+  return [paymentLabel(option), option.holderName ?? '', currency ?? ''].some((text) => text.toLowerCase().includes(wanted));
 }
 
 /** What the Paid with row shows once something is chosen, or nothing when it is still empty. */
@@ -46,11 +57,13 @@ export function PaymentSheet({
   /** Offered at the foot of the list, for the account that is not on it yet. */
   onAddAccount?: () => void;
 }) {
+  const [search, setSearch] = useState('');
+  const shown = options.filter((option) => matchesPayment(option, accounts.find((a) => a.id === option.accountId)?.currency, search));
   return (
     <Sheet grouped title={title} onClose={onClose}>
       {/* The Paid with list as B2 draws the row it fills: a glyph, the account or card, its holder and currency. */}
       <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]">
-        {options.map((option) => {
+        {shown.map((option) => {
           const account = accounts.find((a) => a.id === option.accountId);
           const Glyph = option.cardId || account?.kind === 'liability' ? CreditCard : Landmark;
           return (
@@ -97,6 +110,22 @@ export function PaymentSheet({
           </li>
         ) : null}
       </ul>
+      {search.trim() !== '' && shown.length === 0 ? (
+        <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing here matches “{search.trim()}”.</p>
+      ) : null}
+      {/* The category picker's search, in the same place: pinned at the foot, where the thumb already is. */}
+      <div className="sticky bottom-0 px-1 pt-2 pb-1">
+        <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
+          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          <input
+            aria-label={`Search ${title}`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search"
+            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+          />
+        </label>
+      </div>
     </Sheet>
   );
 }

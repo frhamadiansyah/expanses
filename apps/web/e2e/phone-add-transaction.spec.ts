@@ -403,3 +403,27 @@ test('backing out of New account returns to the transaction as typed, with nothi
   await expect(form.getByLabel('Note')).toHaveValue('Parking');
   await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA');
 });
+
+test('Paid with narrows to what is typed in its search, and says when nothing matches', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'bank', name: 'Jago Syariah' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const search = sheet.getByRole('textbox', { name: 'Search Paid with' });
+
+  await search.fill('jago');
+  await expect(sheet.getByRole('button', { name: 'Jago Syariah', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+  // Add account stays at the foot whatever is typed: the account looked for may not be there yet.
+  await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
+
+  await search.fill('zzz');
+  await expect(sheet.getByText('Nothing here matches “zzz”.')).toBeVisible();
+
+  await search.fill('');
+  await sheet.getByRole('button', { name: 'Jago Syariah', exact: true }).click();
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago Syariah');
+});
