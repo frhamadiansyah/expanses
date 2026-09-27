@@ -60,7 +60,7 @@ export default {
 
 async function route(request: Request, env: Env): Promise<Result> {
   const url = new URL(request.url);
-  const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const parts = url.pathname.split('/').filter(Boolean).map(decodeSegment);
   const method = request.method;
 
   // POST /books
@@ -130,6 +130,15 @@ async function route(request: Request, env: Env): Promise<Result> {
   }
 
   throw new HttpError(404, 'not found');
+}
+
+/** A path segment, decoded; one whose percent-encoding is malformed is the caller's mistake (400), not a crash (final review, minor 7). */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpError(400, 'malformed path');
+  }
 }
 
 function bookStub(env: Env, bookId: string) {

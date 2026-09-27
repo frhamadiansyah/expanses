@@ -399,15 +399,17 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return fn();
   const targets = Array.isArray(target) ? (target as readonly CaptureTarget[]) : [target as CaptureTarget];
-  if (readOnly.size > 0) {
-    // §8.6 (task 9a): a book no longer shared keeps every row as it was. Any change to one of its rows is refused here,
-    // before anything is emitted, and rolls the whole transaction back.
-    const frozen = [...readOnly].map((bookId) => ({ bookId, memberId: '', epoch: 0 }));
-    const was = await snapshot(tx, frozen, targets);
+  // §8.6 (task 9a): a book no longer shared keeps every row as it was. Any change to one of its rows is refused here,
+  // before anything is emitted, and rolls the whole transaction back. Only the targets that can be in such a book are
+  // looked at (final review, minor 8): one that names another book, or a row keyed by another book's id, cannot be.
+  const frozenTargets = readOnly.size > 0 ? targets.filter((t) => couldBeIn(t, readOnly)) : [];
+  if (frozenTargets.length > 0) {
+    const frozen = [...readOnly].filter((bookId) => frozenTargets.some((t) => couldBeIn(t, new Set([bookId])))).map((bookId) => ({ bookId, memberId: '', epoch: 0 }));
+    const was = await snapshot(tx, frozen, frozenTargets);
     const inner = fn;
     fn = async () => {
       const result = await inner();
-      const now = await snapshot(tx, frozen, targets);
+      const now = await snapshot(tx, frozen, frozenTargets);
       for (const [key, row] of was) {
         const after = now.get(key);
         if (!after || JSON.stringify([after.values, after.derived]) !== JSON.stringify([row.values, row.derived])) throw new BookReadOnlyError(row.bookId);
@@ -415,8 +417,8 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
       for (const [key, row] of now) if (!was.has(key)) throw new BookReadOnlyError(row.bookId);
       return result;
     };
-    if (books.length === 0) return fn();
   }
+  if (books.length === 0) return fn();
   const slot = session.reserveRowSlot();
   const before = await snapshot(tx, books, targets);
   const result = await fn();
@@ -462,6 +464,15 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (!before.has(key)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
   }
   return result;
+}
+
+/** Whether a target's rows can lie in one of `bookIds`: not when it names another book, nor when its row is keyed by another book's id. */
+function couldBeIn(target: CaptureTarget, bookIds: ReadonlySet<string>): boolean {
+  if (target.bookId !== undefined) return bookIds.has(target.bookId);
+  if (target.id === undefined) return true;
+  const entity = rowEntity(target.entity);
+  const keyedByBook = entity.scopeRule === 'id = bookId' || (entity.keyColumns.length === 1 && entity.keyColumns[0] === 'book_id');
+  return keyedByBook ? bookIds.has(target.id) : true;
 }
 
 interface RowState {

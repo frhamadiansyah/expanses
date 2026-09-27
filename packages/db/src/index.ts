@@ -102,6 +102,7 @@ export {
   FrozenBookError,
   LeaveIncompleteError,
   NotOwnerError,
+  SEEN_WRITE_MS,
   STALE_AFTER_MS,
   SyncEngine,
   type BookSyncStatus,

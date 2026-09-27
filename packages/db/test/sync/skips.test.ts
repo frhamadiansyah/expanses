@@ -36,6 +36,18 @@ const purchase = (id: string, occurredOn: string, money: unknown): Op => ({
 });
 
 describe('what apply skips, and what it refuses to', () => {
+  it('a purchase op held for money that never arrives is dropped as a recorded skip, never silently (final review, minor 6)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const orphan: Op = { entity: 'purchase', id: '01a0e100-0000-7000-8000-0000000000b1', op: 'upsert', fields: { description: 'no money ever' } };
+    const seq = await appendOps(home, fandri, [orphan]);
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped.map((s) => [s.seq, s.entity, s.id])).toEqual([[seq, 'purchase', orphan.id]]);
+    expect(result.skipped[0]!.error).toMatch(/money never arrived/);
+    const recorded = await dewi.database.db.values<[number, string, string]>(sql`SELECT seq, entity, id FROM sync_skipped WHERE book_id = ${bookId}`);
+    expect(recorded).toEqual([[seq, 'purchase', orphan.id]]);
+    expect(await cursor(dewi, bookId)).toBe(seq);
+  });
+
   it('an entry whose change-set hlc names another device than its author is a recorded skip, and the log goes on (final review, I3)', async () => {
     const { home, fandri, dewi, bookId } = await household();
     const groceries = await categoryOf(dewi.database, bookId, 'Groceries');

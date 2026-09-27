@@ -5,6 +5,7 @@ import {
   createWorkspace,
   type Database,
   type DeviceKeys,
+  devicesSeen,
   listSharedBooks,
   MemoryKeyStore,
   MemoryTransport,
@@ -151,6 +152,28 @@ describe('SyncService', () => {
 
     fandri.service.stop();
     dewi.service.stop();
+  });
+
+  it('notes when this device was last heard from only once it has moved by more than a minute (final review, minor 4)', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    // A clock ahead of the wall clock, so the entries this device pulls back (stamped by capture at wall time) never
+    // count as heard later than the run itself.
+    let now = Date.now() + 60 * 60_000;
+    const service = new SyncService({ database: fandri.database, keyStore: fandri.keys, transportFor: fandri.transports, onError: () => {}, now: () => now, intervalMs: 60 * 60_000 });
+    await service.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    await service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+    const me = (await service.deviceId())!;
+    const seen = async () => (await devicesSeen(fandri.database, bookId))[me];
+    expect(await seen()).toBe(now);
+    now += 30_000;
+    await service.syncNow(bookId);
+    expect(await seen()).toBe(now - 30_000);
+    now += 31_000;
+    await service.syncNow(bookId);
+    expect(await seen()).toBe(now);
+    service.stop();
   });
 
   it('at open, a device holding a shared book makes its engine before anything is written', async () => {

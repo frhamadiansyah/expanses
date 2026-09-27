@@ -429,6 +429,24 @@ describe('a frozen book (§8.5)', () => {
 });
 
 describe('the status line (§11)', () => {
+  it('the finished-sync time is written only once it has moved by more than a minute (final review, minor 4)', async () => {
+    const { dewi, bookId } = await household();
+    const syncedAt = async () => (await dewi.database.db.values<[string | null]>(sql`SELECT synced_at FROM shared_books WHERE book_id = ${bookId}`))[0]![0];
+    const set = (ms: number) => dewi.database.db.run(sql`UPDATE shared_books SET synced_at = ${new Date(ms).toISOString()} WHERE book_id = ${bookId}`);
+    await dewi.engine.syncOnce(bookId);
+    expect(await syncedAt()).toEqual(expect.any(String));
+    // Half a minute old: left alone, so an idle device is not writing its database every 30 s.
+    const recent = Date.now() - 30_000;
+    await set(recent);
+    await dewi.engine.syncOnce(bookId);
+    expect(Date.parse((await syncedAt())!)).toBe(recent);
+    // Two minutes old: moved.
+    const old = Date.now() - 2 * 60_000;
+    await set(old);
+    await dewi.engine.syncOnce(bookId);
+    expect(Date.parse((await syncedAt())!)).toBeGreaterThan(old + 60_000);
+  });
+
   it('up to date, changes waiting, not synced since', async () => {
     const { dewi, bookId } = await household();
     let now = Date.parse('2026-09-27T10:00:00Z');

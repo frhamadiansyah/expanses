@@ -41,6 +41,14 @@ describe('§10 entitlement', () => {
   });
 });
 
+describe('routing', () => {
+  it('400s a path whose percent-encoding is malformed, rather than 500 (final review, minor 7)', async () => {
+    const res = await raw(base, { method: 'GET', path: '/books/%E0%A4%A/entries?since=0', signer: null });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'malformed path' });
+  });
+});
+
 describe('§9.1 authentication', () => {
   it('accepts a correctly signed request', async () => {
     const { bookId, owner } = await bookWithOwner();

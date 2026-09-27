@@ -9,6 +9,7 @@ import {
   type PreviewedInvite,
   recordDevicesSeen,
   requestSignerOf,
+  SEEN_WRITE_MS,
   type SequencedEntry,
   SyncEngine,
   type SyncOnceResult,
@@ -96,6 +97,8 @@ export class SyncService {
   private readonly listeners = new Set<() => void>();
   /** Per relay book, the newest entry time of each device pulled since the last flush. */
   private readonly heard = new Map<string, Record<string, number>>();
+  /** Per book, when this device's own last-heard time was last written: written again only once it moves by more than a minute (minor 4). */
+  private readonly ownSeenWritten = new Map<string, number>();
   private started = false;
   private readonly onVisible = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') this.triggerAll();
@@ -386,7 +389,10 @@ export class SyncService {
     this.setStatus(bookId, { running: false, failing: false, lastSyncedAt: at });
     try {
       const id = await this.deviceId();
-      if (id) await recordDevicesSeen(this.database, bookId, { [id]: at });
+      if (id && at - (this.ownSeenWritten.get(bookId) ?? -Infinity) > SEEN_WRITE_MS) {
+        await recordDevicesSeen(this.database, bookId, { [id]: at });
+        this.ownSeenWritten.set(bookId, at);
+      }
       await this.flushHeard(bookId);
     } catch (error) {
       this.onError(error);

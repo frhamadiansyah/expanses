@@ -94,6 +94,9 @@ export type BookSyncStatus =
 /** How long since the last finished sync before the status line says "Not synced since …": the scheduler's longest wait. */
 export const STALE_AFTER_MS = 5 * 60_000;
 
+/** A last-synced or last-heard time is written only once it has moved by more than this (final review, minor 4). */
+export const SEEN_WRITE_MS = 60_000;
+
 /** How a share ended on this device: its owner stopped it (§8.6), this member left (§8.4), or this device was removed (§8.4). */
 export type EndedReason = 'stopped' | 'left' | 'removed';
 
@@ -280,7 +283,14 @@ export class SyncEngine {
       return { pushed, ...result, ended: 'left' };
     }
     await this.followOwners(bookId, ownersBefore);
-    if (!result.stopped) await this.database.db.run(sql`UPDATE shared_books SET synced_at = ${new Date(this.now()).toISOString()} WHERE book_id = ${bookId}`);
+    if (!result.stopped) {
+      // Written only once it has moved by more than a minute (final review, minor 4): an idle device polling every 30 s
+      // is not writing its database each time, and "Not synced since" is never more than a minute out.
+      const now = this.now();
+      await this.database.db.run(
+        sql`UPDATE shared_books SET synced_at = ${new Date(now).toISOString()} WHERE book_id = ${bookId} AND (synced_at IS NULL OR synced_at < ${new Date(now - SEEN_WRITE_MS).toISOString()})`,
+      );
+    }
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
   }
 

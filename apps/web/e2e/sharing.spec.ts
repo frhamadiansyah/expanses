@@ -370,6 +370,7 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   await shareAndJoin(page, dewi);
   await dewi.goto('/transactions');
   await addTransaction(dewi, { description: 'Dewi before', paidWith: 'Dewi Bank', category: 'Groceries', amount: '20000' });
+  await page.goto('/transactions');
   await eventually(page, () => expect(rowOf(page, 'Dewi before')).toContainText('paid by Dewi', { timeout: 1_000 }));
 
   // Fandri stops sharing; Dewi's copy goes read-only.

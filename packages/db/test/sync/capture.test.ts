@@ -29,7 +29,7 @@ import {
   voidTransactionTx,
 } from '../../src/index';
 import { budgets } from '../../src/schema-budget';
-import { configureCapture, localDeviceId, pauseCapture } from '../../src/sync/capture';
+import { configureCapture, localDeviceId, pauseCapture, withCapture } from '../../src/sync/capture';
 import { setupDb } from '../helpers';
 import { clearOutbox, fieldClock, lineageRow, outboxChangeSets, outboxOps, shareBookForTest } from './sync-helpers';
 
@@ -59,6 +59,40 @@ describe('capture: the device id', () => {
     // Configured (as the engine does when it is made), it is that id.
     configureCapture(database, { deviceId: 'the-engine-device' });
     expect(await database.transaction((tx) => localDeviceId(tx))).toBe('the-engine-device');
+  });
+});
+
+describe('capture: beside a book no longer shared', () => {
+  it('a write aimed at another book costs the read-only check nothing (final review, minor 8)', async () => {
+    const { executor, database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    // Every statement the transaction sends, counted at the executor: the one seam every query passes.
+    const queries = async (work: () => Promise<void>) => {
+      let n = 0;
+      const query = executor.query.bind(executor);
+      executor.query = (...args: Parameters<typeof query>) => {
+        n += 1;
+        return query(...args);
+      };
+      try {
+        await work();
+      } finally {
+        executor.query = query;
+      }
+      return n;
+    };
+    // A write naming only Personal, before and after another book here has gone read-only (§8.6).
+    const other = (await database.db.values<[string]>(sql`SELECT id FROM books WHERE workspace_id = ${ws.workspaceId} AND id <> ${personal.id} LIMIT 1`))[0]?.[0]
+      ?? (await database.transaction(async (tx) => {
+        await tx.run(sql`INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at) VALUES ('other-book', ${ws.workspaceId}, 'Other', 'shared', 'IDR', 0, 9, NULL, '2026-09-01T00:00:00.000Z')`);
+        return 'other-book';
+      }));
+    // Targets that cannot be in the other book: one that names Personal, and Personal's own book row (keyed by its id).
+    const aimed = () => database.transaction((tx) => withCapture(tx, [{ entity: 'budget', bookId: personal.id }, { entity: 'book', id: personal.id }], async () => undefined));
+    const before = await queries(aimed);
+    await database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at, unshared_reason) VALUES (${other}, 'relay-o', 1, 'member-o', 'unshared', '2026-09-01T00:00:00.000Z', 'stopped')`);
+    const after = await queries(aimed);
+    expect(after).toBe(before);
   });
 });
 

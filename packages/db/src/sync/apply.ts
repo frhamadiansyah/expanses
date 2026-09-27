@@ -469,8 +469,8 @@ async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string,
   for (const field of Object.keys(fields)) await setClock(tx, ctx, 'purchase', lineageId, field, hlc);
 }
 
-/** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends. */
-export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet }[]>;
+/** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
+export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number }[]>;
 
 /** §7.2 `applyPurchase`. Returns false when the op had to be held. */
 async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet): Promise<boolean> {
@@ -596,7 +596,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     if (entity.kind === 'purchase') {
       if (op.op !== 'upsert') continue; // a purchase is never deleted, only voided
       await guarded(tx, ctx, run, op, async () => {
-        if (!(await applyPurchase(tx, ctx, op, changeSet))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet }]);
+        if (!(await applyPurchase(tx, ctx, op, changeSet))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet, seq: run.seq }]);
       });
       continue;
     }
@@ -728,16 +728,16 @@ export async function pullAndApply(
       const pinned = await pinnedKeyOf(database, bookId, entry.deviceId);
       let introducing = false;
       if (pinned) {
-        if (!(await verifyEntry(pinned, bookId, entry))) return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (!(await verifyEntry(pinned, bookId, entry))) return await finish({ seq: entry.seq, reason: 'bad signature' });
       } else if (await wasRefused(database.db, bookId, entry.deviceId)) {
         // Its introduction was refused: what it writes after is refused the same way, not a stop that blocks the book.
         await skipEntry(entry, entry.kind, entry.deviceId, 'AUTHORITY: its device was never admitted');
         continue;
       } else {
-        if (entry.kind !== 'change') return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (entry.kind !== 'change') return await finish({ seq: entry.seq, reason: 'bad signature' });
         const opened = await openChange().catch(() => null);
         if (opened === 'missing') return needsInvite(entry.seq);
-        if (!opened || !(await verifiesAsIntroduction(bookId, entry, opened))) return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (!opened || !(await verifiesAsIntroduction(bookId, entry, opened))) return await finish({ seq: entry.seq, reason: 'bad signature' });
         changeSet = opened;
         introducing = true;
       }
@@ -751,14 +751,14 @@ export async function pullAndApply(
           changeSet = opened;
         }
         // The change-set inside must be the one the signed envelope names.
-        if (changeSet.hlc !== entry.hlc) return finish({ seq: entry.seq, reason: 'bad signature' });
+        if (changeSet.hlc !== entry.hlc) return await finish({ seq: entry.seq, reason: 'bad signature' });
         // …and its hlc must carry the author's own id (§6.1): one stamped under another id — a stand-in minted before
         // the engine existed, say — is a recorded skip on every device alike (final review, I3).
         if (hlcDeviceOf(changeSet.hlc) !== entry.deviceId) {
           await skipEntry(entry, 'change', entry.deviceId, 'AUTHORITY: its hlc names another device than its author');
           continue;
         }
-        if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
+        if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return await finish({ seq: entry.seq, reason: 'drift' });
         if (seen && !own) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
       }
       let rotationKey: Uint8Array | null = null;
@@ -849,7 +849,7 @@ export async function pullAndApply(
       applied += 1;
     }
   }
-  return finish();
+  return await finish();
 
   /** An entry refused as a whole, before anything of it is opened: recorded, and the cursor moves past it. */
   async function skipEntry(entry: SequencedEntry, entity: string, id: string, error: string): Promise<void> {
@@ -863,11 +863,19 @@ export async function pullAndApply(
   }
   async function needsInvite(seq: number): Promise<PullResult> {
     await database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
-    return finish({ seq, reason: 'needs invite' });
+    return await finish({ seq, reason: 'needs invite' });
   }
 
-  function finish(stopped?: PullResult['stopped']): PullResult {
-    for (const lineageId of held.keys()) console.warn(`sync: purchase ${lineageId} changed but its money never arrived; dropped`);
+  /** What was held for money that never came is dropped as a recorded skip, never silently (final review, minor 6). */
+  async function finish(stopped?: PullResult['stopped']): Promise<PullResult> {
+    for (const [lineageId, ops] of held) {
+      for (const { seq } of ops) {
+        const skip: SkippedOp = { seq, entity: 'purchase', id: lineageId, error: 'HELD: the purchase changed but its money never arrived; dropped' };
+        await database.db.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${skip.seq}, ${skip.entity}, ${skip.id}, ${skip.error}, ${new Date().toISOString()})`);
+        skipped.push(skip);
+      }
+    }
+    held.clear();
     return stopped ? { applied, skipped, stopped, removals, introduced } : { applied, skipped, removals, introduced };
   }
 }
