@@ -1,4 +1,4 @@
-import { isoDate } from '@expanses/core';
+import { formatMinor, isoDate } from '@expanses/core';
 import { forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
@@ -86,7 +86,6 @@ export function LoanPage() {
     }
   }
 
-  const anyBack = loan.repaidMinor > 0;
 
   return (
     <div className={SCREEN}>
@@ -99,27 +98,9 @@ export function LoanPage() {
         actions={[]}
       />
 
+      {/* What is still owed, alone, as Wallet draws a payment: what was lent and what came back are rows in Details. */}
       <section className="flex flex-col items-center gap-1 pb-[18px] text-center" data-testid="loan-hero">
         <Money minor={loan.balanceMinor} currency={loan.currency} className="text-[34px] leading-[40px] font-bold tracking-[-0.02em]" />
-        <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-          {'of '}
-          <Money minor={loan.originalMinor} currency={loan.currency} />
-          {person.direction === 'lent' ? ' lent' : ' borrowed'}
-          {anyBack ? (
-            <>
-              {' · '}
-              <Money minor={loan.repaidMinor} currency={loan.currency} />
-              {' back'}
-            </>
-          ) : (
-            ' · nothing back yet'
-          )}
-        </span>
-        {loan.originalMinor > 0 && (
-          <span className="mt-2 block h-1.5 w-full max-w-sm rounded-full bg-[var(--ph-track)]" aria-hidden>
-            <i className="block h-1.5 rounded-full bg-[var(--ph-tint)]" style={{ width: `${Math.min(100, (loan.repaidMinor / loan.originalMinor) * 100)}%` }} />
-          </span>
-        )}
       </section>
 
       {repaying && (
@@ -160,6 +141,8 @@ export function LoanPage() {
               if (reason !== (profile.reason ?? null)) void saveField({ reason });
             }}
           />
+          <TextRow label={loanFigureLabels(person.direction).given} value={formatMinor(loan.originalMinor, loan.currency)} readOnly />
+          <TextRow label={loanFigureLabels(person.direction).back} value={formatMinor(loan.repaidMinor, loan.currency)} readOnly />
           <TextRow
             label="Due by"
             type="date"

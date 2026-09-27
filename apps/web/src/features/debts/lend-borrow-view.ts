@@ -56,3 +56,7 @@ export function loanSubtitle(loan: PersonLoanRow, codeLabel: string, today: stri
 
 /** Money coming back on a loan you made is a collection; money going back on one you took is a repayment. */
 export const repaymentWord = (direction: DebtDirection): string => (direction === 'lent' ? 'Collection' : 'Repayment');
+
+/** The two figures a loan's Details shows beside what is still owed: what first moved, and what has come back. */
+export const loanFigureLabels = (direction: DebtDirection): { given: string; back: string } =>
+  direction === 'lent' ? { given: 'Money lent', back: 'Money back' } : { given: 'Money borrowed', back: 'Paid back' };

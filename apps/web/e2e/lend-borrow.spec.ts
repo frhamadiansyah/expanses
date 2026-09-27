@@ -102,6 +102,10 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('loan-hero')).toContainText('9.000.000');
+  // The top is the amount alone; what was lent and what came back are rows in Details.
+  await expect(page.getByTestId('loan-hero')).not.toContainText(/lent|back/);
+  await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toHaveValue(/9\.000\.000/);
+  await expect(page.getByRole('textbox', { name: 'Money back', exact: true })).toHaveValue(/Rp\s?0$/);
 
   // ✓ saves the whole of it, and the loan is paid off.
   await page.getByRole('button', { name: 'Record collection' }).click();

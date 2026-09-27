@@ -1,6 +1,6 @@
 import type { PersonDebtRow, PersonLoanRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 
 const TODAY = '2026-09-27';
 
@@ -64,5 +64,7 @@ describe('one loan', () => {
     // Money back on a loan you made is collected; money back on one you took is repaid.
     expect(repaymentWord('lent')).toBe('Collection');
     expect(repaymentWord('borrowed')).toBe('Repayment');
+    expect(loanFigureLabels('lent')).toEqual({ given: 'Money lent', back: 'Money back' });
+    expect(loanFigureLabels('borrowed')).toEqual({ given: 'Money borrowed', back: 'Paid back' });
   });
 });
