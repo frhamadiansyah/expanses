@@ -72,12 +72,38 @@ Migrations (`0042`, `0044`) and `importBytes` (restore) also write these tables.
 
 ## 3. Readers of §4.4's anti-join
 
-All of them exist. `listAccounts` (`packages/db/src/repos/accounts.ts:107`) feeds `useAccounts()`, which 51 feature
-files use: the Accounts page, every Paid-with and Transfer picker, Net worth (`features/networth`), and the tax report
-rows (`features/coretax/report-rows.ts`). The health ratios are `features/networth/HealthRatios.tsx` → core
-`healthRatios`, fed by the same balance sheet. `nativeBalances` returns a balance for every account, but readers join
-it to the accounts they list. So one anti-join in `listAccounts`, with an opt-in to include placeholders, covers the
-named readers. Step 5 confirms each reader with its own e2e test.
+Corrected in fix round 1. An earlier version said one anti-join in `listAccounts` covers every named reader. That is
+false: `assetValuesAt` reads every `kind = 'asset'` account straight from `accounts` and feeds Net worth, the tax
+report and goal funding. The list below comes from a grep of every `from(accounts)` / `JOIN accounts` in
+`packages/db/src/repos`. In `apps/web`, no file queries `accounts` directly; every screen goes through these
+repository functions.
+
+**Readers that list a set of asset accounts** (a placeholder would show up). The anti-join goes in **each** of them:
+
+| Reader | Where | Feeds |
+|---|---|---|
+| `listAccounts` | `accounts.ts:107` (the select at :114) | `useAccounts()` in `apps/web/src/lib/queries.ts:10`: the Accounts page, every Paid-with and Transfer picker, Net worth's money list (`networth/attention.ts:51`), and the tax report rows (`coretax/report-rows.ts`) |
+| `assetValuesAt` | `asset-values.ts:82–88` | `netWorthAt` (:193) and `sheetInputsAt` (:301), which feed Net worth and the balance sheet behind the health ratios (`networth/HealthRatios.tsx`); `networth/queries.ts:31`; `coretaxInputsFor` (`tax-inputs.ts:27`), which feeds the tax report (`tax-reports.ts:115`, `coretax/queries.ts:36`) and `kmk-rates.ts:28`; goal funding (`goal-funding.ts:99`, `:205`); idle cash (`idle-cash.ts:28`); `monthEndValues` (:254) |
+| `coretaxInputsFor`'s own account read | `tax-inputs.ts:37–40` | name and subtype maps for the harta rows. It walks `assetValuesAt`'s rows, so it is covered once that reader is filtered. The predicate still goes here, so the tax report never depends on that ordering |
+
+**Readers that need no change:**
+
+- `nativeBalances` (`ledger.ts:593`) returns a balance for every account, placeholders included. Every consumer
+  indexes it by accounts it already listed through a filtered reader: `asset-values.ts:107/201/318`,
+  `tax-inputs.ts:30`, `set-aside.ts:108` (promised accounts only), `deposit-automation.ts:299` (one deposit),
+  `networth/attention.ts:59` (the `useAccounts` money list), and `useBalances` (`lib/queries.ts:38`). The rule for
+  the future: no consumer iterates its keys.
+- Liability-only reads (`asset-values.ts:199`, `:315`): a placeholder is an asset.
+- Lookups by id or into a map: `goal-funding.ts:299`, `goal-contributions.ts:110` (`PARKED` is savings, investment
+  and fund, never cash), `base-costs.ts:22`, `expense-templates.ts:204`, `loans.ts:256`, `debts.ts:140`, and every
+  `eq(accounts.id, …)` guard. A placeholder is reached only through a purchase's money side, and these never list
+  one.
+
+**One shared predicate.** Step 5 adds `notPlaceholder(accountIdColumn)` to `packages/db/src/sync/`. It is
+`<column> NOT IN (SELECT account_id FROM book_member_accounts)`. The step applies it in `listAccounts` (with an
+`includePlaceholders` opt-in for the receipt and the sync code), in `assetValuesAt`, and in `coretaxInputsFor`'s
+account read. Each gets a test: a book with a placeholder holding a balance leaves Net worth, the tax inputs, goal
+funding, idle cash, the health-ratio sheet and the pickers unchanged.
 
 ## 4. Open for the controller (all ruled)
 

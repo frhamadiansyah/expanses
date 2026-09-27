@@ -236,9 +236,21 @@ member's name, `currency` = the currency of the lines it balances (the book's, n
 `book_member_accounts` row keyed `(book_id, member_id, currency)` (ruled O2). An asset account must have a currency
 (`accounts` CHECK), so one placeholder cannot take them all. Created on first need.
 
-Placeholder accounts are excluded, by an anti-join on `book_member_accounts`, from: the Accounts page, Net worth,
-every Paid-with and Transfer picker, the tax report, and the health ratios. Their balance is never shown. Every
-other reader sees an ordinary transaction.
+Placeholder accounts are excluded from the Accounts page, Net worth, every Paid-with and Transfer picker, the tax
+report, the health ratios, goal funding and idle cash. Their balance is never shown. Every other reader sees an
+ordinary transaction.
+
+The exclusion is one shared predicate, `notPlaceholder(column)` = `column NOT IN (SELECT account_id FROM
+book_member_accounts)`, applied in each reader that lists asset accounts (check §3, fix round 1):
+
+- `listAccounts` (`accounts.ts`), with an `includePlaceholders` opt-in for the receipt and the sync code. It feeds
+  the Accounts page, the pickers, Net worth's money list and the tax report rows.
+- `assetValuesAt` (`asset-values.ts`). It feeds `netWorthAt`, `sheetInputsAt` (the health ratios),
+  `coretaxInputsFor`, goal funding and idle cash.
+- `coretaxInputsFor`'s own account read (`tax-inputs.ts`).
+
+`nativeBalances` keeps returning every account. Its consumers index it by accounts they listed through the readers
+above, and none of them iterates its keys.
 
 `expense_templates.money_account_id` is `NOT NULL` and names an owner's account. A `bill` therefore travels with
 the field **`payer`** `= { memberId, label }` in place of the column. Apply writes `money_account_id` = the
