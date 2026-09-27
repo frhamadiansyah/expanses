@@ -6,7 +6,9 @@ CREATE TABLE shared_books (
   epoch         INTEGER NOT NULL,   -- the epoch this device writes under
   member_id     TEXT NOT NULL,      -- this device's member
   state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
-  shared_at     TEXT NOT NULL
+  shared_at     TEXT NOT NULL,
+  synced_at     TEXT,               -- when this device last finished a sync of the book (§11)
+  unshared_by   TEXT                -- the member who ended the sharing here (§8.4, §8.6): the owner who stopped it, or this device's own member when it left
 );
 
 CREATE TABLE book_members (
@@ -38,10 +40,12 @@ CREATE TABLE sync_lineage (                             -- purchase -> its curre
   head_transaction_id TEXT,                             -- NULL once void
   paid_by TEXT NOT NULL, paid_label TEXT NOT NULL
 );
+CREATE INDEX sync_lineage_head ON sync_lineage (head_transaction_id);   -- a transaction's lineage, on every post and read
 
 CREATE TABLE sync_outbox (
   id TEXT PRIMARY KEY, book_id TEXT NOT NULL, hlc TEXT NOT NULL, entry_json TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE INDEX sync_outbox_book_hlc ON sync_outbox (book_id, hlc);        -- drained per book in hlc order (§9.4)
 
 CREATE TABLE sync_cursor (
   book_id TEXT PRIMARY KEY, applied_seq INTEGER NOT NULL DEFAULT 0
@@ -62,3 +66,34 @@ CREATE TABLE sync_skipped (                             -- an op apply refused d
   book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
 );
 CREATE INDEX sync_skipped_book ON sync_skipped (book_id, seq);
+
+-- Each invite introduces at most one device (§8.2): apply records the invite an accepted introduction used; a later
+-- introduction on the same invite is refused on every device alike.
+CREATE TABLE sync_invites_used (
+  book_id   TEXT NOT NULL,
+  invite_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  PRIMARY KEY (book_id, invite_id)
+);
+
+-- The authority view (§8.5): who is an owner and which devices are in, as the log says it, entry by entry in seq
+-- order — this device's own entries included, at their seq. It changes only when log entries are applied, never with
+-- a local edit not yet synced, so every device decides every removal, role, member delete and introduction alike.
+-- Each field keeps the hlc it last changed at, so the view merges like the rows do.
+CREATE TABLE sync_authority (
+  book_id  TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  role     TEXT NOT NULL,
+  role_hlc TEXT NOT NULL,
+  deleted  INTEGER NOT NULL DEFAULT 0,
+  row_hlc  TEXT NOT NULL,
+  PRIMARY KEY (book_id, member_id)
+);
+CREATE TABLE sync_authority_devices (
+  book_id     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  member_id   TEXT NOT NULL,
+  removed_seq INTEGER,                 -- the seq of the removal entry that removed it
+  added_seq   INTEGER,                 -- the seq of the entry that admitted it (its introduction; the creator's seed is 1), for §8.4's leave
+  PRIMARY KEY (book_id, device_id)
+);

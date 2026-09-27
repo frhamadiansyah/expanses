@@ -9,9 +9,9 @@ export const sharedBooks = sqliteTable('shared_books', {
   memberId: text('member_id').notNull(),
   state: text('state', { enum: ['active', 'needs_invite', 'unshared'] }).notNull(),
   sharedAt: text('shared_at').notNull(),
-  /** 0058: when this device last finished a sync of the book (§11). */
+  /** When this device last finished a sync of the book (§11). */
   syncedAt: text('synced_at'),
-  /** 0058: the member who ended the sharing here, for "No longer shared by …" (§8.6). */
+  /** The member who ended the sharing here, for "No longer shared by …" (§8.6). */
   unsharedBy: text('unshared_by'),
 });
 

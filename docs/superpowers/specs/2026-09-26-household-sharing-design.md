@@ -47,10 +47,10 @@ alone: its keys are fixed by its introduction, `removedAt` is set only by a remo
 device; §6.6 — every entry's signature covers its `bookId`; §8.2 — an introduction carries owner-signed invite terms and
 is checked before its device is pinned, once per invite, and the joiner checks locally before it claims; §8.4 — a
 removal of another device needs an owner, on the relay and in apply, and a removed device's later entries count for
-nothing; §8.5 — only an owner writes a role. Migration `0057_sync_invites_used`. Each passage says "(fix round 1)".
+nothing; §8.5 — only an owner writes a role. All of it in migration `0056_household_sharing` (the once separate 0057 and 0058 were squashed into it before any build shipped; final review, minor 1). Each passage says "(fix round 1)".
 
 **Task 5, fix round 2** (re-review N1, N2, N4b; controller rulings): every authority decision reads the **authority
-view** (`sync_authority`, `sync_authority_devices`, in 0057), which changes only as log entries are applied in seq order —
+view** (`sync_authority`, `sync_authority_devices`, in 0056), which changes only as log entries are applied in seq order —
 this device's own entries included, at their seq — so no local, unsynced edit can make one device decide differently
 from its peers (§7.1, §8.4, §8.5); deleting a member row, or making one again, is an owner's, and the last owner is
 never deleted or demoted (§8.5); a removed device is removed at its place in the log, whatever hlc it picks (§8.4); the
@@ -185,8 +185,8 @@ CREATE TABLE shared_books (
   member_id     TEXT NOT NULL,      -- this device's member
   state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
   shared_at     TEXT NOT NULL,
-  synced_at     TEXT,               -- 0058, task 9a: when this device last finished a sync of the book (§11)
-  unshared_by   TEXT                -- 0058, task 9a: the member who ended the sharing here (§8.4, §8.6)
+  synced_at     TEXT,               -- task 9a: when this device last finished a sync of the book (§11)
+  unshared_by   TEXT                -- task 9a: the member who ended the sharing here (§8.4, §8.6)
 );
 CREATE TABLE book_members (
   book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -213,9 +213,11 @@ CREATE TABLE sync_lineage (                             -- purchase -> its curre
   head_transaction_id TEXT,                             -- NULL once void
   paid_by TEXT NOT NULL, paid_label TEXT NOT NULL
 );
+CREATE INDEX sync_lineage_head ON sync_lineage (head_transaction_id);   -- final review, minor 1
 CREATE TABLE sync_outbox (
   id TEXT PRIMARY KEY, book_id TEXT NOT NULL, hlc TEXT NOT NULL, entry_json TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE INDEX sync_outbox_book_hlc ON sync_outbox (book_id, hlc);        -- final review, minor 1
 CREATE TABLE sync_cursor (
   book_id TEXT PRIMARY KEY, applied_seq INTEGER NOT NULL DEFAULT 0
 );
@@ -231,19 +233,19 @@ CREATE TABLE sync_tombstones (
 CREATE TABLE sync_skipped (                             -- task 4 fix round 1: an op apply refused, never silent (§7.1)
   book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
 );
-CREATE TABLE sync_invites_used (                        -- 0057, task 5 fix round 1: one device per invite (§8.2)
+CREATE TABLE sync_invites_used (                        -- task 5 fix round 1: one device per invite (§8.2)
   book_id TEXT NOT NULL, invite_id TEXT NOT NULL, device_id TEXT NOT NULL,
   PRIMARY KEY (book_id, invite_id)
 );
-CREATE TABLE sync_authority (                           -- 0057, fix round 2: the authority view, members (§8.5)
+CREATE TABLE sync_authority (                           -- task 5 fix round 2: the authority view, members (§8.5)
   book_id TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT NOT NULL, role_hlc TEXT NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0, row_hlc TEXT NOT NULL,
   PRIMARY KEY (book_id, member_id)
 );
-CREATE TABLE sync_authority_devices (                   -- 0057, fix round 2: the authority view, devices (§8.4)
+CREATE TABLE sync_authority_devices (                   -- task 5 fix round 2: the authority view, devices (§8.4)
   book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL,
   removed_seq INTEGER,                                  -- the seq of the removal entry that removed it
-  added_seq   INTEGER,                                  -- 0058, task 9a fix round 1: the seq of the entry that admitted it
+  added_seq   INTEGER,                                  -- task 9a fix round 1: the seq of the entry that admitted it
   PRIMARY KEY (book_id, device_id)
 );
 ```
@@ -839,7 +841,7 @@ its introduction (one change-set of its own, written directly rather than captur
 new member, its `member` op). Every device, applying an introduction after the log's first entry, checks before pinning:
 the terms verify under the pinned key of a current device of an **owner** member; `sameMember` introduces exactly the
 `memberId` they name, and otherwise a member id not already in `book_members`; and no earlier device used the invite
-(`sync_invites_used`, migration 0057: first by seq wins). A refused introduction is a recorded skip, and so is every later
+(`sync_invites_used`: first by seq wins). A refused introduction is a recorded skip, and so is every later
 entry of that device (not a stop, which would let it block the book). The log's first entry is the creator's seed and
 needs no terms; `createInvite` drains the outbox first (§6.5 step 4), so the seed is always there before any invite.
 The keys and the preview are sealed with additional data `keys:<inviteId>` / `preview:<inviteId>`, so neither opens as the
