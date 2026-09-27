@@ -1,9 +1,9 @@
-import { ownerScope, type PreviewedInvite, SharingError } from '@expanses/db';
+import { ownerScope, type PreviewedInvite } from '@expanses/db';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
-import { currencyRefusal } from './sharing-copy';
+import { currencyRefusal, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
 /*
@@ -21,15 +21,6 @@ function rememberedName(): string {
   } catch {
     return '';
   }
-}
-
-/** What a refusal says to a person: the engine's sentence for a known one, the relay's silence as "can't reach". */
-function sayError(error: unknown): unknown {
-  if (error instanceof SharingError) return error;
-  if (error instanceof Error && /relay unreachable|Failed to fetch/i.test(error.message)) {
-    return new Error("Couldn't reach the sharing service. Check the connection and try again.");
-  }
-  return error;
 }
 
 export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: string; onJoined: (bookId: string) => void }) {

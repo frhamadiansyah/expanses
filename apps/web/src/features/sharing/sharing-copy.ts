@@ -1,4 +1,4 @@
-import type { PurchasePayer, SharedBookMember, SharedBookState } from '@expanses/db';
+import { type PurchasePayer, type SharedBookMember, type SharedBookState, SharingError, SyncTransportError } from '@expanses/db';
 
 /*
  * What the sharing screens say (household sharing spec §11), worked out away from the screens so every sentence can
@@ -100,4 +100,33 @@ export function deviceName(userAgent: string, platform = ''): string {
 export function preparing(done: number, total: number): string {
   const f = (n: number) => n.toLocaleString('en-US');
   return `Preparing ${f(done)} of ${f(total)}`;
+}
+
+const UNREACHABLE = "Couldn't reach the sharing service. Check the connection and try again.";
+
+/**
+ * What a failed share, join, link or remove says to a person: the engine's own sentence for a refusal it knows, the
+ * relay's answers in words rather than status codes, and anything else as it came.
+ */
+export function sayError(error: unknown): unknown {
+  if (error instanceof SharingError) return error;
+  if (error instanceof SyncTransportError) {
+    if (error.status === 0) return new Error(UNREACHABLE);
+    if (error.status === 403) return new Error('Only an owner of this workspace can do that.');
+    if (error.status === 410) return new Error('This workspace is no longer shared.');
+    return error;
+  }
+  if (error instanceof Error && /relay unreachable|Failed to fetch|NetworkError|Load failed/i.test(error.message)) return new Error(UNREACHABLE);
+  return error;
+}
+
+/**
+ * Whether a transaction is posted here against a placeholder (spec §4.4): its money side names an asset or liability
+ * account that this device's own list leaves out. Known from the transaction and the accounts alone, so a list never
+ * waits on the payers query to keep another member's purchase out of the quick editor, a table cell or a re-file.
+ * An empty list is "not read yet", not "every account is someone else's".
+ */
+export function postedAgainstPlaceholder(tx: { entries: readonly { accountId: string; accountKind: string }[] }, known: ReadonlySet<string>): boolean {
+  if (known.size === 0) return false;
+  return tx.entries.some((entry) => (entry.accountKind === 'asset' || entry.accountKind === 'liability') && !known.has(entry.accountId));
 }

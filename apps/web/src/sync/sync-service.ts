@@ -227,14 +227,32 @@ export class SyncService {
     onProgress?: (done: number, total: number) => void,
   ): Promise<CreatedInvite> {
     const engine = await this.engine();
-    const invite = await this.exclusive(bookId, async () => {
-      await engine.shareBook(bookId, input);
-      await this.drainWithProgress(engine, bookId, onProgress);
-      return engine.createInvite(bookId, { inviterName: input.memberName });
-    });
-    await this.touched(bookId);
-    await this.refresh();
-    return invite;
+    let shared = false;
+    try {
+      const invite = await this.exclusive(bookId, async () => {
+        await engine.shareBook(bookId, input);
+        shared = true;
+        await this.drainWithProgress(engine, bookId, onProgress);
+        return engine.createInvite(bookId, { inviterName: input.memberName });
+      });
+      await this.touched(bookId);
+      return invite;
+    } catch (error) {
+      // Once the seed is written the book is shared, whatever happens to its upload: it waits in the outbox, the
+      // status line says it is not synced, and the scheduler sends it when the relay answers (task 7 fix round 1).
+      if (shared) this.setStatus(bookId, { running: false, failing: true });
+      throw error;
+    } finally {
+      if (shared) {
+        await this.refresh();
+        this.emit();
+      }
+    }
+  }
+
+  /** The books this service is polling right now. */
+  syncing(): string[] {
+    return [...this.schedulers.keys()];
   }
 
   /** A fresh invite for the other person to a book already shared — the code shown again after a reload. */
@@ -305,6 +323,8 @@ export class SyncService {
     } catch (error) {
       this.setStatus(bookId, { running: false, failing: true });
       await this.flushHeard(bookId);
+      // A refusal can mean the book's state changed (a 410, task 9a): let the schedule follow `shared_books`.
+      await this.refresh().catch(() => undefined);
       throw error;
     }
   }
@@ -320,6 +340,8 @@ export class SyncService {
     } catch (error) {
       this.onError(error);
     }
+    // A run that stopped short may have moved the book out of `active` (needs_invite): it is no longer polled.
+    if (result?.stopped) await this.refresh().catch((error: unknown) => this.onError(error));
     this.emit();
     if (result && (result.applied > 0 || result.rotated !== undefined || result.stopped?.reason === 'needs invite')) this.onApplied();
   }

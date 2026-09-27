@@ -164,4 +164,64 @@ describe('SyncService', () => {
     expect(await again.deviceId()).toBe((await fandri.keys.getOrCreateDevice()).deviceId);
     again.stop();
   });
+
+  it('a Share whose history fails to go up still leaves the book shared, syncing, and able to invite once the relay is back', async () => {
+    const relay = new MemoryTransport();
+    let down = false;
+    const fandri = await phone(relay, 'Fandri');
+    const flaky = new SyncService({
+      database: fandri.database,
+      keyStore: fandri.keys,
+      transportFor: (device) => {
+        const inner = relay.as(requestSignerOf(device));
+        return {
+          ...inner,
+          createBook: (d) => inner.createBook(d),
+          append: (b, e) => (down ? Promise.reject(new Error('relay unreachable: offline')) : inner.append(b, e)),
+          pull: (b, n) => inner.pull(b, n),
+          putInvite: (b, i) => inner.putInvite(b, i),
+          previewInvite: (i) => inner.previewInvite(i),
+          claimInvite: (i, d) => inner.claimInvite(i, d),
+          removeDevice: (b, d) => inner.removeDevice(b, d),
+          setOwners: (b, d) => inner.setOwners(b, d),
+          deleteBook: (b) => inner.deleteBook(b),
+        };
+      },
+      onError: () => {},
+      intervalMs: 60 * 60_000,
+    });
+    await flaky.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    const heard = vi.fn();
+    flaky.subscribe(heard);
+    down = true;
+    await expect(flaky.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' })).rejects.toThrow(/unreachable/);
+
+    // Shared all the same: the book is there, its changes wait, the screens were told, and it has a schedule.
+    expect(await listSharedBooks(fandri.database)).toEqual([expect.objectContaining({ bookId, state: 'active' })]);
+    expect((await sharingDetail(fandri.database, bookId, await flaky.deviceId()))!.waiting).toBeGreaterThan(0);
+    expect(heard).toHaveBeenCalled();
+    expect(flaky.syncing()).toContain(bookId);
+    expect(flaky.status(bookId).failing).toBe(true);
+
+    // The relay comes back: the next run sends it all, and Invite someone works.
+    down = false;
+    await flaky.syncNow(bookId);
+    expect((await sharingDetail(fandri.database, bookId, await flaky.deviceId()))!.waiting).toBe(0);
+    await expect(flaky.invite(bookId, 'Fandri')).resolves.toMatchObject({ code: expect.any(String) });
+    flaky.stop();
+  });
+
+  it('a book that stops being active stops being polled', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    await fandri.service.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+    expect(fandri.service.syncing()).toContain(bookId);
+    await fandri.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+    await fandri.service.syncNow(bookId);
+    expect(fandri.service.syncing()).not.toContain(bookId);
+    fandri.service.stop();
+  });
 });

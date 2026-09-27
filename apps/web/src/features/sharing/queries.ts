@@ -1,5 +1,5 @@
 import { listSharedBooks, purchasePayers, sharingDetail } from '@expanses/db';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import type { BookSyncStatus } from '../../sync/sync-service';
@@ -43,6 +43,9 @@ export function usePurchasePayers(transactionIds: readonly string[], shared: boo
     queryKey: ['payers', ws.bookId ?? null, ids.join(',')],
     enabled: shared && ids.length > 0,
     queryFn: () => purchasePayers(database, ids),
+    // A list that grows by one row keeps what it knew about the others while it asks again: no row flickers back
+    // to the placeholder's name in between (fix round 1).
+    placeholderData: keepPreviousData,
   });
   return (transactionId: string) => (shared ? (query.data?.[transactionId] ?? null) : null);
 }

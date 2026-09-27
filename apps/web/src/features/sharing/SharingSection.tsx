@@ -6,7 +6,7 @@ import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from './InviteCard';
 import { useSharingDetail, useSyncStatus } from './queries';
-import { currencyRefusal, deviceName, preparing, statusLine, syncedAgo } from './sharing-copy';
+import { currencyRefusal, deviceName, preparing, sayError, statusLine, syncedAgo } from './sharing-copy';
 
 /*
  * Settings → Workspaces → a workspace, the sharing rows (household sharing spec §11): Share this workspace, then the
@@ -67,8 +67,11 @@ export function SharingSection({ book }: { book: BookRow }) {
       setFlow(null);
       await detail.refetch();
     } catch (failure) {
-      setError(failure);
-      setFlow({ step: 'explain' });
+      setError(sayError(failure));
+      // Once the history was written the workspace is shared even though it has not gone up yet: the shared view
+      // says so ("N changes waiting", "Not synced"), keeps trying, and Invite someone asks again (fix round 1).
+      const now = await detail.refetch();
+      setFlow(now.data ? null : { step: 'explain' });
     }
   }
 
@@ -96,6 +99,7 @@ export function SharingSection({ book }: { book: BookRow }) {
   }
 
   if (detail.isPending) return null;
+  const shareError = error ? <ErrorBox error={error} /> : null;
   if (!detail.data) {
     return (
       <InsetGroup wide header="Sharing" footer={refusal ?? 'Record into this workspace together with someone else, each from your own phone.'}>
@@ -113,12 +117,15 @@ export function SharingSection({ book }: { book: BookRow }) {
   }
 
   return (
+    <>
+    {shareError}
     <Shared
       book={book}
       detail={detail.data}
       invite={invite}
       onInvite={setInvite}
     />
+    </>
   );
 }
 
@@ -159,7 +166,7 @@ function Shared({
     try {
       await work();
     } catch (failure) {
-      setError(failure);
+      setError(sayError(failure));
     } finally {
       setBusy(false);
     }
@@ -191,16 +198,29 @@ function Shared({
         />
       );
     }),
+    // Invites are an owner's, Link a device included (spec §8.3, fix round 1): a member asks an owner instead.
     ...(member.me && active
       ? [
-          <InsetRow
-            key="link"
-            className="pl-[28px]"
-            icon={<Link2 size={15} aria-hidden />}
-            title="Link a device"
-            chevron={false}
-            onClick={() => void run(async () => onInvite({ invite: await sync.linkDevice(book.id, member.name), kind: 'device' }))}
-          />,
+          detail.owner ? (
+            <InsetRow
+              key="link"
+              className="pl-[28px]"
+              icon={<Link2 size={15} aria-hidden />}
+              title="Link a device"
+              chevron={false}
+              onClick={() => void run(async () => onInvite({ invite: await sync.linkDevice(book.id, member.name), kind: 'device' }))}
+            />
+          ) : (
+            <InsetRow
+              key="link"
+              testId="ask-owner-to-link"
+              className="pl-[28px]"
+              icon={<Link2 size={15} aria-hidden />}
+              title="Ask an owner to link a new device"
+              subtitle="Only an owner can invite a device into this workspace"
+              chevron={false}
+            />
+          ),
         ]
       : []),
   ]);

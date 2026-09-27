@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { currencyRefusal, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, statusLine, syncedAgo } from './sharing-copy';
+import { SharingError, SyncTransportError } from '@expanses/db';
+import { currencyRefusal, postedAgainstPlaceholder, sayError, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, statusLine, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
 const dewi = { memberId: 'd', name: 'Dewi', role: 'member' as const };
@@ -83,5 +84,39 @@ describe('device names and counts', () => {
 
   it('prepares in grouped counts', () => {
     expect(preparing(1204, 3120)).toBe('Preparing 1,204 of 3,120');
+  });
+});
+
+describe('what a failed share, join, link or remove says', () => {
+  const said = (error: unknown) => (sayError(error) as Error).message;
+
+  it('keeps the engine’s own sentence for a refusal it knows', () => {
+    expect(said(new SharingError('NOT_OWNER', 'Only an owner can invite someone or link a device'))).toBe('Only an owner can invite someone or link a device');
+  });
+
+  it('words the relay’s answers for a person, never as a status code', () => {
+    expect(said(new SyncTransportError(0, 'relay unreachable: Failed to fetch'))).toBe("Couldn't reach the sharing service. Check the connection and try again.");
+    expect(said(new TypeError('Failed to fetch'))).toBe("Couldn't reach the sharing service. Check the connection and try again.");
+    expect(said(new SyncTransportError(403, 'owner only'))).toBe('Only an owner of this workspace can do that.');
+    expect(said(new SyncTransportError(410, 'gone'))).toBe('This workspace is no longer shared.');
+  });
+
+  it('passes anything else through as it came', () => {
+    const odd = new Error('disk full');
+    expect(sayError(odd)).toBe(odd);
+  });
+});
+
+describe('a purchase posted against a placeholder here', () => {
+  const known = new Set(['bank', 'groceries']);
+  it('is one whose money side names an account this device does not list, known before any query about its payer', () => {
+    const mine = { entries: [{ accountId: 'bank', accountKind: 'asset' }, { accountId: 'groceries', accountKind: 'expense' }] };
+    const theirs = { entries: [{ accountId: 'placeholder', accountKind: 'asset' }, { accountId: 'groceries', accountKind: 'expense' }] };
+    expect(postedAgainstPlaceholder(mine, known)).toBe(false);
+    expect(postedAgainstPlaceholder(theirs, known)).toBe(true);
+  });
+  it('never judges a category line, and says nothing while the accounts are not read yet', () => {
+    expect(postedAgainstPlaceholder({ entries: [{ accountId: 'new-category', accountKind: 'expense' }] }, known)).toBe(false);
+    expect(postedAgainstPlaceholder({ entries: [{ accountId: 'placeholder', accountKind: 'asset' }] }, new Set())).toBe(false);
   });
 });
