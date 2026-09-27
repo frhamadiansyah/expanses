@@ -3,7 +3,7 @@ import { formatMinor } from '../money/money';
 
 export type DebtDirection = 'lent' | 'borrowed';
 
-export type DebtErrorCode = 'AMOUNT_NOT_POSITIVE' | 'OVER_REPAYMENT' | 'CURRENCY_MISMATCH' | 'SPLIT_MISMATCH';
+export type DebtErrorCode = 'AMOUNT_NOT_POSITIVE' | 'OVER_REPAYMENT' | 'CURRENCY_MISMATCH' | 'SPLIT_MISMATCH' | 'FEE_TOO_LARGE';
 
 export class DebtError extends Error {
   readonly code: DebtErrorCode;
@@ -72,6 +72,32 @@ export function lendPostings(input: DebtAmount, accounts: DebtAccounts): Posting
     line(accounts.debtAccountId, input.amountMinor, input.currency),
     line(accounts.moneyAccountId, -input.amountMinor, input.currency),
   ];
+}
+
+/**
+ * A fee charged on the money a loan moved — a card's cash-advance or admin charge, a bank's transfer fee, a lender's
+ * provisi. It is **your** cost, never the person's: it is spending, filed under a category of its own, and what the
+ * person owes stays exactly the loan.
+ *
+ * Money lent: the account pays the loan and the fee, so its line grows by the fee. Money borrowed: the fee is taken
+ * from what arrives, so the account receives the loan less the fee, while the person is still owed the whole loan.
+ * One transaction either way, so the fee can never outlive the loan it was charged on.
+ */
+export function withLoanFee(
+  lines: readonly PostingLine[],
+  direction: DebtDirection,
+  fee: { feeMinor: number; feeCategoryId: string; moneyAccountId: string; currency: string },
+): PostingLine[] {
+  assertNotNegative(fee.feeMinor, 'A fee');
+  if (fee.feeMinor === 0) return [...lines];
+  const withFee = lines.map((l) =>
+    l.accountId === fee.moneyAccountId ? { ...l, amountMinor: direction === 'lent' ? l.amountMinor - fee.feeMinor : l.amountMinor + -fee.feeMinor } : l,
+  );
+  const money = withFee.find((l) => l.accountId === fee.moneyAccountId);
+  if (direction === 'borrowed' && money && money.amountMinor <= 0) {
+    throw new DebtError('FEE_TOO_LARGE', `A fee of ${formatMinor(fee.feeMinor, fee.currency)} would take everything that arrived`);
+  }
+  return [...withFee, line(fee.feeCategoryId, fee.feeMinor, fee.currency)];
 }
 
 /**

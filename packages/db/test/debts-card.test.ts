@@ -92,3 +92,47 @@ describe('lending money put on a credit card', () => {
     expect(balances[debtAccountId]).toBe(4_000_000);
   });
 });
+
+describe('a fee on a loan put on a card', () => {
+  const lendWithFee = (feeMinor: number) =>
+    recordLoan(database, ws, {
+      person: { name: 'Toko Fandri', direction: 'lent', currency: 'IDR' },
+      occurredOn: '2026-09-05',
+      amountMinor: 4_000_000,
+      moneyAccountId: card.id,
+      feeMinor,
+      feeCategoryId: categories['miscellaneous.fees_charges']!,
+    });
+
+  it('puts the loan and the fee on the card, and the person owes only the loan', async () => {
+    const { debtAccountId } = await lendWithFee(100_000);
+    const balances = await nativeBalances(database, ws, '2026-12-31');
+    expect(balances[card.id]).toBe(-4_100_000);
+    expect(balances[debtAccountId]).toBe(4_000_000);
+    expect(balances[bca.id]).toBe(50_000_000);
+  });
+
+  it('files the fee as spending under its own category, in the same transaction as the loan', async () => {
+    const { debtAccountId } = await lendWithFee(100_000);
+    const [tx] = await listTransactions(database, ws, {});
+    expect(tx!.entries.map((entry) => [entry.accountId, entry.amountMinor]).sort()).toEqual(
+      [
+        [card.id, -4_100_000],
+        [categories['miscellaneous.fees_charges']!, 100_000],
+        [debtAccountId, 4_000_000],
+      ].sort(),
+    );
+  });
+
+  it('asks for a category rather than posting a fee to nowhere', async () => {
+    await expect(
+      recordLoan(database, ws, {
+        person: { name: 'Toko Fandri', direction: 'lent', currency: 'IDR' },
+        occurredOn: '2026-09-05',
+        amountMinor: 4_000_000,
+        moneyAccountId: card.id,
+        feeMinor: 100_000,
+      }),
+    ).rejects.toThrow(/category for the fee/);
+  });
+});

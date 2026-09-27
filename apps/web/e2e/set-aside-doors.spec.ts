@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openLoan, personRow } from './people';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
@@ -261,19 +262,21 @@ test('an extra payment asks about the extra and the bank\'s penalty together', a
 test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await page.getByRole('menuitem', { name: 'New receivable' }).click();
   await page.getByLabel('Person').pressSequentially('Andi');
-  await page.getByLabel(/^Amount/).pressSequentially('6800000');
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
+  await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('6800000');
   await page.getByLabel('Paid from').selectOption({ label: 'Jenius (IDR)' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
   // Enter in a field submits the form: it must not go round the question.
   await enterWaitsForTheQuestion(page, page.getByLabel('Person'));
-  await expect(page.getByRole('heading', { name: 'Andi' })).toHaveCount(0);
+  await expect(personRow(page, 'Andi')).toHaveCount(0);
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
-  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(personRow(page, 'Andi')).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
   await expectRecordedOnce(page, /Andi/);
@@ -283,18 +286,20 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
   await jeniusWithTwoGoals(page);
   await addMoneyAccount(page, 'BCA', 'bank', '0');
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
-  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await page.getByRole('menuitem', { name: 'New payable' }).click();
   await page.getByLabel('Person').pressSequentially('Budi');
-  await page.getByLabel(/^Amount/).pressSequentially('10000000');
+  await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
+  await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('10000000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA (IDR)' });
   // Money coming in asks nothing.
   await expect(page.getByText(/more than is free/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
+  await expect(personRow(page, 'Budi')).toBeVisible();
 
+  await openLoan(page, 'Budi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/How much you paid/).pressSequentially('6800000');
+  await page.getByLabel(/^Paid back/).pressSequentially('6800000');
   await page.getByLabel('From').selectOption({ label: 'Jenius' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save repayment' });

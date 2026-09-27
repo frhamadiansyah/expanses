@@ -11,6 +11,7 @@ import {
   repaymentPostings,
   type SplitShare,
   splitBillPostings,
+  withLoanFee,
 } from '../src/index';
 
 const accounts: DebtAccounts = {
@@ -171,5 +172,41 @@ describe('debtDescription', () => {
     expect(debtDescription('borrow', 'Budi')).toBe('Borrowed from Budi');
     expect(debtDescription('repay', 'Budi')).toBe('Repaid Budi');
     expect(debtDescription('forgive', 'Andi')).toBe('Forgave what Andi owed');
+  });
+});
+
+describe('a fee on the money moved', () => {
+  const fee = { feeMinor: 100_000, feeCategoryId: 'fees', moneyAccountId: 'card', currency: 'IDR' };
+  const sum = (lines: { amountMinor: number }[]) => lines.reduce((total, l) => total + l.amountMinor, 0);
+
+  it('on money lent, takes the fee from the same account and files it as spending; the person still owes the loan', () => {
+    const lines = withLoanFee(lendPostings({ amountMinor: 4_000_000, currency: 'IDR' }, { ...accounts, moneyAccountId: 'card' }), 'lent', fee);
+    expect(lines).toEqual([
+      { accountId: 'andi', amountMinor: 4_000_000, currency: 'IDR' },
+      { accountId: 'card', amountMinor: -4_100_000, currency: 'IDR' },
+      { accountId: 'fees', amountMinor: 100_000, currency: 'IDR' },
+    ]);
+    expect(sum(lines)).toBe(0);
+  });
+
+  it('on money borrowed, what arrives is the loan less the fee; what you owe is the whole loan', () => {
+    const lines = withLoanFee(borrowPostings({ amountMinor: 4_000_000, currency: 'IDR' }, { ...accounts, moneyAccountId: 'card' }), 'borrowed', fee);
+    expect(lines).toEqual([
+      { accountId: 'card', amountMinor: 3_900_000, currency: 'IDR' },
+      { accountId: 'andi', amountMinor: -4_000_000, currency: 'IDR' },
+      { accountId: 'fees', amountMinor: 100_000, currency: 'IDR' },
+    ]);
+    expect(sum(lines)).toBe(0);
+  });
+
+  it('adds nothing when there is no fee', () => {
+    const plain = lendPostings({ amountMinor: 4_000_000, currency: 'IDR' }, { ...accounts, moneyAccountId: 'card' });
+    expect(withLoanFee(plain, 'lent', { ...fee, feeMinor: 0 })).toEqual(plain);
+  });
+
+  it('refuses a negative fee, and a borrowing fee that would take everything that arrived', () => {
+    const borrowed = borrowPostings({ amountMinor: 100_000, currency: 'IDR' }, { ...accounts, moneyAccountId: 'card' });
+    expect(() => withLoanFee(borrowed, 'borrowed', { ...fee, feeMinor: -1 })).toThrow(DebtError);
+    expect(() => withLoanFee(borrowed, 'borrowed', fee)).toThrow(/fee/i);
   });
 });

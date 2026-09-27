@@ -426,6 +426,11 @@ export interface TransactionEntryView {
   accountId: string;
   accountName: string;
   accountKind: 'asset' | 'liability' | 'income' | 'expense' | 'equity';
+  /**
+   * What kind of account the line is on — `receivable` and `payable` are money between you and a person. Optional
+   * so a view built by hand in a test need not name it; every view read from the ledger carries it.
+   */
+  accountSubtype?: string;
   amountMinor: number;
   currency: string;
   fxRateToBase: number;
@@ -535,6 +540,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       accountId: entries.accountId,
       accountName: accounts.name,
       accountKind: accounts.kind,
+      accountSubtype: accounts.subtype,
       amountMinor: entries.amountMinor,
       currency: entries.currency,
       fxRateToBase: entries.fxRateToBase,

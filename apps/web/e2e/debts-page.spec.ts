@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { personRow } from './people';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
@@ -120,7 +121,7 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Dewi', exact: true })).toBeVisible();
+  await expect(personRow(page, 'Dewi')).toBeVisible();
   await page.getByRole('link', { name: 'Show everyone' }).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
 });

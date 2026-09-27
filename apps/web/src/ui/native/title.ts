@@ -35,6 +35,12 @@ export interface CornerAction {
   to?: LinkProps['to'];
   params?: LinkProps['params'];
   search?: LinkProps['search'];
+  /**
+   * The action is a choice between several: the corner opens this list, drawn exactly as the `…` menu is, and
+   * neither `run` nor `to` is used. For a + that cannot know which of two things is meant — where the phone, showing
+   * one of the two, gives a plain action instead.
+   */
+  menu?: CornerAction[];
 }
 
 /** Two buttons on the right, counting the `…` itself. */

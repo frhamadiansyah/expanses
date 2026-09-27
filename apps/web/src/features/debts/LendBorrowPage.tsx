@@ -1,24 +1,39 @@
 import type { PersonDebtRow } from '@expanses/db';
 import { Plus } from 'lucide-react';
-import { useSearch } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { type ReactNode, useState } from 'react';
+import { isoDate } from '@expanses/core';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
-import { DebtForm } from './DebtForm';
-import { PersonCard } from './PersonCard';
+import { personDue, personParams } from './lend-borrow-view';
 import { usePeopleDebts } from './queries';
+import { newDebtPath, openingSide, type Side } from './sides';
 import { sideTotal } from './totals';
 
 /**
- * One side of the ledger.
+ * One side of the ledger, its people and, as the box's last row, their total.
  *
- * "Receivables" and "Payables" were headings *inside* cards; they are group headers now, outside and above what
- * they name, with the side's total beside them. That is the one thing the audit asks of this screen.
+ * On the phone the tab above already names the side, so the box has no header; the desktop shows both sides at once
+ * and keeps the side's name over each. The total closes the list like the foot of a receipt, on both.
  */
-function Column({ title, people, emptyText, currency, rates }: { title: string; people: PersonDebtRow[]; emptyText: string; currency: string; rates: Record<string, number> | undefined }) {
+function Column({
+  title,
+  people,
+  emptyText,
+  currency,
+  rates,
+  header,
+}: {
+  title: string;
+  people: PersonDebtRow[];
+  emptyText: string;
+  currency: string;
+  rates: Record<string, number> | undefined;
+  header: boolean;
+}) {
   const total = sideTotal(people, currency, rates ?? {});
   // Until the held rates are read, a foreign card has no figure yet; saying "no rate" then would be untrue.
   const figure =
@@ -29,12 +44,50 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
     );
   return (
     <div>
-      <PanelHeader title={title} trailing={<span data-testid={`debts-total-${title}`}>{figure}</span>} />
+      {header && <PanelHeader title={title} />}
       {people.length === 0 && <p className="px-[4px] pb-[18px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{emptyText}</p>}
-      {people.map((person) => (
-        <PersonCard key={`${person.direction}-${person.personName}-${person.currency}`} person={person} />
-      ))}
+      {people.length > 0 && (
+        <PeopleRows
+          people={people}
+          total={<span className="font-semibold text-[var(--ph-ink)]" data-testid={`debts-total-${title}`}>{figure}</span>}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The colour of a person's initial says how soon they are due, in the kit's own inks: red when a loan is overdue,
+ * orange when one is due soon. No date, or one far off, leaves the circle grey like every other row's.
+ */
+const DUE_COLOUR = { late: 'var(--ph-alarm)', soon: 'var(--ph-warn)', later: undefined } as const;
+
+/**
+ * One row per person: their initial, coloured by their most urgent due date, their name, and what they owe in all. Nothing to press but the row itself — repaying, forgiving and changing a loan are on the
+ * loan's own page, one tap further in, where they used to be buttons and a picker under every loan.
+ */
+function PeopleRows({ people, total }: { people: PersonDebtRow[]; total?: ReactNode }) {
+  const today = isoDate();
+  return (
+    <InsetGroup>
+      {people.map((person) => {
+        const due = personDue(person, today);
+        return (
+          <InsetRow
+            key={`${person.direction}-${person.personName}-${person.currency}`}
+            icon={<span className="text-[14px] leading-none font-semibold">{person.personName.trim().charAt(0).toUpperCase()}</span>}
+            iconColour={due ? DUE_COLOUR[due.tone] : undefined}
+            title={person.personName}
+            value={<Money minor={person.totalMinor} currency={person.currency} />}
+            valueTone="ink"
+            to="/net-worth/lend-borrow/$side/$person"
+            params={personParams(person)}
+            testId="person-row"
+          />
+        );
+      })}
+      {total ? <InsetRow key="total" title="Total" value={total} valueTone="ink" chevron={false} /> : null}
+    </InsetGroup>
   );
 }
 
@@ -43,16 +96,15 @@ const SIDES: readonly Segment[] = [
   { key: 'owed', label: 'Receivables' },
   { key: 'owe', label: 'Payables' },
 ];
-type Side = 'owed' | 'owe';
 
 export function LendBorrowPage() {
   const { ws } = useApp();
   const phone = usePhone();
   const people = usePeopleDebts();
   // Opened from a person's row on Debts: that person alone, with the way back to everyone one tap away.
-  const { person: only } = useSearch({ from: '/net-worth/lend-borrow' });
+  const { person: only, side: asked } = useSearch({ from: '/net-worth/lend-borrow' });
+  const navigate = useNavigate();
   const theirs = (list: PersonDebtRow[]) => (only ? list.filter((row) => row.personName === only) : list);
-  const [adding, setAdding] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
   // Which side the phone is showing. Null until the reader picks one, so the first paint shows something.
   const [side, setSide] = useState<Side | null>(null);
@@ -63,16 +115,24 @@ export function LendBorrowPage() {
   const held = useHeldRates([...owedToYou, ...youOwe].map((person) => person.currency));
   const rates = held.data?.rates;
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
-  /*
-   * Which side the phone opens on. The first segment — Receivables — unless a person was named (the
-   * way in from their row on Debts), where it is the side that person is on: opening Dewi's row must show Dewi,
-   * not an empty list. Never derived from how many rows each side has, so a reader who forgives their last
-   * borrower does not have the list switch sides under them.
-   */
-  const shown: Side = side ?? (only && owedToYou.length === 0 ? 'owe' : 'owed');
+  // The reader's own pick wins over where the page was opened; `openingSide` says why each default is what it is.
+  const shown: Side = side ?? openingSide({ asked, person: only, owedToYouCount: owedToYou.length });
 
-  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding ? [] : [{ key: 'add', label: 'Add a loan', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(true) }];
+  /*
+   * + adds on a screen of its own. The phone shows one side, so + goes straight to that side's screen; the desktop
+   * shows both, so + asks which. A person being shown travels along, so their name is already typed.
+   */
+  const carry = only ? { person: only } : {};
+  const add = (to: Side): CornerAction => ({
+    key: to,
+    label: to === 'owed' ? 'New receivable' : 'New payable',
+    to: newDebtPath(to),
+    search: carry,
+  });
+  const plus = <Plus size={22} aria-hidden />;
+  const actions: CornerAction[] = phone
+    ? [{ ...add(shown), key: 'add', glyph: plus }]
+    : [{ key: 'add', label: 'Add to Lend & borrow', glyph: plus, menu: [add('owed'), add('owe')] }];
 
   return (
     <div className={SCREEN}>
@@ -85,15 +145,13 @@ export function LendBorrowPage() {
       <PushedTitle title="Lend & borrow" back="Cashflow" backTo="/transactions" actions={actions} />
       <ErrorBox error={people.error} />
 
-      {adding && <DebtForm onDone={() => setAdding(false)} />}
-
       {only && (
         <InsetGroup header={`Only ${only}`}>
           <InsetRow title="Show everyone" to="/net-worth/lend-borrow" search={{}} />
         </InsetGroup>
       )}
 
-      {nothingYet && !adding && (
+      {nothingYet && (
         <Empty>
           Nothing lent or borrowed yet. Money you lend leaves your cash and waits under Receivables; money you borrow shows as a debt until you pay it back.
         </Empty>
@@ -105,15 +163,15 @@ export function LendBorrowPage() {
             {/* The phone shows one list at a time, as the mockup draws it; the desktop keeps both side by side. */}
             <SegmentedControl segments={SIDES} value={shown} onChange={(key) => setSide(key as Side)} label="Lend & borrow" className="mb-[18px]" />
             {shown === 'owed' ? (
-              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
             ) : (
-              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
             )}
           </>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
-            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
+            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
           </div>
         ))}
 
@@ -122,19 +180,10 @@ export function LendBorrowPage() {
           <InsetGroup>
             <InsetRow title={`${showSettled ? 'Hide' : 'Show'} settled (${settled.length})`} chevron={false} onClick={() => setShowSettled((open) => !open)} />
           </InsetGroup>
-          {showSettled && (
-            <div className="grid gap-x-6 md:grid-cols-2">
-              {settled.map((person) => (
-                <PersonCard key={`settled-${person.direction}-${person.personName}-${person.currency}`} person={person} />
-              ))}
-            </div>
-          )}
+          {showSettled && <PeopleRows people={settled} />}
         </>
       )}
 
-      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        Lending is not spending: the money moves from your account to the person, and comes back the same way. Only interest counts as income or as a cost.
-      </p>
     </div>
   );
 }
