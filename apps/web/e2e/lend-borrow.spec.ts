@@ -26,7 +26,7 @@ async function lend(page: Page, person: string, amount: string, from: string) {
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill(person);
-  await page.getByLabel(/^Amount/).fill(amount);
+  await page.getByLabel(/^Money (lent|borrowed)/).fill(amount);
   await page.getByLabel('Paid from').selectOption({ label: from });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(personRow(page, person)).toBeVisible();
@@ -39,7 +39,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
-  await page.getByLabel(/^Amount/).fill('4000000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('4000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA KrisFlyer (IDR)' });
   await page.getByLabel('Category for points').selectOption({ label: 'Shopping (general)' });
   await page.getByLabel('MCC').fill('5311');
@@ -141,7 +141,7 @@ async function borrow(page: Page, person: string, amount: string, into: string) 
   await page.goto('/net-worth/lend-borrow');
   await openNew(page, 'New payable');
   await page.getByLabel('Person').fill(person);
-  await page.getByLabel(/^Amount/).fill(amount);
+  await page.getByLabel(/^Money (lent|borrowed)/).fill(amount);
   await page.getByLabel('Received into').selectOption({ label: into });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(personRow(page, person)).toBeVisible();
@@ -179,7 +179,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
   await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
-  await page.getByLabel('Amount (USD)').fill('100');
+  await page.getByLabel('Money lent (USD)').fill('100');
   await page.getByLabel('Rate: IDR per 1 USD').fill('16250');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
@@ -197,7 +197,7 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
   await openNew(page, 'New payable');
   await page.getByLabel('Person').fill('Budi');
   await page.getByLabel('Received into').selectOption({ label: 'Wise USD (USD)' });
-  await page.getByLabel('Amount (USD)').fill('50');
+  await page.getByLabel('Money borrowed (USD)').fill('50');
   // Saved blank first: with no rate stored and none to fetch, it says so and waits for one — nothing is lost.
   await page.getByLabel('Rate: IDR per 1 USD').fill('');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -235,7 +235,7 @@ test('+ asks which side, each opens on a screen of its own, and back and Save bo
   // Save does too, with the new person on the side they were added to.
   await openNew(page, 'New payable');
   await page.getByLabel('Person').fill('Dewi');
-  await page.getByLabel(/^Amount/).fill('750000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?.*side=owe/);
@@ -249,7 +249,7 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel(/^Amount/).fill('1500000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('1500000');
   await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Motorcycle repair');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -260,14 +260,13 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByLabel('Person').fill('Andi');
   await expect(page.getByLabel('Loan', { exact: true })).toHaveValue('');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel(/^Amount/).fill('8000000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('8000000');
   await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
   // One row for Andi on the list, saying he has two loans; his page tells them apart by their reasons.
   await expect(personRow(page, 'Andi')).toHaveCount(1);
-  await expect(personRow(page, 'Andi')).toContainText('2 loans');
   await expect(page.getByTestId('debts-total-Receivables')).toContainText('9.500.000');
   await personRow(page, 'Andi').click();
   await expect(page.getByTestId('loan-row').filter({ hasText: 'Motorcycle repair' })).toBeVisible();
@@ -284,11 +283,10 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByRole('button', { name: 'Add more details' }).click();
   await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel(/^Amount/).fill('500000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('500000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('debts-total-Receivables')).toContainText('10.000.000');
   // Still two loans: the half million went onto the laptop, not into a third.
-  await expect(personRow(page, 'Andi')).toContainText('2 loans');
   await personRow(page, 'Andi').click();
   await expect(page.getByTestId('loan-row')).toHaveCount(2);
   await expect(page.getByTestId('loan-row').filter({ hasText: 'Laptop purchase' })).toContainText('8.500.000');
@@ -319,9 +317,10 @@ test('the rest of it folds into the same box behind Add more details, and opens 
   // Folding again keeps what was typed: it is saved with the loan.
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel(/^Amount/).fill('8000000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('8000000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Laptop purchase')).toBeVisible();
+  await personRow(page, 'Andi').click();
+  await expect(page.getByTestId('loan-row').filter({ hasText: 'Laptop purchase' })).toBeVisible();
 });
 
 test('a loan is changed on its own page, and a person’s tax ID on theirs', async ({ page }) => {
@@ -351,7 +350,24 @@ test('a loan is changed on its own page, and a person’s tax ID on theirs', asy
   await page.reload();
   await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toHaveValue('3173010101900001');
 
-  // And the list is one row, the reason under the name.
+  // And the list is one row: the name and the figure, with no second line when nothing is due.
   await page.goto('/net-worth/lend-borrow');
-  await expect(personRow(page, 'Andi')).toContainText('Laptop for college');
+  await expect(personRow(page, 'Andi')).toHaveCount(1);
+  await expect(personRow(page, 'Andi')).not.toContainText('Laptop for college');
+  await expect(page.getByText(/^Lending is not spending/)).toHaveCount(0);
+});
+
+test('the figures name a currency only once an account decides it', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
+  await page.goto('/net-worth/lend-borrow');
+  await openNew(page, 'New receivable');
+  // Nothing picked yet: no code to guess at, and the empty fields say only what goes in them.
+  await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toHaveAttribute('placeholder', 'Amount');
+  await expect(page.getByRole('textbox', { name: 'Fee', exact: true })).toHaveAttribute('placeholder', 'Amount');
+  await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
+  await expect(page.getByRole('textbox', { name: 'Money lent (USD)', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Fee (USD)', exact: true })).toBeVisible();
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await expect(page.getByRole('textbox', { name: 'Money lent (IDR)', exact: true })).toBeVisible();
 });

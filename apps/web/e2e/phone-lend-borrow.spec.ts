@@ -30,7 +30,7 @@ async function twoPeople(page: Page) {
   // The phone shows one side, so + goes straight to that side's screen: Receivables opens on New receivable.
   await page.getByRole('link', { name: 'New receivable' }).tap();
   await page.getByLabel('Person').fill('Andi');
-  await page.getByLabel(/^Amount/).fill('1000000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
   await expect(personRow(page, 'Andi')).toBeVisible();
@@ -39,7 +39,7 @@ async function twoPeople(page: Page) {
   await turnOver(page);
   await page.getByRole('link', { name: 'New payable' }).tap();
   await page.getByLabel('Person').fill('Dewi');
-  await page.getByLabel(/^Amount/).fill('750000');
+  await page.getByLabel(/^Money (lent|borrowed)/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
   // Save comes back to the side just added to, so Dewi is on screen without turning anything over.
@@ -146,7 +146,7 @@ test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is
   // need none, and carry none.
   const note = page.getByText(/^Optional\. A card or bank charge for sending the money\./);
   await expect(note).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Fee (IDR)' }).tap();
+  await page.getByRole('button', { name: 'About Fee' }).tap();
   await expect(note).toBeVisible();
   await expect(page.getByText(/\byou(r)?\b/i).filter({ hasText: /^Optional/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'About What it is for' })).toHaveCount(0);

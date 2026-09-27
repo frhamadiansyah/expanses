@@ -8,7 +8,7 @@ import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
-import { personDue, personParams, personSubtitle } from './lend-borrow-view';
+import { personDue, personParams } from './lend-borrow-view';
 import { usePeopleDebts } from './queries';
 import { newDebtPath, openingSide, type Side } from './sides';
 import { sideTotal } from './totals';
@@ -57,12 +57,9 @@ function PeopleRows({ people }: { people: PersonDebtRow[] }) {
             icon={<span className="text-[14px] leading-none font-semibold">{person.personName.trim().charAt(0).toUpperCase()}</span>}
             iconColour="var(--ph-tint)"
             title={person.personName}
-            subtitle={
-              <>
-                {personSubtitle(person)}
-                {due && <span className={`font-medium ${DUE_TONE[due.tone]}`}>{` · ${due.label}`}</span>}
-              </>
-            }
+            // Only a due date earns a second line: the name and the figure say the rest, and the loans are told
+            // apart on the person's own page.
+            subtitle={due ? <span className={`font-medium ${DUE_TONE[due.tone]}`}>{due.label}</span> : undefined}
             value={<Money minor={person.totalMinor} currency={person.currency} />}
             valueTone="ink"
             to="/net-worth/lend-borrow/$side/$person"
@@ -168,9 +165,6 @@ export function LendBorrowPage() {
         </>
       )}
 
-      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        Lending is not spending: the money moves from your account to the person, and comes back the same way. Only interest counts as income or as a cost.
-      </p>
     </div>
   );
 }

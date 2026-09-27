@@ -55,6 +55,9 @@ export function DebtForm({
   const money = loanMoneyAccounts(moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype)), draft.direction);
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const foreign = currency !== ws.baseCurrency;
+  // The account decides the currency, so the figures name it only once there is an account: "(IDR)" before one is
+  // picked would be a guess the reader has to unlearn when they choose a dollar account.
+  const codeShown = draft.moneyId ? ` (${currency})` : '';
   // Read from what this device holds, never fetched just because the form opened (see `useStoredRates`).
   const held = useHeldRates(foreign ? [currency] : [], draft.occurredOn > today ? today : draft.occurredOn);
   // Asked for when no rate is stored for the day, or when a Save found none; left out when one is known.
@@ -135,7 +138,8 @@ export function DebtForm({
           { key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: busy || !complete || !setAside.ready, run: () => form.current?.requestSubmit() },
         ]}
       />
-      <InsetGroup header={draft.direction === 'lent' ? 'Money you lent' : 'Money you borrowed'}>
+      {/* No header over the box: the title says which side, and the amount row says which way the money went. */}
+      <InsetGroup>
         <TextRow
           label="Person"
           value={draft.personName}
@@ -192,16 +196,16 @@ export function DebtForm({
         </SelectRow>
         {/* After the account, which decides the currency the figure is read in. */}
         <TextRow
-          label={`Amount (${currency})`}
+          label={`${draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}${codeShown}`}
           value={draft.amount}
           inputMode="decimal"
           onChange={(e) => set({ amount: e.target.value })}
-          placeholder="10.000.000"
+          placeholder="Amount"
           required
         />
         {/* A fee on the money moved is the owner's cost, filed as spending; what the person owes stays the loan. */}
         <TextRow
-          label={`Fee (${currency})`}
+          label={`Fee${codeShown}`}
           info={
             draft.direction === 'lent'
               ? 'Optional. A card or bank charge for sending the money. Counted as spending; the amount owed stays the loan.'
@@ -210,7 +214,7 @@ export function DebtForm({
           value={draft.fee}
           inputMode="decimal"
           onChange={(e) => set({ fee: e.target.value })}
-          placeholder="0"
+          placeholder="Amount"
         />
         {draft.fee.trim() !== '' && draft.fee.trim() !== '0' ? (
           <SelectRow label="Fee category" value={feeCategoryId} onChange={(e) => set({ feeCategoryId: e.target.value })}>

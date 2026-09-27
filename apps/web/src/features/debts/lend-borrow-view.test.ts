@@ -1,6 +1,6 @@
 import type { PersonDebtRow, PersonLoanRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanSubtitle, owesLine, personDue, personParams, personSubtitle, shortDay, stillOwesLine } from './lend-borrow-view';
+import { loanSubtitle, owesLine, personDue, personParams, shortDay, stillOwesLine } from './lend-borrow-view';
 
 const TODAY = '2026-09-27';
 
@@ -37,17 +37,6 @@ describe('dates as a person says them', () => {
 });
 
 describe('a person on the list', () => {
-  it('names their one loan, or says how many there are', () => {
-    expect(personSubtitle(person([loan()]))).toBe('Laptop for college');
-    expect(personSubtitle(person([loan({ reason: null })]))).toBe('No reason noted');
-    expect(personSubtitle(person([loan(), loan({ accountId: 'l2', reason: 'Motorcycle repair' })]))).toBe('2 loans');
-  });
-
-  it('counts only open loans, and says when everything is settled', () => {
-    expect(personSubtitle(person([loan(), loan({ accountId: 'l2', status: 'settled' })]))).toBe('Laptop for college');
-    expect(personSubtitle(person([loan({ status: 'settled' })]))).toBe('Settled');
-  });
-
   it('shows the most urgent due date of their open loans, overdue before due soon', () => {
     const soon = loan({ accountId: 's', dueOn: '2026-10-03', dueState: 'due_soon' });
     const late = loan({ accountId: 'x', dueOn: '2026-09-16', dueState: 'overdue' });

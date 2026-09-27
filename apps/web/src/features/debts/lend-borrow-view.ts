@@ -24,17 +24,6 @@ export const personParams = (person: Pick<PersonDebtRow, 'personName' | 'directi
 const open = (person: PersonDebtRow) => person.loans.filter((loan) => loan.status === 'open');
 
 /**
- * What a person's row says under their name: the one loan's reason, or how many loans there are. A person with two
- * loans is two reasons, and naming only one would hide the other.
- */
-export function personSubtitle(person: PersonDebtRow): string {
-  const loans = open(person);
-  if (loans.length === 1) return loans[0]!.reason?.trim() || 'No reason noted';
-  if (loans.length > 1) return `${loans.length} loans`;
-  return person.loans.length === 1 ? 'Settled' : `${person.loans.length} loans, settled`;
-}
-
-/**
  * The due date that needs attention first across a person's open loans — "11 days overdue" before "Due in 6 days" —
  * for the pill on their row. Empty when none of them has a date.
  */
