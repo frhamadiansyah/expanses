@@ -77,7 +77,8 @@ const rowOf = (page: Page, description: string) => page.getByTestId('transaction
 /** A purchase's receipt: the row's tap on a phone, the ⓘ at its end on a wide screen. */
 async function openReceipt(page: Page, phone: boolean, description: string) {
   await page.goto('/transactions');
-  if (phone) await rowOf(page, description).getByRole('button', { name: new RegExp(description) }).click();
+  // The row's face, not the category circle beside it (whose name is "Category for …").
+  if (phone) await rowOf(page, description).getByRole('button', { name: new RegExp(`^(?!Category for).*${description}`) }).click();
   else await page.getByRole('link', { name: `Receipt for ${description}` }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
 }
