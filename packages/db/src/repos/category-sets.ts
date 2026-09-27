@@ -6,7 +6,7 @@ import { accounts } from '../schema';
 import { bookCategories, bookCategorySets } from '../schema-books';
 import { DEFAULT_CATEGORY_SETS } from '../seed';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
-import { hasBooks, personalBookIdTx } from './books';
+import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
 
 export class CategorySetError extends Error {
@@ -168,6 +168,10 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
   const existing = new Set((await listCategorySets(database, owner)).map((set) => set.name));
   const missing = DEFAULT_CATEGORY_SETS.filter((set) => !existing.has(set.name));
   if (missing.length === 0) return [];
+  // A book joined from someone else's share gets its categories by sync (household sharing); set membership never
+  // syncs, so filing the defaults there would only make duplicates under fresh ids.
+  const target = await database.transaction(async (tx) => ((await hasBooks(tx)) ? await personalBookIdTx(tx, ws.workspaceId) : null));
+  if (target && (await database.transaction((tx) => isJoinedBookTx(tx, target)))) return [];
 
   const now = new Date().toISOString();
   await database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {

@@ -98,3 +98,6 @@ export * as sharingSchema from './schema-sharing';
 export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';
 export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
 export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';
+export { SyncEngine, type ShareInput, type SyncOnceResult } from './sync/engine';
+export { SharingError, type SharingErrorCode } from './sync/seed';
+export { type PullResult } from './sync/apply';

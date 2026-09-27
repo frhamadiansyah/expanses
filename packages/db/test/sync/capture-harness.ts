@@ -1,11 +1,11 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
-import type { Database } from '../../src/database';
+import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
-import { projectPurchase } from '../../src/sync/capture';
+import { configureCapture, projectPurchase } from '../../src/sync/capture';
 import { IdentitySealer } from '../../src/sync/seal';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
-import type { Op } from '../../src/sync/types';
+import type { ChangeSet, Op } from '../../src/sync/types';
 
 /*
  * §6.4 "Nothing escapes capture", test harness only. `installCaptureTriggers` puts TEMP triggers on every table
@@ -39,8 +39,12 @@ function inline(fragment: SQL): string {
 
 const keyExpr = (row: 'NEW' | 'OLD', columns: readonly string[]) => columns.map((c) => `${row}.${c}`).join(` || '|' || `);
 const changed = (columns: readonly string[]) => columns.map((c) => `OLD.${c} IS NOT NEW.${c}`).join(' OR ');
-/** The outbox's high-water mark when the write happened: only ops sealed after it can account for the write. */
-const MARK = `(SELECT coalesce(max(rowid), 0) FROM sync_outbox)`;
+/**
+ * The high-water mark of sealed change-sets when the write happened: only ops sealed after it can account for the
+ * write. Counted in `temp.__sealed`, which copies every change-set as it enters `sync_outbox` — so one the engine has
+ * since drained to the relay still accounts for its writes, and a drained outbox reusing rowids cannot move the mark.
+ */
+const MARK = `(SELECT coalesce(max(seq), 0) FROM temp.__sealed)`;
 const jsonOf = (row: 'OLD' | 'NEW', columns: readonly string[]) => `json_object(${columns.map((c) => `'${c}', ${row}.${c}`).join(', ')})`;
 const changedNames = (columns: readonly string[]) => columns.map((c) => `CASE WHEN OLD.${c} IS NOT NEW.${c} THEN '${c},' ELSE '' END`).join(' || ');
 
@@ -49,8 +53,18 @@ function syncedColumns(entity: RowEntity): string[] {
   return [...new Set([...entity.keyColumns, ...Object.values(entity.fields), ...Object.values(entity.derivedFields ?? {}).flat()])];
 }
 
+/**
+ * Every trigger's first condition: the book is shared right now, and the write is not apply's. A write to a book that
+ * is not (yet) shared needs no op (§6.3: "a write outside a shared book emits nothing"); a write made inside
+ * `withCapturePaused` is apply writing what another device already emitted, and the capture config's `pausedWrites`
+ * observer (capture-setup.ts) marks exactly those with a row in `temp.__apply_paused`.
+ */
+const watching = (bookId: string) =>
+  `NOT EXISTS (SELECT 1 FROM temp.__apply_paused) AND EXISTS (SELECT 1 FROM main.shared_books WHERE book_id = '${bookId.replace(/'/g, "''")}' AND state = 'active')`;
+
 function rowEntityDdl(entity: RowEntity, bookId: string): string {
-  const inBook = (row: 'NEW' | 'OLD') => `EXISTS (SELECT 1 FROM ${entity.table} t WHERE t.rowid = ${row}.rowid AND ${inline(entity.scope(bookId))})`;
+  const inBook = (row: 'NEW' | 'OLD') =>
+    `${watching(bookId)} AND EXISTS (SELECT 1 FROM ${entity.table} t WHERE t.rowid = ${row}.rowid AND ${inline(entity.scope(bookId))})`;
   const synced = syncedColumns(entity);
   // `old` is the row as it stood before this write (NULL for an insert): the check compares the first write's `old`
   // with the row as it ends, so a row deleted and written back as it was is no change at all.
@@ -83,49 +97,78 @@ function purchaseTables(entity: PurchaseEntity): Map<string, { txColumn: string;
   return out;
 }
 
-function purchaseDdl(entity: PurchaseEntity): string {
+function purchaseDdl(entity: PurchaseEntity, bookId: string): string {
   const parts: string[] = [];
+  const when = watching(bookId);
   for (const [table, { txColumn, fieldOf }] of purchaseTables(entity)) {
     const record = (row: 'NEW' | 'OLD', op: string, cols: string) =>
       `INSERT INTO __writes (tbl, key, op, cols, old, mark) VALUES ('${table}', ${row}.${txColumn}, '${op}', ${cols}, NULL, ${MARK});`;
     const name = `__capture_${table}`;
-    parts.push(`CREATE TEMP TRIGGER IF NOT EXISTS ${name}_ins AFTER INSERT ON main.${table} BEGIN ${record('NEW', 'insert', "'*'")} END;`);
+    parts.push(`CREATE TEMP TRIGGER IF NOT EXISTS ${name}_ins AFTER INSERT ON main.${table} WHEN ${when} BEGIN ${record('NEW', 'insert', "'*'")} END;`);
     const columns = [...fieldOf.keys()];
     if (columns.length) {
       parts.push(
-        `CREATE TEMP TRIGGER IF NOT EXISTS ${name}_upd AFTER UPDATE OF ${columns.join(', ')} ON main.${table} WHEN (${changed(columns)}) BEGIN ${record('NEW', 'update', changedNames(columns))} END;`,
+        `CREATE TEMP TRIGGER IF NOT EXISTS ${name}_upd AFTER UPDATE OF ${columns.join(', ')} ON main.${table} WHEN ${when} AND (${changed(columns)}) BEGIN ${record('NEW', 'update', changedNames(columns))} END;`,
       );
     }
-    parts.push(`CREATE TEMP TRIGGER IF NOT EXISTS ${name}_del AFTER DELETE ON main.${table} BEGIN ${record('OLD', 'delete', "'*'")} END;`);
+    parts.push(`CREATE TEMP TRIGGER IF NOT EXISTS ${name}_del AFTER DELETE ON main.${table} WHEN ${when} BEGIN ${record('OLD', 'delete', "'*'")} END;`);
   }
   return parts.join('\n');
 }
 
 /** Installs §6.4's triggers for one shared book. Idempotent. */
 export async function installCaptureTriggers(database: Database, bookId: string): Promise<void> {
-  const ddl = [`CREATE TEMP TABLE IF NOT EXISTS __writes (seq INTEGER PRIMARY KEY, tbl TEXT NOT NULL, key TEXT NOT NULL, op TEXT NOT NULL, cols TEXT NOT NULL, old TEXT, mark INTEGER NOT NULL);`];
-  for (const entity of SHARED_ENTITIES) ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity));
+  const ddl = [
+    `CREATE TEMP TABLE IF NOT EXISTS __writes (seq INTEGER PRIMARY KEY, tbl TEXT NOT NULL, key TEXT NOT NULL, op TEXT NOT NULL, cols TEXT NOT NULL, old TEXT, mark INTEGER NOT NULL);`,
+    `CREATE TEMP TABLE IF NOT EXISTS __apply_paused (x INTEGER);`,
+    `CREATE TEMP TABLE IF NOT EXISTS __sealed (seq INTEGER PRIMARY KEY, book_id TEXT NOT NULL, entry_json TEXT, change_json TEXT);`,
+    `CREATE TEMP TRIGGER IF NOT EXISTS __capture_sealed AFTER INSERT ON main.sync_outbox BEGIN INSERT INTO __sealed (book_id, entry_json) VALUES (NEW.book_id, NEW.entry_json); END;`,
+  ];
+  for (const entity of SHARED_ENTITIES) ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId));
   await database.execScript(ddl.join('\n'));
 }
 
 interface SealedOp {
   rowid: number;
+  hlc: string;
   op: Op;
 }
 
-/** Every op in the outbox with the outbox rowid it was sealed in, by `entity\0id`. */
+/**
+ * Every op this device's peers will end up with since the watch began, by `entity\0id`, each with the seq it was
+ * recorded at and its hlc, latest hlc last: every change-set sealed here (drained or not), and every change-set apply
+ * took in from another device (`recordApplied`), because what a field ends as is the latest hlc that carried it,
+ * whoever wrote it (§7.3 rule 1).
+ */
 async function outboxOps(database: Database): Promise<Map<string, SealedOp[]>> {
-  const rows = await database.db.values<[number, string, string]>(sql`SELECT rowid, book_id, entry_json FROM sync_outbox ORDER BY rowid`);
+  const rows = await database.db.values<[number, string, string | null, string | null]>(sql`SELECT seq, book_id, entry_json, change_json FROM temp.__sealed ORDER BY seq`);
   const opener = new IdentitySealer('harness');
   const out = new Map<string, SealedOp[]>();
-  for (const [rowid, bookId, json] of rows) {
-    const changeSet = await opener.open(bookId, JSON.parse(json) as ChangeLogEntry);
+  for (const [rowid, bookId, entryJson, changeJson] of rows) {
+    const changeSet = changeJson ? (JSON.parse(changeJson) as ChangeSet) : await opener.open(bookId, JSON.parse(entryJson!) as ChangeLogEntry);
     for (const op of changeSet.ops) {
       const key = `${op.entity}\u0000${op.id}`;
-      out.set(key, [...(out.get(key) ?? []), { rowid: Number(rowid), op }]);
+      out.set(key, [...(out.get(key) ?? []), { rowid: Number(rowid), hlc: changeSet.hlc, op }]);
     }
   }
+  for (const list of out.values()) list.sort((a, b) => (a.hlc < b.hlc ? -1 : a.hlc > b.hlc ? 1 : a.rowid - b.rowid));
   return out;
+}
+
+/**
+ * Tells capture to mark apply's writes (`withCapturePaused`) so the triggers leave them out, and to record the
+ * change-set each apply takes in from another device among the ops a later local write is judged against.
+ */
+export function watchPausedWrites(database: Database): void {
+  configureCapture(database, {
+    pausedWrites: {
+      begin: async (tx: Db, changeSet?: ChangeSet) => {
+        await tx.run(sql`INSERT INTO temp.__apply_paused (x) VALUES (1)`);
+        if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
+      },
+      end: async (tx: Db) => void (await tx.run(sql`DELETE FROM temp.__apply_paused`)),
+    },
+  });
 }
 
 /** Whether an op sealed after `mark` carries `field` (an upsert naming it) — or, with no field, is any upsert. */
@@ -248,7 +291,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
 
     if (lineagesChecked.has(lineageId)) continue;
     lineagesChecked.add(lineageId);
-    const [lineage] = await database.db.values<[string | null]>(sql`SELECT head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+    const [lineage] = await database.db.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
     const [head] = await database.db.values<[string]>(sql`
       WITH RECURSIVE forward(id) AS (
         SELECT ${lineageId}
@@ -270,7 +313,8 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     if (expected !== null) {
       const since = Math.min(...writes.filter((x) => x.key === w.key || x.key === expected).map((x) => x.mark));
       const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
-      const projected = (await projectPurchase(database.db, expected, member![0], null)) as unknown as Record<string, unknown>;
+      // Read as the lineage knows it: a purchase another member paid carries the payer's label, not the placeholder's name.
+      const projected = (await projectPurchase(database.db, expected, member![0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
         const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && field in op.fields);

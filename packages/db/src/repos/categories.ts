@@ -5,7 +5,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { bookCategories } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
-import { hasBooks, personalBookIdTx } from './books';
+import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
 
 type AccountRow = typeof accounts.$inferSelect;
@@ -31,6 +31,8 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
     // lookup would answer with whichever copy came last — keying, parenting and counting siblings against
     // another workspace's rows, and hanging a category Personal is missing under Business's parent.
     const personalBookId = (await hasBooks(tx)) ? await personalBookIdTx(tx, ws.workspaceId) : null;
+    // A book joined from someone else's share gets its defaults by sync, under the owner's ids (household sharing).
+    if (personalBookId && (await isJoinedBookTx(tx, personalBookId))) return { keyed: [], created: [] };
     const personalCategories = personalBookId
       ? new Set(
           (

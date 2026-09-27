@@ -14,6 +14,16 @@ a single over-budget op outright rather than emitting it alone over 64 KB; §3/�
 contract to `200`, not `409` (`409` is only the rotation conflict) and the durable object's `seen` to a `Map` (of
 seq), matching what actually answers a replay.
 
+**Task 4 (apply, merge, seeding)** corrected these once apply ran against real ledgers: §4.3/§7.4 — a line in
+another currency is posted with its carried `amountBaseMinor` as it is, never re-derived from a rounded rate, and
+the rate the pair implies is units of base per *major* unit (the exponents differ: USD 2, IDR 0); §7.4 — the payer's
+own accounts are kept only while `money.paidBy` is still this member, and the difference goes on the largest entry
+*of each currency*; §4.4 — a bill's `payer` keeps a local account only while it is one of this device's own; §7.2/§7.3
+— the tombstone ruling (a row keyed by anything but its own id comes back when made again later), existence-only
+rows, rows whose uniqueness is wider than their id, and a parent that is gone; §6.4 — the harness watches only while
+the book is shared, leaves apply's writes out, and counts drained and applied change-sets; §6.5 — joined books are
+left out of the default-tree upkeep at app open.
+
 ## 0. What v3 changed
 
 v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
@@ -226,10 +236,15 @@ a book whose currency is not the owner's (ruled O3). So on every device, `entrie
 the book's currency, and a line in the book's currency has `fx_rate_to_base = 1` and needs no rate.
 
 A line in **another currency** is possible, for example in history paid from a USD card before sharing. It carries
-both figures: `amountMinor` in its `currency`, and `amountBaseMinor` (ruled O2). A receiver posts it with
-`ratesToBase[currency] = amountBaseMinor / amountMinor`, taken from the pair. `planPosting` balances each currency on
-its own, so the money side takes one placeholder entry per currency (§4.4, §7.4). With a split, each currency gets
-the rate of its first line in that currency.
+both figures: `amountMinor` in its `currency`, and `amountBaseMinor` (ruled O2). A receiver posts the line with its
+carried `amountBaseMinor` **as it is** (task 4 correction): `PostingLine.amountBaseMinor` tells `planPosting` to keep
+the figure and to put a currency's rounding difference only on a line that carries none. Re-deriving it from
+`amountBaseMinor / amountMinor` (v3) used a rounded ratio, so a receiver's figure could be off by one minor unit from
+the payer's, and the projections would never agree. `planPosting` balances each currency on its own, so the money side
+takes one placeholder entry per currency (§4.4, §7.4); its base figure is derived with the rate the pair implies —
+units of base per **major** unit, `|amountBaseMinor / amountMinor| × 10^(exp(currency) − exp(base))` (v3 left out the
+exponents) — and takes the currency's difference, so the atom balances exactly. A zero amount never occurs (`planPosting`
+refuses it), and a pair whose base is zero gives no rate (every line of that currency then carries its figure).
 
 **Category side and money side.** An entry on an account whose `kind` is `income` or `expense` is a `line`. Every
 other entry of the row is the **money side**. `paidLabel` is built on the payer's device from the money side: the
@@ -262,8 +277,12 @@ above, and none of them iterates its keys.
 
 `expense_templates.money_account_id` is `NOT NULL` and names an owner's account. A `bill` therefore travels with
 the field **`payer`** `= { memberId, label }` in place of the column. Apply writes `money_account_id` = the
-existing local value when `memberId` is this device's member and the row already exists; otherwise the placeholder
-account for `memberId`. A member who pays a bill someone else set up picks their own account in the form, which
+existing local value when `memberId` is this device's member, the row already exists **and that value is one of this
+device's own accounts, not a placeholder** (task 4 correction: otherwise a bill handed back to its first payer would
+keep the other member's placeholder here and read as theirs); otherwise the placeholder account for `memberId`. That
+includes this device's own member on a device that has no account of theirs for it — a second device of the same
+person — which is why a placeholder can belong to this device's own member. The convergence test compares `payer` by
+member only: the label is the paying device's account name and is kept nowhere on the others. A member who pays a bill someone else set up picks their own account in the form, which
 changes `payer`.
 
 In a shared book the add form draws the currency flag **disabled** and offers no **With** row.
@@ -446,6 +465,14 @@ second uncaptured write to a row already seen):
 - Raw SQL a test runs through `database.execScript` (a fixture such as "archive this row") is not a repository write
   and is dropped from the watch. No repository writes data through `execScript`; only migrations use it.
 
+**As built (task 4).** Three refinements, each proven by `capture-harness.test.ts`: every trigger fires only while the
+watched book has an `active` `shared_books` row (a write to a book not yet shared needs no op — §6.3); a write made
+inside `withCapturePaused` (apply writing what another device emitted, §7.2) is left out — the capture config's
+`pausedWrites` observer marks those, and only those, in `temp.__apply_paused` — and the change-set being applied joins
+the ops a later local write is judged against, the latest **hlc** carrying a field being its end value; and the ops
+come from `temp.__sealed`, a copy of every change-set as it enters `sync_outbox`, so an entry the engine has drained to
+the relay still accounts for its writes (the mark is that table's seq, not the outbox's reusable rowid).
+
 The whole existing suite, run against a database whose first workspace's Personal book is shared, is the completeness
 test; no repository function is called by hand. The command is **`npm run test:capture`** (in `packages/db`, or at the
 repo root). `packages/db`'s `npm test` runs the plain suite and then the capture run (`vitest run && vitest run --config
@@ -469,6 +496,14 @@ on its own.
    "Preparing 1,204 of 3,120".
 
 Voided rows are not seeded: a purchase that was void before sharing never existed for the other member.
+
+**As built (task 4).** `SyncEngine.shareBook` (`packages/db/src/sync/engine.ts`) runs step 0 before the relay book
+exists, then `seedBookTx` (`seed.ts`) writes steps 1–3 in one transaction; `syncOnce` drains. Minting the epoch key is
+task 5's. The app's default-tree upkeep at open (`ensureCategoryKeys`, `ensureDefaultCategorySets`) skips a book this
+device **joined** — a `shared_books` row on a book it holds as `kind = 'shared'` — because its keyed and default
+categories arrive by sync under the owner's ids and category-set membership never syncs. The owner's own shared book is
+not skipped: what the owner's device adds to it is captured and reaches everyone once, and skipping it would stop the
+capture run's shared Personal book from getting its defaults.
 
 ### 6.6 The log entry
 
@@ -508,6 +543,11 @@ for e in entries, in seq order:
 **The cursor never passes an entry that was not applied.** Every `stop` leaves `applied_seq` where it was; the next
 tick tries the same entry again.
 
+**As built (task 4).** `pullAndApply` (`packages/db/src/sync/apply.ts`). An entry this device wrote is already true
+here and only moves the cursor (a restored backup is a new device, §5.1, so this never skips anything it lacks). Each
+op runs in a savepoint: one the local database refuses (a constraint no rule above foresaw) is skipped with a warning,
+never a cursor stuck for ever.
+
 ### 7.2 Applying one change-set
 
 Capture is switched off for the duration, so applying never re-emits.
@@ -515,13 +555,21 @@ Capture is switched off for the duration, so applying never re-emits.
 ```
 for op in cs.ops, in order:
   if op.entity == 'purchase': applyPurchase(op, cs); continue
-  if tombstones[op.entity, op.id] exists: continue
+  T = tombstones[op.entity, op.id]; revivable = the entity's Op.id is not its own minted `id`
   if op.op == 'delete':
-    tombstones[op.entity, op.id] = cs.hlc; delete the row; continue
+    if not revivable: tombstones[...] = max(T, cs.hlc); delete the row; continue            # rule 3
+    if T >= cs.hlc or clock[..., '@row'] > cs.hlc: continue      # made again after this delete: it lost
+    tombstones[...] = cs.hlc; delete the row; continue
+  if T exists:
+    if not revivable or cs.hlc <= T: continue
+    remove the tombstone                                          # made again later: alive again
+  if revivable: clock[..., '@row'] = max(clock[..., '@row'], cs.hlc)
   winners = { f: v for (f, v) in op.fields if clock[op.entity, op.id, f] is null or cs.hlc > clock[...] }
-  if winners is empty: continue
-  if the row does not exist: insert it with winners, the table's defaults, the local workspace id, and its tag row
-  else: update it with winners
+  if the row exists: if winners is empty: continue; update it with winners
+  else:                                                           # an existence-only row (bill_skip) inserts here too
+    if its parent is gone: continue                               # an override of a budget that lost, …
+    if a sibling holds its unique slot: the lower id wins; the loser is deleted and tombstoned here
+    insert it with op.fields, the local workspace id, localOnInsert values, and its tag row
   for f in winners: clock[op.entity, op.id, f] = cs.hlc
 ```
 
@@ -542,6 +590,18 @@ applyPurchase(op, cs):
     id = replaceTransactionTx(tx, L.head, input); L.head = id
   record clocks for winners
 ```
+
+**Tombstones (controller ruling, task 4).** An entity keyed by its own minted `id` (`book`, `category`, `budget`,
+`budget_override`, `bill`) is never made again under that id, so its tombstone wins for ever (rule 3). One keyed by
+anything else — a natural key (`bill_skip`, `book_income_override`) or another row's id (`category_need`,
+`budget_frequency`, `bill_window`, `book_income`, `member`, `device`) — is made again under the same `Op.id` (skip,
+take back, skip again). For those, capture always emits the **whole** row and records the row's existence clock
+`@row` in `sync_field_clocks`, and a delete and a re-make race by hlc like any field: whichever is later wins on every
+device. A fragment never arrives for a revivable row, because a fragment could not be inserted where the row was gone.
+
+**Uniqueness wider than the id.** `budgets` is unique per category and `budget_overrides` per budget and month, so two
+devices can each make "the" budget of one category offline under different ids. The lower id wins on every device;
+the other is deleted with what depended on it and tombstoned, so its later ops are dropped.
 
 `postTransactionTx` mints its own id today. Step 1 adds an optional `id` to `PostTransactionInput`, which only this
 call uses; `replaceTransactionTx` drops it from the input it spreads (check #12). `replaceTransaction` opens its own
@@ -579,17 +639,22 @@ purchase, including one the other person paid; this is that decision's record.
 ### 7.4 The money side on apply
 
 ```
-moneySide(L, money):
-  if L exists and L.head has money-side entries on non-placeholder accounts:        # this device paid
-    keep those accounts; if the total changed, put the whole difference on the entry with the largest |amount|
-  else:
-    for each currency c in money.lines:                                             # ruled O2
-      one entry of −sum(lines in c) on placeholderAccount(bookId, money.paidBy, c)
-  ratesToBase = { c: amountBaseMinor / amountMinor of the first line in c, for each c ≠ this device's base }
+moneySide(L, money):                                                                # corrected in task 4
+  own = money.paidBy is this device's member and L exists
+        ? L.head's money-side entries on non-placeholder accounts : none
+  for each currency c in money.lines:                                               # ruled O2
+    if own has entries in c: keep them; if their total is not −sum(lines in c), put the whole difference on the
+                             entry in c with the largest |amount| (an entry left at zero is dropped)
+    else:                    one entry of −sum(lines in c) on placeholderAccount(bookId, money.paidBy, c)
+  lines post with their carried amountBaseMinor (§4.3); every other entry's base figure uses
+  ratesToBase = { c: |amountBaseMinor / amountMinor| × 10^(exp(c) − exp(base)) of the first line in c }
 ```
 
 On the payer's device the head's own money-side accounts are kept, each in its own currency. Their rates come
-from the carried pairs in the same way.
+from the carried pairs in the same way. They are kept only while `money.paidBy` is still this member: any member may
+change anything (§0, minor 9), including who paid — a member who says "I paid that" posts the money side on their own
+account and sends `paidBy` = themselves — and then the first payer's device moves the money side off its own account
+onto the new payer's placeholder (v3 kept the old account, so the two devices read different payers).
 
 On the payer's device the correction therefore goes through `replaceTransactionTx` against the payer's real account.
 Everything that function carries across a correction is carried exactly as when the payer edits it themselves: a
@@ -818,6 +883,8 @@ Mutate-twice review on every step.
 | `void-wins.test.ts` | correct→void and void→correct, every arrival order → void on all |
 | `idempotent.test.ts` | any entry twice ≡ once |
 | `payer-ledger.test.ts` | a member's correction of the payer's purchase moves the payer's account balance, keeps its set-aside answer and its bill payment |
+| `tombstones.test.ts` (task 4) | a skip taken back and made again is back everywhere; a need cleared and set again: the later wins; a removed budget stays removed; two budgets on one category keep the lower id |
+| `joined-bootstrap.test.ts` (task 4) | app-open default-tree upkeep never writes into a joined book |
 | `rotation.test.ts` | removed at epoch n cannot open n+1; a remaining device opens both; two devices rotating at once → one `201`, one `409`, one epoch; the leaving device never seals |
 | `join.test.ts` | a joiner after two rotations reads the whole history; a currency mismatch claims nothing |
 | `restore.test.ts` | §8.7: `needs_invite`, then rejoin converges |

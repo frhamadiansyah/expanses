@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { afterEach, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
-import { installCaptureTriggers, uncapturedWrites } from './capture-harness';
+import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
 
 /*
  * The capture run's setup file (vitest.capture.config.ts, `npm run test:capture`; spec §6.4). The first workspace each
@@ -23,6 +23,9 @@ async function shareFirstBook(database: Database, workspaceId: string): Promise<
     sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${`relay-${bookId}`}, 1, 'member-harness', 'active', ${new Date().toISOString()})`,
   );
   await installCaptureTriggers(database, bookId);
+  // Apply's writes (§7.2) are what another device already emitted: they are marked, and only they leave the watch;
+  // the change-set they apply joins the ops a later local write is judged against.
+  watchPausedWrites(database);
   watched.set(database, bookId);
   // A test's own raw SQL (a fixture: "archive this row", "age this date") is not a repository write: what it writes
   // is dropped from the watch. No repository writes data through execScript; only migrations use it.

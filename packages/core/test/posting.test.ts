@@ -147,3 +147,56 @@ describe('planPosting', () => {
     );
   });
 });
+
+describe('planPosting: a line that carries its own base figure (household sharing, spec §7.4)', () => {
+  it('posts the carried base figure as it is, never re-derived from a rounded rate', () => {
+    // 3.33 THB at a rate that makes 1,234 IDR: re-deriving from 1234/333 would round differently on another device.
+    const planned = plan([
+      { accountId: 'groceries', amountMinor: 333, currency: 'THB', amountBaseMinor: 1_234 },
+      { accountId: 'groceries', amountMinor: 667, currency: 'THB', amountBaseMinor: 2_471 },
+      { accountId: 'thbCash', amountMinor: -1_000, currency: 'THB' },
+    ], { THB: 370 });
+    expect(planned.map((p) => p.amountBaseMinor)).toEqual([1_234, 2_471, -3_705]);
+    expect(planned.every((p) => p.fxRateToBase > 0)).toBe(true);
+  });
+
+  it('takes the difference on the largest line without a carried figure, never on a carried one', () => {
+    const planned = plan(
+      [
+        { accountId: 'groceries', amountMinor: 900, currency: 'THB', amountBaseMinor: 4_001 },
+        { accountId: 'thbCash', amountMinor: -500, currency: 'THB' },
+        { accountId: 'thbCash', amountMinor: -400, currency: 'THB' },
+      ],
+      { THB: 4.44 },
+    );
+    expect(planned[0]!.amountBaseMinor).toBe(4_001);
+    expect(planned.reduce((s, p) => s + p.amountBaseMinor, 0)).toBe(0);
+  });
+
+  it('refuses carried figures in one currency that do not balance', () => {
+    expect(
+      codeOf(() =>
+        plan([
+          { accountId: 'groceries', amountMinor: 100, currency: 'THB', amountBaseMinor: 440 },
+          { accountId: 'thbCash', amountMinor: -100, currency: 'THB', amountBaseMinor: -441 },
+        ]),
+      ),
+    ).toBe('UNBALANCED');
+  });
+
+  it('ignores a carried figure on a line already in the base currency', () => {
+    const planned = plan([
+      { accountId: 'groceries', amountMinor: 5_000, currency: 'IDR', amountBaseMinor: 1 },
+      { accountId: 'checking', amountMinor: -5_000, currency: 'IDR' },
+    ]);
+    expect(planned.map((p) => p.amountBaseMinor)).toEqual([5_000, -5_000]);
+  });
+
+  it('needs no rate when every line of a currency carries its figure', () => {
+    const planned = plan([
+      { accountId: 'groceries', amountMinor: 100, currency: 'THB', amountBaseMinor: 440 },
+      { accountId: 'thbCash', amountMinor: -100, currency: 'THB', amountBaseMinor: -440 },
+    ]);
+    expect(planned[0]!.fxRateToBase).toBeCloseTo(4.4 * 100, 6);
+  });
+});

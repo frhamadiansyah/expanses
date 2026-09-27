@@ -4,7 +4,7 @@ import type { Database, Db, Tx } from '../database';
 import { IdentitySealer, type Sealer } from './seal';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { reserveAndSplit } from './split';
-import type { Op } from './types';
+import type { ChangeSet, Op } from './types';
 
 /*
  * Capture (household-sharing spec §6.3): turning local writes to a shared book into ops, and ops into sealed
@@ -35,6 +35,11 @@ export interface CaptureConfig {
   sealerFor: (deviceId: string) => Sealer;
   /** The clock's wall time, for tests. */
   now?: () => number;
+  /**
+   * Told when a transaction writes with capture deliberately off (`withCapturePaused`: apply writing what another
+   * device already emitted). The §6.4 test harness uses it to leave those writes out of its watch, and only those.
+   */
+  pausedWrites?: { begin(tx: Db, changeSet?: ChangeSet): Promise<void>; end(tx: Db): Promise<void> };
 }
 
 export function defaultCaptureConfig(): CaptureConfig {
@@ -68,7 +73,7 @@ export async function localDeviceId(tx: Db): Promise<string> {
   return id;
 }
 
-interface SharedBook {
+export interface SharedBook {
   bookId: string;
   memberId: string;
   epoch: number;
@@ -123,7 +128,7 @@ export class CaptureSession {
 
   constructor(
     private readonly tx: Tx,
-    private readonly config: CaptureConfig,
+    readonly config: CaptureConfig,
   ) {
     this.enabled = config.enabled;
     sessions.set(tx, this);
@@ -192,19 +197,8 @@ export class CaptureSession {
     }
     if (perBook.size === 0) return;
 
-    const deviceId = await localDeviceId(this.tx);
-    const sealer = this.config.sealerFor(deviceId);
-    const createdAt = new Date().toISOString();
     for (const [bookId, ops] of perBook) {
-      const book = books.find((b) => b.bookId === bookId)!;
-      const changeSets = await reserveAndSplit(this.tx, deviceId, book.memberId, ops, this.config.now?.());
-      for (const changeSet of changeSets) {
-        const entry = await sealer.seal(bookId, book.epoch, changeSet);
-        await this.tx.run(
-          sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${bookId}, ${changeSet.hlc}, ${JSON.stringify(entry)}, ${createdAt})`,
-        );
-        for (const op of changeSet.ops) await recordClocks(this.tx, bookId, op, changeSet.hlc);
-      }
+      await writeChangeSetsTx(this.tx, this.config, books.find((b) => b.bookId === bookId)!, ops);
     }
   }
 
@@ -241,6 +235,34 @@ export class CaptureSession {
   }
 }
 
+/**
+ * Cuts `ops` for one shared book into change-sets (spec §6.2), seals each, puts it in `sync_outbox`, and records the
+ * field clocks — what a flush does, and what seeding (§6.5 step 3) does with every row in scope. Inside the caller's
+ * transaction. Returns how many change-sets it wrote.
+ */
+export async function writeChangeSetsTx(tx: Tx, config: Pick<CaptureConfig, 'sealerFor' | 'now'>, book: SharedBook, ops: readonly Op[]): Promise<number> {
+  if (ops.length === 0) return 0;
+  const deviceId = await localDeviceId(tx);
+  const sealer = config.sealerFor(deviceId);
+  const createdAt = new Date().toISOString();
+  const changeSets = await reserveAndSplit(tx, deviceId, book.memberId, ops, config.now?.());
+  for (const changeSet of changeSets) {
+    const entry = await sealer.seal(book.bookId, book.epoch, changeSet);
+    await tx.run(
+      sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${book.bookId}, ${changeSet.hlc}, ${JSON.stringify(entry)}, ${createdAt})`,
+    );
+    for (const op of changeSet.ops) await recordClocks(tx, book.bookId, op, changeSet.hlc);
+  }
+  return changeSets.length;
+}
+
+/** The capture config a database was made with (`createDatabase` registers it). */
+export function captureConfigOf(database: Database): CaptureConfig {
+  const config = configs.get(database);
+  if (!config) throw new Error('captureConfigOf: this database was not made by createDatabase');
+  return config;
+}
+
 /** Called by `createDatabase().transaction` at BEGIN. */
 export function openCaptureSession(tx: Tx, config: CaptureConfig): CaptureSession {
   return new CaptureSession(tx, config);
@@ -254,6 +276,35 @@ function sessionOf(tx: Db): CaptureSession | undefined {
 export function pauseCapture(tx: Db): void {
   sessionOf(tx)?.pause();
 }
+
+/**
+ * Runs `fn` with capture off for the rest of this transaction, and tells the config's `pausedWrites` observer
+ * where those writes begin and end, and which change-set they apply. Apply's door: what it writes was emitted by the
+ * device that made the change.
+ */
+export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applying?: ChangeSet): Promise<T> {
+  const session = sessionOf(tx);
+  session?.pause();
+  const observer = session?.config.pausedWrites;
+  await observer?.begin(tx, applying);
+  const result = await fn();
+  await observer?.end(tx);
+  return result;
+}
+
+/**
+ * Whether an entity's rows can come back after a delete (controller ruling, spec §7.2): one keyed by anything but
+ * its own minted `id` — a natural key (`bill_skip`, `book_income_override`) or another row's id (`category_need`,
+ * `budget_frequency`, `bill_window`) — is made again under the same `Op.id`. Its upserts always carry every field, and
+ * record the row's existence clock `@row`, so a delete and a re-make race by hlc like any field. An entity keyed by its
+ * own `id` is never made again: its tombstone wins for ever (rule 3).
+ */
+export function isRevivable(entity: RowEntity): boolean {
+  return !(entity.keyColumns.length === 1 && entity.keyColumns[0] === 'id');
+}
+
+/** The pseudo-field holding a revivable row's existence clock. */
+export const ROW_CLOCK = '@row';
 
 export interface CaptureTarget {
   entity: string;
@@ -288,7 +339,10 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     }
     const fields = diffFields(was.values, now.values);
     await deriveFields(tx, was, now, fields, books);
-    if (Object.keys(fields).length) slot.ops.push({ bookId: now.bookId, op: { entity: now.entity.entity, id: now.id, op: 'upsert', fields } });
+    if (Object.keys(fields).length === 0) continue;
+    // A revivable row travels whole, so a re-make after a delete never arrives as a fragment (see isRevivable).
+    if (isRevivable(now.entity)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
+    else slot.ops.push({ bookId: now.bookId, op: { entity: now.entity.entity, id: now.id, op: 'upsert', fields } });
   }
   for (const [key, now] of after) {
     if (!before.has(key)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
@@ -380,7 +434,7 @@ function diffFields(before: Record<string, unknown> | null, after: Record<string
   return out;
 }
 
-async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string): Promise<void> {
+export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string): Promise<void> {
   if (op.op === 'delete') {
     await tx.run(
       sql`INSERT INTO sync_tombstones (book_id, entity, id, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${hlc}) ON CONFLICT (book_id, entity, id) DO UPDATE SET hlc = excluded.hlc`,
@@ -389,11 +443,24 @@ async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string): Promis
   }
   // A row this device deleted and made again under the same key is alive here again.
   await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = ${op.entity} AND id = ${op.id}`);
-  for (const field of Object.keys(op.fields)) {
+  const entity = entityOf(op.entity);
+  const fields = entity.kind === 'row' && isRevivable(entity) ? [...Object.keys(op.fields), ROW_CLOCK] : Object.keys(op.fields);
+  for (const field of fields) {
     await tx.run(
       sql`INSERT INTO sync_field_clocks (book_id, entity, id, field, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${field}, ${hlc}) ON CONFLICT (book_id, entity, id, field) DO UPDATE SET hlc = excluded.hlc`,
     );
   }
+}
+
+/**
+ * A full upsert of every row of one in-place entity in the book (spec §6.5 step 2), in rowid order. Seeding's source:
+ * the same snapshot and derivation capture uses, so a seeded row reads exactly as a later capture of it would.
+ */
+export async function rowUpsertsTx(tx: Db, book: SharedBook, entityName: string): Promise<Op[]> {
+  const rows = await snapshot(tx, [book], [{ entity: entityName, bookId: book.bookId }]);
+  const ops: Op[] = [];
+  for (const row of rows.values()) ops.push(await fullUpsert(tx, row, [book]));
+  return ops;
 }
 
 /* ---------------------------------------------------------------- purchases */

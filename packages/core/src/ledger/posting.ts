@@ -1,6 +1,6 @@
 import { currencyInfo } from '../money/currencies';
 import { convertMinor } from '../money/money';
-import { type PlannedEntry, PostingError, type PostingInput } from './types';
+import { type PlannedEntry, PostingError, type PostingInput, type PostingLine } from './types';
 
 /**
  * Validates posting lines and computes base-currency amounts.
@@ -50,7 +50,37 @@ export function planPosting(input: PostingInput): PlannedEntry[] {
     return rate;
   };
 
+  // A carried base figure (spec §7.4 of household sharing) is posted as it is. Its rate is the one given, else the
+  // one the figure itself implies, so a currency whose every line carries one needs no rate at all.
+  const carried = new Set<PlannedEntry>();
+  const impliedRate = (line: PostingLine & { amountBaseMinor: number }): number => {
+    const given = ratesToBase[line.currency];
+    if (given !== undefined && given > 0) return given;
+    const shift = currencyInfo(line.currency).exponent - currencyInfo(baseCurrency).exponent;
+    const rate = Math.abs(line.amountBaseMinor / line.amountMinor) * 10 ** shift;
+    if (!(rate > 0) || !Number.isFinite(rate)) {
+      throw new PostingError('MISSING_RATE', `No ${line.currency}->${baseCurrency} rate`);
+    }
+    return rate;
+  };
+
   const planned: PlannedEntry[] = lines.map((line) => {
+    if (line.amountBaseMinor !== undefined && line.currency !== baseCurrency) {
+      if (!Number.isSafeInteger(line.amountBaseMinor)) {
+        throw new PostingError('NOT_INTEGER', `Base amount ${line.amountBaseMinor} is not an integer of minor units`);
+      }
+      const entry: PlannedEntry = {
+        accountId: line.accountId,
+        amountMinor: line.amountMinor,
+        currency: line.currency,
+        memo: line.memo ?? null,
+        spendCategoryId: line.spendCategoryId ?? null,
+        fxRateToBase: impliedRate(line as PostingLine & { amountBaseMinor: number }),
+        amountBaseMinor: line.amountBaseMinor,
+      };
+      carried.add(entry);
+      return entry;
+    }
     const rate = rateFor(line.currency);
     return {
       accountId: line.accountId,
@@ -69,7 +99,11 @@ export function planPosting(input: PostingInput): PlannedEntry[] {
     const group = planned.filter((p) => p.currency === currency);
     const drift = group.reduce((s, p) => s + p.amountBaseMinor, 0);
     if (drift !== 0) {
-      const largest = group.reduce((a, b) => (Math.abs(b.amountMinor) > Math.abs(a.amountMinor) ? b : a));
+      const free = group.filter((p) => !carried.has(p));
+      if (free.length === 0) {
+        throw new PostingError('UNBALANCED', `Base amounts of the ${currency} lines sum to ${drift}, expected 0`);
+      }
+      const largest = free.reduce((a, b) => (Math.abs(b.amountMinor) > Math.abs(a.amountMinor) ? b : a));
       largest.amountBaseMinor -= drift;
     }
   }

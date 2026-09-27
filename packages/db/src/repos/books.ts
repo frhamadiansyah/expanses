@@ -99,6 +99,20 @@ export async function personalBookIdTx(tx: Db, workspaceId: string): Promise<str
   return (rows.find((row) => row.kind === 'personal') ?? rows[0])?.id ?? null;
 }
 
+/**
+ * Whether this device joined the book from someone else's share (household sharing): a `shared_books` row, on a book
+ * this device holds as `kind = 'shared'`. Its categories arrive by sync under the owner's ids, so the default-tree
+ * upkeep at app open must never make its own copies there. The owner's own shared book (kept as it was, usually
+ * `'personal'`) is not joined: what the owner's device adds to it is captured and reaches everyone. False on a
+ * database from before sharing.
+ */
+export async function isJoinedBookTx(tx: Db, bookId: string): Promise<boolean> {
+  const tables = await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`);
+  if (tables.length === 0) return false;
+  const rows = await tx.values(sql`SELECT 1 FROM shared_books s JOIN books b ON b.id = s.book_id WHERE s.book_id = ${bookId} AND b.kind = 'shared'`);
+  return rows.length > 0;
+}
+
 /** Makes the Personal book for a workspace being created. Used inside createWorkspace's transaction. */
 export async function createPersonalBookTx(tx: Db, workspaceId: string, baseCurrency: string, createdAt: string): Promise<string> {
   const id = uuidv7();

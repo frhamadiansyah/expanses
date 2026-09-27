@@ -3,7 +3,8 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createAccount, listAccounts, personalBook, postTransaction, postTransactionTx, renameAccount, saveBudget, voidTransactionTx } from '../../src/index';
 import { setupDb } from '../helpers';
-import { installCaptureTriggers, uncapturedWrites } from './capture-harness';
+import { withCapturePaused } from '../../src/sync/capture';
+import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
 import { shareBookForTest } from './sync-helpers';
 
 async function watchedBook() {
@@ -85,5 +86,29 @@ describe('the capture harness (§6.4)', () => {
     const id = await postTransaction(database, ws, { occurredOn: '2026-09-01', description: 'x', channel: 'online', lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 1, currency: 'IDR' }) });
     await database.db.run(sql`UPDATE transaction_flags SET channel = NULL WHERE transaction_id = ${id}`);
     expect(await uncapturedWrites(database, book.id)).toContain(`purchase ${id}: channel reads null but the outbox says "online"`);
+  });
+
+  it("leaves out apply's writes (withCapturePaused), and only those: the same write outside it is named", async () => {
+    const { database, book, groceries } = await watchedBook();
+    watchPausedWrites(database);
+    const applied = { v: 1 as const, hlc: `${'0'.repeat(15)}1-remote`, member: 'member-dewi', ops: [{ entity: 'category', id: groceries.id, op: 'upsert' as const, fields: { name: 'Pasar' } }] };
+    await database.transaction((tx) => withCapturePaused(tx, () => tx.run(sql`UPDATE accounts SET name = 'Pasar' WHERE id = ${groceries.id}`).then(() => undefined), applied));
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+    await database.transaction((tx) => withCapturePaused(tx, () => tx.run(sql`UPDATE accounts SET name = 'Market' WHERE id = ${groceries.id}`).then(() => undefined), applied));
+    // Paused: left out. The same kind of write outside a paused section is named, as before.
+    await database.db.run(sql`UPDATE accounts SET name = 'Sneaky' WHERE id = ${groceries.id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
+  });
+
+  it('is quiet about writes to the book before it is shared', async () => {
+    const t = await setupDb();
+    const book = await personalBook(t.database, t.ws);
+    const groceries = (await listAccounts(t.database, t.ws)).find((a) => a.name === 'Groceries')!;
+    await installCaptureTriggers(t.database, book.id);
+    await t.database.db.run(sql`UPDATE accounts SET name = 'Before' WHERE id = ${groceries.id}`);
+    expect(await uncapturedWrites(t.database, book.id)).toEqual([]);
+    await shareBookForTest(t.database, book.id);
+    await t.database.db.run(sql`UPDATE accounts SET name = 'After' WHERE id = ${groceries.id}`);
+    expect(await uncapturedWrites(t.database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
   });
 });
