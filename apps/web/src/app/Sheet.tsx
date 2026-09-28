@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { Check, Search, X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useEscape } from './use-escape';
 
@@ -20,6 +20,9 @@ export function Sheet({
   children,
   grouped = false,
   confirm,
+  action,
+  heading,
+  closeHidden = false,
 }: {
   title: string;
   onClose: () => void;
@@ -35,6 +38,15 @@ export function Sheet({
    * the same ✓ a pushed form carries, so the sheet needs no Save button at its foot.
    */
   confirm?: { label: string; disabled?: boolean; run: () => void };
+  /** One more button in a plain sheet's header, just before its ✕ — a list sheet's ⌕. */
+  action?: ReactNode;
+  /** Drawn in the title's place in a plain sheet's header — a search field, which then moves nothing below it. */
+  heading?: ReactNode;
+  /**
+   * The header's ✕ stands down — while a search is open, whose own ✕ is in its field, so the sheet never shows two
+   * ✕ at once. The sheet still closes from the scrim, a swipe or Escape.
+   */
+  closeHidden?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -92,19 +104,40 @@ export function Sheet({
           </div>
         ) : (
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">{title}</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
-            >
-              <X size={18} aria-hidden />
-            </button>
+            {heading ? <div className="min-w-0 flex-1">{heading}</div> : <h2 className="flex-1 text-base font-semibold">{title}</h2>}
+            {action}
+            {!closeHidden && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
+              >
+                <X size={18} aria-hidden />
+              </button>
+            )}
           </div>
         )}
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * ⌕ in a list sheet's header, beside its ✕: the way a search is asked for, so no field sits on the list until then
+ * (Paid with, Select category). Drawn like the ✕, filled while the search is open.
+ */
+export function SheetSearchButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Search"
+      aria-pressed={open}
+      className={`flex h-11 w-11 items-center justify-center rounded-xl ${open ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]'}`}
+    >
+      <Search size={18} aria-hidden />
+    </button>
   );
 }

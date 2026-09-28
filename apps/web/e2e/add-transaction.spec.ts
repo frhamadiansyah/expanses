@@ -1051,6 +1051,7 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await expect(child).toHaveCSS('padding-left', '34px');
 
   // The search narrows on the whole path: a parent brings its children, and nothing else stays.
+  await picker.getByRole('button', { name: 'Search', exact: true }).click();
   const search = picker.getByLabel('Search categories');
   await search.fill('food');
   await expect(child).toHaveCount(1);

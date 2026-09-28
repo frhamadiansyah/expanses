@@ -412,8 +412,12 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
   const form = addForm(page);
   await form.getByRole('button', { name: 'Paid with' }).click();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  const search = sheet.getByRole('textbox', { name: 'Search Paid with' });
+  const search = sheet.getByRole('searchbox', { name: 'Search Paid with' });
 
+  // No field on the list until ⌕ in the header asks for one.
+  await expect(search).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(search).toBeFocused();
   await search.fill('jago');
   await expect(sheet.getByRole('button', { name: 'Jago Syariah', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
@@ -472,12 +476,22 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Add credit card' })).toBeVisible();
 
-  // A search looks across both, under their headings, whatever tab is open; the ✕ clears it.
-  await sheet.getByRole('textbox', { name: 'Search Paid with' }).fill('bca');
+  // ⌕ in the header puts the search where the tabs were; it looks across both, under their headings. Its ✕ closes
+  // it, and the tab that was open comes back.
+  const list = sheet.getByTestId('payment-sections');
+  const before = (await list.boundingBox())!.y;
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(tabs).toHaveCount(0);
+  // The field takes the tabs' own row, so the list does not move; and only one ✕ is on the sheet, the field's.
+  expect((await list.boundingBox())!.y).toBe(before);
+  await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+  await sheet.getByRole('searchbox', { name: 'Search Paid with' }).fill('bca');
   await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();
   await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
-  await sheet.getByRole('button', { name: 'Clear search' }).click();
-  await expect(sheet.getByRole('textbox', { name: 'Search Paid with' })).toHaveValue('');
+  await sheet.getByRole('button', { name: 'Close search' }).click();
+  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+  await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
 
   // Nothing chosen yet, so nothing is marked.

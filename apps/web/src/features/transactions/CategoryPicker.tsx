@@ -1,11 +1,11 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { Check, Plus, Search } from 'lucide-react';
+import { Check, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Sheet } from '../../app/Sheet';
+import { Sheet, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
-import { SegmentedControl } from '../../ui/native';
+import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -84,7 +84,7 @@ function CategoryButton({
  * Choosing a category, for every screen that files one: the form's Category row, the edit sheet's, and the
  * list's category gesture.
  *
- * B7's tree — one card per top-level category, its children indented under it, a search pill at the foot and
+ * B7's tree — one card per top-level category, its children indented under it, ⌕ in the header for a search and
  * **+ New category** at the head. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
  * a heading, and a tree that only let leaves be chosen would take that answer away.
  *
@@ -122,6 +122,8 @@ export function CategoryPicker({
   const inOpenBook = useInOpenBook();
   const [showing, setShowing] = useState<'expense' | 'income'>(kind);
   const [search, setSearch] = useState('');
+  // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
+  const [finding, setFinding] = useState(false);
   const [making, setMaking] = useState(false);
   const groups = pickerGroups(accounts, showing, membership, inOpenBook, search);
   // What a new category may be filed under: the roots this picker itself offers, of the kind it is showing.
@@ -132,19 +134,56 @@ export function CategoryPicker({
     onClose();
   };
 
+  const searchField = (
+    <SearchPill
+      value={search}
+      onChange={setSearch}
+      onClose={() => {
+        setSearch('');
+        setFinding(false);
+      }}
+      placeholder="Search"
+      label="Search categories"
+    />
+  );
+
   return (
-    <Sheet grouped title={title} onClose={onClose}>
+    <Sheet
+      grouped
+      title={title}
+      onClose={onClose}
+      closeHidden={finding}
+      heading={lockKind && finding ? searchField : undefined}
+      action={
+        <SheetSearchButton
+          open={finding}
+          onClick={() => {
+            if (finding) setSearch('');
+            setFinding((was) => !was);
+          }}
+        />
+      }
+    >
       <div className="flex flex-col gap-[10px]">
+        {/* The tabs and the search that replaces them share one fixed 44 px row, so nothing below moves. With no
+            tabs (a sheet locked to one kind), the search takes the title's place in the header instead. */}
         {!lockKind && (
-          <SegmentedControl
-            label="Kind"
-            segments={[
-              { key: 'expense', label: 'Expense' },
-              { key: 'income', label: 'Income' },
-            ]}
-            value={showing}
-            onChange={(key) => setShowing(key as 'expense' | 'income')}
-          />
+          <div className="flex h-11 items-center">
+            {finding ? (
+              searchField
+            ) : (
+              <SegmentedControl
+                className="w-full"
+                label="Kind"
+                segments={[
+                  { key: 'expense', label: 'Expense' },
+                  { key: 'income', label: 'Income' },
+                ]}
+                value={showing}
+                onChange={(key) => setShowing(key as 'expense' | 'income')}
+              />
+            )}
+          </div>
         )}
 
         {/* First, and green: making the category you meant is the answer when none of the rows below is. */}
@@ -176,20 +215,6 @@ export function CategoryPicker({
           </p>
         )}
 
-        {/* B7's floating search pill: it rides the foot of the sheet, so a long tree can be narrowed without
-            scrolling back up. */}
-        <div className="sticky bottom-0 px-1 pt-2 pb-1">
-          <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
-            <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-            <input
-              aria-label="Search categories"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search"
-              className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-            />
-          </label>
-        </div>
       </div>
 
       {making && (

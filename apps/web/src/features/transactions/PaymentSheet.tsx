@@ -1,10 +1,10 @@
-import { CreditCard, Landmark, Plus, Search, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { CreditCard, Landmark, Plus } from 'lucide-react';
+import { useState } from 'react';
 import { cx } from '../../ui';
-import { type Segment, SegmentedControl } from '../../ui/native';
+import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { Sheet } from '../../app/Sheet';
+import { Sheet, SheetSearchButton } from '../../app/Sheet';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 
@@ -136,8 +136,9 @@ export function PaymentSheet({
 }) {
   const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
   const [search, setSearch] = useState('');
+  // D of the search mockup: no field on screen until ⌕ in the header asks for one; it then takes the tabs' row.
+  const [finding, setFinding] = useState(false);
   const [tab, setTab] = useState<PaymentTab>(() => openingPaymentTab(options, accounts, chosenAccountId, chosenCardId));
-  const input = useRef<HTMLInputElement>(null);
   const searching = search.trim() !== '';
   // Tabs wherever a card can pay, even with no card yet: the Credit cards tab is where one is added.
   const tabbed = cards;
@@ -208,11 +209,45 @@ export function PaymentSheet({
     </li>
   ) : null;
 
+  const searchField = (
+    <SearchPill
+      value={search}
+      onChange={setSearch}
+      onClose={() => {
+        setSearch('');
+        setFinding(false);
+      }}
+      placeholder="Search"
+      label={`Search ${title}`}
+    />
+  );
+
   return (
-    <Sheet grouped title={title} onClose={onClose}>
-      {tabbed ? <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="mb-3" /> : null}
+    <Sheet
+      grouped
+      title={title}
+      onClose={onClose}
+      closeHidden={finding}
+      heading={!tabbed && finding ? searchField : undefined}
+      action={
+        <SheetSearchButton
+          open={finding}
+          onClick={() => {
+            if (finding) setSearch('');
+            setFinding((was) => !was);
+          }}
+        />
+      }
+    >
+      {/* One row of a fixed 44 px for the tabs or the search that replaces them, so opening the search moves no row
+          below it. A sheet with no tabs takes the search in its header instead, in the title's place. */}
+      {tabbed ? (
+        <div className="mb-3 flex h-11 items-center">
+          {finding ? searchField : <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="w-full" />}
+        </div>
+      ) : null}
       {/* Scrolling the list puts the keyboard away, as a native list does, so the rows it covered can be reached. */}
-      <div onTouchMove={() => input.current?.blur()} data-testid="payment-sections">
+      <div onTouchMove={() => (document.activeElement as HTMLElement | null)?.blur()} data-testid="payment-sections">
         {sections.map((section, index) => (
           <section key={section.key} aria-label={section.title}>
             {headed ? (
@@ -232,33 +267,6 @@ export function PaymentSheet({
         {!searching && sections.length === 0 ? (
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{tab === 'cards' ? 'No credit cards yet.' : 'No accounts yet.'}</p>
         ) : null}
-      </div>
-      {/* The category picker's search, in the same place: pinned at the foot, where the thumb already is. */}
-      <div className="sticky bottom-0 px-1 pt-2 pb-1">
-        <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
-          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-          <input
-            ref={input}
-            aria-label={`Search ${title}`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search"
-            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-          />
-          {searching ? (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setSearch('');
-                input.current?.focus();
-              }}
-              className="ph-focus flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-ink-3)] text-[var(--ph-surface)]"
-            >
-              <X size={11} strokeWidth={3} aria-hidden />
-            </button>
-          ) : null}
-        </label>
       </div>
     </Sheet>
   );
