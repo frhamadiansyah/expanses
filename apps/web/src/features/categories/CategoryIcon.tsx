@@ -9,7 +9,7 @@ import {
   Palette, PartyPopper, PawPrint, PenTool, Percent, PiggyBank, Pill, PillBottle, Pizza, Plane, Presentation, Receipt, Repeat, Sandwich, School,
   Scissors, Shield, ShieldAlert, ShieldCheck, ShieldPlus, Ship, Shirt, ShoppingBag, ShoppingBasket, ShoppingCart, Siren, Smartphone, Sofa, Soup, Sparkles,
   SprayCan, Stethoscope, Tent, Ticket, TrainFront, Trash2, TreePalm, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet,
-  WashingMachine, Watch, Wifi, Wine, Wrench, Zap, Store, Milk, Egg, Fish, Beef, Drumstick, Apple, Carrot, Cookie, CookingPot, GlassWater, Tv, Refrigerator, Lamp, Armchair, Sprout, Plug, Syringe, Hospital, Glasses, Bandage, Coins, Target, MoonStar, Truck, Headphones, Popcorn, Guitar, ToyBrick,
+  WashingMachine, Watch, Wifi, Wine, Wrench, Zap, Store, Milk, Egg, Fish, Beef, Drumstick, Apple, Carrot, Cookie, CookingPot, GlassWater, Tv, Refrigerator, Lamp, Armchair, Sprout, Plug, Syringe, Hospital, Glasses, Bandage, Coins, Target, MoonStar, Truck, Headphones, Popcorn, Guitar, ToyBrick, BrushCleaning, Motorbike, Toothbrush,
 } from 'lucide-react';
 import { useCategoryColours } from '../../lib/queries';
 import { type ChosenColours, tintOf } from '../transactions/category-colours';
@@ -42,6 +42,7 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   'credit-card': CreditCard, music: Music, camera: Camera, 'tree-palm': TreePalm, 'paw-print': PawPrint, dog: Dog, cat: Cat, church: Church,
   'pen-tool': PenTool, cigarette: Cigarette,
   store: Store, milk: Milk, egg: Egg, fish: Fish, beef: Beef, drumstick: Drumstick, apple: Apple, carrot: Carrot, cookie: Cookie, 'cooking-pot': CookingPot, 'glass-water': GlassWater, tv: Tv, refrigerator: Refrigerator, lamp: Lamp, armchair: Armchair, sprout: Sprout, plug: Plug, syringe: Syringe, hospital: Hospital, glasses: Glasses, bandage: Bandage, coins: Coins, target: Target, 'moon-star': MoonStar, truck: Truck, headphones: Headphones, popcorn: Popcorn, guitar: Guitar, 'toy-brick': ToyBrick,
+  'brush-cleaning': BrushCleaning, 'motorbike': Motorbike, 'toothbrush': Toothbrush,
 };
 
 /** A category's own key and its top-level parent's, walking up from any category in the tree. */

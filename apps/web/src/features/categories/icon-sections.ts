@@ -13,14 +13,14 @@ export const ICON_SECTIONS: readonly IconSection[] = [
     title: 'Food & drink',
     keys: ['utensils', 'utensils-crossed', 'coffee', 'cup-soda', 'beer', 'wine', 'pizza', 'soup', 'sandwich', 'ice-cream-cone', 'cake', 'chef-hat', 'shopping-basket', 'store', 'egg', 'fish', 'beef', 'drumstick', 'apple', 'carrot', 'cookie', 'cooking-pot'],
   },
-  { title: 'Transport', keys: ['car', 'car-taxi-front', 'bus', 'bus-front', 'train-front', 'bike', 'ship', 'fuel', 'circle-parking', 'wrench', 'footprints', 'truck'] },
+  { title: 'Transport', keys: ['car', 'car-taxi-front', 'bus', 'bus-front', 'train-front', 'bike', 'ship', 'fuel', 'circle-parking', 'wrench', 'footprints', 'truck', 'motorbike'] },
   {
     title: 'Home & bills',
-    keys: ['house', 'building', 'building-2', 'key-round', 'sofa', 'paint-roller', 'hammer', 'spray-can', 'washing-machine', 'bath', 'zap', 'flame', 'droplets', 'wifi', 'smartphone', 'trash-2', 'shield', 'receipt', 'mail', 'repeat', 'glass-water', 'tv', 'refrigerator', 'lamp', 'armchair', 'sprout', 'plug'],
+    keys: ['house', 'building', 'building-2', 'key-round', 'sofa', 'paint-roller', 'hammer', 'spray-can', 'washing-machine', 'bath', 'zap', 'flame', 'droplets', 'wifi', 'smartphone', 'trash-2', 'shield', 'receipt', 'mail', 'repeat', 'glass-water', 'tv', 'refrigerator', 'lamp', 'armchair', 'sprout', 'plug', 'brush-cleaning'],
   },
   {
     title: 'Health & care',
-    keys: ['heart-pulse', 'stethoscope', 'pill', 'pill-bottle', 'clipboard-plus', 'eye', 'siren', 'shield-plus', 'shield-check', 'shield-alert', 'heart-handshake', 'dumbbell', 'sparkles', 'scissors', 'flower-2', 'message-circle-heart', 'brain', 'cigarette', 'syringe', 'hospital', 'glasses', 'bandage'],
+    keys: ['heart-pulse', 'stethoscope', 'pill', 'pill-bottle', 'clipboard-plus', 'eye', 'siren', 'shield-plus', 'shield-check', 'shield-alert', 'heart-handshake', 'dumbbell', 'sparkles', 'scissors', 'flower-2', 'message-circle-heart', 'brain', 'cigarette', 'syringe', 'hospital', 'glasses', 'bandage', 'toothbrush'],
   },
   { title: 'Shopping', keys: ['shopping-bag', 'shopping-cart', 'shirt', 'watch', 'gem', 'laptop', 'cpu', 'blocks', 'book', 'package'] },
   {
@@ -149,7 +149,7 @@ export const ICON_WORDS: Readonly<Record<string, readonly string[]>> = {
   gift: ['hadiah', 'kado', 'present'],
   flower: ['funeral', 'duka', 'bunga', 'flowers'],
   'hand-heart': ['charity', 'amal', 'donation', 'donasi'],
-  'hand-helping': ['help', 'bantuan', 'maid', 'art', 'pembantu', 'services'],
+  'hand-helping': ['help', 'bantuan', 'maid', 'art', 'pembantu', 'services', 'asisten', 'helper', 'nanny', 'babysitter', 'suster', 'sopir'],
   'paw-print': ['pet', 'hewan', 'peliharaan', 'vet'],
   dog: ['anjing', 'pet', 'hewan'],
   cat: ['kucing', 'pet', 'hewan'],
@@ -192,6 +192,9 @@ export const ICON_WORDS: Readonly<Record<string, readonly string[]>> = {
   popcorn: ['bioskop', 'cinema', 'movie', 'nonton'],
   guitar: ['hobi', 'hobby', 'les musik', 'music lesson'],
   'toy-brick': ['mainan', 'toys', 'lego', 'anak'],
+  'brush-cleaning': ['art', 'asisten rumah tangga', 'pembantu', 'maid', 'cleaning', 'bersih-bersih', 'sapu', 'broom'],
+  'motorbike': ['motor', 'ojek', 'sepeda motor', 'motorcycle', 'scooter'],
+  'toothbrush': ['gigi', 'dentist', 'dokter gigi', 'dental', 'teeth'],
 };
 
 const words = (key: string): string[] => [key.replace(/-\d+$/, '').replace(/-/g, ' '), ...(ICON_WORDS[key] ?? [])];
