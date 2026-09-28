@@ -136,22 +136,6 @@ export function CategoryPicker({
   // New category is a step this sheet moves to, not a sheet stacked on it.
   const newCategory = useNewCategoryForm({ kind: showing, parents, onCreated: (categoryId) => choose(categoryId) });
 
-  if (making) {
-    return (
-      <Sheet
-        grouped
-        tall
-        expanded
-        title="New category"
-        onClose={() => setMaking(false)}
-        back={{ label: title, run: () => setMaking(false) }}
-        confirm={{ label: 'Save', disabled: !newCategory.canSave, run: newCategory.save }}
-      >
-        {newCategory.view}
-      </Sheet>
-    );
-  }
-
   const searchField = (
     <SearchPill
       value={search}
@@ -166,25 +150,31 @@ export function CategoryPicker({
     />
   );
 
+  // One sheet for the list and for New category, so moving between them keeps whatever detent it was left at.
+  const stepBack = () => setMaking(false);
   return (
     <Sheet
       grouped
       tall
-      expanded={finding}
-      title={title}
-      onClose={onClose}
-      closeHidden={finding}
-      heading={lockKind && finding ? searchField : undefined}
-      action={
-        <SheetSearchButton
-          open={finding}
-          onClick={() => {
-            if (finding) setSearch('');
-            setFinding((was) => !was);
-          }}
-        />
-      }
+      title={making ? 'New category' : title}
+      onClose={making ? stepBack : onClose}
+      {...(making
+        ? { back: { label: title, run: stepBack }, confirm: { label: 'Save', disabled: !newCategory.canSave, run: newCategory.save } }
+        : {
+            closeHidden: finding,
+            heading: lockKind && finding ? searchField : undefined,
+            action: (
+              <SheetSearchButton
+                open={finding}
+                onClick={() => {
+                  if (finding) setSearch('');
+                  setFinding((was) => !was);
+                }}
+              />
+            ),
+          })}
     >
+      {making ? newCategory.view : (
       <div className="flex flex-col gap-[10px]">
         {/* The tabs and the search that replaces them share one fixed 32 px row, so nothing below moves. With no
             tabs (a sheet locked to one kind), the search takes the title's place in the header instead. */}
@@ -240,7 +230,7 @@ export function CategoryPicker({
         )}
 
       </div>
-
+      )}
     </Sheet>
   );
 }

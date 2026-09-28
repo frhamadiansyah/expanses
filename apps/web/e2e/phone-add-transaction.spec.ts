@@ -485,9 +485,9 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   const before = (await list.boundingBox())!.y - (await sheet.boundingBox())!.y;
   await sheet.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(tabs).toHaveCount(0);
-  // The field takes the tabs' own row, so the list does not move inside the sheet (the sheet itself rises to its
-  // large detent for the keyboard, as iOS does); and only one ✕ is on the sheet, the field's.
-  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  // The field takes the tabs' own row, so the list does not move, and the sheet stays at the detent it was left at;
+  // only one ✕ is on the sheet, the field's.
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
   await expect.poll(async () => (await list.boundingBox())!.y - (await sheet.boundingBox())!.y).toBe(before);
   // And the field spans the row, edge to edge with the list under it.
   const pill = sheet.getByRole('searchbox', { name: 'Search Paid with' }).locator('xpath=..');
@@ -602,9 +602,10 @@ test('Paid with opens at the medium detent, drags up to large and back, and clos
   await expect(sheet).toHaveAttribute('data-detent', 'medium');
   // Let the sheet settle at its detent before tapping in its header.
   await page.waitForTimeout(400);
-  // A tap on the header's buttons is still a tap.
+  // A tap on the header's buttons is still a tap, and opening the search leaves the sheet where it was.
   await sheet.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toBeVisible();
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
   await sheet.getByRole('button', { name: 'Close search' }).click();
   await drag(700);
   await expect(sheet).toHaveCount(0);
