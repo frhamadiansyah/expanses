@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { addTransaction } from './add-transaction';
 import { countsAs, expectNeed } from './categories';
 
 test('the list is only names; a subcategory opens its page, where it is renamed, marked and archived', async ({ page }) => {
@@ -40,6 +42,9 @@ test('the list is only names; a subcategory opens its page, where it is renamed,
 
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('button', { name: 'More' }).click();
+  // A built-in category is never offered Delete: it would come back on the next start. Archive is drawn in ink.
+  await expect(page.getByRole('menuitem', { name: 'Delete category' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Archive category' })).not.toHaveClass(/ph-alarm/);
   await page.getByRole('menuitem', { name: 'Archive category' }).click();
   await expect(page).toHaveURL(/\/categories$/);
   await expect(tree.getByRole('link', { name: 'Food and beverage', exact: true })).toBeVisible();
@@ -113,4 +118,41 @@ test('a category with subcategories of its own cannot be filed under another', a
   await expect(parents.getByRole('button', { name: 'None (top level)' })).toBeEnabled();
   await parents.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('category-hero')).not.toContainText('in ');
+});
+
+test('a category nothing uses can be deleted from its page; one with a transaction can only be archived', async ({ page }) => {
+  await page.goto('/categories');
+  const tree = page.getByTestId('category-tree');
+  page.once('dialog', (dialog) => void dialog.accept('Syalala'));
+  await page.getByRole('button', { name: 'Add category' }).click();
+  await tree.getByRole('link', { name: 'Syalala', exact: true }).click();
+  await expect(page.getByTestId('category-hero')).toContainText('Syalala');
+
+  await page.getByRole('button', { name: 'More' }).click();
+  const remove = page.getByRole('menuitem', { name: 'Delete category' });
+  await expect(remove).toBeVisible();
+  await expect(remove).not.toHaveClass(/ph-alarm/);
+  await expect(remove.locator('svg.lucide-trash2, svg.lucide-trash-2')).toHaveCount(1);
+  let asked = '';
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+    void dialog.accept();
+  });
+  await remove.click();
+  await expect(page).toHaveURL(/\/categories$/);
+  expect(asked).toBe("Delete Syalala? This can't be undone.");
+  await expect(tree.getByRole('link', { name: 'Syalala', exact: true })).toHaveCount(0);
+  await expect(tree.getByRole('link', { name: 'Food and beverage', exact: true })).toBeVisible();
+
+  // A second one, spent in: its menu holds only Archive.
+  page.once('dialog', (dialog) => void dialog.accept('Syalala'));
+  await page.getByRole('button', { name: 'Add category' }).click();
+  await expect(tree.getByRole('link', { name: 'Syalala', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await addTransaction(page, { description: 'Kopi', paidWith: 'BCA Tahapan', category: 'Syalala', amount: '25000' });
+  await page.goto('/categories');
+  await tree.getByRole('link', { name: 'Syalala', exact: true }).click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Archive category' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Delete category' })).toHaveCount(0);
 });

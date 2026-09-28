@@ -3,6 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
+import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import { AuthorityError, decideOpsTx, NO_REVIVE, viewMember, introductionRefusal, recordRemovalTx, removalRefusal, removedInView, viewDevice, wasRefused } from './authority';
@@ -202,12 +203,13 @@ async function rowExists(tx: Db, entity: RowEntity, where: SQL): Promise<boolean
   return (await tx.values(sql`SELECT 1 FROM ${sql.raw(entity.table)} WHERE ${where}`)).length > 0;
 }
 
-/** Deletes a row and what only made sense against it (a budget's frequency and overrides). */
+/** Deletes a row and what only made sense against it (a budget's frequency and overrides, a category's settings). */
 async function deleteRow(tx: Db, entity: RowEntity, where: SQL, key: Record<string, string>): Promise<void> {
   if (entity.entity === 'budget') {
     await tx.run(sql`DELETE FROM budget_frequencies WHERE budget_id = ${key.id}`);
     await tx.run(sql`DELETE FROM budget_overrides WHERE budget_id = ${key.id}`);
   }
+  if (entity.entity === 'category') await removeCategorySettingsTx(tx, key.id!);
   await tx.run(sql`DELETE FROM ${sql.raw(entity.table)} WHERE ${where}`);
 }
 
@@ -603,12 +605,35 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
   }
 }
 
+/** The category and the settings that go with it when it is deleted (`deleteCategory`). */
+const CATEGORY_SETTINGS = new Set(['category', 'category_need', 'category_colour']);
+
+/**
+ * The categories a change-set deletes that this device has used meanwhile (a purchase posted into one before the
+ * delete arrived, a budget or bill made on it, a subcategory filed under it), each with why it stays. Ruled: the
+ * receiver keeps such a category, and its need mark and colour, and records the delete as a skip — so nothing here is
+ * ever left pointing at a category that is gone. The deleting device files what later arrives for it under the book's
+ * Uncategorised (rule 4), as for any category it does not know.
+ */
+async function categoriesKeptTx(tx: Db, ctx: BookContext, ops: readonly Op[]): Promise<Map<string, string>> {
+  const kept = new Map<string, string>();
+  for (const op of ops) {
+    if (op.entity !== 'category' || op.op !== 'delete') continue;
+    const [row] = await tx.values<[string]>(sql`SELECT name FROM accounts WHERE id = ${op.id} AND workspace_id = ${ctx.ws.workspaceId}`);
+    if (!row) continue;
+    const uses = await categoryUsesTx(tx, op.id);
+    if (uses.length > 0) kept.set(op.id, `kept here: ${categoryInUseMessage(row[0], uses)}`);
+  }
+  return kept;
+}
+
 /** §7.2, inside the caller's transaction, capture already off. Held purchase ops go into `held`. */
 export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: ChangeSet, held: HeldOps = new Map(), run: ApplyRun = { seq: 0, skipped: [] }): Promise<void> {
   await receiveHlc(tx, changeSet.hlc);
   const author = run.author ?? decodeHlc(changeSet.hlc).deviceId;
   const decisions =
     run.decisions ?? (await decideOpsTx(tx, { bookId: ctx.bookId, author, hlc: changeSet.hlc, creator: run.creator ?? false, introducedMember: run.introducedMember }, changeSet.ops));
+  const kept = await categoriesKeptTx(tx, ctx, changeSet.ops);
   for (const [index, original] of changeSet.ops.entries()) {
     const decision = decisions[index]!;
     const op = decision instanceof AuthorityError ? original : decision;
@@ -623,6 +648,8 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     // Who may write what (task 5 fix rounds 1–2): a refused op is a recorded skip, the same on every device.
     await guarded(tx, ctx, run, op, async () => {
       if (decision instanceof AuthorityError) throw decision;
+      const keptBecause = op.op === 'delete' && CATEGORY_SETTINGS.has(op.entity) ? kept.get(op.id) : undefined;
+      if (keptBecause) throw new SkipOp(keptBecause);
       await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
     });
   }

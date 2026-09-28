@@ -1,7 +1,7 @@
 import { type CategoryNeed, categoryVisual, mccName, needOf, type ResolvedNeed } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
+import { Archive, CircleHelp, Info, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
@@ -10,7 +10,7 @@ import { categoryMcc } from './category-mcc';
 import { mccCaption, needCaption } from './category-details';
 import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon';
 import { ColourSheet, IconSheet, ParentSheet } from './CategoryLookSheets';
-import { useCategoryMccs } from './mcc-queries';
+import { useCategoryMccs, useCategoryUsage } from './mcc-queries';
 import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
 import { useCategoryActions } from './use-category-actions';
@@ -90,6 +90,7 @@ export function CategoryPage() {
   const [sheet, setSheet] = useState<'icon' | 'colour' | 'parent' | null>(null);
 
   const category = all.find((a) => a.id === categoryId && a.archivedAt === null);
+  const usage = useCategoryUsage(categoryId, category !== undefined);
   const set = sets.find((s) => s.id === membership[categoryId]);
   const inSet = membership[categoryId] !== undefined;
   const back = inSet
@@ -129,9 +130,15 @@ export function CategoryPage() {
   // Closed whether or not it saved: a refusal is written on the page, under where the sheet was.
   const saved = (done: Promise<boolean>) => void done.then(() => setSheet(null));
 
+  const leave = () => navigate(inSet ? { to: '/categories/sets' } : { to: '/categories', search: c.kind === 'income' ? { kind: 'income' } : {} });
   const archive = async () => {
-    if (await actions.archive(c)) await navigate(inSet ? { to: '/categories/sets' } : { to: '/categories', search: c.kind === 'income' ? { kind: 'income' } : {} });
+    if (await actions.archive(c)) await leave();
   };
+  const remove = async () => {
+    if (await actions.remove(c)) await leave();
+  };
+  // Delete only for a category nothing uses, and never a built-in one (it would come back on the next start).
+  const deletable = usage.data?.canDelete === true;
 
   return (
     <div className={SCREEN}>
@@ -143,7 +150,11 @@ export function CategoryPage() {
             key: 'more',
             label: 'More',
             glyph: <MoreHorizontal size={20} aria-hidden />,
-            menu: [{ key: 'archive', label: 'Archive category', glyph: <Archive size={17} aria-hidden />, destructive: true, run: () => void archive() }],
+            // Neither line is drawn red: ink with the grey glyph, like the other ⋯ lines. Delete still asks first.
+            menu: [
+              { key: 'archive', label: 'Archive category', glyph: <Archive size={17} aria-hidden />, run: () => void archive() },
+              ...(deletable ? [{ key: 'delete', label: 'Delete category', glyph: <Trash2 size={17} aria-hidden />, run: () => void remove() }] : []),
+            ],
           },
         ]}
       />

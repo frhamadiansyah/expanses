@@ -7,6 +7,7 @@ import {
   clearCategoryNeed,
   createAccount,
   createCategorySet,
+  deleteCategory,
   deleteCategorySet,
   moveCategory,
   renameAccount,
@@ -55,6 +56,11 @@ export function useCategoryActions() {
     archive: async (c: AccountRow): Promise<boolean> => {
       if (!window.confirm(`Archive ${c.name}? Past transactions keep it.`)) return false;
       return run(() => archiveAccount(database, ws, c.id));
+    },
+    // Offered only for a category nothing uses (`categoryUsage`); `deleteCategory` checks again before it writes.
+    remove: async (c: AccountRow): Promise<boolean> => {
+      if (!window.confirm(`Delete ${c.name}? This can't be undone.`)) return false;
+      return run(() => deleteCategory(database, ws, c.id));
     },
     changeMcc: (c: AccountRow, current: string | null) => {
       const mcc = window.prompt(`Merchant category code for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
