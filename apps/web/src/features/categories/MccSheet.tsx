@@ -48,6 +48,7 @@ export function MccSheet({
   const code = digits && text.length === 4 ? text : null;
   const matches: MccMatch[] = code ? [] : searchMccs(text);
   const known = code ? mccName(code) : null;
+  const partial = digits && text.length > 0 && text.length < 4 && typed === typed.trimStart();
   return (
     <Sheet
       grouped
@@ -57,23 +58,29 @@ export function MccSheet({
     >
       <div className="flex flex-col gap-[10px]">
         <div className="overflow-hidden rounded-[14px] bg-[var(--ph-surface)]">
-          <input
-            aria-label={`Merchant category code for ${name}`}
-            autoFocus
-            value={typed}
-            onChange={(e) => setTyped(e.target.value.slice(0, 60))}
-            placeholder="Code or a word, e.g. 5812 or restaurant"
-            autoComplete="off"
-            autoCapitalize="none"
-            className="ph-focus-inset min-h-12 w-full bg-transparent px-3 text-[20px] font-semibold tracking-[0.5px] text-[var(--ph-ink)] tabular placeholder:text-[16px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[var(--ph-ink-3)] focus:outline-none"
-          />
+          <div className="relative">
+            <input
+              aria-label={`Merchant category code for ${name}`}
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value.slice(0, 60))}
+              placeholder="Code or a word, e.g. 5812 or restaurant"
+              autoComplete="off"
+              autoCapitalize="none"
+              className="ph-focus-inset min-h-12 w-full bg-transparent px-3 text-[20px] font-semibold tracking-[0.5px] text-[var(--ph-ink)] tabular placeholder:text-[16px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[var(--ph-ink-3)] focus:outline-none"
+            />
+            {/* The digits still to come, as faint 0s after the typed ones: four digits, said by the field's own shape. */}
+            {partial && (
+              <span aria-hidden data-testid="mcc-ghost" className="pointer-events-none absolute inset-0 flex items-center px-3 text-[20px] font-semibold tracking-[0.5px] whitespace-pre tabular">
+                <span className="invisible">{text}</span>
+                <span className="text-[var(--ph-ink-3)] opacity-45">{'0'.repeat(4 - text.length)}</span>
+              </span>
+            )}
+          </div>
           {code && (
             <p data-testid="mcc-meaning" className="px-3 pb-3 text-[14px] leading-[18px] text-[var(--ph-ink-2)]">
               {known ?? 'Not a code on the list. It will still be used as typed.'}
             </p>
-          )}
-          {digits && !code && text.length > 0 && text.length < 4 && (
-            <p className="px-3 pb-3 text-[14px] leading-[18px] text-[var(--ph-ink-3)]">Keep typing: a code is four digits.</p>
           )}
         </div>
 

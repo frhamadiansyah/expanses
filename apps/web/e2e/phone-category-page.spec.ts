@@ -166,7 +166,9 @@ test('a merchant category code is typed in the app’s own sheet, names itself a
   const sheet = page.getByRole('dialog', { name: 'Merchant category code' });
   const field = sheet.getByRole('textbox', { name: 'Merchant category code for Restaurants' });
   await field.fill('58');
-  await expect(sheet).toContainText('Keep typing: a code is four digits.');
+  // The two digits still to come show as faint 0s in the field itself, with no sentence under it.
+  await expect(sheet.getByTestId('mcc-ghost')).toHaveText('5800');
+  await expect(sheet).not.toContainText('Keep typing');
   await expect(sheet.getByRole('button', { name: /^5814, / })).toBeVisible();
   await field.fill('5814');
   await expect(sheet.getByTestId('mcc-meaning')).toHaveText('Fast Food Restaurants');
