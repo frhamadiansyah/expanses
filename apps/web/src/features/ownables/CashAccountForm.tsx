@@ -253,7 +253,6 @@ export function CashAccountForm({
         {canPocket && (
           <SwitchRow
             label="Multi-currency"
-            info="Off for an account that holds one currency. On for one that keeps several currencies inside it."
             checked={pocketed}
             onChange={(on) => {
               setPocketed(on);
