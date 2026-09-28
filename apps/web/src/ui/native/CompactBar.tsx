@@ -145,7 +145,10 @@ export function CompactBar({
                         {item.glyph}
                       </span>
                     ) : null}
-                    <span className="flex-1">{item.label}</span>
+                    <span className="flex-1">
+                      <span className="block">{item.label}</span>
+                      {item.detail && <span className="block max-w-[240px] text-[12.5px] leading-[16px] whitespace-normal text-[var(--ph-ink-3)]">{item.detail}</span>}
+                    </span>
                   </>
                 );
                 const cls = cx(

@@ -42,8 +42,10 @@ test('the list is only names; a subcategory opens its page, where it is renamed,
 
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('button', { name: 'More' }).click();
-  // A built-in category is never offered Delete: it would come back on the next start. Archive is drawn in ink.
-  await expect(page.getByRole('menuitem', { name: 'Delete category' })).toHaveCount(0);
+  // A built-in category cannot be deleted — it would come back on the next start — and the greyed line says so.
+  const builtInDelete = page.getByRole('menuitem', { name: /^Delete category/ });
+  await expect(builtInDelete).toBeDisabled();
+  await expect(builtInDelete).toContainText('Built in, so it would come back. Archive it instead.');
   await expect(page.getByRole('menuitem', { name: 'Archive category' })).not.toHaveClass(/ph-alarm/);
   await page.getByRole('menuitem', { name: 'Archive category' }).click();
   await expect(page).toHaveURL(/\/categories$/);
@@ -129,7 +131,7 @@ test('a category nothing uses can be deleted from its page; one with a transacti
   await expect(page.getByTestId('category-hero')).toContainText('Syalala');
 
   await page.getByRole('button', { name: 'More' }).click();
-  const remove = page.getByRole('menuitem', { name: 'Delete category' });
+  const remove = page.getByRole('menuitem', { name: /^Delete category/ });
   await expect(remove).toBeVisible();
   await expect(remove).not.toHaveClass(/ph-alarm/);
   await expect(remove.locator('svg.lucide-trash2, svg.lucide-trash-2')).toHaveCount(1);
@@ -154,7 +156,10 @@ test('a category nothing uses can be deleted from its page; one with a transacti
   await tree.getByRole('link', { name: 'Syalala', exact: true }).click();
   await page.getByRole('button', { name: 'More' }).click();
   await expect(page.getByRole('menuitem', { name: 'Archive category' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Delete category' })).toHaveCount(0);
+  // Greyed, with the reason under it, rather than missing.
+  const usedDelete = page.getByRole('menuitem', { name: /^Delete category/ });
+  await expect(usedDelete).toBeDisabled();
+  await expect(usedDelete).toContainText('Used by a transaction.');
 });
 
 test('a merchant category code is typed in the app’s own sheet, names itself as it is typed, and resets to the built-in one', async ({ page }) => {

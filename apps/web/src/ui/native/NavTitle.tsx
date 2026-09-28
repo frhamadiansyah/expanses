@@ -97,7 +97,10 @@ function MenuLine({ action }: { action: CornerAction }) {
           {action.glyph}
         </span>
       ) : null}
-      <span className="flex-1">{action.label}</span>
+      <span className="flex-1">
+        <span className="block">{action.label}</span>
+        {action.detail && <span className="block max-w-[240px] text-[12.5px] leading-[16px] whitespace-normal text-[var(--ph-ink-3)]">{action.detail}</span>}
+      </span>
     </>
   );
 }
@@ -125,8 +128,8 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
           >
             {actions.map((action) => {
               const item = cx(
-                'ph-focus-inset flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm whitespace-nowrap',
-                action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]',
+                'ph-focus-inset flex min-h-12 w-full items-center gap-3 px-4 py-2 text-left text-sm whitespace-nowrap',
+                action.disabled ? 'text-[var(--ph-ink-3)]' : action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]',
               );
               // An action that is a journey stays a link behind the `…` too, for the same reason it does in the corner.
               return action.to ? (
@@ -146,6 +149,8 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   key={action.key}
                   type="button"
                   role="menuitem"
+                  disabled={action.disabled}
+                  aria-disabled={action.disabled}
                   onClick={() => {
                     setOpen(false);
                     action.run?.();

@@ -7,7 +7,7 @@ import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/querie
 import { Empty, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
-import { mccCaption, needCaption } from './category-details';
+import { deleteBlockedBy, mccCaption, needCaption } from './category-details';
 import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon';
 import { ColourSheet, IconSheet, ParentSheet } from './CategoryLookSheets';
 import { MccSheet } from './MccSheet';
@@ -183,8 +183,10 @@ export function CategoryPage() {
   const remove = async () => {
     if (await actions.remove(c)) await leave();
   };
-  // Delete only for a category nothing uses, and never a built-in one (it would come back on the next start).
+  // Delete only for a category nothing uses, and never a built-in one (it would come back on the next start). When it
+  // cannot go, the line is still there, greyed, saying why — so the way to make it deletable is on the screen.
   const deletable = usage.data?.canDelete === true;
+  const whyNot = usage.data && !deletable ? deleteBlockedBy(usage.data, all.filter((a) => a.parentId === c.id).map((a) => a.name)) : undefined;
 
   return (
     <div className={SCREEN}>
@@ -199,7 +201,9 @@ export function CategoryPage() {
             // Neither line is drawn red: ink with the grey glyph, like the other ⋯ lines. Delete still asks first.
             menu: [
               { key: 'archive', label: 'Archive category', glyph: <Archive size={17} aria-hidden />, run: () => void archive() },
-              ...(deletable ? [{ key: 'delete', label: 'Delete category', glyph: <Trash2 size={17} aria-hidden />, run: () => void remove() }] : []),
+              ...(usage.data
+                ? [{ key: 'delete', label: 'Delete category', glyph: <Trash2 size={17} aria-hidden />, disabled: !deletable, detail: whyNot, run: () => void remove() }]
+                : []),
             ],
           },
         ]}

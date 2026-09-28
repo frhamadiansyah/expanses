@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mccCaption, needCaption } from './category-details';
+import { deleteBlockedBy, mccCaption, needCaption } from './category-details';
 
 describe('needCaption', () => {
   it('names where the mark came from', () => {
@@ -21,5 +21,18 @@ describe('mccCaption', () => {
   });
   it('stands alone when the code has no name', () => {
     expect(mccCaption({ mcc: '9999', source: 'yours' }, null, null)).toBe('Set by you');
+  });
+});
+
+describe('deleteBlockedBy', () => {
+  it('names the subcategories to move first, and anything else that uses it', () => {
+    expect(deleteBlockedBy({ builtIn: false, uses: [{ use: 'subcategories', count: 1 }] }, ['cvintaa'])).toBe('Has a subcategory: cvintaa.');
+    expect(
+      deleteBlockedBy({ builtIn: false, uses: [{ use: 'subcategories', count: 2 }, { use: 'transactions', count: 3 }, { use: 'budgets', count: 1 }] }, ['a', 'b']),
+    ).toBe('Has 2 subcategories: a, b. Used by 3 transactions and a budget.');
+  });
+  it('says a built-in category comes back, and nothing for one that can go', () => {
+    expect(deleteBlockedBy({ builtIn: true, uses: [] }, [])).toBe('Built in, so it would come back. Archive it instead.');
+    expect(deleteBlockedBy({ builtIn: false, uses: [] }, [])).toBeUndefined();
   });
 });

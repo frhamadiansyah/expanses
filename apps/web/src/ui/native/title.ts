@@ -19,6 +19,8 @@ export interface CornerAction {
   run?: () => void;
   /** True while the action cannot be taken: the corner dims and refuses, instead of failing when it is tapped. */
   disabled?: boolean;
+  /** A quiet second line under a ⋯ menu line — why a greyed line cannot be taken. Menu lines only. */
+  detail?: string;
   /**
    * The action is a switch rather than a journey: search and filters, which stay on until they are turned off. Drawn
    * filled, and carried as `aria-pressed`, so the corner says what state it is in and not only what it does.
