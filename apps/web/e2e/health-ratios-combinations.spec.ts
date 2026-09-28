@@ -99,7 +99,7 @@ test('row 3 — the same marks, counting all spending', async ({ page }) => {
 test('row 4 — Restaurants keeps its own essential mark under a lifestyle parent', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
-  await countsAs(page, 'Restaurants').getByRole('radio', { name: 'Essential' }).click();
+  await countsAs(page, 'Restaurants').selectOption('essential');
   await expectNeed(page, 'Restaurants', 'Essential', 'Marked by you');
   await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('5,7 months');

@@ -1,11 +1,11 @@
 import { type CategoryNeed, categoryVisual, mccName, needOf, type ResolvedNeed } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
+import { Archive, ChevronsUpDown, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, SCREEN, SegmentedControl, TAP } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
 import { mccCaption, needCaption } from './category-details';
 import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon';
@@ -19,8 +19,8 @@ const NEED_EXPLAINED =
   'Essential or lifestyle decides what an emergency fund covers and how the Budget splits what you spent. A category with no mark follows its parent, and counts as essential at the top.';
 
 /**
- * "Counts as", answered by a segmented control rather than a word to tap: the answer is always one of two, and the
- * control shows which even when it is inherited. Choosing either makes the mark the category's own.
+ * "Counts as", answered by the native pop-up menu: the answer is always one of two, and the row shows which even when
+ * it is inherited. Choosing either makes the mark the category's own.
  */
 function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { name: string; need: ResolvedNeed; caption?: string; onChoose: (need: CategoryNeed) => void }) {
   const [explained, setExplained] = useState(false);
@@ -48,18 +48,23 @@ function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { nam
             </span>
           )}
         </span>
-        <SegmentedControl
-          className="w-[172px] shrink-0"
-          label={`What ${name} counts as`}
-          segments={[
-            { key: 'essential', label: 'Essential' },
-            { key: 'lifestyle', label: 'Lifestyle' },
-          ]}
-          value={need.need}
-          onChange={(key) => {
-            if (key !== need.need || need.source !== 'yours') onChoose(key as CategoryNeed);
-          }}
-        />
+        {/* iOS's pop-up button: the answer and ⌃⌄, over a real select, so the phone opens its own native menu. */}
+        <span className="ph-focus-within relative flex shrink-0 items-center gap-[4px] text-[16px] leading-[20px] text-[var(--ph-ink-2)] md:text-[15px]">
+          <span aria-hidden>{need.need === 'lifestyle' ? 'Lifestyle' : 'Essential'}</span>
+          <ChevronsUpDown size={15} aria-hidden className="text-[var(--ph-ink-3)]" />
+          <select
+            aria-label={`What ${name} counts as`}
+            value={need.need}
+            onChange={(e) => {
+              const key = e.target.value as CategoryNeed;
+              if (key !== need.need || need.source !== 'yours') onChoose(key);
+            }}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+          >
+            <option value="essential">Essential</option>
+            <option value="lifestyle">Lifestyle</option>
+          </select>
+        </span>
       </div>
       {explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{NEED_EXPLAINED}</p>}
     </div>
