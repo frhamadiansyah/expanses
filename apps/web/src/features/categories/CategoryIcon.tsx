@@ -2,12 +2,12 @@ import { categoryVisual, TRANSFER_VISUAL, UNKNOWN_VISUAL } from '@expanses/core'
 import type { AccountRow } from '@expanses/db';
 import {
   ArrowLeftRight, Baby, BadgePercent, Banknote, Bath, Bed, Beer, Bike, Blocks, Book, BookOpen, Brain, Briefcase, Brush, Building, Building2, Bus,
-  BusFront, Cake, Camera, Car, CarTaxiFront, Cat, ChartLine, ChefHat, Church, Cigarette, CircleEllipsis, CircleHelp, CircleParking, CirclePlus,
+  BusFront, Cake, Camera, Car, CarTaxiFront, Cat, ChartColumn, ChartLine, ChefHat, Church, Cigarette, CircleEllipsis, CircleHelp, CircleParking, CirclePlus, Cpu,
   Clapperboard, ClipboardPlus, Coffee, CreditCard, CupSoda, Dog, Drama, Droplets, Dumbbell, Eye, FileCheck, FileText, Film, Flame, Flower, Flower2,
   Footprints, Fuel, Gamepad2, Gavel, Gem, Gift, GraduationCap, HandCoins, HandHeart, HandHelping, Hammer, HeartHandshake, HeartPulse, House,
   IceCreamCone, IdCard, KeyRound, Landmark, Laptop, type LucideIcon, Mail, Map as MapIcon, MapPin, MessageCircleHeart, Music, Package, PaintRoller,
   Palette, PartyPopper, PawPrint, PenTool, Percent, PiggyBank, Pill, PillBottle, Pizza, Plane, Presentation, Receipt, Repeat, Sandwich, School,
-  Scissors, Shield, ShieldAlert, ShieldCheck, ShieldPlus, Ship, Shirt, ShoppingBag, ShoppingBasket, Siren, Smartphone, Sofa, Soup, Sparkles,
+  Scissors, Shield, ShieldAlert, ShieldCheck, ShieldPlus, Ship, Shirt, ShoppingBag, ShoppingBasket, ShoppingCart, Siren, Smartphone, Sofa, Soup, Sparkles,
   SprayCan, Stethoscope, Tent, Ticket, TrainFront, Trash2, TreePalm, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet,
   WashingMachine, Watch, Wifi, Wine, Wrench, Zap,
 } from 'lucide-react';
@@ -23,8 +23,8 @@ import { type ChosenColours, tintOf } from '../transactions/category-colours';
 export const ICONS: Readonly<Record<string, LucideIcon>> = {
   'arrow-left-right': ArrowLeftRight, baby: Baby, 'badge-percent': BadgePercent, banknote: Banknote, bed: Bed, blocks: Blocks, book: Book,
   'book-open': BookOpen, brain: Brain, briefcase: Briefcase, brush: Brush, building: Building, 'building-2': Building2, bus: Bus, 'bus-front': BusFront,
-  cake: Cake, car: Car, 'car-taxi-front': CarTaxiFront, 'chart-line': ChartLine, 'chef-hat': ChefHat, 'circle-ellipsis': CircleEllipsis,
-  'circle-help': CircleHelp, 'circle-parking': CircleParking, 'circle-plus': CirclePlus, clapperboard: Clapperboard, 'clipboard-plus': ClipboardPlus,
+  cake: Cake, car: Car, 'car-taxi-front': CarTaxiFront, 'chart-column': ChartColumn, 'chart-line': ChartLine, 'chef-hat': ChefHat, 'circle-ellipsis': CircleEllipsis,
+  'circle-help': CircleHelp, 'circle-parking': CircleParking, 'circle-plus': CirclePlus, cpu: Cpu, clapperboard: Clapperboard, 'clipboard-plus': ClipboardPlus,
   coffee: Coffee, drama: Drama, droplets: Droplets, dumbbell: Dumbbell, eye: Eye, 'file-check': FileCheck, 'file-text': FileText, film: Film,
   flame: Flame, flower: Flower, 'flower-2': Flower2, fuel: Fuel, 'gamepad-2': Gamepad2, gavel: Gavel, gem: Gem, gift: Gift,
   'graduation-cap': GraduationCap, 'hand-coins': HandCoins, 'hand-heart': HandHeart, 'hand-helping': HandHelping, hammer: Hammer,
@@ -32,7 +32,7 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   laptop: Laptop, mail: Mail, map: MapIcon, 'map-pin': MapPin, 'message-circle-heart': MessageCircleHeart, package: Package, 'paint-roller': PaintRoller,
   palette: Palette, 'party-popper': PartyPopper, percent: Percent, pill: Pill, 'pill-bottle': PillBottle, plane: Plane, presentation: Presentation,
   receipt: Receipt, repeat: Repeat, sandwich: Sandwich, school: School, scissors: Scissors, shield: Shield, 'shield-alert': ShieldAlert,
-  'shield-check': ShieldCheck, 'shield-plus': ShieldPlus, shirt: Shirt, 'shopping-bag': ShoppingBag, 'shopping-basket': ShoppingBasket,
+  'shield-check': ShieldCheck, 'shield-plus': ShieldPlus, shirt: Shirt, 'shopping-bag': ShoppingBag, 'shopping-basket': ShoppingBasket, 'shopping-cart': ShoppingCart,
   siren: Siren, smartphone: Smartphone, sofa: Sofa, sparkles: Sparkles, 'spray-can': SprayCan, stethoscope: Stethoscope, tent: Tent,
   ticket: Ticket, 'trash-2': Trash2, 'trending-up': TrendingUp, trophy: Trophy, users: Users, 'users-round': UsersRound, utensils: Utensils,
   'utensils-crossed': UtensilsCrossed, wallet: Wallet, wifi: Wifi, wrench: Wrench, zap: Zap,
