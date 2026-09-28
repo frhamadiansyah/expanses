@@ -115,7 +115,9 @@ export function Sheet({
                   aria-label="Close"
                   className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
                 >
-                  <X size={18} aria-hidden />
+                  {/* Drawn larger than ⌕ on purpose: ✕ fills half its box, ⌕ three quarters, so at one size the ✕ looks
+                      a third smaller. Same stroke in pixels on both. */}
+                  <X size={24} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
                 </button>
               )}
             </div>
@@ -140,7 +142,7 @@ export function SheetSearchButton({ open, onClick }: { open: boolean; onClick: (
       aria-pressed={open}
       className={`flex h-11 w-11 items-center justify-center rounded-xl ${open ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]'}`}
     >
-      <Search size={18} aria-hidden />
+      <Search size={17} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
     </button>
   );
 }
