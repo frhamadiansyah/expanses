@@ -72,6 +72,45 @@ function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { nam
 }
 
 /**
+ * "Merchant category code": the code on the row, and what it means — too long for a line under the title — behind an
+ * ⓘ beside the title, opening under the row the way Counts as explains itself. The code and › are the way to change it.
+ */
+function MccRow({ name, code, about, onChange, position }: GroupChild & { name: string; code: string | null; about?: string; onChange: () => void }) {
+  const [explained, setExplained] = useState(false);
+  return (
+    <div className="relative" data-testid="category-mcc">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <span className="flex min-w-0 flex-1 items-center gap-[6px]">
+          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Merchant category code</span>
+          {about && (
+            <button
+              type="button"
+              aria-label="About Merchant category code"
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          )}
+        </span>
+        <button
+          type="button"
+          aria-label={`Merchant category code for ${name}`}
+          onClick={onChange}
+          className="ph-focus flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink-2)] md:text-[15px]"
+        >
+          <span className="tabular">{code ?? 'None'}</span>
+          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
+        </button>
+      </div>
+      {about && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{about}</p>}
+    </div>
+  );
+}
+
+/**
  * A category's own page: its icon and name, then every change that used to crowd its line on the list — the name,
  * what it counts as, its card MCC, the subcategories under it — and archiving, behind ⋯.
  */
@@ -227,13 +266,11 @@ export function CategoryPage() {
           {need?.source === 'yours' && (
             <InsetRow title={parent ? 'Follow parent' : 'Clear mark'} label={`Clear the mark on ${c.name}`} chevron={false} onClick={() => actions.clearNeed(c)} />
           )}
-          <InsetRow
-            title="Merchant category code"
-            subtitle={mccCaption(card, card.mcc ? mccName(card.mcc) : null, parent?.name ?? null)}
-            value={card.mcc ?? 'None'}
-            label={`Merchant category code for ${c.name}`}
-            testId="category-mcc"
-            onClick={() => actions.changeMcc(c, card.mcc)}
+          <MccRow
+            name={c.name}
+            code={card.mcc}
+            about={mccCaption(card, card.mcc ? mccName(card.mcc) : null, parent?.name ?? null)}
+            onChange={() => actions.changeMcc(c, card.mcc)}
           />
           {card.source === 'yours' && <InsetRow title="Reset merchant category code" label={`Reset merchant category code for ${c.name}`} chevron={false} onClick={() => actions.resetMcc(c)} />}
         </InsetGroup>
