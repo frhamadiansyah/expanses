@@ -484,6 +484,9 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(tabs).toHaveCount(0);
   // The field takes the tabs' own row, so the list does not move; and only one ✕ is on the sheet, the field's.
   expect((await list.boundingBox())!.y).toBe(before);
+  // And the field spans the row, edge to edge with the list under it.
+  const pill = sheet.getByRole('searchbox', { name: 'Search Paid with' }).locator('xpath=..');
+  expect(Math.round((await pill.boundingBox())!.width)).toBe(Math.round((await list.boundingBox())!.width));
   await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
   await sheet.getByRole('searchbox', { name: 'Search Paid with' }).fill('bca');
   await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();

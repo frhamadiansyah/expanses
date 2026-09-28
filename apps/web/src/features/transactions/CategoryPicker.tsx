@@ -170,7 +170,7 @@ export function CategoryPicker({
         {!lockKind && (
           <div className="flex h-11 items-center">
             {finding ? (
-              searchField
+              <div className="w-full">{searchField}</div>
             ) : (
               <SegmentedControl
                 className="w-full"

@@ -243,7 +243,7 @@ export function PaymentSheet({
           below it. A sheet with no tabs takes the search in its header instead, in the title's place. */}
       {tabbed ? (
         <div className="mb-3 flex h-11 items-center">
-          {finding ? searchField : <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="w-full" />}
+          {finding ? <div className="w-full">{searchField}</div> : <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="w-full" />}
         </div>
       ) : null}
       {/* Scrolling the list puts the keyboard away, as a native list does, so the rows it covered can be reached. */}
