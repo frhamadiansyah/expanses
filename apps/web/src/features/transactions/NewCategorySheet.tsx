@@ -21,6 +21,8 @@ import { IconPicker } from '../categories/CategoryLookSheets';
  * Kind is not asked for. It is the tab the picker is showing, and a category made under Income from the Expense
  * tab would be a category the form could not then file this spending in.
  */
+const TOP = 'top-level';
+
 export function useNewCategoryForm({
   kind,
   parents,
@@ -82,10 +84,12 @@ export function useNewCategoryForm({
       </div>
       {/* The kit's rows, as every other form sheet draws them: the label at the left, the answer at the right. Kind
           is not a row: it is the tab the picker is on, and the title says it ("New expense category"). */}
-      <InsetGroup>
+      {/* The form's own 12 px between blocks, not the group's extra margin on top of it. */}
+      <InsetGroup className="!mb-0">
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
-        <SelectRow label="Inside" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-          <option value="">Top level</option>
+        {/* Top level has a value of its own: an empty one reads as "nothing chosen yet" and draws a blank row. */}
+        <SelectRow label="Inside" value={parentId || TOP} onChange={(e) => setParentId(e.target.value === TOP ? '' : e.target.value)}>
+          <option value={TOP}>Top level</option>
           {parents.map((parent) => (
             <option key={parent.id} value={parent.id}>
               {parent.name}
