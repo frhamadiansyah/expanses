@@ -7,7 +7,8 @@ import { canPayWith } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { currencyFlag } from '../transactions/tx-form';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
 
@@ -33,6 +34,52 @@ import { fieldsFor } from './catalogue-view';
 export interface EmbeddedForm {
   formId: string;
   onCanSave: (canSave: boolean) => void;
+}
+
+/**
+ * One pocket in one row: its currency on the left — the flag and the code, a real select laid over them so the phone
+ * opens its own picker — and what it opens with on the right, as the amount row of a transaction reads.
+ */
+function PocketRow({
+  index,
+  currency,
+  onCurrency,
+  balance,
+  onBalance,
+  position,
+}: GroupChild & { index: number; currency: string; onCurrency: (code: string) => void; balance: string; onBalance: (value: string) => void }) {
+  return (
+    <div className="relative">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
+        <span className="ph-focus-within relative flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
+          <span aria-hidden>{currencyFlag(currency)}</span>
+          <span aria-hidden className="font-medium">{currency}</span>
+          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
+          <select
+            aria-label={`Pocket ${index + 1}`}
+            value={currency}
+            onChange={(e) => onCurrency(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code} — {c.name}
+              </option>
+            ))}
+          </select>
+        </span>
+        <input
+          aria-label={`Opening ${currency}`}
+          value={balance}
+          onChange={(e) => onBalance(e.target.value)}
+          inputMode="decimal"
+          placeholder="Amount"
+          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+        />
+      </div>
+    </div>
+  );
 }
 
 export function CashAccountForm({
@@ -252,14 +299,14 @@ export function CashAccountForm({
       {pocketed && (
         <InsetGroup header="Pockets" footer="Leave a rate blank and the rate for the opening date is used. Fill it in only when you want your own figure.">
           {pockets.flatMap((pocket, i) => [
-            <SelectRow key={`c${i}`} label={`Pocket ${i + 1}`} value={pocket.currency} onChange={(e) => setPockets((rows) => choosePocketCurrency(rows, i, e.target.value))}>
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </SelectRow>,
-            <TextRow key={`b${i}`} label={`Opening ${pocket.currency}`} value={pocket.balance} onChange={(e) => setPocket(i, { balance: e.target.value })} inputMode="decimal" placeholder="Amount" />,
+            <PocketRow
+              key={`p${i}`}
+              index={i}
+              currency={pocket.currency}
+              onCurrency={(code) => setPockets((rows) => choosePocketCurrency(rows, i, code))}
+              balance={pocket.balance}
+              onBalance={(balance) => setPocket(i, { balance })}
+            />,
             ...(pocket.currency !== ws.baseCurrency
               ? [
                   <TextRow
