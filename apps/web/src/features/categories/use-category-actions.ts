@@ -8,10 +8,13 @@ import {
   createAccount,
   createCategorySet,
   deleteCategorySet,
+  moveCategory,
   renameAccount,
   renameCategorySet,
   saveCategoryMcc,
   saveCategoryNeed,
+  setCategoryColour,
+  setCategoryIcon,
 } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -58,6 +61,10 @@ export function useCategoryActions() {
       if (mcc?.trim() && mcc.trim() !== current) void run(() => saveCategoryMcc(database, ws, c.id, mcc.trim()));
     },
     resetMcc: (c: AccountRow) => void run(() => clearCategoryMcc(database, ws, c.id)),
+    // Chosen in a sheet with ✓, so nothing is asked again here. Each resolves true once written.
+    move: (c: AccountRow, parentId: string | null) => run(() => moveCategory(database, ws, c.id, parentId)),
+    setIcon: (c: AccountRow, icon: string | null) => run(() => setCategoryIcon(database, ws, c.id, icon)),
+    setColour: (c: AccountRow, colour: string | null) => run(() => setCategoryColour(database, ws, c.id, colour)),
     markNeed: (c: AccountRow, need: CategoryNeed) => void run(() => saveCategoryNeed(database, ws, c.id, need)),
     clearNeed: (c: AccountRow) => void run(() => clearCategoryNeed(database, ws, c.id)),
     addSet: () => {

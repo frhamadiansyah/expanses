@@ -49,3 +49,26 @@ describe('the slices a ring shows', () => {
     expect(ringSlices([])).toEqual({ shown: [], rest: [] });
   });
 });
+
+describe('a colour picked by hand', () => {
+  it('wins over the worked-out colour for its top-level category, and only for it', async () => {
+    const { tintOf, chartColour, categoryColour: wheel } = await import('./category-colours');
+    expect(tintOf('food', { food: '#dc2626' }, '#ea580c')).toBe('#dc2626');
+    expect(tintOf('food', {}, '#ea580c')).toBe('#ea580c');
+    expect(tintOf('food', undefined, '#ea580c')).toBe('#ea580c');
+    expect(tintOf(null, { food: '#dc2626' }, '#64748b')).toBe('#64748b');
+    expect(chartColour('food', { food: '#dc2626' })).toBe('#dc2626');
+    expect(chartColour('rent', { food: '#dc2626' })).toBe(wheel('rent'));
+  });
+
+  it('keeps its slice on the ring, and no other slice takes that colour', async () => {
+    const { ringSlices: slices, categoryColour: wheel } = await import('./category-colours');
+    const items = [
+      { id: 'a', totalMinor: 500 },
+      { id: 'b', totalMinor: 400 },
+    ];
+    const { shown } = slices(items, 8, { b: wheel('a') });
+    expect(shown.find((s) => s.item.id === 'b')!.colour).toBe(wheel('a'));
+    expect(shown.find((s) => s.item.id === 'a')!.colour).not.toBe(wheel('a'));
+  });
+});

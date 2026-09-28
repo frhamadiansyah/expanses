@@ -283,3 +283,6 @@ export async function unarchiveAccountTx(tx: Db, ws: WorkspaceContext, id: strin
 export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   await database.transaction((tx) => archiveAccountTx(tx, ws, id));
 }
+
+/** The account audit trail, for the repos that change an account outside this file (a category's place, its icon). */
+export const writeAccountAuditTx = writeAudit;

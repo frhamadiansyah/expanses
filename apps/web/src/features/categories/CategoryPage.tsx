@@ -1,13 +1,15 @@
-import { type CategoryNeed, mccName, needOf, type ResolvedNeed } from '@expanses/core';
+import { type CategoryNeed, categoryVisual, mccName, needOf, type ResolvedNeed } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, MoreHorizontal, Plus } from 'lucide-react';
-import { useAccounts, useInOpenBook } from '../../lib/queries';
+import { Archive, CircleHelp, MoreHorizontal, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, SCREEN, SegmentedControl, TAP } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
 import { mccCaption, needCaption } from './category-details';
-import { CategoryIcon, categoryMark } from './CategoryIcon';
+import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon';
+import { ColourSheet, IconSheet, ParentSheet } from './CategoryLookSheets';
 import { useCategoryMccs } from './mcc-queries';
 import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
@@ -61,6 +63,8 @@ export function CategoryPage() {
   const overrides = useCategoryMccs().data ?? {};
   const needs = useCategoryNeeds().data ?? {};
   const actions = useCategoryActions();
+  const chosen = useCategoryColours().data ?? {};
+  const [sheet, setSheet] = useState<'icon' | 'colour' | 'parent' | null>(null);
 
   const category = all.find((a) => a.id === categoryId && a.archivedAt === null);
   const set = sets.find((s) => s.id === membership[categoryId]);
@@ -85,6 +89,22 @@ export function CategoryPage() {
   const card = expense ? categoryMcc(c, allCategories, overrides) : null;
   const need = expense && !inSet ? needOf(c.id, allCategories, needs) : null;
   const children = !c.parentId && !inSet ? all.filter((a) => a.parentId === c.id && a.archivedAt === null && membership[a.id] === undefined && inOpenBook(a)) : [];
+
+  // What the category draws when nothing is picked for it: its default by key, or its parent's.
+  const { key, rootKey } = categoryKeys(c.id, all);
+  const automatic = categoryVisual(key, rootKey);
+  const mark = categoryMark(c.id, all, chosen);
+  const top = !c.parentId && !inSet;
+  const ownColour = top ? (chosen[c.id] ?? null) : null;
+  const parents = inSet
+    ? []
+    : all.filter(
+        (a) =>
+          a.subtype === 'category' && a.kind === c.kind && a.parentId === null && a.archivedAt === null && a.id !== c.id && membership[a.id] === undefined && inOpenBook(a),
+      );
+  const hasChildren = all.some((a) => a.parentId === c.id && a.archivedAt === null);
+  // Closed whether or not it saved: a refusal is written on the page, under where the sheet was.
+  const saved = (done: Promise<boolean>) => void done.then(() => setSheet(null));
 
   const archive = async () => {
     if (await actions.archive(c)) await navigate(inSet ? { to: '/categories/sets' } : { to: '/categories', search: c.kind === 'income' ? { kind: 'income' } : {} });
@@ -115,12 +135,56 @@ export function CategoryPage() {
 
       <InsetGroup>
         <InsetRow title="Name" value={c.name} label={`Rename ${c.name}`} onClick={() => actions.rename(c)} />
+        <InsetRow
+          title="Icon"
+          value={<mark.Glyph size={18} strokeWidth={2.2} aria-hidden className="inline-block align-middle text-[var(--ph-ink-2)]" />}
+          label={`Icon for ${c.name}`}
+          testId="category-icon-row"
+          onClick={() => setSheet('icon')}
+        />
+        {top && (
+          <InsetRow
+            title="Colour"
+            value={
+              <span data-testid="category-colour-swatch" data-colour={mark.colour} aria-hidden className="inline-block h-[18px] w-[18px] rounded-full align-middle" style={{ background: mark.colour }} />
+            }
+            subtitle={ownColour ? undefined : 'Automatic'}
+            label={`Colour for ${c.name}`}
+            onClick={() => setSheet('colour')}
+          />
+        )}
         {set ? (
           <InsetRow title="Set" value={set.name} to="/categories/sets" />
         ) : (
-          <InsetRow title="Parent" value={parent?.name ?? 'None'} chevron={false} />
+          <InsetRow title="Parent" value={parent?.name ?? 'None'} label={`Parent of ${c.name}`} testId="category-parent-row" onClick={() => setSheet('parent')} />
         )}
       </InsetGroup>
+
+      {sheet === 'icon' && (
+        <IconSheet
+          current={c.icon}
+          automatic={ICONS[automatic.icon] ?? CircleHelp}
+          onSave={(icon) => (icon === c.icon ? setSheet(null) : saved(actions.setIcon(c, icon)))}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === 'colour' && top && (
+        <ColourSheet
+          current={ownColour}
+          automatic={automatic.colour}
+          onSave={(colour) => (colour === ownColour ? setSheet(null) : saved(actions.setColour(c, colour)))}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === 'parent' && !inSet && (
+        <ParentSheet
+          current={c.parentId}
+          parents={parents}
+          blocked={hasChildren}
+          onSave={(parentId) => (parentId === c.parentId ? setSheet(null) : saved(actions.move(c, parentId)))}
+          onClose={() => setSheet(null)}
+        />
+      )}
 
       {card && (
         <InsetGroup footer={need ? NEED_FOOTER : undefined}>
@@ -145,7 +209,7 @@ export function CategoryPage() {
       {!c.parentId && !inSet && (
         <InsetGroup header="Subcategories">
           {children.map((child) => {
-            const { Glyph, colour } = categoryMark(child.id, all);
+            const { Glyph, colour } = categoryMark(child.id, all, chosen);
             return (
               <InsetRow
                 key={child.id}

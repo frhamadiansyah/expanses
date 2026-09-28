@@ -4,9 +4,10 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { Tag } from 'lucide-react';
-import { cx, ErrorBox, InputRow, Row, SelectRow } from '../../ui';
+import { ErrorBox, InputRow, Row, SelectRow } from '../../ui';
 import { FormRows } from './FormRow';
 import { ICONS } from '../categories/CategoryIcon';
+import { IconPicker } from '../categories/CategoryLookSheets';
 
 /**
  * B7a — a category made without leaving the form, and chosen the moment it exists.
@@ -88,23 +89,9 @@ export function NewCategorySheet({
           <Row label="Kind" value={kind === 'expense' ? 'Expense' : 'Income'} />
         </FormRows>
 
-        {/* Every icon the app can draw. One without a pick keeps inheriting its parent's, exactly as today. */}
-        <div role="group" aria-label="Icon" className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto rounded-[11px] bg-[var(--ph-surface)] p-2 sm:grid-cols-8">
-          {Object.entries(ICONS).map(([key, Glyph]) => (
-            <button
-              key={key}
-              type="button"
-              aria-label={key}
-              aria-pressed={icon === key}
-              onClick={() => setIcon(icon === key ? '' : key)}
-              className={cx(
-                'ph-focus-inset flex h-10 w-full items-center justify-center rounded-full',
-                icon === key ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]',
-              )}
-            >
-              <Glyph size={18} aria-hidden />
-            </button>
-          ))}
+        {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's. */}
+        <div className="max-h-72 overflow-y-auto" data-testid="new-category-icons">
+          <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
         </div>
 
         <ErrorBox error={error} />

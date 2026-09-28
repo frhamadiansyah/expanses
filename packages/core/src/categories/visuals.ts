@@ -78,3 +78,23 @@ export function categoryVisual(key: string | null, rootKey: string | null): { ic
   const icon = (key && CATEGORY_ICONS[key]) ?? (root && CATEGORY_ICONS[root]) ?? UNKNOWN_VISUAL.icon;
   return { icon, colour };
 }
+
+/**
+ * The colours a top-level category may be given by hand, in the order the picker shows them. A category given none
+ * keeps the colour the app works out for it. The database refuses anything not on this list, so every screen that
+ * draws a chosen colour draws one of these.
+ */
+export const CATEGORY_PALETTE: readonly { name: string; colour: string }[] = [
+  { name: 'Red', colour: '#dc2626' },
+  { name: 'Orange', colour: '#ea580c' },
+  { name: 'Amber', colour: '#d97706' },
+  { name: 'Green', colour: '#16a34a' },
+  { name: 'Teal', colour: '#0d9488' },
+  { name: 'Sky', colour: '#0284c7' },
+  { name: 'Blue', colour: '#2563eb' },
+  { name: 'Violet', colour: '#7c3aed' },
+  { name: 'Pink', colour: '#db2777' },
+  { name: 'Slate', colour: '#475569' },
+];
+
+export const isPaletteColour = (colour: string): boolean => CATEGORY_PALETTE.some((entry) => entry.colour === colour);

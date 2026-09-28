@@ -1,14 +1,18 @@
 import { categoryVisual, TRANSFER_VISUAL, UNKNOWN_VISUAL } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import {
-  ArrowLeftRight, Baby, BadgePercent, Banknote, Bed, Blocks, Book, BookOpen, Brain, Briefcase, Brush, Building, Building2, Bus, BusFront, Cake,
-  Car, CarTaxiFront, ChartLine, ChefHat, CircleEllipsis, CircleHelp, CircleParking, CirclePlus, Clapperboard, ClipboardPlus, Coffee, Drama,
-  Droplets, Dumbbell, Eye, FileCheck, FileText, Film, Flame, Flower, Flower2, Fuel, Gamepad2, Gavel, Gem, Gift, GraduationCap, HandCoins,
-  HandHeart, HandHelping, Hammer, HeartHandshake, HeartPulse, House, IdCard, KeyRound, Landmark, Laptop, type LucideIcon, Mail, Map as MapIcon, MapPin,
-  MessageCircleHeart, Package, PaintRoller, Palette, PartyPopper, Percent, Pill, PillBottle, Plane, Presentation, Receipt, Repeat, Sandwich,
-  School, Scissors, Shield, ShieldAlert, ShieldCheck, ShieldPlus, Shirt, ShoppingBag, ShoppingBasket, Siren, Smartphone, Sofa, Sparkles,
-  SprayCan, Stethoscope, Tent, Ticket, Trash2, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet, Wifi, Wrench, Zap,
+  ArrowLeftRight, Baby, BadgePercent, Banknote, Bath, Bed, Beer, Bike, Blocks, Book, BookOpen, Brain, Briefcase, Brush, Building, Building2, Bus,
+  BusFront, Cake, Camera, Car, CarTaxiFront, Cat, ChartLine, ChefHat, Church, Cigarette, CircleEllipsis, CircleHelp, CircleParking, CirclePlus,
+  Clapperboard, ClipboardPlus, Coffee, CreditCard, CupSoda, Dog, Drama, Droplets, Dumbbell, Eye, FileCheck, FileText, Film, Flame, Flower, Flower2,
+  Footprints, Fuel, Gamepad2, Gavel, Gem, Gift, GraduationCap, HandCoins, HandHeart, HandHelping, Hammer, HeartHandshake, HeartPulse, House,
+  IceCreamCone, IdCard, KeyRound, Landmark, Laptop, type LucideIcon, Mail, Map as MapIcon, MapPin, MessageCircleHeart, Music, Package, PaintRoller,
+  Palette, PartyPopper, PawPrint, PenTool, Percent, PiggyBank, Pill, PillBottle, Pizza, Plane, Presentation, Receipt, Repeat, Sandwich, School,
+  Scissors, Shield, ShieldAlert, ShieldCheck, ShieldPlus, Ship, Shirt, ShoppingBag, ShoppingBasket, Siren, Smartphone, Sofa, Soup, Sparkles,
+  SprayCan, Stethoscope, Tent, Ticket, TrainFront, Trash2, TreePalm, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet,
+  WashingMachine, Watch, Wifi, Wine, Wrench, Zap,
 } from 'lucide-react';
+import { useCategoryColours } from '../../lib/queries';
+import { type ChosenColours, tintOf } from '../transactions/category-colours';
 
 /**
  * Every icon name the category data can use, mapped to a drawing bundled with the app.
@@ -32,11 +36,19 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   siren: Siren, smartphone: Smartphone, sofa: Sofa, sparkles: Sparkles, 'spray-can': SprayCan, stethoscope: Stethoscope, tent: Tent,
   ticket: Ticket, 'trash-2': Trash2, 'trending-up': TrendingUp, trophy: Trophy, users: Users, 'users-round': UsersRound, utensils: Utensils,
   'utensils-crossed': UtensilsCrossed, wallet: Wallet, wifi: Wifi, wrench: Wrench, zap: Zap,
+  // Added for the icon picker's shelves (Option A).
+  pizza: Pizza, beer: Beer, wine: Wine, 'cup-soda': CupSoda, 'ice-cream-cone': IceCreamCone, soup: Soup, bike: Bike, 'train-front': TrainFront,
+  ship: Ship, 'washing-machine': WashingMachine, bath: Bath, watch: Watch, footprints: Footprints, 'piggy-bank': PiggyBank,
+  'credit-card': CreditCard, music: Music, camera: Camera, 'tree-palm': TreePalm, 'paw-print': PawPrint, dog: Dog, cat: Cat, church: Church,
+  'pen-tool': PenTool, cigarette: Cigarette,
 };
 
 /** A category's own key and its top-level parent's, walking up from any category in the tree. */
-export function categoryKeys(categoryId: string | null, accounts: readonly AccountRow[]): { key: string | null; rootKey: string | null; rootName: string | null } {
-  if (!categoryId) return { key: null, rootKey: null, rootName: null };
+export function categoryKeys(
+  categoryId: string | null,
+  accounts: readonly AccountRow[],
+): { key: string | null; rootKey: string | null; rootName: string | null; rootId: string | null } {
+  if (!categoryId) return { key: null, rootKey: null, rootName: null, rootId: null };
   const byId = new Map(accounts.map((account) => [account.id, account]));
   let current = byId.get(categoryId);
   const key = current?.systemKey ?? null;
@@ -45,15 +57,22 @@ export function categoryKeys(categoryId: string | null, accounts: readonly Accou
     seen.add(current.id);
     current = byId.get(current.parentId);
   }
-  return { key, rootKey: current?.systemKey ?? null, rootName: current && current.id !== categoryId ? current.name : null };
+  return { key, rootKey: current?.systemKey ?? null, rootName: current && current.id !== categoryId ? current.name : null, rootId: current?.id ?? null };
 }
 
-/** A category's glyph and tint, for a row that draws its own circle — the kit's rows tint an icon themselves. */
-export function categoryMark(categoryId: string | null, accounts: readonly AccountRow[]): { Glyph: LucideIcon; colour: string; name: string | null } {
-  const { key, rootKey } = categoryKeys(categoryId, accounts);
+/**
+ * A category's glyph and tint, for a row that draws its own circle — the kit's rows tint an icon themselves. `chosen`
+ * is the colours picked by hand (`useCategoryColours`): one picked for the top-level category wins over its base.
+ */
+export function categoryMark(
+  categoryId: string | null,
+  accounts: readonly AccountRow[],
+  chosen?: ChosenColours,
+): { Glyph: LucideIcon; colour: string; name: string | null } {
+  const { key, rootKey, rootId } = categoryKeys(categoryId, accounts);
   const category = categoryId ? accounts.find((a) => a.id === categoryId) : undefined;
   const base = categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
-  return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: base.colour, name: category?.name ?? null };
+  return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: tintOf(rootId, chosen, base.colour), name: category?.name ?? null };
 }
 
 /** `row` is the kit's own lead circle, 28 px — what a form row's glyph sits in, so a category lines up with them. */
@@ -83,9 +102,11 @@ export function CategoryIcon({
   /** Written in the circle instead of the glyph, keeping the category's tint — a day number, say. */
   label?: string;
 }) {
-  const { key, rootKey } = categoryKeys(categoryId, accounts);
+  const colours = useCategoryColours().data;
+  const { key, rootKey, rootId } = categoryKeys(categoryId, accounts);
   const chosen = categoryId ? accounts.find((a) => a.id === categoryId)?.icon : null;
-  const base = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
+  const computed = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
+  const base = transfer ? computed : { ...computed, colour: tintOf(rootId, colours, computed.colour) };
   // A category made in the picker draws the icon that was picked for it; one without keeps inheriting its
   // parent's, exactly as before — the colour is the top-level parent's either way, so a category of your own
   // still reads as part of the family it was filed in.

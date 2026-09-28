@@ -22,6 +22,21 @@ export function categoryColour(id: string): string {
   return WHEEL[hash(id) % WHEEL.length]!;
 }
 
+/** Colours picked by hand for top-level categories, by id (`listCategoryColours`). */
+export type ChosenColours = Readonly<Record<string, string>>;
+
+/**
+ * The one rule every screen draws a category's colour by: a colour picked for its top-level category wins, and
+ * without one the colour the screen works out for itself stands — the base colour on a mark, the wheel's on a chart.
+ * `topId` is the top-level category's id; a subcategory is drawn in shades of whatever this answers for its parent.
+ */
+export function tintOf(topId: string | null | undefined, chosen: ChosenColours | undefined, automatic: string): string {
+  return (topId && chosen?.[topId]) || automatic;
+}
+
+/** A top-level category's colour on a chart: the one picked for it, else the wheel's. */
+export const chartColour = (id: string, chosen?: ChosenColours): string => tintOf(id, chosen, categoryColour(id));
+
 /**
  * The same colour, lightened, for a child of that category: its children read as one family rather
  * than as eight unrelated things. `step` runs 0 for the largest child upwards.
@@ -45,14 +60,21 @@ export interface Slice<T> {
  * Past eight or nine slices a donut becomes slivers nobody can tell apart or tap, so everything below
  * a fortieth of the total joins an "Other" slice — which still opens, like any other.
  */
-export function ringSlices<T extends { id: string; totalMinor: number }>(items: readonly T[], limit = 8): { shown: Slice<T>[]; rest: T[] } {
+export function ringSlices<T extends { id: string; totalMinor: number }>(
+  items: readonly T[],
+  limit = 8,
+  chosen?: ChosenColours,
+): { shown: Slice<T>[]; rest: T[] } {
   const sorted = [...items].filter((item) => item.totalMinor > 0).sort((a, b) => b.totalMinor - a.totalMinor);
   const total = sorted.reduce((sum, item) => sum + item.totalMinor, 0);
   const big = sorted.filter((item, index) => index < limit && item.totalMinor / total >= 0.025);
   const rest = sorted.slice(big.length);
-  // A category keeps the colour its id gives it, unless a bigger one in this ring already has it.
-  const taken = new Set<string>();
+  // A category keeps a colour picked for it. Any other keeps the colour its id gives it, unless a picked one or a
+  // bigger one in this ring already has it.
+  const taken = new Set<string>(big.map((item) => chosen?.[item.id]).filter((colour): colour is string => Boolean(colour)));
   const shown = big.map((item) => {
+    const picked = chosen?.[item.id];
+    if (picked) return { item, totalMinor: item.totalMinor, colour: picked };
     let colour = categoryColour(item.id);
     for (let step = 1; taken.has(colour) && step < WHEEL.length; step += 1) {
       colour = WHEEL[(WHEEL.indexOf(colour as (typeof WHEEL)[number]) + step) % WHEEL.length]!;
