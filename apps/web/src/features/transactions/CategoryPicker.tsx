@@ -9,7 +9,7 @@ import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { NewCategorySheet } from './NewCategorySheet';
+import { useNewCategoryForm } from './NewCategorySheet';
 
 /** One top-level category and what hangs off it — the card the picker draws per root. */
 export interface PickerGroup {
@@ -133,6 +133,22 @@ export function CategoryPicker({
     onPick(categoryId);
     onClose();
   };
+  // New category is a step this sheet moves to, not a sheet stacked on it.
+  const newCategory = useNewCategoryForm({ kind: showing, parents, onCreated: (categoryId) => choose(categoryId) });
+
+  if (making) {
+    return (
+      <Sheet
+        grouped
+        title="New category"
+        onClose={() => setMaking(false)}
+        back={{ label: title, run: () => setMaking(false) }}
+        confirm={{ label: 'Save', disabled: !newCategory.canSave, run: newCategory.save }}
+      >
+        {newCategory.view}
+      </Sheet>
+    );
+  }
 
   const searchField = (
     <SearchPill
@@ -190,7 +206,10 @@ export function CategoryPicker({
         {/* First, and green: making the category you meant is the answer when none of the rows below is. */}
         <button
           type="button"
-          onClick={() => setMaking(true)}
+          onClick={() => {
+            newCategory.reset();
+            setMaking(true);
+          }}
           className="ph-focus flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ph-surface)] text-[15px] font-semibold text-[var(--ph-tint)] active:bg-[var(--ph-fill)]"
         >
           <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
@@ -218,14 +237,6 @@ export function CategoryPicker({
 
       </div>
 
-      {making && (
-        <NewCategorySheet
-          kind={showing}
-          parents={parents}
-          onCreated={(categoryId) => choose(categoryId)}
-          onClose={() => setMaking(false)}
-        />
-      )}
     </Sheet>
   );
 }

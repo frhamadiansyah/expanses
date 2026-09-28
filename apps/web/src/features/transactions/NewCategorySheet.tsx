@@ -1,7 +1,6 @@
 import { type AccountRow, createAccount } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { Tag } from 'lucide-react';
 import { ErrorBox, InputRow, Row, SelectRow } from '../../ui';
@@ -10,7 +9,8 @@ import { ICONS } from '../categories/CategoryIcon';
 import { IconPicker } from '../categories/CategoryLookSheets';
 
 /**
- * B7a — a category made without leaving the form, and chosen the moment it exists.
+ * B7a — a category made without leaving the form, and chosen the moment it exists. Drawn by Select category in its
+ * own sheet, as a step it moves to (‹ back, ✓ save), so no second sheet stacks on the first.
  *
  * **It files into the same workspace the picker filters on.** `createAccount` puts a new category in the book of
  * the context it is handed, and `CategoryPicker` shows the categories `useInOpenBook` keeps: both read the one
@@ -21,17 +21,15 @@ import { IconPicker } from '../categories/CategoryLookSheets';
  * Kind is not asked for. It is the tab the picker is showing, and a category made under Income from the Expense
  * tab would be a category the form could not then file this spending in.
  */
-export function NewCategorySheet({
+export function useNewCategoryForm({
   kind,
   parents,
   onCreated,
-  onClose,
 }: {
   kind: 'expense' | 'income';
   /** What it may be filed inside: the roots this picker offers, which are of this kind and this workspace. */
   parents: readonly AccountRow[];
   onCreated: (categoryId: string) => void;
-  onClose: () => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -44,6 +42,7 @@ export function NewCategorySheet({
   const Preview = (icon && ICONS[icon]) || Tag;
 
   async function save() {
+    if (busy || !name.trim()) return;
     setError(null);
     setBusy(true);
     try {
@@ -66,44 +65,43 @@ export function NewCategorySheet({
     }
   }
 
-  return (
-    <Sheet grouped title="New category" onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        {/* B7a's preview: the icon this category will draw, before it exists. */}
-        <div className="flex justify-center py-2">
-          <span aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
-            <Preview size={30} />
-          </span>
-        </div>
-        <FormRows>
-          <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
-          <SelectRow label="Inside" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-            <option value="">Top level</option>
-            {parents.map((parent) => (
-              <option key={parent.id} value={parent.id}>
-                {parent.name}
-              </option>
-            ))}
-          </SelectRow>
-          {/* Shown, not asked: it is the tab the picker is on, and this is where it says so. */}
-          <Row label="Kind" value={kind === 'expense' ? 'Expense' : 'Income'} />
-        </FormRows>
+  const reset = () => {
+    setName('');
+    setParentId('');
+    setIcon('');
+    setError(null);
+  };
 
-        {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's. */}
-        <div className="max-h-72 overflow-y-auto" data-testid="new-category-icons">
-          <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
-        </div>
-
-        <ErrorBox error={error} />
-        <button
-          type="button"
-          disabled={busy || !name.trim()}
-          onClick={() => void save()}
-          className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
-        >
-          Save
-        </button>
+  const view = (
+    <div className="flex flex-col gap-3">
+      {/* B7a's preview: the icon this category will draw, before it exists. */}
+      <div className="flex justify-center py-2">
+        <span aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
+          <Preview size={30} />
+        </span>
       </div>
-    </Sheet>
+      <FormRows>
+        <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
+        <SelectRow label="Inside" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+          <option value="">Top level</option>
+          {parents.map((parent) => (
+            <option key={parent.id} value={parent.id}>
+              {parent.name}
+            </option>
+          ))}
+        </SelectRow>
+        {/* Shown, not asked: it is the tab the picker is on, and this is where it says so. */}
+        <Row label="Kind" value={kind === 'expense' ? 'Expense' : 'Income'} />
+      </FormRows>
+
+      {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's. */}
+      <div className="max-h-72 overflow-y-auto" data-testid="new-category-icons">
+        <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
+      </div>
+
+      <ErrorBox error={error} />
+    </div>
   );
+
+  return { view, canSave: !busy && name.trim() !== '', save: () => void save(), reset };
 }

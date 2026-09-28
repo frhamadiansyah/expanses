@@ -1,4 +1,4 @@
-import { Check, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, Search, X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useEscape } from './use-escape';
 
@@ -23,6 +23,7 @@ export function Sheet({
   action,
   heading,
   closeHidden = false,
+  back,
 }: {
   title: string;
   onClose: () => void;
@@ -47,6 +48,11 @@ export function Sheet({
    * ✕ at once. The sheet still closes from the scrim, a swipe or Escape.
    */
   closeHidden?: boolean;
+  /**
+   * A step inside the sheet rather than a sheet of its own: ‹ in the ✕'s place goes back to where it came from,
+   * named for a screen reader. Only with `confirm`.
+   */
+  back?: { label: string; run: () => void };
 }) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -85,11 +91,11 @@ export function Sheet({
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"
-              onClick={onClose}
-              aria-label="Close"
+              onClick={back ? back.run : onClose}
+              aria-label={back ? back.label : 'Close'}
               className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)]"
             >
-              <X size={18} aria-hidden />
+              {back ? <ChevronLeft size={22} aria-hidden /> : <X size={18} aria-hidden />}
             </button>
             <h2 className="flex-1 text-center text-base font-semibold">{title}</h2>
             <button
