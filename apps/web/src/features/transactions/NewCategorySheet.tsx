@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Tag } from 'lucide-react';
-import { ErrorBox, InputRow, Row, SelectRow } from '../../ui';
-import { FormRows } from './FormRow';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { ICONS } from '../categories/CategoryIcon';
 import { IconPicker } from '../categories/CategoryLookSheets';
 
@@ -80,8 +80,10 @@ export function useNewCategoryForm({
           <Preview size={30} />
         </span>
       </div>
-      <FormRows>
-        <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
+      {/* The kit's rows, as every other form sheet draws them: the label at the left, the answer at the right. Kind
+          is not a row: it is the tab the picker is on, and the title says it ("New expense category"). */}
+      <InsetGroup>
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
         <SelectRow label="Inside" value={parentId} onChange={(e) => setParentId(e.target.value)}>
           <option value="">Top level</option>
           {parents.map((parent) => (
@@ -90,9 +92,7 @@ export function useNewCategoryForm({
             </option>
           ))}
         </SelectRow>
-        {/* Shown, not asked: it is the tab the picker is on, and this is where it says so. */}
-        <Row label="Kind" value={kind === 'expense' ? 'Expense' : 'Income'} />
-      </FormRows>
+      </InsetGroup>
 
       {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's. */}
       <div className="max-h-72 overflow-y-auto" data-testid="new-category-icons">

@@ -156,7 +156,7 @@ export function CategoryPicker({
     <Sheet
       grouped
       tall
-      title={making ? 'New category' : title}
+      title={making ? `New ${showing} category` : title}
       onClose={making ? stepBack : onClose}
       {...(making
         ? { back: { label: title, run: stepBack }, confirm: { label: 'Save', disabled: !newCategory.canSave, run: newCategory.save } }

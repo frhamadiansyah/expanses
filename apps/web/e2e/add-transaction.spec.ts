@@ -1068,8 +1068,10 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await form.getByRole('button', { name: /^Category/ }).click();
   await picker.getByRole('button', { name: 'New category' }).click();
   // The same sheet moves to New category — no second sheet on top of it.
-  const made = page.getByRole('dialog', { name: 'New category' });
+  const made = page.getByRole('dialog', { name: 'New expense category' });
   await expect(page.getByRole('dialog')).toHaveCount(2); // the form underneath, and this one sheet
+  // Its kind is in the title rather than a row of its own.
+  await expect(made.getByText('Kind', { exact: true })).toHaveCount(0);
   // ‹ goes back to the list in the same sheet, and New category comes back empty.
   await made.getByLabel('Name', { exact: true }).fill('Bob');
   await made.getByRole('button', { name: 'Select category' }).click();

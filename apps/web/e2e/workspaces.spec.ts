@@ -127,7 +127,7 @@ test('a category made in the picker belongs to that workspace and to no other', 
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await picker.getByRole('button', { name: 'New category' }).click();
   // The same sheet moves to New category — no second sheet on top of it.
-  const made = page.getByRole('dialog', { name: 'New category' });
+  const made = page.getByRole('dialog', { name: 'New expense category' });
   await expect(page.getByRole('dialog')).toHaveCount(2); // the form underneath, and this one sheet
   await made.getByLabel('Name', { exact: true }).fill('Boba');
   await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
