@@ -18,6 +18,7 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
+import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -120,38 +121,40 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     }
 
     const id = input.id ?? uuidv7();
-    await tx
-      .insert(expenseTemplates)
-      .values({
-        id,
-        workspaceId: ws.workspaceId,
-        name,
-        categoryAccountId: input.categoryAccountId,
-        moneyAccountId: input.moneyAccountId,
-        amountMinor,
-        dayOfMonth: input.dayOfMonth,
-        active: input.active === false ? 0 : 1,
-        archivedAt: null,
-        createdAt: new Date().toISOString(),
-      })
-      .onConflictDoUpdate({
-        target: expenseTemplates.id,
-        set: {
+    await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
+      await tx
+        .insert(expenseTemplates)
+        .values({
+          id,
+          workspaceId: ws.workspaceId,
           name,
           categoryAccountId: input.categoryAccountId,
           moneyAccountId: input.moneyAccountId,
           amountMinor,
           dayOfMonth: input.dayOfMonth,
           active: input.active === false ? 0 : 1,
-        },
-      });
+          archivedAt: null,
+          createdAt: new Date().toISOString(),
+        })
+        .onConflictDoUpdate({
+          target: expenseTemplates.id,
+          set: {
+            name,
+            categoryAccountId: input.categoryAccountId,
+            moneyAccountId: input.moneyAccountId,
+            amountMinor,
+            dayOfMonth: input.dayOfMonth,
+            active: input.active === false ? 0 : 1,
+          },
+        });
 
-    if (await billTablesExist(tx)) {
-      await tx
-        .insert(billWindows)
-        .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
-        .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
-    }
+      if (await billTablesExist(tx)) {
+        await tx
+          .insert(billWindows)
+          .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
+          .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
+      }
+    });
     return id;
   });
 }
@@ -178,10 +181,15 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
 }
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db
-    .update(expenseTemplates)
-    .set({ archivedAt: new Date().toISOString() })
-    .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, id)));
+  // In a transaction of its own so household sharing's capture sees the archive (spec §6.3).
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'bill', id }, () =>
+      tx
+        .update(expenseTemplates)
+        .set({ archivedAt: new Date().toISOString() })
+        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, id))),
+    ),
+  );
 }
 
 /**
@@ -392,17 +400,23 @@ export async function dueExpenseTemplates(database: Database, ws: WorkspaceConte
 
 /** Marks this month's bill as deliberately unpaid, so it stops being owed. Skipping twice changes nothing. */
 export async function skipBill(database: Database, ws: WorkspaceContext, templateId: string, month: string): Promise<void> {
-  await database.db
-    .insert(billSkips)
-    .values({ workspaceId: ws.workspaceId, templateId, month, createdAt: new Date().toISOString() })
-    .onConflictDoNothing();
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'bill_skip', id: `${templateId}|${month}` }, () =>
+      tx
+        .insert(billSkips)
+        .values({ workspaceId: ws.workspaceId, templateId, month, createdAt: new Date().toISOString() })
+        .onConflictDoNothing(),
+    ),
+  );
 }
 
 /** Takes back a skip, so the bill is owed again. */
 export async function unskipBill(database: Database, ws: WorkspaceContext, templateId: string, month: string): Promise<void> {
-  await database.db
-    .delete(billSkips)
-    .where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.templateId, templateId), eq(billSkips.month, month)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'bill_skip', id: `${templateId}|${month}` }, () =>
+      tx.delete(billSkips).where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.templateId, templateId), eq(billSkips.month, month))),
+    ),
+  );
 }
 
 export interface BillPaymentInput {

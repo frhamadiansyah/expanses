@@ -83,6 +83,8 @@ async function start() {
       if (wantsOverBudget()) await pushOverBudget(app.database, app.ws);
     }
     if (!gate.mountable()) return;
+    // Sync was readied inside the open, before its first write (`openAppDb`, spec §5.1, §8.7): the app takes it from there.
+    const sync = app.sync;
     root.render(
       <StrictMode>
         {/*
@@ -91,7 +93,7 @@ async function start() {
           files this app's worker is still holding open — nothing strikes on this path, so nothing else lets go.
         */}
         <ErrorBoundary snapshots={snapshots} release={app.release}>
-          <App app={app} />
+          <App app={app} sync={sync} />
         </ErrorBoundary>
       </StrictMode>,
     );

@@ -26,6 +26,7 @@ import type { Database } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices, valuations } from '../schema-assets';
 import { debtProfiles } from '../schema-debts';
+import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { BALANCE_SUBTYPES, type AccountSubtype, pocketParentIds } from './accounts';
 import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
@@ -81,10 +82,11 @@ const lastDayOf = (month: string): string => {
 /** What every asset account is worth on a date, with where the number came from. */
 export async function assetValuesAt(database: Database, ws: WorkspaceContext, date: string): Promise<AssetValueRow[]> {
   const assetSubtypes = BALANCE_SUBTYPES.asset as readonly string[];
+  const hidePlaceholders = await sharingTablesExist(database.db);
   const rows = await database.db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset')))
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), hidePlaceholders ? notPlaceholder(accounts.id) : undefined))
     .orderBy(asc(accounts.sortOrder), asc(accounts.name));
   // A pocket parent holds nothing, so it is no asset: net worth, the tax report, idle cash and goals all read here.
   // Archived rows are read too, so a parent whose pockets are all archived is still recognised.

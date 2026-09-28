@@ -7,6 +7,12 @@ export interface PostingLine {
   memo?: string | null;
   /** Category of a card purchase whose other side is an asset, so points still count. */
   spendCategoryId?: string | null;
+  /**
+   * The line in the base currency, when the caller already knows it and it must not be re-derived: household
+   * sharing posts the figure the payer's device computed, so every device holds the same number (spec §7.4). Ignored
+   * on a line already in the base currency. A currency's rounding difference never lands on a line that carries one.
+   */
+  amountBaseMinor?: number;
 }
 
 export interface PlannedEntry {

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
-import { useStoredRates } from '../../lib/queries';
+import { useIsBookShared, useStoredRates } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CurrencySheet } from './CurrencySheet';
 import { ROW_BODY_FLUSH, RowLead } from './FormRow';
@@ -158,7 +158,10 @@ export function AmountRow({
   const currency = typedCurrency(draft, accounts);
   const settled = account?.currency ?? '';
   const needsCharged = chargedInNeeded(draft, accounts);
-  const choosable = currencyChoosable(draft);
+  // Household sharing spec §4.4 last line: a shared book's currency is the book's own, fixed for every member, so
+  // the flag is drawn but never a control — the same "drawn, not a control" shape a transfer's flag already has.
+  const sharedBook = useIsBookShared();
+  const choosable = currencyChoosable(draft) && !sharedBook;
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);

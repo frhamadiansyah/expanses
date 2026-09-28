@@ -18,6 +18,7 @@ import { usePeopleDebts } from '../debts/queries';
 import { useEvents } from '../events/queries';
 import { useGoals } from '../goals/queries';
 import { useAssetValues } from '../networth/queries';
+import { usePurchasePayers } from '../sharing/queries';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
@@ -82,6 +83,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const events = useEvents();
   const photoRows = useQuery({ queryKey: ['photos', ws.workspaceId, transactionId], queryFn: () => listPhotos(database, ws, transactionId) });
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
+  // A purchase in a shared workspace (spec §11): who paid, and with what, as the payer's device named it.
+  const payerOf = usePurchasePayers(tx ? [tx.id] : [], true);
   const urls = usePhotoUrls(photoRows.data ?? []);
   /*
    * The three refusals, asked once for the whole app rather than copied onto every way in: a trade is
@@ -123,6 +126,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     owed,
     eventName: (events.data ?? []).find((event) => event.id === tx.eventId)?.name,
     goalName: goals.find((goal) => goal.id === tx.goalId)?.name,
+    payer: payerOf(tx.id),
   });
 
   const caption = heroCaption(tx, kind.amountMinor);

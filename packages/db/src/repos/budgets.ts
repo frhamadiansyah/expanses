@@ -7,6 +7,7 @@ import { budgetOverrides, budgets } from '../schema-budget';
 import { budgetFrequencies } from '../schema-health';
 import { bookOfCategory, hasBooks } from './books';
 import { healthTablesExist } from './health-tables';
+import { withCapture } from '../sync/capture';
 
 export class BudgetError extends Error {
   constructor(
@@ -114,25 +115,27 @@ export async function saveBudget(database: Database, ws: WorkspaceContext, input
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
     const id = existing?.id ?? uuidv7();
-    if (existing) {
-      await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
-    } else {
-      await tx.insert(budgets).values({
-        id,
-        workspaceId: ws.workspaceId,
-        categoryAccountId: input.categoryAccountId,
-        amountMinor: monthlyMinor,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-    // Monthly is the absence of a row. Without 0053 the monthly figure is all that is kept, which is still the right money.
-    if (await healthTablesExist(tx)) {
-      await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, id));
-      if (frequency !== 'monthly') {
-        await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
+    await withCapture(tx, [{ entity: 'budget', id }, { entity: 'budget_frequency', id }], async () => {
+      if (existing) {
+        await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
+      } else {
+        await tx.insert(budgets).values({
+          id,
+          workspaceId: ws.workspaceId,
+          categoryAccountId: input.categoryAccountId,
+          amountMinor: monthlyMinor,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
-    }
+      // Monthly is the absence of a row. Without 0053 the monthly figure is all that is kept, which is still the right money.
+      if (await healthTablesExist(tx)) {
+        await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, id));
+        if (frequency !== 'monthly') {
+          await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
+        }
+      }
+    });
     return id;
   });
 }
@@ -145,9 +148,11 @@ export async function removeBudget(database: Database, ws: WorkspaceContext, cat
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
     if (!existing) return;
-    if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
-    await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
-    await tx.delete(budgets).where(eq(budgets.id, existing.id));
+    await withCapture(tx, [{ entity: 'budget', id: existing.id }, { entity: 'budget_frequency', id: existing.id }, { entity: 'budget_override' }], async () => {
+      if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
+      await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
+      await tx.delete(budgets).where(eq(budgets.id, existing.id));
+    });
   });
 }
 
@@ -163,21 +168,22 @@ export async function setBudgetOverride(database: Database, ws: WorkspaceContext
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
     if (!budget) throw new BudgetError('NO_BUDGET', 'That category carries no budget to override');
-
-    const [existing] = await tx
-      .select({ id: budgetOverrides.id })
-      .from(budgetOverrides)
-      .where(and(eq(budgetOverrides.budgetId, budget.id), eq(budgetOverrides.month, input.month)));
-    if (existing) {
-      await tx.update(budgetOverrides).set({ amountMinor: input.amountMinor }).where(eq(budgetOverrides.id, existing.id));
-      return;
-    }
-    await tx.insert(budgetOverrides).values({
-      id: uuidv7(),
-      workspaceId: ws.workspaceId,
-      budgetId: budget.id,
-      month: input.month,
-      amountMinor: input.amountMinor,
+    await withCapture(tx, { entity: 'budget_override' }, async () => {
+      const [existing] = await tx
+        .select({ id: budgetOverrides.id })
+        .from(budgetOverrides)
+        .where(and(eq(budgetOverrides.budgetId, budget.id), eq(budgetOverrides.month, input.month)));
+      if (existing) {
+        await tx.update(budgetOverrides).set({ amountMinor: input.amountMinor }).where(eq(budgetOverrides.id, existing.id));
+        return;
+      }
+      await tx.insert(budgetOverrides).values({
+        id: uuidv7(),
+        workspaceId: ws.workspaceId,
+        budgetId: budget.id,
+        month: input.month,
+        amountMinor: input.amountMinor,
+      });
     });
   });
 }
@@ -190,7 +196,9 @@ export async function clearBudgetOverride(database: Database, ws: WorkspaceConte
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
     if (!budget) return;
-    await tx.delete(budgetOverrides).where(and(eq(budgetOverrides.budgetId, budget.id), eq(budgetOverrides.month, month)));
+    await withCapture(tx, { entity: 'budget_override' }, () =>
+      tx.delete(budgetOverrides).where(and(eq(budgetOverrides.budgetId, budget.id), eq(budgetOverrides.month, month))),
+    );
   });
 }
 

@@ -5,7 +5,7 @@ import { type Segment, SegmentedControl } from '../../ui/native';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
-import { paymentKey } from './quick-row';
+import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 
 /**
@@ -30,7 +30,9 @@ export function matchesPayment(option: PaymentOption, currency: string | null | 
 }
 
 /** What the Paid with row shows once something is chosen, or nothing when it is still empty. */
-export function chosenPayment(options: readonly PaymentOption[], draft: FormDraft): string {
+export function chosenPayment(options: readonly PaymentOption[], draft: FormDraft, placeholders: ReadonlySet<string> = new Set()): string {
+  // A placeholder the row names reads as who paid (§4.4, final review minor 2).
+  if (placeholders.has(draft.moneyId)) return placeholderLabel(options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
   const found = options.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   return found ? paymentLabel(found) : (options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
 }
@@ -103,7 +105,7 @@ const LIST = 'overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>but
 
 export function PaymentSheet({
   title,
-  options,
+  options: allOptions,
   accounts,
   chosenAccountId = '',
   chosenCardId = '',
@@ -111,6 +113,7 @@ export function PaymentSheet({
   onPick,
   onClose,
   onAddAccount,
+  placeholders = new Set<string>(),
 }: {
   /** "Paid with", "Received into" or "From", as the mode names it. */
   title: string;
@@ -125,7 +128,13 @@ export function PaymentSheet({
   onClose: () => void;
   /** Offered at the foot of the list, for the account or card that is not on it yet: which kind the tab says. */
   onAddAccount?: (kind: PaymentTab) => void;
+  /**
+   * Placeholder accounts (§4.4): who paid, never a way to pay. One stays on the list only as the current value of a
+   * purchase another member paid for, and reads "Paid by <name>"; any other is dropped here, whatever the caller passed.
+   */
+  placeholders?: ReadonlySet<string>;
 }) {
+  const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<PaymentTab>(() => openingPaymentTab(options, accounts, chosenAccountId, chosenCardId));
   const input = useRef<HTMLInputElement>(null);
@@ -144,11 +153,12 @@ export function PaymentSheet({
     const account = accounts.find((a) => a.id === option.accountId);
     const Glyph = isCardOption(option, account) ? CreditCard : Landmark;
     const isPicked = option === picked;
+    const label = placeholders.has(option.accountId) ? placeholderLabel(option.accountName) : paymentLabel(option);
     return (
       <li key={paymentKey(option.accountId, option.cardId)}>
         <button
           type="button"
-          aria-label={paymentLabel(option)}
+          aria-label={label}
           aria-current={isPicked ? 'true' : undefined}
           onClick={() => {
             onPick(option);
@@ -167,7 +177,7 @@ export function PaymentSheet({
           </span>
           <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
-              <Marked text={paymentLabel(option)} typed={search} />
+              <Marked text={label} typed={search} />
             </span>
             <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
               {[option.holderName, account?.currency].filter(Boolean).join(' · ')}

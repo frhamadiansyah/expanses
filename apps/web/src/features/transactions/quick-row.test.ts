@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { isQuickEditable, parsePastedRows, payerOptions, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { isQuickEditable, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -143,5 +143,22 @@ describe('pasting rows', () => {
     ]);
     expect(valuesFromCells(rows[0]!, resolve, TODAY)).toEqual({ date: '12 Sep', description: 'Superindo', amount: '450.000', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
     expect(valuesFromCells(rows[1]!, resolve, TODAY)).toMatchObject({ date: '13 Sep', accountId: '', categoryId: '' });
+  });
+});
+
+describe('a placeholder in the Paid-with picker (§4.4, final review minor 2)', () => {
+  const dewi = account('ph-dewi', 'asset', 'bank', 'IDR', { name: 'Dewi' });
+  const budi = account('ph-budi', 'asset', 'bank', 'IDR', { name: 'Budi' });
+  const listed = new Set(['bca', 'bonvoy', 'wise']);
+
+  it('is never offered, and the one the row already names is kept as its current value only', () => {
+    const options = paymentOptions([...accounts.filter((a) => a.kind !== 'expense' && a.kind !== 'income'), dewi, budi], cards);
+    expect(withoutPlaceholders(options, listed, 'ph-dewi').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'bonvoy', 'wise', 'ph-dewi']);
+    expect(withoutPlaceholders(options, listed, 'bca').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'bonvoy', 'wise']);
+    expect(withoutPlaceholders(options, listed, '').some((o) => o.accountId.startsWith('ph-'))).toBe(false);
+  });
+
+  it('reads as who paid, never as an account of yours', () => {
+    expect(placeholderLabel('Dewi')).toBe('Paid by Dewi');
   });
 });

@@ -3,6 +3,7 @@ import { Camera, EyeOff, Hash, Plane, ShoppingCart, Split, Users } from 'lucide-
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ratePreview } from '../../lib/rates';
+import { useIsBookShared } from '../../lib/queries';
 import { InputRow, RowHint } from '../../ui';
 import { useEvents } from '../events/queries';
 import { ChannelSheet } from './ChannelSheet';
@@ -52,7 +53,8 @@ export function MoreDetails({
   const { ws } = useApp();
   const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
   const set = (patch: Partial<FormDraft>) => onChange({ ...draft, ...patch });
-  const rows = extraRows(draft, accounts, { missingRate });
+  const sharedBook = useIsBookShared();
+  const rows = extraRows(draft, accounts, { missingRate, sharedBook });
   const events = useEvents().data ?? [];
   const eventName = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? '') : '';
   // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so

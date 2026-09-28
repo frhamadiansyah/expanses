@@ -1,9 +1,10 @@
 import { formatMinor } from '@expanses/core';
-import type { AccountRow, TransactionView } from '@expanses/db';
+import type { AccountRow, PurchasePayer, TransactionView } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Lock, RotateCcw, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button, cx } from '../../ui';
+import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
@@ -34,6 +35,13 @@ export interface TableHandlers {
    * back yet, so no row may be edited — an edit made in that window could re-file another workspace's spending.
    */
   filingKnown: boolean;
+  /**
+   * Who paid, for a purchase in a shared workspace (household sharing spec §11): the account cell says what they paid
+   * with, and a purchase another member paid for is corrected in the full form rather than in cells.
+   */
+  payerOf?: (transactionId: string) => PurchasePayer | null;
+  /** Posted here against another member's placeholder, known before the payers query answers. */
+  paidByOther?: (tx: TransactionView) => boolean;
 }
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
@@ -233,8 +241,14 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
           {formatMinor(row.amountMinor, row.currency)}
         </span>
         <span className="truncate px-2 text-slate-600">
-          {row.accountLabel}
-          {row.last4 && <span className="tabular ml-1 text-xs font-semibold">{row.last4}</span>}
+          {handlers.payerOf?.(tx.id) ? (
+            payerLine(handlers.payerOf(tx.id)!)
+          ) : handlers.paidByOther?.(tx) ? null : (
+            <>
+              {row.accountLabel}
+              {row.last4 && <span className="tabular ml-1 text-xs font-semibold">{row.last4}</span>}
+            </>
+          )}
         </span>
         <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName}</span>
         <span className="flex items-center justify-end gap-1 pl-1">
@@ -305,7 +319,10 @@ export function TransactionsTable({
           const key = row.kind === 'draft' ? `d:${row.id}` : `t:${row.id}`;
           // A row filed in another workspace is shown but not edited: the cells here offer this workspace's
           // categories, so saving one would move it. It waits for its own workspace to be opened.
-          if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!))) {
+          // A purchase another member paid for is posted here against their placeholder, which no cell offers: it is
+          // corrected in the full form, which keeps them as its payer (household sharing spec §4.4).
+          const theirs = row.kind !== 'draft' && (handlers.paidByOther?.(row.tx!) ?? false);
+          if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!) && !theirs)) {
             return <EditableRow key={key} row={row} options={options} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} />;
           }
           return <LockedRow key={key} row={row} today={today} handlers={handlers} />;

@@ -1,8 +1,9 @@
 import { cashCodeForSubtype, type CoretaxInputs, priceMicroFrom, taxHoldingName } from '@expanses/core';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
+import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { assetValuesAt } from './asset-values';
 import { listAssetProfiles } from './assets';
 import { baseCosts } from './base-costs';
@@ -34,10 +35,11 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
   const loans = await listLoans(database, ws);
   const loanOf = new Map(loans.map((loan) => [loan.accountId, loan]));
 
+  const hidePlaceholders = await sharingTablesExist(database.db);
   const accountRows = await database.db
     .select({ id: accounts.id, name: accounts.name, subtype: accounts.subtype, currency: accounts.currency })
     .from(accounts)
-    .where(eq(accounts.workspaceId, ws.workspaceId));
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), hidePlaceholders ? notPlaceholder(accounts.id) : undefined));
   const subtypeOf = new Map(accountRows.map((account) => [account.id, account.subtype]));
   const costs = await baseCosts(database, ws, onDate);
   const linkOf = new Map((await listHoldingLinks(database, ws)).map((link) => [link.accountId, link]));

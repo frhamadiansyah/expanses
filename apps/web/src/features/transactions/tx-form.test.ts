@@ -182,6 +182,13 @@ describe('what the form adds up to', () => {
     ]);
   });
 
+  it('offers no With row in a shared book (household sharing spec §4.4 last line)', () => {
+    expect(extraRows(draft, accounts, { missingRate: null, sharedBook: true })).toEqual(['event', 'split', 'channel', 'photos', 'exclude']);
+    // A book that is not shared keeps With exactly as before; the option defaults to off.
+    expect(extraRows(draft, accounts, { missingRate: null, sharedBook: false })).toEqual(['event', 'split', 'with', 'channel', 'photos', 'exclude']);
+    expect(extraRows(draft, accounts, { missingRate: null })).toEqual(['event', 'split', 'with', 'channel', 'photos', 'exclude']);
+  });
+
   it('keeps Add more details to §4 table: no event and no goal on money that never left', () => {
     // §4: Event appears "always, on Expense and Income"; Photos and Exclude appear always. There is no goal
     // row at all — §3.5 puts For goal on the transfer's own second card, and §3.6 on the trade's.

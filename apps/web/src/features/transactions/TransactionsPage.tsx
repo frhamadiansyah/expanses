@@ -22,7 +22,7 @@ import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -57,6 +57,8 @@ import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
+import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
+import { payerLine, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 const route = getRouteApi('/transactions');
 
@@ -256,6 +258,25 @@ export function TransactionsPage() {
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
   const badgeOf = badges.of;
+  // Household sharing (spec §11): in a shared workspace a purchase names what it was paid with, as the payer's own
+  // device named it, and who paid when it was not you — never the placeholder account it is posted against here.
+  const shared = useIsBookShared();
+  const readOnly = useOpenBookReadOnly();
+  const payerOf = usePurchasePayers(
+    recorded.map((tx) => tx.id),
+    shared,
+  );
+  /**
+   * Paid for by another member: posted here against their placeholder, which no quick editor, table cell or re-file
+   * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer. Decided from
+   * the row and the accounts first, so it holds before the payers query answers (fix round 1).
+   */
+  const knownAccounts = new Set(accounts.map((account) => account.id));
+  const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
+  const paidByOther = (tx: TransactionView) => {
+    const payer = payerOf(tx.id);
+    return onPlaceholder(tx) || (payer !== null && !payer.mine);
+  };
   /** The workspace a row would have to be opened in before it could be edited; null when this one will do. */
   const elsewhereOf = (transactionId: string) => editInsteadIn(badgeOf(transactionId), ws.bookId);
   /**
@@ -376,7 +397,7 @@ export function TransactionsPage() {
       setElsewhereId(tx.id);
       return;
     }
-    if (isQuickEditable(tx)) {
+    if (isQuickEditable(tx) && !paidByOther(tx)) {
       setEditingId(null);
       setEditing({ kind: 'tx', id: tx.id, values: quickFromTransaction(tx, today) });
     } else {
@@ -649,7 +670,8 @@ export function TransactionsPage() {
     const trade = tradeByTransaction.has(tx.id);
     const billTag = billTagOf(tx);
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
-    const reachable = !trade && isEditable(tx);
+    // A share that ended here is kept read-only (§8.6): nothing on it is edited, deleted or re-filed.
+    const reachable = !trade && isEditable(tx) && !readOnly;
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
     // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
@@ -680,7 +702,7 @@ export function TransactionsPage() {
         // write it already asked for is going out.
         busy={busy === tx.id}
         // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
-        onRecategorise={clickable && recategorise.offers(row) ? recategorise.start : undefined}
+        onRecategorise={clickable && recategorise.offers(row) && !paidByOther(tx) ? recategorise.start : undefined}
         // Under a category the group already shows the icon, so each row's circle carries its day instead.
         iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
         label={
@@ -697,8 +719,14 @@ export function TransactionsPage() {
         subtitle={
           <>
             {tx.description ? `${tx.description} · ` : ''}
-            {row.accountLabel}
-            {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
+            {payerOf(tx.id) ? (
+              payerLine(payerOf(tx.id)!)
+            ) : onPlaceholder(tx) ? null : (
+              <>
+                {row.accountLabel}
+                {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
+              </>
+            )}
             {goal && ` · for ${goal}`}
           </>
         }
@@ -746,7 +774,10 @@ export function TransactionsPage() {
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
-    filingKnown,
+    // Read-only: no row of an ended share is edited in cells (a typed new row is refused by capture, in words).
+    filingKnown: filingKnown && !readOnly,
+    payerOf,
+    paidByOther,
   };
 
   /**
@@ -817,7 +848,7 @@ export function TransactionsPage() {
         actions={
           phone
             ? [
-                { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } },
+                ...(readOnly ? [] : [{ key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } }]),
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
                 { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
               ]
@@ -828,7 +859,7 @@ export function TransactionsPage() {
       {!phone && (
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
           {viewSwitcher}
-          {!adding && (
+          {!adding && !readOnly && (
             <Button
               onClick={() => {
                 close();

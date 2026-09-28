@@ -1,3 +1,4 @@
+import { useOpenBookReadOnly } from '../sharing/queries';
 import { allPhotoRows, listExpenseTemplates, type TransactionView } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
@@ -100,8 +101,11 @@ export function useChangeable(tx: TransactionView | null): Changeable {
   const { ws } = useApp();
   const trades = useTrades();
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
+  const readOnly = useOpenBookReadOnly();
   if (!tx) return { changeable: false, elsewhere: null, isTrade: false };
   const elsewhere = editInsteadIn(badges.of(tx.id), ws.bookId);
+  // A share that ended here is read-only (§8.6): its own rows are read, never corrected or deleted.
+  if (readOnly && !elsewhere) return { changeable: false, elsewhere, isTrade: false };
   const isTrade = (trades.data ?? []).some((trade) => trade.transactionId === tx.id);
   return {
     changeable: changeableWhen({

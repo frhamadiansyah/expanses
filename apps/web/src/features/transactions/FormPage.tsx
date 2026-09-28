@@ -1,3 +1,4 @@
+import { useOpenBookReadOnly } from '../sharing/queries';
 import { listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -18,6 +19,7 @@ import { TransactionCard } from './TransactionCard';
  */
 export function NewTransactionRoute() {
   const back = useBack('/transactions');
+  const readOnly = useOpenBookReadOnly();
   return (
     <div className={SCREEN}>
       {/*
@@ -25,7 +27,8 @@ export function NewTransactionRoute() {
        * the form was opened from — the tab bar's ＋ works from every screen — and so do Save and Cancel, as the
        * sheet this page replaced closed onto the screen underneath.
        */}
-      <TransactionCard full title="New transaction" label="Add a transaction" onBack={back} onDone={back} />
+      {/* A share that ended here takes nothing new (§8.6): the notice above says why, and there is no form to fill. */}
+      {readOnly ? null : <TransactionCard full title="New transaction" label="Add a transaction" onBack={back} onDone={back} />}
     </div>
   );
 }

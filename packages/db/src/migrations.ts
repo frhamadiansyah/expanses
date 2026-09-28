@@ -53,6 +53,7 @@ import securitiesTables from '../migrations/0051_securities.sql?raw';
 import healthRatios from '../migrations/0053_health_ratios.sql?raw';
 import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
 import loanItemsSql from '../migrations/0055_loan_items.sql?raw';
+import householdSharing from '../migrations/0056_household_sharing.sql?raw';
 import categoryColours from '../migrations/0059_category_colours.sql?raw';
 import type { Database } from './database';
 
@@ -117,6 +118,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 53, name: 'health_ratios', sql: healthRatios },
   { version: 54, name: 'deposit_automation', sql: depositAutomation },
   { version: 55, name: 'loan_items', sql: loanItemsSql },
+  { version: 56, name: 'household_sharing', sql: householdSharing },
   { version: 59, name: 'category_colours', sql: categoryColours },
 ];
 

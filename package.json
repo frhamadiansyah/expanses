@@ -8,10 +8,12 @@
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
+    "test:capture": "npm run test:capture -w @expanses/db",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm run dev -w @expanses/web",
     "build": "npm run build -w @expanses/web",
-    "e2e": "npm run e2e -w @expanses/web"
+    "e2e": "npm run e2e -w @expanses/web",
+    "relay": "npm run dev -w @expanses/relay"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

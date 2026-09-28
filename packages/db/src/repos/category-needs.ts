@@ -6,6 +6,7 @@ import { accounts } from '../schema';
 import { categoryNeeds } from '../schema-health';
 import { spendingCategoryRefusal } from './budgets';
 import { healthTablesExist } from './health-tables';
+import { withCapture } from '../sync/capture';
 
 export class CategoryNeedError extends Error {
   constructor(
@@ -58,10 +59,12 @@ export async function saveCategoryNeed(database: Database, ws: WorkspaceContext,
   await database.transaction(async (tx) => {
     if (!(await healthTablesExist(tx))) throw new CategoryNeedError('NO_TABLES', 'This database is too old to mark categories; reopen the app to update it');
     await assertSpendingCategory(tx, ws, categoryAccountId);
-    await tx
-      .insert(categoryNeeds)
-      .values({ categoryAccountId, workspaceId: ws.workspaceId, need })
-      .onConflictDoUpdate({ target: categoryNeeds.categoryAccountId, set: { need } });
+    await withCapture(tx, { entity: 'category_need', id: categoryAccountId }, () =>
+      tx
+        .insert(categoryNeeds)
+        .values({ categoryAccountId, workspaceId: ws.workspaceId, need })
+        .onConflictDoUpdate({ target: categoryNeeds.categoryAccountId, set: { need } }),
+    );
   });
 }
 
@@ -70,6 +73,8 @@ export async function clearCategoryNeed(database: Database, ws: WorkspaceContext
   await database.transaction(async (tx) => {
     if (!(await healthTablesExist(tx))) return;
     await assertSpendingCategory(tx, ws, categoryAccountId);
-    await tx.delete(categoryNeeds).where(and(eq(categoryNeeds.categoryAccountId, categoryAccountId), eq(categoryNeeds.workspaceId, ws.workspaceId)));
+    await withCapture(tx, { entity: 'category_need', id: categoryAccountId }, () =>
+      tx.delete(categoryNeeds).where(and(eq(categoryNeeds.categoryAccountId, categoryAccountId), eq(categoryNeeds.workspaceId, ws.workspaceId))),
+    );
   });
 }
