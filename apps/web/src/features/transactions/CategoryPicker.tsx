@@ -1,8 +1,8 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { Check, Plus } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
-import { Sheet, SheetSearchButton } from '../../app/Sheet';
+import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { SearchPill, SegmentedControl } from '../../ui/native';
@@ -85,7 +85,7 @@ function CategoryButton({
  * list's category gesture.
  *
  * B7's tree — one card per top-level category, its children indented under it, ⌕ in the header for a search and
- * **+ New category** at the head. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
+ * **＋** in the header makes a new category. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
  * a heading, and a tree that only let leaves be chosen would take that answer away.
  *
  * One component, three ways in. The card, the row and the edit sheet each open this and none of them was
@@ -164,13 +164,25 @@ export function CategoryPicker({
             closeHidden: finding,
             heading: lockKind && finding ? searchField : undefined,
             action: (
-              <SheetSearchButton
-                open={finding}
-                onClick={() => {
-                  if (finding) setSearch('');
-                  setFinding((was) => !was);
-                }}
-              />
+              <>
+                {/* Making the category you meant, when none of the rows is it: in the corner, out of the list's way. */}
+                {!finding && (
+                  <SheetAddButton
+                    label="New category"
+                    onClick={() => {
+                      newCategory.reset();
+                      setMaking(true);
+                    }}
+                  />
+                )}
+                <SheetSearchButton
+                  open={finding}
+                  onClick={() => {
+                    if (finding) setSearch('');
+                    setFinding((was) => !was);
+                  }}
+                />
+              </>
             ),
           })}
     >
@@ -197,20 +209,6 @@ export function CategoryPicker({
           </div>
         )}
 
-        {/* First, and green: making the category you meant is the answer when none of the rows below is. */}
-        <button
-          type="button"
-          onClick={() => {
-            newCategory.reset();
-            setMaking(true);
-          }}
-          className="ph-focus flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ph-surface)] text-[15px] font-semibold text-[var(--ph-tint)] active:bg-[var(--ph-fill)]"
-        >
-          <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
-            <Plus size={14} strokeWidth={3} />
-          </span>
-          New category
-        </button>
 
         {groups.map((group) => (
           <div

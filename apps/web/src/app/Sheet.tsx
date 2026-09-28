@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, Plus, Search, X } from 'lucide-react';
 import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { type Detent, landing } from './sheet-detents';
 import { usePhone } from './use-phone';
@@ -220,6 +220,15 @@ export function SheetSearchButton({ open, onClick }: { open: boolean; onClick: (
       className={`flex h-11 w-11 items-center justify-center rounded-xl ${open ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]'}`}
     >
       <Search size={17} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
+    </button>
+  );
+}
+
+/** ＋ in a list sheet's header, before its ⌕: the way to make the thing the list is short of. Drawn like the ⌕. */
+export function SheetAddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
+      <Plus size={21} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
     </button>
   );
 }
