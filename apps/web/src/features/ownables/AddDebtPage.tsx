@@ -1,8 +1,8 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
-import { useNavigate, useRouter, useSearch } from '@tanstack/react-router';
-import { type FormEvent, useRef, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
@@ -13,7 +13,7 @@ import { memberLevelsOf, searchCatalog } from '../cards/catalog-picker';
 import { fieldsFor, handOverRows } from './catalogue-view';
 import { type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
-import { noteAddedAccount } from '../transactions/draft-handoff';
+import type { EmbeddedForm } from './CashAccountForm';
 
 /**
  * Adding a debt, named the way you would say it: a mortgage, a leasing, a paylater, money borrowed from family.
@@ -23,18 +23,7 @@ import { noteAddedAccount } from '../transactions/draft-handoff';
  * form rather than opening half a card.
  */
 export function AddDebtPage() {
-  const { returnTo, item } = useSearch({ from: '/debts/new' });
-  // Opened for one thing — a credit card, from Paid with — the picker starts on its form.
-  const [chosen, setChosen] = useState<string | null>(item ?? null);
-  const router = useRouter();
-  // From New transaction: the card made is noted for Paid with, and back is the way to the form set aside.
-  const onCreated =
-    returnTo === 'transaction'
-      ? (accountId: string) => {
-          noteAddedAccount(accountId);
-          router.history.back();
-        }
-      : undefined;
+  const [chosen, setChosen] = useState<string | null>(null);
   const card = chosen !== null && debtItem(chosen).behaviour.opens === 'card';
   return (
     <OwnablePicker
@@ -44,9 +33,8 @@ export function AddDebtPage() {
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('debt')}
-      backLabel={returnTo === 'transaction' ? 'New transaction' : undefined}
     >
-      {chosen && (card ? <NewCardForm key={chosen} onCreated={onCreated} /> : <DebtItemForm key={chosen} item={chosen} />)}
+      {chosen && (card ? <NewCardForm key={chosen} /> : <DebtItemForm key={chosen} item={chosen} />)}
     </OwnablePicker>
   );
 }
@@ -207,7 +195,15 @@ function byIssuer(entries: readonly CatalogEntry[]): [string, CatalogEntry[]][] 
  * card's terms and the terms are what a cycle is counted from. A card typed by hand may leave both for later,
  * exactly as it may on the Accounts page.
  */
-function NewCardForm({ onCreated }: { onCreated?: (accountId: string) => void }) {
+export function NewCardForm({
+  onCreated,
+  embedded,
+}: {
+  /** Where saving goes instead of the card's own page, given the card account just made. */
+  onCreated?: (accountId: string) => void;
+  /** Drawn in a sheet: no heading line and no button — the sheet's ✓ saves it (see `CashAccountForm`). */
+  embedded?: EmbeddedForm;
+}) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
@@ -229,6 +225,9 @@ function NewCardForm({ onCreated }: { onCreated?: (accountId: string) => void })
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
+  const canSave = !busy && name.trim() !== '';
+  const onCanSave = embedded?.onCanSave;
+  useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
 
   const credit = CATALOG.filter((entry) => entry.cardType !== 'debit');
   const matches = searchCatalog(credit, query);
@@ -302,10 +301,10 @@ function NewCardForm({ onCreated }: { onCreated?: (accountId: string) => void })
 
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
-    <form ref={form} onSubmit={submit}>
+    <form ref={form} id={embedded?.formId} onSubmit={submit}>
       <ErrorBox error={error} />
       <InsetGroup
-        header="Credit card · filed as a debt, kept as a card"
+        header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}
         footer={
           <>
             A card keeps its statement, bill, points and instalments.{' '}
@@ -376,10 +375,12 @@ function NewCardForm({ onCreated }: { onCreated?: (accountId: string) => void })
         <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required={Boolean(entry)} />
         <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required={Boolean(entry)} />
       </InsetGroup>
-      <InsetGroup>
-        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-        <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
-      </InsetGroup>
+      {!embedded && (
+        <InsetGroup>
+          {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+          <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        </InsetGroup>
+      )}
     </form>
   );
 }

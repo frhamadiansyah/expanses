@@ -177,13 +177,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/accounts/new',
-    component: AddAccountPage,
-    // Opened from New transaction's Paid with: saving goes back there with the account picked, not to Accounts.
-    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction' } => ({ returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined }),
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
@@ -265,16 +259,7 @@ const routeTree = rootRoute.addChildren([
   }),
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/debts/new',
-    component: AddDebtPage,
-    // From Paid with's Credit cards tab: the card form opens straight away, and saving goes back to the transaction.
-    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction'; item?: string } => ({
-      returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined,
-      item: typeof search.item === 'string' ? search.item : undefined,
-    }),
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),

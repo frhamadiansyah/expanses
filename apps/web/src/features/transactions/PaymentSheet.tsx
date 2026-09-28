@@ -1,10 +1,12 @@
 import { CreditCard, Landmark, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { cx } from '../../ui';
 import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
-import type { PaymentOption } from '@expanses/core';
+import type { MoneyAccountSubtype, PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet, SheetSearchButton } from '../../app/Sheet';
+import { NewCardForm } from '../ownables/AddDebtPage';
+import { CashAccountForm } from '../ownables/CashAccountForm';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 
@@ -112,7 +114,7 @@ export function PaymentSheet({
   cards = false,
   onPick,
   onClose,
-  onAddAccount,
+  adding: addable,
   placeholders = new Set<string>(),
 }: {
   /** "Paid with", "Received into" or "From", as the mode names it. */
@@ -126,8 +128,12 @@ export function PaymentSheet({
   cards?: boolean;
   onPick: (option: PaymentOption) => void;
   onClose: () => void;
-  /** Offered at the foot of the list, for the account or card that is not on it yet: which kind the tab says. */
-  onAddAccount?: (kind: PaymentTab) => void;
+  /**
+   * Add account (or, on the Credit cards tab, Add credit card) at the foot of the list, for the one that is not on it
+   * yet. It is a step inside this sheet — ‹ back, ✓ save — and what it makes is handed to `onAdded`, already picked.
+   * `kinds` are the kinds of account this question can take, the first of them the one the form starts on.
+   */
+  adding?: { kinds: readonly MoneyAccountSubtype[]; onAdded: (accountId: string) => void };
   /**
    * Placeholder accounts (§4.4): who paid, never a way to pay. One stays on the list only as the current value of a
    * purchase another member paid for, and reads "Paid by <name>"; any other is dropped here, whatever the caller passed.
@@ -146,6 +152,11 @@ export function PaymentSheet({
   // Headings only where two kinds share the screen: a search across both.
   const headed = sections.length > 1;
   const adding: PaymentTab = tabbed ? tab : 'accounts';
+  // New account / New credit card: a step this sheet moves to, not a sheet stacked on it, and not a page away.
+  const [making, setMaking] = useState<PaymentTab | null>(null);
+  const [kind, setKind] = useState<MoneyAccountSubtype>(() => addable?.kinds[0] ?? 'bank');
+  const [canSave, setCanSave] = useState(false);
+  const formId = useId();
   // The row already in Paid with: its icon sits in a filled circle, so the currencies stay where they are.
   const picked = options.find((option) => option.accountId === chosenAccountId && (option.cardId ?? '') === chosenCardId)
     ?? options.find((option) => option.accountId === chosenAccountId);
@@ -189,13 +200,13 @@ export function PaymentSheet({
     );
   };
 
-  const addRow = onAddAccount ? (
+  const addRow = addable ? (
     <li key="add">
       <button
         type="button"
         onClick={() => {
-          onClose();
-          onAddAccount(adding);
+          setCanSave(false);
+          setMaking(adding);
         }}
         className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
       >
@@ -223,24 +234,46 @@ export function PaymentSheet({
     />
   );
 
+  const stepBack = () => setMaking(null);
+  const added = (accountId: string) => {
+    addable?.onAdded(accountId);
+    onClose();
+  };
+  // The form is the sheet's step; the header's ✓ submits it by id, so the browser still checks what it requires.
+  const embedded = { formId, onCanSave: setCanSave };
+
+  // One sheet for the list and for the step, so moving between them keeps whatever detent it was left at.
   return (
     <Sheet
       grouped
       tall
-      title={title}
-      onClose={onClose}
-      closeHidden={finding}
-      heading={!tabbed && finding ? searchField : undefined}
-      action={
-        <SheetSearchButton
-          open={finding}
-          onClick={() => {
-            if (finding) setSearch('');
-            setFinding((was) => !was);
-          }}
-        />
-      }
+      title={making === 'cards' ? 'New credit card' : making ? 'New account' : title}
+      onClose={making ? stepBack : onClose}
+      {...(making
+        ? {
+            back: { label: title, run: stepBack },
+            confirm: { label: 'Save', disabled: !canSave, run: () => (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit() },
+          }
+        : {
+            closeHidden: finding,
+            heading: !tabbed && finding ? searchField : undefined,
+            action: (
+              <SheetSearchButton
+                open={finding}
+                onClick={() => {
+                  if (finding) setSearch('');
+                  setFinding((was) => !was);
+                }}
+              />
+            ),
+          })}
     >
+      {making === 'cards' ? (
+        <NewCardForm embedded={embedded} onCreated={added} />
+      ) : making && addable ? (
+        <CashAccountForm item={kind} kinds={{ items: addable.kinds, onChange: setKind }} embedded={embedded} onCreated={added} />
+      ) : (
+      <>
       {/* One row of a fixed 32 px for the tabs or the search that replaces them, so opening the search moves no row
           below it. A sheet with no tabs takes the search in its header instead, in the title's place. */}
       {tabbed ? (
@@ -270,6 +303,8 @@ export function PaymentSheet({
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{tab === 'cards' ? 'No credit cards yet.' : 'No accounts yet.'}</p>
         ) : null}
       </div>
+      </>
+      )}
     </Sheet>
   );
 }

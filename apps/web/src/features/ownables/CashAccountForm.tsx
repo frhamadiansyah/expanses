@@ -1,7 +1,7 @@
 import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useId, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -26,13 +26,31 @@ import { fieldsFor } from './catalogue-view';
  * The bank is kept as the Coretax "Nama bank/institusi" of the account's own kas row, which is where the tax
  * report reads it from; there is no column on `accounts` for it, and inventing one would break older databases.
  */
+/**
+ * How a form is drawn inside a sheet's step rather than on its own page: the sheet's ✓ submits the `<form>` by its
+ * id, so the form draws no button of its own, and it says whether it can be saved yet so the ✓ can be dimmed.
+ */
+export interface EmbeddedForm {
+  formId: string;
+  onCanSave: (canSave: boolean) => void;
+}
+
 export function CashAccountForm({
   item,
   onCreated,
+  embedded,
+  kinds,
 }: {
   item: MoneyAccountSubtype;
   /** Where saving goes instead of Accounts, given the account just made. */
   onCreated?: (accountId: string) => void;
+  /** Drawn in a sheet: no heading line, no page sentence, no button — the sheet's ✓ saves it. */
+  embedded?: EmbeddedForm;
+  /**
+   * The kinds this form may open, asked for in its first row — for a sheet, which has no picker screen in front of
+   * the form. The caller holds the answer and passes it back as `item`, so switching keeps what was typed.
+   */
+  kinds?: { items: readonly MoneyAccountSubtype[]; onChange: (item: MoneyAccountSubtype) => void };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -54,6 +72,9 @@ export function CashAccountForm({
   // A row is one line and has no room to explain itself, so the sentence lives under the group and the row points at it.
   const balanceHint = useId();
   const form = useRef<HTMLFormElement>(null);
+  const canSave = !busy && name.trim() !== '';
+  const onCanSave = embedded?.onCanSave;
+  useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
 
   const chosen = cashItem(item);
   const asks = fieldsFor('account', item);
@@ -127,17 +148,31 @@ export function CashAccountForm({
 
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
-    <form ref={form} onSubmit={submit}>
+    <form ref={form} id={embedded?.formId} onSubmit={submit}>
       <ErrorBox error={error} />
       <InsetGroup
-        header={`${chosen.label}${locked ? ' · cannot be spent from directly' : ''}`}
+        header={embedded ? undefined : `${chosen.label}${locked ? ' · cannot be spent from directly' : ''}`}
         footer={
-          <>
-            {chosen.sub}. The picker chose what kind of account this is. Name is what you call yours.
-            {locked && ' When it matures, move the money to an account with a transfer.'}
-          </>
+          embedded ? (
+            locked ? 'Cannot be spent from directly. When it matures, move the money to an account with a transfer.' : undefined
+          ) : (
+            <>
+              {chosen.sub}. The picker chose what kind of account this is. Name is what you call yours.
+              {locked && ' When it matures, move the money to an account with a transfer.'}
+            </>
+          )
         }
       >
+        {/* A sheet has no picker screen before the form, so the kind is its first row. */}
+        {kinds && (
+          <SelectRow label="Type" value={item} onChange={(e) => kinds.onChange(e.target.value as MoneyAccountSubtype)}>
+            {kinds.items.map((kind) => (
+              <option key={kind} value={kind}>
+                {cashItem(kind).label}
+              </option>
+            ))}
+          </SelectRow>
+        )}
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Tahapan" required />
         {asks.includes('balance') && !pocketed && (
           <TextRow
@@ -242,10 +277,12 @@ export function CashAccountForm({
           {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
         </InsetGroup>
       )}
-      <InsetGroup>
-        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-        <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
-      </InsetGroup>
+      {!embedded && (
+        <InsetGroup>
+          {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+          <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        </InsetGroup>
+      )}
     </form>
   );
 }
