@@ -383,3 +383,57 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
 
 /** The kinds this file draws, named so a caller can see the set is closed. */
 export const FORM_KINDS: readonly FormKind[] = ['picker', 'typed', 'static'];
+
+/**
+ * A currency, as its three-letter code: typed rather than scrolled for, with the known codes offered as the letters
+ * go in (the phone shows them over the keyboard). The row keeps the code it had until three letters make one it knows;
+ * leaving it half-typed puts the last good code back.
+ */
+export function CurrencyRow({
+  label,
+  value,
+  onChange,
+  codes,
+  position,
+}: GroupChild & { label: string; value: string; onChange: (code: string) => void; codes: readonly { code: string; name: string }[] }) {
+  const id = useId();
+  const listId = `${id}-codes`;
+  const [typed, setTyped] = useState<string | null>(null);
+  const known = (code: string) => codes.some((c) => c.code === code);
+  const shown = typed ?? value;
+  return (
+    <div className="relative">
+      <Separator show={Boolean(position?.separator)} />
+      <div className="flex items-center gap-3" style={shell(false)}>
+        <label htmlFor={id} className={LABEL}>
+          {label}
+        </label>
+        <input
+          id={id}
+          list={listId}
+          value={shown}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => {
+            const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+            setTyped(next);
+            if (next.length === 3 && known(next)) onChange(next);
+          }}
+          onBlur={() => setTyped(null)}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={3}
+          placeholder="IDR"
+          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] tracking-[0.5px] text-[var(--ph-ink)] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+        />
+        <datalist id={listId}>
+          {codes.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name}
+            </option>
+          ))}
+        </datalist>
+      </div>
+    </div>
+  );
+}

@@ -6,6 +6,7 @@ import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
 import { todayIn } from './today';
+import { setCurrency } from './currency-field';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -662,7 +663,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'Wise Card', 'credit_card', async () => {
-    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
     await page.getByLabel('Owed now').fill('0');
   });
 
@@ -811,7 +812,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // No balance, so nothing stores a USD→IDR rate on the way in: the save is the first thing to want one.
   await addAccount(page, 'Wise USD', 'bank', async () => {
-    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   });
 
   await page.goto('/transactions');

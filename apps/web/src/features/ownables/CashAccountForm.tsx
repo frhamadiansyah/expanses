@@ -7,7 +7,7 @@ import { canPayWith } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { CurrencyRow, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
 import { currencyFlag } from '../transactions/tx-form';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
@@ -266,22 +266,16 @@ export function CashAccountForm({
           />
         )}
         {asks.includes('currency') && !pocketed && (
-          <SelectRow
+          <CurrencyRow
             label="Currency"
             value={currency}
-            onChange={(e) => {
-              const next = e.target.value;
+            codes={CURRENCIES}
+            onChange={(next) => {
               setCurrency(next);
               // A source that does not hold what this account will: the answer no longer stands, so it is cleared.
               if (source && source.currency !== next) setSourceId('');
             }}
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
-              </option>
-            ))}
-          </SelectRow>
+          />
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}

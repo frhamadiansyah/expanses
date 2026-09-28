@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openTypes } from './accounts';
 import { openDrawers } from './drawers';
+import { setCurrency } from './currency-field';
 
 export type Choice = 'principal' | 'principal_interest' | 'close';
 export interface Combo {
@@ -81,7 +82,7 @@ export async function addMoneyAccount(
   await page.getByRole('button', { name: o.kind }).click();
   await typeInto(page, 'Name', o.name);
   await typeInto(page, 'Balance now', o.balance);
-  if (o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.fx) await typeInto(page, `Rate: IDR per 1 ${o.currency}`, o.fx);
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures); // a date input only takes a whole date
   if (o.rate) await typeInto(page, 'Interest rate', o.rate);

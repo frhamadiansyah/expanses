@@ -5,6 +5,7 @@ import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
 import { chooseTo } from './add-transaction';
+import { setCurrency } from './currency-field';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -56,7 +57,9 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('1800.00');
   // Exact: "Multi-currency" is on this form too.
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  // Typed as its code rather than scrolled for.
+  await page.getByLabel('Currency', { exact: true }).fill('usd');
+  await expect(page.getByLabel('Currency', { exact: true })).toHaveValue('USD');
   await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('15720');
   await page.getByRole('button', { name: 'Add account' }).click();
   const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Dollar Saver', exact: true }) });
@@ -71,7 +74,7 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await page.getByRole('link', { name: /Add a pocket/ }).click();
   // Currencies it already has are not offered.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="USD"]')).toHaveCount(0);
-  await page.getByLabel('Currency', { exact: true }).selectOption('JPY');
+  await setCurrency(page.getByLabel('Currency', { exact: true }), 'JPY');
   await page.getByLabel('Opening JPY').pressSequentially('30000');
   await page.getByLabel('Rate: IDR per 1 JPY').pressSequentially('108,3');
   await page.getByRole('button', { name: 'Add pocket' }).click();
@@ -133,7 +136,7 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   const owed = async (who: string, currency: string, amount: string, rate?: string) => {
     await openNewAsset(page, 'Other receivables');
     await page.getByLabel('Name', { exact: true }).pressSequentially(`Owed by ${who}`);
-    await page.getByLabel('Currency', { exact: true }).selectOption(currency);
+    await setCurrency(page.getByLabel('Currency', { exact: true }), currency);
     if (rate) await page.getByLabel('Opening rate').pressSequentially(rate);
     await page.getByLabel('Who').pressSequentially(who);
     await page.getByLabel(/^Owed now/).pressSequentially(amount);
@@ -402,7 +405,7 @@ test('a USD pocket added to an account reads its opening balance in dollars, not
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
   await page.getByRole('link', { name: 'Two Pocket', exact: true }).click();
   await page.getByRole('link', { name: /Add a pocket/ }).click();
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');
   await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
   await page.getByRole('button', { name: 'Add pocket' }).click();

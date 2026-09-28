@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { setCurrency } from './currency-field';
 
 /** BBCA as the IDX list carries it, typed through Name it myself — the walk that checks a stock named by hand is the listed one. */
 export const BBCA_BY_HAND = { ticker: 'BBCA', name: 'BCA', market: 'IDX', currency: 'IDR', lotSize: '100' };
@@ -46,7 +47,7 @@ export async function addHoldingFlow(
     await page.getByLabel('Ticker', { exact: true }).pressSequentially(o.nameIt.ticker);
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.nameIt.name);
     await page.getByLabel('Market', { exact: true }).pressSequentially(o.nameIt.market);
-    await page.getByLabel('Currency', { exact: true }).selectOption(o.nameIt.currency);
+    await setCurrency(page.getByLabel('Currency', { exact: true }), o.nameIt.currency);
     if (o.nameIt.lotSize) await page.getByLabel('Shares in a lot', { exact: true }).pressSequentially(o.nameIt.lotSize);
     await page.getByRole('button', { name: 'Continue' }).click();
   } else {

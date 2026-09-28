@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
+import { setCurrency } from './currency-field';
 
 /**
  * Opening an account the way the app opens one now: the picker asks what it is, the form asks only that.
@@ -80,7 +81,7 @@ export async function openAccount(page: Page, o: NewAccount) {
   const label = MONEY_KIND[o.subtype] ?? 'Current account';
   await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\b|$)`) }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.balance) await page.getByLabel('Balance now', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);
@@ -146,7 +147,7 @@ export async function openCard(page: Page, o: NewCard) {
   await page.getByRole('button', { name: 'Credit card' }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.bank) await page.getByLabel('Bank').selectOption({ label: o.bank });
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);
   if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
@@ -178,7 +179,7 @@ export async function openLoan(page: Page, o: NewLoan) {
   await page.getByRole('button', { name: o.kind }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
   if (o.lender) await page.getByLabel('Lender').fill(o.lender);
   if (o.interestRate) await page.getByLabel('Interest rate').fill(o.interestRate);

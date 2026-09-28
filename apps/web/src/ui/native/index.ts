@@ -13,7 +13,7 @@ export { CornerButton, LargeTitle, OverflowMenu, PushedTitle } from './NavTitle'
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { SearchPill } from './SearchPill';
-export { DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
+export { CurrencyRow, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
 export { Drawer, useDrawers } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
