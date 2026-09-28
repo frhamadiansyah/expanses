@@ -1,5 +1,6 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
+import { Link } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
@@ -226,6 +227,16 @@ export function CategoryPicker({
             {search.trim() ? 'Nothing here by that name.' : 'No categories in this workspace yet.'}
           </p>
         )}
+
+        {/* The way to the whole tree — renaming, archiving, a category's code, the sets — at the list's foot, drawn as
+            Add more details is: words in the secondary ink, no box. It closes the sheet on its way. */}
+        <Link
+          to="/categories"
+          onClick={onClose}
+          className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
+        >
+          Manage categories
+        </Link>
 
       </div>
       )}

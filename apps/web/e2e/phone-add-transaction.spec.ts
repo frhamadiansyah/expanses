@@ -610,3 +610,13 @@ test('Paid with opens at the medium detent, drags up to large and back, and clos
   await drag(700);
   await expect(sheet).toHaveCount(0);
 });
+
+test('Select category ends in Manage categories, which opens the Categories page', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  await addForm(page).getByRole('button', { name: /^Category/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Select category' });
+  await sheet.getByRole('link', { name: 'Manage categories' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page).toHaveURL(/\/categories$/);
+});
