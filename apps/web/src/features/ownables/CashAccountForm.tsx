@@ -46,8 +46,21 @@ function PocketRow({
   onCurrency,
   balance,
   onBalance,
+  base,
+  rate,
+  onRate,
   position,
-}: GroupChild & { index: number; currency: string; onCurrency: (code: string) => void; balance: string; onBalance: (value: string) => void }) {
+}: GroupChild & {
+  index: number;
+  currency: string;
+  onCurrency: (code: string) => void;
+  balance: string;
+  onBalance: (value: string) => void;
+  /** The workspace's currency: a pocket in it needs no rate. */
+  base: string;
+  rate: string;
+  onRate: (value: string) => void;
+}) {
   return (
     <div className="relative">
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
@@ -69,6 +82,23 @@ function PocketRow({
             ))}
           </select>
         </span>
+        {/* A foreign pocket's opening rate, between the currency and the amount so every amount lines up at the right:
+            left as "auto", the day's rate is fetched. */}
+        {currency !== base && (
+          <>
+            <span aria-hidden className="shrink-0 text-[13px] text-[var(--ph-ink-3)]">
+              @
+            </span>
+            <input
+              aria-label={`Rate: ${base} per 1 ${currency}`}
+              value={rate}
+              onChange={(e) => onRate(e.target.value)}
+              inputMode="decimal"
+              placeholder="auto"
+              className="ph-focus w-[76px] shrink-0 rounded bg-transparent text-left text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+            />
+          </>
+        )}
         <input
           aria-label={`Opening ${currency}`}
           value={balance}
@@ -296,7 +326,7 @@ export function CashAccountForm({
       </InsetGroup>
       {/* A flat array of rows, not a fragment per pocket: `InsetGroup` hands each direct child its position. */}
       {pocketed && (
-        <InsetGroup header="Pockets" footer="Leave a rate blank and the rate for the opening date is used. Fill it in only when you want your own figure.">
+        <InsetGroup header="Pockets" footer="@ is the rate to the workspace’s currency on the opening date. Left as auto, that day’s rate is used.">
           {pockets.flatMap((pocket, i) => [
             <PocketRow
               key={`p${i}`}
@@ -305,19 +335,10 @@ export function CashAccountForm({
               onCurrency={(code) => setPockets((rows) => choosePocketCurrency(rows, i, code))}
               balance={pocket.balance}
               onBalance={(balance) => setPocket(i, { balance })}
+              base={ws.baseCurrency}
+              rate={pocket.rate}
+              onRate={(rate) => setPocket(i, { rate })}
             />,
-            ...(pocket.currency !== ws.baseCurrency
-              ? [
-                  <TextRow
-                    key={`r${i}`}
-                    label={`Rate: ${ws.baseCurrency} per 1 ${pocket.currency}`}
-                    hint={ratePreview(pocket.rate, pocket.currency, ws.baseCurrency) ?? 'Optional.'}
-                    value={pocket.rate}
-                    onChange={(e) => setPocket(i, { rate: e.target.value })}
-                    inputMode="decimal"
-                  />,
-                ]
-              : []),
           ])}
           <InsetRow title="Add another currency" onClick={() => setPockets((rows) => [...rows, { currency: nextPocketCurrency(rows), balance: '', rate: '' }])} />
           {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
