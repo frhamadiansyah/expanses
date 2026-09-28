@@ -17,8 +17,10 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Balance now').fill('20000000');
-  // The balance is optional here, and the form says what happens to it.
+  await page.getByLabel('Balance now', { exact: true }).fill('20000000');
+  // The balance is optional here, and the ⓘ beside it says what happens to it.
+  await expect(page.getByText('Optional. Posted as an opening balance.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Balance now' }).click();
   await expect(page.getByText('Optional. Posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
   await openTypes(page);
@@ -28,7 +30,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('button', { name: 'Time deposit' }).click();
   await expect(page.getByText('When it matures, move the money to an account with a transfer.')).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill('Deposito BCA 6 bulan');
-  await page.getByLabel('Balance now').fill('100000000');
+  await page.getByLabel('Balance now', { exact: true }).fill('100000000');
   // Every money account is asked which currency it holds, a deposit included: money abroad is ordinary.
   await expect(page.getByLabel('Currency', { exact: true })).toBeVisible();
   await page.getByLabel('Matures on').fill('2027-03-01');
@@ -132,7 +134,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Digital wallet' }).click();
   await page.getByLabel('Name', { exact: true }).fill('GoPay');
-  await page.getByLabel('Balance now').fill('500000');
+  await page.getByLabel('Balance now', { exact: true }).fill('500000');
   await page.getByLabel('Balance as of').fill('2026-01-05');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'GoPay', exact: true })).toBeVisible();
@@ -172,7 +174,7 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Fund account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('RDN Mandiri Sekuritas');
-  await page.getByLabel('Balance now').fill('8000000');
+  await page.getByLabel('Balance now', { exact: true }).fill('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
   /* A broker's cash is on no money list — it cannot be paid from — so it is looked for where it is priced, below. */

@@ -179,10 +179,10 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
 
 test('a transfer moves money between two accounts and is filed in no workspace', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   await page.goto('/transactions');
 
@@ -222,10 +222,10 @@ test('a transfer moves money between two accounts and is filed in no workspace',
 test('a transfer offers no currency of its own, and moves the figure its row shows', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jago', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   // A USD account opened with a balance stores today's USD→IDR rate, which is what used to fill the row in.
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
@@ -275,7 +275,7 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   // USD has exponent 2, so a figure read in the wrong currency lands 100× out rather than looking identical.
   // The rate is stored as the opening balance's own conversion, so the balance has to be worth converting.
@@ -308,10 +308,10 @@ test('a transfer into a USD account asks for the received amount, and will not s
 
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
 
@@ -494,7 +494,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
 test('a transfer that crosses currencies can be tagged to a goal', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
@@ -704,7 +704,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
  */
 test('a split by category posts one line per category, each with its own figure', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -751,7 +751,7 @@ test('a split by category posts one line per category, each with its own figure'
  */
 test('Split by category and With refuse each other in words, before Save', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -911,7 +911,7 @@ test('a bill split equally between three people leaves each of them owing their 
  */
 test('a typed share leaves the rest of the bill as your own spending', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');

@@ -86,7 +86,7 @@ export function useNewCategoryForm({
           is not a row: it is the tab the picker is on, and the title says it ("New expense category"). */}
       {/* The form's own 12 px between blocks, not the group's extra margin on top of it. */}
       <InsetGroup className="!mb-0">
-        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Category name" />
         {/* Top level has a value of its own: an empty one reads as "nothing chosen yet" and draws a blank row. */}
         <SelectRow label="Inside" value={parentId || TOP} onChange={(e) => setParentId(e.target.value === TOP ? '' : e.target.value)}>
           <option value={TOP}>Top level</option>

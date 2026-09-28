@@ -23,7 +23,7 @@ export async function openWithPockets(
   await page.getByRole('button', { name: account.kind ?? 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially(account.name);
   if (account.bank) await page.getByLabel('Bank', { exact: true }).pressSequentially(account.bank);
-  await page.getByLabel('Holds more than one currency').check();
+  await page.getByLabel('Holds more than one currency', { exact: true }).check();
   for (let i = 2; i < account.pockets.length; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
   for (const [i, pocket] of account.pockets.entries()) {
     await page.getByLabel(`Pocket ${i + 1}`, { exact: true }).selectOption(pocket.currency);

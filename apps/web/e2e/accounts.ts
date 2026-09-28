@@ -81,7 +81,7 @@ export async function openAccount(page: Page, o: NewAccount) {
   await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\b|$)`) }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
   if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
-  if (o.balance) await page.getByLabel('Balance now').pressSequentially(o.balance);
+  if (o.balance) await page.getByLabel('Balance now', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);
   if (o.interestRate) await page.getByLabel('Interest rate').pressSequentially(o.interestRate);

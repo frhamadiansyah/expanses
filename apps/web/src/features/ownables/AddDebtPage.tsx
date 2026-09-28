@@ -138,8 +138,8 @@ function DebtItemForm({ item }: { item: string }) {
         }
       >
         {/* A person's debt is filed under their name, so there is nothing else to call it. */}
-        {!owedToAPerson && <TextRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="KPR BTN Bintaro" />}
-        <TextRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="0" required />
+        {!owedToAPerson && <TextRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Loan name" />}
+        <TextRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="Amount" required />
         <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {CURRENCIES.map((c) => (
             <option key={c.code} value={c.code}>
@@ -156,10 +156,10 @@ function DebtItemForm({ item }: { item: string }) {
             inputMode="decimal"
           />
         )}
-        {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank BTN" required />}
-        {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Ibu" required />}
-        {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="9,25" />}
-        {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="168" />}
+        {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank or lender" required />}
+        {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Name" required />}
+        {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="% a year" />}
+        {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
       </InsetGroup>
       <InsetGroup>
@@ -314,7 +314,7 @@ export function NewCardForm({
           </>
         }
       >
-        <TextRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="BCA, KrisFlyer, Mandiri" />
+        <TextRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Bank or card name" />
         <SelectRow label="Which card" value={entryId} onChange={(e) => choose(e.target.value)}>
           <option value="">Not listed — type the name</option>
           {byIssuer(options).map(([bank, entries]) => (
@@ -327,7 +327,7 @@ export function NewCardForm({
             </optgroup>
           ))}
         </SelectRow>
-        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA KrisFlyer" required />
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Card name" required />
         {/* Applying a catalogue entry fills the bank in, so it is only asked for when the card is typed by hand. */}
         {!entry && (
           <SelectRow label="Bank" value={issuer} onChange={(e) => setIssuer(e.target.value)}>
@@ -340,7 +340,7 @@ export function NewCardForm({
             <option value={OTHER}>Other…</option>
           </SelectRow>
         )}
-        {!entry && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />}
+        {!entry && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank name" />}
         {!entry && (
           <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (
@@ -360,8 +360,8 @@ export function NewCardForm({
             ))}
           </SelectRow>
         )}
-        <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
-        <TextRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="0" />
+        <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
+        <TextRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
         {!entry && foreign && (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
@@ -372,8 +372,8 @@ export function NewCardForm({
           />
         )}
         {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
-        <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required={Boolean(entry)} />
-        <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required={Boolean(entry)} />
+        <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
+        <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
       </InsetGroup>
       {!embedded && (
         <InsetGroup>

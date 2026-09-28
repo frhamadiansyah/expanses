@@ -278,9 +278,19 @@ export function SwitchRow({
   onChange,
   disabled = false,
   hint,
+  info,
   position,
-}: GroupChild & { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean; hint?: ReactNode }) {
+}: GroupChild & {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  hint?: ReactNode;
+  /** What the switch means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
+  info?: ReactNode;
+}) {
   const id = useId();
+  const [explained, setExplained] = useState(false);
   const plan = planSwitchRow({ checked, hint: hint !== undefined && hint !== null && hint !== false, disabled });
   return (
     <div className="relative">
@@ -288,9 +298,22 @@ export function SwitchRow({
       {/* The pill is the row's content, and 31 px of it inside the row's 44 leaves less air above and below than
           a line of text would: the padding is what keeps a switch row the height of every other row. */}
       <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
-        <label htmlFor={id} className={cx('min-w-0 flex-1 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
-          {label}
-        </label>
+        <span className="flex min-w-0 flex-1 items-center gap-[6px]">
+          <label htmlFor={id} className={cx('min-w-0 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
+            {label}
+          </label>
+          {info && (
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          )}
+        </span>
         <span
           className={cx(
             'ph-focus-within relative shrink-0 rounded-full transition-colors',
@@ -315,6 +338,7 @@ export function SwitchRow({
         </span>
       </div>
       {plan.hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }
