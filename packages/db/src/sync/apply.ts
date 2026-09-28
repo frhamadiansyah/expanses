@@ -182,6 +182,7 @@ const UNIQUE_SIBLINGS: Record<string, readonly string[]> = {
 /** What a row cannot be inserted without: the table and column its parent lives in, and the field or key naming it. */
 const PARENTS: Record<string, { table: string; from: 'field' | 'key'; name: string }> = {
   category_need: { table: 'accounts', from: 'key', name: 'category_account_id' },
+  category_colour: { table: 'accounts', from: 'key', name: 'category_account_id' },
   budget: { table: 'accounts', from: 'field', name: 'categoryAccountId' },
   budget_override: { table: 'budgets', from: 'field', name: 'budgetId' },
   budget_frequency: { table: 'budgets', from: 'key', name: 'budget_id' },

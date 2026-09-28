@@ -112,6 +112,17 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'category_colour',
+    table: 'category_colours',
+    scopeRule: 'category_account_id is a category of the book',
+    scope: (bookId) => inBookCategories(bookId, sql`t.category_account_id`),
+    // A top-level category's hand-picked colour (0059) travels with the category, as its need does.
+    keyColumns: ['category_account_id'],
+    fields: { colour: 'colour' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
     entity: 'member',
     table: 'book_members',
     scopeRule: 'book_id = bookId',
@@ -299,6 +310,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   ],
   entries: ['workspace_id', 'fx_rate_to_base', 'spend_category_id'],
   category_needs: ['workspace_id'],
+  category_colours: ['workspace_id'],
   book_transactions: ['workspace_id'],
   transaction_flags: ['workspace_id'],
   bill_payments: ['workspace_id'],

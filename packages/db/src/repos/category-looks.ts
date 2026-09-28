@@ -7,6 +7,7 @@ import { categoryColours } from '../schema-category-colours';
 import { categorySetMembers } from '../schema-category-sets';
 import { writeAccountAuditTx, type AccountRow } from './accounts';
 import { bookOfCategory, hasBooks } from './books';
+import { withCapture } from '../sync/capture';
 
 /*
  * A category's place and look, as its own page changes them: which top-level category it sits under, the icon it
@@ -110,9 +111,13 @@ export async function moveCategory(database: Database, ws: WorkspaceContext, cat
       }
     }
 
-    await tx.update(accounts).set({ parentId }).where(and(eq(accounts.id, categoryId), eq(accounts.workspaceId, ws.workspaceId)));
+    await withCapture(tx, { entity: 'category', id: categoryId }, () =>
+      tx.update(accounts).set({ parentId }).where(and(eq(accounts.id, categoryId), eq(accounts.workspaceId, ws.workspaceId))),
+    );
     if (parentId !== null && (await categoryColoursExist(tx))) {
-      await tx.delete(categoryColours).where(and(eq(categoryColours.categoryAccountId, categoryId), eq(categoryColours.workspaceId, ws.workspaceId)));
+      await withCapture(tx, { entity: 'category_colour', id: categoryId }, () =>
+        tx.delete(categoryColours).where(and(eq(categoryColours.categoryAccountId, categoryId), eq(categoryColours.workspaceId, ws.workspaceId))),
+      );
     }
     await writeAccountAuditTx(tx, ws, 'move', categoryId, { parentId });
   });
@@ -127,7 +132,9 @@ export async function setCategoryIcon(database: Database, ws: WorkspaceContext, 
   await database.transaction(async (tx) => {
     const category = await liveCategory(tx, ws, categoryId);
     if ((category.icon ?? null) === icon) return;
-    await tx.update(accounts).set({ icon }).where(and(eq(accounts.id, categoryId), eq(accounts.workspaceId, ws.workspaceId)));
+    await withCapture(tx, { entity: 'category', id: categoryId }, () =>
+      tx.update(accounts).set({ icon }).where(and(eq(accounts.id, categoryId), eq(accounts.workspaceId, ws.workspaceId))),
+    );
     await writeAccountAuditTx(tx, ws, 'icon', categoryId, { icon });
   });
 }
@@ -143,14 +150,14 @@ export async function setCategoryColour(database: Database, ws: WorkspaceContext
     if (category.parentId !== null) throw new CategoryLookError('NOT_TOP_LEVEL', `${category.name} is a subcategory, and takes its colour from its parent`);
     if (await inASet(tx, categoryId)) throw new CategoryLookError('IN_A_SET', `${category.name} belongs to a set, and a set's categories take the app's colours`);
     if (!(await categoryColoursExist(tx))) throw new CategoryLookError('NO_TABLES', 'This database is too old to colour categories; reopen the app to update it');
-    if (colour === null) {
-      await tx.delete(categoryColours).where(and(eq(categoryColours.categoryAccountId, categoryId), eq(categoryColours.workspaceId, ws.workspaceId)));
-    } else {
-      await tx
-        .insert(categoryColours)
-        .values({ categoryAccountId: categoryId, workspaceId: ws.workspaceId, colour })
-        .onConflictDoUpdate({ target: categoryColours.categoryAccountId, set: { colour } });
-    }
+    await withCapture(tx, { entity: 'category_colour', id: categoryId }, () =>
+      colour === null
+        ? tx.delete(categoryColours).where(and(eq(categoryColours.categoryAccountId, categoryId), eq(categoryColours.workspaceId, ws.workspaceId)))
+        : tx
+            .insert(categoryColours)
+            .values({ categoryAccountId: categoryId, workspaceId: ws.workspaceId, colour })
+            .onConflictDoUpdate({ target: categoryColours.categoryAccountId, set: { colour } }),
+    );
     await writeAccountAuditTx(tx, ws, 'colour', categoryId, { colour });
   });
 }
