@@ -94,8 +94,10 @@ export function useNewCategoryForm({
         </SelectRow>
       </InsetGroup>
 
-      {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's. */}
-      <div className="max-h-72 overflow-y-auto" data-testid="new-category-icons">
+      {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's.
+          No scroll box of its own: the sheet scrolls, so at any detent the icons run to its foot rather than stopping
+          in a box with grey under it. */}
+      <div data-testid="new-category-icons">
         <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
       </div>
 
