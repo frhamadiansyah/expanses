@@ -11,10 +11,16 @@ test('the list is only names; a subcategory opens its page, where it is renamed,
   }
   await expect(page.getByRole('button', { name: /^(Rename|Archive|Mark) / })).toHaveCount(0);
 
-  // The search pill narrows the tree the way the picker's does.
+  // 🔍 in the corner opens Cashflow's search in the title's row; it narrows the tree the way the picker's does,
+  // and closing it brings the whole tree back.
+  await expect(page.getByLabel('Search categories')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByLabel('Search categories')).toBeFocused();
   await page.getByLabel('Search categories').fill('restau');
   await expect(tree.getByRole('link')).toHaveCount(1);
-  await page.getByLabel('Search categories').fill('');
+  await page.getByRole('button', { name: 'Close search' }).click();
+  await expect(page.getByLabel('Search categories')).toHaveCount(0);
+  await expect(tree.getByRole('link', { name: 'Restaurants', exact: true })).toBeVisible();
 
   await tree.getByRole('link', { name: 'Restaurants', exact: true }).click();
   await expect(page).toHaveURL(/\/categories\/[^/]+$/);
