@@ -252,7 +252,7 @@ export function CashAccountForm({
         {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Bank name" />}
         {canPocket && (
           <SwitchRow
-            label="Holds more than one currency"
+            label="Multi-currency"
             info="Off for an account that holds one currency. On for one that keeps several currencies inside it."
             checked={pocketed}
             onChange={(on) => {

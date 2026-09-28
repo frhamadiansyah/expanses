@@ -55,7 +55,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('1800.00');
-  // Exact: "Holds more than one currency" is on this form too.
+  // Exact: "Multi-currency" is on this form too.
   await page.getByLabel('Currency', { exact: true }).selectOption('USD');
   await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('15720');
   await page.getByRole('button', { name: 'Add account' }).click();
@@ -164,7 +164,7 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Old Valas');
-  await page.getByLabel('Holds more than one currency', { exact: true }).check();
+  await page.getByLabel('Multi-currency', { exact: true }).check();
   await page.getByLabel('Balance as of').fill(earlier);
   await page.getByLabel('Pocket 1', { exact: true }).selectOption('IDR');
   await page.getByLabel('Opening IDR', { exact: true }).pressSequentially('5400000');
@@ -252,7 +252,7 @@ test('a blank rate that cannot be resolved stops the save, names the currency, a
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Nowhere Valas');
-  await page.getByLabel('Holds more than one currency', { exact: true }).check();
+  await page.getByLabel('Multi-currency', { exact: true }).check();
   await page.getByLabel('Pocket 2', { exact: true }).selectOption('SGD');
   await page.getByLabel('Opening SGD').pressSequentially('10.00');
   await page.getByRole('button', { name: 'Add account' }).click();
@@ -268,7 +268,7 @@ test('one currency twice cannot be chosen: the two pockets swap, each keeping it
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Twice');
-  await page.getByLabel('Holds more than one currency', { exact: true }).check();
+  await page.getByLabel('Multi-currency', { exact: true }).check();
   await expect(page.getByLabel('Pocket 1', { exact: true })).toHaveValue('IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByLabel('Pocket 2', { exact: true }).selectOption('IDR');
@@ -416,7 +416,7 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Every Currency');
-  await page.getByLabel('Holds more than one currency', { exact: true }).check();
+  await page.getByLabel('Multi-currency', { exact: true }).check();
   // Each added row takes the next currency not yet held; empty balances need no rate.
   const all = await page.getByLabel('Pocket 1', { exact: true }).locator('option').count();
   for (let i = 2; i < all; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
