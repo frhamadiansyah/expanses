@@ -1,13 +1,13 @@
 import type { ResolvedNeed } from '@expanses/core';
 
 /**
- * The quiet line under "Counts as" on a category's page: where its essential-or-lifestyle answer comes from.
- * A mark of its own, a parent's, or none at all — which counts as essential.
+ * The quiet line under "Counts as" on a category's page: where its essential-or-lifestyle answer comes from — a mark
+ * of its own or a parent's. None at all says nothing: the control already reads Essential, and the ⓘ says why.
  */
-export function needCaption(source: ResolvedNeed['source'], parentName: string | null): string {
+export function needCaption(source: ResolvedNeed['source'], parentName: string | null): string | undefined {
   if (source === 'yours') return 'Marked by you';
   if (source === 'parent') return parentName ? `Follows ${parentName}` : 'Follows its parent';
-  return 'Not marked, so essential';
+  return undefined;
 }
 
 /** The line under "Card MCC": what the code means, and where it came from. Nothing at all when there is no code. */

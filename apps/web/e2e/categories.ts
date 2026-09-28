@@ -13,9 +13,11 @@ export function countsAs(page: Page, name: string) {
 }
 
 /** What an open category page says it counts as, and where that answer came from. */
-export async function expectNeed(page: Page, name: string, need: 'Essential' | 'Lifestyle', source: string) {
+/** `source` null: no mark anywhere, so the row says nothing under Counts as and only the control reads Essential. */
+export async function expectNeed(page: Page, name: string, need: 'Essential' | 'Lifestyle', source: string | null) {
   await expect(countsAs(page, name).getByRole('radio', { name: need })).toHaveAttribute('aria-checked', 'true');
-  await expect(page.getByTestId('need-source')).toHaveText(source);
+  if (source === null) await expect(page.getByTestId('need-source')).toHaveCount(0);
+  else await expect(page.getByTestId('need-source')).toHaveText(source);
 }
 
 /** Give a category a mark of its own from its page. */

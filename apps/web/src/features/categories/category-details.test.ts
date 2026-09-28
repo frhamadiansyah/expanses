@@ -6,7 +6,7 @@ describe('needCaption', () => {
     expect(needCaption('yours', 'Food and beverage')).toBe('Marked by you');
     expect(needCaption('parent', 'Food and beverage')).toBe('Follows Food and beverage');
     expect(needCaption('parent', null)).toBe('Follows its parent');
-    expect(needCaption(null, null)).toBe('Not marked, so essential');
+    expect(needCaption(null, null)).toBeUndefined();
   });
 });
 

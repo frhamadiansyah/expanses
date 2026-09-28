@@ -1,7 +1,7 @@
 import { type CategoryNeed, categoryVisual, mccName, needOf, type ResolvedNeed } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, CircleHelp, MoreHorizontal, Plus } from 'lucide-react';
+import { Archive, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
@@ -15,35 +15,53 @@ import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
 import { useCategoryActions } from './use-category-actions';
 
-const NEED_FOOTER =
+const NEED_EXPLAINED =
   'Essential or lifestyle decides what an emergency fund covers and how the Budget splits what you spent. A category with no mark follows its parent, and counts as essential at the top.';
 
 /**
  * "Counts as", answered by a segmented control rather than a word to tap: the answer is always one of two, and the
  * control shows which even when it is inherited. Choosing either makes the mark the category's own.
  */
-function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { name: string; need: ResolvedNeed; caption: string; onChoose: (need: CategoryNeed) => void }) {
+function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { name: string; need: ResolvedNeed; caption?: string; onChoose: (need: CategoryNeed) => void }) {
+  const [explained, setExplained] = useState(false);
   return (
-    <div className="relative flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+    <div className="relative">
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Counts as</span>
-        <span data-testid="need-source" className="mt-[2px] block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          {caption}
+      <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-[6px]">
+            <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Counts as</span>
+            {/* The why of the answer, the way a form row's ⓘ opens its own: under the row, until tapped again. */}
+            <button
+              type="button"
+              aria-label="About Counts as"
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          </span>
+          {caption && (
+            <span data-testid="need-source" className="mt-[2px] block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+              {caption}
+            </span>
+          )}
         </span>
-      </span>
-      <SegmentedControl
-        className="w-[172px] shrink-0"
-        label={`What ${name} counts as`}
-        segments={[
-          { key: 'essential', label: 'Essential' },
-          { key: 'lifestyle', label: 'Lifestyle' },
-        ]}
-        value={need.need}
-        onChange={(key) => {
-          if (key !== need.need || need.source !== 'yours') onChoose(key as CategoryNeed);
-        }}
-      />
+        <SegmentedControl
+          className="w-[172px] shrink-0"
+          label={`What ${name} counts as`}
+          segments={[
+            { key: 'essential', label: 'Essential' },
+            { key: 'lifestyle', label: 'Lifestyle' },
+          ]}
+          value={need.need}
+          onChange={(key) => {
+            if (key !== need.need || need.source !== 'yours') onChoose(key as CategoryNeed);
+          }}
+        />
+      </div>
+      {explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{NEED_EXPLAINED}</p>}
     </div>
   );
 }
@@ -187,7 +205,7 @@ export function CategoryPage() {
       )}
 
       {card && (
-        <InsetGroup footer={need ? NEED_FOOTER : undefined}>
+        <InsetGroup>
           {need && (
             <NeedRow name={c.name} need={need} caption={needCaption(need.source, parent?.name ?? null)} onChoose={(chosen) => actions.markNeed(c, chosen)} />
           )}
