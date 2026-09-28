@@ -1,7 +1,6 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
-import { Check, Menu, Plus, Search } from 'lucide-react';
+import { Check, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -136,32 +135,17 @@ export function CategoryPicker({
   return (
     <Sheet grouped title={title} onClose={onClose}>
       <div className="flex flex-col gap-[10px]">
-        <div className="flex items-center gap-2">
-          {!lockKind && (
-            <SegmentedControl
-              className="min-w-0 flex-1"
-              label="Kind"
-              segments={[
-                { key: 'expense', label: 'Expense' },
-                { key: 'income', label: 'Income' },
-              ]}
-              value={showing}
-              onChange={(key) => setShowing(key as 'expense' | 'income')}
-            />
-          )}
-          {/* The way to the whole tree, for what this sheet is deliberately too small for: renaming, archiving,
-              a category's card MCC, the sets. It closes the sheet on its way, since it leaves the screen. */}
-          <Link
-            to="/categories"
-            onClick={onClose}
-            aria-label="Manage categories"
-            className="ph-focus ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ph-tint)]"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)]">
-              <Menu size={16} aria-hidden />
-            </span>
-          </Link>
-        </div>
+        {!lockKind && (
+          <SegmentedControl
+            label="Kind"
+            segments={[
+              { key: 'expense', label: 'Expense' },
+              { key: 'income', label: 'Income' },
+            ]}
+            value={showing}
+            onChange={(key) => setShowing(key as 'expense' | 'income')}
+          />
+        )}
 
         {/* First, and green: making the category you meant is the answer when none of the rows below is. */}
         <button
