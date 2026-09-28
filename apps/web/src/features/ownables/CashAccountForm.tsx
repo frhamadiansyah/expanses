@@ -251,34 +251,6 @@ export function CashAccountForm({
           </SelectRow>
         )}
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
-        {asks.includes('balance') && !pocketed && (
-          <TextRow
-            label="Balance now"
-            aria-describedby={balanceHint}
-            /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}</span>}
-            value={balance}
-            onChange={(e) => setBalance(e.target.value)}
-            inputMode="decimal"
-            placeholder="Amount"
-          />
-        )}
-        {/* Only worth asking when a figure has been typed: nothing moves into an account opened at zero. */}
-        {asks.includes('balance') && !pocketed && typedBalance > 0 && (
-          <SelectRow
-            label="Where the money comes from"
-            hint="An account here makes this a transfer from it, so its balance drops too."
-            value={sourceId}
-            onChange={(e) => setSourceId(e.target.value)}
-          >
-            <option value="">Already there (opening balance)</option>
-            {sources.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </SelectRow>
-        )}
         {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Bank name" />}
         {canPocket && (
           <SwitchRow
@@ -314,6 +286,35 @@ export function CashAccountForm({
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}
         <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
+        {/* The balance comes after the day it is as of: the date first, then what the account held on it. */}
+        {asks.includes('balance') && !pocketed && (
+          <TextRow
+            label="Balance now"
+            aria-describedby={balanceHint}
+            /* The sentence keeps its id, so the box still says out loud which line explains it. */
+            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}</span>}
+            value={balance}
+            onChange={(e) => setBalance(e.target.value)}
+            inputMode="decimal"
+            placeholder="Amount"
+          />
+        )}
+        {/* Only worth asking when a figure has been typed: nothing moves into an account opened at zero. */}
+        {asks.includes('balance') && !pocketed && typedBalance > 0 && (
+          <SelectRow
+            label="Where the money comes from"
+            hint="An account here makes this a transfer from it, so its balance drops too."
+            value={sourceId}
+            onChange={(e) => setSourceId(e.target.value)}
+          >
+            <option value="">Already there (opening balance)</option>
+            {sources.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </SelectRow>
+        )}
         {foreign && !pocketed && (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
