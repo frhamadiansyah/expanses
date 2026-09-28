@@ -24,6 +24,7 @@ export function Sheet({
   heading,
   closeHidden = false,
   back,
+  tall = false,
 }: {
   title: string;
   onClose: () => void;
@@ -53,6 +54,11 @@ export function Sheet({
    * named for a screen reader. Only with `confirm`.
    */
   back?: { label: string; run: () => void };
+  /**
+   * The iOS large detent: the sheet stands at one height whatever it holds, so switching a tab, searching or moving
+   * to a step inside it never moves its top edge. A short list leaves room below; a long one scrolls inside.
+   */
+  tall?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -83,7 +89,7 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className={`max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
+        className={`${tall ? 'h-[85dvh] md:h-[80dvh]' : ''} max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />

@@ -470,8 +470,11 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
 
+  // The sheet stands at one height, as an iOS sheet does: switching the tab does not move its top edge.
+  const top = (await sheet.boundingBox())!.y;
   // Credit cards: only cards, and the last row adds a card.
   await tabs.getByRole('radio', { name: 'Credit cards' }).click();
+  expect((await sheet.boundingBox())!.y).toBe(top);
   await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Add credit card' })).toBeVisible();
