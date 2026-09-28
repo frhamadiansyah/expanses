@@ -62,11 +62,9 @@ export function useCategoryActions() {
       if (!window.confirm(`Delete ${c.name}? This can't be undone.`)) return false;
       return run(() => deleteCategory(database, ws, c.id));
     },
-    changeMcc: (c: AccountRow, current: string | null) => {
-      const mcc = window.prompt(`Merchant category code for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
-      if (mcc?.trim() && mcc.trim() !== current) void run(() => saveCategoryMcc(database, ws, c.id, mcc.trim()));
-    },
-    resetMcc: (c: AccountRow) => void run(() => clearCategoryMcc(database, ws, c.id)),
+    // Typed in MccSheet with ✓, so nothing is asked here. Each resolves true once written.
+    setMcc: (c: AccountRow, mcc: string) => run(() => saveCategoryMcc(database, ws, c.id, mcc)),
+    resetMcc: (c: AccountRow) => run(() => clearCategoryMcc(database, ws, c.id)),
     // Chosen in a sheet with ✓, so nothing is asked again here. Each resolves true once written.
     move: (c: AccountRow, parentId: string | null) => run(() => moveCategory(database, ws, c.id, parentId)),
     setIcon: (c: AccountRow, icon: string | null) => run(() => setCategoryIcon(database, ws, c.id, icon)),

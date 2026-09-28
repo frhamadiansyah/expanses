@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { countsAs, expectNeed } from './categories';
+import { countsAs, expectNeed, openCategory } from './categories';
 
 test('the list is only names; a subcategory opens its page, where it is renamed, marked and archived', async ({ page }) => {
   await page.goto('/categories');
@@ -155,4 +155,28 @@ test('a category nothing uses can be deleted from its page; one with a transacti
   await page.getByRole('button', { name: 'More' }).click();
   await expect(page.getByRole('menuitem', { name: 'Archive category' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Delete category' })).toHaveCount(0);
+});
+
+test('a merchant category code is typed in the app’s own sheet, names itself as it is typed, and resets to the built-in one', async ({ page }) => {
+  await openCategory(page, 'Restaurants');
+  const mcc = page.getByTestId('category-mcc');
+  await expect(mcc).toContainText('5812');
+
+  await page.getByRole('button', { name: 'Merchant category code for Restaurants' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Merchant category code' });
+  const field = sheet.getByRole('textbox', { name: 'Merchant category code for Restaurants' });
+  await field.fill('58');
+  await expect(sheet).toContainText('Keep typing: a code is four digits.');
+  await expect(sheet.getByRole('button', { name: /^5814, / })).toBeVisible();
+  await field.fill('5814');
+  await expect(sheet.getByTestId('mcc-meaning')).toHaveText('Fast Food Restaurants');
+  await sheet.getByRole('button', { name: 'Save merchant category code' }).click();
+  await expect(mcc).toContainText('5814');
+
+  // Reopened on a code of your own: what it would be without it, and the way back.
+  await page.getByRole('button', { name: 'Merchant category code for Restaurants' }).click();
+  await expect(sheet).toContainText('Without it: 5812');
+  await sheet.getByRole('button', { name: /^Reset to built-in/ }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(mcc).toContainText('5812');
 });

@@ -10,6 +10,7 @@ import { categoryMcc } from './category-mcc';
 import { mccCaption, needCaption } from './category-details';
 import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon';
 import { ColourSheet, IconSheet, ParentSheet } from './CategoryLookSheets';
+import { MccSheet } from './MccSheet';
 import { useCategoryMccs, useCategoryUsage } from './mcc-queries';
 import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
@@ -71,6 +72,12 @@ function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { nam
   );
 }
 
+/** The overrides as they would be without this category's own code: what Reset would go back to. */
+function withoutOwn(overrides: Readonly<Record<string, string>>, id: string): Record<string, string> {
+  const { [id]: _own, ...rest } = overrides;
+  return rest;
+}
+
 /**
  * "Merchant category code": the code on the row, and what it means — too long for a line under the title — behind an
  * ⓘ beside the title, opening under the row the way Counts as explains itself. The code and › are the way to change it.
@@ -126,7 +133,7 @@ export function CategoryPage() {
   const needs = useCategoryNeeds().data ?? {};
   const actions = useCategoryActions();
   const chosen = useCategoryColours().data ?? {};
-  const [sheet, setSheet] = useState<'icon' | 'colour' | 'parent' | null>(null);
+  const [sheet, setSheet] = useState<'icon' | 'colour' | 'parent' | 'mcc' | null>(null);
 
   const category = all.find((a) => a.id === categoryId && a.archivedAt === null);
   const usage = useCategoryUsage(categoryId, category !== undefined);
@@ -232,6 +239,17 @@ export function CategoryPage() {
         )}
       </InsetGroup>
 
+      {sheet === 'mcc' && card && (
+        <MccSheet
+          name={c.name}
+          current={card.mcc}
+          own={card.source === 'yours'}
+          builtIn={categoryMcc(c, allCategories, withoutOwn(overrides, c.id)).mcc}
+          onSave={(mcc) => saved(actions.setMcc(c, mcc))}
+          onReset={() => saved(actions.resetMcc(c))}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === 'icon' && (
         <IconSheet
           current={c.icon}
@@ -270,9 +288,8 @@ export function CategoryPage() {
             name={c.name}
             code={card.mcc}
             about={mccCaption(card, card.mcc ? mccName(card.mcc) : null, parent?.name ?? null)}
-            onChange={() => actions.changeMcc(c, card.mcc)}
+            onChange={() => setSheet('mcc')}
           />
-          {card.source === 'yours' && <InsetRow title="Reset merchant category code" label={`Reset merchant category code for ${c.name}`} chevron={false} onClick={() => actions.resetMcc(c)} />}
         </InsetGroup>
       )}
 

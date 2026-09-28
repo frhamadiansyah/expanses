@@ -1,6 +1,6 @@
 export { uuidv7 } from './ids';
 export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
-export { MCC_NAMES, mccName } from './mcc/codes';
+export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
 export { CATEGORY_COLOURS, CATEGORY_ICONS, CATEGORY_PALETTE, categoryVisual, isPaletteColour, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
 export {
   type CategoryOption,
