@@ -482,11 +482,13 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   // ⌕ in the header puts the search where the tabs were; it looks across both, under their headings. Its ✕ closes
   // it, and the tab that was open comes back.
   const list = sheet.getByTestId('payment-sections');
-  const before = (await list.boundingBox())!.y;
+  const before = (await list.boundingBox())!.y - (await sheet.boundingBox())!.y;
   await sheet.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(tabs).toHaveCount(0);
-  // The field takes the tabs' own row, so the list does not move; and only one ✕ is on the sheet, the field's.
-  expect((await list.boundingBox())!.y).toBe(before);
+  // The field takes the tabs' own row, so the list does not move inside the sheet (the sheet itself rises to its
+  // large detent for the keyboard, as iOS does); and only one ✕ is on the sheet, the field's.
+  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  await expect.poll(async () => (await list.boundingBox())!.y - (await sheet.boundingBox())!.y).toBe(before);
   // And the field spans the row, edge to edge with the list under it.
   const pill = sheet.getByRole('searchbox', { name: 'Search Paid with' }).locator('xpath=..');
   expect(Math.round((await pill.boundingBox())!.width)).toBe(Math.round((await list.boundingBox())!.width));
@@ -575,4 +577,35 @@ test('a note typed out in full brings its category on leaving Note, but never ov
   await note.fill('Kopi Kenangan');
   await note.blur();
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
+});
+
+test('Paid with opens at the medium detent, drags up to large and back, and closes when pulled well down', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  const handle = sheet.getByTestId('sheet-drag');
+  const drag = async (dy: number) => {
+    const box = (await handle.boundingBox())!;
+    const x = box.x + 40;
+    const y = box.y + 10;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step += 1) await page.mouse.move(x, y + (dy * step) / 12);
+    await page.mouse.up();
+  };
+
+  await drag(-300);
+  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  await drag(300);
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  // Let the sheet settle at its detent before tapping in its header.
+  await page.waitForTimeout(400);
+  // A tap on the header's buttons is still a tap.
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  await sheet.getByRole('button', { name: 'Close search' }).click();
+  await drag(700);
+  await expect(sheet).toHaveCount(0);
 });

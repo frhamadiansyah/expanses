@@ -141,6 +141,7 @@ export function CategoryPicker({
       <Sheet
         grouped
         tall
+        expanded
         title="New category"
         onClose={() => setMaking(false)}
         back={{ label: title, run: () => setMaking(false) }}
@@ -169,6 +170,7 @@ export function CategoryPicker({
     <Sheet
       grouped
       tall
+      expanded={finding}
       title={title}
       onClose={onClose}
       closeHidden={finding}

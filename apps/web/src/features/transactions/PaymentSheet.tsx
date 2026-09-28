@@ -227,6 +227,7 @@ export function PaymentSheet({
     <Sheet
       grouped
       tall
+      expanded={finding}
       title={title}
       onClose={onClose}
       closeHidden={finding}

@@ -1,5 +1,7 @@
 import { Check, ChevronLeft, Search, X } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
+import { type Detent, landing } from './sheet-detents';
+import { usePhone } from './use-phone';
 import { useEscape } from './use-escape';
 
 /** How many sheets are open, so the last one out is the one that gives the page its scrolling back. */
@@ -25,6 +27,7 @@ export function Sheet({
   closeHidden = false,
   back,
   tall = false,
+  expanded = false,
 }: {
   title: string;
   onClose: () => void;
@@ -55,12 +58,57 @@ export function Sheet({
    */
   back?: { label: string; run: () => void };
   /**
-   * The iOS large detent: the sheet stands at one height whatever it holds, so switching a tab, searching or moving
-   * to a step inside it never moves its top edge. A short list leaves room below; a long one scrolls inside.
+   * iOS detents: the sheet stands at a height of its own — medium (half the screen) or large — whatever it holds, so
+   * switching a tab, searching or stepping inside it never moves its top edge. Dragging the grabber or the header
+   * moves it between the two, and well below medium closes it. A short list leaves room below; a long one scrolls.
    */
   tall?: boolean;
+  /** Go to large and stay there while true: a search that brings the keyboard, a form that needs the room. */
+  expanded?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const phone = usePhone();
+  const detents = tall && phone;
+  const [detent, setDetent] = useState<Detent>(expanded ? 'large' : 'medium');
+  const [dragged, setDragged] = useState<number | null>(null);
+    useEffect(() => {
+    if (expanded) setDetent('large');
+  }, [expanded]);
+  const px = (d: Detent) => (d === 'large' ? window.innerHeight * 0.92 : window.innerHeight * 0.5);
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (!detents) return;
+    const height = panel.current?.getBoundingClientRect().height ?? px(detent);
+    const d = { y: e.clientY, start: height, last: e.clientY, at: e.timeStamp, prevY: e.clientY, prevAt: e.timeStamp, moving: false };
+    // Followed on the window, so a finger that leaves the header mid-drag still drags; a tap on ⌕ or ✕ stays a tap,
+    // since nothing happens until the finger has really moved.
+    const move = (event: globalThis.PointerEvent) => {
+      if (!d.moving && Math.abs(event.clientY - d.y) < 6) return;
+      d.moving = true;
+      d.prevY = d.last;
+      d.prevAt = d.at;
+      d.last = event.clientY;
+      d.at = event.timeStamp;
+      setDragged(Math.min(px('large') + 24, Math.max(80, d.start - (event.clientY - d.y))));
+    };
+    const up = (event: globalThis.PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (!d.moving) return;
+      const height = d.start - (event.clientY - d.y);
+      // The last two samples give the speed the finger was moving at when it let go.
+      const velocity = (d.last - d.prevY) / Math.max(1, d.at - d.prevAt);
+      const to = landing({ height, velocity, medium: px('medium'), large: px('large') });
+      setDragged(null);
+      if (to === 'close') onClose();
+      else setDetent(expanded ? 'large' : to);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  // Only a tap that both starts and ends on the scrim closes the sheet: a drag let go of outside the sheet does not.
+  const scrimDown = useRef(false);
 
   useEscape(onClose);
 
@@ -81,7 +129,17 @@ export function Sheet({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center" onClick={onClose} role="presentation">
+    <div
+      className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
+      onPointerDown={(e) => {
+        scrimDown.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && scrimDown.current) onClose();
+        scrimDown.current = false;
+      }}
+      role="presentation"
+    >
       <div
         ref={panel}
         role="dialog"
@@ -89,9 +147,15 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className={`${tall ? 'h-[85dvh] md:h-[80dvh]' : ''} max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
-        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        className={`${detents ? (dragged === null ? 'transition-[height] duration-300 ease-out' : '') : tall ? 'h-[85dvh] md:h-[80dvh]' : ''} ${detents ? '' : 'max-h-[85dvh]'} w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
+        style={{
+          paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+          ...(detents ? { height: dragged ?? (detent === 'large' ? '92dvh' : '50dvh') } : {}),
+        }}
+        data-detent={detents ? detent : undefined}
       >
+        {/* The grabber and the header are where the sheet is dragged between its detents, as on iOS. */}
+        <div onPointerDown={onDown} className={detents ? 'touch-none' : undefined} data-testid="sheet-drag">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
         {confirm ? (
           <div className="mb-3 flex items-center gap-3">
@@ -135,6 +199,7 @@ export function Sheet({
             </div>
           </div>
         )}
+        </div>
         {children}
       </div>
     </div>
