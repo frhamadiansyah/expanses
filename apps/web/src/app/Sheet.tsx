@@ -103,7 +103,7 @@ export function Sheet({
             </button>
           </div>
         ) : (
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="-mt-1 mb-1 flex items-center justify-between gap-3">
             {heading ? <div className="min-w-0 flex-1">{heading}</div> : <h2 className="flex-1 text-base font-semibold">{title}</h2>}
             {action}
             {!closeHidden && (

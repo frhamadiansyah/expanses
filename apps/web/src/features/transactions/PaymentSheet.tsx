@@ -217,6 +217,7 @@ export function PaymentSheet({
         setSearch('');
         setFinding(false);
       }}
+      compact
       placeholder="Search"
       label={`Search ${title}`}
     />
@@ -239,10 +240,10 @@ export function PaymentSheet({
         />
       }
     >
-      {/* One row of a fixed 44 px for the tabs or the search that replaces them, so opening the search moves no row
+      {/* One row of a fixed 32 px for the tabs or the search that replaces them, so opening the search moves no row
           below it. A sheet with no tabs takes the search in its header instead, in the title's place. */}
       {tabbed ? (
-        <div className="mb-3 flex h-11 items-center">
+        <div className="mb-3 flex h-8 items-center">
           {finding ? <div className="w-full">{searchField}</div> : <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="w-full" />}
         </div>
       ) : null}

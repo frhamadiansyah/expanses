@@ -142,6 +142,7 @@ export function CategoryPicker({
         setSearch('');
         setFinding(false);
       }}
+      compact
       placeholder="Search"
       label="Search categories"
     />
@@ -165,10 +166,10 @@ export function CategoryPicker({
       }
     >
       <div className="flex flex-col gap-[10px]">
-        {/* The tabs and the search that replaces them share one fixed 44 px row, so nothing below moves. With no
+        {/* The tabs and the search that replaces them share one fixed 32 px row, so nothing below moves. With no
             tabs (a sheet locked to one kind), the search takes the title's place in the header instead. */}
         {!lockKind && (
-          <div className="flex h-11 items-center">
+          <div className="flex h-8 items-center">
             {finding ? (
               <div className="w-full">{searchField}</div>
             ) : (
