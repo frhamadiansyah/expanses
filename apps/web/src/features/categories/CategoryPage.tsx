@@ -166,7 +166,6 @@ export function CategoryPage() {
             value={
               <span data-testid="category-colour-swatch" data-colour={mark.colour} aria-hidden className="inline-block h-[18px] w-[18px] rounded-full align-middle" style={{ background: mark.colour }} />
             }
-            subtitle={ownColour ? undefined : 'Automatic'}
             label={`Colour for ${c.name}`}
             onClick={() => setSheet('colour')}
           />

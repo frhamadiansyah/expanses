@@ -98,7 +98,9 @@ test('a category of your own gets an icon, a colour and a parent from its page, 
   await parents.getByRole('button', { name: 'None (top level)' }).click();
   await parents.getByRole('button', { name: 'Save parent' }).click();
   await expect(hero).not.toContainText('in Food and beverage');
-  await expect(page.getByRole('button', { name: 'Colour for Syalala' })).toContainText('Automatic');
+  // Back at the top the Colour row returns, the picked colour gone with the move: just the swatch, no word under it.
+  await expect(page.getByRole('button', { name: 'Colour for Syalala' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Colour for Syalala' })).not.toContainText('Automatic');
 });
 
 test('a category with subcategories of its own cannot be filed under another', async ({ page }) => {
