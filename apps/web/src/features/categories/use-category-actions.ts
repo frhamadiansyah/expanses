@@ -57,7 +57,7 @@ export function useCategoryActions() {
       return run(() => archiveAccount(database, ws, c.id));
     },
     changeMcc: (c: AccountRow, current: string | null) => {
-      const mcc = window.prompt(`Card MCC for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
+      const mcc = window.prompt(`Merchant category code for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
       if (mcc?.trim() && mcc.trim() !== current) void run(() => saveCategoryMcc(database, ws, c.id, mcc.trim()));
     },
     resetMcc: (c: AccountRow) => void run(() => clearCategoryMcc(database, ws, c.id)),

@@ -10,7 +10,7 @@ export function needCaption(source: ResolvedNeed['source'], parentName: string |
   return undefined;
 }
 
-/** The line under "Card MCC": what the code means, and where it came from. Nothing at all when there is no code. */
+/** The line under "Merchant category code": what the code means, and where it came from. Nothing at all when there is no code. */
 export function mccCaption(
   card: { mcc: string | null; source: 'yours' | 'default' | 'parent' | null },
   meaning: string | null,

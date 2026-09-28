@@ -1,7 +1,7 @@
 import { type CategoryNeed, categoryVisual, mccName, needOf, type ResolvedNeed } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ChevronsUpDown, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
+import { Archive, CircleHelp, Info, MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
@@ -48,10 +48,10 @@ function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { nam
             </span>
           )}
         </span>
-        {/* iOS's pop-up button: the answer and ⌃⌄, over a real select, so the phone opens its own native menu. */}
+        {/* The answer and ›, drawn as every other row's, over a real select so the phone opens its own native menu. */}
         <span className="ph-focus-within relative flex shrink-0 items-center gap-[4px] text-[16px] leading-[20px] text-[var(--ph-ink-2)] md:text-[15px]">
           <span aria-hidden>{need.need === 'lifestyle' ? 'Lifestyle' : 'Essential'}</span>
-          <ChevronsUpDown size={15} aria-hidden className="text-[var(--ph-ink-3)]" />
+          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
           <select
             aria-label={`What ${name} counts as`}
             value={need.need}
@@ -217,14 +217,14 @@ export function CategoryPage() {
             <InsetRow title={parent ? 'Follow parent' : 'Clear mark'} label={`Clear the mark on ${c.name}`} chevron={false} onClick={() => actions.clearNeed(c)} />
           )}
           <InsetRow
-            title="Card MCC"
+            title="Merchant category code"
             subtitle={mccCaption(card, card.mcc ? mccName(card.mcc) : null, parent?.name ?? null)}
             value={card.mcc ?? 'None'}
-            label={`Card MCC for ${c.name}`}
+            label={`Merchant category code for ${c.name}`}
             testId="category-mcc"
             onClick={() => actions.changeMcc(c, card.mcc)}
           />
-          {card.source === 'yours' && <InsetRow title="Reset card MCC" label={`Reset card MCC for ${c.name}`} chevron={false} onClick={() => actions.resetMcc(c)} />}
+          {card.source === 'yours' && <InsetRow title="Reset merchant category code" label={`Reset merchant category code for ${c.name}`} chevron={false} onClick={() => actions.resetMcc(c)} />}
         </InsetGroup>
       )}
 

@@ -118,12 +118,12 @@ test('a set category can be given a card MCC, so its spending earns the right ra
   await page.getByTestId('set-Holiday').getByRole('link', { name: 'Flights', exact: true }).click();
   const mcc = page.getByTestId('category-mcc');
   await expect(mcc).toContainText('None');
-  await page.getByRole('button', { name: 'Card MCC for Flights' }).click();
+  await page.getByRole('button', { name: 'Merchant category code for Flights' }).click();
   await expect(mcc).toContainText('4511');
   await expect(mcc).toContainText('set by you');
 
   // Clearing puts it back to having none, the same as the monthly categories behave.
-  await page.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
+  await page.getByRole('button', { name: 'Reset merchant category code for Flights' }).click();
   await expect(mcc).not.toContainText('4511');
   await expect(mcc).toContainText('None');
 });
