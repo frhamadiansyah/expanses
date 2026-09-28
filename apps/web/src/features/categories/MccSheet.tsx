@@ -90,9 +90,9 @@ export function MccSheet({
                       type="button"
                       aria-label={`${m.code}, ${m.name}`}
                       onClick={() => setTyped(m.code)}
-                      className={`ph-focus-inset flex w-full items-start gap-[10px] px-3 py-[10px] text-left active:bg-[var(--ph-fill)] ${i > 0 ? 'border-t-[0.5px] border-[var(--ph-hair)]' : ''}`}
+                      className={`ph-focus-inset flex w-full items-baseline gap-[10px] px-3 py-[10px] text-left active:bg-[var(--ph-fill)] ${i > 0 ? 'border-t-[0.5px] border-[var(--ph-hair)]' : ''}`}
                     >
-                      <span className="min-w-[42px] font-semibold text-[var(--ph-ink)] tabular">{m.code}</span>
+                      <span className="min-w-[42px] text-[14px] leading-[18px] font-semibold text-[var(--ph-ink)] tabular">{m.code}</span>
                       <span className="flex-1 text-[14px] leading-[18px] text-[var(--ph-ink-2)]">
                         {digits ? m.name : <Marked text={m.name} typed={text} />}
                       </span>
