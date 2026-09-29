@@ -1081,7 +1081,11 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await expect(made.getByLabel('Name', { exact: true })).toHaveValue('');
   await made.getByLabel('Name', { exact: true }).fill('Boba');
   await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
-  await made.getByRole('button', { name: 'coffee', exact: true }).click();
+  // Its look is behind the circle: one step further in the same sheet, then back to the form.
+  await made.getByRole('button', { name: 'Icon and colour' }).click();
+  const look = page.getByRole('dialog', { name: 'Icon and colour' });
+  await look.getByRole('button', { name: 'coffee', exact: true }).click();
+  await look.getByRole('button', { name: 'Done' }).click();
   await made.getByRole('button', { name: 'Save' }).click();
 
   // Back on the form with it chosen — no second trip through the picker to say so.

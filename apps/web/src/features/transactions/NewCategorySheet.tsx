@@ -2,9 +2,9 @@ import { type AccountRow, createAccount, setCategoryColour } from '@expanses/db'
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Tag } from 'lucide-react';
+import { Pencil, Tag } from 'lucide-react';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { ICONS } from '../categories/CategoryIcon';
 import { ColourPicker, IconPicker } from '../categories/CategoryLookSheets';
 
@@ -23,15 +23,6 @@ import { ColourPicker, IconPicker } from '../categories/CategoryLookSheets';
  */
 const TOP = 'top-level';
 
-/** The swatches opened under the Colour row: a row of the group, so it takes the group's hairline above it. */
-function ColourShelf({ value, onPick, position }: GroupChild & { value: string | null; onPick: (colour: string | null) => void }) {
-  return (
-    <div data-testid="new-category-colours" className="relative">
-      {position?.separator && <span aria-hidden className="absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: 0 }} />}
-      <ColourPicker value={value} onPick={onPick} />
-    </div>
-  );
-}
 
 export function useNewCategoryForm({
   kind,
@@ -49,7 +40,7 @@ export function useNewCategoryForm({
   const [parentId, setParentId] = useState('');
   const [icon, setIcon] = useState('');
   const [colour, setColour] = useState<string | null>(null);
-  const [choosingColour, setChoosingColour] = useState(false);
+  const [choosingLook, setChoosingLook] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -87,21 +78,32 @@ export function useNewCategoryForm({
     setParentId('');
     setIcon('');
     setColour(null);
-    setChoosingColour(false);
+    setChoosingLook(false);
     setError(null);
   };
 
-  const view = (
+  // The circle: the icon it will draw, in the colour it will wear — a top-level one's own, else the app's tint.
+  const own = colour && !parentId ? colour : null;
+  const circle = (size: number, glyph: number) => (
+    <span
+      aria-hidden
+      className="relative flex items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]"
+      style={{ width: size, height: size, ...(own ? { background: `color-mix(in srgb, ${own} 16%, transparent)`, color: own } : {}) }}
+    >
+      <Preview size={glyph} />
+    </span>
+  );
+
+  const form = (
     <div className="flex flex-col gap-3">
-      {/* B7a's preview: the icon this category will draw, before it exists. */}
+      {/* How it looks sits behind the circle, as a Reminders list's icon does: tap it for the icon and the colour. */}
       <div className="flex justify-center py-2">
-        <span
-          aria-hidden
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]"
-          style={colour && !parentId ? { background: `color-mix(in srgb, ${colour} 16%, transparent)`, color: colour } : undefined}
-        >
-          <Preview size={30} />
-        </span>
+        <button type="button" aria-label="Icon and colour" onClick={() => setChoosingLook(true)} className="ph-focus relative rounded-full">
+          {circle(64, 30)}
+          <span className="absolute -right-0.5 -bottom-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] text-[var(--ph-ink-2)]">
+            <Pencil size={11} aria-hidden />
+          </span>
+        </button>
       </div>
       {/* The kit's rows, as every other form sheet draws them: the label at the left, the answer at the right. Kind
           is not a row: it is the tab the picker is on, and the title says it ("New expense category"). */}
@@ -117,43 +119,29 @@ export function useNewCategoryForm({
             </option>
           ))}
         </SelectRow>
-        {/* Only a top-level category has a colour of its own; one with a parent is drawn in a shade of the parent's.
-            The swatches open under the row, in this sheet, as an inline iOS picker does — no sheet on top of a sheet. */}
-        {!parentId && (
-          <InsetRow
-            title="Colour"
-            label="Colour"
-            value={
-              <span
-                aria-hidden
-                className="inline-block h-[18px] w-[18px] rounded-full align-middle"
-                style={{ background: colour ?? 'conic-gradient(#dc2626, #d97706, #16a34a, #0284c7, #7c3aed, #db2777, #dc2626)' }}
-              />
-            }
-            onClick={() => setChoosingColour((open) => !open)}
-          />
-        )}
-        {!parentId && choosingColour && (
-          <ColourShelf
-            value={colour}
-            onPick={(picked) => {
-              setColour(picked);
-              setChoosingColour(false);
-            }}
-          />
-        )}
       </InsetGroup>
-
-      {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's.
-          No scroll box of its own: the sheet scrolls, so at any detent the icons run to its foot rather than stopping
-          in a box with grey under it. */}
-      <div data-testid="new-category-icons">
-        <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
-      </div>
-
       <ErrorBox error={error} />
     </div>
   );
 
-  return { view, canSave: !busy && name.trim() !== '', save: () => void save(), reset };
+  // One step further in the same sheet: the circle large, then the colours (a top-level category only — one with a
+  // parent is drawn in a shade of the parent's), then every icon. No scroll box of its own: the sheet scrolls.
+  const look = (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-center py-2">{circle(84, 38)}</div>
+      {!parentId && (
+        <section aria-label="Colour" data-testid="new-category-colours">
+          <h3 className="mb-1.5 px-4 text-[12px] leading-[16px] font-medium tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">Colour</h3>
+          <ColourPicker value={colour} onPick={setColour} />
+        </section>
+      )}
+      <div data-testid="new-category-icons">
+        <IconPicker value={icon || null} onPick={(key) => setIcon(icon === key ? '' : key)} />
+      </div>
+    </div>
+  );
+
+  const view = choosingLook ? look : form;
+
+  return { view, choosingLook, closeLook: () => setChoosingLook(false), canSave: !busy && name.trim() !== '', save: () => void save(), reset };
 }

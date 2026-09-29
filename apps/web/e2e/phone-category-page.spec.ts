@@ -194,18 +194,23 @@ test('a top-level category made from Select category can take a colour; one insi
   const sheet = page.getByRole('dialog', { name: 'Select category' });
   await sheet.getByRole('button', { name: 'New category' }).click();
   const made = page.getByRole('dialog', { name: 'New expense category' });
-  const colour = made.getByRole('button', { name: 'Colour' });
-  await expect(colour).toBeVisible();
-  // With a parent, it is drawn in a shade of the parent's, so there is nothing to pick.
+  const circle = made.getByRole('button', { name: 'Icon and colour' });
+  const look = page.getByRole('dialog', { name: 'Icon and colour' });
+  // With a parent, it is drawn in a shade of the parent's colour, so its look offers icons only.
   await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
-  await expect(colour).toHaveCount(0);
+  await circle.click();
+  await expect(look.getByTestId('new-category-icons')).toBeVisible();
+  await expect(look.getByTestId('new-category-colours')).toHaveCount(0);
+  await look.getByRole('button', { name: 'New expense category' }).click();
+  // At the top it takes a colour of its own, chosen on the same step as its icon.
   await made.getByLabel('Parent', { exact: true }).selectOption('top-level');
   await made.getByLabel('Name', { exact: true }).fill('Pets');
-  // The swatches open under the row, in the same sheet, and close once one is picked.
-  await colour.click();
-  await made.getByTestId('new-category-colours').getByRole('button', { name: 'Teal' }).click();
-  await expect(made.getByTestId('new-category-colours')).toHaveCount(0);
+  await circle.click();
+  await look.getByTestId('new-category-colours').getByRole('button', { name: 'Teal' }).click();
+  await look.getByRole('button', { name: 'Done' }).click();
   await made.getByRole('button', { name: 'Save' }).click();
+  // Saved and chosen before the page is left.
+  await expect(page.getByRole('button', { name: /Category/ }).first()).toContainText('Pets');
 
   await openCategory(page, 'Pets');
   await expect(page.getByTestId('category-colour-swatch')).toHaveAttribute('data-colour', '#0d9488');

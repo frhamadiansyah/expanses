@@ -157,10 +157,13 @@ export function CategoryPicker({
     <Sheet
       grouped
       tall
-      title={making ? `New ${showing} category` : title}
-      onClose={making ? stepBack : onClose}
+      title={making ? (newCategory.choosingLook ? 'Icon and colour' : `New ${showing} category`) : title}
+      onClose={making ? (newCategory.choosingLook ? newCategory.closeLook : stepBack) : onClose}
       {...(making
-        ? { back: { label: title, run: stepBack }, confirm: { label: 'Save', disabled: !newCategory.canSave, run: newCategory.save } }
+        ? newCategory.choosingLook
+          ? // The look is chosen as it is tapped; ✓ and ‹ both return to the form with it.
+            { back: { label: `New ${showing} category`, run: newCategory.closeLook }, confirm: { label: 'Done', run: newCategory.closeLook } }
+          : { back: { label: title, run: stepBack }, confirm: { label: 'Save', disabled: !newCategory.canSave, run: newCategory.save } }
         : {
             closeHidden: finding,
             heading: lockKind && finding ? searchField : undefined,
