@@ -274,7 +274,26 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * A device that shared or joined before it carried its own version — or was upgraded since — keeps whatever
+   * `app_version` it last wrote (possibly `NULL`) until it says otherwise (task 1 review round 1, ruling on the app
+   * version): every `syncOnce` corrects it here, captured so the write reaches the outbox and its peers.
+   */
+  private async syncOwnAppVersion(bookId: string): Promise<void> {
+    if (!this.appVersion) return;
+    const [row] = await this.database.db.values<[string | null]>(
+      sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`,
+    );
+    if (!row || row[0] === this.appVersion) return;
+    await this.database.transaction((tx) =>
+      withCapture(tx, { entity: 'device', id: this.deviceId, bookId }, async () => {
+        await tx.run(sql`UPDATE book_devices SET app_version = ${this.appVersion} WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`);
+      }),
+    );
+  }
+
   private async syncActive(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    await this.syncOwnAppVersion(bookId);
     const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
     let pushed = 0;

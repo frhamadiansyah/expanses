@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { Db } from '../database';
 import { termsSigningBytes } from './invite';
 import { deviceIdOf, verifySignature } from './relay-signing';
+import { entityOf, parseOpId, type RowEntity } from './shared-entities';
 import type { ChangeSet, Op } from './types';
 
 /*
@@ -85,6 +86,19 @@ export async function viewRoleOfDevice(tx: Db, bookId: string, deviceId: string)
   if (!device || device.removedSeq !== null) return null;
   const member = await viewMember(tx, bookId, device.memberId);
   return member && !member.deleted ? member.role : null;
+}
+
+/**
+ * The member `deviceId` writes as, per the view: null for a device the view does not know, one removed, or one whose
+ * member is deleted (mirrors `viewRoleOfDevice`). What `decideRowWriter` (joint-net-worth spec §5.1) checks the
+ * writer-bearing fields against — never a change-set's own claimed `member`, which the sender asserts and nothing
+ * signs (task 1 review round 1, finding 1).
+ */
+export async function authorMemberOf(tx: Db, bookId: string, deviceId: string): Promise<string | null> {
+  const device = await viewDevice(tx, bookId, deviceId);
+  if (!device || device.removedSeq !== null) return null;
+  const member = await viewMember(tx, bookId, device.memberId);
+  return member && !member.deleted ? device.memberId : null;
 }
 
 /**
@@ -228,6 +242,87 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
     return inserted;
   }
   if (op.entity === 'member') return decideMember(tx, ctx, op);
+  const entity = entityOf(op.entity);
+  if (entity.kind === 'row' && entity.writer) return decideRowWriter(tx, bookId, author, entity, op);
+  return op;
+}
+
+/** The member a JSON-encoded `{ owner }` field (a `member_transfer`'s `from`/`to`) names, or undefined — never throws
+ * on malformed peer data (task 1 review round 1, finding 4). */
+function ownerOf(value: unknown): string | undefined {
+  try {
+    const parsed = typeof value === 'string' ? (JSON.parse(value) as { owner?: unknown }) : (value as { owner?: unknown } | undefined);
+    return typeof parsed?.owner === 'string' ? parsed.owner : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether `member` is a party of a `member_transfer`'s `from`/`to` fields (its `writer` reads `'either-party'`). */
+function isParty(fields: Record<string, unknown>, member: string | null): boolean {
+  return member !== null && (ownerOf(fields.from) === member || ownerOf(fields.to) === member);
+}
+
+/**
+ * Once a writer-only row exists, the field(s) its `writer` is read from may never change — not even by its rightful
+ * writer — so nobody can grant themselves (or anyone else) a row already made (task 1 review round 1, finding 2).
+ */
+const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  nw_proposal: ['proposedBy'],
+  nw_item: ['owner'],
+  member_transfer: ['from', 'to', 'recordedBy'],
+};
+
+/** A row entity's stored fields (by field name, `entity.fields`' keys), or null when it is not here. */
+async function storedRowOf(tx: Db, entity: RowEntity, bookId: string, key: Record<string, string>): Promise<Record<string, unknown> | null> {
+  const columns = Object.entries(entity.fields);
+  if (columns.length === 0) return {};
+  const where = sql.join(
+    [sql`book_id = ${bookId}`, ...entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`)],
+    sql` AND `,
+  );
+  const [row] = await tx.values<unknown[]>(sql`SELECT ${sql.raw(columns.map(([, c]) => c).join(', '))} FROM ${sql.raw(entity.table)} WHERE ${where}`);
+  return row ? Object.fromEntries(columns.map(([f], i) => [f, row[i]])) : null;
+}
+
+/**
+ * Joint-net-worth spec §5.1 (task 1 review round 1, findings 1–4): only the member `entity.writer` names may write
+ * this row, resolved from the **authority view**'s device→member binding (`authorMemberOf`), never a change-set's
+ * own claimed `member` (finding 1). A row that already exists is judged by its STORED writer, not the incoming op's
+ * (finding 2: an op cannot grant itself a row by rewriting who owns it) — and, once it exists, its writer-bearing
+ * field(s) may never change, by anyone (`WRITER_FROZEN_FIELDS`). A new row is judged by the op's own fields. A
+ * writer that cannot be determined (an absent field, or a delete of a row not here) is refused, not allowed
+ * (finding 3).
+ */
+async function decideRowWriter(tx: Db, bookId: string, author: string, entity: RowEntity, op: Op): Promise<Op> {
+  const key = parseOpId(entity, op.id);
+  const stored = await storedRowOf(tx, entity, bookId, key);
+  const authorMember = await authorMemberOf(tx, bookId, author);
+  const REFUSED = new AuthorityError('writer');
+  if (op.op === 'delete') {
+    if (stored === null) throw REFUSED; // finding 3: a delete of a row not here is refused, not silently allowed
+    const writer = entity.writer!(stored, key);
+    if (writer === null) throw REFUSED;
+    const ok = writer === 'either-party' ? isParty(stored, authorMember) : writer === authorMember;
+    if (!ok) throw REFUSED;
+    return op;
+  }
+  if (stored === null) {
+    // A new row: judged by the op's own fields (finding 2).
+    const writer = entity.writer!(op.fields, key);
+    if (writer === null) throw REFUSED;
+    const ok = writer === 'either-party' ? isParty(op.fields, authorMember) : writer === authorMember;
+    if (!ok) throw REFUSED;
+    return op;
+  }
+  // An existing row: judged by what is already here, and its writer-bearing field(s) may not move (finding 2).
+  const writer = entity.writer!(stored, key);
+  if (writer === null) throw REFUSED;
+  const ok = writer === 'either-party' ? isParty(stored, authorMember) : writer === authorMember;
+  if (!ok) throw REFUSED;
+  for (const field of WRITER_FROZEN_FIELDS[entity.entity] ?? []) {
+    if (field in op.fields && String(op.fields[field]) !== String(stored[field])) throw REFUSED;
+  }
   return op;
 }
 

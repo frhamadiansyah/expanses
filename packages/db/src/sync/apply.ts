@@ -293,35 +293,12 @@ async function settleSiblings(tx: Db, ctx: BookContext, entity: RowEntity, op: E
   return false;
 }
 
-/** The member a JSON-encoded `{ owner }` field (a `member_transfer`'s `from`/`to`) names, or undefined. */
-function ownerOf(value: unknown): string | undefined {
-  const parsed = typeof value === 'string' ? (JSON.parse(value) as { owner?: unknown }) : (value as { owner?: unknown } | undefined);
-  return typeof parsed?.owner === 'string' ? parsed.owner : undefined;
-}
-
-/**
- * Joint-net-worth spec §5.1: when `entity.writer` is set, only the member it names may write this row — read from
- * the op's fields merged over what is already here, so a partial edit (only naming `cancelled`, say) is judged by
- * the row's owner, not just what it carries. `member` is the change-set's author member, already signature-verified.
- * `'either-party'` (`member_transfer`) allows either side of the transfer, named by its `from`/`to` fields' `owner`.
- */
-async function checkWriterTx(tx: Db, entity: RowEntity, op: Op, key: Record<string, string>, where: SQL, exists: boolean, member: string): Promise<void> {
-  if (!entity.writer) return;
-  const stored = exists ? await rowValuesOf(tx, entity, where) : {};
-  const merged = { ...stored, ...(op.op === 'upsert' ? op.fields : {}) };
-  const allowed = entity.writer(merged, key);
-  if (allowed === null) return;
-  const ok = allowed === 'either-party' ? ownerOf(merged.from) === member || ownerOf(merged.to) === member : allowed === member;
-  if (!ok) throw new AuthorityError('writer');
-}
-
-async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, hlc: string, member: string): Promise<void> {
+async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, hlc: string): Promise<void> {
   const key = parseOpId(entity, op.id);
   const where = keyWhere(entity, key, ctx);
   const revivable = isRevivable(entity);
   const tomb = await tombstoneOf(tx, ctx, entity.entity, op.id);
   const exists = await rowExists(tx, entity, where);
-  await checkWriterTx(tx, entity, op, key, where, exists, member);
 
   if (op.op === 'delete') {
     if (!revivable) {
@@ -618,8 +595,9 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
     if (!refusal) throw error;
     // An AuthorityError's own message already reads "AUTHORITY: ..." (authority.ts): recorded as-is, not doubled up
     // behind its class name, so every authority-refused skip's error starts the same way regardless of which check
-    // raised it.
-    const message = refusal.message?.startsWith('AUTHORITY:') ? refusal.message : `${refusal.code ?? refusal.name}: ${refusal.message}`;
+    // raised it. Checked by type, not by sniffing the text (task 1 review round 1, finding 6): a plain `SkipOp` (a
+    // parent gone here) shares `deterministicRefusal`'s name match but is not an authority refusal.
+    const message = error instanceof AuthorityError ? error.message : `${refusal.code ?? refusal.name}: ${refusal.message}`;
     const skip: SkippedOp = { seq: run.seq, entity: op.entity, id: op.id, error: message };
     await tx.run(
       sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${ctx.bookId}, ${skip.seq}, ${skip.entity}, ${skip.id}, ${skip.error}, ${new Date().toISOString()})`,
@@ -648,7 +626,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     // Who may write what (task 5 fix rounds 1–2): a refused op is a recorded skip, the same on every device.
     await guarded(tx, ctx, run, op, async () => {
       if (decision instanceof AuthorityError) throw decision;
-      await applyRowOp(tx, ctx, entity, op, changeSet.hlc, changeSet.member);
+      await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
     });
   }
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
