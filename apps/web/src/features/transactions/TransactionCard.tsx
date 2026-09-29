@@ -47,6 +47,9 @@ import { ratesForSave, submitTrade } from './tx-save';
  * The accounts a money field may name — the old form's own list, unchanged, for the rows Tasks 11 and 12 turn
  * into sheets of their own (a transfer's To, and what a purchase was paid with).
  */
+/** What a transfer's To never offers: each has a flow of its own. */
+const TO_ELSEWHERE: ReadonlySet<string> = new Set(['time_deposit', 'receivable', 'payable']);
+
 function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string; placeholders?: ReadonlySet<string> }) {
   // A placeholder (§4.4) is never offered; the one the row already names stays, as who paid (final review, minor 2).
   const money = moneyHolders(accounts).filter((a) => (!spendableOnly || canPayWith(a, keep)) && (!placeholders?.has(a.id) || a.id === keep));
@@ -279,10 +282,11 @@ function CardBody({
   // Where a transfer may land, as the From list draws its own: accounts first, then cards and debts it can pay down.
   // Only what this device lists: a placeholder the edited purchase names (useAccountsFor) is never a place money can
   // be moved to (spec §4.4, fix round 1).
-  // Never a time deposit (its money goes in when it is added and leaves through its own page), and only what pairs
+  // Never a time deposit (its money goes in when it is added and leaves through its own page), nor a loan with a
+  // person (lending and repaying are the person's own forms), and only what pairs
   // with the From already chosen. The account the row names is kept, so an old transfer opens as it was saved.
   const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? [])).filter(
-    (a) => a.id === draft.toId || (a.subtype !== 'time_deposit' && (!account || canTransferBetween(account, a))),
+    (a) => a.id === draft.toId || (!TO_ELSEWHERE.has(a.subtype) && (!account || canTransferBetween(account, a))),
   );
   const transferGroups = [
     { title: 'Accounts', kind: 'asset' as const },

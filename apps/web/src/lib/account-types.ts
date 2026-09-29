@@ -77,17 +77,19 @@ export const MONEY_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES,
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];
 
 /**
- * The accounts a **transfer** moves money between: money you hold and the person-shaped pair.
+ * The accounts a **transfer** moves money between: money you hold, nothing else.
  *
  * A time deposit is not one: its money leaves through the deposit's own Break early or Withdraw, as a card is paid
- * through its own Pay, and goes in when the deposit is added ("Where the money comes from").
+ * through its own Pay, and goes in when the deposit is added ("Where the money comes from"). Nor is money lent to
+ * or borrowed from a person: every loan with a person is an account named after them, so a list of them read "Andi"
+ * four times; lending, borrowing and repaying go through the person's own forms, which ask which loan it is.
  *
  * Deliberately not every account. A thing you own — shares, gold, a car, a house — is not money and never takes a
  * transfer, and a debt has flows of its own: a card is paid, an instalment is paid, a loan's money arrives when the
  * loan is opened. Offering "KPR BCA" or "ANTAM gold bar" as somewhere to transfer from was what this list exists
  * to stop.
  */
-export const TRANSFER_SUBTYPES: readonly AccountSubtype[] = [...MONEY_SUBTYPES, 'receivable', 'payable'];
+export const TRANSFER_SUBTYPES: readonly AccountSubtype[] = MONEY_SUBTYPES;
 
 /**
  * May a transfer name this account on either side?

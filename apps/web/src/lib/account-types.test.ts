@@ -135,11 +135,13 @@ describe('what a picker may offer as a way to pay', () => {
 describe('what a transfer may move money between', () => {
   const account = (subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset') => ({ id: subtype, kind, subtype }) as AccountRow;
 
-  it('offers money you hold and the person-shaped pair', () => {
-    for (const subtype of ['bank', 'cash', 'savings', 'ewallet', 'other_cash', 'fund', 'receivable'] as const) {
+  it('offers money you hold, and nothing owed by or to a person', () => {
+    for (const subtype of ['bank', 'cash', 'savings', 'ewallet', 'other_cash', 'fund'] as const) {
       expect(canTransferWith(account(subtype)), subtype).toBe(true);
     }
-    expect(canTransferWith(account('payable', 'liability'))).toBe(true);
+    // A loan with a person moves through the person's own forms.
+    expect(canTransferWith(account('receivable'))).toBe(false);
+    expect(canTransferWith(account('payable', 'liability'))).toBe(false);
   });
 
   it('never offers a thing you own, nor a debt', () => {
@@ -164,7 +166,7 @@ describe('which accounts may pair in a transfer', () => {
   it('pairs a broker cash account with a current account only, both ways', () => {
     expect(canTransferBetween(a('rdn', 'fund'), a('everyday', 'bank'))).toBe(true);
     expect(canTransferBetween(a('everyday', 'bank'), a('rdn', 'fund'))).toBe(true);
-    for (const subtype of ['cash', 'savings', 'ewallet', 'other_cash', 'receivable'] as const) {
+    for (const subtype of ['cash', 'savings', 'ewallet', 'other_cash'] as const) {
       expect(canTransferBetween(a('rdn', 'fund'), a('x', subtype)), subtype).toBe(false);
       expect(canTransferBetween(a('x', subtype), a('rdn', 'fund')), subtype).toBe(false);
     }
