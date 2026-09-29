@@ -314,7 +314,6 @@ export function CashAccountForm({
             <>
               {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.{asks.includes('bank') ? ' The bank goes on your yearly tax report; the name is what you call it here.' : ' Name is what you call yours.'}
               {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
-              {!pocketed && foreign && ` Its rate is ${ws.baseCurrency} per 1 ${currency} on that day; left empty, the day's rate is used.`}
               {locked && ' When it matures, move the money to an account with a transfer.'}
             </>
           )
@@ -391,7 +390,7 @@ export function CashAccountForm({
       </InsetGroup>
       {/* A flat array of rows, not a fragment per pocket: `InsetGroup` hands each direct child its position. */}
       {pocketed && (
-        <InsetGroup header="Pockets" footer="Rate is to the workspace’s currency on the opening date. Left empty, that day’s rate is used.">
+        <InsetGroup header="Pockets">
           {pockets.flatMap((pocket, i) => [
             <MoneyRow
               key={`p${i}`}
