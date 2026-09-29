@@ -201,8 +201,10 @@ mode. No active proposal = no group. Every device derives the same answer from t
 - **Confirm.** The invited member's phone shows "Rina set up household net worth: one tax ID. [Confirm] [Choose
   differently]". Choose differently = `decline` plus a new proposal of their own.
 - **Review.** When a proposal becomes active, each member reviews their own items (§8.1) before their phone sends
-  anything. The phone keeps a local mark per group log that its person pressed Share; a share setting left from an
-  earlier group is not a review of this one, and sends nothing until that Share (wave 3 merge).
+  anything. The phone keeps a local mark per activation (the active proposal) that its person pressed Share; a share
+  setting, or a review of an earlier proposal, is not a review of this one. After a Change (mode or members) the review
+  is asked again: until that Share, items already live in the log keep refreshing only when the change added nobody;
+  when anyone was added, nothing is sent at all (wave 3 merge, review round 1).
 - **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed — by every
   member it lists **and** every current member of the active group it leaves out, so nobody is dropped without saying
   yes (D6, task 5 review round 2). The proposer may cancel; anyone asked may decline. Once made, a proposal's

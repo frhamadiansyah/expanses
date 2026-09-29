@@ -45,8 +45,8 @@ export function useReview() {
       return {
         items: await reviewItems(database, ws),
         pending: await pendingHidden(database, ws),
-        // Whether Share was pressed on this group's review: nothing is sent before it (§6 Review, wave 3 merge).
-        reviewed: group ? await reviewedFor(database, group.groupBookId) : false,
+        // Whether Share was pressed on the review of the active proposal: every activation (a Change too) asks again.
+        reviewed: group ? await reviewedFor(database, group.groupBookId, group.proposalId) : false,
       };
     },
   });

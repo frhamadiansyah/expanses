@@ -126,6 +126,8 @@ export async function proposalOf(db: Db, groupBookId: string, proposalId: string
 export interface ActiveNetWorthGroup {
   workspaceBookId: string;
   groupBookId: string;
+  /** The active proposal: a review is of it (review round 1 of the wave 3 merge). */
+  proposalId: string;
   mode: FilingMode;
   members: string[];
   /** This device's member. */
@@ -147,7 +149,7 @@ export async function activeNetWorthGroup(source: Database | Db): Promise<Active
   for (const [groupBookId, workspaceBookId, me] of logs) {
     const state = await groupStateOf(db, groupBookId);
     if (state.active && state.active.members.includes(me)) {
-      return { workspaceBookId, groupBookId, mode: state.active.mode, members: state.active.members, me };
+      return { workspaceBookId, groupBookId, proposalId: state.active.proposalId, mode: state.active.mode, members: state.active.members, me };
     }
   }
   return null;
@@ -196,27 +198,55 @@ async function afterShareSettingChanged(tx: Tx, accountId: string): Promise<void
  */
 async function afterReviewConfirmed(tx: Tx, today: string): Promise<void> {
   const group = await activeNetWorthGroup(tx);
-  if (group) await markReviewedTx(tx, group.groupBookId);
+  if (group) await markReviewedTx(tx, group, today);
   await sendSummariesTx(tx, 'all', today);
 }
 
 /*
- * Review before anything is sent (§6 Review; wave 3 merge ruling, the stricter of the two sides): a member's phone sends
- * no summary into a group log until this person has pressed Share on the review for that group. A share setting alone is
- * not enough — one left from an earlier group (dissolved, or set up again with someone else) would otherwise go to the
- * new group's members on the first write, before its review. Local, per device, like the settings it covers.
+ * Review before anything is sent (§6 Review; wave 3 merge, ruled in its review round 1): a member's phone sends no
+ * summary for an activation of a group — its active proposal — until this person pressed Share on the review of that
+ * proposal. A share setting alone is not enough, nor a review of an earlier proposal: a Change (a mode, or members) asks
+ * again. One allowance: when the change added nobody (every member was in the group this person last reviewed in
+ * this log), the items already live in the log keep refreshing (a period ending, a partner's edit) until the Share; a
+ * new item still waits. When anyone was added, nothing goes out until the Share. Local, per device, like the settings.
  */
-const REVIEWED_KEY = (groupBookId: string) => `nw.reviewed.${groupBookId}`;
+const REVIEWED_PREFIX = (groupBookId: string) => `nw.reviewed.${groupBookId}.`;
+const REVIEWED_KEY = (groupBookId: string, proposalId: string) => `${REVIEWED_PREFIX(groupBookId)}${proposalId}`;
 
-/** Records that this person pressed Share on the review of this group log (what `confirmReview` does). */
-export async function markReviewedTx(tx: Db, groupBookId: string): Promise<void> {
-  await tx.run(sql`INSERT INTO settings (key, value) VALUES (${REVIEWED_KEY(groupBookId)}, '1') ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+/** Records that this person pressed Share on the review of the group's active proposal (what `confirmReview` does). */
+export async function markReviewedTx(tx: Db, group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'proposalId' | 'members'>, today: string): Promise<void> {
+  const value = JSON.stringify({ members: group.members, on: today });
+  await tx.run(sql`INSERT INTO settings (key, value) VALUES (${REVIEWED_KEY(group.groupBookId, group.proposalId)}, ${value}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
 }
 
-/** Whether this person has reviewed their items (pressed Share) for this group log (§6 Review). */
-export async function reviewedFor(source: Database | Db, groupBookId: string): Promise<boolean> {
+/** Whether this person pressed Share on the review of this proposal of this group log (§6 Review). */
+export async function reviewedFor(source: Database | Db, groupBookId: string, proposalId: string): Promise<boolean> {
   const db = 'exportBytes' in source ? source.db : source;
-  return (await db.values(sql`SELECT 1 FROM settings WHERE key = ${REVIEWED_KEY(groupBookId)}`)).length > 0;
+  return (await db.values(sql`SELECT 1 FROM settings WHERE key = ${REVIEWED_KEY(groupBookId, proposalId)}`)).length > 0;
+}
+
+/**
+ * What this device may send for the active group (§6 Review): `all` once this person reviewed its active proposal;
+ * `live` — refreshes of items already live in the log, no new item — when not yet, but the group has nobody this person
+ * did not review with last time in this log; `none` otherwise.
+ */
+export async function sendAllowance(db: Db, group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'proposalId' | 'members'>): Promise<'all' | 'live' | 'none'> {
+  if (await reviewedFor(db, group.groupBookId, group.proposalId)) return 'all';
+  let last: { members: string[]; seq: number } | null = null;
+  const prefix = REVIEWED_PREFIX(group.groupBookId);
+  // The latest review in this log: settings rows are rowid rows, and a new proposal's mark is always a new row.
+  for (const [value, seq] of await db.values<[string, number]>(sql`SELECT value, rowid FROM settings WHERE substr(key, 1, ${prefix.length}) = ${prefix}`)) {
+    try {
+      const parsed = JSON.parse(value) as { members?: unknown };
+      const members = Array.isArray(parsed.members) ? parsed.members.filter((m): m is string => typeof m === 'string') : [];
+      if (!last || Number(seq) > last.seq) last = { members, seq: Number(seq) };
+    } catch {
+      // An unreadable mark grants nothing.
+    }
+  }
+  if (!last) return 'none';
+  const before = new Set(last.members);
+  return group.members.every((m) => before.has(m)) ? 'live' : 'none';
 }
 
 /** This device's day, by the capture clock the engine and tests set (the same day capture's flush sends with). */

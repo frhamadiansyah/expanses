@@ -9,7 +9,6 @@ import {
   createBook,
   createCardAccount,
   deleteUnusedAccount,
-  markReviewedTx,
   personalBook,
   postTransaction,
   postTransactionTx,
@@ -19,6 +18,7 @@ import {
   saveCardTerms,
   voidTransaction,
 } from '../../src/index';
+import { markReviewedTx } from '../../src/repos/net-worth-sharing';
 import { AuthorityError } from '../../src/sync/authority';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
@@ -84,7 +84,7 @@ async function setShare(d: Device, accountId: string, setting: 'total' | 'hidden
   await d.database.transaction(async (tx) => {
     await tx.run(sql`INSERT INTO nw_share_settings (account_id, setting) VALUES (${accountId}, ${setting}) ON CONFLICT (account_id) DO UPDATE SET setting = excluded.setting`);
     const group = await activeNetWorthGroup(tx);
-    if (group) await markReviewedTx(tx, group.groupBookId);
+    if (group) await markReviewedTx(tx, group, today);
   });
 }
 

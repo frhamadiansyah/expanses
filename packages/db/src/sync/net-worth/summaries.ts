@@ -12,7 +12,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
-import { activeNetWorthGroup, reviewedFor } from '../../repos/net-worth-sharing';
+import { activeNetWorthGroup, sendAllowance } from '../../repos/net-worth-sharing';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 
@@ -194,8 +194,11 @@ async function writeItemTx(tx: Db, groupBookId: string, itemId: string, owner: s
 export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string): Promise<number> {
   // One group per person (§4): the one active group this member is in, read by the one group-state reader (task 5).
   const group = await activeNetWorthGroup(tx);
-  // Nothing before this person's own review of this group (§6 Review, wave 3 merge).
-  if (!group || !(await reviewedFor(tx, group.groupBookId))) return 0;
+  if (!group) return 0;
+  // Nothing before this person's own review of this activation, except the refresh of a live item when nobody was
+  // added (§6 Review, wave 3 merge review round 1).
+  const allowance = await sendAllowance(tx, group);
+  if (allowance === 'none') return 0;
   const { groupBookId, workspaceBookId, me: memberId } = group;
   const ws = await workspaceOfBook(tx, workspaceBookId);
   if (!ws) return 0;
@@ -216,6 +219,7 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
       const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
       const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
       if (sent?.[0] === hash && live && Number(live[0]) === 0) continue;
+      if (allowance === 'live' && !(live && Number(live[0]) === 0)) continue; // a new item waits for the Share
       await tx.run(sql`
         INSERT INTO nw_item_map (account_id, group_book_id, item_id) VALUES (${accountId}, ${groupBookId}, ${itemId})
         ON CONFLICT (account_id) DO UPDATE SET group_book_id = excluded.group_book_id, item_id = excluded.item_id`);

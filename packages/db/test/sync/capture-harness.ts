@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
+import { viewMember } from '../../src/sync/authority';
 import { configureCapture, projectPurchase } from '../../src/sync/capture';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { ChangeSet, Op } from '../../src/sync/types';
@@ -276,6 +277,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       }
       if (carrier) {
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        // An own role edit the log refused (two owners stepping down at once, the last owner is never demoted): apply
+        // put the row back to the authority view's role, emitting nothing, as peers never took the edit in (apply.ts
+        // `reconcileMembersTx`). The log decided it, before the refused op: not a miss (wave 3 merge review round 1).
+        if (entity.entity === 'member' && field === 'role' && JSON.stringify(said) !== JSON.stringify(now[column])) {
+          const view = await viewMember(database.db, bookId, w.key);
+          if (view && view.role === now[column] && view.roleHlc < carrier.hlc) continue;
+        }
         if (JSON.stringify(said) !== JSON.stringify(now[column])) problems.push(`${column} is ${JSON.stringify(now[column])} but the outbox says ${JSON.stringify(said)}`);
       } else if (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column])) {
         problems.push(`${column} changed with no ${entity.entity} op`);

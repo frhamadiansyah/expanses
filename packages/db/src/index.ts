@@ -140,7 +140,27 @@ export { MemoryTransport } from './sync/memory-transport';
 export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/version';
 // Joint net worth (spec §6, §8.1): the group's proposals and answers, and what each person shares of their own items.
 export { type NetWorthGroupView } from './sync/net-worth/proposals';
-export * from './repos/net-worth-sharing';
+// `markReviewedTx` and `sendAllowance` stay internal (the summaries' send gate): only Share records a review.
+export {
+  activeNetWorthGroup,
+  confirmReview,
+  departedMembers,
+  getShareSetting,
+  groupDissolved,
+  groupStateOf,
+  NetWorthError,
+  pendingCounts,
+  pendingHidden,
+  proposalOf,
+  refreshPendingCount,
+  reviewedFor,
+  reviewItems,
+  setShareSetting,
+  type ActiveNetWorthGroup,
+  type NetWorthErrorCode,
+  type ReviewItem,
+  type ShareSetting,
+} from './repos/net-worth-sharing';
 // Joint net worth (spec §5.2, §9, task 6): summaries — compute, send, receive — and the dirty mark a repository sets
 // when it changes an account's value or profile outside the ledger doors (a share setting, say).
 export { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from './sync/net-worth/summaries';
