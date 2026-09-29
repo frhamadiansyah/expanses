@@ -156,16 +156,25 @@ export interface JoinInput {
   memberId?: string;
 }
 
+export interface SyncEngineOptions {
+  /** This app's own version (joint-net-worth spec §9), written on `book_devices.app_version` whenever this device
+   * writes its own row (`shareBook`, `joinBook`), so a peer can tell whether it meets `NET_WORTH_MIN_APP_VERSION`. */
+  appVersion?: string;
+}
+
 export class SyncEngine {
   readonly sealer: Sealer;
+  private readonly appVersion?: string;
 
   constructor(
     private readonly database: Database,
     private readonly transport: SyncTransport,
     readonly device: DeviceKeys,
     private readonly now: () => number = Date.now,
+    options: SyncEngineOptions = {},
   ) {
     this.sealer = new Sealer(database, device);
+    this.appVersion = options.appVersion;
     // The one device-id seam (§5.1): every hlc and entry this database emits carries the KeyStore's id.
     configureCapture(database, { deviceId: device.deviceId });
   }
@@ -199,6 +208,7 @@ export class SyncEngine {
           deviceId: this.deviceId,
           deviceName: input.deviceName,
           device: this.device.public,
+          appVersion: this.appVersion,
         });
       });
       return { relayBookId, memberId, changeSets };
@@ -529,9 +539,9 @@ export class SyncEngine {
       }
       // The same device rejoining (an unshared copy, C1) already has its row: it is this device's again.
       await tx.run(sql`
-        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)
-        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL`);
+        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL, ${this.appVersion ?? null})
+        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL, app_version = excluded.app_version`);
       const book = { bookId, memberId, epoch };
       const ops = [
         ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),

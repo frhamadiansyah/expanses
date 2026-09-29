@@ -111,6 +111,7 @@ export {
   type JoinInput,
   type PreviewedInvite,
   type ShareInput,
+  type SyncEngineOptions,
   type SyncOnceResult,
 } from './sync/engine';
 export { BookReadOnlyError, LastOwnerError, SyncNotReadyError } from './sync/capture';
@@ -135,3 +136,5 @@ export * from './repos/sharing';
 export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry, type SyncTransport } from './sync/types';
 // The in-memory relay, for the app's own tests of its sync wiring (it is the reference the real relay matches).
 export { MemoryTransport } from './sync/memory-transport';
+// Joint net worth (spec §9): the app-version gate every device's book_devices row carries.
+export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/version';

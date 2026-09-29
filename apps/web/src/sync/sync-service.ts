@@ -19,6 +19,9 @@ import {
 import { createKeyStore } from './key-store';
 import { createRelayTransport } from './relay';
 import { SyncScheduler } from './sync-scheduler';
+// This app's own version (joint-net-worth spec §9), written on this device's book_devices row so a peer can tell
+// whether it meets NET_WORTH_MIN_APP_VERSION before proposing joint mode.
+import pkg from '../../package.json';
 
 /*
  * The app's one sync service (household sharing spec §9.4, §11). It makes the device's keys, the engine over the
@@ -120,7 +123,7 @@ export class SyncService {
     this.engineMade ??= (async () => {
       const device = await this.keyStore().getOrCreateDevice();
       const transport = new ObservedTransport(this.transportFor(device), (relayBookId, entries) => this.hear(relayBookId, entries));
-      return new SyncEngine(this.database, transport, device, this.now);
+      return new SyncEngine(this.database, transport, device, this.now, { appVersion: pkg.version });
     })();
     this.engineMade.catch(() => (this.engineMade = undefined));
     return this.engineMade;

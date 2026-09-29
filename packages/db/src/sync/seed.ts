@@ -55,6 +55,8 @@ export interface SeedInput {
   deviceId: string;
   deviceName: string;
   device: DevicePublic;
+  /** This app's own version (joint-net-worth spec §9), written on the seeded `book_devices` row's `app_version`. */
+  appVersion?: string;
 }
 
 /** §6.5 step 0 (ruled O3): the book must keep its money in the owner's own currency. Refuses before anything is made. */
@@ -110,8 +112,8 @@ export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, inp
     INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${input.bookId}, ${input.memberId}, ${input.memberName}, 'owner', ${now})
     ON CONFLICT (book_id, member_id) DO UPDATE SET name = excluded.name, role = 'owner'`);
   await tx.run(sql`
-    INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-    VALUES (${input.bookId}, ${input.deviceId}, ${input.memberId}, ${input.deviceName}, ${JSON.stringify(input.device.signJwk)}, ${JSON.stringify(input.device.agreeJwk)}, ${now}, NULL)`);
+    INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+    VALUES (${input.bookId}, ${input.deviceId}, ${input.memberId}, ${input.deviceName}, ${JSON.stringify(input.device.signJwk)}, ${JSON.stringify(input.device.agreeJwk)}, ${now}, NULL, ${input.appVersion ?? null})`);
 
   const book: SharedBook = { bookId: input.bookId, memberId: input.memberId, epoch: 1 };
   const { deletes } = await catchUpTx(tx, book, config.now?.());
