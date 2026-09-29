@@ -187,3 +187,26 @@ test('a merchant category code is typed in the app’s own sheet, names itself a
   await expect(sheet).toHaveCount(0);
   await expect(mcc).toContainText('5812');
 });
+
+test('a top-level category made from Select category can take a colour; one inside another cannot', async ({ page }) => {
+  await page.goto('/transactions/new');
+  await page.getByRole('button', { name: 'Category' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Select category' });
+  await sheet.getByRole('button', { name: 'New category' }).click();
+  const made = page.getByRole('dialog', { name: 'New expense category' });
+  const colour = made.getByRole('button', { name: 'Colour' });
+  await expect(colour).toBeVisible();
+  // With a parent, it is drawn in a shade of the parent's, so there is nothing to pick.
+  await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
+  await expect(colour).toHaveCount(0);
+  await made.getByLabel('Parent', { exact: true }).selectOption('top-level');
+  await made.getByLabel('Name', { exact: true }).fill('Pets');
+  // The swatches open under the row, in the same sheet, and close once one is picked.
+  await colour.click();
+  await made.getByTestId('new-category-colours').getByRole('button', { name: 'Teal' }).click();
+  await expect(made.getByTestId('new-category-colours')).toHaveCount(0);
+  await made.getByRole('button', { name: 'Save' }).click();
+
+  await openCategory(page, 'Pets');
+  await expect(page.getByTestId('category-colour-swatch')).toHaveAttribute('data-colour', '#0d9488');
+});

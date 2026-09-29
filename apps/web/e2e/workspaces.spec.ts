@@ -130,7 +130,7 @@ test('a category made in the picker belongs to that workspace and to no other', 
   const made = page.getByRole('dialog', { name: 'New expense category' });
   await expect(page.getByRole('dialog')).toHaveCount(2); // the form underneath, and this one sheet
   await made.getByLabel('Name', { exact: true }).fill('Boba');
-  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
   await made.getByRole('button', { name: 'Save' }).click();
   await expect(picker).toHaveCount(0);
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Boba');

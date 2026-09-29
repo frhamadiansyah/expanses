@@ -106,22 +106,29 @@ export function ColourSheet({
   const [picked, setPicked] = useState<string | null>(current);
   return (
     <Sheet grouped title="Colour" onClose={onClose} confirm={{ label: 'Save colour', run: () => onSave(picked) }}>
-      <div className={cx(SHELF, 'grid grid-cols-6 gap-2 py-3')}>
-        <Swatch
-          label="Automatic"
-          on={picked === null}
-          onClick={() => setPicked(null)}
-          style={{ background: `conic-gradient(#dc2626, #d97706, #16a34a, #0284c7, #7c3aed, #db2777, #dc2626)` }}
-        />
-        {CATEGORY_PALETTE.map((entry) => (
-          <Swatch key={entry.colour} label={entry.name} on={picked === entry.colour} onClick={() => setPicked(entry.colour)} style={{ background: entry.colour }} />
-        ))}
-      </div>
+      <ColourPicker value={picked} onPick={setPicked} />
       <p className="mt-2 flex items-center gap-2 px-4 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
         <span aria-hidden className="inline-block h-3 w-3 rounded-full" style={{ background: automatic }} />
         Automatic is this colour. Subcategories are drawn in shades of the one you pick.
       </p>
     </Sheet>
+  );
+}
+
+/** Automatic and the palette's ten colours as swatches; the one picked is ringed and ticked. */
+export function ColourPicker({ value, onPick }: { value: string | null; onPick: (colour: string | null) => void }) {
+  return (
+    <div className={cx(SHELF, 'grid grid-cols-6 gap-2 py-3')}>
+      <Swatch
+        label="Automatic"
+        on={value === null}
+        onClick={() => onPick(null)}
+        style={{ background: `conic-gradient(#dc2626, #d97706, #16a34a, #0284c7, #7c3aed, #db2777, #dc2626)` }}
+      />
+      {CATEGORY_PALETTE.map((entry) => (
+        <Swatch key={entry.colour} label={entry.name} on={value === entry.colour} onClick={() => onPick(entry.colour)} style={{ background: entry.colour }} />
+      ))}
+    </div>
   );
 }
 

@@ -1,12 +1,12 @@
-import { type AccountRow, createAccount } from '@expanses/db';
+import { type AccountRow, createAccount, setCategoryColour } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Tag } from 'lucide-react';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, TextRow } from '../../ui/native';
 import { ICONS } from '../categories/CategoryIcon';
-import { IconPicker } from '../categories/CategoryLookSheets';
+import { ColourPicker, IconPicker } from '../categories/CategoryLookSheets';
 
 /**
  * B7a — a category made without leaving the form, and chosen the moment it exists. Drawn by Select category in its
@@ -23,6 +23,16 @@ import { IconPicker } from '../categories/CategoryLookSheets';
  */
 const TOP = 'top-level';
 
+/** The swatches opened under the Colour row: a row of the group, so it takes the group's hairline above it. */
+function ColourShelf({ value, onPick, position }: GroupChild & { value: string | null; onPick: (colour: string | null) => void }) {
+  return (
+    <div data-testid="new-category-colours" className="relative">
+      {position?.separator && <span aria-hidden className="absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: 0 }} />}
+      <ColourPicker value={value} onPick={onPick} />
+    </div>
+  );
+}
+
 export function useNewCategoryForm({
   kind,
   parents,
@@ -38,6 +48,8 @@ export function useNewCategoryForm({
   const [name, setName] = useState('');
   const [parentId, setParentId] = useState('');
   const [icon, setIcon] = useState('');
+  const [colour, setColour] = useState<string | null>(null);
+  const [choosingColour, setChoosingColour] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,6 +70,9 @@ export function useNewCategoryForm({
         parentId: parentId || null,
         icon: icon || null,
       });
+      // Only a top-level category has a colour of its own; a subcategory is drawn in a shade of its parent's. Kept
+      // apart from the making: a colour that could not be kept leaves the category made, not a second one on retry.
+      if (colour && !parentId) await setCategoryColour(database, ws, account.id, colour).catch(() => undefined);
       await invalidate();
       onCreated(account.id);
     } catch (e) {
@@ -71,6 +86,8 @@ export function useNewCategoryForm({
     setName('');
     setParentId('');
     setIcon('');
+    setColour(null);
+    setChoosingColour(false);
     setError(null);
   };
 
@@ -78,7 +95,11 @@ export function useNewCategoryForm({
     <div className="flex flex-col gap-3">
       {/* B7a's preview: the icon this category will draw, before it exists. */}
       <div className="flex justify-center py-2">
-        <span aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
+        <span
+          aria-hidden
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]"
+          style={colour && !parentId ? { background: `color-mix(in srgb, ${colour} 16%, transparent)`, color: colour } : undefined}
+        >
           <Preview size={30} />
         </span>
       </div>
@@ -88,7 +109,7 @@ export function useNewCategoryForm({
       <InsetGroup className="!mb-0">
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Category name" />
         {/* Top level has a value of its own: an empty one reads as "nothing chosen yet" and draws a blank row. */}
-        <SelectRow label="Inside" value={parentId || TOP} onChange={(e) => setParentId(e.target.value === TOP ? '' : e.target.value)}>
+        <SelectRow label="Parent" value={parentId || TOP} onChange={(e) => setParentId(e.target.value === TOP ? '' : e.target.value)}>
           <option value={TOP}>Top level</option>
           {parents.map((parent) => (
             <option key={parent.id} value={parent.id}>
@@ -96,6 +117,31 @@ export function useNewCategoryForm({
             </option>
           ))}
         </SelectRow>
+        {/* Only a top-level category has a colour of its own; one with a parent is drawn in a shade of the parent's.
+            The swatches open under the row, in this sheet, as an inline iOS picker does — no sheet on top of a sheet. */}
+        {!parentId && (
+          <InsetRow
+            title="Colour"
+            label="Colour"
+            value={
+              <span
+                aria-hidden
+                className="inline-block h-[18px] w-[18px] rounded-full align-middle"
+                style={{ background: colour ?? 'conic-gradient(#dc2626, #d97706, #16a34a, #0284c7, #7c3aed, #db2777, #dc2626)' }}
+              />
+            }
+            onClick={() => setChoosingColour((open) => !open)}
+          />
+        )}
+        {!parentId && choosingColour && (
+          <ColourShelf
+            value={colour}
+            onPick={(picked) => {
+              setColour(picked);
+              setChoosingColour(false);
+            }}
+          />
+        )}
       </InsetGroup>
 
       {/* Every icon the app can draw, on the picker's shelves (Option A). None picked keeps inheriting its parent's.

@@ -1080,7 +1080,7 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await picker.getByRole('button', { name: 'New category' }).click();
   await expect(made.getByLabel('Name', { exact: true })).toHaveValue('');
   await made.getByLabel('Name', { exact: true }).fill('Boba');
-  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
   await made.getByRole('button', { name: 'coffee', exact: true }).click();
   await made.getByRole('button', { name: 'Save' }).click();
 
