@@ -86,8 +86,13 @@ rotation (S5–S9). What differs:
   group's view who may end the link. The link carries its own proof instead: the group log's id is
   `uuidv5(ns, proof)`, where `proof` is derived from the log's first epoch key, which only group members' devices hold.
   When the group dissolves (§6) a member's device **closes** the link — `relayBookId` becomes `closed:<proof>` — and
-  every device, outsiders included, checks the proof against the id it has; nobody else can close or delete it. A
-  closed link names no group, so a new setup writes a new link over it. Two members opening a group at the same moment:
+  every device, outsiders included, checks the proof against the id it has; nobody else can close or delete it. Every
+  device ever in the group holds that key, so a former member can close a live group's link: disruption, never
+  disclosure (task 5 review ruling). The group recovers on its own: a current member's device that finds its live
+  group's link closed writes it open again (same log, same relay book) on its next sync. A closed link names no group,
+  so a new setup writes a new link over it. A new or re-opened link must name a version-5 id, and a device keeps an
+  invite's keys only when epoch 1's key derives the id the link names. A member who left the group log is never
+  proposed back into it, and counts as having left only on proposals made before they went. Two members opening a group at the same moment:
   the first link in the workspace log is the link on every device; the device whose own link was not yet back from
   the log yields to it, abandons its lone group log, and joins the linked one when a member lets it in. A group
   member's device lets in any later device of a group member that the workspace has admitted.

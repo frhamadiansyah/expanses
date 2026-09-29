@@ -1,4 +1,4 @@
-import { canPropose, deriveGroup, type Answer, type FilingMode, type GroupState, type Proposal } from '@expanses/core';
+import { deriveGroup, isActivated, type Answer, type FilingMode, type GroupState, type Proposal } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -25,6 +25,8 @@ export type NetWorthErrorCode =
   | 'not-proposer'
   /** This person is not listed on that proposal, or it is not in the group log. */
   | 'not-listed'
+  /** Someone proposed was in this group log and left it: they can never confirm (review round 1, finding 1). */
+  | 'left-group'
   /** This person is already in the net-worth group of another workspace (§4: one group per person). */
   | 'other-group'
   /** `Don't share` is refused while the household files with one tax ID (D7). */
@@ -66,18 +68,30 @@ async function groupInputsOf(db: Db, groupBookId: string): Promise<{ proposals: 
   const answers: Answer[] = (
     await db.values<[string, string, string]>(sql`SELECT proposal_id, member_id, answer FROM nw_answers WHERE book_id = ${groupBookId} ORDER BY proposal_id, member_id`)
   ).map(([proposalId, memberId, answer]) => ({ proposalId, memberId, answer: answer as Answer['answer'] }));
-  const departed = (
-    await db.values<[string]>(sql`
-      SELECT m.member_id FROM sync_authority m WHERE m.book_id = ${groupBookId} AND NOT EXISTS (
-        SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id AND d.removed_seq IS NULL)
-      AND EXISTS (SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id)`)
-  ).map(([id]) => id);
-  for (const memberId of departed) {
+  // Review round 1, finding 1: only a proposal made before they left counts them as having left. One made after names
+  // someone who can never confirm, so it waits for ever — it never activates, and never dissolves the group.
+  for (const [memberId, leftAt] of await departedMembers(db, groupBookId)) {
     for (const proposal of proposals) {
-      if (proposal.members.includes(memberId)) answers.push({ proposalId: proposal.proposalId, memberId, answer: 'left' });
+      if (proposal.members.includes(memberId) && proposal.createdHlc < leftAt) answers.push({ proposalId: proposal.proposalId, memberId, answer: 'left' });
     }
   }
   return { proposals, answers };
+}
+
+/**
+ * The members this group log once held and holds no device of now (they left the group, the workspace, or were
+ * removed), each with when they went: the hlc of the removal of their last device (its `removedAt` clock, the same on
+ * every device).
+ */
+export async function departedMembers(db: Db, groupBookId: string): Promise<Map<string, string>> {
+  const rows = await db.values<[string, string | null]>(sql`
+    SELECT m.member_id, (SELECT max(c.hlc) FROM sync_field_clocks c JOIN sync_authority_devices d2 ON d2.book_id = c.book_id AND d2.device_id = c.id
+                         WHERE c.book_id = ${groupBookId} AND c.entity = 'device' AND c.field = 'removedAt' AND d2.member_id = m.member_id)
+    FROM sync_authority m WHERE m.book_id = ${groupBookId} AND NOT EXISTS (
+      SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id AND d.removed_seq IS NULL)
+    AND EXISTS (SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id)`);
+  // A removal with no clock here (never expected) counts as long ago: nothing made after the start is counted as left.
+  return new Map(rows.map(([member, hlc]) => [member, hlc ?? '']));
 }
 
 function parseMembers(json: string): string[] {
@@ -102,21 +116,14 @@ export async function groupStateOf(db: Db, groupBookId: string): Promise<GroupSt
 export async function groupDissolved(db: Db, groupBookId: string): Promise<boolean> {
   const { proposals, answers } = await groupInputsOf(db, groupBookId);
   if (deriveGroup(proposals, answers).active) return false;
-  return proposals.some((p) => activated(p, answers));
-}
-
-/** Not cancelled, a proposal that can be made, and every member confirmed or left: once so, only `left` may follow. */
-function activated(proposal: Proposal, answers: readonly Answer[]): boolean {
-  const final = new Map<string, Answer['answer']>();
-  for (const answer of answers) if (answer.proposalId === proposal.proposalId) final.set(answer.memberId, answer.answer);
-  return !proposal.cancelled && canPropose(proposal.mode, proposal.members) && proposal.members.every((m) => ['confirm', 'left'].includes(final.get(m) ?? ''));
+  return proposals.some((p) => isActivated(p, answers));
 }
 
 /** One proposal of a group log, and whether it was ever activated (task 2 review: then it may only be left). */
 export async function proposalOf(db: Db, groupBookId: string, proposalId: string): Promise<{ proposal: Proposal; activated: boolean } | null> {
   const { proposals, answers } = await groupInputsOf(db, groupBookId);
   const proposal = proposals.find((p) => p.proposalId === proposalId);
-  return proposal ? { proposal, activated: activated(proposal, answers) } : null;
+  return proposal ? { proposal, activated: isActivated(proposal, answers) } : null;
 }
 
 export interface ActiveNetWorthGroup {

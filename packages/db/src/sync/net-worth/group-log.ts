@@ -141,7 +141,7 @@ async function requireGroup(host: GroupLogHost, workspaceBookId: string): Promis
 }
 
 /** A sync that may fail on the relay: the scheduler's next run does it then. */
-async function quietly(run: Promise<unknown>): Promise<void> {
+export async function quietly(run: Promise<unknown>): Promise<void> {
   try {
     await run;
   } catch (error) {
@@ -324,7 +324,8 @@ export async function devicesToAdmit(host: GroupLogHost, workspaceBookId: string
 /** HKDF `info` of a group log's close proof. */
 const GROUP_CLOSE_INFO = 'cicis-group-close-v1';
 
-async function closeProofFrom(epochOneKey: Uint8Array): Promise<string> {
+/** A group log's close proof, from its first epoch key: its id is `uuidv5(GROUP_LINK_NS, proof)`. */
+export async function closeProofFrom(epochOneKey: Uint8Array): Promise<string> {
   return bytesToBase64Url(await hkdf(epochOneKey, new Uint8Array(0), utf8(GROUP_CLOSE_INFO)));
 }
 
@@ -352,6 +353,29 @@ export async function dissolveGroupLog(host: GroupLogHost, workspaceBookId: stri
   if (shared) await host.transport.deleteBook(shared.relayBookId).catch(() => undefined);
   await host.database.db.run(sql`UPDATE shared_books SET state = 'unshared', unshared_reason = 'stopped' WHERE book_id = ${groupBookId}`);
   await forgetGroup(host, groupBookId);
+}
+
+/**
+ * A live group's link someone closed (review round 1, finding 2: any device ever in the group holds the proof, so a
+ * former member can): this device, in the group log the closed link names, writes it open again — the same log, the
+ * same relay book — so the group's later devices can still be let in, and no new group takes its place. The caller
+ * decides that the group lives (something active or waiting in it). True when it wrote.
+ */
+export async function reopenClosedLink(host: GroupLogHost, workspaceBookId: string): Promise<boolean> {
+  const mine = await groupLogOf(host, workspaceBookId);
+  if (!mine) return false;
+  const shared = await sharedRowOf(host.database, mine);
+  if (!shared) return false;
+  const [row] = await host.database.db.values<[string, string]>(sql`SELECT group_book_id, relay_book_id FROM group_logs WHERE book_id = ${workspaceBookId}`);
+  if (!row || row[0] !== mine || !isClosedLink({ relayBookId: row[1] })) return false;
+  await host.database.transaction((tx) =>
+    withCapture(tx, { entity: 'net_worth_group', id: workspaceBookId, bookId: workspaceBookId }, async () => {
+      await tx.run(sql`UPDATE group_logs SET relay_book_id = ${shared.relayBookId}, invites_json = '[]' WHERE book_id = ${workspaceBookId}`);
+    }),
+  );
+  // Invites this device sealed into the closed link are gone with it: its later devices are invited afresh.
+  await host.database.db.run(sql`DELETE FROM settings WHERE key = ${INVITED_KEY(mine)}`);
+  return true;
 }
 
 /**
@@ -423,6 +447,9 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
     if (claim.bookId !== link.relayBookId) continue;
     const keys = await openInviteJson<InviteKey[]>(inviteKey, claim.keys, inviteAad('keys', inviteId)).catch(() => [] as InviteKey[]);
     if (keys.length === 0) continue;
+    // Review round 1, finding 5: the keys are the log's own only when epoch 1's derives the id the link names.
+    const first = keys.find((k) => k.epoch === 1);
+    if (!first || (await uuidv5(GROUP_LINK_NS, await closeProofFrom(base64UrlToBytes(first.key)))) !== link.groupBookId) continue;
     const held = new Set(keys.map((k) => k.epoch));
     const epoch = held.has(claim.epoch) ? claim.epoch : Math.max(...held);
     // The keys, the row and the introduction in one transaction: a device holding the log's keys always has its

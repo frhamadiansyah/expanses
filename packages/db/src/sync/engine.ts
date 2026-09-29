@@ -140,7 +140,7 @@ export interface SyncOnceResult extends PullResult {
    * The group log's part failed on the relay (task 4 review round 1): the workspace's own sync still counts, and the
    * group log is tried again on the next run.
    */
-  groupError?: SyncTransportError;
+  groupError?: SyncTransportError | Error;
 }
 
 export interface CreatedInvite {
@@ -290,16 +290,24 @@ export class SyncEngine {
     const result = await this.syncBook(bookId, seen);
     // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
     // A relay failure of the group log's part never fails the workspace's sync (task 4 review round 1).
+    let group: SyncOnceResult | undefined;
     try {
-      const group = await syncGroupAfter(this.groupHost(), bookId, result);
-      // Its proposals' consequences (task 5): a lost lone log abandoned, a dissolved group's log deleted, a member's
-      // later device let in, the pending count written.
-      await afterWorkspaceSync(this.groupHost(), bookId, result);
-      return group ? { ...result, group } : result;
+      group = await syncGroupAfter(this.groupHost(), bookId, result);
     } catch (error) {
       if (!(error instanceof SyncTransportError)) throw error;
       return { ...result, groupError: error };
     }
+    // Its proposals' consequences (task 5): a lost lone log abandoned, a dissolved group's log deleted or a closed live
+    // link opened again, a member's later device let in, the pending count written. None of it ever fails the
+    // workspace's own sync (review round 1, finding 7): what goes wrong is the group's, reported as `groupError`, and
+    // tried again on the next run.
+    try {
+      await afterWorkspaceSync(this.groupHost(), bookId, result);
+    } catch (error) {
+      const groupError = error instanceof Error ? error : new Error(String(error));
+      return group ? { ...result, group, groupError } : { ...result, groupError };
+    }
+    return group ? { ...result, group } : result;
   }
 
   /** `syncOnce` of the book alone. */

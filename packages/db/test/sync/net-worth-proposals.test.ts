@@ -2,8 +2,15 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createAccount, getShareSetting, pendingHidden, setShareSetting } from '../../src/index';
 import { withCapture } from '../../src/sync/capture';
-import { encodeHlc } from '../../src/sync/hlc';
+import { uuidv7 } from '@expanses/core';
+import { GROUP_LINK_NS } from '../../src/sync/authority';
+import { randomBytes, sealKeyFor, utf8 } from '../../src/sync/crypto';
+import { encodeHlc, localTick } from '../../src/sync/hlc';
+import { encodeInviteCode, INVITE_TTL_MS, inviteAad, inviteKeyOf, newInviteSecret, sealInviteJson } from '../../src/sync/invite';
+import { closeProofFrom } from '../../src/sync/net-worth/group-log';
+import { bytesToBase64Url, inviteSigningBytes } from '../../src/sync/relay-signing';
 import type { ChangeSet } from '../../src/sync/types';
+import { uuidv5 } from '../../src/sync/uuidv5';
 import { Household, type Device } from './household';
 
 /*
@@ -235,5 +242,152 @@ describe('separate → joint (D8)', () => {
     expect(await getShareSetting(rina.database, business.id)).toBe('total');
     await settle(home);
     expect(await pendingOf(andi, groupBookId, rina.memberId)).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ review round 1 */
+
+/** Rina, Andi and Sari file separately; Sari then stops sharing hers: the group goes on as Rina and Andi. */
+async function sariLeft() {
+  const h = await household();
+  const proposalId = await h.rina.engine.proposeNetWorth(h.bookId, { mode: 'separate', members: [h.andi.memberId, h.sari.memberId] });
+  await settle(h.home);
+  await h.andi.engine.answerNetWorth(h.bookId, proposalId, 'confirm');
+  await h.sari.engine.answerNetWorth(h.bookId, proposalId, 'confirm');
+  await settle(h.home);
+  const groupBookId = (await h.rina.engine.netWorthGroup(h.bookId)).groupBookId!;
+  // What a modified client of Sari's keeps from its time in the group: the key its close proof comes from.
+  const proof = await closeProofFrom((await h.sari.engine.sealer.epochKey(groupBookId, 1))!);
+  await h.sari.engine.leaveNetWorth(h.bookId);
+  await settle(h.home);
+  return { ...h, proposalId, groupBookId, proof };
+}
+
+describe('a member who left (review round 1, finding 1)', () => {
+  it('is never proposed back into the group log', async () => {
+    const { rina, andi, sari, bookId, proposalId } = await sariLeft();
+    expect((await rina.engine.netWorthGroup(bookId)).active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
+    await expect(rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] })).rejects.toMatchObject({ code: 'left-group' });
+  });
+
+  it('a proposal made after they left, naming them, never activates and never dissolves the group', async () => {
+    const { home, rina, andi, sari, bookId, proposalId, groupBookId } = await sariLeft();
+    // A modified client of Rina's writes it anyway: one tax ID with Sari.
+    const crafted = uuidv7();
+    await rina.database.transaction(async (tx) => {
+      const createdHlc = await localTick(tx, rina.deviceId, Date.now());
+      await withCapture(tx, { entity: 'nw_proposal', id: crafted, bookId: groupBookId }, async () => {
+        await tx.run(sql`INSERT INTO nw_proposals (book_id, proposal_id, mode, members_json, proposed_by, created_hlc, cancelled)
+          VALUES (${groupBookId}, ${crafted}, 'joint', ${JSON.stringify([rina.memberId, sari.memberId])}, ${rina.memberId}, ${createdHlc}, 0)`);
+      });
+      await withCapture(tx, { entity: 'nw_answer', id: `${crafted}|${rina.memberId}`, bookId: groupBookId }, async () => {
+        await tx.run(sql`INSERT INTO nw_answers (book_id, proposal_id, member_id, answer) VALUES (${groupBookId}, ${crafted}, ${rina.memberId}, 'confirm')`);
+      });
+    });
+    await settle(home);
+    for (const d of [rina, andi]) {
+      const group = await d.engine.netWorthGroup(bookId);
+      expect(group.groupBookId).toBe(groupBookId);
+      expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
+      expect(group.pending?.proposalId).toBe(crafted);
+      expect(group.waitingFor).toEqual([sari.memberId]);
+    }
+  });
+});
+
+describe('a former member closes a live link (review round 1, finding 2)', () => {
+  it('the group opens it again, still lets later devices in, and no other group takes its place', async () => {
+    const { home, rina, andi, sari, bookId, groupBookId, proof } = await sariLeft();
+    const open = await linkOf(rina, bookId);
+    await send(home, sari, { entity: 'net_worth_group', id: bookId, op: 'upsert', fields: { relayBookId: `closed:${proof}` }, changed: ['relayBookId'] });
+    await settle(home);
+    for (const d of [rina, andi, sari]) expect(await linkOf(d, bookId)).toEqual(open);
+    // Nobody sets up another group while this one lives.
+    await expect(sari.engine.proposeNetWorth(bookId, { mode: 'separate', members: [rina.memberId] })).rejects.toMatchObject({ code: 'GROUP_EXISTS' });
+    const other = await uuidv5(GROUP_LINK_NS, 'another-proof');
+    await send(home, sari, { entity: 'net_worth_group', id: bookId, op: 'upsert', fields: { groupBookId: other, relayBookId: 'relay-x', invites: '[]' } });
+    await settle(home);
+    for (const d of [rina, andi, sari]) expect(await linkOf(d, bookId)).toEqual(open);
+    // Andi's iPad still gets in.
+    const pad = await home.device('AndiPad', andi.memberId);
+    const { code } = await rina.engine.createInvite(bookId, { inviterName: 'Rina', sameMember: true, memberId: andi.memberId });
+    await pad.engine.joinBook(code, { ws: pad.ws, memberName: 'Andi', deviceName: "Andi's iPad" });
+    await settle(home);
+    expect(await pad.engine.groupLogOf(bookId)).toBe(groupBookId);
+  });
+});
+
+describe('a link names a log its keys can prove (review round 1, finding 5)', () => {
+  it('a new link whose id is no version-5 id is refused at capture and on every peer', async () => {
+    const { home, rina, andi, sari, bookId } = await household();
+    await expect(
+      sari.database.transaction((tx) =>
+        withCapture(tx, { entity: 'net_worth_group', id: bookId, bookId }, async () => {
+          await tx.run(sql`INSERT INTO group_logs (book_id, group_book_id, relay_book_id, invites_json) VALUES (${bookId}, ${uuidv7()}, 'relay-x', '[]')`);
+        }),
+      ),
+    ).rejects.toThrow(/AUTHORITY: write-once/);
+    await send(home, sari, { entity: 'net_worth_group', id: bookId, op: 'upsert', fields: { groupBookId: uuidv7(), relayBookId: 'relay-x', invites: '[]' } });
+    await settle(home);
+    for (const d of [rina, andi]) expect(await linkOf(d, bookId)).toBeNull();
+  });
+
+  it('an invite whose keys do not derive the id the link names is never kept', async () => {
+    const { home, andi, sari, bookId } = await household();
+    // Sari makes a link of her own, with a version-5 id no key of hers derives, and seals Andi an invite to her book.
+    const { bookId: relay } = await sari.transport.createBook(sari.public);
+    const groupBookId = await uuidv5(GROUP_LINK_NS, 'not-from-a-key');
+    const inviteId = uuidv7();
+    const secret = newInviteSecret();
+    const key = await inviteKeyOf(secret, inviteId);
+    const unsigned = {
+      inviteId,
+      keys: await sealInviteJson(key, [{ epoch: 1, key: bytesToBase64Url(randomBytes(32)) }], inviteAad('keys', inviteId)),
+      preview: await sealInviteJson(key, { groupBookId, relayBookId: relay }, inviteAad('preview', inviteId)),
+      expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+      sameMember: false,
+    };
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, sari.keys.sign.privateKey, inviteSigningBytes(unsigned) as BufferSource);
+    await sari.transport.putInvite(relay, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
+    const { deviceId: _d, ...sealed } = await sealKeyFor({ deviceId: andi.deviceId, agreeJwk: andi.public.agreeJwk }, groupBookId, 0, utf8(encodeInviteCode(inviteId, secret)), 'cicis-group-invite-v1');
+    await send(home, sari, {
+      entity: 'net_worth_group',
+      id: bookId,
+      op: 'upsert',
+      fields: { groupBookId, relayBookId: relay, invites: JSON.stringify([{ ...sealed, expiresAt: unsigned.expiresAt }]) },
+    });
+    await settle(home);
+    expect(await linkOf(andi, bookId)).toEqual([groupBookId, relay]);
+    expect(await andi.engine.groupLogOf(bookId)).toBeNull();
+    expect(await andi.database.db.values(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).toEqual([]);
+  });
+});
+
+describe("the group's own work never fails the workspace's sync (review round 1, finding 7)", () => {
+  it('an error after the group log synced comes back as groupError', async () => {
+    const { rina, bookId } = await active('separate');
+    await rina.database.execScript('ALTER TABLE nw_pending RENAME TO nw_pending_away');
+    const failed = await rina.engine.syncOnce(bookId);
+    expect(failed.groupError).toBeInstanceOf(Error);
+    expect(failed.stopped).toBeUndefined();
+    await rina.database.execScript('ALTER TABLE nw_pending_away RENAME TO nw_pending');
+    expect((await rina.engine.syncOnce(bookId)).groupError).toBeUndefined();
+  });
+});
+
+describe('both links reach the log before either device pulls (review round 1, finding 8)', () => {
+  it("the first is the link everywhere, and the loser's own invites never replace the winner's", async () => {
+    const { home, rina, andi, sari, bookId } = await household();
+    const rinaLog = await rina.engine.openGroupLog(bookId);
+    const andiLog = await andi.engine.openGroupLog(bookId);
+    // Each lets the other in, into its own log, and both drain before either pulls.
+    await rina.engine.admitToGroupLog(bookId, [andi.memberId]);
+    await andi.engine.admitToGroupLog(bookId, [rina.memberId]);
+    await rina.engine.drain(bookId);
+    await andi.engine.drain(bookId);
+    await settle(home);
+    for (const d of [rina, andi, sari]) expect((await linkOf(d, bookId))?.[0]).toBe(rinaLog);
+    for (const d of [rina, andi]) expect(await d.engine.groupLogOf(bookId)).toBe(rinaLog);
+    expect(andiLog).not.toBe(rinaLog);
   });
 });

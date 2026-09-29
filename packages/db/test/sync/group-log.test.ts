@@ -364,7 +364,7 @@ describe("the group log's failure is not the workspace's (task 4 review round 1,
     };
     const result = await rina.engine.syncOnce(bookId);
     expect(result.groupError).toBeInstanceOf(SyncTransportError);
-    expect(result.groupError?.status).toBe(503);
+    expect((result.groupError as SyncTransportError).status).toBe(503);
     expect(result.stopped).toBeUndefined();
     rina.transport.pull = pull;
     const again = await rina.engine.syncOnce(bookId);

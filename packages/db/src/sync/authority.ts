@@ -333,7 +333,11 @@ async function yieldOwnLinkTx(tx: Db, bookId: string, opId: string): Promise<voi
  */
 async function decideWriteOnce(tx: Db, bookId: string, entity: RowEntity, op: Op): Promise<Op> {
   const stored = await storedRowOf(tx, entity, bookId, parseOpId(entity, op.id));
-  if (stored === null) return op;
+  if (stored === null) {
+    // A new row is judged as written, by the same predicate capture uses (review round 1, finding 5).
+    if (op.op === 'upsert' && (await writeOnceBroken(entity, null, op.fields))) throw new AuthorityError('write-once row');
+    return op;
+  }
   if (op.op === 'upsert' && entity.entity === 'net_worth_group' && !isClosedLink(stored)) {
     const pending = await ownLinkPendingTx(tx, bookId);
     const incoming = op.fields.groupBookId;
@@ -401,10 +405,17 @@ const WRITE_ONCE_ROWS: ReadonlySet<string> = new Set(['net_worth_group']);
  * key (net-worth/group-log.ts `closeProofOf`), which only the group's devices ever hold. Closing the link is an edit
  * that keeps `groupBookId` and sets `relayBookId` to `closed:<proof>`; every device checks the proof against the id it
  * already has. The row is never deleted by an op. A closed link names no group: anyone may set up a new one over it.
+ *
+ * Every device ever in the group holds that key, so a former member can close a live group's link (review round 1,
+ * ruled: disruption, never disclosure). The group recovers: a current member's device that finds its live group's link
+ * closed writes it open again, same log and relay book (net-worth/group-log.ts `reopenClosedLink`).
  */
 
 /** The uuidv5 namespace of a group log's id, derived from its close proof. */
 export const GROUP_LINK_NS = '6f1c2a9e-3b0d-4e57-9a61-2c8f0d4b7e13';
+
+/** A version-5 uuid, as `uuidv5` makes. */
+const VERSION_5 = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** The `relayBookId` of a closed link: this prefix, then the close proof. */
 export const CLOSED_LINK_PREFIX = 'closed:';
@@ -420,7 +431,13 @@ export function isClosedLink(fields: Record<string, unknown>): boolean {
  * open one may only be closed, by its group's proof.
  */
 export async function writeOnceBroken(entity: RowEntity, before: Record<string, unknown> | null, after: Record<string, unknown> | null): Promise<boolean> {
-  if (!WRITE_ONCE_ROWS.has(entity.entity) || before === null) return false;
+  if (!WRITE_ONCE_ROWS.has(entity.entity)) return false;
+  // A new link, or one written over a closed link (a new setup, or a group's own recovery), names a group log whose id is
+  // a version-5 id — the only kind a close proof can ever match (task 5 review round 1, finding 5).
+  if (entity.entity === 'net_worth_group' && after !== null && (before === null || isClosedLink(before)) && !isClosedLink(after)) {
+    if (!VERSION_5.test(String(after.groupBookId))) return true;
+  }
+  if (before === null) return false;
   if (after === null) return true;
   if (entity.entity === 'net_worth_group' && isClosedLink(before)) return false;
   if (!frozenFieldChanged(entity, before, after)) return false;

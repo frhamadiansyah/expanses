@@ -1,14 +1,13 @@
 import { canPropose, uuidv7, type FilingMode, type GroupState } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../database';
-import { activeNetWorthGroup, groupDissolved, groupStateOf, NetWorthError, proposalOf, refreshPendingCount } from '../../repos/net-worth-sharing';
+import { activeNetWorthGroup, departedMembers, groupDissolved, groupStateOf, NetWorthError, proposalOf, refreshPendingCount } from '../../repos/net-worth-sharing';
 import { groupLogWorkspaceOf, viewMember } from '../authority';
 import { withCapture } from '../capture';
 import type { SyncOnceResult } from '../engine';
 import { localTick } from '../hlc';
 import { SharingError } from '../seed';
 import { buildOpId, entityOf } from '../shared-entities';
-import { SyncTransportError } from '../types';
 import {
   abandonLostGroupLog,
   admitToGroupLog,
@@ -19,6 +18,8 @@ import {
   leaveGroupLog,
   linkOf,
   openGroupLog,
+  quietly,
+  reopenClosedLink,
   type GroupLogHost,
 } from './group-log';
 
@@ -36,15 +37,6 @@ import {
  * - After every workspace sync (`afterWorkspaceSync`): a lost lone log is abandoned, a dissolved group's log deleted, a
  *   member's later devices let in, and this member's pending count (D8) written.
  */
-
-/** A sync that may fail on the relay: the scheduler's next run does it then. */
-async function quietly(run: Promise<unknown>): Promise<void> {
-  try {
-    await run;
-  } catch (error) {
-    if (!(error instanceof SyncTransportError)) throw error;
-  }
-}
 
 async function workspaceMember(host: GroupLogHost, workspaceBookId: string): Promise<string> {
   const [row] = await host.database.db.values<[string, string]>(sql`SELECT member_id, state FROM shared_books WHERE book_id = ${workspaceBookId}`);
@@ -103,6 +95,10 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
   if (!ready.ready) throw new NetWorthError('not-ready', 'Every device must run the latest app first', ready.outdated);
 
   const groupBookId = await ensureGroupLog(host, workspaceBookId);
+  // Review round 1, finding 1: someone who was in this group log and left it is never proposed back into it — their
+  // devices were taken out for good, so they could never confirm.
+  const departed = await departedMembers(host.database.db, groupBookId);
+  if (members.some((m) => departed.has(m))) throw new NetWorthError('left-group', 'Someone you chose has left this net-worth group and cannot be asked back into it');
   const others = members.filter((m) => m !== me);
   await admitToGroupLog(host, workspaceBookId, others);
   const proposalId = uuidv7();
@@ -215,6 +211,9 @@ export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, res
     await dissolveGroupLog(host, bookId);
     return;
   }
+  // A live group whose link someone closed (a former member can): open it again (review round 1, finding 2).
+  const state = await groupStateOf(host.database.db, groupBookId);
+  if (state.active || state.pending) await reopenClosedLink(host, bookId);
   const admit = await devicesToAdmit(host, bookId);
   try {
     if (admit.length > 0) await admitToGroupLog(host, bookId, [...new Set(admit.map((d) => d.memberId))]);

@@ -90,3 +90,18 @@ export function canInvite(chosen: readonly string[], mode: FilingMode | null): b
 export function pendingPrompt(itemNames: readonly string[], others: readonly string[]): string {
   return `Household now files with one tax ID. Share ${namesOf(itemNames)} with ${namesOf(others)}?`;
 }
+
+/**
+ * An item page's Share with Household row (§8.1, review round 1 finding 3): the stored setting as it is, never a
+ * default in its place. One tax ID with the item still hidden (D8) is "Not yet shared", with Share; an item never
+ * reviewed is "Not reviewed", with the settings to choose from.
+ */
+export type ShareRowState =
+  | { kind: 'choose'; value: 'total' | 'hidden' | null; label: string; hiddenAllowed: boolean }
+  | { kind: 'not-yet-shared'; label: string };
+
+export function shareRowOf(mode: FilingMode, setting: 'total' | 'hidden' | null): ShareRowState {
+  if (mode === 'joint' && setting === 'hidden') return { kind: 'not-yet-shared', label: 'Not yet shared' };
+  const label = setting === null ? 'Not reviewed' : setting === 'total' ? 'Balance and one total' : "Don't share";
+  return { kind: 'choose', value: setting, label, hiddenAllowed: mode === 'separate' };
+}

@@ -45,8 +45,16 @@ function answerFor(final: Map<string, Answer>, proposalId: string, memberId: str
   return final.get(`${proposalId}\u0000${memberId}`)?.answer;
 }
 
+/**
+ * Whether a proposal is activated by these answers (the last per member wins): not cancelled, `canPropose`, and every
+ * listed member confirmed or left. Once so, only `left` may follow it (task 2 review).
+ */
+export function isActivated(proposal: Proposal, answers: readonly Answer[]): boolean {
+  return activatedBy(proposal, finalAnswers(answers));
+}
+
 /** A proposal is activated when not cancelled, `canPropose`, and every listed member confirmed or left. */
-function isActivated(proposal: Proposal, final: Map<string, Answer>): boolean {
+function activatedBy(proposal: Proposal, final: Map<string, Answer>): boolean {
   if (proposal.cancelled) return false;
   if (!canPropose(proposal.mode, proposal.members)) return false;
   return proposal.members.every((member) => {
@@ -61,7 +69,7 @@ export function deriveGroup(proposals: readonly Proposal[], answers: readonly An
 
   let active: Proposal | null = null;
   for (const proposal of sorted) {
-    if (isActivated(proposal, final)) active = proposal;
+    if (activatedBy(proposal, final)) active = proposal;
   }
 
   let activeState: GroupState['active'] = null;
@@ -77,7 +85,7 @@ export function deriveGroup(proposals: readonly Proposal[], answers: readonly An
   for (const proposal of sorted) {
     if (proposal.cancelled) continue;
     if (activeHlc !== null && !(proposal.createdHlc > activeHlc)) continue;
-    if (isActivated(proposal, final)) continue;
+    if (activatedBy(proposal, final)) continue;
     const declined = proposal.members.some((member) => answerFor(final, proposal.proposalId, member) === 'decline');
     if (declined) continue;
     if (!pending || proposal.createdHlc > pending.createdHlc) pending = proposal;

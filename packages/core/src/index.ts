@@ -477,6 +477,7 @@ export {
   type Answer,
   canPropose,
   deriveGroup,
+  isActivated,
   type FilingMode,
   type GroupState,
   type Proposal,
