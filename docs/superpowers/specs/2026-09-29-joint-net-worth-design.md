@@ -78,7 +78,12 @@ rotation (S5–S9). What differs:
   an owner of the group log (on the relay too), so any of them can admit a device or remove a member who left.
   `group_logs` gains `invites_json`. Since any workspace member may rewrite `net_worth_group`, the link only tells a
   device what to join: which group log a device is in, for which workspace, is its own local record (`nw_group_books`,
-  never synced), so a rewritten link cannot move it off its group log.
+  never synced), so a rewritten link cannot move it off its group log. The link also names the group log's relay book,
+  and which log and relay book it names are written once (refused at capture and on every peer; never deleted by an op
+  until task 5 rules dissolution); a device claims only an invite whose preview and whose relay answer name that log.
+  Out of the workspace is out of the group (§6, last bullet): a device whose workspace sharing ends leaves the group
+  log (or forgets it, when the relay cannot be reached), and any group member's device removes, with rotation, a device
+  the workspace's view has removed.
 - **Membership follows the group** (§6). A member leaving the group is removed from the group log with rotation (S8.4);
   the workspace membership is untouched.
 - **No seeding** (S6.5): a new group log starts empty; each member's phone sends its summaries after review.

@@ -251,7 +251,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scopeRule: "book_id = bookId (the workspace's own book id)",
     scope: (bookId) => sql`t.book_id = ${bookId}`,
     keyColumns: ['book_id'],
-    fields: { groupBookId: 'group_book_id', invites: 'invites_json' },
+    // `groupBookId` and `relayBookId` are written once (authority.ts `WRITER_FROZEN_FIELDS`, task 4 review round 1):
+    // a member outside the group cannot point a not-yet-joined member at a log of their own. `invites` stays appendable.
+    fields: { groupBookId: 'group_book_id', relayBookId: 'relay_book_id', invites: 'invites_json' },
     localOnInsert: [],
   },
   {

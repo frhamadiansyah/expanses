@@ -82,8 +82,16 @@ async function sharedRowOf(database: Database, bookId: string): Promise<SharedRo
   return row ? { relayBookId: row[0], epoch: Number(row[1]), memberId: row[2], state: row[3] } : undefined;
 }
 
-async function linkOf(database: Database, workspaceBookId: string): Promise<{ groupBookId: string; invites: SealedInvite[] } | null> {
-  const [row] = await database.db.values<[string, string]>(sql`SELECT group_book_id, invites_json FROM group_logs WHERE book_id = ${workspaceBookId}`);
+interface Link {
+  groupBookId: string;
+  relayBookId: string;
+  invites: SealedInvite[];
+}
+
+async function linkOf(database: Database, workspaceBookId: string): Promise<Link | null> {
+  const [row] = await database.db.values<[string, string, string]>(
+    sql`SELECT group_book_id, invites_json, relay_book_id FROM group_logs WHERE book_id = ${workspaceBookId}`,
+  );
   if (!row) return null;
   let invites: SealedInvite[] = [];
   try {
@@ -92,7 +100,7 @@ async function linkOf(database: Database, workspaceBookId: string): Promise<{ gr
   } catch {
     // Malformed peer data opens nothing.
   }
-  return { groupBookId: row[0], invites };
+  return { groupBookId: row[0], relayBookId: row[2], invites };
 }
 
 /**
@@ -191,8 +199,7 @@ export async function openGroupLog(host: GroupLogHost, workspaceBookId: string):
       await introduceTx(host, tx, workspaceBookId, groupBookId, workspace.memberId, 1);
       await withCapture(tx, { entity: 'net_worth_group', id: workspaceBookId, bookId: workspaceBookId }, async () => {
         await tx.run(sql`
-          INSERT INTO group_logs (book_id, group_book_id, invites_json) VALUES (${workspaceBookId}, ${groupBookId}, '[]')
-          ON CONFLICT (book_id) DO UPDATE SET group_book_id = excluded.group_book_id, invites_json = excluded.invites_json`);
+          INSERT INTO group_logs (book_id, group_book_id, relay_book_id, invites_json) VALUES (${workspaceBookId}, ${groupBookId}, ${relayBookId}, '[]')`);
       });
     });
   } catch (error) {
@@ -272,9 +279,9 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
  * it, keeps its epoch keys and introduces itself; the group log's sync that follows pulls it. False when no invite here
  * opens and claims.
  */
-async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link: { groupBookId: string; invites: SealedInvite[] }): Promise<boolean> {
+async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link: Link): Promise<boolean> {
   const workspace = await sharedRowOf(host.database, workspaceBookId);
-  if (!workspace || workspace.state !== 'active') return false;
+  if (!workspace || workspace.state !== 'active' || !link.relayBookId) return false;
   const self = host.device.deviceId;
   for (const invite of link.invites) {
     if (!(Date.parse(invite.expiresAt) > host.now())) continue;
@@ -290,16 +297,30 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
     } catch {
       continue; // sealed to another device
     }
-    const { inviteId, secret } = parseInviteCode(code);
+    let inviteId: string;
+    let secret: Uint8Array;
+    try {
+      ({ inviteId, secret } = parseInviteCode(code));
+    } catch {
+      continue;
+    }
+    const inviteKey = await inviteKeyOf(secret, inviteId);
+    // Task 4 review round 1: anyone in the workspace can seal an invite to this device, so only an invite into the log
+    // the (write-once) link names is claimed — its preview says so before the claim, and the relay's own answer, the
+    // book it admitted this device to, says so before any key is kept or anything is introduced.
     let claim;
     try {
+      const found = await host.transport.previewInvite(inviteId);
+      const preview = await openInviteJson<{ groupBookId?: string; relayBookId?: string }>(inviteKey, found.preview, inviteAad('preview', inviteId)).catch(() => null);
+      if (preview?.groupBookId !== link.groupBookId || preview?.relayBookId !== link.relayBookId) continue;
       claim = await host.transport.claimInvite(inviteId, host.device.public);
     } catch (error) {
       // Claimed already, expired, or its book deleted: another invite may still be this device's.
       if (error instanceof SyncTransportError && [404, 409, 410].includes(error.status)) continue;
       throw error;
     }
-    const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(secret, inviteId), claim.keys, inviteAad('keys', inviteId));
+    if (claim.bookId !== link.relayBookId) continue;
+    const keys = await openInviteJson<InviteKey[]>(inviteKey, claim.keys, inviteAad('keys', inviteId)).catch(() => [] as InviteKey[]);
     if (keys.length === 0) continue;
     const held = new Set(keys.map((k) => k.epoch));
     const epoch = held.has(claim.epoch) ? claim.epoch : Math.max(...held);
@@ -335,14 +356,68 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
     else await host.database.transaction((tx) => dropDepartedTx(tx, bookId));
     return undefined;
   }
-  if (result.ended || result.stopped) return undefined;
-  const mine = await groupLogOf(host, bookId);
-  if (mine) return host.syncOnce(mine);
-  const link = await linkOf(host.database, bookId);
-  if (!link || (await heldBefore(host.database, link.groupBookId))) return undefined;
-  if ((await sharedRowOf(host.database, link.groupBookId)) !== undefined) return undefined;
-  if (!(await joinFromInvites(host, bookId, link))) return undefined;
-  return host.syncOnce(link.groupBookId);
+  // §6 (task 4 review round 1): this device is out of the workspace — it left, was removed, or the sharing stopped — so
+  // it is out of the group log too.
+  if (result.ended) {
+    await exitGroupOf(host, bookId, result.ended === 'left');
+    return undefined;
+  }
+  if (result.stopped) return undefined;
+  let groupBookId = await groupLogOf(host, bookId);
+  if (!groupBookId) {
+    const link = await linkOf(host.database, bookId);
+    if (!link || (await heldBefore(host.database, link.groupBookId))) return undefined;
+    if ((await sharedRowOf(host.database, link.groupBookId)) !== undefined) return undefined;
+    if (!(await joinFromInvites(host, bookId, link))) return undefined;
+    groupBookId = link.groupBookId;
+  }
+  const synced = await host.syncOnce(groupBookId);
+  if (!synced.ended) await followWorkspaceRemovals(host, bookId, groupBookId);
+  return synced;
+}
+
+/**
+ * §6 (task 4 review round 1): a device the workspace's view has removed — its member left the workspace, or an owner
+ * removed it — is taken out of the group log by whichever group member's device sees it first, and the log rotates past
+ * it (§8.4). Decided from state, not from the one sync that applied the removal, so a failed attempt is made again on
+ * the next sync, and a device that already sees it done does nothing. A device that is not yet an owner on the group
+ * log's relay book (`followOwners` has not caught up) leaves it to one that is.
+ */
+async function followWorkspaceRemovals(host: GroupLogHost, workspaceBookId: string, groupBookId: string): Promise<void> {
+  const targets = await host.database.db.values<[string]>(sql`
+    SELECT g.device_id FROM sync_authority_devices g
+    JOIN sync_authority_devices w ON w.book_id = ${workspaceBookId} AND w.device_id = g.device_id
+    WHERE g.book_id = ${groupBookId} AND g.removed_seq IS NULL AND w.removed_seq IS NOT NULL AND g.device_id <> ${host.device.deviceId}
+    ORDER BY g.device_id`);
+  for (const [target] of targets) {
+    if ((await host.database.transaction((tx) => viewDevice(tx, groupBookId, target)))?.removedSeq != null) continue; // done meanwhile
+    try {
+      await host.removeDevice(groupBookId, target);
+    } catch (error) {
+      if (error instanceof SyncTransportError && error.status === 403) continue;
+      throw error;
+    }
+  }
+}
+
+/**
+ * This device leaves the workspace's group log, if it is in one (§6: out of the workspace is out of the group): a
+ * removal of itself — as its member leaving when `leave` — then the group's rows and keys go. When the relay cannot be
+ * reached, the log is ended and forgotten here all the same; the group's other members take this device out when they
+ * see its removal from the workspace (`followWorkspaceRemovals`).
+ */
+export async function exitGroupOf(host: GroupLogHost, workspaceBookId: string, leave: boolean): Promise<void> {
+  const groupBookId = await groupLogOf(host, workspaceBookId);
+  if (!groupBookId) return;
+  try {
+    await host.leaveNow(groupBookId, leave);
+  } catch (error) {
+    if (!(error instanceof SyncTransportError)) throw error;
+    await host.database.db.run(
+      sql`UPDATE shared_books SET state = 'unshared', unshared_reason = ${leave ? 'left' : 'removed'} WHERE book_id = ${groupBookId}`,
+    );
+  }
+  await forgetGroup(host, groupBookId);
 }
 
 /**

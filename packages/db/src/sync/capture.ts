@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { AuthorityError, frozenFieldChanged, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice } from './authority';
+import { AuthorityError, frozenFieldChanged, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -458,7 +458,12 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     const was = before.get(key);
     const now = after.get(key);
     const entity = (was ?? now)!.entity;
-    if (!entity.writer) continue;
+    if (!entity.writer) {
+      // A write-once row (task 4 review round 1): judged by the same predicate its peers use.
+      const gone = !now || now.bookId !== was?.bookId;
+      if (writeOnceBroken(entity, was?.values ?? null, gone ? null : now!.values)) throw new AuthorityError('write-once row');
+      continue;
+    }
     const bookId = (was ?? now)!.bookId;
     const member = books.find((b) => b.bookId === bookId)?.memberId ?? null;
     if (!was) {

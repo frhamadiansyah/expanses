@@ -25,6 +25,7 @@ import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import {
   admitToGroupLog,
+  exitGroupOf,
   groupLogOf,
   groupMembersReady,
   leaveGroupLog,
@@ -133,6 +134,11 @@ export interface SyncOnceResult extends PullResult {
   ended?: 'unshared' | 'left' | 'removed';
   /** A workspace's sync also syncs its net-worth group log, when this device is in it (joint-net-worth §4): that sync. */
   group?: SyncOnceResult;
+  /**
+   * The group log's part failed on the relay (task 4 review round 1): the workspace's own sync still counts, and the
+   * group log is tried again on the next run.
+   */
+  groupError?: SyncTransportError;
 }
 
 export interface CreatedInvite {
@@ -281,8 +287,14 @@ export class SyncEngine {
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     const result = await this.syncBook(bookId, seen);
     // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
-    const group = await syncGroupAfter(this.groupHost(), bookId, result);
-    return group ? { ...result, group } : result;
+    // A relay failure of the group log's part never fails the workspace's sync (task 4 review round 1).
+    try {
+      const group = await syncGroupAfter(this.groupHost(), bookId, result);
+      return group ? { ...result, group } : result;
+    } catch (error) {
+      if (!(error instanceof SyncTransportError)) throw error;
+      return { ...result, groupError: error };
+    }
   }
 
   /** `syncOnce` of the book alone. */
@@ -780,6 +792,7 @@ export class SyncEngine {
     }
     this.sealer.forget();
     await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+    await this.exitGroupQuietly(bookId, false); // §6: nobody is in a workspace no longer shared, nor in its group
   }
 
   /**
@@ -800,6 +813,20 @@ export class SyncEngine {
     }
     this.sealer.forget();
     await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+    await this.exitGroupQuietly(bookId, false);
+  }
+
+  /**
+   * §6 (task 4 review round 1): out of the workspace here is out of its net-worth group log. Best effort on the relay
+   * (`exitGroupOf` forgets the group locally either way); a no-op for a book with no group log here, a group log itself
+   * included.
+   */
+  private async exitGroupQuietly(bookId: string, leave: boolean): Promise<void> {
+    try {
+      await exitGroupOf(this.groupHost(), bookId, leave);
+    } catch (error) {
+      if (!(error instanceof SyncTransportError)) throw error;
+    }
   }
 
   /**
@@ -922,6 +949,8 @@ export class SyncEngine {
       await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by}, unshared_reason = ${reason} WHERE book_id = ${bookId}`);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
+    // §6: a device out of the workspace is out of its group log (a leave, a removal, the sharing stopped).
+    await this.exitGroupQuietly(bookId, reason === 'left');
   }
 
   /* ------------------------------------------------------ net-worth group log */

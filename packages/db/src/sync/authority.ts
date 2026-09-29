@@ -282,6 +282,22 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   if (op.entity === 'member') return decideMember(tx, ctx, op);
   const entity = entityOf(op.entity);
   if (entity.kind === 'row' && entity.writer && !ctx.own) return decideRowWriter(tx, bookId, author, entity, op);
+  if (entity.kind === 'row' && WRITE_ONCE_ROWS.has(entity.entity) && !ctx.own) return decideWriteOnce(tx, bookId, entity, op);
+  return op;
+}
+
+/**
+ * A write-once row from a peer (task 4 review round 1): a new row is taken as it comes; an existing one never loses its
+ * write-once fields to another value, and is never deleted by an op. Judged against the stored row, like
+ * `decideRowWriter`; a device's own entries were judged at capture (`writeOnceBroken`).
+ */
+async function decideWriteOnce(tx: Db, bookId: string, entity: RowEntity, op: Op): Promise<Op> {
+  const stored = await storedRowOf(tx, entity, bookId, parseOpId(entity, op.id));
+  if (stored === null) return op;
+  if (op.op === 'delete') throw new AuthorityError('write-once row');
+  for (const field of WRITER_FROZEN_FIELDS[entity.entity] ?? []) {
+    if (field in op.fields && String(op.fields[field]) !== String(stored[field])) throw new AuthorityError('write-once row');
+  }
   return op;
 }
 
@@ -322,7 +338,23 @@ const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   nw_proposal: ['proposedBy'],
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
+  // The workspace's link to its group log (task 4 review round 1): which log, on which relay book, is written once, by
+  // whoever made the group, and never deleted by an op (dissolving a group is task 5's to rule). Any member may still
+  // add invites.
+  net_worth_group: ['groupBookId', 'relayBookId'],
 };
+
+/** Entities with write-once fields but no `writer`: anyone writes them, but nobody moves those fields or deletes the row. */
+const WRITE_ONCE_ROWS: ReadonlySet<string> = new Set(['net_worth_group']);
+
+/**
+ * Whether a local write of `entity` from `before` to `after` (null: absent) breaks its write-once rule — capture's
+ * check (`withCapture`), the same predicate `decideWriteOnce` judges a peer by.
+ */
+export function writeOnceBroken(entity: RowEntity, before: Record<string, unknown> | null, after: Record<string, unknown> | null): boolean {
+  if (!WRITE_ONCE_ROWS.has(entity.entity) || before === null) return false;
+  return after === null || frozenFieldChanged(entity, before, after);
+}
 
 /** Whether an edit from `before` to `after` (full field-value snapshots) moves one of `entity`'s frozen fields. */
 export function frozenFieldChanged(entity: RowEntity, before: Record<string, unknown>, after: Record<string, unknown>): boolean {

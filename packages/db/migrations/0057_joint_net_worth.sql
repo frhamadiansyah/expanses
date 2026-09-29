@@ -7,6 +7,7 @@
 CREATE TABLE group_logs (
   book_id TEXT PRIMARY KEY,              -- the shared workspace's book id
   group_book_id TEXT NOT NULL UNIQUE,    -- the group log's book id, the same on every device (a shared_books row with no books row)
+  relay_book_id TEXT NOT NULL DEFAULT '', -- the group log's relay book; with group_book_id, written once (task 4 review round 1)
   invites_json TEXT NOT NULL DEFAULT '[]' -- relay invites to the group log, each sealed to one admitted device's agreement key
 );
 
