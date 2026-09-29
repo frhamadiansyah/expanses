@@ -1,7 +1,7 @@
 import { canPropose, deriveGroup, type Answer, type FilingMode, type GroupState, type Proposal } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Db } from '../database';
+import type { Database, Db, Tx } from '../database';
 import { withCapture } from '../sync/capture';
 import { listAccounts } from './accounts';
 
@@ -130,10 +130,12 @@ export interface ActiveNetWorthGroup {
 
 /**
  * The one active net-worth group this person is in (§4: one group per person), or null: from every group log this
- * device holds and is active in, the first whose derived group lists this device's member.
+ * device holds and is active in, the first whose derived group lists this device's member. The one reader of the group
+ * state for owner-scope code — share settings, the review, the pending count, and the summaries — whether it runs on
+ * the database or inside a transaction already open (`tx`).
  */
-export async function activeNetWorthGroup(database: Database): Promise<ActiveNetWorthGroup | null> {
-  const db = database.db;
+export async function activeNetWorthGroup(source: Database | Db): Promise<ActiveNetWorthGroup | null> {
+  const db = 'exportBytes' in source ? source.db : source;
   if (!(await tableExists(db, 'nw_group_books'))) return null;
   const logs = await db.values<[string, string, string]>(sql`
     SELECT g.group_book_id, g.book_id, s.member_id FROM nw_group_books g JOIN shared_books s ON s.book_id = g.group_book_id
@@ -168,9 +170,25 @@ const JOINT_FORBIDS_HIDDEN = 'Your household files with one tax ID, so every ite
 export async function setShareSetting(database: Database, accountId: string, setting: ShareSetting): Promise<void> {
   const group = await activeNetWorthGroup(database);
   if (setting === 'hidden' && group?.mode === 'joint') throw new NetWorthError('joint-forbids-hidden', JOINT_FORBIDS_HIDDEN);
-  await writeSetting(database.db, accountId, setting);
+  await database.transaction(async (tx) => {
+    await writeSetting(tx, accountId, setting);
+    await afterShareSettingChanged(tx, accountId);
+  });
   await refreshPendingCount(database);
 }
+
+/**
+ * Where a changed setting reaches the item's summary (spec §9: a setting change re-sends it, `Don't share` sends
+ * `removed`), in the transaction that wrote it. The summaries (task 6) are wired in here by the controller at merge:
+ * this function and `afterReviewConfirmed` are the only two places a setting is written.
+ */
+async function afterShareSettingChanged(_tx: Tx, _accountId: string): Promise<void> {}
+
+/**
+ * Where the review's Share sends every shared item's summary (§8.1: Share sends the summaries), in the transaction that
+ * wrote the settings. The summaries (task 6) are wired in here by the controller at merge.
+ */
+async function afterReviewConfirmed(_tx: Tx): Promise<void> {}
 
 export interface ReviewItem {
   accountId: string;
@@ -207,6 +225,7 @@ export async function confirmReview(database: Database, ws: WorkspaceContext, se
   const items = await reviewItems(database, ws);
   await database.transaction(async (tx) => {
     for (const item of items) await writeSetting(tx, item.accountId, joint ? 'total' : (settings[item.accountId] ?? 'total'));
+    await afterReviewConfirmed(tx);
   });
   await refreshPendingCount(database);
 }

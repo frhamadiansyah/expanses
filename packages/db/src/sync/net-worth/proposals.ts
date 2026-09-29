@@ -216,6 +216,12 @@ export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, res
     return;
   }
   const admit = await devicesToAdmit(host, bookId);
-  if (admit.length > 0) await admitToGroupLog(host, bookId, [...new Set(admit.map((d) => d.memberId))]);
+  try {
+    if (admit.length > 0) await admitToGroupLog(host, bookId, [...new Set(admit.map((d) => d.memberId))]);
+  } catch (error) {
+    // The group log ended under it (deleted, or this device removed): the next sync forgets it; the workspace's own
+    // sync is not failed for it.
+    if (!(error instanceof SharingError)) throw error;
+  }
   await refreshPendingCount(host.database);
 }
