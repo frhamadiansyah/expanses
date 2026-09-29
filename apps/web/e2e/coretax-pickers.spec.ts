@@ -18,10 +18,8 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
   await page.getByLabel('Balance now', { exact: true }).fill('20000000');
-  // The balance is optional here, and the ⓘ beside it says what happens to it.
-  await expect(page.getByText('Optional. Posted as an opening balance.')).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Balance now' }).click();
-  await expect(page.getByText('Optional. Posted as an opening balance.')).toBeVisible();
+  // The balance is optional here, and the group's footer says what happens to it.
+  await expect(page.getByText('The balance is optional; it is posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
   await openTypes(page);
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();

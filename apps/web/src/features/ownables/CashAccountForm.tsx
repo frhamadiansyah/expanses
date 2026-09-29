@@ -1,13 +1,13 @@
 import { bankMatches, cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { CurrencyRow, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { CurrencyCode, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { currencyFlag } from '../transactions/tx-form';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
@@ -132,11 +132,14 @@ function RateField({ label, value, onChange }: { label: string; value: string; o
 }
 
 /**
- * One pocket in one row: its currency on the left — the flag and the code, a real select laid over them so the phone
- * opens its own picker — and what it opens with on the right, as the amount row of a transaction reads.
+ * A currency and what it opens with, on one row: the flag and the typed code with its › on the left, where a label
+ * would be, and the amount at the right, as the amount row of a transaction reads. A currency other than the
+ * workspace's puts its opening rate beside the amount behind a hairline. Both the plain account's balance and each
+ * pocket are one of these, so turning Multi-currency on only turns one row into several.
  */
-function PocketRow({
-  index,
+function MoneyRow({
+  currencyLabel,
+  amountLabel,
   currency,
   onCurrency,
   balance,
@@ -144,43 +147,37 @@ function PocketRow({
   base,
   rate,
   onRate,
+  hint,
   position,
 }: GroupChild & {
-  index: number;
+  currencyLabel: string;
+  amountLabel: string;
   currency: string;
   onCurrency: (code: string) => void;
   balance: string;
   onBalance: (value: string) => void;
-  /** The workspace's currency: a pocket in it needs no rate. */
+  /** The workspace's currency: money in it needs no rate. */
   base: string;
   rate: string;
   onRate: (value: string) => void;
+  /** A line under the row, such as how a typed rate reads. */
+  hint?: string;
 }) {
   return (
     <div className="relative">
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
-        <span className="ph-focus-within relative flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
+        <span className="flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
           <span aria-hidden>{currencyFlag(currency)}</span>
-          <span aria-hidden className="font-medium">{currency}</span>
-          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
-          <select
-            aria-label={`Pocket ${index + 1}`}
-            value={currency}
-            onChange={(e) => onCurrency(e.target.value)}
-            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
-              </option>
-            ))}
-          </select>
+          <CurrencyCode label={currencyLabel} value={currency} onChange={onCurrency} codes={CURRENCIES} className="font-medium text-[var(--ph-ink)]" />
+          <span aria-hidden className="-ml-[6px] text-[17px] leading-none text-[var(--ph-chevron)]">
+            {'›'}
+          </span>
         </span>
-        {/* A foreign pocket's opening rate, beside its amount behind a hairline: left empty, the day's rate is fetched. */}
+        {/* A foreign opening rate, beside its amount behind a hairline: left empty, the day's rate is fetched. */}
         {currency !== base ? <RateField label={`Rate: ${base} per 1 ${currency}`} value={rate} onChange={onRate} /> : <span className="flex-1" />}
         <input
-          aria-label={`Opening ${currency}`}
+          aria-label={amountLabel}
           value={balance}
           onChange={(e) => onBalance(e.target.value)}
           inputMode="decimal"
@@ -189,6 +186,7 @@ function PocketRow({
           className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
+      {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
   );
 }
@@ -227,8 +225,6 @@ export function CashAccountForm({
   const [pockets, setPockets] = useState<PocketDraft[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  // A row is one line and has no room to explain itself, so the sentence lives under the group and the row points at it.
-  const balanceHint = useId();
   const form = useRef<HTMLFormElement>(null);
   const canSave = !busy && name.trim() !== '';
   const onCanSave = embedded?.onCanSave;
@@ -304,7 +300,6 @@ export function CashAccountForm({
     }
   }
 
-  const rateField = <RateField label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} value={manualRate} onChange={setManualRate} />;
 
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
@@ -318,6 +313,8 @@ export function CashAccountForm({
           ) : (
             <>
               {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.{asks.includes('bank') ? ' The bank goes on your yearly tax report; the name is what you call it here.' : ' Name is what you call yours.'}
+              {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
+              {!pocketed && foreign && ` Its rate is ${ws.baseCurrency} per 1 ${currency} on that day; left empty, the day's rate is used.`}
               {locked && ' When it matures, move the money to an account with a transfer.'}
             </>
           )
@@ -338,42 +335,32 @@ export function CashAccountForm({
         ) : (
           <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
         )}
-        {asks.includes('currency') && !pocketed && (
-          <CurrencyRow
-            label="Currency"
-            value={currency}
-            codes={CURRENCIES}
-            onChange={(next) => {
+        {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
+        {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}
+        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
+        {/* The balance comes after the day it is as of: the date first, then what the account held on it — in which
+            currency, and at what rate when it is not the workspace's, all on the one row a pocket also takes. */}
+        {!pocketed && (
+          <MoneyRow
+            currencyLabel="Currency"
+            amountLabel="Balance now"
+            currency={currency}
+            onCurrency={(next) => {
               setCurrency(next);
               // A source that does not hold what this account will: the answer no longer stands, so it is cleared.
               if (source && source.currency !== next) setSourceId('');
             }}
-          />
-        )}
-        {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
-        {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}
-        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
-        {/* The balance comes after the day it is as of: the date first, then what the account held on it. */}
-        {asks.includes('balance') && !pocketed && (
-          <TextRow
-            label="Balance now"
-            aria-describedby={balanceHint}
-            /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}{foreign ? ` Rate is ${ws.baseCurrency} per 1 ${currency} on that day; left empty, the day's rate is used.` : ''}</span>}
-            value={balance}
-            onChange={(e) => setBalance(e.target.value)}
-            inputMode="decimal"
-            placeholder="Amount"
-            // A foreign account's opening rate on the balance's own line, as a pocket carries it: rate, a hairline, the amount.
-            middle={foreign ? rateField : undefined}
-            style={foreign ? { width: amountWidth(balance) } : undefined}
-            className={foreign ? '!flex-none' : undefined}
+            balance={balance}
+            onBalance={setBalance}
+            base={ws.baseCurrency}
+            rate={manualRate}
+            onRate={setManualRate}
             // How a typed rate reads, while one is typed: "16.500" must not pass for 16500 unseen.
             hint={foreign && manualRate.trim() ? (ratePreview(manualRate, currency, ws.baseCurrency) ?? undefined) : undefined}
           />
         )}
         {/* Only worth asking when a figure has been typed: nothing moves into an account opened at zero. */}
-        {asks.includes('balance') && !pocketed && typedBalance > 0 && (
+        {!pocketed && typedBalance > 0 && (
           <SelectRow
             label="Where the money comes from"
             hint="An account here makes this a transfer from it, so its balance drops too."
@@ -387,15 +374,6 @@ export function CashAccountForm({
               </option>
             ))}
           </SelectRow>
-        )}
-        {foreign && !pocketed && !asks.includes('balance') && (
-          <TextRow
-            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
-            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
-            value={manualRate}
-            onChange={(e) => setManualRate(e.target.value)}
-            inputMode="decimal"
-          />
         )}
         {canPocket && (
           <SwitchRow
@@ -415,9 +393,10 @@ export function CashAccountForm({
       {pocketed && (
         <InsetGroup header="Pockets" footer="Rate is to the workspace’s currency on the opening date. Left empty, that day’s rate is used.">
           {pockets.flatMap((pocket, i) => [
-            <PocketRow
+            <MoneyRow
               key={`p${i}`}
-              index={i}
+              currencyLabel={`Pocket ${i + 1}`}
+              amountLabel={`Opening ${pocket.currency}`}
               currency={pocket.currency}
               onCurrency={(code) => setPockets((rows) => choosePocketCurrency(rows, i, code))}
               balance={pocket.balance}

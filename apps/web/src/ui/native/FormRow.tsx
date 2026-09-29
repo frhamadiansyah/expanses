@@ -390,83 +390,79 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
 export const FORM_KINDS: readonly FormKind[] = ['picker', 'typed', 'static'];
 
 /**
- * A currency, as its three-letter code: typed rather than scrolled for, with the known codes offered as the letters
- * go in (the phone shows them over the keyboard). The row keeps the code it had until three letters make one it knows;
- * leaving it half-typed puts the last good code back.
+ * A currency typed as its three-letter code — no list of 160 to scroll. The field is only three letters wide, so
+ * the › drawn after it by the caller sits right beside it. A code counts once all three letters are a known one;
+ * anything else goes back to the last good code when the field is left. While typing, a phone offers matching
+ * currencies over the keyboard and a desktop gets the browser's own list.
  */
-export function CurrencyRow({
+export function CurrencyCode({
   label,
   value,
   onChange,
   codes,
-  position,
-}: GroupChild & { label: string; value: string; onChange: (code: string) => void; codes: readonly { code: string; name: string }[] }) {
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (code: string) => void;
+  codes: readonly { code: string; name: string }[];
+  className?: string;
+}) {
   const id = useId();
   const listId = `${id}-codes`;
   const [typed, setTyped] = useState<string | null>(null);
   const known = (code: string) => codes.some((c) => c.code === code);
-  const shown = typed ?? value;
   const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
   const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
   return (
-    <div className="relative">
-      <Separator show={Boolean(position?.separator)} />
-      <div className="flex items-center gap-3" style={shell(false)}>
-        <label htmlFor={id} className={LABEL}>
-          {label}
-        </label>
-        {/* The code and its ›, side by side at the right as every picker row reads ("Cash ›"): the field is only as
-            wide as three letters, so no gap opens between them. */}
-        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
-          <input
-            id={id}
-            // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
-            // instead: iOS floats its list in a bubble that lands over the sheet's title, and keeps room for a
-            // suggestion button at the field's end that pushes the code off the right edge.
-            list={typed !== null && desktop ? listId : undefined}
-            value={shown}
-            onFocus={(e) => {
-              setTyped(value);
-              e.currentTarget.select();
-            }}
-            onChange={(e) => {
-              const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-              setTyped(next);
-              if (next.length === 3 && known(next)) onChange(next);
-            }}
-            onBlur={() => setTyped(null)}
-            autoCapitalize="characters"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={3}
-            placeholder="IDR"
-            className="ph-focus w-[3.4em] shrink-0 rounded bg-transparent text-right text-[16px] leading-[20px] tracking-[0.5px] text-[var(--ph-ink-2)] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
-          />
-          <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
-            {'›'}
-          </span>
-        </span>
-        <KeyboardStrip
-          label="Currencies"
-          cells={offered.map((c) => ({
-            key: c.code,
-            label: `${c.code}, ${c.name}`,
-            title: c.code,
-            detail: c.name,
-            onPick: () => {
-              onChange(c.code);
-              setTyped(c.code);
-            },
-          }))}
-        />
-        <datalist id={listId}>
-          {codes.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.name}
-            </option>
-          ))}
-        </datalist>
-      </div>
-    </div>
+    <>
+      <input
+        aria-label={label}
+        // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
+        // instead: iOS floats its list in a bubble that lands over the sheet's title, and keeps room for a
+        // suggestion button at the field's end that pushes the code off the right edge.
+        list={typed !== null && desktop ? listId : undefined}
+        value={typed ?? value}
+        onFocus={(e) => {
+          setTyped(value);
+          e.currentTarget.select();
+        }}
+        onChange={(e) => {
+          const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+          setTyped(next);
+          if (next.length === 3 && known(next)) onChange(next);
+        }}
+        onBlur={() => setTyped(null)}
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={3}
+        placeholder="IDR"
+        className={cx(
+          'ph-focus w-[3.4em] shrink-0 rounded bg-transparent text-[16px] leading-[20px] tracking-[0.5px] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]',
+          className,
+        )}
+      />
+      <KeyboardStrip
+        label="Currencies"
+        cells={offered.map((c) => ({
+          key: c.code,
+          label: `${c.code}, ${c.name}`,
+          title: c.code,
+          detail: c.name,
+          onPick: () => {
+            onChange(c.code);
+            setTyped(c.code);
+          },
+        }))}
+      />
+      <datalist id={listId}>
+        {codes.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.name}
+          </option>
+        ))}
+      </datalist>
+    </>
   );
 }
