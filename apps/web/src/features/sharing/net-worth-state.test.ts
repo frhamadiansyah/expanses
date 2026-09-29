@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, netWorthRowOf, notReadyLine, pendingPrompt, sayNetWorthError, shareRowOf, toggleInvitee } from './net-worth-state';
+import { canInvite, netWorthRowOf, notReadyLine, pendingPrompt, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -108,5 +108,25 @@ describe("an item's Share with Household row (review round 1, finding 3)", () =>
     expect(shareRowOf('joint', 'hidden')).toEqual({ kind: 'not-yet-shared', label: 'Not yet shared' });
     expect(shareRowOf('joint', null)).toEqual({ kind: 'choose', value: null, label: 'Not reviewed', hiddenAllowed: false });
     expect(shareRowOf('joint', 'total')).toEqual({ kind: 'choose', value: 'total', label: 'Balance and one total', hiddenAllowed: false });
+  });
+});
+
+describe('the add forms (D9)', () => {
+  it('with one tax ID a new item is shared whatever the switch says; separately it follows the switch; with no group nothing is written', () => {
+    expect(settingOnAdd('joint', true)).toBe('total');
+    expect(settingOnAdd('joint', false)).toBe('total');
+    expect(settingOnAdd('separate', true)).toBe('total');
+    expect(settingOnAdd('separate', false)).toBe('hidden');
+    expect(settingOnAdd(null, true)).toBeNull();
+  });
+});
+
+describe('the review (§6 Review, wave 3 merge)', () => {
+  it('shows until Share was pressed for this group, even when every item already has a setting from an earlier group', () => {
+    expect(needsReview({ mode: 'separate', reviewed: false, unreviewedItems: 0, pendingHidden: 0 })).toBe(true);
+    expect(needsReview({ mode: 'separate', reviewed: true, unreviewedItems: 0, pendingHidden: 0 })).toBe(false);
+    expect(needsReview({ mode: 'separate', reviewed: true, unreviewedItems: 1, pendingHidden: 0 })).toBe(true);
+    expect(needsReview({ mode: 'joint', reviewed: true, unreviewedItems: 0, pendingHidden: 2 })).toBe(true);
+    expect(needsReview({ mode: 'separate', reviewed: true, unreviewedItems: 0, pendingHidden: 2 })).toBe(false);
   });
 });

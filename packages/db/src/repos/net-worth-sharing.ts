@@ -2,7 +2,8 @@ import { deriveGroup, isActivated, type Answer, type FilingMode, type GroupState
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { withCapture } from '../sync/capture';
+import { captureConfigOf, markAccountDirtyTx, withCapture } from '../sync/capture';
+import { localDate, sendSummariesTx } from '../sync/net-worth/summaries';
 import { listAccounts } from './accounts';
 
 /*
@@ -80,18 +81,14 @@ async function groupInputsOf(db: Db, groupBookId: string): Promise<{ proposals: 
 
 /**
  * The members this group log once held and holds no device of now (they left the group, the workspace, or were
- * removed), each with when they went: the hlc of the removal of their last device (its `removedAt` clock, the same on
- * every device).
+ * removed).
  */
-export async function departedMembers(db: Db, groupBookId: string): Promise<Map<string, string>> {
-  const rows = await db.values<[string, string | null]>(sql`
-    SELECT m.member_id, (SELECT max(c.hlc) FROM sync_field_clocks c JOIN sync_authority_devices d2 ON d2.book_id = c.book_id AND d2.device_id = c.id
-                         WHERE c.book_id = ${groupBookId} AND c.entity = 'device' AND c.field = 'removedAt' AND d2.member_id = m.member_id)
-    FROM sync_authority m WHERE m.book_id = ${groupBookId} AND NOT EXISTS (
+export async function departedMembers(db: Db, groupBookId: string): Promise<Set<string>> {
+  const rows = await db.values<[string]>(sql`
+    SELECT m.member_id FROM sync_authority m WHERE m.book_id = ${groupBookId} AND NOT EXISTS (
       SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id AND d.removed_seq IS NULL)
     AND EXISTS (SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id)`);
-  // A removal with no clock here (never expected) counts as long ago: nothing made after the start is counted as left.
-  return new Map(rows.map(([member, hlc]) => [member, hlc ?? '']));
+  return new Set(rows.map(([member]) => member));
 }
 
 function parseMembers(json: string): string[] {
@@ -186,16 +183,46 @@ export async function setShareSetting(database: Database, accountId: string, set
 
 /**
  * Where a changed setting reaches the item's summary (spec §9: a setting change re-sends it, `Don't share` sends
- * `removed`), in the transaction that wrote it. The summaries (task 6) are wired in here by the controller at merge:
- * this function and `afterReviewConfirmed` are the only two places a setting is written.
+ * `removed`), in the transaction that wrote it: the account is marked dirty, and the capture flush before COMMIT sends
+ * or removes its summary (task 6). This function and `afterReviewConfirmed` are the only two places a setting is written.
  */
-async function afterShareSettingChanged(_tx: Tx, _accountId: string): Promise<void> {}
+async function afterShareSettingChanged(tx: Tx, accountId: string): Promise<void> {
+  markAccountDirtyTx(tx, accountId);
+}
 
 /**
  * Where the review's Share sends every shared item's summary (§8.1: Share sends the summaries), in the transaction that
- * wrote the settings. The summaries (task 6) are wired in here by the controller at merge.
+ * wrote the settings, as of this device's day.
  */
-async function afterReviewConfirmed(_tx: Tx): Promise<void> {}
+async function afterReviewConfirmed(tx: Tx, today: string): Promise<void> {
+  const group = await activeNetWorthGroup(tx);
+  if (group) await markReviewedTx(tx, group.groupBookId);
+  await sendSummariesTx(tx, 'all', today);
+}
+
+/*
+ * Review before anything is sent (§6 Review; wave 3 merge ruling, the stricter of the two sides): a member's phone sends
+ * no summary into a group log until this person has pressed Share on the review for that group. A share setting alone is
+ * not enough — one left from an earlier group (dissolved, or set up again with someone else) would otherwise go to the
+ * new group's members on the first write, before its review. Local, per device, like the settings it covers.
+ */
+const REVIEWED_KEY = (groupBookId: string) => `nw.reviewed.${groupBookId}`;
+
+/** Records that this person pressed Share on the review of this group log (what `confirmReview` does). */
+export async function markReviewedTx(tx: Db, groupBookId: string): Promise<void> {
+  await tx.run(sql`INSERT INTO settings (key, value) VALUES (${REVIEWED_KEY(groupBookId)}, '1') ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+}
+
+/** Whether this person has reviewed their items (pressed Share) for this group log (§6 Review). */
+export async function reviewedFor(source: Database | Db, groupBookId: string): Promise<boolean> {
+  const db = 'exportBytes' in source ? source.db : source;
+  return (await db.values(sql`SELECT 1 FROM settings WHERE key = ${REVIEWED_KEY(groupBookId)}`)).length > 0;
+}
+
+/** This device's day, by the capture clock the engine and tests set (the same day capture's flush sends with). */
+function todayOf(database: Database): string {
+  return localDate(captureConfigOf(database).now?.() ?? Date.now());
+}
 
 export interface ReviewItem {
   accountId: string;
@@ -230,9 +257,10 @@ export async function reviewItems(database: Database, ws: WorkspaceContext): Pro
 export async function confirmReview(database: Database, ws: WorkspaceContext, settings: Record<string, ShareSetting>): Promise<void> {
   const joint = (await activeNetWorthGroup(database))?.mode === 'joint';
   const items = await reviewItems(database, ws);
+  const today = todayOf(database);
   await database.transaction(async (tx) => {
     for (const item of items) await writeSetting(tx, item.accountId, joint ? 'total' : (settings[item.accountId] ?? 'total'));
-    await afterReviewConfirmed(tx);
+    await afterReviewConfirmed(tx, today);
   });
   await refreshPendingCount(database);
 }

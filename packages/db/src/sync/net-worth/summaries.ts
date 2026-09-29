@@ -1,11 +1,7 @@
 import {
-  type Answer,
-  deriveGroup,
-  type FilingMode,
   type ItemSummary,
   lastMonthEnds,
   type PeriodMovement,
-  type Proposal,
   splitPeriod,
   statementCycleFor,
   calendarCycleFor,
@@ -16,6 +12,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
+import { activeNetWorthGroup, reviewedFor } from '../../repos/net-worth-sharing';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 
@@ -45,47 +42,6 @@ export function localDate(ms: number): string {
 /** Joint-net-worth §5.1: `itemId = uuidv5(groupBookId, 'item:' + accountId)` — one-way, so peers never learn the account id. */
 export function itemIdOf(groupBookId: string, accountId: string): Promise<string> {
   return uuidv5(groupBookId, `item:${accountId}`);
-}
-
-export interface ActiveGroup {
-  groupBookId: string;
-  workspaceBookId: string;
-  /** This device's member in the group log. */
-  memberId: string;
-  mode: FilingMode;
-  members: string[];
-}
-
-/**
- * The active group of the workspace this device is in, derived (§6) from the group log's proposals and answers, or null:
- * no group log here, no active proposal, or one this member is not in. The one seam task 5's `activeNetWorthGroup` may
- * replace.
- */
-export async function activeGroupFor(tx: Db, workspaceBookId: string): Promise<ActiveGroup | null> {
-  const [log] = await tx.values<[string, string]>(sql`
-    SELECT g.group_book_id, s.member_id FROM nw_group_books g JOIN shared_books s ON s.book_id = g.group_book_id
-    WHERE g.book_id = ${workspaceBookId} AND s.state = 'active' ORDER BY s.shared_at DESC, g.group_book_id LIMIT 1`);
-  if (!log) return null;
-  const [groupBookId, memberId] = log;
-  const proposals: Proposal[] = [];
-  for (const [proposalId, mode, membersJson, proposedBy, createdHlc, cancelled] of await tx.values<[string, string, string, string, string, number]>(
-    sql`SELECT proposal_id, mode, members_json, proposed_by, created_hlc, cancelled FROM nw_proposals WHERE book_id = ${groupBookId}`,
-  )) {
-    let members: string[] = [];
-    try {
-      const parsed = JSON.parse(membersJson) as unknown;
-      if (Array.isArray(parsed)) members = parsed.filter((m): m is string => typeof m === 'string');
-    } catch {
-      // Malformed peer data is a proposal nobody can confirm.
-    }
-    proposals.push({ proposalId, mode: mode as FilingMode, members, proposedBy, createdHlc, cancelled: Number(cancelled) !== 0 });
-  }
-  const answers = (await tx.values<[string, string, string]>(sql`SELECT proposal_id, member_id, answer FROM nw_answers WHERE book_id = ${groupBookId}`)).map(
-    ([proposalId, member, answer]): Answer => ({ proposalId, memberId: member, answer: answer as Answer['answer'] }),
-  );
-  const { active } = deriveGroup(proposals, answers);
-  if (!active || !active.members.includes(memberId)) return null;
-  return { groupBookId, workspaceBookId, memberId, mode: active.mode, members: active.members };
 }
 
 /** An item's share setting (§5.4): `total`, `hidden`, or null — not reviewed yet, which sends nothing. */
@@ -230,57 +186,50 @@ async function writeItemTx(tx: Db, groupBookId: string, itemId: string, owner: s
 }
 
 /**
- * Sends the summaries of `accountIds` (or of every item, `'all'`) that changed, into the group log of each active group
- * this device is in: a new or changed summary for an item shared `total`; `removed = true` (summary blanked) for one this
+ * Sends the summaries of `accountIds` (or of every item, `'all'`) that changed, into the group log of the one active group
+ * this member is in (§4): a new or changed summary for an item shared `total`; `removed = true` (summary blanked) for one this
  * member had shared that is now hidden, archived, deleted or no item at all; nothing for the rest. Inside the caller's
  * transaction, captured, so the ops leave with the next sync. Returns how many items it wrote.
  */
 export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string): Promise<number> {
-  let groups: [string][];
-  try {
-    groups = await tx.values<[string]>(sql`
-      SELECT DISTINCT g.book_id FROM nw_group_books g JOIN shared_books s ON s.book_id = g.group_book_id WHERE s.state = 'active'`);
-  } catch {
-    return 0; // a database from before migration 0057
-  }
+  // One group per person (§4): the one active group this member is in, read by the one group-state reader (task 5).
+  const group = await activeNetWorthGroup(tx);
+  // Nothing before this person's own review of this group (§6 Review, wave 3 merge).
+  if (!group || !(await reviewedFor(tx, group.groupBookId))) return 0;
+  const { groupBookId, workspaceBookId, me: memberId } = group;
+  const ws = await workspaceOfBook(tx, workspaceBookId);
+  if (!ws) return 0;
   let written = 0;
-  for (const [workspaceBookId] of groups) {
-    const group = await activeGroupFor(tx, workspaceBookId);
-    if (!group) continue;
-    const ws = await workspaceOfBook(tx, workspaceBookId);
-    if (!ws) continue;
-    const { groupBookId, memberId } = group;
-    const ids = new Set<string>();
-    if (accountIds === 'all') {
-      for (const [id] of await tx.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND kind IN ('asset', 'liability') ORDER BY id`)) ids.add(id);
-      for (const [id] of await tx.values<[string]>(sql`SELECT account_id FROM nw_item_map WHERE group_book_id = ${groupBookId}`)) ids.add(id);
-    } else for (const id of accountIds) ids.add(id);
+  const ids = new Set<string>();
+  if (accountIds === 'all') {
+    for (const [id] of await tx.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND kind IN ('asset', 'liability') ORDER BY id`)) ids.add(id);
+    for (const [id] of await tx.values<[string]>(sql`SELECT account_id FROM nw_item_map WHERE group_book_id = ${groupBookId}`)) ids.add(id);
+  } else for (const id of accountIds) ids.add(id);
 
-    for (const accountId of ids) {
-      const itemId = await itemIdOf(groupBookId, accountId);
-      const account = await accountOf(tx, ws.workspaceId, accountId);
-      const shared = (await isItem(tx, account)) && (await shareSettingOf(tx, accountId)) === 'total';
-      if (shared) {
-        const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today);
-        const hash = summaryHash(summary);
-        const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
-        const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
-        if (sent?.[0] === hash && live && Number(live[0]) === 0) continue;
-        await tx.run(sql`
-          INSERT INTO nw_item_map (account_id, group_book_id, item_id) VALUES (${accountId}, ${groupBookId}, ${itemId})
-          ON CONFLICT (account_id) DO UPDATE SET group_book_id = excluded.group_book_id, item_id = excluded.item_id`);
-        await writeItemTx(tx, groupBookId, itemId, memberId, JSON.stringify(summary), false);
-        await tx.run(sql`INSERT INTO nw_sent (item_id, summary_hash) VALUES (${itemId}, ${hash}) ON CONFLICT (item_id) DO UPDATE SET summary_hash = excluded.summary_hash`);
-        written += 1;
-        continue;
-      }
-      // Not shared (any more): an item this member had shared, still live in the log, is taken back.
-      await tx.run(sql`DELETE FROM nw_sent WHERE item_id = ${itemId}`);
-      const [live] = await tx.values<[string, number]>(sql`SELECT owner, removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
-      if (!live || live[0] !== memberId || Number(live[1]) !== 0) continue;
-      await writeItemTx(tx, groupBookId, itemId, memberId, 'null', true);
+  for (const accountId of ids) {
+    const itemId = await itemIdOf(groupBookId, accountId);
+    const account = await accountOf(tx, ws.workspaceId, accountId);
+    const shared = (await isItem(tx, account)) && (await shareSettingOf(tx, accountId)) === 'total';
+    if (shared) {
+      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today);
+      const hash = summaryHash(summary);
+      const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
+      const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
+      if (sent?.[0] === hash && live && Number(live[0]) === 0) continue;
+      await tx.run(sql`
+        INSERT INTO nw_item_map (account_id, group_book_id, item_id) VALUES (${accountId}, ${groupBookId}, ${itemId})
+        ON CONFLICT (account_id) DO UPDATE SET group_book_id = excluded.group_book_id, item_id = excluded.item_id`);
+      await writeItemTx(tx, groupBookId, itemId, memberId, JSON.stringify(summary), false);
+      await tx.run(sql`INSERT INTO nw_sent (item_id, summary_hash) VALUES (${itemId}, ${hash}) ON CONFLICT (item_id) DO UPDATE SET summary_hash = excluded.summary_hash`);
       written += 1;
+      continue;
     }
+    // Not shared (any more): an item this member had shared, still live in the log, is taken back.
+    await tx.run(sql`DELETE FROM nw_sent WHERE item_id = ${itemId}`);
+    const [live] = await tx.values<[string, number]>(sql`SELECT owner, removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
+    if (!live || live[0] !== memberId || Number(live[1]) !== 0) continue;
+    await writeItemTx(tx, groupBookId, itemId, memberId, 'null', true);
+    written += 1;
   }
   return written;
 }

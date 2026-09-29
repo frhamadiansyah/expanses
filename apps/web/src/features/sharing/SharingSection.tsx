@@ -7,7 +7,7 @@ import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from './InviteCard';
 import { useNetWorthGroup, useReview } from './net-worth-queries';
-import { JOINT_LINE, netWorthRowOf, sayNetWorthError } from './net-worth-state';
+import { JOINT_LINE, needsReview, netWorthRowOf, sayNetWorthError } from './net-worth-state';
 import { NetWorthReview } from './NetWorthReview';
 import { NetWorthSetup } from './NetWorthSetup';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
@@ -436,7 +436,15 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
   const others = (active?.members ?? []).filter((id) => id !== me).map((id) => detail.members.find((m) => m.memberId === id)?.name ?? 'Someone');
   const items = review.data?.items ?? [];
   const reviewing =
-    active && active.members.includes(me) && (items.some((item) => item.setting === null) || (active.mode === 'joint' && (review.data?.pending.length ?? 0) > 0));
+    active &&
+    active.members.includes(me) &&
+    review.data !== undefined &&
+    needsReview({
+      mode: active.mode,
+      reviewed: review.data.reviewed,
+      unreviewedItems: items.filter((item) => item.setting === null).length,
+      pendingHidden: review.data.pending.length,
+    });
 
   return (
     <div data-testid="net-worth-section">

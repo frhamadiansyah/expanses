@@ -428,6 +428,13 @@ export function takePendingSummaryAccounts(database: Database): string[] {
   return ids;
 }
 
+/** Puts back accounts `takePendingSummaryAccounts` handed over whose send did not commit, for the next sync to retry. */
+export function returnPendingSummaryAccounts(database: Database, ids: readonly string[]): void {
+  if (ids.length === 0) return;
+  const pending = (captureConfigOf(database).pendingSummaries ??= new Set());
+  for (const id of ids) pending.add(id);
+}
+
 /** Switches capture off for the rest of this db transaction. Apply calls it: applying never re-emits (spec §7.2). */
 export function pauseCapture(tx: Db): void {
   sessionOf(tx)?.pause();

@@ -2,12 +2,14 @@ import { expenseLines, isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  activeNetWorthGroup,
   archiveAccount,
   assetValuesAt,
   createAccount,
   createBook,
   createCardAccount,
   deleteUnusedAccount,
+  markReviewedTx,
   personalBook,
   postTransaction,
   postTransactionTx,
@@ -77,10 +79,12 @@ async function activeGroup(mode: 'joint' | 'separate' = 'joint') {
   return { ...h, groupBookId };
 }
 
-/** The review's answer for one item (local only, never synced). */
+/** The review's answer for one item (local only, never synced), with the review of the active group, if any, done. */
 async function setShare(d: Device, accountId: string, setting: 'total' | 'hidden'): Promise<void> {
   await d.database.transaction(async (tx) => {
     await tx.run(sql`INSERT INTO nw_share_settings (account_id, setting) VALUES (${accountId}, ${setting}) ON CONFLICT (account_id) DO UPDATE SET setting = excluded.setting`);
+    const group = await activeNetWorthGroup(tx);
+    if (group) await markReviewedTx(tx, group.groupBookId);
   });
 }
 

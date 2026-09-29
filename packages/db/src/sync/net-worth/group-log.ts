@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Database, Tx } from '../../database';
 import { clearAuthorityTx, CLOSED_LINK_PREFIX, GROUP_LINK_NS, groupLogWorkspaceOf, isClosedLink, OWN_LINK_PENDING_KEY, viewActiveDevices, viewDevice } from '../authority';
-import { captureConfigOf, rowUpsertsTx, takePendingSummaryAccounts, withCapture, writeChangeSetsTx } from '../capture';
+import { captureConfigOf, rowUpsertsTx, returnPendingSummaryAccounts, takePendingSummaryAccounts, withCapture, writeChangeSetsTx } from '../capture';
 import { fromUtf8, hkdf, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../crypto';
 import type { SyncOnceResult } from '../engine';
 import { encodeInviteCode, inviteAad, INVITE_TTL_MS, inviteKeyOf, newInviteSecret, openInviteJson, parseInviteCode, sealInviteJson, type InviteKey } from '../invite';
@@ -520,7 +520,14 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
     // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state; on every
     // sync, the items a peer's change touched here (apply sends nothing itself) and those whose period has ended.
     const pending = takePendingSummaryAccounts(host.database);
-    const sent = await host.database.transaction((tx) => (joined ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today)));
+    let sent: number;
+    try {
+      sent = await host.database.transaction((tx) => (joined ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today)));
+    } catch (error) {
+      // Rolled back: the accounts apply changed wait for the next sync rather than being forgotten (wave 3 merge).
+      returnPendingSummaryAccounts(host.database, pending);
+      throw error;
+    }
     if (sent > 0) synced = await host.syncOnce(groupBookId);
   }
   return synced;

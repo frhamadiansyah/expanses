@@ -99,10 +99,12 @@ rotation (S5–S9). What differs:
   group log is then no longer linked: its members keep it and keep sharing, but a later device of theirs cannot be let
   in, and a member's new device may join the other group instead. This is disruption only — nothing is shared with
   anyone until that device's member confirms a proposal there. The remedy is for the members to set up net worth
-  again. Two members opening a group at the same moment:
-  the first link in the workspace log is the link on every device; the device whose own link was not yet back from
-  the log yields to it, abandons its lone group log, and joins the linked one when a member lets it in. A group
-  member's device lets in any later device of a group member that the workspace has admitted.
+  again.
+
+  Two members opening a group at the same moment: the first link in the workspace log is the link on every device;
+  the device whose own link was not yet back from the log yields to it, abandons its lone group log, and joins the
+  linked one when a member lets it in. A group member's device lets in any later device of a group member that the
+  workspace has admitted.
   Out of the workspace is out of the group (§6, last bullet): a device whose workspace sharing ends leaves the group
   log (or forgets it, when the relay cannot be reached), and any group member's device removes, with rotation, a device
   the workspace's view has removed.
@@ -189,7 +191,8 @@ the payer's device from the summary's `name`, as it is from a local account toda
 ## 6. The group and its filing mode
 
 **State is derived, never stored.** On every device: the **active** proposal is the latest (by HLC of its creation)
-proposal that is not cancelled and that every listed member confirmed. Its `members` are the group; its `mode` is the
+proposal that is not cancelled and that every listed member confirmed — and, when it changes an active group, every
+current member of that group it leaves out confirmed too (see **Change**). Its `members` are the group; its `mode` is the
 mode. No active proposal = no group. Every device derives the same answer from the same log.
 
 - **Setup.** One member taps **Share net worth** in the shared workspace, answers "How does your household file tax?",
@@ -198,7 +201,8 @@ mode. No active proposal = no group. Every device derives the same answer from t
 - **Confirm.** The invited member's phone shows "Rina set up household net worth: one tax ID. [Confirm] [Choose
   differently]". Choose differently = `decline` plus a new proposal of their own.
 - **Review.** When a proposal becomes active, each member reviews their own items (§8.1) before their phone sends
-  anything.
+  anything. The phone keeps a local mark per group log that its person pressed Share; a share setting left from an
+  earlier group is not a review of this one, and sends nothing until that Share (wave 3 merge).
 - **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed — by every
   member it lists **and** every current member of the active group it leaves out, so nobody is dropped without saying
   yes (D6, task 5 review round 2). The proposer may cancel; anyone asked may decline. Once made, a proposal's

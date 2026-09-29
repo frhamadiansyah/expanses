@@ -188,6 +188,17 @@ function deletedAfter(ops: readonly SealedOp[] | undefined, mark: number): boole
   return (ops ?? []).some(({ rowid, op }) => rowid > mark && op.op === 'delete');
 }
 
+/**
+ * Whether an error only says the watch is gone — the database was closed, or restored into a new connection that has
+ * none of the harness's temp tables — rather than that a check itself failed (wave 3 merge: only these may be ignored).
+ */
+export function watchGone(error: unknown): boolean {
+  for (let e: unknown = error; e instanceof Error; e = (e as Error & { cause?: unknown }).cause) {
+    if (/database connection is not open|no such table: (temp\.)?__(writes|sealed)\b/.test(e.message)) return true;
+  }
+  return false;
+}
+
 type Write = { seq: number; table: string; key: string; op: string; cols: string; old: string | null; mark: number };
 
 /**
@@ -213,8 +224,9 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     );
     writes = rows.map(([seq, table, key, op, cols, old, mark]) => ({ seq, table, key, op, cols, old, mark: Number(mark) }));
     await database.db.run(sql`DELETE FROM temp.__writes`);
-  } catch {
-    return [];
+  } catch (error) {
+    if (watchGone(error)) return [];
+    throw error;
   }
   if (writes.length === 0) return [];
   const ops = await outboxOps(database, bookId);
@@ -323,11 +335,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       continue;
     }
     // The head must read as the outbox's latest word on each field it carried since the first write here.
-    if (expected !== null) {
+    // A book whose sharing stopped (§8.6) has no member here to read the purchase as: its lineage was judged above, and
+    // the field-by-field reading is skipped (wave 3 merge: this used to throw, swallowed by the setup's catch).
+    const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
+    if (expected !== null && member) {
       const since = Math.min(...writes.filter((x) => x.key === w.key || x.key === expected).map((x) => x.mark));
-      const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
       // Read as the lineage knows it: a purchase another member paid carries the payer's label, not the placeholder's name.
-      const projected = (await projectPurchase(database.db, expected, member![0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
+      const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
         const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
@@ -348,30 +362,49 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
  * filed only in books that are not shared (review round 1). A private
  * line's amount and description are checked by the summaries test, where they are known.
  */
-export async function privateLeaks(database: Database): Promise<string[]> {
+export async function privateLeaks(database: Database, afterSeq = 0): Promise<string[]> {
   let rows: [string, string][];
   try {
-    rows = await database.db.values<[string, string]>(sql`SELECT book_id, entry_json FROM temp.__sealed WHERE book_id <> '' AND entry_json IS NOT NULL ORDER BY seq`);
-  } catch {
-    return [];
+    rows = await database.db.values<[string, string]>(
+      sql`SELECT book_id, entry_json FROM temp.__sealed WHERE seq > ${afterSeq} AND book_id <> '' AND entry_json IS NOT NULL ORDER BY seq`,
+    );
+  } catch (error) {
+    if (watchGone(error)) return [];
+    throw error;
   }
   if (rows.length === 0) return [];
   const accountIds = (
     await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE kind IN ('asset', 'liability') AND id NOT IN (SELECT account_id FROM book_member_accounts)`)
   ).map(([id]) => id);
-  // A category filed only in books that are not shared here (a Business book of this person's own) is private too.
+  // A category filed only in books that are not shared here (a Business book of this person's own) is private too —
+  // except in a change-set of a book it is filed in: that book was shared when it was sealed, though it may have stopped
+  // sharing since (§8.6; wave 3 merge).
   const categoryIds = (
     await database.db.values<[string]>(sql`
       SELECT DISTINCT bc.category_account_id FROM book_categories bc
       WHERE bc.book_id NOT IN (SELECT book_id FROM shared_books)
         AND bc.category_account_id NOT IN (SELECT category_account_id FROM book_categories WHERE book_id IN (SELECT book_id FROM shared_books))`)
   ).map(([id]) => id);
+  const filedIn = new Set(
+    (await database.db.values<[string, string]>(sql`SELECT book_id, category_account_id FROM book_categories`)).map(([book, category]) => `${book}|${category}`),
+  );
   const transactionIds = (await database.db.values<[string]>(sql`SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage)`)).map(([id]) => id);
   const leaks: string[] = [];
   for (const [bookId, entryJson] of rows) {
     for (const id of accountIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries account ${id}`);
     for (const id of transactionIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private transaction ${id}`);
-    for (const id of categoryIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private category ${id}`);
+    for (const id of categoryIds) if (!filedIn.has(`${bookId}|${id}`) && entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private category ${id}`);
   }
   return [...new Set(leaks)];
+}
+
+/** The last change-set `privateLeaks` has seen, so each is judged once (0 when the watch is gone). */
+export async function lastSealedSeq(database: Database): Promise<number> {
+  try {
+    const [row] = await database.db.values<[number]>(sql`SELECT coalesce(max(seq), 0) FROM temp.__sealed`);
+    return Number(row?.[0] ?? 0);
+  } catch (error) {
+    if (watchGone(error)) return 0;
+    throw error;
+  }
 }

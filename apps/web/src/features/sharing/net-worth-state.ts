@@ -110,3 +110,21 @@ export function shareRowOf(mode: FilingMode, setting: 'total' | 'hidden' | null)
   const label = setting === null ? 'Not reviewed' : setting === 'total' ? 'Balance and one total' : "Don't share";
   return { kind: 'choose', value: setting, label, hiddenAllowed: mode === 'separate' };
 }
+
+/**
+ * What an add form writes for the item it just opened (D9): with one tax ID every item is shared (`total`), whatever the
+ * switch; separately the switch decides; in no active group nothing is written.
+ */
+export function settingOnAdd(mode: FilingMode | null, share: boolean): 'total' | 'hidden' | null {
+  if (mode === null) return null;
+  return mode === 'joint' || share ? 'total' : 'hidden';
+}
+
+/**
+ * Whether the review is shown under an active group this person is in (§6 Review, §8.1, D8): until Share was pressed for
+ * this group (settings left from an earlier group are not a review of this one), while any item has no setting, or
+ * while the household files jointly and an item is still hidden.
+ */
+export function needsReview(input: { mode: FilingMode; reviewed: boolean; unreviewedItems: number; pendingHidden: number }): boolean {
+  return !input.reviewed || input.unreviewedItems > 0 || (input.mode === 'joint' && input.pendingHidden > 0);
+}

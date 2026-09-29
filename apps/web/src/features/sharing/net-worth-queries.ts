@@ -1,4 +1,4 @@
-import { activeNetWorthGroup, getShareSetting, pendingHidden, reviewItems } from '@expanses/db';
+import { activeNetWorthGroup, getShareSetting, pendingHidden, reviewedFor, reviewItems } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useApp } from '../../app/context';
@@ -40,6 +40,14 @@ export function useReview() {
   useRereadOnSync();
   return useQuery({
     queryKey: ['net-worth', 'review', ws.workspaceId],
-    queryFn: async () => ({ items: await reviewItems(database, ws), pending: await pendingHidden(database, ws) }),
+    queryFn: async () => {
+      const group = await activeNetWorthGroup(database);
+      return {
+        items: await reviewItems(database, ws),
+        pending: await pendingHidden(database, ws),
+        // Whether Share was pressed on this group's review: nothing is sent before it (§6 Review, wave 3 merge).
+        reviewed: group ? await reviewedFor(database, group.groupBookId) : false,
+      };
+    },
   });
 }

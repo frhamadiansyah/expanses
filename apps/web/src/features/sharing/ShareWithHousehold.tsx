@@ -1,11 +1,11 @@
-import { type ShareSetting, setShareSetting } from '@expanses/db';
+import { activeNetWorthGroup, type ShareSetting, setShareSetting } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow } from '../../ui/native';
 import { useActiveNetWorthGroup, useShareSetting } from './net-worth-queries';
-import { JOINT_LINE, sayNetWorthError, shareRowOf } from './net-worth-state';
+import { JOINT_LINE, sayNetWorthError, settingOnAdd, shareRowOf } from './net-worth-state';
 
 /*
  * Each item's own say in joint net worth (spec §8.1, D7, D9). Nothing at all is drawn while this person is in no active
@@ -90,8 +90,11 @@ export function useShareOnAdd(): { element: ReactNode; save: (accountIds: readon
       </InsetGroup>
     ) : null;
   async function save(accountIds: readonly string[]) {
-    if (!mode) return;
-    for (const id of accountIds) await setShareSetting(database, id, mode === 'joint' || share ? 'total' : 'hidden');
+    // The group as it is when the form saves, not as the screen last read it: a joint household's new item is always
+    // written `total` (D9), even when the query had not loaded or the mode changed while the form was open.
+    const setting = settingOnAdd((await activeNetWorthGroup(database))?.mode ?? null, share);
+    if (!setting) return;
+    for (const id of accountIds) await setShareSetting(database, id, setting);
   }
   return { element, save };
 }
