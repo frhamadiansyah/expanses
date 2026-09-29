@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { type GroupChild, ROW_PAD_X, ROW_PAD_Y, TAP } from '../../ui/native';
 
 const NEED_EXPLAINED =
-  'Essential or lifestyle decides what an emergency fund covers and how the Budget splits what you spent. A category with no mark follows its parent, and counts as essential at the top.';
+  'Sizes your emergency fund and splits your Budget. Left unset, it follows its parent, or is essential.';
 
 /**
- * "Counts as", answered by the native pop-up menu: the answer is always one of two, and the row shows which even when
+ * "Spending" (essential or lifestyle), answered by the native pop-up menu: the answer is always one of two, and the row shows which even when
  * it is inherited. Choosing either makes the mark the category's own.
  */
 export function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { name: string; need: ResolvedNeed; caption?: string; onChoose: (need: CategoryNeed) => void }) {
@@ -18,11 +18,11 @@ export function NeedRow({ name, need, caption, onChoose, position }: GroupChild 
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-[6px]">
-            <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Counts as</span>
+            <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Spending</span>
             {/* The why of the answer, the way a form row's ⓘ opens its own: under the row, until tapped again. */}
             <button
               type="button"
-              aria-label="About Counts as"
+              aria-label="About Spending"
               aria-expanded={explained}
               onClick={() => setExplained((was) => !was)}
               className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
@@ -41,7 +41,7 @@ export function NeedRow({ name, need, caption, onChoose, position }: GroupChild 
           <span aria-hidden>{need.need === 'lifestyle' ? 'Lifestyle' : 'Essential'}</span>
           <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
           <select
-            aria-label={`What ${name} counts as`}
+            aria-label={`Spending for ${name}`}
             value={need.need}
             onChange={(e) => {
               const key = e.target.value as CategoryNeed;

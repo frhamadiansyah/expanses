@@ -2,7 +2,7 @@ import type { CategoryUsage, CategoryUse } from '@expanses/db';
 import type { ResolvedNeed } from '@expanses/core';
 
 /**
- * The quiet line under "Counts as" on a category's page: where its essential-or-lifestyle answer comes from — a mark
+ * The quiet line under "Spending" on a category's page: where its essential-or-lifestyle answer comes from — a mark
  * of its own or a parent's. None at all says nothing: the control already reads Essential, and the ⓘ says why.
  */
 export function needCaption(source: ResolvedNeed['source'], parentName: string | null): string | undefined {

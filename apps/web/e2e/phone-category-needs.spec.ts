@@ -4,10 +4,10 @@ import { expectNeed, markNeed, openCategory } from './categories';
 test('a parent’s mark reaches its children, a child can keep its own, and clearing hands it back', async ({ page }) => {
   await openCategory(page, 'Restaurants');
   await expectNeed(page, 'Restaurants', 'Essential', null);
-  // Why it matters sits behind the ⓘ beside Counts as, not in a footer.
-  await expect(page.getByText(/decides what an emergency fund covers/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Counts as' }).click();
-  await expect(page.getByText(/decides what an emergency fund covers/)).toBeVisible();
+  // Why it matters sits behind the ⓘ beside Spending, not in a footer.
+  await expect(page.getByText(/Sizes your emergency fund and splits your Budget/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Spending' }).click();
+  await expect(page.getByText(/Sizes your emergency fund and splits your Budget/)).toBeVisible();
 
   await markNeed(page, 'Food and beverage', 'Lifestyle');
   await openCategory(page, 'Restaurants');

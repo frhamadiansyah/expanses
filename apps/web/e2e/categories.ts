@@ -9,11 +9,11 @@ export async function openCategory(page: Page, name: string, kind: 'expense' | '
 
 /** The Essential / Lifestyle control on an open category page. */
 export function countsAs(page: Page, name: string) {
-  return page.getByRole('combobox', { name: `What ${name} counts as` });
+  return page.getByRole('combobox', { name: `Spending for ${name}` });
 }
 
 /** What an open category page says it counts as, and where that answer came from. */
-/** `source` null: no mark anywhere, so the row says nothing under Counts as and only the control reads Essential. */
+/** `source` null: no mark anywhere, so the row says nothing under Spending and only the control reads Essential. */
 export async function expectNeed(page: Page, name: string, need: 'Essential' | 'Lifestyle', source: string | null) {
   await expect(countsAs(page, name)).toHaveValue(need.toLowerCase());
   if (source === null) await expect(page.getByTestId('need-source')).toHaveCount(0);
