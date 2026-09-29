@@ -1,11 +1,11 @@
 import { type AccountRow, createAccount, setCategoryColour } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
+import { useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { Pencil, Tag } from 'lucide-react';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
-import { ICONS } from '../categories/CategoryIcon';
+import { categoryMark, ICONS } from '../categories/CategoryIcon';
 import { ColourPicker, IconPicker } from '../categories/CategoryLookSheets';
 
 /**
@@ -44,7 +44,11 @@ export function useNewCategoryForm({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const Preview = (icon && ICONS[icon]) || Tag;
+  const chosenColours = useCategoryColours().data;
+  // With a parent, it is drawn as its parent draws it until an icon of its own is picked, in a shade of the parent's
+  // colour; at the top, in the colour picked for it, or the app's tint until one is.
+  const parentMark = parentId ? categoryMark(parentId, parents, chosenColours) : null;
+  const Preview = (icon && ICONS[icon]) || parentMark?.Glyph || Tag;
 
   async function save() {
     if (busy || !name.trim()) return;
@@ -82,8 +86,8 @@ export function useNewCategoryForm({
     setError(null);
   };
 
-  // The circle: the icon it will draw, in the colour it will wear — a top-level one's own, else the app's tint.
-  const own = colour && !parentId ? colour : null;
+  // The circle: the icon it will draw, in the colour it will wear.
+  const own = parentMark ? parentMark.colour : colour;
   const circle = (size: number, glyph: number) => (
     <span
       aria-hidden
@@ -124,11 +128,11 @@ export function useNewCategoryForm({
     </div>
   );
 
-  // One step further in the same sheet: the circle large, then the colours (a top-level category only — one with a
+  // One step further in the same sheet: the same circle, then the colours (a top-level category only — one with a
   // parent is drawn in a shade of the parent's), then every icon. No scroll box of its own: the sheet scrolls.
   const look = (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-center py-2">{circle(84, 38)}</div>
+      <div className="flex justify-center py-2">{circle(64, 30)}</div>
       {!parentId && (
         <section aria-label="Colour" data-testid="new-category-colours">
           <h3 className="mb-1.5 px-4 text-[12px] leading-[16px] font-medium tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">Colour</h3>
