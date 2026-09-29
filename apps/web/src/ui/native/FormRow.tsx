@@ -412,24 +412,36 @@ export function CurrencyRow({
         <label htmlFor={id} className={LABEL}>
           {label}
         </label>
-        <input
-          id={id}
-          list={listId}
-          value={shown}
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => {
-            const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-            setTyped(next);
-            if (next.length === 3 && known(next)) onChange(next);
-          }}
-          onBlur={() => setTyped(null)}
-          autoCapitalize="characters"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={3}
-          placeholder="IDR"
-          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] tracking-[0.5px] text-[var(--ph-ink)] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
-        />
+        {/* The code and its ›, side by side at the right as every picker row reads ("Cash ›"): the field is only as
+            wide as three letters, so no gap opens between them. */}
+        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
+          <input
+            id={id}
+            // Only while typing: iOS keeps room at the end of any field with a list for a suggestion button, which
+            // pushed the code off the right edge at rest. Focused, the room does not matter and the codes are offered.
+            list={typed !== null ? listId : undefined}
+            value={shown}
+            onFocus={(e) => {
+              setTyped(value);
+              e.currentTarget.select();
+            }}
+            onChange={(e) => {
+              const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+              setTyped(next);
+              if (next.length === 3 && known(next)) onChange(next);
+            }}
+            onBlur={() => setTyped(null)}
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={3}
+            placeholder="IDR"
+            className="ph-focus w-[3.4em] shrink-0 rounded bg-transparent text-right text-[16px] leading-[20px] tracking-[0.5px] text-[var(--ph-ink-2)] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+          />
+          <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+            {'›'}
+          </span>
+        </span>
         <datalist id={listId}>
           {codes.map((c) => (
             <option key={c.code} value={c.code}>
