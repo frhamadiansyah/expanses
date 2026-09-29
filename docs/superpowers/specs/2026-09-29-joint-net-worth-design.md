@@ -101,7 +101,7 @@ listed above. A refused op is logged and skipped, and wins no field. So nobody c
 type ItemSummary = {
   owner: string;              // memberId
   kind: 'asset' | 'liability';
-  subtype: AccountSubtype;    // bank, credit_card, property, …
+  subtype: string;            // an AccountSubtype: bank, credit_card, property, … (string in core, which cannot import db)
   name: string;               // "BCA ···· 1234"
   currency: string;
   balanceMinor: number;       // value (asset) or owed (liability), in `currency`, today

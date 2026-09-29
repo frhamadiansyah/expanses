@@ -481,3 +481,4 @@ export {
   type GroupState,
   type Proposal,
 } from './net-worth/group';
+export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
