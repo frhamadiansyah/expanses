@@ -1,7 +1,8 @@
 import { Info, Search } from 'lucide-react';
 import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react';
 import { cx } from '../index';
-import { type FormKind, planFormRow, planSwitchRow } from './form-row';
+import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
+import { KeyboardStrip } from './KeyboardStrip';
 import { type GroupChild, toneClass } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 /**
@@ -405,6 +406,8 @@ export function CurrencyRow({
   const [typed, setTyped] = useState<string | null>(null);
   const known = (code: string) => codes.some((c) => c.code === code);
   const shown = typed ?? value;
+  const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
+  const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
@@ -417,9 +420,10 @@ export function CurrencyRow({
         <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
           <input
             id={id}
-            // Only while typing: iOS keeps room at the end of any field with a list for a suggestion button, which
-            // pushed the code off the right edge at rest. Focused, the room does not matter and the codes are offered.
-            list={typed !== null ? listId : undefined}
+            // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
+            // instead: iOS floats its list in a bubble that lands over the sheet's title, and keeps room for a
+            // suggestion button at the field's end that pushes the code off the right edge.
+            list={typed !== null && desktop ? listId : undefined}
             value={shown}
             onFocus={(e) => {
               setTyped(value);
@@ -442,6 +446,19 @@ export function CurrencyRow({
             {'›'}
           </span>
         </span>
+        <KeyboardStrip
+          label="Currencies"
+          cells={offered.map((c) => ({
+            key: c.code,
+            label: `${c.code}, ${c.name}`,
+            title: c.code,
+            detail: c.name,
+            onPick: () => {
+              onChange(c.code);
+              setTyped(c.code);
+            },
+          }))}
+        />
         <datalist id={listId}>
           {codes.map((c) => (
             <option key={c.code} value={c.code}>

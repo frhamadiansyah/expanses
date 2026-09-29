@@ -397,6 +397,24 @@ test('Paid with adds an account as a step of its own sheet, and the transaction 
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
 });
 
+test('New account offers currencies over the keyboard, not in a floating bubble', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  const step = page.getByRole('dialog', { name: 'New account' });
+  const currency = step.getByLabel('Currency', { exact: true });
+  await currency.fill('JP');
+  // The phone's field carries no browser list, whose iOS bubble floated over the sheet's title.
+  await expect(currency).not.toHaveAttribute('list');
+  const strip = page.getByRole('listbox', { name: 'Currencies' });
+  await strip.getByRole('option', { name: 'JPY, Japanese Yen' }).click();
+  await expect(currency).toHaveValue('JPY');
+  await expect(currency).toBeFocused();
+  await expect(strip).toHaveCount(0);
+});
+
 test('‹ out of New account returns to the list, and makes nothing', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');

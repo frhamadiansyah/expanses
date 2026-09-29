@@ -77,3 +77,16 @@ export function planSwitchRow(row: { checked: boolean; hint?: boolean; disabled?
     state: row.checked ? 'on' : 'off',
   };
 }
+
+/**
+ * The currencies a typed code field offers over the keyboard: codes starting with what is typed first, then names
+ * with a word starting with it, at most `limit`. Nothing until a letter is typed, and nothing once the typed code is
+ * already whole — the field has taken it.
+ */
+export function currencyMatches<C extends { code: string; name: string }>(codes: readonly C[], typed: string, limit = 3): C[] {
+  const want = typed.trim().toUpperCase();
+  if (!want || codes.some((c) => c.code === want)) return [];
+  const byCode = codes.filter((c) => c.code.startsWith(want));
+  const byName = codes.filter((c) => !c.code.startsWith(want) && c.name.split(/\s+/).some((word) => word.toUpperCase().startsWith(want)));
+  return [...byCode, ...byName].slice(0, limit);
+}
