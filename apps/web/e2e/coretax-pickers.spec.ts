@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 import { openTypes } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openDrawers } from './drawers';
-import { chooseTo } from './add-transaction';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -64,17 +63,18 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(payer).not.toContainText('Deposito BCA 6 bulan');
   await payer.getByRole('button', { name: 'Close' }).click();
 
-  // It comes back with a transfer, which is the only honest way out. A transfer may move money between any two
-  // money accounts, so the deposit that cannot pay for lunch is offered here.
+  // Nor is it a transfer's From: money leaves a deposit only from its own page, where the bank's terms are read.
   await form.getByRole('radio', { name: 'Transfer' }).click();
   await form.getByRole('button', { name: 'From' }).click();
-  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Deposito BCA 6 bulan', exact: true }).click();
-  // Exact, as every other transfer spec asks: rows now end in a "Receipt for …" ⓘ, and a loose "To" matches
-  // any description with "to" in it — "Deposito BCA 6 bulan", here.
-  await chooseTo(form, 'BCA Tahapan (IDR)');
-  await form.getByLabel('Amount', { exact: true }).fill('100000000');
-  await form.getByRole('button', { name: 'Save' }).click();
-  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'From' })).not.toContainText('Deposito BCA 6 bulan');
+
+  // Before its maturity, that is breaking it early: the whole of it lands in the current account.
+  await openDeposit(page, 'Deposito BCA 6 bulan');
+  await page.getByRole('button', { name: 'Break early' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Break early' });
+  await expect(sheet.getByTestId('money-out-lands')).toContainText('Lands in BCA Tahapan');
+  await sheet.getByRole('button', { name: 'Break early' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await page.goto('/accounts');
   await openTypes(page);
   await expect(
