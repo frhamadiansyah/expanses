@@ -223,6 +223,22 @@ export function CashAccountForm({
     }
   }
 
+  const rateField = (
+    <>
+      <span aria-hidden className="shrink-0 text-[13px] text-[var(--ph-ink-3)]">
+        @
+      </span>
+      <input
+        aria-label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+        value={manualRate}
+        onChange={(e) => setManualRate(e.target.value)}
+        inputMode="decimal"
+        placeholder="auto"
+        className="ph-focus w-[76px] shrink-0 rounded bg-transparent text-left text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+      />
+    </>
+  );
+
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
     <form ref={form} id={embedded?.formId} onSubmit={submit}>
@@ -286,11 +302,15 @@ export function CashAccountForm({
             label="Balance now"
             aria-describedby={balanceHint}
             /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}</span>}
+            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}{foreign ? ` @ is ${ws.baseCurrency} per 1 ${currency} on that day; left as auto, the day's rate is used.` : ''}</span>}
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
             inputMode="decimal"
             placeholder="Amount"
+            // A foreign account's opening rate on the balance's own line, as a pocket carries it: @ rate, then the amount.
+            middle={foreign ? rateField : undefined}
+            // How a typed rate reads, while one is typed: "16.500" must not pass for 16500 unseen.
+            hint={foreign && manualRate.trim() ? (ratePreview(manualRate, currency, ws.baseCurrency) ?? undefined) : undefined}
           />
         )}
         {/* Only worth asking when a figure has been typed: nothing moves into an account opened at zero. */}
@@ -309,7 +329,7 @@ export function CashAccountForm({
             ))}
           </SelectRow>
         )}
-        {foreign && !pocketed && (
+        {foreign && !pocketed && !asks.includes('balance') && (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
             hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}

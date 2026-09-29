@@ -86,11 +86,14 @@ export function TextRow({
   label,
   hint,
   info,
+  middle,
   position,
   className,
   ...props
 }: GroupChild & {
   label: string;
+  /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
+  middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
   hint?: ReactNode;
   /**
@@ -127,6 +130,7 @@ export function TextRow({
             {label}
           </label>
         )}
+        {middle}
         <input
           {...props}
           id={id}
