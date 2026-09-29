@@ -1,4 +1,5 @@
-import { type AccountRow, createAccount, setCategoryColour } from '@expanses/db';
+import { type CategoryNeed, needOf, type ResolvedNeed } from '@expanses/core';
+import { type AccountRow, createAccount, saveCategoryNeed, setCategoryColour } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useCategoryColours, useInvalidateAll } from '../../lib/queries';
@@ -7,6 +8,9 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { categoryMark, ICONS } from '../categories/CategoryIcon';
 import { ColourPicker, IconPicker } from '../categories/CategoryLookSheets';
+import { needCaption } from '../categories/category-details';
+import { useCategoryNeeds } from '../categories/need-queries';
+import { NeedRow } from '../categories/NeedRow';
 
 /**
  * B7a — a category made without leaving the form, and chosen the moment it exists. Drawn by Select category in its
@@ -41,6 +45,8 @@ export function useNewCategoryForm({
   const [icon, setIcon] = useState('');
   const [colour, setColour] = useState<string | null>(null);
   const [choosingLook, setChoosingLook] = useState(false);
+  const [need, setNeed] = useState<CategoryNeed | null>(null);
+  const marks = useCategoryNeeds().data ?? {};
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,6 +73,8 @@ export function useNewCategoryForm({
       });
       // Only a top-level category has a colour of its own; a subcategory is drawn in a shade of its parent's. Kept
       // apart from the making: a colour that could not be kept leaves the category made, not a second one on retry.
+      // An expense category's own Counts as, when one was chosen; otherwise it follows its parent, else essential.
+      if (kind === 'expense' && need) await saveCategoryNeed(database, ws, account.id, need).catch(() => undefined);
       if (colour && !parentId) await setCategoryColour(database, ws, account.id, colour).catch(() => undefined);
       await invalidate();
       onCreated(account.id);
@@ -83,6 +91,7 @@ export function useNewCategoryForm({
     setIcon('');
     setColour(null);
     setChoosingLook(false);
+    setNeed(null);
     setError(null);
   };
 
@@ -97,6 +106,15 @@ export function useNewCategoryForm({
       <Preview size={glyph} />
     </span>
   );
+
+  // What it would count as: its own choice, else its parent's (the parent's own or inherited), else essential.
+  const parent = parentId ? parents.find((p) => p.id === parentId) : undefined;
+  const inherited = parentId ? needOf(parentId, parents, marks) : null;
+  const resolved: ResolvedNeed = need
+    ? { need, source: 'yours' }
+    : inherited?.source
+      ? { need: inherited.need, source: 'parent' }
+      : { need: 'essential', source: null };
 
   const form = (
     <div className="flex flex-col gap-3">
@@ -123,6 +141,9 @@ export function useNewCategoryForm({
             </option>
           ))}
         </SelectRow>
+        {kind === 'expense' && (
+          <NeedRow name={name.trim() || 'this category'} need={resolved} caption={needCaption(resolved.source, parent?.name ?? null)} onChoose={setNeed} />
+        )}
       </InsetGroup>
       <ErrorBox error={error} />
     </div>

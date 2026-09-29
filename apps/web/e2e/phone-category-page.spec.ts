@@ -208,10 +208,14 @@ test('a top-level category made from Select category can take a colour; one insi
   await circle.click();
   await look.getByTestId('new-category-colours').getByRole('button', { name: 'Teal' }).click();
   await look.getByRole('button', { name: 'Done' }).click();
+  // Counts as is asked here too, and kept.
+  await expect(made.getByRole('combobox', { name: 'What Pets counts as' })).toHaveValue('essential');
+  await made.getByRole('combobox', { name: 'What Pets counts as' }).selectOption('lifestyle');
   await made.getByRole('button', { name: 'Save' }).click();
   // Saved and chosen before the page is left.
   await expect(page.getByRole('button', { name: /Category/ }).first()).toContainText('Pets');
 
   await openCategory(page, 'Pets');
   await expect(page.getByTestId('category-colour-swatch')).toHaveAttribute('data-colour', '#0d9488');
+  await expect(countsAs(page, 'Pets')).toHaveValue('lifestyle');
 });
