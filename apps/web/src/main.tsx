@@ -14,6 +14,31 @@ import './styles.css';
 
 registerServiceWorker();
 
+/*
+ * Development only: a live edit can land half-made — one file changed before the file that uses it — and the page
+ * that loads that moment breaks, then stays blank, because hot updates patch a running page and cannot mend one that
+ * has already failed. So a page that has broken reloads itself at the next update that builds, which by then is the
+ * finished edit. Nothing of this exists outside the dev server.
+ */
+if (import.meta.hot) {
+  let broken = false;
+  const mark = () => {
+    broken = true;
+  };
+  window.addEventListener('error', mark);
+  window.addEventListener('unhandledrejection', mark);
+  import.meta.hot.on('vite:error', mark);
+  const report = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    // React names a render that threw this way; the router's boundary then draws over the app.
+    if (args.some((arg) => typeof arg === 'string' && /The above error occurred|Failed to reload|Importing a module script failed/.test(arg))) mark();
+    report(...args);
+  };
+  import.meta.hot.on('vite:afterUpdate', () => {
+    if (broken) window.location.reload();
+  });
+}
+
 // One store for the whole page: the recovery screen reads it on every path, whether it was reached by a
 // failure or asked for on purpose.
 const snapshots = opfsSnapshots();
