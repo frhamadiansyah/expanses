@@ -1,0 +1,288 @@
+# Joint net worth — design
+
+Status: draft for the owner's review, 2026-09-29. Builds on household sharing
+(`2026-09-26-household-sharing-design.md`, "the sharing spec", §n below prefixed **S**). Brainstormed with the owner;
+mockups in `.superpowers/brainstorm/62062-1790645752/content/` (not committed).
+
+## 1. Purpose
+
+Two people who share a Household workspace want to see what they own and owe **together**: bank accounts, cards,
+deposits, investments, a house, a car, loans. How they file tax decides what "together" means:
+
+- **One tax ID for the household.** The yearly return lists both people's everything, assets and liabilities. The app's
+  Net worth and tax report must be the household's.
+- **Separate tax IDs.** Each return lists only its owner's items. Net worth stays personal; the partner's shared items
+  are visible and usable (pay with, transfer to) but not counted.
+
+Nothing here is Indonesia-specific except the tax report it feeds, which already exists. Joint filing is a two-person
+concept in every country that has it.
+
+Success: both phones show the same joint total; each person's private lines never leave their phone; the partner can
+pay with a shared card and it lands on the owner's real card; a transfer between the two lands on both real accounts.
+
+## 2. Decisions (from the brainstorm)
+
+| # | Decision |
+|---|---|
+| D1 | Every item has **one owner**, a person. Sharing is visibility, never co-ownership. |
+| D2 | Net-worth sharing is **optional**, off by default, inside a shared workspace. Workspace sharing without it works exactly as today (flatmates, business partners). |
+| D3 | Each member **opts in** for themselves. The members who opted in form the **net-worth group**. |
+| D4 | The group has a **filing mode**: `joint` (one tax ID) or `separate`. `joint` needs **exactly two** group members. |
+| D5 | Setup order: one proposes a mode → every other group member confirms → each reviews their own items → only then are summaries sent. |
+| D6 | Any change of mode or group needs **every** group member's confirmation. The old state holds until then. Leaving is unilateral. |
+| D7 | Per item, one setting: **Balance + one total** (default) or **Don't share**. `Don't share` is allowed only in `separate`. |
+| D8 | Separate → joint: nothing hidden is revealed until its owner taps **Share**. The joint report says "Rina hasn't added N items yet" and is not complete until then. |
+| D9 | New items: shared automatically in `joint` (the add form says so); in `separate` the add form has a **Share with Household** switch, on by default. |
+| D10 | Transport is **approach A**: the owner's phone computes each shared item's summary and sends only that. Private lines never leave the owner's phone. |
+| D11 | The partner sees a shared account or card as: balance, chart, the Household lines, and **one** "Rina's other use" total (no split by workspace). |
+| D12 | **Net worth page is one view, chosen by the mode.** `joint`: the household's items and total, grouped by kind as today; owner shown by the icon circle's ring color only (same icon per kind), a legend with each person's subtotal under the total, owner in the item's details. `separate` (or no group): personal, as today. No Mine/Household switch. |
+| D13 | Rows stay one line. "Updated …" and "not yet on Rina's phone" live in the item's details, never on the list. The joint tax report does mark items waiting for a year-end value. |
+| D14 | **Shared way to pay:** a group member may pick the other's shared account or card in **Paid with**, in the shared workspace only. It lands on the owner's real account or card on the owner's phone (statement, cycle, points). |
+| D15 | **Transfer between partners:** one record, both sides land — out of her real account on her phone, into his real account on his phone. |
+| D16 | Business-owned items (the business as owner, a company return) are **out of scope**. |
+
+## 3. Glossary
+
+- **Group** — the members of one shared workspace who opted in to net-worth sharing.
+- **Group log** — the group's own encrypted log on the relay (§4).
+- **Item** — one net-worth row the owner holds: an asset account (bank, cash, e-wallet, deposit, investment, property,
+  vehicle, receivable) or a liability account (credit card, loan, payable). One `accounts` row.
+- **Summary** — what the owner's phone sends about one item (§5.2).
+- **Household lines** — purchases of the shared workspace whose money side is on the item.
+- **Other use** — the item's movement in the period that is not Household lines.
+
+## 4. Where it lives: a group log
+
+The shared workspace's log is readable by **every** workspace member: its epoch key is sealed to all of them (S5). A
+summary sent there would reach a member who did not opt in — the adult son of D3's example, or a flatmate — and be
+hidden only by the app. That breaks D10.
+
+So the group gets its own log: a second shared book on the relay, the **group log**, linked to the workspace
+(`group_logs(book_id, group_book_id)`), with its own epoch key sealed only to group members' devices. It reuses the
+sharing machinery unchanged: HLC, change-sets, sealing, signing, pinning, the relay's Durable Object, removal and
+rotation (S5–S9). What differs:
+
+- **No invite code.** Every group member's devices are already pinned through the workspace (S5.4). The proposer's
+  phone creates the group log and seals its epoch key to the invited member's pinned devices (as S8.3 does for a
+  linked device). The workspace log carries one op, `net_worth_group { groupBookId }`, so members' phones know it
+  exists. A member outside the group learns only that a group exists.
+- **Membership follows the group** (§6). A member leaving the group is removed from the group log with rotation (S8.4);
+  the workspace membership is untouched.
+- **No seeding** (S6.5): a new group log starts empty; each member's phone sends its summaries after review.
+- **Book scope:** the group log holds only the entities of §5. It has no categories, budgets or purchases. The Cashflow
+  and every workspace reader ignore it.
+
+**One group per person.** A member can be in the net-worth group of one shared workspace at a time. (YAGNI: an item
+shared into two groups would need two settings and two summaries.)
+
+## 5. Data
+
+### 5.1 New synced entities (group log)
+
+Added to `SHARED_ENTITIES` with the group log as their scope. Same clocks and apply rules as S7.3.
+
+| Entity | Key | Fields | Written by |
+|---|---|---|---|
+| `nw_proposal` | `proposalId` | `mode: 'joint' \| 'separate'`, `members: memberId[]`, `proposedBy`, `cancelled` | the proposer; `cancelled` only by them |
+| `nw_answer` | `(proposalId, memberId)` | `answer: 'confirm' \| 'decline' \| 'left'` | that member only |
+| `nw_item` | `itemId` | the summary (§5.2), `removed` | the item's owner only |
+| `nw_pending` | `memberId` | `count` — items the member still has to share after a switch to `joint` (D8) | that member only |
+| `member_transfer` | `transferId` | §7.2 | either party |
+
+`itemId = uuidv5(groupBookId, 'item:' + accountId)`. The owner's phone keeps the map; other phones never see
+`accountId`.
+
+**Author check.** Apply refuses an op whose author (the signing device's member, S6.6) is not the entity's writer as
+listed above. A refused op is logged and skipped, and wins no field. So nobody can change another person's balance.
+
+### 5.2 The summary
+
+```ts
+type ItemSummary = {
+  owner: string;              // memberId
+  kind: 'asset' | 'liability';
+  subtype: AccountSubtype;    // bank, credit_card, property, …
+  name: string;               // "BCA ···· 1234"
+  currency: string;
+  balanceMinor: number;       // value (asset) or owed (liability), in `currency`, today
+  asOf: string;               // the owner's date when it was computed
+  card: { limitMinor: number; cycleStart: string; cycleEnd: string } | null;
+  period: { start: string; end: string };   // the card's current cycle, else the calendar month
+  openingMinor: number;       // balance at period.start
+  householdMinor: number;     // Household lines in the period, signed
+  otherUseMinor: number;      // everything else in the period, signed
+  monthEnds: { month: string; balanceMinor: number }[];  // last 24 month-ends, for the chart and year-end
+  tax: TaxRow | null;         // only when the group's mode is joint (§8.4)
+};
+```
+
+Invariant (tested): `openingMinor + householdMinor + otherUseMinor = balanceMinor`. For a card,
+`available = limitMinor − balanceMinor`, so the partner's limit bar always adds up (the "where did 1 jt go" problem).
+
+`TaxRow` is the item's row of the harta or utang list as `coretaxInputsFor` builds it for the latest finished tax year
+(code, acquisition year, cost, value at 31 December), in the shape `@expanses/core` already renders.
+
+### 5.3 A purchase paid from someone else's item
+
+The purchase's `money` atom (S4.3) gains one field:
+
+```ts
+paidFrom: { owner: string; itemId: string } | null;   // null = the payer's own account, as today
+```
+
+`paidBy` stays who paid ("paid by Andi"); `paidFrom.owner` is whose account the money side is on. `moneySide` (S7.4)
+changes one line: the **account owner** is `paidFrom?.owner ?? paidBy`. On the account owner's devices the money side
+is posted on the local account that `itemId` maps to (the owner's real card: statement, cycle, points); on every other
+device on the placeholder of the account owner. Old devices (no `paidFrom`) read `paidBy` as today: the owner's phone
+must be updated for such a purchase to land on her card, so the field ships with a minimum app version check (§9).
+
+`paidFrom` holds only an opaque id, so a workspace member outside the group learns nothing new. `paidLabel` is built by
+the payer's device from the summary's `name`, as it is from a local account today.
+
+### 5.4 Local tables (never synced)
+
+- `nw_share_settings(account_id PK, setting 'total' | 'hidden')` — owner scope, like the accounts it describes. Absent
+  = not yet reviewed; the setup review writes a row for every item.
+- `nw_items` — the summaries received from other members, one row per `itemId`. A member's own items are never read
+  from here: the joint view reads them live from the local ledger, as Net worth does today.
+
+## 6. The group and its filing mode
+
+**State is derived, never stored.** On every device: the **active** proposal is the latest (by HLC of its creation)
+proposal that is not cancelled and that every listed member confirmed. Its `members` are the group; its `mode` is the
+mode. No active proposal = no group. Every device derives the same answer from the same log.
+
+- **Setup.** One member taps **Share net worth** in the shared workspace, answers "How does your household file tax?",
+  and picks who to invite. This creates the group log (§4) and `nw_proposal { mode, members: [me, them] }` with their own
+  `confirm`. Their phone shows "Waiting for Andi".
+- **Confirm.** The invited member's phone shows "Rina set up household net worth: one tax ID. [Confirm] [Choose
+  differently]". Choose differently = `decline` plus a new proposal of their own.
+- **Review.** When a proposal becomes active, each member reviews their own items (§8.1) before their phone sends
+  anything.
+- **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed. The
+  proposer may cancel; anyone listed may decline.
+- **`joint` needs exactly two members.** A proposal with `joint` and not two members cannot be made in the UI and is
+  never active on apply.
+- **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.
+- **Leaving** is unilateral: the member sets their own `nw_answer` on the active proposal to `left`. The group is the
+  active proposal's members minus those who left. Their devices are removed from the group log with rotation, and
+  every phone deletes that member's summaries. Fewer than two members left = no group; the log is deleted (S8.6).
+- **Separate → joint (D8).** On activation, each member whose items include `hidden` ones sees "Household now files with
+  one tax ID. Share Business Mandiri with Andi? [Share]". Their `nw_pending.count` is the number not yet shared; the
+  joint report is incomplete while any count is above zero.
+- Leaving the workspace, being removed from it, or the workspace stopping sharing removes the member from the group
+  too.
+
+## 7. Paying with and transferring to the other's item
+
+### 7.1 Paid with
+
+In the shared workspace's add form, **Paid with** lists the member's own accounts, then a group **"Rina's, shared"**
+with Rina's shared items that can pay (bank, cash, e-wallet, credit card). Picking one sets `paidFrom`. Outside the
+shared workspace the group never appears (D14). An item that stops being shared disappears from the list; purchases
+already recorded stay.
+
+### 7.2 Transfer between partners
+
+`member_transfer` fields, each with its own clock: `occurredOn`, `amountMinor`, `currency`, `from: { owner, itemId }`,
+`to: { owner, itemId }`, `description`, `void`. Both items must be in `currency` (the Transfer form offers only matching
+items).
+
+On apply, each device posts **only its owner's side**, through the ledger doors (S6.3):
+
+- the `from` owner's device: `from` account −amount, the `to` owner's placeholder +amount;
+- the `to` owner's device: `to` account +amount, the `from` owner's placeholder −amount;
+- any other device: nothing.
+
+Placeholders are excluded from Net worth (S4.4), so her Net worth drops 5 jt and his rises 5 jt. An edit replaces both
+sides; `void` wins. Either party may record or edit it. In the Transfer form the **To** list (and **From**, for the
+receiving side) shows the other member's shared items under "Andi's, shared with Household".
+
+## 8. Screens
+
+### 8.1 Setup and review
+
+Settings → the workspace → **Share net worth**: the filing question, who to invite, then "Waiting for Andi". After
+activation, **Review your items**: every account, card and asset, grouped by kind as in Net worth, each with its
+setting. `joint`: no switch; a line "Your household files with one tax ID, so every item is in the joint report."
+`separate`: a switch per item, on by default. **Share** sends the summaries.
+
+Each item's page gets a **Share with Household** row (the two settings; `Don't share` greyed out in `joint` with the
+same line). The add form for a new account, card or asset gets the switch of D9.
+
+### 8.2 Net worth
+
+- **`joint`:** the household's total. Same drawers by kind as today, each with its subtotal. Each row's icon circle has
+  the owner's ring color (member colors assigned in join order, fixed per group); same icon per kind; one line per
+  row. Under the total a legend: "● Rina 58,8 jt · ● Andi 400 jt". Screen readers get the owner in the row's label.
+  Health ratios use the household total.
+- **`separate` or no group:** personal, as today. The other's shared items appear in **Accounts** under "Andi's,
+  shared" and are not counted.
+
+### 8.3 An item of the other's
+
+Tapping opens a read-only page: balance, the chart from `monthEnds`, the Household lines of the period, one **"Rina's
+other use"** line (`otherUseMinor`, "total only"), and for a card the limit bar (Household · other use · available).
+The details show Owner, Updated (`asOf`), and "not yet on Rina's phone" when purchases paid from it are in the log but
+newer than the summary (the bar then subtracts them).
+
+### 8.4 Tax report
+
+- **`joint`:** each member can open the joint report: their own rows plus each received `tax` row. Marked incomplete
+  while any `nw_pending.count > 0` or an item's `monthEnds` lacks 31 December of the year ("waiting for Rina's
+  phone").
+- **`separate`:** unchanged; each report lists its owner's items, hidden ones included.
+
+## 9. Sending, receiving, and what goes wrong
+
+- **When a summary is sent.** After any write that changes an item's balance or profile (a ledger door, a new asset
+  value, a setting change), the owner's phone recomputes that item's summary at commit and queues it; the outbox sends
+  it with the next sync. Unchanged summaries are not re-sent.
+- **Don't share** sends `nw_item.removed = true`; every other phone deletes the item and its history. Sharing again
+  sends a fresh summary.
+- **Owner offline.** The partner keeps the last summary; nothing on the list says so (D13); details show `asOf`.
+- **Paid with while the owner is offline.** The purchase waits in the workspace log and lands on her card when her
+  phone syncs; meanwhile the partner's view subtracts it (§8.3).
+- **Stale app version.** A device that does not understand `paidFrom` or the group entities must not be the card
+  owner's only device: setup requires every group member's devices to report the minimum version (the relay already
+  records device info, S9.3); a device below it blocks setup with "Update the app on Andi's iPad".
+- **Currencies.** Summaries are in the item's currency. The joint total converts with the viewer's rates, as Net worth
+  does today; a missing rate leaves the total blank, as today.
+- **Restored backup** (S8.7). The owner's phone recomputes and re-sends every shared item's summary after rejoining.
+
+## 10. Tests
+
+Money and merge logic test-first; property tests with `fast-check`.
+
+- **Summary maths:** `openingMinor + householdMinor + otherUseMinor = balanceMinor` for random ledgers, cards and
+  periods; a card's `limitMinor − balanceMinor` is its available.
+- **Privacy:** a capture-harness check that no op in the group log or workspace outbox carries a private line's
+  amount, description or id, or any `accountId`; a `hidden` item emits nothing; a member outside the group cannot
+  decrypt the group log.
+- **Group state:** propose, confirm, decline, cancel, leave, concurrent proposals, `joint` with three members never
+  active, separate → joint pending counts. Derived identically on N devices (convergence property test, S13).
+- **Author check:** a summary, answer or pending count from the wrong member is refused.
+- **Paid with:** lands on the owner's real card (statement, points) on her device and on her placeholder elsewhere;
+  changing `paidFrom` moves it.
+- **Transfer:** each owner's device posts its side; a third device posts nothing; edit and void.
+- **Joint total:** equals the sum of both members' items on both devices.
+- **E2E** (`sharing.spec.ts`, two contexts): setup and confirm, review, joint Net worth equal on both, pay with the
+  other's card, transfer, one side offline, don't share, leave.
+
+## 11. Build order
+
+1. Group log: `group_logs`, creating it from a proposal, sealing to pinned devices, removal on leave.
+2. Proposals and answers, derived group state; setup and confirm screens.
+3. Share settings, review screen, summaries: compute, send, apply, author check.
+4. Net worth by mode, the other's item page, Accounts "…, shared".
+5. `paidFrom` and Paid with.
+6. `member_transfer` and the Transfer form.
+7. Joint tax report; separate → joint pending flow.
+
+## 12. Out of scope, and left open
+
+- Items owned by a business (D16).
+- A person in two groups at once.
+- Transfers between items in different currencies.
+- Splitting "other use" by workspace (rejected, D11).
+- Member ring colors: two fixed, distinct from the kind icons' colors, readable in dark mode — picked in the build.
