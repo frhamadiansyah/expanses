@@ -76,7 +76,7 @@ function BankNameRow({
               autoComplete="off"
               autoCapitalize="words"
               placeholder="Bank"
-              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink-2)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
             />
           </span>
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
