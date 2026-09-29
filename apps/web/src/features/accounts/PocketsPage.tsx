@@ -8,6 +8,7 @@ import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { ApproxFigure, approxLine, type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SCREEN } from '../../ui/native';
+import { DepositMoneyOut } from '../networth/DepositMoneyOut';
 import { DepositProposalCard } from '../networth/DepositProposalCard';
 import { DepositTermsCard } from '../networth/DepositTermsCard';
 import { MaturitySettings } from '../networth/MaturitySettings';
@@ -229,14 +230,27 @@ function AccountPage({ account }: { account: AccountRow }) {
           </>
         }
       />
+      {/*
+       * A deposit's due event, then the way money leaves it by hand: directly under the figure, above every other
+       * group. A deposit closed by either goes back to the list its row lives in, as the asset page did before it:
+       * the account it was is gone, so there is nothing left to stay on.
+       */}
+      {account.subtype === 'time_deposit' && (
+        <>
+          <DepositProposalCard accountId={account.id} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+          <DepositMoneyOut
+            accountId={account.id}
+            currency={account.currency!}
+            balanceMinor={minor}
+            onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })}
+          />
+        </>
+      )}
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
       <SetAsidePanel accountId={account.id} />
       {/* A deposit's own facts, for a deposit: the day it comes back, what it pays, and what it does then. */}
       {account.subtype === 'time_deposit' && (
         <>
-          {/* A deposit that has matured and been filed away goes back to the list its row lives in, as the asset
-           * page did before it: the account it was is gone, so there is nothing left to stay on. */}
-          <DepositProposalCard accountId={account.id} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
           <MaturitySettings accountId={account.id} currency={account.currency!} />
           <DepositTermsCard accountId={account.id} />
           <RecordedByHand accountId={account.id} currency={account.currency!} />

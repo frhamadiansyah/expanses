@@ -6,6 +6,7 @@ import {
   depositInterest,
   dueDepositEvents,
   eventKey,
+  expenseLines,
   type InterestPaid,
   type MaturityChoice,
   needsPayout,
@@ -32,6 +33,7 @@ import {
   undoableByHandTx,
   undoRecordedByHandTx,
 } from './deposit-event-log';
+import { categoryIdsByKeyTx } from './categories';
 import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
 import { nativeBalances, postTransactionTx } from './ledger';
 import { tradeAccountsFor } from './trades';
@@ -402,32 +404,15 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
 
     const ratesToBase = deposit.currency !== ws.baseCurrency && input.rateToBase !== undefined ? { [deposit.currency]: input.rateToBase } : {};
 
-    let interestTransactionId: string | null = null;
-    if (!byHand && input.grossMinor > 0) {
-      const interestInto = lands ? settings.payoutAccountId! : deposit.id;
-      // The investment payment's own accounts and lines: net to where it lands, tax to estimated_tax, gross to income.
-      const { accounts: tradeAccounts } = await tradeAccountsFor(tx, ws, deposit.id, interestInto);
-      interestTransactionId = await postTransactionTx(tx, ws, {
-        occurredOn: input.dueOn,
-        description: `Interest: ${deposit.name}`,
-        lines: tradePostings(
-          { kind: 'income', occurredOn: input.dueOn, unitsMicro: 0, grossMinor: input.grossMinor, feeMinor: 0, taxMinor: input.taxMinor },
-          positionAfter([]),
-          tradeAccounts,
-        ),
-        ratesToBase,
-      });
-    }
+    const interestTransactionId =
+      !byHand && input.grossMinor > 0
+        ? await postInterestTx(tx, ws, deposit, lands ? settings.payoutAccountId! : deposit.id, input.dueOn, input.grossMinor, input.taxMinor, ratesToBase)
+        : null;
 
-    let principalTransactionId: string | null = null;
-    if (closing && !byHand) {
-      principalTransactionId = await postTransactionTx(tx, ws, {
-        occurredOn: input.dueOn,
-        description: `${deposit.name} matured`,
-        lines: transferLines({ fromAccountId: deposit.id, toAccountId: settings.payoutAccountId!, amountMinor: input.principalMinor, currency: deposit.currency }),
-        ratesToBase,
-      });
-    }
+    const principalTransactionId =
+      closing && !byHand
+        ? await postPrincipalTx(tx, ws, deposit, settings.payoutAccountId!, input.dueOn, input.principalMinor, `${deposit.name} matured`, ratesToBase)
+        : null;
 
     const now = new Date().toISOString();
     if (rolling) {
@@ -466,16 +451,177 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
     }
     // Only a close the app posted archives. One recorded by hand stays open, at whatever the owner left in it, so its
     // page keeps the "Recorded by hand" undo row; the owner archives it from there when they are done (I1).
-    if (closing && !byHand) {
-      try {
-        // The archive keeps its own refusal: it checks the balance and throws before it writes anything.
-        await archiveAccountTx(tx, ws, deposit.id);
-        archived = true;
-      } catch (error) {
-        if (!(error instanceof AccountError)) throw error;
-      }
-    }
+    if (closing && !byHand) archived = await archiveIfEmptyTx(tx, ws, deposit.id);
     return { interestTransactionId, principalTransactionId, netMinor, archived };
+  });
+}
+
+/** The interest as an investment payment posts it (`tradeAccountsFor` + `tradePostings`): net to `intoId`, tax to estimated_tax, gross to income. */
+async function postInterestTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  deposit: LiveDeposit,
+  intoId: string,
+  occurredOn: string,
+  grossMinor: number,
+  taxMinor: number,
+  ratesToBase: Record<string, number>,
+): Promise<string> {
+  const { accounts: tradeAccounts } = await tradeAccountsFor(tx, ws, deposit.id, intoId);
+  return postTransactionTx(tx, ws, {
+    occurredOn,
+    description: `Interest: ${deposit.name}`,
+    lines: tradePostings({ kind: 'income', occurredOn, unitsMicro: 0, grossMinor, feeMinor: 0, taxMinor }, positionAfter([]), tradeAccounts),
+    ratesToBase,
+  });
+}
+
+/** The principal, out of the deposit to where it lands, as a plain transfer. */
+async function postPrincipalTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  deposit: LiveDeposit,
+  intoId: string,
+  occurredOn: string,
+  principalMinor: number,
+  description: string,
+  ratesToBase: Record<string, number>,
+): Promise<string> {
+  return postTransactionTx(tx, ws, {
+    occurredOn,
+    description,
+    lines: transferLines({ fromAccountId: deposit.id, toAccountId: intoId, amountMinor: principalMinor, currency: deposit.currency }),
+    ratesToBase,
+  });
+}
+
+/** Archives a deposit the payout emptied; one with money still in it stays open, and says so by returning false. */
+async function archiveIfEmptyTx(tx: Db, ws: WorkspaceContext, depositId: string): Promise<boolean> {
+  try {
+    // The archive keeps its own refusal: it checks the balance and throws before it writes anything.
+    await archiveAccountTx(tx, ws, depositId);
+    return true;
+  } catch (error) {
+    if (!(error instanceof AccountError)) throw error;
+    return false;
+  }
+}
+
+/** Where a penalty for breaking a deposit early posts: the catalogue's own fee category, there being no bank-fee key. */
+export const DEPOSIT_PENALTY_CATEGORY_KEY = 'miscellaneous.fees_charges';
+
+export interface WithdrawDepositInput {
+  accountId: string;
+  /** Where the money lands: an account `payoutAccepts`. */
+  intoAccountId: string;
+  /** Local YYYY-MM-DD: the day the bank paid it out. */
+  occurredOn: string;
+  /** What leaves the deposit, as a transfer. Not more than it holds. */
+  principalMinor: number;
+  /** Interest before tax, as a confirmed payout posts it; 0 when the bank paid none. */
+  grossMinor: number;
+  taxMinor: number;
+  /** The bank's charge for breaking early: an expense, paid out of what lands. */
+  penaltyMinor: number;
+  /** Units of base per one major unit of the deposit's currency, when that is not the base. */
+  rateToBase?: number;
+}
+
+export interface WithdrawnDeposit {
+  interestTransactionId: string | null;
+  principalTransactionId: string;
+  penaltyTransactionId: string | null;
+  /** principal + interest − tax − penalty. */
+  landedMinor: number;
+  archived: boolean;
+}
+
+/**
+ * Money out of a deposit from its own page, before its maturity ("Break early") or after it ("Withdraw"), in one
+ * transaction. It is a close the owner starts rather than the automation: the principal and interest post exactly
+ * as a confirmed close posts them, and it is logged as a maturity event on the day, so the tax report reads its
+ * gross and withheld and a void of either posting reopens the deposit as it reopens any close. The penalty is an
+ * expense of its own under Fees & charges, paid from the account it lands in. The deposit is archived once empty.
+ */
+export async function withdrawDeposit(database: Database, ws: WorkspaceContext, input: WithdrawDepositInput): Promise<WithdrawnDeposit> {
+  if (!whole(input.grossMinor) || !whole(input.taxMinor) || !whole(input.principalMinor) || !whole(input.penaltyMinor) || input.taxMinor > input.grossMinor) {
+    throw new DepositAutomationError('BAD_FIGURE', 'Every figure is a whole amount, not below zero, and the tax is not more than the interest');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new DepositAutomationError('BAD_FIGURE', 'Choose the day it was paid out');
+  if (input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
+  const netMinor = input.grossMinor - input.taxMinor;
+  if (input.grossMinor > 0 && netMinor === 0) throw new DepositAutomationError('BAD_FIGURE', 'The tax cannot take all of the interest');
+  const landedMinor = input.principalMinor + netMinor - input.penaltyMinor;
+  if (landedMinor < 0) throw new DepositAutomationError('BAD_FIGURE', 'The penalty is more than what comes back');
+
+  return database.transaction(async (tx) => {
+    if (!(await automationTablesExist(tx))) throw new DepositAutomationError('NOT_READY', 'Update the app to take money out of a deposit');
+    const deposit = await liveDepositTx(tx, ws, input.accountId);
+    await checkPayoutTx(tx, ws, input.intoAccountId, deposit.currency, deposit.id);
+    if (input.principalMinor > (await postedBalanceTx(tx, deposit.id))) {
+      throw new DepositAutomationError('BAD_FIGURE', 'The deposit holds less than that. Type what came back.');
+    }
+    // Reopening is last in, first out (`blockedBy`): a close dated before an event already logged could never be
+    // reopened, and a second maturity on one day is one the log cannot hold.
+    const logged = await tx
+      .select({ kind: depositEvents.kind, dueOn: depositEvents.dueOn })
+      .from(depositEvents)
+      .where(and(eq(depositEvents.workspaceId, ws.workspaceId), eq(depositEvents.accountId, deposit.id)));
+    if (logged.some((row) => row.dueOn > input.occurredOn || (row.kind === 'maturity' && row.dueOn === input.occurredOn))) {
+      throw new DepositAutomationError('NOT_LAST', 'A payout on or after that day is already recorded on this deposit. Choose a later day.');
+    }
+
+    const terms = await getDepositTermsTx(tx, ws, deposit.id);
+    const early = terms !== undefined && input.occurredOn < terms.maturesOn;
+    const ratesToBase = deposit.currency !== ws.baseCurrency && input.rateToBase !== undefined ? { [deposit.currency]: input.rateToBase } : {};
+
+    const interestTransactionId =
+      input.grossMinor > 0 ? await postInterestTx(tx, ws, deposit, input.intoAccountId, input.occurredOn, input.grossMinor, input.taxMinor, ratesToBase) : null;
+    const principalTransactionId = await postPrincipalTx(
+      tx,
+      ws,
+      deposit,
+      input.intoAccountId,
+      input.occurredOn,
+      input.principalMinor,
+      early ? `${deposit.name} broken early` : `${deposit.name} withdrawn`,
+      ratesToBase,
+    );
+    let penaltyTransactionId: string | null = null;
+    if (input.penaltyMinor > 0) {
+      const feeCategoryId = (await categoryIdsByKeyTx(tx, ws))[DEPOSIT_PENALTY_CATEGORY_KEY];
+      if (!feeCategoryId) throw new DepositAutomationError('NOT_FOUND', 'The Fees & charges category is missing. Reopen the app so default categories are restored.');
+      penaltyTransactionId = await postTransactionTx(tx, ws, {
+        occurredOn: input.occurredOn,
+        description: `Early withdrawal penalty: ${deposit.name}`,
+        lines: expenseLines({ categoryAccountId: feeCategoryId, paymentAccountId: input.intoAccountId, amountMinor: input.penaltyMinor, currency: deposit.currency }),
+        ratesToBase,
+      });
+    }
+
+    const now = new Date().toISOString();
+    await tx.insert(depositEvents).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      accountId: deposit.id,
+      kind: 'maturity',
+      dueOn: input.occurredOn,
+      principalMinor: input.principalMinor,
+      grossMinor: input.grossMinor,
+      taxMinor: input.taxMinor,
+      netMinor,
+      interestTransactionId,
+      principalTransactionId,
+      recordedByHand: 0,
+      priorRateBps: null,
+      priorTermMonths: null,
+      priorTermStartedOn: null,
+      confirmedAt: now,
+    });
+    // As a close does: nothing is proposed on a deposit the money has left.
+    await tx.update(depositAutomation).set({ enabled: 0, updatedAt: now }).where(eq(depositAutomation.accountId, deposit.id));
+    const archived = await archiveIfEmptyTx(tx, ws, deposit.id);
+    return { interestTransactionId, principalTransactionId, penaltyTransactionId, landedMinor, archived };
   });
 }
 

@@ -12,6 +12,7 @@ import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
+import { DepositMoneyOut } from './DepositMoneyOut';
 import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
 import { depositHeroLine } from './deposit-terms';
@@ -172,6 +173,15 @@ export function AssetDetailPage() {
           {/* A due event of an automated deposit: directly under the hero, above every other group (spec §6.1). */}
           {account?.subtype === 'time_deposit' && (
             <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+          )}
+          {/* Money out by hand, under the proposal when one is showing: the only way money leaves a deposit. */}
+          {account?.subtype === 'time_deposit' && (
+            <DepositMoneyOut
+              accountId={accountId}
+              currency={value.currency}
+              balanceMinor={value.valueMinor}
+              onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })}
+            />
           )}
           {/* B3: what is promised out of this account and what is free, right under the bank's figure. */}
           <SetAsidePanel accountId={accountId} />
