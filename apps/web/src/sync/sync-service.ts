@@ -5,6 +5,7 @@ import {
   type DeviceKeys,
   type KeyStore,
   listSharedBooks,
+  type NetWorthGroupView,
   outboxOps,
   type PreviewedInvite,
   recordDevicesSeen,
@@ -43,6 +44,11 @@ export interface BookSyncStatus {
   /** The most recent run failed; the scheduler is backing off. */
   failing: boolean;
   running: boolean;
+  /**
+   * The last run's net-worth group log part failed on the relay (joint-net-worth §4, task 4 review round 1): the
+   * workspace itself synced, the group log is tried again on the next run.
+   */
+  groupFailing: boolean;
 }
 
 export interface SyncServiceOptions {
@@ -57,7 +63,7 @@ export interface SyncServiceOptions {
   intervalMs?: number;
 }
 
-const IDLE: BookSyncStatus = { lastSyncedAt: null, failing: false, running: false };
+const IDLE: BookSyncStatus = { lastSyncedAt: null, failing: false, running: false, groupFailing: false };
 
 /** The ms of an hlc: its first 12 hex digits (spec §6.1). */
 const hlcMs = (hlc: string) => Number.parseInt(hlc.slice(0, 12), 16);
@@ -335,6 +341,34 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.forgetSharing(bookId));
   }
 
+  /* ------------------------------------------------------ joint net worth */
+
+  /** The workspace's net-worth group as this device derives it (§6); null before any engine exists. */
+  async netWorthGroup(bookId: string): Promise<NetWorthGroupView | null> {
+    if (!this.engineMade) return null;
+    return (await this.engine()).netWorthGroup(bookId);
+  }
+
+  /** Propose how the household files and who is in the group (§6 Setup, Change). */
+  async proposeNetWorth(bookId: string, input: { mode: 'joint' | 'separate'; members: string[] }): Promise<void> {
+    await this.act(bookId, async (engine) => void (await engine.proposeNetWorth(bookId, input)));
+  }
+
+  /** Confirm, or decline, a proposal this member is asked on (§6 Confirm). */
+  async answerNetWorth(bookId: string, proposalId: string, answer: 'confirm' | 'decline'): Promise<void> {
+    await this.act(bookId, (engine) => engine.answerNetWorth(bookId, proposalId, answer));
+  }
+
+  /** Withdraw a proposal of this member's not yet active. */
+  async cancelNetWorth(bookId: string, proposalId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.cancelNetWorth(bookId, proposalId));
+  }
+
+  /** Stop sharing my net worth (§6 Leaving). */
+  async leaveNetWorth(bookId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.leaveNetWorth(bookId));
+  }
+
   /* ------------------------------------------------------------- internals */
 
   /** An act that may change the book's state: whatever it did, the schedule follows `shared_books` and screens re-read. */
@@ -376,6 +410,10 @@ export class SyncService {
     try {
       const result = await this.exclusive(bookId, () => engine.syncOnce(bookId));
       await this.touched(bookId, result);
+      // The group log's own failure (task 4 review round 1): the workspace synced, so the run is not failing; the
+      // status says the group log is behind, and the error is reported like any other.
+      this.setStatus(bookId, { groupFailing: result.groupError !== undefined });
+      if (result.groupError) this.onError(result.groupError);
       return result;
     } catch (error) {
       this.setStatus(bookId, { running: false, failing: true });

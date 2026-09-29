@@ -8,6 +8,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { chosenItem, emptyDraft, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
 import { BASIS_LABELS } from './labels';
+import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
 const BASES: ValuationBasis[] = ['estimate', 'appraisal', 'listing', 'njop'];
 
@@ -24,6 +25,7 @@ const LEGACY_ITEMS = ASSET_ITEMS.filter((item) => !IN_A_FAMILY.has(item.id));
  */
 export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: string }) {
   const { database, ws } = useApp();
+  const household = useShareOnAdd();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const today = isoDate();
@@ -56,7 +58,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
       const openingRateToBase = await openingRateFor({ database, ws, currency: plan.account.currency, openedOn: plan.rateDate, openingBalanceMinor: plan.rateNeededMinor, typed: draft.openingRate, resolveRates });
       if (plan.person) {
         // Money owed is kept by the Lend & borrow ledger, which opens the account and its profile itself.
-        await openDebtBalance(database, ws, {
+        const owed = await openDebtBalance(database, ws, {
           direction: plan.person.direction,
           personName: plan.person.personName,
           currency: plan.account.currency,
@@ -65,6 +67,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
           coretaxCode: plan.person.coretaxCode,
           openingRateToBase,
         });
+        await household.save([owed.id]);
       } else if (plan.profile) {
         const account = await createAccount(database, ws, {
           name: plan.account.name,
@@ -102,6 +105,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
         if (plan.valuation) {
           await recordValuation(database, ws, { accountId: account.id, ...plan.valuation });
         }
+        await household.save([account.id]);
       }
       await invalidate();
       onDone();
@@ -285,6 +289,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
         </InsetGroup>
       )}
 
+      {household.element}
       <ErrorBox error={error} />
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}

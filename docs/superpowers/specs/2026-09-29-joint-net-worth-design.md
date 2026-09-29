@@ -79,8 +79,18 @@ rotation (S5–S9). What differs:
   `group_logs` gains `invites_json`. Since any workspace member may rewrite `net_worth_group`, the link only tells a
   device what to join: which group log a device is in, for which workspace, is its own local record (`nw_group_books`,
   never synced), so a rewritten link cannot move it off its group log. The link also names the group log's relay book,
-  and which log and relay book it names are written once (refused at capture and on every peer; never deleted by an op
-  until task 5 rules dissolution); a device claims only an invite whose preview and whose relay answer name that log.
+  and which log and relay book it names are written once (refused at capture and on every peer; never deleted by an
+  op); a device claims only an invite whose preview and whose relay answer name that log.
+
+  *Correction (task 5, code reality):* a member outside the group holds no copy of the group log, so it cannot ask the
+  group's view who may end the link. The link carries its own proof instead: the group log's id is
+  `uuidv5(ns, proof)`, where `proof` is derived from the log's first epoch key, which only group members' devices hold.
+  When the group dissolves (§6) a member's device **closes** the link — `relayBookId` becomes `closed:<proof>` — and
+  every device, outsiders included, checks the proof against the id it has; nobody else can close or delete it. A
+  closed link names no group, so a new setup writes a new link over it. Two members opening a group at the same moment:
+  the first link in the workspace log is the link on every device; the device whose own link was not yet back from
+  the log yields to it, abandons its lone group log, and joins the linked one when a member lets it in. A group
+  member's device lets in any later device of a group member that the workspace has admitted.
   Out of the workspace is out of the group (§6, last bullet): a device whose workspace sharing ends leaves the group
   log (or forgets it, when the relay cannot be reached), and any group member's device removes, with rotation, a device
   the workspace's view has removed.
@@ -184,7 +194,10 @@ mode. No active proposal = no group. Every device derives the same answer from t
 - **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.
 - **Leaving** is unilateral: the member sets their own `nw_answer` on the active proposal to `left`. The group is the
   active proposal's members minus those who left. Their devices are removed from the group log with rotation, and
-  every phone deletes that member's summaries. Fewer than two members left = no group; the log is deleted (S8.6).
+  every phone deletes that member's summaries. Fewer than two members left = no group; the log is deleted (S8.6) and
+  the workspace's link closed (§4, task 5 correction). A member all of whose devices are out of the group log (they
+  left the workspace or were removed from it) counts as having left. A proposer who cancels the only proposal of a log
+  with nothing active dissolves it the same way.
 - **Separate → joint (D8).** On activation, each member whose items include `hidden` ones sees "Household now files with
   one tax ID. Share Business Mandiri with Andi? [Share]". Their `nw_pending.count` is the number not yet shared; the
   joint report is incomplete while any count is above zero.
