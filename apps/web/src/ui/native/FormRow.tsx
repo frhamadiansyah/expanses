@@ -390,7 +390,7 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
 export const FORM_KINDS: readonly FormKind[] = ['picker', 'typed', 'static'];
 
 /**
- * A currency typed as its three-letter code — no list of 160 to scroll. The field is only three letters wide, so
+ * A currency typed as its three-letter code — no list of 160 to scroll. The field is only as wide as its code, so
  * the › drawn after it by the caller sits right beside it. A code counts once all three letters are a known one;
  * anything else goes back to the last good code when the field is left. While typing, a phone offers matching
  * currencies over the keyboard and a desktop gets the browser's own list.
@@ -414,8 +414,14 @@ export function CurrencyCode({
   const known = (code: string) => codes.some((c) => c.code === code);
   const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
   const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
+  const sized = cx('text-[16px] leading-[20px] tracking-[0.5px] uppercase md:text-[15px]', className);
   return (
     <>
+      {/* As wide as the code it shows, so the caller's › sits right after it: an unseen copy sets the width. */}
+      <span className="inline-grid shrink-0">
+        <span aria-hidden className={cx('invisible col-start-1 row-start-1 whitespace-pre', sized)}>
+          {(typed ?? value) || 'IDR'}
+        </span>
       <input
         aria-label={label}
         // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
@@ -438,11 +444,10 @@ export function CurrencyCode({
         spellCheck={false}
         maxLength={3}
         placeholder="IDR"
-        className={cx(
-          'ph-focus w-[3.4em] shrink-0 rounded bg-transparent text-[16px] leading-[20px] tracking-[0.5px] uppercase placeholder:text-[var(--ph-ink-3)] md:text-[15px]',
-          className,
-        )}
+        size={1}
+        className={cx('ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent placeholder:text-[var(--ph-ink-3)]', sized)}
       />
+      </span>
       <KeyboardStrip
         label="Currencies"
         cells={offered.map((c) => ({

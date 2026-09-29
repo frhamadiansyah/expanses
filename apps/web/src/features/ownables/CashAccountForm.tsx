@@ -170,7 +170,7 @@ function MoneyRow({
         <span className="flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
           <span aria-hidden>{currencyFlag(currency)}</span>
           <CurrencyCode label={currencyLabel} value={currency} onChange={onCurrency} codes={CURRENCIES} className="font-medium text-[var(--ph-ink)]" />
-          <span aria-hidden className="-ml-[6px] text-[17px] leading-none text-[var(--ph-chevron)]">
+          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">
             {'›'}
           </span>
         </span>
