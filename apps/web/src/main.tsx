@@ -31,11 +31,17 @@ if (import.meta.hot) {
   const report = console.error.bind(console);
   console.error = (...args: unknown[]) => {
     // React names a render that threw this way; the router's boundary then draws over the app.
-    if (args.some((arg) => typeof arg === 'string' && /The above error occurred|Failed to reload|Importing a module script failed/.test(arg))) mark();
+    if (args.some((arg) => typeof arg === 'string' && /The above error occurred|An error occurred in the|Failed to reload|Importing a module script failed/.test(arg))) mark();
     report(...args);
   };
   import.meta.hot.on('vite:afterUpdate', () => {
     if (broken) window.location.reload();
+    // However it broke, an update that leaves nothing drawn is a broken page: a render that threw with no boundary
+    // above it unmounts the whole app without a word. Looked at once the update has settled.
+    else
+      window.setTimeout(() => {
+        if (document.getElementById('root')?.childElementCount === 0) window.location.reload();
+      }, 1500);
   });
 }
 
