@@ -36,6 +36,31 @@ export interface EmbeddedForm {
   onCanSave: (canSave: boolean) => void;
 }
 
+/** An amount field as wide as what is in it (never narrower than its placeholder), so a rate beside it sits close. */
+function amountWidth(value: string): string {
+  return `${Math.max(value.length, 6) + 1}ch`;
+}
+
+/**
+ * An opening rate between a row's label and its amount, split from the amount by a hairline the way a split cell is:
+ * grey "Rate" until one is typed, and left empty the day's rate is used.
+ */
+function RateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <>
+      <input
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        inputMode="decimal"
+        placeholder="Rate"
+        className="ph-focus min-w-[56px] flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+      />
+      <span aria-hidden className="h-[24px] w-[0.5px] shrink-0 bg-[var(--ph-hair)]" />
+    </>
+  );
+}
+
 /**
  * One pocket in one row: its currency on the left — the flag and the code, a real select laid over them so the phone
  * opens its own picker — and what it opens with on the right, as the amount row of a transaction reads.
@@ -82,30 +107,16 @@ function PocketRow({
             ))}
           </select>
         </span>
-        {/* A foreign pocket's opening rate, between the currency and the amount so every amount lines up at the right:
-            left as "auto", the day's rate is fetched. */}
-        {currency !== base && (
-          <>
-            <span aria-hidden className="shrink-0 text-[13px] text-[var(--ph-ink-3)]">
-              @
-            </span>
-            <input
-              aria-label={`Rate: ${base} per 1 ${currency}`}
-              value={rate}
-              onChange={(e) => onRate(e.target.value)}
-              inputMode="decimal"
-              placeholder="auto"
-              className="ph-focus w-[76px] shrink-0 rounded bg-transparent text-left text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
-            />
-          </>
-        )}
+        {/* A foreign pocket's opening rate, beside its amount behind a hairline: left empty, the day's rate is fetched. */}
+        {currency !== base ? <RateField label={`Rate: ${base} per 1 ${currency}`} value={rate} onChange={onRate} /> : <span className="flex-1" />}
         <input
           aria-label={`Opening ${currency}`}
           value={balance}
           onChange={(e) => onBalance(e.target.value)}
           inputMode="decimal"
           placeholder="Amount"
-          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+          style={{ width: amountWidth(balance) }}
+          className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
     </div>
@@ -223,21 +234,7 @@ export function CashAccountForm({
     }
   }
 
-  const rateField = (
-    <>
-      <span aria-hidden className="shrink-0 text-[13px] text-[var(--ph-ink-3)]">
-        @
-      </span>
-      <input
-        aria-label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
-        value={manualRate}
-        onChange={(e) => setManualRate(e.target.value)}
-        inputMode="decimal"
-        placeholder="auto"
-        className="ph-focus w-[76px] shrink-0 rounded bg-transparent text-left text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
-      />
-    </>
-  );
+  const rateField = <RateField label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} value={manualRate} onChange={setManualRate} />;
 
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
@@ -302,13 +299,15 @@ export function CashAccountForm({
             label="Balance now"
             aria-describedby={balanceHint}
             /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}{foreign ? ` @ is ${ws.baseCurrency} per 1 ${currency} on that day; left as auto, the day's rate is used.` : ''}</span>}
+            info={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}{foreign ? ` Rate is ${ws.baseCurrency} per 1 ${currency} on that day; left empty, the day's rate is used.` : ''}</span>}
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
             inputMode="decimal"
             placeholder="Amount"
-            // A foreign account's opening rate on the balance's own line, as a pocket carries it: @ rate, then the amount.
+            // A foreign account's opening rate on the balance's own line, as a pocket carries it: rate, a hairline, the amount.
             middle={foreign ? rateField : undefined}
+            style={foreign ? { width: amountWidth(balance) } : undefined}
+            className={foreign ? '!flex-none' : undefined}
             // How a typed rate reads, while one is typed: "16.500" must not pass for 16500 unseen.
             hint={foreign && manualRate.trim() ? (ratePreview(manualRate, currency, ws.baseCurrency) ?? undefined) : undefined}
           />
@@ -341,7 +340,7 @@ export function CashAccountForm({
       </InsetGroup>
       {/* A flat array of rows, not a fragment per pocket: `InsetGroup` hands each direct child its position. */}
       {pocketed && (
-        <InsetGroup header="Pockets" footer="@ is the rate to the workspace’s currency on the opening date. Left as auto, that day’s rate is used.">
+        <InsetGroup header="Pockets" footer="Rate is to the workspace’s currency on the opening date. Left empty, that day’s rate is used.">
           {pockets.flatMap((pocket, i) => [
             <PocketRow
               key={`p${i}`}
