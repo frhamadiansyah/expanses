@@ -4,7 +4,9 @@ import { expenseLines, isoDate } from '@expanses/core';
 import { activeNetWorthGroup, confirmReview, createAccount, pendingHidden, postTransaction, reviewedFor, setShareSetting } from '../../src/index';
 import { archiveAccount } from '../../src/index';
 import { withCapture } from '../../src/sync/capture';
+import { SyncEngine } from '../../src/sync/engine';
 import { encodeHlc } from '../../src/sync/hlc';
+import type { SyncTransport } from '../../src/sync/types';
 import { receivedItems } from '../../src/sync/net-worth/summaries';
 import { categoryOf, Household, type Device } from './household';
 
@@ -200,5 +202,94 @@ describe('joint net worth, end to end', () => {
     await confirmReview(rina.database, rina.ws, {});
     await settle(home);
     expect(await namesFrom(andi, groupBookId, rina.memberId)).toContain('Rina Savings');
+  });
+
+  it('Sari, asked and declining, is taken out of the log once the pair activates: no current key, no summaries (round 3, A)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const sari = await home.device('Sari');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.join(sari, rina);
+    await home.settle();
+    const three = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    expect(await sari.engine.groupLogOf(bookId)).toBe(groupBookId); // let in to be asked
+    await sari.engine.answerNetWorth(bookId, three, 'decline');
+    await settle(home);
+    const pair = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId] });
+    await settle(home);
+    await andi.engine.answerNetWorth(bookId, pair, 'confirm');
+    await settle(home);
+    await confirmReview(rina.database, rina.ws, {});
+    await confirmReview(andi.database, andi.ws, {});
+    await settle(home);
+    expect(await namesFrom(andi, groupBookId, rina.memberId)).toEqual(['Rina Bank', 'Rina Dollars', 'Rina Wallet']);
+
+    const [[current]] = (await rina.database.db.values<[number]>(sql`SELECT max(epoch) FROM book_epoch_keys WHERE book_id = ${groupBookId}`)) as [[number]];
+    const sariEpochs = (await sari.database.db.values<[number]>(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).map(([e]) => Number(e));
+    expect(sariEpochs).not.toContain(Number(current));
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+    // And nothing after.
+    await setShareSetting(rina.database, rina.bank, 'hidden');
+    await setShareSetting(rina.database, rina.bank, 'total');
+    await settle(home);
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+  });
+
+  it('an invite that failed to go out is sent on the next sync, and the proposal goes on (round 3, C)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.settle();
+    let fail = true;
+    const real = rina.transport;
+    const flaky: SyncTransport = Object.assign(Object.create(real) as SyncTransport, {
+      putInvite: async (...args: Parameters<SyncTransport['putInvite']>) => {
+        if (fail) {
+          fail = false;
+          throw new Error('relay unreachable');
+        }
+        return real.putInvite(...args);
+      },
+    });
+    rina.engine = new SyncEngine(rina.database, flaky, rina.keys);
+    await expect(rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] })).rejects.toThrow('relay unreachable');
+    const pending = (await rina.engine.netWorthGroup(bookId)).pending!;
+    await settle(home);
+    expect(await andi.engine.groupLogOf(bookId)).not.toBeNull();
+    await andi.engine.answerNetWorth(bookId, pending.proposalId, 'confirm');
+    await settle(home);
+    expect((await andi.engine.netWorthGroup(bookId)).active?.proposalId).toBe(pending.proposalId);
+  });
+
+  it('before any activation only the pending proposal’s members are let in: a device of Sari, who declined, is not (round 3, B)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const sari = await home.device('Sari');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.join(sari, rina);
+    await home.settle();
+    const withSari = await rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [sari.memberId] });
+    await settle(home);
+    await sari.engine.answerNetWorth(bookId, withSari, 'decline');
+    await settle(home);
+    await rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] });
+    await settle(home);
+    // Sari's new iPad joins the workspace; nobody lets it into the group log, asked or on its own.
+    const pad = await home.device('SariPad', sari.memberId);
+    const { code } = await rina.engine.createInvite(bookId, { inviterName: 'Rina', sameMember: true, memberId: sari.memberId });
+    await pad.engine.joinBook(code, { ws: pad.ws, memberName: 'Sari', deviceName: "Sari's iPad" });
+    await settle(home);
+    await rina.engine.admitToGroupLog(bookId, [sari.memberId]);
+    await settle(home);
+    expect(await pad.engine.groupLogOf(bookId)).toBeNull();
+    expect(await andi.engine.groupLogOf(bookId)).not.toBeNull();
   });
 });

@@ -103,11 +103,13 @@ function parseMembers(json: string): string[] {
 }
 
 /**
- * Whose devices may be let into a group log (wave 3 round 2): the active group's members; before any activation, the
- * members listed on a proposal not cancelled (nothing has been sent yet, so the log holds no summary); nobody once a
- * group that was active has ended. A Change never adds anyone, so nobody else ever reads the log's history. Null — no
- * limit — only while the log holds no proposal at all: it is empty of anything but its devices, and summaries need an
- * active group (the set-up steps below the API, `openGroupLog` then `admitToGroupLog`, run in that window).
+ * Whose devices may be let into a group log (wave 3 rounds 2–3): the active group's members; before any activation, the
+ * members of the pending proposal (`deriveGroup`'s — one listed only on a declined or cancelled proposal is not);
+ * nobody when nothing is pending, nor once a group that was active has ended. A Change never adds anyone, so nobody
+ * else is ever handed the log's keys by an honest device; one let in to be asked who then is not in the group is taken
+ * out with rotation when the group activates (`removeOutsiders`). Null — no limit — only while the log holds no
+ * proposal at all: it is empty of anything but its devices, and summaries need an active group (the set-up steps
+ * below the API, `openGroupLog` then `admitToGroupLog`, run in that window).
  */
 export async function admissibleMembers(db: Db, groupBookId: string): Promise<Set<string> | null> {
   const { proposals, answers } = await groupInputsOf(db, groupBookId);
@@ -115,7 +117,7 @@ export async function admissibleMembers(db: Db, groupBookId: string): Promise<Se
   const state = deriveGroup(proposals, answers);
   if (state.active) return new Set(state.active.members);
   if (proposals.some((p) => isActivated(p, proposals, answers))) return new Set();
-  return new Set(proposals.filter((p) => !p.cancelled).flatMap((p) => p.members));
+  return new Set(state.pending?.members ?? []);
 }
 
 /** The group state of a group log, derived here as on every device (§6). */

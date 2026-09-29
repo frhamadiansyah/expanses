@@ -565,6 +565,40 @@ async function followWorkspaceRemovals(host: GroupLogHost, workspaceBookId: stri
 }
 
 /**
+ * Wave 3 round 3, A: once a group is active, every device in its log whose member is not in the group — let in to be
+ * asked, then declined, or left out of what activated — is removed, with rotation, by any member's device, so it reads
+ * nothing sent after. Idempotent: a device already removed (here or by another member) is skipped.
+ */
+export async function removeOutsiders(host: GroupLogHost, groupBookId: string, members: readonly string[]): Promise<void> {
+  const targets = await host.database.db.values<[string, string]>(sql`
+    SELECT device_id, member_id FROM sync_authority_devices
+    WHERE book_id = ${groupBookId} AND removed_seq IS NULL AND device_id <> ${host.device.deviceId}
+    ORDER BY device_id`);
+  for (const [target, member] of targets) {
+    if (members.includes(member)) continue;
+    if ((await host.database.transaction((tx) => viewDevice(tx, groupBookId, target)))?.removedSeq != null) continue; // done meanwhile
+    try {
+      await host.removeDevice(groupBookId, target);
+    } catch (error) {
+      if (error instanceof SyncTransportError && error.status === 403) continue;
+      throw error;
+    }
+  }
+}
+
+/**
+ * Wave 3 round 3, C: the members of the pending proposal with no device in the log yet — their invites never went out
+ * (the proposal was written, then its admit failed) — are let in on a later sync. `admitToGroupLog` itself skips a
+ * device with a live invite from this device, or one the log already had.
+ */
+export async function membersNotYetIn(host: GroupLogHost, groupBookId: string, members: readonly string[]): Promise<string[]> {
+  const inLog = new Set(
+    (await host.database.db.values<[string]>(sql`SELECT DISTINCT member_id FROM sync_authority_devices WHERE book_id = ${groupBookId}`)).map(([m]) => m),
+  );
+  return members.filter((m) => !inLog.has(m));
+}
+
+/**
  * This device leaves the workspace's group log, if it is in one (§6: out of the workspace is out of the group): a
  * removal of itself — as its member leaving when `leave` — then the group's rows and keys go. When the relay cannot be
  * reached, the log is ended and forgotten here all the same; the group's other members take this device out when they

@@ -215,7 +215,11 @@ mode. No active proposal = no group. Every device derives the same answer from t
   (every device derives it alike); the app refuses it (`adds-members`) and the Change screen offers only current
   members: "To add someone, stop sharing net worth and set it up again." Setting up again (the group dissolves, §4)
   makes a new group log with new keys. No device lets in a device of anyone but the active group's members (before
-  any activation: those listed on a live proposal).
+  any activation: the members of the pending proposal, as `deriveGroup` gives it — not someone listed only on a
+  declined or cancelled one). Someone let in to be asked who is not in the group when it activates (they declined,
+  or a newer proposal left them out) is removed from the log, with rotation, by any member's device, so they read
+  nothing sent after; what the log held before activation was no summary. A member whose invite never went out (the
+  relay failed after the proposal was written) is invited again on a later sync.
 - **`joint` needs exactly two members.** A proposal with `joint` and not two members cannot be made in the UI and is
   never active on apply.
 - **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.

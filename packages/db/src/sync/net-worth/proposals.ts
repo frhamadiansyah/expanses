@@ -12,6 +12,8 @@ import {
   abandonLostGroupLog,
   admitToGroupLog,
   devicesToAdmit,
+  membersNotYetIn,
+  removeOutsiders,
   dissolveGroupLog,
   groupLogOf,
   groupMembersReady,
@@ -225,9 +227,15 @@ export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, res
   // A live group whose link someone closed (a former member can): open it again (review round 1, finding 2).
   const state = await groupStateOf(host.database.db, groupBookId);
   if (state.active || state.pending) await reopenClosedLink(host, bookId);
+  const [me] = await host.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);
+  // Round 3, A: an active group's log holds only its members' devices (anyone let in to be asked who is not in it goes).
+  if (state.active && me && state.active.members.includes(me[0])) await removeOutsiders(host, groupBookId, state.active.members);
   const admit = await devicesToAdmit(host, bookId);
+  // Round 3, C: invitees of the pending proposal whose invites never went out.
+  const missing = state.pending ? await membersNotYetIn(host, groupBookId, state.pending.members) : [];
   try {
-    if (admit.length > 0) await admitToGroupLog(host, bookId, [...new Set(admit.map((d) => d.memberId))]);
+    const members = new Set([...admit.map((d) => d.memberId), ...missing]);
+    if (members.size > 0) await admitToGroupLog(host, bookId, [...members]);
   } catch (error) {
     // The group log ended under it (deleted, or this device removed): the next sync forgets it; the workspace's own
     // sync is not failed for it.
