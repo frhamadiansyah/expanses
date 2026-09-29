@@ -473,3 +473,11 @@ export {
   termStart,
   withholdTax,
 } from './deposits/maturity';
+export {
+  type Answer,
+  canPropose,
+  deriveGroup,
+  type FilingMode,
+  type GroupState,
+  type Proposal,
+} from './net-worth/group';
