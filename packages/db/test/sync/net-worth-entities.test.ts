@@ -210,6 +210,26 @@ describe('nw_item: writer is its owner, per the authority view', () => {
  * and a legitimate local delete was refused as if the row had never existed (open item B). Both are fixed by
  * enforcing the rule at capture time and having the peer-side decision trust that already happened.
  */
+/**
+ * The five group entities are written locally only into a net-worth group log (task 6's capture guard, task 4 carry):
+ * Fandri opens one and admits Dewi and Budi. `bookId` is the group log's; `relayBookId` its relay book.
+ */
+async function groupHousehold() {
+  const h = await household();
+  const bookId = await h.fandri.engine.openGroupLog(h.bookId);
+  await h.fandri.engine.admitToGroupLog(h.bookId, [h.dewi.memberId, h.budi.memberId]);
+  await h.home.settle();
+  await h.home.settle();
+  const [[relayBookId]] = (await h.fandri.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${bookId}`)) as [[string]];
+  return { ...h, bookId, relayBookId };
+}
+
+/** `send`, into a group log. */
+async function sendTo(relayBookId: string, bookId: string, from: Device, member: string, op: Op): Promise<void> {
+  const cs: ChangeSet = { v: 1, hlc: encodeHlc(Date.now(), 0, from.deviceId), member, ops: [op] };
+  await from.transport.append(relayBookId, await from.engine.sealer.seal(bookId, 1, cs));
+}
+
 describe('the writer rule at capture time (local, before anything commits or is emitted)', () => {
   const summary = () => JSON.stringify({ kind: 'account', name: 'BCA' });
 
@@ -238,7 +258,7 @@ describe('the writer rule at capture time (local, before anything commits or is 
   }
 
   it('A: a captured local write attempting a takeover throws at capture; nothing is emitted or changed', async () => {
-    const { home, fandri, dewi, bookId } = await household();
+    const { home, fandri, dewi, bookId } = await groupHousehold();
     await makeItem(fandri, bookId, 'item-a', fandri.memberId);
     await home.settle();
 
@@ -250,7 +270,7 @@ describe('the writer rule at capture time (local, before anything commits or is 
   });
 
   it("B: the stored writer's captured local delete succeeds everywhere, with no false skip anywhere", async () => {
-    const { home, fandri, dewi, budi, bookId } = await household();
+    const { home, fandri, dewi, budi, bookId, relayBookId } = await groupHousehold();
     await makeItem(fandri, bookId, 'item-b', fandri.memberId);
     await home.settle();
 
@@ -264,11 +284,11 @@ describe('the writer rule at capture time (local, before anything commits or is 
   });
 
   it("C: a non-writer's delete op, sent the real (relay) way, is refused on peers", async () => {
-    const { home, fandri, dewi, budi, bookId } = await household();
+    const { home, fandri, dewi, budi, bookId, relayBookId } = await groupHousehold();
     await makeItem(fandri, bookId, 'item-c', fandri.memberId);
     await home.settle();
 
-    await send(home, budi, budi.memberId, { entity: 'nw_item', id: 'item-c', op: 'delete' });
+    await sendTo(relayBookId, bookId, budi, budi.memberId, { entity: 'nw_item', id: 'item-c', op: 'delete' });
     await home.settle();
     const [row] = await dewi.database.db.values<[string]>(sql`SELECT owner FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-c'`);
     expect(row).toEqual([fandri.memberId]);
@@ -276,7 +296,7 @@ describe('the writer rule at capture time (local, before anything commits or is 
   });
 
   it("D: the to party's captured local edit of non-frozen member_transfer fields applies everywhere, with no skips", async () => {
-    const { home, fandri, dewi, budi, bookId } = await household();
+    const { home, fandri, dewi, budi, bookId, relayBookId } = await groupHousehold();
     const line = (owner: string) => JSON.stringify({ owner, label: owner });
     await fandri.database.transaction((tx) =>
       withCapture(tx, { entity: 'member_transfer', id: 'xfer-d', bookId }, async () => {

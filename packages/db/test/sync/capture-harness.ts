@@ -339,3 +339,39 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   }
   return misses;
 }
+
+/**
+ * Joint-net-worth §10's privacy check (task 6), over every change-set this device put in any outbox since the watch
+ * began (the workspace log's and a net-worth group log's alike): none may carry the id of one of this device's own
+ * asset or liability accounts (placeholders of other members excepted: they stand for someone else), nor the id of a
+ * transaction that never was a purchase of a shared book (a lineage's own id is how a purchase travels), nor a category
+ * filed only in books that are not shared (review round 1). A private
+ * line's amount and description are checked by the summaries test, where they are known.
+ */
+export async function privateLeaks(database: Database): Promise<string[]> {
+  let rows: [string, string][];
+  try {
+    rows = await database.db.values<[string, string]>(sql`SELECT book_id, entry_json FROM temp.__sealed WHERE book_id <> '' AND entry_json IS NOT NULL ORDER BY seq`);
+  } catch {
+    return [];
+  }
+  if (rows.length === 0) return [];
+  const accountIds = (
+    await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE kind IN ('asset', 'liability') AND id NOT IN (SELECT account_id FROM book_member_accounts)`)
+  ).map(([id]) => id);
+  // A category filed only in books that are not shared here (a Business book of this person's own) is private too.
+  const categoryIds = (
+    await database.db.values<[string]>(sql`
+      SELECT DISTINCT bc.category_account_id FROM book_categories bc
+      WHERE bc.book_id NOT IN (SELECT book_id FROM shared_books)
+        AND bc.category_account_id NOT IN (SELECT category_account_id FROM book_categories WHERE book_id IN (SELECT book_id FROM shared_books))`)
+  ).map(([id]) => id);
+  const transactionIds = (await database.db.values<[string]>(sql`SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage)`)).map(([id]) => id);
+  const leaks: string[] = [];
+  for (const [bookId, entryJson] of rows) {
+    for (const id of accountIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries account ${id}`);
+    for (const id of transactionIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private transaction ${id}`);
+    for (const id of categoryIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private category ${id}`);
+  }
+  return [...new Set(leaks)];
+}

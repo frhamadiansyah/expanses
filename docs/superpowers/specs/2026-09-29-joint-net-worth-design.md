@@ -297,6 +297,27 @@ newer than the summary (the bar then subtracts them).
   does today; a missing rate leaves the total blank, as today.
 - **Restored backup** (S8.7). The owner's phone recomputes and re-sends every shared item's summary after rejoining.
 
+  *Correction (task 6, code reality):*
+  - **What is sent.** An item goes out when its setting is `total`; a missing row (not reviewed) or `hidden` sends
+    nothing. In `joint` the review writes `total` for every item, so a `hidden` row there is exactly one still pending
+    (D8). The summary travels as this member's own `nw_items` row in the group log (captured, writer-checked), and
+    Don't share, archive and delete write `removed = 1` with the summary blanked (`'null'`), so no history is left on
+    the other phones. Capture recomputes, at flush, every account a transaction touched: its entries (the ledger's
+    doors), its `category` row (rename, archive, delete), and the writes that call `markAccountDirtyTx` (a price, an
+    estimate, a security price for every holding of it, a holding's link, card terms, an asset profile; task 5's share
+    setting should call it too).
+  - **Valued assets.** A price or estimate moves the value without a ledger line; that change counts as other use, so
+    `openingMinor + householdMinor + otherUseMinor = balanceMinor` still holds.
+  - **Restored backup.** At open the group log goes `needs_invite` like the workspace (S8.7). Once the workspace is
+    rejoined, any group member's device re-admits the phone (`admitToGroupLog`, as for a new device). The phone then
+    clears its copy of the group log, pulls it from the first entry, and sends every shared item (`nw_sent` cleared).
+    A group log that this device left, or was removed from, is still never rejoined.
+  - **Groups only in group logs.** Capture refuses the five group entities in any book that is not a group log, and
+    `net_worth_group` inside one.
+  - **What the totals reveal.** The one other-use total is the sum of the private lines in the period. So a period's
+    only private line shows its own amount, and two summaries sent one after the other show, by their difference, what
+    was recorded in between. The line's description, id and account never leave the phone.
+
 ## 10. Tests
 
 Money and merge logic test-first; property tests with `fast-check`.

@@ -3,7 +3,7 @@ import { afterEach, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
 import { configureCapture } from '../../src/sync/capture';
-import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
+import { installCaptureTriggers, privateLeaks, uncapturedWrites, watchPausedWrites } from './capture-harness';
 
 /*
  * The capture run's setup file (vitest.capture.config.ts, `npm run test:capture`; spec §6.4). The first workspace each
@@ -54,12 +54,16 @@ vi.mock('../../src/repos/workspaces', async (importOriginal) => {
 
 afterEach(async () => {
   const misses: string[] = [];
+  const leaks: string[] = [];
   for (const [database, bookId] of watched) {
     try {
       misses.push(...(await uncapturedWrites(database, bookId)));
+      leaks.push(...(await privateLeaks(database)));
     } catch {
       watched.delete(database); // closed, or restored into a new connection: nothing left to watch
     }
   }
   if (misses.length) throw new Error(`Writes to the shared book that capture missed (spec §6.4):\n  ${misses.join('\n  ')}`);
+  // Joint net worth §10 (task 6): nothing private leaves the phone, in any outbox.
+  if (leaks.length) throw new Error(`Private ids in an outbox (joint-net-worth §10):\n  ${leaks.join('\n  ')}`);
 });

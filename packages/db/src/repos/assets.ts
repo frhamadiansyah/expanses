@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles } from '../schema-assets';
+import { markAccountDirtyTx } from '../sync/capture';
 
 export class AssetError extends Error {
   constructor(message: string) {
@@ -182,6 +183,7 @@ export async function saveAssetProfile(database: Database, ws: WorkspaceContext,
  * profile as one atomic step. `saveAssetProfile` is this with a transaction of its own.
  */
 export async function saveAssetProfileTx(tx: Db, ws: WorkspaceContext, input: SaveAssetProfileInput): Promise<void> {
+  markAccountDirtyTx(tx, input.accountId); // joint net worth §9: how it is valued
   const defaults = profileDefaults(input.assetKind);
   const coretaxCode = input.coretaxCode === undefined ? defaults.coretaxCode : input.coretaxCode;
   if (coretaxCode !== null && !/^\d{4}$/.test(coretaxCode)) throw new AssetError('A Coretax code is four digits');

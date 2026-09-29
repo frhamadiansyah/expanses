@@ -1,8 +1,8 @@
 import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Database, Tx } from '../../database';
-import { CLOSED_LINK_PREFIX, GROUP_LINK_NS, groupLogWorkspaceOf, isClosedLink, OWN_LINK_PENDING_KEY, viewActiveDevices, viewDevice } from '../authority';
-import { captureConfigOf, rowUpsertsTx, withCapture, writeChangeSetsTx } from '../capture';
+import { clearAuthorityTx, CLOSED_LINK_PREFIX, GROUP_LINK_NS, groupLogWorkspaceOf, isClosedLink, OWN_LINK_PENDING_KEY, viewActiveDevices, viewDevice } from '../authority';
+import { captureConfigOf, rowUpsertsTx, takePendingSummaryAccounts, withCapture, writeChangeSetsTx } from '../capture';
 import { fromUtf8, hkdf, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../crypto';
 import type { SyncOnceResult } from '../engine';
 import { encodeInviteCode, inviteAad, INVITE_TTL_MS, inviteKeyOf, newInviteSecret, openInviteJson, parseInviteCode, sealInviteJson, type InviteKey } from '../invite';
@@ -13,6 +13,7 @@ import { SharingError } from '../seed';
 import type { InviteRecord, SyncTransport } from '../types';
 import { SyncTransportError } from '../types';
 import { uuidv5 } from '../uuidv5';
+import { localDate, refreshSummariesTx, sendSummariesTx } from './summaries';
 import { meetsMinVersion } from './version';
 
 /*
@@ -404,7 +405,7 @@ export async function abandonLostGroupLog(host: GroupLogHost, workspaceBookId: s
  * it, keeps its epoch keys and introduces itself; the group log's sync that follows pulls it. False when no invite here
  * opens and claims.
  */
-async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link: Link): Promise<boolean> {
+async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link: Link, restored = false): Promise<boolean> {
   const workspace = await sharedRowOf(host.database, workspaceBookId);
   if (!workspace || workspace.state !== 'active' || !link.relayBookId) return false;
   const self = host.device.deviceId;
@@ -456,12 +457,19 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
     // introduction waiting in the outbox, so nothing it writes can reach the log before it (an entry from a device
     // nobody pinned stops every peer's pull, §5.4). Its member row goes with it every time: when another device of the
     // member was first, the log takes it as an owner's edit of an existing member (every group member is an owner).
+    if (restored) host.sealer.forget();
     await host.database.transaction(async (tx) => {
       await recordGroupBookTx(tx, link.groupBookId, workspaceBookId);
+      // A restored phone (§9 "Restored backup", S8.7; task 6): it reads the group log again from its first entry, as
+      // the new device it is. Everything the log holds comes back by that pull; what only this phone knew — its own
+      // summaries — is sent again after it (`sendSummariesTx(…, 'all')`, with `nw_sent` cleared).
+      if (restored) await resetGroupTx(tx, link.groupBookId);
       for (const k of keys) await host.sealer.storeEpochKeyTx(tx, link.groupBookId, k.epoch, base64UrlToBytes(k.key));
       await tx.run(sql`
         INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at)
-        VALUES (${link.groupBookId}, ${claim.bookId}, ${epoch}, ${workspace.memberId}, 'active', ${new Date(host.now()).toISOString()})`);
+        VALUES (${link.groupBookId}, ${claim.bookId}, ${epoch}, ${workspace.memberId}, 'active', ${new Date(host.now()).toISOString()})
+        ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, member_id = excluded.member_id,
+          state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
       await introduceTx(host, tx, workspaceBookId, link.groupBookId, workspace.memberId, epoch);
     });
     return true;
@@ -492,15 +500,29 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
   }
   if (result.stopped) return undefined;
   let groupBookId = await groupLogOf(host, bookId);
+  let joined = false;
   if (!groupBookId) {
     const link = await linkOf(host.database, bookId);
-    if (!link || (await heldBefore(host.database, link.groupBookId))) return undefined;
-    if ((await sharedRowOf(host.database, link.groupBookId)) !== undefined) return undefined;
-    if (!(await joinFromInvites(host, bookId, link))) return undefined;
+    if (!link) return undefined;
+    // A group log this device held is never joined again (it left, or was removed) — unless it only waits for an
+    // invite: a phone restored from a backup (S8.7), which a group member's device re-admits as it would a new device.
+    const row = await sharedRowOf(host.database, link.groupBookId);
+    const restored = row?.state === 'needs_invite';
+    if (!restored && (row !== undefined || (await heldBefore(host.database, link.groupBookId)))) return undefined;
+    if (!(await joinFromInvites(host, bookId, link, restored))) return undefined;
     groupBookId = link.groupBookId;
+    joined = true;
   }
-  const synced = await host.syncOnce(groupBookId);
+  let synced = await host.syncOnce(groupBookId);
   if (!synced.ended) await followWorkspaceRemovals(host, bookId, groupBookId);
+  if (!synced.ended && !synced.stopped) {
+    const today = localDate(host.now());
+    // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state; on every
+    // sync, the items a peer's change touched here (apply sends nothing itself) and those whose period has ended.
+    const pending = takePendingSummaryAccounts(host.database);
+    const sent = await host.database.transaction((tx) => (joined ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today)));
+    if (sent > 0) synced = await host.syncOnce(groupBookId);
+  }
   return synced;
 }
 
@@ -557,6 +579,23 @@ async function dropDepartedTx(tx: Tx, groupBookId: string): Promise<void> {
     DELETE FROM nw_items WHERE book_id = ${groupBookId} AND owner IN (
       SELECT m.member_id FROM sync_authority m WHERE m.book_id = ${groupBookId} AND NOT EXISTS (
         SELECT 1 FROM sync_authority_devices d WHERE d.book_id = ${groupBookId} AND d.member_id = m.member_id AND d.removed_seq IS NULL))`);
+}
+
+/**
+ * A restored phone's copy of the group log, cleared for a pull from the first entry (S8.7): every net-worth row the log
+ * will bring back, the keys, the view and all sync state, and which summaries it sent. `member_transfers` stay (task 8's
+ * postings are tied to them; the pull merges them again).
+ */
+async function resetGroupTx(tx: Tx, groupBookId: string): Promise<void> {
+  for (const table of ['nw_proposals', 'nw_answers', 'nw_items', 'nw_pending']) {
+    await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${groupBookId}`);
+  }
+  await tx.run(sql`DELETE FROM nw_sent WHERE item_id IN (SELECT item_id FROM nw_item_map WHERE group_book_id = ${groupBookId})`);
+  for (const table of ['sync_outbox', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'sync_kept_clocks', 'book_devices', 'book_members']) {
+    await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${groupBookId}`);
+  }
+  await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${groupBookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
+  await clearAuthorityTx(tx, groupBookId);
 }
 
 /**

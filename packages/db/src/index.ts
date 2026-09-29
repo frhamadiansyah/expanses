@@ -141,3 +141,7 @@ export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/ver
 // Joint net worth (spec §6, §8.1): the group's proposals and answers, and what each person shares of their own items.
 export { type NetWorthGroupView } from './sync/net-worth/proposals';
 export * from './repos/net-worth-sharing';
+// Joint net worth (spec §5.2, §9, task 6): summaries — compute, send, receive — and the dirty mark a repository sets
+// when it changes an account's value or profile outside the ledger doors (a share setting, say).
+export { activeGroupFor, computeItemSummary, itemIdOf, receivedItems, sendSummariesTx, type ActiveGroup } from './sync/net-worth/summaries';
+export { markAccountDirtyTx } from './sync/capture';
