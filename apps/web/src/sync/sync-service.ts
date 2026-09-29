@@ -403,7 +403,10 @@ export class SyncService {
     // A run that stopped short may have moved the book out of `active` (needs_invite): it is no longer polled.
     if (result?.stopped || result?.ended) await this.refresh().catch((error: unknown) => this.onError(error));
     this.emit();
-    if (result && (result.applied > 0 || result.rotated !== undefined || result.ended !== undefined || result.stopped?.reason === 'needs invite')) this.onApplied();
+    // A workspace's run also syncs its net-worth group log (joint-net-worth §4): what that applied is read again too.
+    const group = result?.group;
+    const changed = (r: typeof result) => !!r && (r.applied > 0 || r.rotated !== undefined || r.ended !== undefined || r.stopped?.reason === 'needs invite');
+    if (changed(result) || changed(group)) this.onApplied();
   }
 
   private hear(relayBookId: string, entries: SequencedEntry[]): void {

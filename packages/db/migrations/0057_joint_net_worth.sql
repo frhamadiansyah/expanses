@@ -1,11 +1,21 @@
 -- Joint net worth (spec §5.1, §9). Side tables only, plus one column on book_devices (spec §9's app-version gate).
 -- The five synced tables (nw_proposals, nw_answers, nw_items, nw_pending, member_transfers) are keyed by the group
 -- log's local book id, not any member's own book: task 4 registers the group log and its `net_worth_group` entity.
--- nw_share_settings, nw_item_map, nw_sent and member_transfer_postings are local bookkeeping and never sync.
+-- nw_group_books, nw_share_settings, nw_item_map, nw_sent and member_transfer_postings are local bookkeeping and never sync.
 
+-- The workspace's link to its net-worth group log (task 4): synced in the workspace log as `net_worth_group`.
 CREATE TABLE group_logs (
-  book_id TEXT PRIMARY KEY,          -- the local book id this device keeps the group log under
-  group_book_id TEXT NOT NULL UNIQUE -- the relay book id of the shared group log
+  book_id TEXT PRIMARY KEY,              -- the shared workspace's book id
+  group_book_id TEXT NOT NULL UNIQUE,    -- the group log's book id, the same on every device (a shared_books row with no books row)
+  invites_json TEXT NOT NULL DEFAULT '[]' -- relay invites to the group log, each sealed to one admitted device's agreement key
+);
+
+-- Local only, never synced (task 4): the group logs this device holds, and the workspace each belongs to. Written
+-- when this device makes or joins one, never by a peer, so a rewritten `net_worth_group` row cannot move this device
+-- off the group log it is in, or make a workspace book read as a group log.
+CREATE TABLE nw_group_books (
+  group_book_id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL
 );
 
 CREATE TABLE nw_proposals (

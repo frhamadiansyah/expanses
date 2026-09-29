@@ -243,6 +243,19 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'net_worth_group',
+    table: 'group_logs',
+    // The one joint-net-worth row of the WORKSPACE log (joint-net-worth spec §4, task 4): which group log the
+    // workspace's net-worth group keeps, and the relay invites to it, each sealed to one admitted device. A member
+    // outside the group learns that a group exists and how many invites wait, nothing else.
+    scopeRule: "book_id = bookId (the workspace's own book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['book_id'],
+    fields: { groupBookId: 'group_book_id', invites: 'invites_json' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
     entity: 'nw_proposal',
     table: 'nw_proposals',
     scopeRule: "book_id = bookId (the group log's local book id)",

@@ -23,6 +23,16 @@ import {
 } from './invite';
 import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
+import {
+  admitToGroupLog,
+  groupLogOf,
+  groupMembersReady,
+  leaveGroupLog,
+  openGroupLog,
+  removeFromGroupLog,
+  syncGroupAfter,
+  type GroupLogHost,
+} from './net-worth/group-log';
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
@@ -40,6 +50,9 @@ import { removedFromBook, SyncTransportError } from './types';
  * - `removeDevice` and `maybeRotate` (§8.4).
  * - `checkRestore` and rejoining through `joinBook` (§8.7).
  * - `makeOwner`, `leave`, `stopSharing`, `isFrozen` and `bookSyncStatus` (§8.4–§8.7, §11; task 9a).
+ * - The net-worth group log (joint-net-worth §4; net-worth/group-log.ts): `openGroupLog`, `admitToGroupLog`,
+ *   `leaveGroupLog`, `removeFromGroupLog`, `groupLogOf`, `groupMembersReady`; `syncOnce` of a workspace syncs its group
+ *   log too.
  */
 
 /** Only an owner may do this (§8.5): make an owner, stop sharing. Decided by the authority view. */
@@ -118,6 +131,8 @@ export interface SyncOnceResult extends PullResult {
    * `403 removed`: an owner removed this device (§8.4, final review I2). The book is read-only after.
    */
   ended?: 'unshared' | 'left' | 'removed';
+  /** A workspace's sync also syncs its net-worth group log, when this device is in it (joint-net-worth §4): that sync. */
+  group?: SyncOnceResult;
 }
 
 export interface CreatedInvite {
@@ -264,6 +279,14 @@ export class SyncEngine {
    * and cursor stay put.
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    const result = await this.syncBook(bookId, seen);
+    // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
+    const group = await syncGroupAfter(this.groupHost(), bookId, result);
+    return group ? { ...result, group } : result;
+  }
+
+  /** `syncOnce` of the book alone. */
+  private async syncBook(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
     try {
       return await this.syncActive(bookId, seen);
@@ -899,6 +922,53 @@ export class SyncEngine {
       await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by}, unshared_reason = ${reason} WHERE book_id = ${bookId}`);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
+  }
+
+  /* ------------------------------------------------------ net-worth group log */
+
+  /** What the group log (net-worth/group-log.ts) borrows from this engine. */
+  private groupHost(): GroupLogHost {
+    return {
+      database: this.database,
+      transport: this.transport,
+      device: this.device,
+      sealer: this.sealer,
+      now: this.now,
+      ...(this.appVersion === undefined ? {} : { appVersion: this.appVersion }),
+      syncOnce: (bookId) => this.syncOnce(bookId),
+      removeDevice: (bookId, target) => this.removeDevice(bookId, target),
+      leaveNow: (bookId, leave) => this.leaveNow(bookId, leave),
+    };
+  }
+
+  /** Makes the workspace's net-worth group log, or returns the one this device is in (joint-net-worth §4). */
+  openGroupLog(workspaceBookId: string): Promise<string> {
+    return openGroupLog(this.groupHost(), workspaceBookId);
+  }
+
+  /** The workspace's group log this device reads and writes, or null (none, or one this device is not in). */
+  groupLogOf(workspaceBookId: string): Promise<string | null> {
+    return groupLogOf(this.groupHost(), workspaceBookId);
+  }
+
+  /** Invites these members' pinned devices into the group log; they join on their next workspace sync. */
+  admitToGroupLog(workspaceBookId: string, memberIds: readonly string[]): Promise<void> {
+    return admitToGroupLog(this.groupHost(), workspaceBookId, memberIds);
+  }
+
+  /** This member leaves the group log: its devices removed with rotation, the group's rows forgotten here. */
+  leaveGroupLog(workspaceBookId: string): Promise<void> {
+    return leaveGroupLog(this.groupHost(), workspaceBookId);
+  }
+
+  /** Takes a member who left out of the group log, with rotation: by any other group member. */
+  removeFromGroupLog(workspaceBookId: string, memberId: string): Promise<void> {
+    return removeFromGroupLog(this.groupHost(), workspaceBookId, memberId);
+  }
+
+  /** Whether every device of these members runs an app new enough for joint net worth (§9). */
+  groupMembersReady(workspaceBookId: string, memberIds: readonly string[]): Promise<{ ready: boolean; outdated: { memberId: string; deviceName: string }[] }> {
+    return groupMembersReady(this.groupHost(), workspaceBookId, memberIds);
   }
 
   /* ---------------------------------------------------------------- restore */

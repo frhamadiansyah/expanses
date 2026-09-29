@@ -155,16 +155,43 @@ export async function wasRefused(tx: Db, bookId: string, deviceId: string): Prom
 }
 
 /**
+ * The workspace a net-worth group log belongs to (joint-net-worth §4, task 4), or null for any other book. Read from
+ * `nw_group_books`, which only this device writes, when it makes or joins a group log — never from the synced
+ * `net_worth_group` link, which any workspace member may rewrite.
+ */
+export async function groupLogWorkspaceOf(tx: Db, bookId: string): Promise<string | null> {
+  try {
+    const [row] = await tx.values<[string]>(sql`SELECT book_id FROM nw_group_books WHERE group_book_id = ${bookId}`);
+    return row?.[0] ?? null;
+  } catch {
+    return null; // a database from before migration 0057 has no group logs
+  }
+}
+
+/**
  * §8.2 (C3): a device the view does not know yet is admitted when its entry is the book's first (its creator's seed),
  * or carries invite terms an owner device of this book signed, introducing a member the terms allow, and no other device
  * used the invite. On admission the device enters the view. Returns why not, or null.
+ *
+ * A net-worth group log (joint-net-worth §4, task 4 ruling) has no invite code: a device is admitted, first entry or
+ * not and with no terms, when the linked workspace's authority view has pinned it, as the same member. Its key is the
+ * workspace's pin: a device id is the hash of its signing key (`deviceIdOf`), and the pull already checked that the
+ * introduction's key derives to its author. Pinned is judged whatever the device's state in the workspace since, so
+ * the answer never depends on how far along a device's copy of the workspace is; a device removed from the workspace
+ * leaves the group by a removal in the group log. A device the workspace view does not know yet never reaches here:
+ * the pull waits for the workspace (`workspace behind`).
  */
 export async function introductionRefusal(tx: Db, bookId: string, author: string, seq: number, changeSet: ChangeSet): Promise<string | null> {
   const refuse = (why: string) => `AUTHORITY: introduction ${why}`;
   const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === author && op.op === 'upsert');
   const memberId = intro && intro.op === 'upsert' ? (intro.fields.memberId as string | undefined) : undefined;
   if (!memberId) return refuse('names no member');
-  if (seq !== 1) {
+  const workspace = await groupLogWorkspaceOf(tx, bookId);
+  if (workspace !== null) {
+    const pinned = await viewDevice(tx, workspace, author);
+    if (!pinned) return refuse('into a group log by a device its workspace never admitted');
+    if (pinned.memberId !== memberId) return refuse('into a group log as another member than its workspace device');
+  } else if (seq !== 1) {
     const terms = changeSet.invite;
     if (!terms) return refuse('without an owner’s invite');
     const owners = await viewOwnerDevices(tx, bookId);
@@ -212,6 +239,11 @@ export interface DecideContext {
    * author's own write. `decideRowWriter` is skipped for an own entry; every other decision here runs alike.
    */
   own?: boolean;
+  /**
+   * The book is a net-worth group log (joint-net-worth §4, task 4 ruling): every member of it is an owner — any of them
+   * may admit a device or remove a member who left (§6) — so a member's own introduction may make itself an owner.
+   */
+  groupLog?: boolean;
 }
 
 /**
@@ -369,7 +401,8 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   const remakes = view === null || (view.deleted && hlc > view.rowHlc && (owner || ownIntroduction));
   let decided: Extract<Op, { op: 'upsert' }> = op;
   if (named.includes('role') && 'role' in op.fields) {
-    if (!owner && !(ownIntroduction && op.fields.role === 'member')) throw new AuthorityError('only an owner writes a role');
+    const introducedAs = op.fields.role === 'member' || (ctx.groupLog === true && op.fields.role === 'owner');
+    if (!owner && !(ownIntroduction && introducedAs)) throw new AuthorityError('only an owner writes a role');
     if (lastOwner && op.fields.role !== 'owner' && hlc > view!.roleHlc) throw new AuthorityError('the last owner cannot be made a member');
   } else if (!owner && 'role' in op.fields) {
     // A role a non-owner's op merely carries (a whole revivable row) cannot win: its clock goes, and it inserts only

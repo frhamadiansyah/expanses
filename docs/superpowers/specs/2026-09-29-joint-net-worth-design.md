@@ -58,14 +58,27 @@ summary sent there would reach a member who did not opt in — the adult son of 
 hidden only by the app. That breaks D10.
 
 So the group gets its own log: a second shared book on the relay, the **group log**, linked to the workspace
-(`group_logs(book_id, group_book_id)`), with its own epoch key sealed only to group members' devices. It reuses the
+(`group_logs(book_id, group_book_id, invites_json)`), with its own epoch key sealed only to group members' devices. It reuses the
 sharing machinery unchanged: HLC, change-sets, sealing, signing, pinning, the relay's Durable Object, removal and
 rotation (S5–S9). What differs:
 
 - **No invite code.** Every group member's devices are already pinned through the workspace (S5.4). The proposer's
-  phone creates the group log and seals its epoch key to the invited member's pinned devices (as S8.3 does for a
-  linked device). The workspace log carries one op, `net_worth_group { groupBookId }`, so members' phones know it
-  exists. A member outside the group learns only that a group exists.
+  phone creates the group log and lets each invited member's pinned devices in. The workspace log carries one row,
+  `net_worth_group { groupBookId, invites }`, so members' phones know it exists and can join it. A member outside the
+  group learns only that a group exists (and how many invites wait).
+
+  *Correction (task 4, code reality):* the relay admits a device to a book only by an invite claim (S9.3), and a
+  rotation in the group log cannot hand a device the key of the entries before it (S9.3 rotations raise the epoch by
+  exactly one, and a device reads the log from its first entry). So admitting a member makes one relay invite per
+  pinned device of theirs, carrying every epoch key as S8.1's invites do, and the invite's code is sealed to that
+  device's pinned agreement key (S5.3's ECDH sealing) and carried in `invites`, with no device id beside it: each device
+  tries each one and only its own opens. The device claims it on its next workspace sync, then introduces itself. In
+  the group log a device is admitted when the linked workspace's view pinned it as the same member, with no invite
+  terms; a pull that meets a device the workspace view does not know yet waits for the workspace. Every group member is
+  an owner of the group log (on the relay too), so any of them can admit a device or remove a member who left.
+  `group_logs` gains `invites_json`. Since any workspace member may rewrite `net_worth_group`, the link only tells a
+  device what to join: which group log a device is in, for which workspace, is its own local record (`nw_group_books`,
+  never synced), so a rewritten link cannot move it off its group log.
 - **Membership follows the group** (§6). A member leaving the group is removed from the group log with rotation (S8.4);
   the workspace membership is untouched.
 - **No seeding** (S6.5): a new group log starts empty; each member's phone sends its summaries after review.

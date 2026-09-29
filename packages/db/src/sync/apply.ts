@@ -5,7 +5,19 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
-import { AuthorityError, decideOpsTx, NO_REVIVE, viewMember, introductionRefusal, recordRemovalTx, removalRefusal, removedInView, viewDevice, wasRefused } from './authority';
+import {
+  AuthorityError,
+  decideOpsTx,
+  groupLogWorkspaceOf,
+  NO_REVIVE,
+  viewMember,
+  introductionRefusal,
+  recordRemovalTx,
+  removalRefusal,
+  removedInView,
+  viewDevice,
+  wasRefused,
+} from './authority';
 import { openSealedKey } from './crypto';
 import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
@@ -37,10 +49,18 @@ export interface BookContext {
 }
 
 export async function bookContextTx(tx: Db, bookId: string): Promise<BookContext> {
-  const [row] = await tx.values<[string, string, string, string]>(sql`
+  let [row] = await tx.values<[string, string, string, string]>(sql`
     SELECT b.workspace_id, w.base_currency, b.base_currency, s.member_id
     FROM books b JOIN workspaces w ON w.id = b.workspace_id JOIN shared_books s ON s.book_id = b.id
     WHERE b.id = ${bookId}`);
+  if (!row) {
+    // A net-worth group log (joint-net-worth §4, task 4) has no `books` row: its workspace and currency are those of
+    // the workspace it belongs to on this device (`nw_group_books`), and its member is this device's in the group log.
+    [row] = await tx.values<[string, string, string, string]>(sql`
+      SELECT b.workspace_id, w.base_currency, b.base_currency, s.member_id
+      FROM nw_group_books g JOIN books b ON b.id = g.book_id JOIN workspaces w ON w.id = b.workspace_id JOIN shared_books s ON s.book_id = g.group_book_id
+      WHERE g.group_book_id = ${bookId}`);
+  }
   if (!row) throw new Error(`Book ${bookId} is not shared on this device`);
   const [workspaceId, baseCurrency, currency, memberId] = row;
   return { bookId, ws: { workspaceId, baseCurrency }, memberId, currency };
@@ -650,7 +670,12 @@ export interface PullResult {
   /** Ops skipped as refusals every receiver makes alike, each also kept in `sync_skipped`. */
   skipped: SkippedOp[];
   /** Why the loop stopped before the end of the log, and at which entry; the cursor stays before it (§7.1). */
-  stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' | 'needs invite' };
+  /**
+   * `workspace behind` (joint-net-worth §4, task 4): a group log's entry introduces a device this device's view of the
+   * linked workspace does not know yet. The pull waits for the workspace instead of refusing, so every device decides
+   * the introduction against the same workspace pins.
+   */
+  stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' | 'needs invite' | 'workspace behind' };
   /**
    * Removals applied by this call, with the epoch each was made under — what `maybeRotate` looks at (§8.4) — and
    * whether it was a device leaving with its member (`leave`, a device removing itself; task 9a), at which seq.
@@ -731,6 +756,8 @@ export async function pullAndApply(
   if (!shared || shared[1] !== 'active') return { applied: 0, skipped: [], stopped: { seq: await cursorOf(database, bookId), reason: 'not active' }, removals, introduced };
   const relayBookId = shared[0];
   const self = sealer.deviceId;
+  // A net-worth group log admits by the linked workspace's pins (joint-net-worth §4): the workspace it belongs to.
+  const groupWorkspace = await groupLogWorkspaceOf(database.db, bookId);
   let since = await cursorOf(database, bookId);
   let applied = 0;
   const held: HeldOps = new Map();
@@ -782,6 +809,15 @@ export async function pullAndApply(
           continue;
         }
         if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return await finish({ seq: entry.seq, reason: 'drift' });
+        // A group log's introduction of a device the linked workspace's view does not know yet waits for the workspace
+        // (task 4 ruling): refusing now would be decided differently on a device whose workspace is further along.
+        if (
+          groupWorkspace !== null &&
+          (await viewDevice(database.db, bookId, entry.deviceId)) === null &&
+          (await viewDevice(database.db, groupWorkspace, entry.deviceId)) === null
+        ) {
+          return await finish({ seq: entry.seq, reason: 'workspace behind' });
+        }
       }
       let rotationKey: Uint8Array | null = null;
       if (entry.kind === 'rotation') {
@@ -820,7 +856,7 @@ export async function pullAndApply(
               if (changeSet) {
                 run.decisions = applyingDecisions = await decideOpsTx(
                   tx,
-                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own },
+                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own, groupLog: groupWorkspace !== null },
                   changeSet.ops,
                 );
                 // A rejoin's pull (§8.7, N2) notes what the log says, as the view took it, for what it sends after.

@@ -69,11 +69,18 @@ async function membersOf(database: Database, bookId: string): Promise<SharedBook
   return rows.map(([memberId, name, role]) => ({ memberId, name, role: role as MemberRole }));
 }
 
-/** Every book this device holds a `shared_books` row for, whatever its state, with its members. */
+/**
+ * Every book this device holds a `shared_books` row for, whatever its state, with its members. A net-worth group log
+ * (joint-net-worth §4) is a `shared_books` row too, but no workspace: it is left out, and its workspace's sync syncs it.
+ */
 export async function listSharedBooks(database: Database): Promise<SharedBookSummary[]> {
   if (!(await sharingTablesExist(database.db))) return [];
+  const groups = (await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_group_books'`)).length > 0;
   const rows = await database.db.values<[string, string, string, string, string | null, SharedBookSummary['unsharedReason']]>(
-    sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
+    groups
+      ? sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books
+            WHERE book_id NOT IN (SELECT group_book_id FROM nw_group_books) ORDER BY shared_at, book_id`
+      : sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
   );
   const out: SharedBookSummary[] = [];
   for (const [bookId, relayBookId, state, memberId, unsharedBy, unsharedReason] of rows) {

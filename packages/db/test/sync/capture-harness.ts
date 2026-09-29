@@ -139,11 +139,14 @@ interface SealedOp {
  * took in from another device (`recordApplied`), because what a field ends as is the latest hlc that carried it,
  * whoever wrote it (§7.3 rule 1).
  */
-async function outboxOps(database: Database): Promise<Map<string, SealedOp[]>> {
+async function outboxOps(database: Database, watchedBookId: string): Promise<Map<string, SealedOp[]>> {
   const rows = await database.db.values<[number, string, string | null, string | null]>(sql`SELECT seq, book_id, entry_json, change_json FROM temp.__sealed ORDER BY seq`);
   const out = new Map<string, SealedOp[]>();
   for (const [rowid, bookId, entryJson, changeJson] of rows) {
-    void bookId;
+    // Another shared book's outbox (a net-worth group log beside the workspace, joint-net-worth §4) accounts for none of
+    // the watched book's writes: its member and device rows share their keys with the workspace's. Apply's rows carry no
+    // book ('') and are kept.
+    if (bookId !== '' && bookId !== watchedBookId) continue;
     // The outbox keeps plaintext change-sets (sealed only at drain), and apply records the one it takes in.
     const changeSet = JSON.parse((changeJson ?? entryJson)!) as ChangeSet;
     for (const op of changeSet.ops) {
@@ -214,7 +217,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     return [];
   }
   if (writes.length === 0) return [];
-  const ops = await outboxOps(database);
+  const ops = await outboxOps(database, bookId);
   const purchase = SHARED_ENTITIES.find((e) => e.kind === 'purchase') as PurchaseEntity;
   const fieldsByTable = purchaseTables(purchase);
   const misses: string[] = [];
@@ -226,8 +229,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     const entity = SHARED_ENTITIES.find((e) => e.kind === 'row' && e.table === w.table) as RowEntity;
     const columns = syncedColumns(entity);
     const key = parseOpId(entity, w.key);
-    const match = sql.join(entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`), sql` AND `);
-    const [nowRow] = await database.db.values<[string]>(sql`SELECT ${sql.raw(jsonOf('NEW', columns).replace(/NEW\./g, ''))} FROM ${sql.raw(entity.table)} WHERE ${match}`);
+    // The row as it stands in the watched book: a key alone (a member id) may name a row of another shared book too.
+    const [nowRow] = await database.db.values<[string]>(
+      sql`SELECT ${sql.raw(jsonOf('NEW', columns).replace(/NEW\./g, 't.'))} FROM ${sql.raw(entity.table)} t WHERE ${sql.join(
+        entity.keyColumns.map((c) => sql`t.${sql.raw(c)} = ${key[c]}`),
+        sql` AND `,
+      )} AND ${entity.scope(bookId)}`,
+    );
     const before = w.old === null ? null : (JSON.parse(w.old) as Record<string, unknown>);
     const now = nowRow ? (JSON.parse(nowRow[0]) as Record<string, unknown>) : null;
     const entityOps = ops.get(`${entity.entity}\u0000${w.key}`);
