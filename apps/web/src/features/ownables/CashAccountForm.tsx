@@ -38,7 +38,7 @@ export interface EmbeddedForm {
 }
 
 /**
- * An account at a bank on one row: the bank where the label would be, grey "Bank ›" until chosen, and the name typed
+ * An account at a bank on one row: the bank where the label would be, in a label's ink whether "Bank ›" or chosen, and the name typed
  * at the right. Typing the bank in a rupiah workspace offers Indonesia's banks over the keyboard, the way the currency
  * field offers codes; anything else typed is kept as typed. The bank is only the tax report's, so it stays optional.
  */
@@ -76,7 +76,7 @@ function BankNameRow({
               autoComplete="off"
               autoCapitalize="words"
               placeholder="Bank"
-              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink-2)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink)] md:text-[15px]"
             />
           </span>
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
