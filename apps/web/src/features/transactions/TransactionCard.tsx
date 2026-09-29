@@ -15,7 +15,7 @@ import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLef
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
@@ -204,7 +204,9 @@ function CardBody({
    * is bought through flows of their own. The account the row already names is kept, so an old row opens as saved.
    */
   const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
-  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId));
+  // A transfer's From also has to pair with the To already chosen: a broker's cash moves only with a current account.
+  const pairsWithTo = (a: AccountRow) => draft.mode !== 'transfer' || !toAccount || a.id === draft.moneyId || canTransferBetween(a, toAccount);
+  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId) && pairsWithTo(a));
   // A card is a way to pay, never somewhere money arrives or moves to.
   // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
   const payable: PaymentOption[] = withoutPlaceholders(
@@ -277,7 +279,11 @@ function CardBody({
   // Where a transfer may land, as the From list draws its own: accounts first, then cards and debts it can pay down.
   // Only what this device lists: a placeholder the edited purchase names (useAccountsFor) is never a place money can
   // be moved to (spec §4.4, fix round 1).
-  const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? []));
+  // Never a time deposit (its money goes in when it is added and leaves through its own page), and only what pairs
+  // with the From already chosen. The account the row names is kept, so an old transfer opens as it was saved.
+  const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? [])).filter(
+    (a) => a.id === draft.toId || (a.subtype !== 'time_deposit' && (!account || canTransferBetween(account, a))),
+  );
   const transferGroups = [
     { title: 'Accounts', kind: 'asset' as const },
     { title: 'Credit cards & debts', kind: 'liability' as const },
@@ -826,7 +832,13 @@ function CardBody({
           chosenAccountId={draft.moneyId}
           chosenCardId={draft.cardId}
           cards={draft.mode === 'expense'}
-          onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
+          onPick={(option) => {
+            const picked = byId.get(option.accountId);
+            // A To that cannot pair with the new From is no longer an answer (the From list already keeps them apart;
+            // this covers an old row opened with a pair made before the rule).
+            const unpaired = draft.mode === 'transfer' && picked && toAccount && !canTransferBetween(picked, toAccount);
+            set({ moneyId: option.accountId, cardId: option.cardId ?? '', ...(unpaired ? { toId: '' } : {}) });
+          }}
           onClose={() => setSheet(null)}
           // Only a new transaction: an edit changes what is there rather than making more. The kinds offered are the
           // ones this question can name, so the account made is always one the row can then hold.

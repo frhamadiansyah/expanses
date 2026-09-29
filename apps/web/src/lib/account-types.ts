@@ -77,14 +77,17 @@ export const MONEY_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES,
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];
 
 /**
- * The accounts a **transfer** moves money between: money you hold, a deposit, and the person-shaped pair.
+ * The accounts a **transfer** moves money between: money you hold and the person-shaped pair.
+ *
+ * A time deposit is not one: its money leaves through the deposit's own Break early or Withdraw, as a card is paid
+ * through its own Pay, and goes in when the deposit is added ("Where the money comes from").
  *
  * Deliberately not every account. A thing you own — shares, gold, a car, a house — is not money and never takes a
  * transfer, and a debt has flows of its own: a card is paid, an instalment is paid, a loan's money arrives when the
  * loan is opened. Offering "KPR BCA" or "ANTAM gold bar" as somewhere to transfer from was what this list exists
  * to stop.
  */
-export const TRANSFER_SUBTYPES: readonly AccountSubtype[] = [...MONEY_SUBTYPES, 'time_deposit', 'receivable', 'payable'];
+export const TRANSFER_SUBTYPES: readonly AccountSubtype[] = [...MONEY_SUBTYPES, 'receivable', 'payable'];
 
 /**
  * May a transfer name this account on either side?
@@ -95,6 +98,18 @@ export const TRANSFER_SUBTYPES: readonly AccountSubtype[] = [...MONEY_SUBTYPES, 
 export function canTransferWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, current?: string | null): boolean {
   if (current && account.id === current) return true;
   return TRANSFER_SUBTYPES.includes(account.subtype);
+}
+
+/**
+ * May money move from `from` to `to`? A broker's cash account (an RDN) sends money only to the everyday bank account
+ * registered with the broker, and is topped up only from one — never from cash, a wallet or a saving account — so it
+ * pairs with a current account and nothing else. No account moves money into itself.
+ */
+export function canTransferBetween(from: Pick<AccountRow, 'id' | 'subtype'>, to: Pick<AccountRow, 'id' | 'subtype'>): boolean {
+  if (from.id === to.id) return false;
+  if (from.subtype === 'fund') return to.subtype === 'bank';
+  if (to.subtype === 'fund') return from.subtype === 'bank';
+  return true;
 }
 
 /**

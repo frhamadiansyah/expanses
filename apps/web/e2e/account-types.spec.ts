@@ -66,3 +66,37 @@ test('a deposit funded from an account moves the money, and says where it came f
   await expect(page.getByText('Deposit terms')).toBeVisible();
   await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
 });
+
+test('a transfer pairs a broker cash account with a current account only, and never offers a time deposit', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '10000000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Wallet', balance: '500000' });
+  await openAccount(page, { subtype: 'fund', name: 'Broker cash', balance: '8000000' });
+  await openAccount(page, { subtype: 'time_deposit', name: 'Deposit', balance: '1000000', matures: '2099-01-01' });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+
+  // From the broker's cash, money goes only to the everyday account registered with the broker.
+  await form.getByRole('button', { name: 'From' }).click();
+  const from = page.getByRole('dialog', { name: 'From' });
+  await expect(from.getByRole('button', { name: 'Deposit', exact: true })).toHaveCount(0);
+  await from.getByRole('button', { name: 'Broker cash', exact: true }).click();
+  await form.getByRole('button', { name: /^To/ }).click();
+  const to = page.getByRole('dialog', { name: 'To', exact: true });
+  await expect(to.getByRole('button', { name: 'Everyday', exact: true })).toBeVisible();
+  await expect(to.getByRole('button', { name: 'Wallet', exact: true })).toHaveCount(0);
+  await expect(to.getByRole('button', { name: 'Deposit', exact: true })).toHaveCount(0);
+  await to.getByRole('button', { name: 'Everyday', exact: true }).click();
+
+  // Into the broker's cash, only from the current account: a wallet is not offered as From.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: /^To/ }).click();
+  await page.getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: 'Broker cash', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await expect(page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Everyday', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Wallet', exact: true })).toHaveCount(0);
+});
