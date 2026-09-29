@@ -244,8 +244,10 @@ newer than the summary (the bar then subtracts them).
 - **Paid with while the owner is offline.** The purchase waits in the workspace log and lands on her card when her
   phone syncs; meanwhile the partner's view subtracts it (§8.3).
 - **Stale app version.** A device that does not understand `paidFrom` or the group entities must not be the card
-  owner's only device: setup requires every group member's devices to report the minimum version (the relay already
-  records device info, S9.3); a device below it blocks setup with "Update the app on Andi's iPad".
+  owner's only device: setup requires every group member's devices to report the minimum version; a device below it
+  blocks setup with "Update the app on Andi's iPad". (Plan correction: the relay records no app version, so each
+  device reports it itself as a new synced field `appVersion` on the workspace's `device` entity; a device that never
+  sent one is below the minimum.)
 - **Currencies.** Summaries are in the item's currency. The joint total converts with the viewer's rates, as Net worth
   does today; a missing rate leaves the total blank, as today.
 - **Restored backup** (S8.7). The owner's phone recomputes and re-sends every shared item's summary after rejoining.
