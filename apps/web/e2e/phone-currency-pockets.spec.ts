@@ -51,3 +51,17 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await expect(row).toContainText('58.982.000');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('a saving account names its bank and itself on one row, and typing the bank offers Indonesian banks', async ({ page }) => {
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  const bank = page.getByLabel('Bank', { exact: true });
+  await bank.fill('jen');
+  await page.getByRole('listbox', { name: 'Banks' }).getByRole('option', { name: 'Bank SMBC Indonesia' }).click();
+  await expect(bank).toHaveValue('Bank SMBC Indonesia');
+  await expect(page.getByRole('listbox', { name: 'Banks' })).toHaveCount(0);
+  // A bank not on the list is kept as typed.
+  await bank.fill('Bank Kecil');
+  await page.getByLabel('Name', { exact: true }).fill('Emergency');
+  await expect(bank).toHaveValue('Bank Kecil');
+});

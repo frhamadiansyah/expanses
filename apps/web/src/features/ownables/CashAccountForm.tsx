@@ -1,4 +1,4 @@
-import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { bankMatches, cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
@@ -8,6 +8,7 @@ import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/querie
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { CurrencyRow, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { currencyFlag } from '../transactions/tx-form';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
@@ -34,6 +35,75 @@ import { fieldsFor } from './catalogue-view';
 export interface EmbeddedForm {
   formId: string;
   onCanSave: (canSave: boolean) => void;
+}
+
+/**
+ * An account at a bank on one row: the bank where the label would be, grey "Bank ›" until chosen, and the name typed
+ * at the right. Typing the bank in a rupiah workspace offers Indonesia's banks over the keyboard, the way the currency
+ * field offers codes; anything else typed is kept as typed. The bank is only the tax report's, so it stays optional.
+ */
+function BankNameRow({
+  bank,
+  onBank,
+  name,
+  onName,
+  offersBanks,
+  position,
+}: GroupChild & { bank: string; onBank: (bank: string) => void; name: string; onName: (name: string) => void; offersBanks: boolean }) {
+  const [typing, setTyping] = useState(false);
+  const offered = typing && offersBanks ? bankMatches(bank) : [];
+  return (
+    <div className="relative">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
+        <span className="flex min-w-0 max-w-[55%] shrink items-center gap-[6px]">
+          {/* As wide as its text, so the › sits right after the bank: an unseen copy of the text sets the width. */}
+          <span className="inline-grid min-w-0">
+            <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[16px] leading-[20px] md:text-[15px]">
+              {bank || 'Bank'}
+            </span>
+            <input
+              aria-label="Bank"
+              // A field's own minimum is about twenty letters wide; at one, the unseen copy alone sets the width.
+              size={1}
+              value={bank}
+              onChange={(e) => onBank(e.target.value)}
+              onFocus={() => setTyping(true)}
+              onBlur={() => {
+                setTyping(false);
+                onBank(bank.trim());
+              }}
+              autoComplete="off"
+              autoCapitalize="words"
+              placeholder="Bank"
+              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+            />
+          </span>
+          <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+            {'›'}
+          </span>
+        </span>
+        <input
+          aria-label="Name"
+          value={name}
+          onChange={(e) => onName(e.target.value)}
+          placeholder="Account name"
+          required
+          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+        />
+      </div>
+      <KeyboardStrip
+        label="Banks"
+        cells={offered.map((choice) => ({
+          key: choice.name,
+          label: choice.name,
+          title: choice.also[0] ?? choice.name,
+          detail: choice.also.length > 0 ? choice.name : undefined,
+          onPick: () => onBank(choice.name),
+        }))}
+      />
+    </div>
+  );
 }
 
 /** An amount field as wide as what is in it (never narrower than its placeholder), so a rate beside it sits close. */
@@ -247,7 +317,7 @@ export function CashAccountForm({
             locked ? 'Cannot be spent from directly. When it matures, move the money to an account with a transfer.' : undefined
           ) : (
             <>
-              {chosen.sub}. The picker chose what kind of account this is. Name is what you call yours.
+              {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.{asks.includes('bank') ? ' The bank goes on your yearly tax report; the name is what you call it here.' : ' Name is what you call yours.'}
               {locked && ' When it matures, move the money to an account with a transfer.'}
             </>
           )
@@ -263,8 +333,11 @@ export function CashAccountForm({
             ))}
           </SelectRow>
         )}
-        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
-        {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Bank name" />}
+        {asks.includes('bank') ? (
+          <BankNameRow bank={bank} onBank={setBank} name={name} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} />
+        ) : (
+          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
+        )}
         {asks.includes('currency') && !pocketed && (
           <CurrencyRow
             label="Currency"

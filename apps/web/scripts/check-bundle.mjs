@@ -15,7 +15,7 @@ const entry = [...html.matchAll(/<script\b[^>]*>/g)]
   .filter(Boolean);
 // Sentinels: a name each list carries and no line of the app's own code may contain.
 const LISTS = [
-  { name: 'IDX list', sentinel: 'Bank Central Asia', budget: 25_000, file: 'idx.json' },
+  { name: 'IDX list', sentinel: 'Bank Central Asia Tbk', budget: 25_000, file: 'idx.json' },
   // 160 KB, not the first 150 KB (the owner's ruling, 2026-09-22): 11,746 ordinary US stocks and ETFs are ~150.2 KB
   // gzipped even after test issues, warrants, rights and units are dropped by the exchanges' flags. The list is never
   // cut below its real stocks and ETFs to fit; the budget moved instead. It still fails a list that doubles.

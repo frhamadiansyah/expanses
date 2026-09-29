@@ -352,6 +352,7 @@ export {
   reconciliation,
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
+export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
 export {
   type ConverterHeader,
   ConverterError,
