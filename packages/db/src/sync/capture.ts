@@ -461,7 +461,7 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (!entity.writer) {
       // A write-once row (task 4 review round 1): judged by the same predicate its peers use.
       const gone = !now || now.bookId !== was?.bookId;
-      if (writeOnceBroken(entity, was?.values ?? null, gone ? null : now!.values)) throw new AuthorityError('write-once row');
+      if (await writeOnceBroken(entity, was?.values ?? null, gone ? null : now!.values)) throw new AuthorityError('write-once row');
       continue;
     }
     const bookId = (was ?? now)!.bookId;

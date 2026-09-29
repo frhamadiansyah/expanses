@@ -138,3 +138,6 @@ export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry
 export { MemoryTransport } from './sync/memory-transport';
 // Joint net worth (spec §9): the app-version gate every device's book_devices row carries.
 export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/version';
+// Joint net worth (spec §6, §8.1): the group's proposals and answers, and what each person shares of their own items.
+export { type NetWorthGroupView } from './sync/net-worth/proposals';
+export * from './repos/net-worth-sharing';

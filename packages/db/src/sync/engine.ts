@@ -34,6 +34,8 @@ import {
   syncGroupAfter,
   type GroupLogHost,
 } from './net-worth/group-log';
+import { afterWorkspaceSync, answerNetWorth, cancelNetWorth, leaveNetWorth, netWorthGroup, proposeNetWorth, type NetWorthGroupView } from './net-worth/proposals';
+import type { FilingMode } from '@expanses/core';
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
@@ -290,6 +292,9 @@ export class SyncEngine {
     // A relay failure of the group log's part never fails the workspace's sync (task 4 review round 1).
     try {
       const group = await syncGroupAfter(this.groupHost(), bookId, result);
+      // Its proposals' consequences (task 5): a lost lone log abandoned, a dissolved group's log deleted, a member's
+      // later device let in, the pending count written.
+      await afterWorkspaceSync(this.groupHost(), bookId, result);
       return group ? { ...result, group } : result;
     } catch (error) {
       if (!(error instanceof SyncTransportError)) throw error;
@@ -998,6 +1003,31 @@ export class SyncEngine {
   /** Whether every device of these members runs an app new enough for joint net worth (§9). */
   groupMembersReady(workspaceBookId: string, memberIds: readonly string[]): Promise<{ ready: boolean; outdated: { memberId: string; deviceName: string }[] }> {
     return groupMembersReady(this.groupHost(), workspaceBookId, memberIds);
+  }
+
+  /** Proposes how the household files and who is in the group (§6); returns the proposal's id. */
+  proposeNetWorth(workspaceBookId: string, input: { mode: FilingMode; members: string[] }): Promise<string> {
+    return proposeNetWorth(this.groupHost(), workspaceBookId, input);
+  }
+
+  /** Confirms or declines a proposal this member is asked on; a decline of an active one is refused. */
+  answerNetWorth(workspaceBookId: string, proposalId: string, answer: 'confirm' | 'decline'): Promise<void> {
+    return answerNetWorth(this.groupHost(), workspaceBookId, proposalId, answer);
+  }
+
+  /** The proposer withdraws a proposal not yet active. */
+  cancelNetWorth(workspaceBookId: string, proposalId: string): Promise<void> {
+    return cancelNetWorth(this.groupHost(), workspaceBookId, proposalId);
+  }
+
+  /** Stop sharing my net worth: `left`, then out of the group log, or the group dissolves. */
+  leaveNetWorth(workspaceBookId: string): Promise<void> {
+    return leaveNetWorth(this.groupHost(), workspaceBookId);
+  }
+
+  /** The workspace's net-worth group as this device derives it. */
+  netWorthGroup(workspaceBookId: string): Promise<NetWorthGroupView> {
+    return netWorthGroup(this.groupHost(), workspaceBookId);
   }
 
   /* ---------------------------------------------------------------- restore */

@@ -1,9 +1,9 @@
 import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Database, Tx } from '../../database';
-import { groupLogWorkspaceOf, viewActiveDevices, viewDevice } from '../authority';
+import { CLOSED_LINK_PREFIX, GROUP_LINK_NS, groupLogWorkspaceOf, isClosedLink, OWN_LINK_PENDING_KEY, viewActiveDevices, viewDevice } from '../authority';
 import { captureConfigOf, rowUpsertsTx, withCapture, writeChangeSetsTx } from '../capture';
-import { fromUtf8, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../crypto';
+import { fromUtf8, hkdf, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../crypto';
 import type { SyncOnceResult } from '../engine';
 import { encodeInviteCode, inviteAad, INVITE_TTL_MS, inviteKeyOf, newInviteSecret, openInviteJson, parseInviteCode, sealInviteJson, type InviteKey } from '../invite';
 import type { DeviceKeys } from '../keys';
@@ -12,6 +12,7 @@ import type { Sealer } from '../seal';
 import { SharingError } from '../seed';
 import type { InviteRecord, SyncTransport } from '../types';
 import { SyncTransportError } from '../types';
+import { uuidv5 } from '../uuidv5';
 import { meetsMinVersion } from './version';
 
 /*
@@ -88,11 +89,12 @@ interface Link {
   invites: SealedInvite[];
 }
 
-async function linkOf(database: Database, workspaceBookId: string): Promise<Link | null> {
+/** The workspace's link to its group log, or null: none, or closed when its group dissolved (task 5). */
+export async function linkOf(database: Database, workspaceBookId: string): Promise<Link | null> {
   const [row] = await database.db.values<[string, string, string]>(
     sql`SELECT group_book_id, invites_json, relay_book_id FROM group_logs WHERE book_id = ${workspaceBookId}`,
   );
-  if (!row) return null;
+  if (!row || isClosedLink({ relayBookId: row[2] })) return null;
   let invites: SealedInvite[] = [];
   try {
     const parsed = JSON.parse(row[1]) as unknown;
@@ -187,8 +189,9 @@ export async function openGroupLog(host: GroupLogHost, workspaceBookId: string):
   if (joined) return joined;
   if (await linkOf(host.database, workspaceBookId)) throw new SharingError('GROUP_EXISTS', 'This workspace already has a net-worth group');
   const { bookId: relayBookId } = await host.transport.createBook(host.device.public);
-  const groupBookId = uuidv7();
   const key = randomBytes(32);
+  // The id carries the group's close proof (authority.ts `GROUP_LINK_NS`): only who holds epoch 1's key can close it.
+  const groupBookId = await uuidv5(GROUP_LINK_NS, await closeProofFrom(key));
   try {
     await host.database.transaction(async (tx) => {
       await recordGroupBookTx(tx, groupBookId, workspaceBookId);
@@ -197,10 +200,16 @@ export async function openGroupLog(host: GroupLogHost, workspaceBookId: string):
         INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at)
         VALUES (${groupBookId}, ${relayBookId}, 1, ${workspace.memberId}, 'active', ${new Date(host.now()).toISOString()})`);
       await introduceTx(host, tx, workspaceBookId, groupBookId, workspace.memberId, 1);
+      // Over a closed link, if there is one: a group that dissolved leaves room for a new one (task 5).
       await withCapture(tx, { entity: 'net_worth_group', id: workspaceBookId, bookId: workspaceBookId }, async () => {
         await tx.run(sql`
-          INSERT INTO group_logs (book_id, group_book_id, relay_book_id, invites_json) VALUES (${workspaceBookId}, ${groupBookId}, ${relayBookId}, '[]')`);
+          INSERT INTO group_logs (book_id, group_book_id, relay_book_id, invites_json) VALUES (${workspaceBookId}, ${groupBookId}, ${relayBookId}, '[]')
+          ON CONFLICT (book_id) DO UPDATE SET group_book_id = excluded.group_book_id, relay_book_id = excluded.relay_book_id, invites_json = excluded.invites_json`);
       });
+      // Until it is back from the log, a peer's link that differs was there first (authority.ts, task 5).
+      await tx.run(sql`
+        INSERT INTO settings (key, value) VALUES (${OWN_LINK_PENDING_KEY(workspaceBookId)}, ${groupBookId})
+        ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
     });
   } catch (error) {
     host.sealer.forget();
@@ -233,8 +242,11 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
     WHERE d.book_id = ${workspaceBookId} AND a.removed_seq IS NULL AND d.device_id <> ${self}
     ORDER BY d.device_id`);
   const sealed: SealedInvite[] = [];
+  const invited = await invitedBy(host, groupBookId);
   for (const [deviceId, memberId, agreeJwk] of candidates) {
     if (!wanted.has(memberId)) continue;
+    // An invite of this device's that has not expired is still waiting for that device (task 5: no second one).
+    if ((invited[deviceId] ?? 0) > host.now()) continue;
     // A device the group log ever had is in, or was removed from it for good (§8.4): no second invite either way.
     if (await host.database.transaction((tx) => viewDevice(tx, groupBookId, deviceId))) continue;
     const inviteId = uuidv7();
@@ -258,6 +270,7 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
       GROUP_INVITE_INFO,
     );
     sealed.push({ ...code, expiresAt });
+    invited[deviceId] = Date.parse(expiresAt);
   }
   if (sealed.length === 0) return;
   await host.database.transaction(async (tx) => {
@@ -271,7 +284,95 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
     await withCapture(tx, { entity: 'net_worth_group', id: workspaceBookId, bookId: workspaceBookId }, async () => {
       await tx.run(sql`UPDATE group_logs SET invites_json = ${JSON.stringify([...kept, ...sealed])} WHERE book_id = ${workspaceBookId}`);
     });
+    await tx.run(sql`
+      INSERT INTO settings (key, value) VALUES (${INVITED_KEY(groupBookId)}, ${JSON.stringify(invited)})
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
   });
+}
+
+/** Local only: the devices this device invited into a group log, and when each invite expires (ms). */
+const INVITED_KEY = (groupBookId: string) => `nw.invited.${groupBookId}`;
+
+async function invitedBy(host: GroupLogHost, groupBookId: string): Promise<Record<string, number>> {
+  const [row] = await host.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${INVITED_KEY(groupBookId)}`);
+  try {
+    const parsed = JSON.parse(row?.[0] ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Devices of the group's members that the workspace's view has in and the group log never had, with no invite of this
+ * device's waiting for them (task 5: a member's later device is let in by any group member's device). Empty when this
+ * device is in no group log of the workspace.
+ */
+export async function devicesToAdmit(host: GroupLogHost, workspaceBookId: string): Promise<{ deviceId: string; memberId: string }[]> {
+  const groupBookId = await groupLogOf(host, workspaceBookId);
+  if (!groupBookId) return [];
+  const rows = await host.database.db.values<[string, string]>(sql`
+    SELECT w.device_id, w.member_id FROM sync_authority_devices w
+    WHERE w.book_id = ${workspaceBookId} AND w.removed_seq IS NULL AND w.device_id <> ${host.device.deviceId}
+      AND w.member_id IN (SELECT g.member_id FROM sync_authority_devices g WHERE g.book_id = ${groupBookId} AND g.removed_seq IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM sync_authority_devices g WHERE g.book_id = ${groupBookId} AND g.device_id = w.device_id)
+    ORDER BY w.device_id`);
+  const invited = await invitedBy(host, groupBookId);
+  return rows.filter(([deviceId]) => !((invited[deviceId] ?? 0) > host.now())).map(([deviceId, memberId]) => ({ deviceId, memberId }));
+}
+
+/** HKDF `info` of a group log's close proof. */
+const GROUP_CLOSE_INFO = 'cicis-group-close-v1';
+
+async function closeProofFrom(epochOneKey: Uint8Array): Promise<string> {
+  return bytesToBase64Url(await hkdf(epochOneKey, new Uint8Array(0), utf8(GROUP_CLOSE_INFO)));
+}
+
+/**
+ * Dissolves the workspace's group log from this device (§6: fewer than two members left; task 5 ruling): the link is
+ * closed with the group's proof, the relay book is deleted, and the group log ends and is forgotten here. The other
+ * members' devices find it gone on their next sync (`410`) and forget it too. A relay that cannot be reached leaves the
+ * relay book behind; the link is closed all the same, and every member's device dissolves it on its own.
+ */
+export async function dissolveGroupLog(host: GroupLogHost, workspaceBookId: string): Promise<void> {
+  const groupBookId = await groupLogOf(host, workspaceBookId);
+  if (!groupBookId) return;
+  const shared = await sharedRowOf(host.database, groupBookId);
+  const key = await host.sealer.epochKey(groupBookId, 1);
+  const proof = key ? await closeProofFrom(key) : null;
+  if (proof && (await uuidv5(GROUP_LINK_NS, proof)) === groupBookId) {
+    await host.database.transaction(async (tx) => {
+      await withCapture(tx, { entity: 'net_worth_group', id: workspaceBookId, bookId: workspaceBookId }, async () => {
+        await tx.run(sql`
+          UPDATE group_logs SET relay_book_id = ${CLOSED_LINK_PREFIX + proof}, invites_json = '[]'
+          WHERE book_id = ${workspaceBookId} AND group_book_id = ${groupBookId} AND relay_book_id NOT LIKE 'closed:%'`);
+      });
+    });
+  }
+  if (shared) await host.transport.deleteBook(shared.relayBookId).catch(() => undefined);
+  await host.database.db.run(sql`UPDATE shared_books SET state = 'unshared', unshared_reason = 'stopped' WHERE book_id = ${groupBookId}`);
+  await forgetGroup(host, groupBookId);
+}
+
+/**
+ * A group log this device made that lost to another member's, made at the same moment (task 5 ruling): the link names
+ * the other. Nobody else is in this one, so it is deleted on the relay and forgotten here; the device joins the linked
+ * one when a member of it lets it in.
+ */
+export async function abandonLostGroupLog(host: GroupLogHost, workspaceBookId: string): Promise<boolean> {
+  const mine = await groupLogOf(host, workspaceBookId);
+  const link = await linkOf(host.database, workspaceBookId);
+  if (!mine || !link || link.groupBookId === mine) return false;
+  const shared = await sharedRowOf(host.database, mine);
+  const self = shared?.memberId;
+  const others = await host.database.db.values(
+    sql`SELECT 1 FROM sync_authority_devices WHERE book_id = ${mine} AND member_id <> ${self ?? ''} LIMIT 1`,
+  );
+  if (others.length > 0) return false; // a log someone else is in is never abandoned
+  if (shared) await host.transport.deleteBook(shared.relayBookId).catch(() => undefined);
+  await host.database.db.run(sql`UPDATE shared_books SET state = 'unshared', unshared_reason = 'stopped' WHERE book_id = ${mine}`);
+  await forgetGroup(host, mine);
+  return true;
 }
 
 /**
@@ -436,7 +537,7 @@ async function dropDepartedTx(tx: Tx, groupBookId: string): Promise<void> {
  * `shared_books` row stays, not active, and so does `nw_group_books`: the workspace sync never tries this device's spent
  * invites again, and every workspace reader still skips it.
  */
-async function forgetGroup(host: GroupLogHost, groupBookId: string): Promise<void> {
+export async function forgetGroup(host: GroupLogHost, groupBookId: string): Promise<void> {
   host.sealer.forget();
   await host.database.transaction(async (tx) => {
     for (const table of ['nw_proposals', 'nw_answers', 'nw_items', 'nw_pending']) {

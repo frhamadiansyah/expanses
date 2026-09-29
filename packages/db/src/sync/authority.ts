@@ -4,6 +4,7 @@ import { termsSigningBytes } from './invite';
 import { deviceIdOf, verifySignature } from './relay-signing';
 import { entityOf, parseOpId, type RowEntity } from './shared-entities';
 import type { ChangeSet, Op } from './types';
+import { uuidv5 } from './uuidv5';
 
 /*
  * Who may write what (spec §5.4, §8.2, §8.4, §8.5; task 5 fix rounds 1–2).
@@ -282,8 +283,47 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   if (op.entity === 'member') return decideMember(tx, ctx, op);
   const entity = entityOf(op.entity);
   if (entity.kind === 'row' && entity.writer && !ctx.own) return decideRowWriter(tx, bookId, author, entity, op);
-  if (entity.kind === 'row' && WRITE_ONCE_ROWS.has(entity.entity) && !ctx.own) return decideWriteOnce(tx, bookId, entity, op);
+  if (entity.kind === 'row' && WRITE_ONCE_ROWS.has(entity.entity)) {
+    if (!ctx.own) return decideWriteOnce(tx, bookId, entity, op);
+    // This device's own link, back from the log: from here on, a peer's link that differs came after it (task 5).
+    if (op.op === 'upsert' && op.fields.groupBookId !== undefined) await clearOwnLinkPendingTx(tx, bookId, String(op.fields.groupBookId));
+  }
   return op;
+}
+
+/*
+ * Two members opening a net-worth group at the same moment (task 5 ruling). The log's order decides: the first
+ * `net_worth_group` link in the workspace log is the link, on every device — a later one differs from what is stored
+ * and is refused as a write-once rewrite. Only the device whose own link is not back from the log yet cannot tell
+ * that from its row: it marks its link pending when it writes it (`OWN_LINK_PENDING_KEY`), and a peer's differing link
+ * that reaches it while the mark stands was first in the log. It yields to it: the mark goes, its own link's ops leave
+ * its outbox (they would only be refused), and the row's field clocks go so the peer's link wins every field. Its lone
+ * group log is then left (net-worth/proposals.ts). The mark goes too when its own link comes back first.
+ */
+
+/** The settings key marking this device's own `net_worth_group` link as written and not yet back from the log. */
+export const OWN_LINK_PENDING_KEY = (workspaceBookId: string) => `nw.link.pending.${workspaceBookId}`;
+
+async function clearOwnLinkPendingTx(tx: Db, bookId: string, groupBookId: string): Promise<void> {
+  await tx.run(sql`DELETE FROM settings WHERE key = ${OWN_LINK_PENDING_KEY(bookId)} AND value = ${groupBookId}`);
+}
+
+async function ownLinkPendingTx(tx: Db, bookId: string): Promise<string | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${OWN_LINK_PENDING_KEY(bookId)}`);
+  return row?.[0] ?? null;
+}
+
+async function yieldOwnLinkTx(tx: Db, bookId: string, opId: string): Promise<void> {
+  await tx.run(sql`DELETE FROM settings WHERE key = ${OWN_LINK_PENDING_KEY(bookId)}`);
+  await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'net_worth_group' AND id = ${opId}`);
+  const waiting = await tx.values<[string, string]>(sql`SELECT id, entry_json FROM sync_outbox WHERE book_id = ${bookId}`);
+  for (const [id, json] of waiting) {
+    const changeSet = JSON.parse(json) as ChangeSet;
+    const ops = changeSet.ops.filter((o) => !(o.entity === 'net_worth_group' && o.id === opId));
+    if (ops.length === changeSet.ops.length) continue;
+    if (ops.length === 0) await tx.run(sql`DELETE FROM sync_outbox WHERE id = ${id}`);
+    else await tx.run(sql`UPDATE sync_outbox SET entry_json = ${JSON.stringify({ ...changeSet, ops })} WHERE id = ${id}`);
+  }
 }
 
 /**
@@ -294,10 +334,16 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
 async function decideWriteOnce(tx: Db, bookId: string, entity: RowEntity, op: Op): Promise<Op> {
   const stored = await storedRowOf(tx, entity, bookId, parseOpId(entity, op.id));
   if (stored === null) return op;
-  if (op.op === 'delete') throw new AuthorityError('write-once row');
-  for (const field of WRITER_FROZEN_FIELDS[entity.entity] ?? []) {
-    if (field in op.fields && String(op.fields[field]) !== String(stored[field])) throw new AuthorityError('write-once row');
+  if (op.op === 'upsert' && entity.entity === 'net_worth_group' && !isClosedLink(stored)) {
+    const pending = await ownLinkPendingTx(tx, bookId);
+    const incoming = op.fields.groupBookId;
+    if (pending !== null && pending === String(stored.groupBookId) && incoming !== undefined && String(incoming) !== pending) {
+      await yieldOwnLinkTx(tx, bookId, op.id);
+      return op;
+    }
   }
+  const after = op.op === 'delete' ? null : { ...stored, ...op.fields };
+  if (await writeOnceBroken(entity, stored, after)) throw new AuthorityError('write-once row');
   return op;
 }
 
@@ -339,21 +385,48 @@ const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
   // The workspace's link to its group log (task 4 review round 1): which log, on which relay book, is written once, by
-  // whoever made the group, and never deleted by an op (dissolving a group is task 5's to rule). Any member may still
-  // add invites.
+  // whoever made the group, and never deleted by an op. Any member may still add invites. A group member closes it when
+  // the group dissolves (task 5, `writeOnceBroken`).
   net_worth_group: ['groupBookId', 'relayBookId'],
 };
 
 /** Entities with write-once fields but no `writer`: anyone writes them, but nobody moves those fields or deletes the row. */
 const WRITE_ONCE_ROWS: ReadonlySet<string> = new Set(['net_worth_group']);
 
+/*
+ * Dissolving a group (task 5 ruling, spec §6: fewer than two members left, the log is deleted and the link goes). Who
+ * may end the link must be decided alike on every device, a workspace member outside the group included — and such a
+ * device holds no copy of the group log, so it cannot ask the group's view who is in it. So the link carries its own
+ * proof: a group log's id is `uuidv5(GROUP_LINK_NS, proof)`, where `proof` is derived from the group log's first epoch
+ * key (net-worth/group-log.ts `closeProofOf`), which only the group's devices ever hold. Closing the link is an edit
+ * that keeps `groupBookId` and sets `relayBookId` to `closed:<proof>`; every device checks the proof against the id it
+ * already has. The row is never deleted by an op. A closed link names no group: anyone may set up a new one over it.
+ */
+
+/** The uuidv5 namespace of a group log's id, derived from its close proof. */
+export const GROUP_LINK_NS = '6f1c2a9e-3b0d-4e57-9a61-2c8f0d4b7e13';
+
+/** The `relayBookId` of a closed link: this prefix, then the close proof. */
+export const CLOSED_LINK_PREFIX = 'closed:';
+
+/** Whether a `net_worth_group` row (by field name) is a closed link. */
+export function isClosedLink(fields: Record<string, unknown>): boolean {
+  return typeof fields.relayBookId === 'string' && fields.relayBookId.startsWith(CLOSED_LINK_PREFIX);
+}
+
 /**
  * Whether a local write of `entity` from `before` to `after` (null: absent) breaks its write-once rule — capture's
- * check (`withCapture`), the same predicate `decideWriteOnce` judges a peer by.
+ * check (`withCapture`), the same predicate `decideWriteOnce` judges a peer by. A closed link may be set up anew; an
+ * open one may only be closed, by its group's proof.
  */
-export function writeOnceBroken(entity: RowEntity, before: Record<string, unknown> | null, after: Record<string, unknown> | null): boolean {
+export async function writeOnceBroken(entity: RowEntity, before: Record<string, unknown> | null, after: Record<string, unknown> | null): Promise<boolean> {
   if (!WRITE_ONCE_ROWS.has(entity.entity) || before === null) return false;
-  return after === null || frozenFieldChanged(entity, before, after);
+  if (after === null) return true;
+  if (entity.entity === 'net_worth_group' && isClosedLink(before)) return false;
+  if (!frozenFieldChanged(entity, before, after)) return false;
+  if (entity.entity !== 'net_worth_group' || String(before.groupBookId) !== String(after.groupBookId) || !isClosedLink(after)) return true;
+  const proof = String(after.relayBookId).slice(CLOSED_LINK_PREFIX.length);
+  return proof.length === 0 || (await uuidv5(GROUP_LINK_NS, proof)) !== String(before.groupBookId);
 }
 
 /** Whether an edit from `before` to `after` (full field-value snapshots) moves one of `entity`'s frozen fields. */
