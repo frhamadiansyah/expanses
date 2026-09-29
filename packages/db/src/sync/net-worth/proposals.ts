@@ -232,7 +232,7 @@ export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, res
   if (state.active && me && state.active.members.includes(me[0])) await removeOutsiders(host, groupBookId, state.active.members);
   const admit = await devicesToAdmit(host, bookId);
   // Round 3, C: invitees of the pending proposal whose invites never went out.
-  const missing = state.pending ? await membersNotYetIn(host, groupBookId, state.pending.members) : [];
+  const missing = state.pending ? await membersNotYetIn(host, bookId, groupBookId, state.pending.members) : [];
   try {
     const members = new Set([...admit.map((d) => d.memberId), ...missing]);
     if (members.size > 0) await admitToGroupLog(host, bookId, [...members]);

@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
-import { clearAuthorityTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { clearAuthorityTx, groupLogWorkspaceOf, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
@@ -31,6 +31,7 @@ import {
   leaveGroupLog,
   openGroupLog,
   removeFromGroupLog,
+  sweepBeforeDrain,
   syncGroupAfter,
   type GroupLogHost,
 } from './net-worth/group-log';
@@ -255,12 +256,13 @@ export class SyncEngine {
   }
 
   /** `drain`, with whatever a stale-epoch re-pull applied collected into `pulls`, for `syncActive` to act on. */
-  private async drainInto(bookId: string, seen: SeenLog | undefined, pulls: PullResult[]): Promise<number> {
+  private async drainInto(bookId: string, seen: SeenLog | undefined, pulls: PullResult[], skipSummaries = false): Promise<number> {
     let shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') return 0;
     const rows = await this.database.db.values<[string, string]>(sql`SELECT id, entry_json FROM sync_outbox WHERE book_id = ${bookId} ORDER BY hlc`);
     let pushed = 0;
     for (const [id, changeSetJson] of rows) {
+      if (skipSummaries && (JSON.parse(changeSetJson) as ChangeSet).ops.some((op) => op.entity === 'nw_item')) continue;
       for (let attempt = 0; ; attempt += 1) {
         const entry = await this.sealer.seal(bookId, shared.epoch, JSON.parse(changeSetJson) as ChangeSet);
         try {
@@ -347,7 +349,15 @@ export class SyncEngine {
     let pushed = 0;
     if (!result.stopped) {
       const pulls: PullResult[] = [];
-      pushed = await this.drainInto(bookId, seen, pulls);
+      let skipSummaries = false;
+      // Joint net worth, wave 3 round 4: in a group log, nothing waiting is sealed under a key someone outside the group
+      // still holds — a removal the pull brought is rotated past first, anyone outside the active group is taken out,
+      // and while one is still in, no summary op leaves (it waits in the outbox for the next sync).
+      if ((await groupLogWorkspaceOf(this.database.db, bookId)) !== null) {
+        result = await this.rotateBeforeDrain(bookId, result, seen);
+        skipSummaries = !(await sweepBeforeDrain(this.groupHost(), bookId));
+      }
+      pushed = await this.drainInto(bookId, seen, pulls, skipSummaries);
       for (const pulled of pulls) result = merge(result, pulled);
       result = merge(result, await this.pull(bookId, seen));
     }
@@ -381,6 +391,22 @@ export class SyncEngine {
       );
     }
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
+  }
+
+  /**
+   * Wave 3 round 4, for a group log: the rotation a removal just pulled calls for (§8.4) is made before the outbox is
+   * drained, so what waits is sealed under a key the removed device never holds. A leave this device follows is left to
+   * `syncActive`'s own loop (it leaves, sealing nothing). A removal rotated here is `skipped` there: the epoch moved.
+   */
+  private async rotateBeforeDrain(bookId: string, result: PullResult, seen?: SeenLog): Promise<PullResult> {
+    let out = result;
+    for (const removal of result.removals) {
+      if (removal.target === this.deviceId) continue;
+      if (removal.leave && (await this.followsLeave(bookId, removal.target, removal.seq))) break;
+      const outcome = await this.maybeRotate(bookId, removal.epoch);
+      if (outcome !== 'skipped') out = merge(out, await this.pull(bookId, seen));
+    }
+    return out;
   }
 
   private pull(bookId: string, seen?: SeenLog): Promise<PullResult> {

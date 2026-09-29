@@ -13,7 +13,7 @@ import { SharingError } from '../seed';
 import type { InviteRecord, SyncTransport } from '../types';
 import { SyncTransportError } from '../types';
 import { uuidv5 } from '../uuidv5';
-import { admissibleMembers } from '../../repos/net-worth-sharing';
+import { admissibleMembers, groupStateOf, outsiderDevices, takeHeldTx } from '../../repos/net-worth-sharing';
 import { localDate, refreshSummariesTx, sendSummariesTx } from './summaries';
 import { meetsMinVersion } from './version';
 
@@ -529,7 +529,10 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
     const pending = takePendingSummaryAccounts(host.database);
     let sent: number;
     try {
-      sent = await host.database.transaction((tx) => (joined ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today)));
+      // Round 4: a send held while an outsider was still in the log goes out whole once they are out.
+      sent = await host.database.transaction(async (tx) =>
+        joined || (await takeHeldTx(tx, groupBookId!)) ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today),
+      );
     } catch (error) {
       // Rolled back: the accounts apply changed wait for the next sync rather than being forgotten (wave 3 merge).
       returnPendingSummaryAccounts(host.database, pending);
@@ -587,15 +590,47 @@ export async function removeOutsiders(host: GroupLogHost, groupBookId: string, m
 }
 
 /**
+ * Wave 3 round 4: the group log's part of its own sync, after the pull and before the outbox is drained (engine
+ * `syncActive`). When a group is active and a device of someone outside it is still in the log, this device — if its
+ * member is in the group — takes them out (`removeOutsiders`, with rotation) before anything waiting is sealed. False
+ * when an outsider is still in after that (the removal failed, or this device may not make it): then no summary op is
+ * drained on this sync; it stays queued for the next.
+ */
+export async function sweepBeforeDrain(host: GroupLogHost, groupBookId: string): Promise<boolean> {
+  const db = host.database.db;
+  const active = (await groupStateOf(db, groupBookId)).active;
+  if (!active) return true;
+  if ((await outsiderDevices(db, groupBookId, active.members)).length === 0) return true;
+  const [me] = await db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);
+  if (me && active.members.includes(me[0])) {
+    try {
+      await removeOutsiders(host, groupBookId, active.members);
+    } catch (error) {
+      if (!(error instanceof SyncTransportError || error instanceof SharingError)) throw error;
+    }
+  }
+  return (await outsiderDevices(db, groupBookId, active.members)).length === 0;
+}
+
+/**
  * Wave 3 round 3, C: the members of the pending proposal with no device in the log yet — their invites never went out
  * (the proposal was written, then its admit failed) — are let in on a later sync. `admitToGroupLog` itself skips a
- * device with a live invite from this device, or one the log already had.
+ * device with a live invite from this device, or one the log already had. A member with no device left in the workspace
+ * is left out (round 4): there is nobody to invite.
  */
-export async function membersNotYetIn(host: GroupLogHost, groupBookId: string, members: readonly string[]): Promise<string[]> {
+export async function membersNotYetIn(host: GroupLogHost, workspaceBookId: string, groupBookId: string, members: readonly string[]): Promise<string[]> {
   const inLog = new Set(
     (await host.database.db.values<[string]>(sql`SELECT DISTINCT member_id FROM sync_authority_devices WHERE book_id = ${groupBookId}`)).map(([m]) => m),
   );
-  return members.filter((m) => !inLog.has(m));
+  // Round 4: a member with no device left in the workspace has nobody to invite — not asked again on every sync.
+  const inWorkspace = new Set(
+    (
+      await host.database.db.values<[string]>(
+        sql`SELECT DISTINCT member_id FROM sync_authority_devices WHERE book_id = ${workspaceBookId} AND removed_seq IS NULL`,
+      )
+    ).map(([m]) => m),
+  );
+  return members.filter((m) => !inLog.has(m) && inWorkspace.has(m));
 }
 
 /**

@@ -12,7 +12,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
-import { activeNetWorthGroup, sendAllowance } from '../../repos/net-worth-sharing';
+import { activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 
@@ -199,6 +199,8 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
   // added (§6 Review, wave 3 merge review round 1). A removal is never held back: it only takes away (round 2).
   const allowance = await sendAllowance(tx, group);
   const { groupBookId, workspaceBookId, me: memberId } = group;
+  // Held while an outsider is still in the log (round 4): the group log's sync sends every item once they are out.
+  if (allowance === 'none' && (await outsiderDevices(tx, groupBookId, group.members)).length > 0) await markHeldTx(tx, groupBookId);
   const ws = await workspaceOfBook(tx, workspaceBookId);
   if (!ws) return 0;
   let written = 0;

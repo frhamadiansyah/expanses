@@ -7,6 +7,7 @@ import { withCapture } from '../../src/sync/capture';
 import { SyncEngine } from '../../src/sync/engine';
 import { encodeHlc } from '../../src/sync/hlc';
 import type { SyncTransport } from '../../src/sync/types';
+import { membersNotYetIn, type GroupLogHost } from '../../src/sync/net-worth/group-log';
 import { receivedItems } from '../../src/sync/net-worth/summaries';
 import { categoryOf, Household, type Device } from './household';
 
@@ -239,6 +240,87 @@ describe('joint net worth, end to end', () => {
     expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
   });
 
+  it('Share right after the activation, with no settle between: nothing is sealed under a key Sari holds, and the items go out after (round 4)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const sari = await home.device('Sari');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.join(sari, rina);
+    await home.settle();
+    const three = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    expect(await sari.engine.groupLogOf(bookId)).toBe(groupBookId);
+    await sari.engine.answerNetWorth(bookId, three, 'decline');
+    await settle(home);
+    const pair = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId] });
+    await settle(home);
+    const [[relayBookId]] = (await andi.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${groupBookId}`)) as [[string]];
+    const sariEpochs = new Set((await sari.database.db.values<[number]>(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).map(([e]) => Number(e)));
+    expect(sariEpochs.size).toBeGreaterThan(0);
+
+    // Andi's yes activates the pair on his phone, and he presses Share at once: no sync of anyone in between.
+    await andi.engine.answerNetWorth(bookId, pair, 'confirm');
+    const activatedAt = home.relay.peek(relayBookId)!.seq;
+    await confirmReview(andi.database, andi.ws, {});
+    // Andi's phone syncs first, so whatever his Share queued is drained before anyone else acts.
+    await home.settle([andi, rina, sari]);
+    await settle(home);
+    await confirmReview(rina.database, rina.ws, {});
+    await settle(home);
+
+    const log = home.relay.peek(relayBookId)!.log;
+    const sealedAfter = [...log.entries()].filter(([seq, entry]) => seq > activatedAt && entry.kind === 'change');
+    expect(sealedAfter.length).toBeGreaterThan(0);
+    expect(sealedAfter.filter(([, entry]) => sariEpochs.has(entry.epoch)).map(([seq]) => seq)).toEqual([]);
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+    // What the Share held back went out once Sari was out.
+    expect(await namesFrom(rina, groupBookId, andi.memberId)).toEqual(['Andi Bank', 'Andi Dollars', 'Andi Wallet']);
+    expect(await namesFrom(andi, groupBookId, rina.memberId)).toEqual(['Rina Bank', 'Rina Dollars', 'Rina Wallet']);
+  });
+
+  it('a summary already queued when the pair activates is sealed only under the key after Sari’s removal (round 4)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const sari = await home.device('Sari');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.join(sari, rina);
+    await home.settle();
+    const three = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    await sari.engine.answerNetWorth(bookId, three, 'decline');
+    await settle(home);
+    const pair = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId] });
+    await settle(home);
+    const [[relayBookId]] = (await andi.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${groupBookId}`)) as [[string]];
+    const sariEpochs = new Set((await sari.database.db.values<[number]>(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).map(([e]) => Number(e)));
+    const before = home.relay.peek(relayBookId)!.seq;
+    // Andi's yes activates the pair on his phone, and a summary op is queued with it (past every send-side check):
+    // both wait in his outbox, no sync in between.
+    await andi.database.transaction(async (tx) => {
+      await withCapture(tx, { entity: 'nw_answer', id: `${pair}|${andi.memberId}`, bookId: groupBookId }, async () => {
+        await tx.run(sql`INSERT INTO nw_answers (book_id, proposal_id, member_id, answer) VALUES (${groupBookId}, ${pair}, ${andi.memberId}, 'confirm')`);
+      });
+      await withCapture(tx, { entity: 'nw_item', id: 'queued-item', bookId: groupBookId }, async () => {
+        await tx.run(sql`INSERT INTO nw_items (book_id, item_id, owner, summary_json, removed) VALUES (${groupBookId}, 'queued-item', ${andi.memberId}, '{"name":"Queued"}', 0)`);
+      });
+    });
+    expect((await activeNetWorthGroup(andi.database))?.proposalId).toBe(pair);
+    await home.settle([andi, rina, sari]);
+    await settle(home);
+
+    const sealedAfter = [...home.relay.peek(relayBookId)!.log.entries()].filter(([seq, entry]) => seq > before && entry.kind === 'change');
+    const leaked = sealedAfter.filter(([, entry]) => sariEpochs.has(entry.epoch));
+    expect(leaked.map(([seq]) => seq)).toEqual([]);
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+    expect((await receivedItems(rina.database, groupBookId)).map((i) => i.itemId)).toContain('queued-item');
+  });
+
   it('an invite that failed to go out is sent on the next sync, and the proposal goes on (round 3, C)', async () => {
     const home = new Household();
     const rina = await home.device('Rina');
@@ -265,6 +347,27 @@ describe('joint net worth, end to end', () => {
     await andi.engine.answerNetWorth(bookId, pending.proposalId, 'confirm');
     await settle(home);
     expect((await andi.engine.netWorthGroup(bookId)).active?.proposalId).toBe(pending.proposalId);
+  });
+
+  it('an invitee taken out of the workspace is not asked into the log again on every sync (round 4, minor)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const sari = await home.device('Sari');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.join(sari, rina);
+    await home.settle();
+    await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    // Andi joins the log; Sari is taken out of the workspace before her phone ever took its invite.
+    for (let i = 0; i < 3; i += 1) await home.settle([rina, andi]);
+    await rina.engine.removeDevice(bookId, sari.deviceId);
+    for (let i = 0; i < 3; i += 1) await home.settle([rina, andi]);
+    expect(await sari.database.db.values(sql`SELECT 1 FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).toEqual([]);
+    const host = { database: rina.database } as GroupLogHost;
+    // Andi's device is in the log; Sari is still on the pending proposal but has no device left in the workspace.
+    expect(await membersNotYetIn(host, bookId, groupBookId, [rina.memberId, andi.memberId, sari.memberId])).toEqual([]);
   });
 
   it('before any activation only the pending proposal’s members are let in: a device of Sari, who declined, is not (round 3, B)', async () => {

@@ -251,6 +251,9 @@ export async function reviewedFor(source: Database | Db, groupBookId: string, pr
  * did not review with last time in this log; `none` otherwise. Removals are sent under every allowance (round 2).
  */
 export async function sendAllowance(db: Db, group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'proposalId' | 'members'>): Promise<'all' | 'live' | 'none'> {
+  // Wave 3 round 4: while a device of someone outside the group is still in its log, it holds the key anything would be
+  // sealed under — nothing new goes out until the sweep has taken it out (the held items go on the sync after).
+  if ((await outsiderDevices(db, group.groupBookId, group.members)).length > 0) return 'none';
   if (await reviewedFor(db, group.groupBookId, group.proposalId)) return 'all';
   let last: { members: string[]; seq: number } | null = null;
   const prefix = REVIEWED_PREFIX(group.groupBookId);
@@ -267,6 +270,34 @@ export async function sendAllowance(db: Db, group: Pick<ActiveNetWorthGroup, 'gr
   if (!last) return 'none';
   const before = new Set(last.members);
   return group.members.every((m) => before.has(m)) ? 'live' : 'none';
+}
+
+/**
+ * The devices the group log's view still has in whose member is not in the active group (wave 3 round 4): let in to be
+ * asked, then left out of what activated. Until each is removed, it holds the log's current key.
+ */
+export async function outsiderDevices(db: Db, groupBookId: string, members: readonly string[]): Promise<string[]> {
+  const rows = await db.values<[string, string]>(
+    sql`SELECT device_id, member_id FROM sync_authority_devices WHERE book_id = ${groupBookId} AND removed_seq IS NULL ORDER BY device_id`,
+  );
+  return rows.filter(([, member]) => !members.includes(member)).map(([device]) => device);
+}
+
+/*
+ * Local only: a send that the hold above kept back (wave 3 round 4). The group log's sync sends every item again once
+ * no outsider is left in the log, and clears it.
+ */
+const HELD_KEY = (groupBookId: string) => `nw.held.${groupBookId}`;
+
+export async function markHeldTx(db: Db, groupBookId: string): Promise<void> {
+  await db.run(sql`INSERT INTO settings (key, value) VALUES (${HELD_KEY(groupBookId)}, '1') ON CONFLICT (key) DO NOTHING`);
+}
+
+/** Whether a send was held for this group log; clears the mark (inside the caller's transaction, so a rollback keeps it). */
+export async function takeHeldTx(db: Db, groupBookId: string): Promise<boolean> {
+  const held = (await db.values(sql`SELECT 1 FROM settings WHERE key = ${HELD_KEY(groupBookId)}`)).length > 0;
+  if (held) await db.run(sql`DELETE FROM settings WHERE key = ${HELD_KEY(groupBookId)}`);
+  return held;
 }
 
 /** This device's day, by the capture clock the engine and tests set (the same day capture's flush sends with). */

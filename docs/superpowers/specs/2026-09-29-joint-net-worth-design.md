@@ -218,8 +218,11 @@ mode. No active proposal = no group. Every device derives the same answer from t
   any activation: the members of the pending proposal, as `deriveGroup` gives it — not someone listed only on a
   declined or cancelled one). Someone let in to be asked who is not in the group when it activates (they declined,
   or a newer proposal left them out) is removed from the log, with rotation, by any member's device, so they read
-  nothing sent after; what the log held before activation was no summary. A member whose invite never went out (the
-  relay failed after the proposal was written) is invited again on a later sync.
+  nothing sent after; what the log held before activation was no summary. The removal comes first: on a group log's
+  sync, after the pull and before anything waiting is sealed, a member's device takes such a device out and rotates;
+  while one is still in, no summary is written (Share, a setting, a refresh are held and go out whole on the sync
+  after) and none waiting is sealed. A member whose invite never went out (the relay failed after the proposal was
+  written) is invited again on a later sync, as long as they still have a device in the workspace.
 - **`joint` needs exactly two members.** A proposal with `joint` and not two members cannot be made in the UI and is
   never active on apply.
 - **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.
