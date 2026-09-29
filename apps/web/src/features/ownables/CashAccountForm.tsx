@@ -265,19 +265,6 @@ export function CashAccountForm({
         )}
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
         {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Bank name" />}
-        {canPocket && (
-          <SwitchRow
-            label="Multi-currency"
-            checked={pocketed}
-            onChange={(on) => {
-              setPocketed(on);
-              if (on && pockets.length === 0) {
-                const first = { currency: ws.baseCurrency, balance: '', rate: '' };
-                setPockets([first, { currency: nextPocketCurrency([first]), balance: '', rate: '' }]);
-              }
-            }}
-          />
-        )}
         {asks.includes('currency') && !pocketed && (
           <CurrencyRow
             label="Currency"
@@ -335,6 +322,19 @@ export function CashAccountForm({
             value={manualRate}
             onChange={(e) => setManualRate(e.target.value)}
             inputMode="decimal"
+          />
+        )}
+        {canPocket && (
+          <SwitchRow
+            label="Multi-currency"
+            checked={pocketed}
+            onChange={(on) => {
+              setPocketed(on);
+              if (on && pockets.length === 0) {
+                const first = { currency: ws.baseCurrency, balance: '', rate: '' };
+                setPockets([first, { currency: nextPocketCurrency([first]), balance: '', rate: '' }]);
+              }
+            }}
           />
         )}
       </InsetGroup>
