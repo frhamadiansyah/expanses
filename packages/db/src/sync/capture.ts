@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { makesMember, viewIsLastOwner, viewRoleOfDevice } from './authority';
+import { AuthorityError, frozenFieldChanged, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice } from './authority';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -449,6 +449,33 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (Number(owners?.[0] ?? 0) === 0) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
+  // Joint-net-worth spec §5.1 (task 1 re-review round 1 ruling): a writer-only row's local write is judged here,
+  // before anything commits or is emitted, against the pre-image — with the same predicate (`isWriter`,
+  // `frozenFieldChanged`) `decideRowWriter` judges a peer's entry by — so a bad local write never lands and its
+  // own device never has to catch it after the fact; the peer-side decision then skips a device's own entries
+  // entirely, since by the time it runs the live row already holds this write, not what a peer still has.
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const was = before.get(key);
+    const now = after.get(key);
+    const entity = (was ?? now)!.entity;
+    if (!entity.writer) continue;
+    const bookId = (was ?? now)!.bookId;
+    const member = books.find((b) => b.bookId === bookId)?.memberId ?? null;
+    if (!was) {
+      // A new row: authorized by its own new fields.
+      if (!isWriter(entity, now!.values, parseOpId(entity, now!.id), member)) throw new AuthorityError('writer');
+      continue;
+    }
+    if (!now || now.bookId !== was.bookId) {
+      // A delete (or a row that left the book's scope): authorized by the pre-image's stored writer.
+      if (!isWriter(entity, was.values, parseOpId(entity, was.id), member)) throw new AuthorityError('writer');
+      continue;
+    }
+    // An edit: authorized by the pre-image (an already-good row cannot be taken over by rewriting who owns it),
+    // and its writer-bearing field(s) may never move, even by its own rightful writer.
+    if (!isWriter(entity, was.values, parseOpId(entity, was.id), member)) throw new AuthorityError('writer');
+    if (frozenFieldChanged(entity, was.values, now.values)) throw new AuthorityError('writer');
+  }
   for (const [key, was] of before) {
     const now = after.get(key);
     if (!now || now.bookId !== was.bookId) {

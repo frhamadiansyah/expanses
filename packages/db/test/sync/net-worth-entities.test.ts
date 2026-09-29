@@ -1,10 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
 import { meetsMinVersion } from '../../src/sync/net-worth/version';
 import { SyncEngine } from '../../src/sync/engine';
 import type { ChangeSet, Op } from '../../src/sync/types';
 import { Household, type Device } from './household';
+import { outboxOps } from './sync-helpers';
 
 /*
  * Joint net worth's foundations (spec §5.1, §9): the five entities `apply.ts` now knows, each with a `writer` — the
@@ -96,7 +98,8 @@ describe('nw_proposal: writer is its proposer, per the authority view', () => {
     await home.settle();
     const [row] = await dewi.database.db.values<[string]>(sql`SELECT proposed_by FROM nw_proposals WHERE book_id = ${bookId} AND proposal_id = 'prop-3'`);
     expect(row).toEqual([fandri.memberId]);
-    expect((await skipsOf(fandri, bookId)).at(-1)).toEqual(['nw_proposal', 'prop-3', authorityRefusal]);
+    // Checked via Dewi, a peer: Fandri's own entry skips the peer-side writer decision (re-review round 1 ruling).
+    expect((await skipsOf(dewi, bookId)).at(-1)).toEqual(['nw_proposal', 'prop-3', authorityRefusal]);
   });
 
   it('cancelled may only be set by the proposer, as a partial edit naming only it', async () => {
@@ -179,28 +182,123 @@ describe('nw_item: writer is its owner, per the authority view', () => {
   });
 
   it('finding 3: a new row whose owner cannot be determined (the field is absent) is refused, not allowed', async () => {
-    const { home, fandri, bookId } = await household();
+    const { home, fandri, dewi, bookId } = await household();
+    // Checked via a peer (Dewi): a device's own entries skip the peer-side writer decision entirely (re-review
+    // round 1 ruling below), so what the author's own device records is no longer the right thing to assert here.
     await send(home, fandri, fandri.memberId, { entity: 'nw_item', id: 'item-4', op: 'upsert', fields: { summary: JSON.stringify({ kind: 'account' }), removed: 0 } });
     await home.settle();
-    const rows = await fandri.database.db.values(sql`SELECT 1 FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-4'`);
+    const rows = await dewi.database.db.values(sql`SELECT 1 FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-4'`);
     expect(rows).toEqual([]);
-    expect(await skipsOf(fandri, bookId)).toEqual([['nw_item', 'item-4', authorityRefusal]]);
+    expect(await skipsOf(dewi, bookId)).toEqual([['nw_item', 'item-4', authorityRefusal]]);
   });
 
   it('finding 3: a delete of a row not here is refused, not silently allowed', async () => {
-    const { home, fandri, bookId } = await household();
+    const { home, fandri, dewi, bookId } = await household();
     await send(home, fandri, fandri.memberId, { entity: 'nw_item', id: 'item-never-made', op: 'delete' });
     await home.settle();
-    expect(await skipsOf(fandri, bookId)).toEqual([['nw_item', 'item-never-made', authorityRefusal]]);
+    expect(await skipsOf(dewi, bookId)).toEqual([['nw_item', 'item-never-made', authorityRefusal]]);
+  });
+});
+
+/*
+ * Re-review round 1 ruling: the writer rule is enforced in two places with one shared predicate (`isWriter`,
+ * `frozenFieldChanged` in authority.ts) — locally at capture time, against the pre-image, before a bad write ever
+ * commits or is emitted; and on peers, `decideRowWriter` judging the stored row. A device's own entries skip the
+ * peer-side decision entirely: by the time it would run, the live row already holds the author's own write (not
+ * what a peer still has), which is exactly why the first pass's "own entries are refused too" test (finding 5)
+ * broke two ways — a takeover the capture guard should have caught instead went through unrefused (open item A),
+ * and a legitimate local delete was refused as if the row had never existed (open item B). Both are fixed by
+ * enforcing the rule at capture time and having the peer-side decision trust that already happened.
+ */
+describe('the writer rule at capture time (local, before anything commits or is emitted)', () => {
+  const summary = () => JSON.stringify({ kind: 'account', name: 'BCA' });
+
+  async function makeItem(d: Device, bookId: string, itemId: string, owner: string): Promise<void> {
+    await d.database.transaction((tx) =>
+      withCapture(tx, { entity: 'nw_item', id: itemId, bookId }, async () => {
+        await tx.run(sql`INSERT INTO nw_items (book_id, item_id, owner, summary_json, removed) VALUES (${bookId}, ${itemId}, ${owner}, ${summary()}, 0)`);
+      }),
+    );
+  }
+
+  async function setItemOwner(d: Device, bookId: string, itemId: string, owner: string): Promise<void> {
+    await d.database.transaction((tx) =>
+      withCapture(tx, { entity: 'nw_item', id: itemId, bookId }, async () => {
+        await tx.run(sql`UPDATE nw_items SET owner = ${owner} WHERE book_id = ${bookId} AND item_id = ${itemId}`);
+      }),
+    );
+  }
+
+  async function deleteItem(d: Device, bookId: string, itemId: string): Promise<void> {
+    await d.database.transaction((tx) =>
+      withCapture(tx, { entity: 'nw_item', id: itemId, bookId }, async () => {
+        await tx.run(sql`DELETE FROM nw_items WHERE book_id = ${bookId} AND item_id = ${itemId}`);
+      }),
+    );
+  }
+
+  it('A: a captured local write attempting a takeover throws at capture; nothing is emitted or changed', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await makeItem(fandri, bookId, 'item-a', fandri.memberId);
+    await home.settle();
+
+    // Dewi's own database now has item-a (Fandri's, synced as a peer); she attempts to take it over locally.
+    await expect(setItemOwner(dewi, bookId, 'item-a', dewi.memberId)).rejects.toThrow(/writer/);
+    const [row] = await dewi.database.db.values<[string]>(sql`SELECT owner FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-a'`);
+    expect(row).toEqual([fandri.memberId]);
+    expect(await outboxOps(dewi.database)).toEqual([]);
   });
 
-  it('finding 5: a writer refusal is recorded on the authoring device itself, not only its peers', async () => {
-    const { home, dewi, budi, bookId } = await household();
-    // Dewi signs honestly as herself, but names Budi as the owner: a plain writer mismatch, refused on every device —
-    // including Dewi's own, which never runs applyChangeSetTx for its own entries.
-    await send(home, dewi, dewi.memberId, { entity: 'nw_item', id: 'item-5', op: 'upsert', fields: { owner: budi.memberId, summary: JSON.stringify({}), removed: 0 } });
-    await dewi.engine.syncOnce(bookId);
-    expect(await skipsOf(dewi, bookId)).toEqual([['nw_item', 'item-5', authorityRefusal]]);
+  it("B: the stored writer's captured local delete succeeds everywhere, with no false skip anywhere", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await makeItem(fandri, bookId, 'item-b', fandri.memberId);
+    await home.settle();
+
+    await deleteItem(fandri, bookId, 'item-b');
+    await home.settle();
+    for (const d of [fandri, dewi, budi]) {
+      const rows = await d.database.db.values(sql`SELECT 1 FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-b'`);
+      expect(rows).toEqual([]);
+      expect(await skipsOf(d, bookId)).toEqual([]);
+    }
+  });
+
+  it("C: a non-writer's delete op, sent the real (relay) way, is refused on peers", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await makeItem(fandri, bookId, 'item-c', fandri.memberId);
+    await home.settle();
+
+    await send(home, budi, budi.memberId, { entity: 'nw_item', id: 'item-c', op: 'delete' });
+    await home.settle();
+    const [row] = await dewi.database.db.values<[string]>(sql`SELECT owner FROM nw_items WHERE book_id = ${bookId} AND item_id = 'item-c'`);
+    expect(row).toEqual([fandri.memberId]);
+    expect((await skipsOf(dewi, bookId)).at(-1)).toEqual(['nw_item', 'item-c', authorityRefusal]);
+  });
+
+  it("D: the to party's captured local edit of non-frozen member_transfer fields applies everywhere, with no skips", async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    const line = (owner: string) => JSON.stringify({ owner, label: owner });
+    await fandri.database.transaction((tx) =>
+      withCapture(tx, { entity: 'member_transfer', id: 'xfer-d', bookId }, async () => {
+        await tx.run(sql`
+          INSERT INTO member_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, from_json, to_json, description, void, recorded_by)
+          VALUES (${bookId}, 'xfer-d', '2026-09-29', 10000, 'IDR', ${line(fandri.memberId)}, ${line(dewi.memberId)}, 'reimbursement', 0, ${fandri.memberId})`);
+      }),
+    );
+    await home.settle();
+
+    // Dewi is the `to` party — an authorized writer — and touches none of from/to/recordedBy.
+    await dewi.database.transaction((tx) =>
+      withCapture(tx, { entity: 'member_transfer', id: 'xfer-d', bookId }, async () => {
+        await tx.run(sql`UPDATE member_transfers SET occurred_on = '2026-10-01', amount_minor = 20000, description = 'updated', void = 1 WHERE book_id = ${bookId} AND transfer_id = 'xfer-d'`);
+      }),
+    );
+    await home.settle();
+    for (const d of [fandri, dewi, budi]) {
+      const row = await d.database.db.values<[string, number, string, number]>(sql`SELECT occurred_on, amount_minor, description, void FROM member_transfers WHERE book_id = ${bookId} AND transfer_id = 'xfer-d'`);
+      expect(row).toEqual([['2026-10-01', 20000, 'updated', 1]]);
+      expect(await skipsOf(d, bookId)).toEqual([]);
+    }
   });
 });
 
@@ -286,9 +384,10 @@ describe('member_transfer: writer is either party, per the authority view', () =
     const result = await fandri.engine.syncOnce(home.bookId);
     expect(result.stopped).toBeUndefined();
     await home.settle();
+    // Checked via Dewi, a peer: Fandri's own entry skips the peer-side writer decision (re-review round 1 ruling).
     const rows = await dewi.database.db.values(sql`SELECT 1 FROM member_transfers WHERE book_id = ${bookId} AND transfer_id = 'xfer-5'`);
     expect(rows).toEqual([]);
-    expect(await skipsOf(fandri, bookId)).toEqual([['member_transfer', 'xfer-5', authorityRefusal]]);
+    expect(await skipsOf(dewi, bookId)).toEqual([['member_transfer', 'xfer-5', authorityRefusal]]);
   });
 });
 

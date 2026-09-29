@@ -206,6 +206,12 @@ export interface DecideContext {
   creator: boolean;
   /** The member an admitted introduction joins as. */
   introducedMember?: string;
+  /**
+   * This entry is this device's own (task 1 re-review round 1 ruling): a writer-only row's op is decided at capture
+   * time instead (`withCapture`, against the pre-image), never here against the live row, which already holds the
+   * author's own write. `decideRowWriter` is skipped for an own entry; every other decision here runs alike.
+   */
+  own?: boolean;
 }
 
 /**
@@ -243,7 +249,7 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   }
   if (op.entity === 'member') return decideMember(tx, ctx, op);
   const entity = entityOf(op.entity);
-  if (entity.kind === 'row' && entity.writer) return decideRowWriter(tx, bookId, author, entity, op);
+  if (entity.kind === 'row' && entity.writer && !ctx.own) return decideRowWriter(tx, bookId, author, entity, op);
   return op;
 }
 
@@ -264,6 +270,19 @@ function isParty(fields: Record<string, unknown>, member: string | null): boolea
 }
 
 /**
+ * Whether `member` may write a row of `entity` whose `writer`-relevant fields read as `fields` (spec §5.1): the one
+ * predicate both the peer-side decision below (judging the stored row) and the local capture-time guard
+ * (`withCapture`, judging the pre-image, task 1 re-review round 1 ruling) call, so the two never diverge. `null` —
+ * an entity with no `writer` restriction — always allows; an undeterminable writer (an absent field) never does.
+ */
+export function isWriter(entity: RowEntity, fields: Record<string, unknown>, key: Record<string, string>, member: string | null): boolean {
+  if (!entity.writer) return true;
+  const writer = entity.writer(fields, key);
+  if (writer === null) return false;
+  return writer === 'either-party' ? isParty(fields, member) : writer === member;
+}
+
+/**
  * Once a writer-only row exists, the field(s) its `writer` is read from may never change — not even by its rightful
  * writer — so nobody can grant themselves (or anyone else) a row already made (task 1 review round 1, finding 2).
  */
@@ -272,6 +291,11 @@ const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
 };
+
+/** Whether an edit from `before` to `after` (full field-value snapshots) moves one of `entity`'s frozen fields. */
+export function frozenFieldChanged(entity: RowEntity, before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  return (WRITER_FROZEN_FIELDS[entity.entity] ?? []).some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
+}
 
 /** A row entity's stored fields (by field name, `entity.fields`' keys), or null when it is not here. */
 async function storedRowOf(tx: Db, entity: RowEntity, bookId: string, key: Record<string, string>): Promise<Record<string, unknown> | null> {
@@ -286,13 +310,19 @@ async function storedRowOf(tx: Db, entity: RowEntity, bookId: string, key: Recor
 }
 
 /**
- * Joint-net-worth spec §5.1 (task 1 review round 1, findings 1–4): only the member `entity.writer` names may write
- * this row, resolved from the **authority view**'s device→member binding (`authorMemberOf`), never a change-set's
- * own claimed `member` (finding 1). A row that already exists is judged by its STORED writer, not the incoming op's
- * (finding 2: an op cannot grant itself a row by rewriting who owns it) — and, once it exists, its writer-bearing
- * field(s) may never change, by anyone (`WRITER_FROZEN_FIELDS`). A new row is judged by the op's own fields. A
- * writer that cannot be determined (an absent field, or a delete of a row not here) is refused, not allowed
- * (finding 3).
+ * Joint-net-worth spec §5.1 (task 1 review round 1, findings 1–4). Only for a **peer's** entry (task 1 re-review
+ * round 1 ruling): the local capture-time guard (`withCapture`) already enforced this rule locally, against the
+ * pre-image, before the write ever committed — judging it again here, against the *live* local row, would read the
+ * device's own just-applied write as "already true" and either wrongly allow a takeover (the live row now matches
+ * the taker) or wrongly refuse a legitimate delete (the row is already gone) — so `decideOp` never calls this for a
+ * device's own entries.
+ *
+ * The member `entity.writer` names is resolved from the **authority view**'s device→member binding
+ * (`authorMemberOf`), never a change-set's own claimed `member` (finding 1). A row that already exists is judged by
+ * its STORED writer, not the incoming op's (finding 2: an op cannot grant itself a row by rewriting who owns it) —
+ * and, once it exists, its writer-bearing field(s) may never change, by anyone (`frozenFieldChanged`). A new row is
+ * judged by the op's own fields. A writer that cannot be determined (an absent field, or a delete of a row not
+ * here) is refused, not allowed (finding 3).
  */
 async function decideRowWriter(tx: Db, bookId: string, author: string, entity: RowEntity, op: Op): Promise<Op> {
   const key = parseOpId(entity, op.id);
@@ -300,26 +330,16 @@ async function decideRowWriter(tx: Db, bookId: string, author: string, entity: R
   const authorMember = await authorMemberOf(tx, bookId, author);
   const REFUSED = new AuthorityError('writer');
   if (op.op === 'delete') {
-    if (stored === null) throw REFUSED; // finding 3: a delete of a row not here is refused, not silently allowed
-    const writer = entity.writer!(stored, key);
-    if (writer === null) throw REFUSED;
-    const ok = writer === 'either-party' ? isParty(stored, authorMember) : writer === authorMember;
-    if (!ok) throw REFUSED;
+    if (stored === null || !isWriter(entity, stored, key, authorMember)) throw REFUSED; // finding 3
     return op;
   }
   if (stored === null) {
     // A new row: judged by the op's own fields (finding 2).
-    const writer = entity.writer!(op.fields, key);
-    if (writer === null) throw REFUSED;
-    const ok = writer === 'either-party' ? isParty(op.fields, authorMember) : writer === authorMember;
-    if (!ok) throw REFUSED;
+    if (!isWriter(entity, op.fields, key, authorMember)) throw REFUSED;
     return op;
   }
   // An existing row: judged by what is already here, and its writer-bearing field(s) may not move (finding 2).
-  const writer = entity.writer!(stored, key);
-  if (writer === null) throw REFUSED;
-  const ok = writer === 'either-party' ? isParty(stored, authorMember) : writer === authorMember;
-  if (!ok) throw REFUSED;
+  if (!isWriter(entity, stored, key, authorMember)) throw REFUSED;
   for (const field of WRITER_FROZEN_FIELDS[entity.entity] ?? []) {
     if (field in op.fields && String(op.fields[field]) !== String(stored[field])) throw REFUSED;
   }

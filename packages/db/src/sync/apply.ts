@@ -820,7 +820,7 @@ export async function pullAndApply(
               if (changeSet) {
                 run.decisions = applyingDecisions = await decideOpsTx(
                   tx,
-                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember },
+                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own },
                   changeSet.ops,
                 );
                 // A rejoin's pull (§8.7, N2) notes what the log says, as the view took it, for what it sends after.
