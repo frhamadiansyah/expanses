@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { type GroupChild, ROW_PAD_X, ROW_PAD_Y, TAP } from '../../ui/native';
 
 const NEED_EXPLAINED =
-  'Sizes your emergency fund and splits your Budget. Left unset, it follows its parent, or is essential.';
+  'Sets the emergency fund size and the Budget split. Left unset, it follows its parent, or is essential.';
 
 /**
  * "Spending" (essential or lifestyle), answered by the native pop-up menu: the answer is always one of two, and the row shows which even when

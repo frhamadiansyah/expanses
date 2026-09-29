@@ -5,9 +5,9 @@ test('a parent’s mark reaches its children, a child can keep its own, and clea
   await openCategory(page, 'Restaurants');
   await expectNeed(page, 'Restaurants', 'Essential', null);
   // Why it matters sits behind the ⓘ beside Spending, not in a footer.
-  await expect(page.getByText(/Sizes your emergency fund and splits your Budget/)).toHaveCount(0);
+  await expect(page.getByText(/Sets the emergency fund size and the Budget split/)).toHaveCount(0);
   await page.getByRole('button', { name: 'About Spending' }).click();
-  await expect(page.getByText(/Sizes your emergency fund and splits your Budget/)).toBeVisible();
+  await expect(page.getByText(/Sets the emergency fund size and the Budget split/)).toBeVisible();
 
   await markNeed(page, 'Food and beverage', 'Lifestyle');
   await openCategory(page, 'Restaurants');
