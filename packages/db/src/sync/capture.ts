@@ -93,6 +93,11 @@ export interface CaptureConfig {
     /** The ops apply actually took in, when they are known only after it ran (authority refusals left out). */
     applied?(tx: Db, changeSet: ChangeSet): Promise<void>;
   };
+  /**
+   * Joint net worth (§9, task 6 review round 1): the accounts a transaction with capture paused (apply) changed. Their
+   * summaries cannot be sent from inside apply, so the engine sends them after it (`takePendingSummaryAccounts`).
+   */
+  pendingSummaries?: Set<string>;
 }
 
 export function defaultCaptureConfig(): CaptureConfig {
@@ -249,14 +254,35 @@ export class CaptureSession {
    */
   private async sendDirtySummaries(): Promise<void> {
     if (this.dirtyAccounts.size === 0 && this.dirtyTransactions.size === 0) return;
-    if ((await this.sharedBooks()).length === 0) return;
+    if (!this.config.enabled) return; // capture off for this database: nothing is shared from it
+    const shared = this.enabled ? (await this.sharedBooks()).length > 0 : (await this.tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`).catch(() => [])).length > 0;
+    if (!shared) return;
+    const ids = await this.dirtyItemAccounts();
+    if (ids.length === 0) return;
+    if (!this.enabled) {
+      // Apply (capture paused): a peer's edit of a line on one of this device's items. Sent after apply commits.
+      const pending = (this.config.pendingSummaries ??= new Set());
+      for (const id of ids) pending.add(id);
+      return;
+    }
+    await sendSummariesTx(this.tx, ids, localDate(this.config.now?.() ?? Date.now()));
+  }
+
+  /** The asset and liability accounts among what this transaction touched (categories are never items). */
+  private async dirtyItemAccounts(): Promise<string[]> {
     const ids = new Set(this.dirtyAccounts);
     for (const transactionId of this.dirtyTransactions) {
       for (const [accountId] of await this.tx.values<[string]>(sql`SELECT DISTINCT account_id FROM entries WHERE transaction_id = ${transactionId}`)) ids.add(accountId);
     }
     this.dirtyAccounts.clear();
     this.dirtyTransactions.clear();
-    await sendSummariesTx(this.tx, [...ids], localDate(this.config.now?.() ?? Date.now()));
+    const out: string[] = [];
+    for (const id of ids) {
+      const [row] = await this.tx.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${id}`);
+      // A deleted account (no row) is kept: its item, if one was shared, goes out as removed.
+      if (!row || row[0] === 'asset' || row[0] === 'liability') out.push(id);
+    }
+    return out;
   }
 
   reserveRowSlot(): { kind: 'rows'; ops: { bookId: string; op: Op }[] } {
@@ -281,8 +307,8 @@ export class CaptureSession {
 
   /** Resolves the lineages, cuts the ops into change-sets, puts them in the outbox, and writes the clocks. */
   async flush(): Promise<void> {
-    if (!this.enabled) return;
     await this.sendDirtySummaries();
+    if (!this.enabled) return;
     if (this.slots.length === 0) return;
     const books = await this.sharedBooks();
     if (books.length === 0) return;
@@ -391,6 +417,15 @@ function sessionOf(tx: Db): CaptureSession | undefined {
  */
 export function markAccountDirtyTx(tx: Db, accountId: string): void {
   sessionOf(tx)?.markAccountDirty(accountId);
+}
+
+/** The accounts apply changed since the last call (see `CaptureConfig.pendingSummaries`), emptied as they are handed over. */
+export function takePendingSummaryAccounts(database: Database): string[] {
+  const pending = captureConfigOf(database).pendingSummaries;
+  if (!pending || pending.size === 0) return [];
+  const ids = [...pending];
+  pending.clear();
+  return ids;
 }
 
 /** Switches capture off for the rest of this db transaction. Apply calls it: applying never re-emits (spec §7.2). */

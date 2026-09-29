@@ -14,7 +14,7 @@ import {
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
-import { assetValuesAt } from '../../repos/asset-values';
+import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
@@ -177,22 +177,18 @@ export async function computeItemSummary(tx: Db, ws: WorkspaceContext, accountId
   ).map(([transactionId, occurredOn, amountMinor, household]) => ({ transactionId, occurredOn, amountMinor: sign * Number(amountMinor), household: Number(household) !== 0 }));
   const ledgerAt = (date: string) => lines.reduce((sum, line) => (line.occurredOn <= date ? sum + line.amountMinor : sum), 0);
 
-  // A valued asset (a price, an estimate) is worth what `assetValuesAt` says; everything else is its ledger balance.
-  let valueAt = async (date: string): Promise<number> => ledgerAt(date);
-  if (kind === 'asset') {
-    const view = readView(tx);
-    const now = (await assetValuesAt(view, ws, today)).find((row) => row.accountId === accountId);
-    if (now && now.mode !== 'derived') valueAt = async (date) => (await assetValuesAt(view, ws, date)).find((row) => row.accountId === accountId)?.valueMinor ?? 0;
-  }
-
-  const balanceMinor = await valueAt(today);
-  const openingMinor = await valueAt(dayBefore(period.start));
+  // An asset is worth what the Net worth reader says (a price, an estimate, or its ledger balance), its inputs read
+  // once for every date; a liability owes its ledger balance.
+  const months = lastMonthEnds(today, 24);
+  const dates = [today, dayBefore(period.start), ...months.map(monthEnd)];
+  const series = kind === 'asset' ? await assetValueSeries(readView(tx), ws, accountId, dates, ledgerAt) : null;
+  const values = series ?? dates.map(ledgerAt);
+  const [balanceMinor, openingMinor] = values as [number, number];
   const movements: PeriodMovement[] = lines
     .filter((line) => line.occurredOn >= period.start && line.occurredOn <= today)
     .map(({ transactionId, amountMinor, household }) => ({ transactionId, amountMinor, household }));
   const split = splitPeriod(openingMinor, movements);
-  const monthEnds: ItemSummary['monthEnds'] = [];
-  for (const month of lastMonthEnds(today, 24)) monthEnds.push({ month, balanceMinor: await valueAt(monthEnd(month)) });
+  const monthEnds: ItemSummary['monthEnds'] = months.map((month, i) => ({ month, balanceMinor: values[i + 2]! }));
 
   const [primary] = await tx.values<[string | null]>(
     sql`SELECT last4 FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL AND last4 IS NOT NULL ORDER BY is_primary DESC, created_at LIMIT 1`,
@@ -308,3 +304,32 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
   }
   return out;
 }
+
+/**
+ * What the engine sends after a sync (task 6 review round 1): the items apply changed (a peer's edit or void of a
+ * Household line on one of this device's accounts, `pending`), and every item whose summary is for a period that has
+ * ended (§5.2: the period is today's cycle or month). The hash skip keeps an unchanged one from going out.
+ */
+export async function refreshSummariesTx(tx: Db, pending: readonly string[], today: string): Promise<number> {
+  const ids = new Set(pending);
+  let own: [string, string][] = [];
+  try {
+    own = await tx.values<[string, string]>(sql`
+      SELECT m.account_id, i.summary_json FROM nw_items i
+      JOIN nw_item_map m ON m.item_id = i.item_id AND m.group_book_id = i.book_id
+      JOIN shared_books s ON s.book_id = i.book_id AND s.member_id = i.owner
+      WHERE i.removed = 0 AND s.state = 'active'`);
+  } catch {
+    return 0; // a database from before migration 0057
+  }
+  for (const [accountId, json] of own) {
+    try {
+      const summary = JSON.parse(json) as Pick<ItemSummary, 'period'> | null;
+      if (!summary?.period || summary.period.end < today) ids.add(accountId);
+    } catch {
+      ids.add(accountId);
+    }
+  }
+  return ids.size === 0 ? 0 : sendSummariesTx(tx, [...ids], today);
+}
+

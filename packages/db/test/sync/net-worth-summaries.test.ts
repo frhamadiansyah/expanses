@@ -1,13 +1,28 @@
 import { expenseLines, isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { archiveAccount, createAccount, createBook, createCardAccount, postTransaction, postTransactionTx, recordValuation, saveAssetProfile, saveCardTerms } from '../../src/index';
+import {
+  archiveAccount,
+  assetValuesAt,
+  createAccount,
+  createBook,
+  createCardAccount,
+  deleteUnusedAccount,
+  personalBook,
+  postTransaction,
+  postTransactionTx,
+  recordValuation,
+  replaceTransaction,
+  saveAssetProfile,
+  saveCardTerms,
+  voidTransaction,
+} from '../../src/index';
 import { AuthorityError } from '../../src/sync/authority';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
-import { itemIdOf, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
+import { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet } from '../../src/sync/types';
-import { categoryOf, Household, type Device } from './household';
+import { categoryOf, headOf, Household, type Device } from './household';
 
 /*
  * Summaries — compute, send, receive (joint-net-worth spec §5.2, §9, §10, task 6). Rina and Andi are the net-worth group;
@@ -350,3 +365,99 @@ describe('a restored phone (§9 "Restored backup", S8.7)', () => {
     expect(await rina.database.db.values(sql`SELECT seq, entity, id, error FROM sync_skipped WHERE book_id = ${groupBookId}`)).toEqual([]);
   });
 });
+
+describe('review round 1 (task 6)', () => {
+  it("Andi's edit, then void, of Rina's Household purchase on her shared card re-sends the card's summary each time", async () => {
+    const { home, rina, andi, bookId, groupBookId } = await activeGroup();
+    const card = await rinaCard(rina);
+    await setShare(rina, card, 'total');
+    await shareAll(rina);
+    const groceries = await categoryOf(rina.database, bookId, 'Groceries');
+    const lineage = await spend(rina, groceries, card, 50_000_000, 'Household groceries');
+    await home.settle();
+    expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ householdMinor: 50_000_000, balanceMinor: 50_000_000 }]);
+
+    const [[placeholder]] = (await andi.database.db.values<[string]>(sql`SELECT account_id FROM book_member_accounts WHERE member_id = ${rina.memberId}`)) as [[string]];
+    await replaceTransaction(andi.database, andi.ws, (await headOf(andi.database, lineage))!, {
+      occurredOn: today,
+      description: 'Household groceries',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: placeholder, amountMinor: 70_000_000, currency: 'IDR' }),
+    });
+    await home.settle();
+    expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ householdMinor: 70_000_000, balanceMinor: 70_000_000 }]);
+
+    await voidTransaction(andi.database, andi.ws, (await headOf(andi.database, lineage))!);
+    await home.settle();
+    expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ householdMinor: 0, balanceMinor: 0 }]);
+  });
+
+  it('a deleted account sends removed', async () => {
+    const { home, rina, andi, groupBookId } = await activeGroup();
+    const spare = await createAccount(rina.database, rina.ws, { name: 'Spare wallet', kind: 'asset', subtype: 'cash', currency: 'IDR', openingBalanceMinor: 10_000_000, openedOn: today });
+    await setShare(rina, spare.id, 'total');
+    await shareAll(rina);
+    await home.settle();
+    expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ name: 'Spare wallet', balanceMinor: 10_000_000 }]);
+    await deleteUnusedAccount(rina.database, rina.ws, spare.id);
+    await home.settle();
+    expect(await receivedItems(andi.database, groupBookId)).toEqual([]);
+  });
+
+  it("a new period refreshes the summary on the next sync, with no write at all", async () => {
+    const { home, rina, andi, bookId, groupBookId } = await activeGroup();
+    await setShare(rina, rina.bank, 'total');
+    await spend(rina, await categoryOf(rina.database, bookId, 'Groceries'), rina.bank, 5_000_000, 'Household groceries');
+    await shareAll(rina);
+    await home.settle();
+    const [before] = await receivedItems(andi.database, groupBookId);
+    expect(before!.householdMinor).toBe(-5_000_000);
+    // Forty days on: the calendar month the summary was for is over.
+    const later = Date.now() + 40 * 86_400_000;
+    (rina.engine as unknown as { now: () => number }).now = () => later;
+    await home.settle();
+    const [after] = await receivedItems(andi.database, groupBookId);
+    expect(after!.period.start > before!.period.end).toBe(true);
+    expect(after).toMatchObject({ openingMinor: -5_000_000, householdMinor: 0, otherUseMinor: 0, balanceMinor: -5_000_000 });
+  });
+});
+
+describe('computeItemSummary at the edges of a card cycle (task 6 review round 1)', () => {
+  it('a line dated before the period lands in the opening only; statement day 31 clamps to a 30-day month', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const bookId = (await personalBook(rina.database, rina.ws)).id;
+    const card = await createCardAccount(rina.database, rina.ws, { name: 'Rina Card', subtype: 'credit_card', currency: 'IDR' });
+    await saveCardTerms(rina.database, rina.ws, { accountId: card.id, statementDay: 31, dueDay: 10, creditLimitMinor: 500_000_000, annualFeeMinor: null });
+    const groceries = await categoryOf(rina.database, bookId, 'Groceries');
+    const post = (occurredOn: string, amountMinor: number) =>
+      postTransaction(rina.database, rina.ws, { occurredOn, description: 'x', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: card.id, amountMinor, currency: 'IDR' }) });
+    await post('2026-03-31', 7_000_000); // the last day of March's cycle
+    await post('2026-04-01', 2_000_000); // the first day of April's
+    await post('2026-04-30', 1_000_000); // April's statement day, clamped from 31
+    await post('2026-05-01', 9_000_000); // after today
+    const summary = await rina.database.transaction((tx) => computeItemSummary(tx, rina.ws, card.id, rina.memberId, bookId, '2026-04-30'));
+    expect(summary.period).toEqual({ start: '2026-04-01', end: '2026-04-30' });
+    expect(summary.card).toEqual({ limitMinor: 500_000_000, cycleStart: '2026-04-01', cycleEnd: '2026-04-30' });
+    expect(summary).toMatchObject({ openingMinor: 7_000_000, householdMinor: 3_000_000, otherUseMinor: 0, balanceMinor: 10_000_000 });
+    expect(summary.monthEnds.at(-1)).toEqual({ month: '2026-03', balanceMinor: 7_000_000 });
+  });
+
+  it("a valued asset's month-ends are what the Net worth reader says at each month-end", async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const bookId = (await personalBook(rina.database, rina.ws)).id;
+    const house = await createAccount(rina.database, rina.ws, { name: 'House', kind: 'asset', subtype: 'property', currency: 'IDR', openingBalanceMinor: 1_000_000_000, openedOn: '2025-01-01' });
+    await saveAssetProfile(rina.database, rina.ws, { accountId: house.id, assetKind: 'property' });
+    await recordValuation(rina.database, rina.ws, { accountId: house.id, asOf: '2025-06-15', valueMinor: 1_200_000_000, basis: 'appraisal' });
+    await recordValuation(rina.database, rina.ws, { accountId: house.id, asOf: '2026-02-10', valueMinor: 1_300_000_000, basis: 'estimate' });
+    const summary = await rina.database.transaction((tx) => computeItemSummary(tx, rina.ws, house.id, rina.memberId, bookId, '2026-04-20'));
+    for (const { month, balanceMinor } of summary.monthEnds) {
+      const [y, m] = month.split('-').map(Number) as [number, number];
+      const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+      const expected = (await assetValuesAt(rina.database, rina.ws, end)).find((row) => row.accountId === house.id)?.valueMinor ?? 0;
+      expect(balanceMinor, month).toBe(expected);
+    }
+    expect(summary.balanceMinor).toBe(1_300_000_000);
+  });
+});
+

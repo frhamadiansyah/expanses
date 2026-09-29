@@ -12,7 +12,8 @@ import type { Sealer } from '../seal';
 import { SharingError } from '../seed';
 import type { InviteRecord, SyncTransport } from '../types';
 import { SyncTransportError } from '../types';
-import { localDate, sendSummariesTx } from './summaries';
+import { takePendingSummaryAccounts } from '../capture';
+import { localDate, refreshSummariesTx, sendSummariesTx } from './summaries';
 import { meetsMinVersion } from './version';
 
 /*
@@ -387,9 +388,12 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
   }
   let synced = await host.syncOnce(groupBookId);
   if (!synced.ended) await followWorkspaceRemovals(host, bookId, groupBookId);
-  if (joined && !synced.ended && !synced.stopped) {
-    // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state.
-    const sent = await host.database.transaction((tx) => sendSummariesTx(tx, 'all', localDate(host.now())));
+  if (!synced.ended && !synced.stopped) {
+    const today = localDate(host.now());
+    // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state; on every
+    // sync, the items a peer's change touched here (apply sends nothing itself) and those whose period has ended.
+    const pending = takePendingSummaryAccounts(host.database);
+    const sent = await host.database.transaction((tx) => (joined ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today)));
     if (sent > 0) synced = await host.syncOnce(groupBookId);
   }
   return synced;
