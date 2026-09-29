@@ -18,7 +18,7 @@ export function NeedRow({ name, need, caption, onChoose, position }: GroupChild 
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-[6px]">
-            <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Spending</span>
+            <span className="text-[15px] leading-[20px] text-[var(--ph-ink)]">Spending</span>
             {/* The why of the answer, the way a form row's ⓘ opens its own: under the row, until tapped again. */}
             <button
               type="button"

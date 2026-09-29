@@ -36,7 +36,7 @@ function MccRow({ name, code, about, onChange, position }: GroupChild & { name: 
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
         <span className="flex min-w-0 flex-1 items-center gap-[6px]">
-          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Merchant category code</span>
+          <span className="min-w-0 truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">Merchant category code</span>
           {about && (
             <button
               type="button"
