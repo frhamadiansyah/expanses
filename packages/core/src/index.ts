@@ -473,3 +473,4 @@ export {
   termStart,
   withholdTax,
 } from './deposits/maturity';
+export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
