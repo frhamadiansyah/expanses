@@ -129,9 +129,9 @@ test('a set category can be given a card MCC, so its spending earns the right ra
   await expect(sheet).toHaveCount(0);
   await expect(mcc).toContainText('4511');
   // What the code means and where it came from sit behind the ⓘ beside the title.
-  await expect(mcc).not.toContainText('set by you');
+  await expect(mcc).not.toContainText('set here');
   await mcc.getByRole('button', { name: 'About Merchant category code' }).click();
-  await expect(mcc).toContainText('set by you');
+  await expect(mcc).toContainText('set here');
 
   // Removing it, from the same sheet, puts it back to having none, the same as the monthly categories behave.
   await page.getByRole('button', { name: 'Merchant category code for Flights' }).click();

@@ -33,7 +33,7 @@ test('the list is only names; a subcategory opens its page, where it is renamed,
   await expect(page.getByTestId('category-hero')).toContainText('Warung makan');
 
   await countsAs(page, 'Warung makan').selectOption('lifestyle');
-  await expectNeed(page, 'Warung makan', 'Lifestyle', 'Marked by you');
+  await expectNeed(page, 'Warung makan', 'Lifestyle', 'Set here');
   await expect(page.getByRole('button', { name: 'Clear the mark on Warung makan' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Categories' }).first().click();
