@@ -1,0 +1,310 @@
+import {
+  type Answer,
+  deriveGroup,
+  type FilingMode,
+  type ItemSummary,
+  lastMonthEnds,
+  type PeriodMovement,
+  type Proposal,
+  splitPeriod,
+  statementCycleFor,
+  calendarCycleFor,
+  summaryHash,
+} from '@expanses/core';
+import { sql } from 'drizzle-orm';
+import type { WorkspaceContext } from '../../context';
+import type { Database, Db } from '../../database';
+import { assetValuesAt } from '../../repos/asset-values';
+import { BALANCE_SUBTYPES } from '../../repos/accounts';
+import { withCapture } from '../capture';
+import { uuidv5 } from '../uuidv5';
+
+/*
+ * Summaries — compute, send, receive (joint-net-worth spec §5.2, §9, §10; task 6).
+ *
+ * An item is one of this device's own asset or liability accounts (never a member's placeholder, never a pocket parent,
+ * never archived). Its summary is computed here, on its owner's phone, from the local ledger, and written as this
+ * member's own `nw_items` row in the group log, captured: the op carries the summary alone — a balance, a chart of
+ * month-ends, the Household lines' total and ONE other-use total — never a private line's amount, description or id,
+ * and never a local account id (the item is known by `itemIdOf`, a one-way name the owner's phone keeps in
+ * `nw_item_map`).
+ *
+ * When one is sent (§9): the member is in an active group, the item's share setting is `total` (absent = not reviewed =
+ * nothing), and its summary differs from the one last sent (`nw_sent`). An item that stops being shared — set to
+ * hidden, archived, deleted — sends `removed = true` with its summary blanked, so every other phone drops it and its
+ * history. Capture calls `sendSummariesTx` at flush for every account a transaction touched; Share (task 5) and a
+ * restored phone's rejoin call it for `'all'`.
+ */
+
+/** The device's local date (YYYY-MM-DD) at `ms`: an item's summary is as of its owner's day (§5.2 `asOf`). */
+export function localDate(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Joint-net-worth §5.1: `itemId = uuidv5(groupBookId, 'item:' + accountId)` — one-way, so peers never learn the account id. */
+export function itemIdOf(groupBookId: string, accountId: string): Promise<string> {
+  return uuidv5(groupBookId, `item:${accountId}`);
+}
+
+export interface ActiveGroup {
+  groupBookId: string;
+  workspaceBookId: string;
+  /** This device's member in the group log. */
+  memberId: string;
+  mode: FilingMode;
+  members: string[];
+}
+
+/**
+ * The active group of the workspace this device is in, derived (§6) from the group log's proposals and answers, or null:
+ * no group log here, no active proposal, or one this member is not in. The one seam task 5's `activeNetWorthGroup` may
+ * replace.
+ */
+export async function activeGroupFor(tx: Db, workspaceBookId: string): Promise<ActiveGroup | null> {
+  const [log] = await tx.values<[string, string]>(sql`
+    SELECT g.group_book_id, s.member_id FROM nw_group_books g JOIN shared_books s ON s.book_id = g.group_book_id
+    WHERE g.book_id = ${workspaceBookId} AND s.state = 'active' ORDER BY s.shared_at DESC, g.group_book_id LIMIT 1`);
+  if (!log) return null;
+  const [groupBookId, memberId] = log;
+  const proposals: Proposal[] = [];
+  for (const [proposalId, mode, membersJson, proposedBy, createdHlc, cancelled] of await tx.values<[string, string, string, string, string, number]>(
+    sql`SELECT proposal_id, mode, members_json, proposed_by, created_hlc, cancelled FROM nw_proposals WHERE book_id = ${groupBookId}`,
+  )) {
+    let members: string[] = [];
+    try {
+      const parsed = JSON.parse(membersJson) as unknown;
+      if (Array.isArray(parsed)) members = parsed.filter((m): m is string => typeof m === 'string');
+    } catch {
+      // Malformed peer data is a proposal nobody can confirm.
+    }
+    proposals.push({ proposalId, mode: mode as FilingMode, members, proposedBy, createdHlc, cancelled: Number(cancelled) !== 0 });
+  }
+  const answers = (await tx.values<[string, string, string]>(sql`SELECT proposal_id, member_id, answer FROM nw_answers WHERE book_id = ${groupBookId}`)).map(
+    ([proposalId, member, answer]): Answer => ({ proposalId, memberId: member, answer: answer as Answer['answer'] }),
+  );
+  const { active } = deriveGroup(proposals, answers);
+  if (!active || !active.members.includes(memberId)) return null;
+  return { groupBookId, workspaceBookId, memberId, mode: active.mode, members: active.members };
+}
+
+/** An item's share setting (§5.4): `total`, `hidden`, or null — not reviewed yet, which sends nothing. */
+async function shareSettingOf(tx: Db, accountId: string): Promise<'total' | 'hidden' | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT setting FROM nw_share_settings WHERE account_id = ${accountId}`);
+  return row?.[0] === 'total' || row?.[0] === 'hidden' ? row[0] : null;
+}
+
+interface AccountRow {
+  id: string;
+  kind: string;
+  subtype: string;
+  name: string;
+  currency: string | null;
+  archivedAt: string | null;
+}
+
+async function accountOf(tx: Db, workspaceId: string, accountId: string): Promise<AccountRow | null> {
+  const [row] = await tx.values<[string, string, string, string, string | null, string | null]>(
+    sql`SELECT id, kind, subtype, name, currency, archived_at FROM accounts WHERE id = ${accountId} AND workspace_id = ${workspaceId}`,
+  );
+  return row ? { id: row[0], kind: row[1], subtype: row[2], name: row[3], currency: row[4], archivedAt: row[5] } : null;
+}
+
+/** Whether an account is an item at all (§5.2): an open asset or liability of the balance sheet, not a placeholder or a pocket parent. */
+async function isItem(tx: Db, account: AccountRow | null): Promise<boolean> {
+  if (!account || account.archivedAt !== null) return false;
+  if (account.kind !== 'asset' && account.kind !== 'liability') return false;
+  if (!(BALANCE_SUBTYPES[account.kind] as readonly string[]).includes(account.subtype)) return false;
+  if ((await tx.values(sql`SELECT 1 FROM book_member_accounts WHERE account_id = ${account.id}`)).length > 0) return false;
+  if ((await tx.values(sql`SELECT 1 FROM accounts WHERE parent_id = ${account.id} AND kind = 'asset' LIMIT 1`)).length > 0) return false;
+  return true;
+}
+
+const dayBefore = (date: string): string => {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+};
+
+const monthEnd = (month: string): string => {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+
+/** A read-only `Database` over a running transaction, for the repository reads that take one (never `transaction`). */
+function readView(tx: Db): Database {
+  return {
+    db: tx,
+    transaction: () => Promise.reject(new Error('summaries: read-only view of a running transaction')),
+    execScript: () => Promise.reject(new Error('summaries: read-only view')),
+    exportBytes: () => Promise.reject(new Error('summaries: read-only view')),
+    importBytes: () => Promise.reject(new Error('summaries: read-only view')),
+  };
+}
+
+/**
+ * One item's summary (§5.2), on its owner's phone, from the local ledger.
+ * - Balance sense: what an asset holds, what a liability owes (the ledger's debit-positive sum, negated for a liability).
+ * - Period: a card's statement cycle containing `today` (`statementCycleFor`, as `cycleFor` with a statement anchor),
+ *   else the calendar month of `today`. Movements count from the period's start up to `today`.
+ * - Household: an entry whose transaction is filed in the workspace's book (`book_transactions.book_id`). Everything
+ *   else is other use, summed into one figure. A valued asset's value change beyond its ledger movements (a new price,
+ *   a new estimate) is other use too, so `openingMinor + householdMinor + otherUseMinor = balanceMinor` always holds.
+ * - `monthEnds`: the value at each of the last 24 month-ends (`lastMonthEnds`), for the chart and year-end.
+ */
+export async function computeItemSummary(tx: Db, ws: WorkspaceContext, accountId: string, owner: string, workspaceBookId: string, today: string): Promise<ItemSummary> {
+  const account = await accountOf(tx, ws.workspaceId, accountId);
+  if (!account || (account.kind !== 'asset' && account.kind !== 'liability')) throw new Error(`summaries: ${accountId} is not an item`);
+  const kind = account.kind;
+  const sign = kind === 'liability' ? -1 : 1;
+  const currency = account.currency ?? ws.baseCurrency;
+
+  const [terms] =
+    account.subtype === 'credit_card'
+      ? await tx.values<[number | null, number]>(sql`SELECT credit_limit_minor, statement_day FROM card_terms WHERE account_id = ${accountId}`)
+      : [];
+  const cycle = terms ? statementCycleFor(today, Number(terms[1])) : null;
+  const period = cycle ?? calendarCycleFor(today);
+  const card = terms && cycle ? { limitMinor: Number(terms[0] ?? 0), cycleStart: cycle.start, cycleEnd: cycle.end } : null;
+
+  // Every posted entry on the account, once: dated, signed in the item's sense, and whether it is a Household line.
+  const lines = (
+    await tx.values<[string, string, number, number]>(sql`
+      SELECT t.id, t.occurred_on, e.amount_minor,
+             EXISTS (SELECT 1 FROM book_transactions bt WHERE bt.transaction_id = t.id AND bt.book_id = ${workspaceBookId})
+      FROM entries e JOIN transactions t ON t.id = e.transaction_id
+      WHERE e.account_id = ${accountId} AND t.status = 'posted'
+      ORDER BY t.occurred_on, e.rowid`)
+  ).map(([transactionId, occurredOn, amountMinor, household]) => ({ transactionId, occurredOn, amountMinor: sign * Number(amountMinor), household: Number(household) !== 0 }));
+  const ledgerAt = (date: string) => lines.reduce((sum, line) => (line.occurredOn <= date ? sum + line.amountMinor : sum), 0);
+
+  // A valued asset (a price, an estimate) is worth what `assetValuesAt` says; everything else is its ledger balance.
+  let valueAt = async (date: string): Promise<number> => ledgerAt(date);
+  if (kind === 'asset') {
+    const view = readView(tx);
+    const now = (await assetValuesAt(view, ws, today)).find((row) => row.accountId === accountId);
+    if (now && now.mode !== 'derived') valueAt = async (date) => (await assetValuesAt(view, ws, date)).find((row) => row.accountId === accountId)?.valueMinor ?? 0;
+  }
+
+  const balanceMinor = await valueAt(today);
+  const openingMinor = await valueAt(dayBefore(period.start));
+  const movements: PeriodMovement[] = lines
+    .filter((line) => line.occurredOn >= period.start && line.occurredOn <= today)
+    .map(({ transactionId, amountMinor, household }) => ({ transactionId, amountMinor, household }));
+  const split = splitPeriod(openingMinor, movements);
+  const monthEnds: ItemSummary['monthEnds'] = [];
+  for (const month of lastMonthEnds(today, 24)) monthEnds.push({ month, balanceMinor: await valueAt(monthEnd(month)) });
+
+  const [primary] = await tx.values<[string | null]>(
+    sql`SELECT last4 FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL AND last4 IS NOT NULL ORDER BY is_primary DESC, created_at LIMIT 1`,
+  );
+  return {
+    owner,
+    kind,
+    subtype: account.subtype,
+    name: primary?.[0] ? `${account.name} ···· ${primary[0]}` : account.name,
+    currency,
+    balanceMinor,
+    asOf: today,
+    card,
+    period: { start: period.start, end: period.end },
+    openingMinor,
+    householdMinor: split.householdMinor,
+    // Anything the ledger lines do not explain (a valued asset's new price) is other use, so the parts add up.
+    otherUseMinor: split.otherUseMinor + (balanceMinor - split.closingMinor),
+    monthEnds,
+    tax: null,
+  };
+}
+
+/** The workspace (its id and currency) a shared book lives in on this device. */
+async function workspaceOfBook(tx: Db, bookId: string): Promise<WorkspaceContext | null> {
+  const [row] = await tx.values<[string, string]>(
+    sql`SELECT w.id, w.base_currency FROM books b JOIN workspaces w ON w.id = b.workspace_id WHERE b.id = ${bookId}`,
+  );
+  return row ? { workspaceId: row[0], baseCurrency: row[1] } : null;
+}
+
+/** Writes this member's own item row in the group log, captured: the op the group's other phones receive. */
+async function writeItemTx(tx: Db, groupBookId: string, itemId: string, owner: string, summaryJson: string, removed: boolean): Promise<void> {
+  await withCapture(tx, { entity: 'nw_item', id: itemId, bookId: groupBookId }, async () => {
+    await tx.run(sql`
+      INSERT INTO nw_items (book_id, item_id, owner, summary_json, removed) VALUES (${groupBookId}, ${itemId}, ${owner}, ${summaryJson}, ${removed ? 1 : 0})
+      ON CONFLICT (book_id, item_id) DO UPDATE SET summary_json = excluded.summary_json, removed = excluded.removed`);
+  });
+}
+
+/**
+ * Sends the summaries of `accountIds` (or of every item, `'all'`) that changed, into the group log of each active group
+ * this device is in: a new or changed summary for an item shared `total`; `removed = true` (summary blanked) for one this
+ * member had shared that is now hidden, archived, deleted or no item at all; nothing for the rest. Inside the caller's
+ * transaction, captured, so the ops leave with the next sync. Returns how many items it wrote.
+ */
+export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string): Promise<number> {
+  let groups: [string][];
+  try {
+    groups = await tx.values<[string]>(sql`
+      SELECT DISTINCT g.book_id FROM nw_group_books g JOIN shared_books s ON s.book_id = g.group_book_id WHERE s.state = 'active'`);
+  } catch {
+    return 0; // a database from before migration 0057
+  }
+  let written = 0;
+  for (const [workspaceBookId] of groups) {
+    const group = await activeGroupFor(tx, workspaceBookId);
+    if (!group) continue;
+    const ws = await workspaceOfBook(tx, workspaceBookId);
+    if (!ws) continue;
+    const { groupBookId, memberId } = group;
+    const ids = new Set<string>();
+    if (accountIds === 'all') {
+      for (const [id] of await tx.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND kind IN ('asset', 'liability') ORDER BY id`)) ids.add(id);
+      for (const [id] of await tx.values<[string]>(sql`SELECT account_id FROM nw_item_map WHERE group_book_id = ${groupBookId}`)) ids.add(id);
+    } else for (const id of accountIds) ids.add(id);
+
+    for (const accountId of ids) {
+      const itemId = await itemIdOf(groupBookId, accountId);
+      const account = await accountOf(tx, ws.workspaceId, accountId);
+      const shared = (await isItem(tx, account)) && (await shareSettingOf(tx, accountId)) === 'total';
+      if (shared) {
+        const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today);
+        const hash = summaryHash(summary);
+        const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
+        const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
+        if (sent?.[0] === hash && live && Number(live[0]) === 0) continue;
+        await tx.run(sql`
+          INSERT INTO nw_item_map (account_id, group_book_id, item_id) VALUES (${accountId}, ${groupBookId}, ${itemId})
+          ON CONFLICT (account_id) DO UPDATE SET group_book_id = excluded.group_book_id, item_id = excluded.item_id`);
+        await writeItemTx(tx, groupBookId, itemId, memberId, JSON.stringify(summary), false);
+        await tx.run(sql`INSERT INTO nw_sent (item_id, summary_hash) VALUES (${itemId}, ${hash}) ON CONFLICT (item_id) DO UPDATE SET summary_hash = excluded.summary_hash`);
+        written += 1;
+        continue;
+      }
+      // Not shared (any more): an item this member had shared, still live in the log, is taken back.
+      await tx.run(sql`DELETE FROM nw_sent WHERE item_id = ${itemId}`);
+      const [live] = await tx.values<[string, number]>(sql`SELECT owner, removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
+      if (!live || live[0] !== memberId || Number(live[1]) !== 0) continue;
+      await writeItemTx(tx, groupBookId, itemId, memberId, 'null', true);
+      written += 1;
+    }
+  }
+  return written;
+}
+
+/** The items other members share with this device's group (§8.2, §8.3): live ones only, never this member's own. */
+export async function receivedItems(database: Database, groupBookId: string): Promise<(ItemSummary & { itemId: string })[]> {
+  const [self] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);
+  if (!self) return [];
+  const rows = await database.db.values<[string, string, string]>(
+    sql`SELECT item_id, owner, summary_json FROM nw_items WHERE book_id = ${groupBookId} AND removed = 0 AND owner <> ${self[0]} ORDER BY owner, item_id`,
+  );
+  const out: (ItemSummary & { itemId: string })[] = [];
+  for (const [itemId, owner, json] of rows) {
+    try {
+      const summary = JSON.parse(json) as ItemSummary | null;
+      // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
+      if (summary && typeof summary === 'object') out.push({ ...summary, owner, itemId });
+    } catch {
+      // A summary that does not parse is shown as nothing, not as a wrong number.
+    }
+  }
+  return out;
+}

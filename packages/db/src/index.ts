@@ -138,3 +138,7 @@ export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry
 export { MemoryTransport } from './sync/memory-transport';
 // Joint net worth (spec §9): the app-version gate every device's book_devices row carries.
 export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/version';
+// Joint net worth (spec §5.2, §9, task 6): summaries — compute, send, receive — and the dirty mark a repository sets
+// when it changes an account's value or profile outside the ledger doors (a share setting, say).
+export { activeGroupFor, computeItemSummary, itemIdOf, receivedItems, sendSummariesTx, type ActiveGroup } from './sync/net-worth/summaries';
+export { markAccountDirtyTx } from './sync/capture';

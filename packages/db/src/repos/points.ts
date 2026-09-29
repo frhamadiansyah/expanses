@@ -16,6 +16,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
 import { nonEarningInstallmentTransactionIds } from './installments';
 import { extrasTablesExist } from './transaction-extras';
@@ -118,6 +119,7 @@ export async function saveCardTerms(
   };
   await database.transaction(async (tx) => {
     await requireCard(tx, ws, input.accountId);
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its limit and cycle
     await tx
       .insert(cardTerms)
       .values(row)

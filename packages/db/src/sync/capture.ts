@@ -2,7 +2,8 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { AuthorityError, frozenFieldChanged, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -190,6 +191,9 @@ export class CaptureSession {
   private unshared: ReadonlySet<string> = new Set();
   private readonly slots: Slot[] = [];
   private readonly lineages = new Map<string, LineageTouch>();
+  /** Joint net worth (§9): accounts, and transactions whose accounts, this transaction changed; their summaries are recomputed at flush. */
+  private readonly dirtyAccounts = new Set<string>();
+  private readonly dirtyTransactions = new Set<string>();
 
   constructor(
     private readonly tx: Tx,
@@ -230,6 +234,31 @@ export class CaptureSession {
     return this.enabled ? this.unshared : new Set();
   }
 
+  markAccountDirty(accountId: string): void {
+    this.dirtyAccounts.add(accountId);
+  }
+
+  markTransactionDirty(transactionId: string): void {
+    this.dirtyTransactions.add(transactionId);
+  }
+
+  /**
+   * Joint net worth (§9, task 6): the summary of every account this transaction touched — its entries, its profile, its
+   * value — is recomputed here, before COMMIT, and sent if it changed. Nothing when this device is in no active group
+   * (one lookup, and only for a transaction that touched an account while something is shared).
+   */
+  private async sendDirtySummaries(): Promise<void> {
+    if (this.dirtyAccounts.size === 0 && this.dirtyTransactions.size === 0) return;
+    if ((await this.sharedBooks()).length === 0) return;
+    const ids = new Set(this.dirtyAccounts);
+    for (const transactionId of this.dirtyTransactions) {
+      for (const [accountId] of await this.tx.values<[string]>(sql`SELECT DISTINCT account_id FROM entries WHERE transaction_id = ${transactionId}`)) ids.add(accountId);
+    }
+    this.dirtyAccounts.clear();
+    this.dirtyTransactions.clear();
+    await sendSummariesTx(this.tx, [...ids], localDate(this.config.now?.() ?? Date.now()));
+  }
+
   reserveRowSlot(): { kind: 'rows'; ops: { bookId: string; op: Op }[] } {
     const slot = { kind: 'rows' as const, ops: [] as { bookId: string; op: Op }[] };
     this.slots.push(slot);
@@ -252,7 +281,9 @@ export class CaptureSession {
 
   /** Resolves the lineages, cuts the ops into change-sets, puts them in the outbox, and writes the clocks. */
   async flush(): Promise<void> {
-    if (!this.enabled || this.slots.length === 0) return;
+    if (!this.enabled) return;
+    await this.sendDirtySummaries();
+    if (this.slots.length === 0) return;
     const books = await this.sharedBooks();
     if (books.length === 0) return;
     const perBook = new Map<string, Op[]>();
@@ -353,6 +384,15 @@ function sessionOf(tx: Db): CaptureSession | undefined {
   return sessions.get(tx);
 }
 
+/**
+ * Joint net worth (§9, task 6): this account's balance, profile or value changed in this transaction, so its summary
+ * is recomputed at flush. For the writes that do not pass through a ledger door or `withCapture` on the account:
+ * a price, an estimate, card terms, a delete, a share setting.
+ */
+export function markAccountDirtyTx(tx: Db, accountId: string): void {
+  sessionOf(tx)?.markAccountDirty(accountId);
+}
+
 /** Switches capture off for the rest of this db transaction. Apply calls it: applying never re-emits (spec §7.2). */
 export function pauseCapture(tx: Db): void {
   sessionOf(tx)?.pause();
@@ -408,6 +448,8 @@ export interface CaptureTarget {
 export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly CaptureTarget[], fn: () => Promise<T>): Promise<T> {
   const session = sessionOf(tx);
   if (!session) return fn();
+  // An account is a `category` row (its name, its archive): its net-worth summary is recomputed at flush (§9).
+  for (const t of Array.isArray(target) ? (target as readonly CaptureTarget[]) : [target as CaptureTarget]) if (t.entity === 'category' && t.id !== undefined) session.markAccountDirty(t.id);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return fn();
@@ -449,6 +491,7 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (Number(owners?.[0] ?? 0) === 0) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
+  await refuseWrongLog(tx, before, after);
   // Joint-net-worth spec §5.1 (task 1 re-review round 1 ruling): a writer-only row's local write is judged here,
   // before anything commits or is emitted, against the pre-image — with the same predicate (`isWriter`,
   // `frozenFieldChanged`) `decideRowWriter` judges a peer's entry by — so a bad local write never lands and its
@@ -509,6 +552,33 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (!before.has(key)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
   }
   return result;
+}
+
+/** The joint-net-worth entities that live only in a net-worth group log (spec §4, §5.1). */
+const GROUP_LOG_ENTITIES: ReadonlySet<string> = new Set(['nw_proposal', 'nw_answer', 'nw_item', 'nw_pending', 'member_transfer']);
+
+/**
+ * Task 4 carry (task 6): the five group entities are written only into a group log (a book this device holds as one,
+ * `nw_group_books`), and the workspace's `net_worth_group` link never into one — a summary written into the workspace
+ * log would reach every workspace member (§4). Refused before anything is emitted, rolling the write back.
+ */
+async function refuseWrongLog(tx: Db, before: ReadonlyMap<string, RowState>, after: ReadonlyMap<string, RowState>): Promise<void> {
+  const verdicts = new Map<string, boolean>();
+  const isGroupLog = async (bookId: string) => {
+    if (!verdicts.has(bookId)) verdicts.set(bookId, (await groupLogWorkspaceOf(tx, bookId)) !== null);
+    return verdicts.get(bookId)!;
+  };
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const was = before.get(key);
+    const now = after.get(key);
+    if (was && now && was.bookId === now.bookId && JSON.stringify(was.values) === JSON.stringify(now.values)) continue;
+    for (const row of [was, now]) {
+      if (!row) continue;
+      const entity = row.entity.entity;
+      if (GROUP_LOG_ENTITIES.has(entity) && !(await isGroupLog(row.bookId))) throw new AuthorityError(`${entity} outside a net-worth group log`);
+      if (entity === 'net_worth_group' && (await isGroupLog(row.bookId))) throw new AuthorityError('net_worth_group inside a net-worth group log');
+    }
+  }
 }
 
 /** Whether a target's rows can lie in one of `bookIds`: not when it names another book, nor when its row is keyed by another book's id. */
@@ -773,6 +843,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
 export async function capturePostedTx(tx: Db, transactionId: string, bookId: string | null, replacesTransactionId: string | null): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
+  session.markTransactionDirty(transactionId);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (readOnly.size > 0) {
@@ -795,6 +866,7 @@ export async function capturePostedTx(tx: Db, transactionId: string, bookId: str
 export async function captureVoidingTx(tx: Db, transactionId: string): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
+  session.markTransactionDirty(transactionId);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return;
