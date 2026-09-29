@@ -24,5 +24,5 @@ export async function expectNeed(page: Page, name: string, need: 'Essential' | '
 export async function markNeed(page: Page, name: string, need: 'Essential' | 'Lifestyle') {
   await openCategory(page, name);
   await countsAs(page, name).selectOption(need.toLowerCase());
-  await expectNeed(page, name, need, 'Set here');
+  await expectNeed(page, name, need, 'Custom');
 }

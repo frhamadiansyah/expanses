@@ -100,7 +100,7 @@ test('row 4 — Restaurants keeps its own essential mark under a lifestyle paren
   await setUp(page);
   await markFoodLifestyle(page);
   await countsAs(page, 'Restaurants').selectOption('essential');
-  await expectNeed(page, 'Restaurants', 'Essential', 'Set here');
+  await expectNeed(page, 'Restaurants', 'Essential', 'Custom');
   await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('5,7 months');
 });

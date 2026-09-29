@@ -116,7 +116,7 @@ export function MccSheet({
         {own && (
           <>
             <p className="px-[6px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
-              Set here.{' '}
+              Custom.{' '}
               {builtIn ? `Without it: ${builtIn}${mccName(builtIn) ? ` · ${mccName(builtIn)}` : ''}.` : 'Without it, this category has no code.'}
             </p>
             <button

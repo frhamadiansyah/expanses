@@ -6,7 +6,7 @@ import type { ResolvedNeed } from '@expanses/core';
  * of its own or a parent's. None at all says nothing: the control already reads Essential, and the ⓘ says why.
  */
 export function needCaption(source: ResolvedNeed['source'], parentName: string | null): string | undefined {
-  if (source === 'yours') return 'Set here';
+  if (source === 'yours') return 'Custom';
   if (source === 'parent') return parentName ? `Follows ${parentName}` : 'Follows its parent';
   return undefined;
 }
@@ -18,7 +18,7 @@ export function mccCaption(
   parentName: string | null,
 ): string | undefined {
   if (!card.mcc) return undefined;
-  const from = card.source === 'yours' ? 'set here' : card.source === 'parent' ? `from ${parentName ?? 'its parent'}` : 'built in';
+  const from = card.source === 'yours' ? 'custom' : card.source === 'parent' ? `from ${parentName ?? 'its parent'}` : 'built in';
   return meaning ? `${meaning} · ${from}` : from.charAt(0).toUpperCase() + from.slice(1);
 }
 
