@@ -289,9 +289,10 @@ describe('a member who left (review round 1, finding 1)', () => {
       const group = await d.engine.netWorthGroup(bookId);
       expect(group.groupBookId).toBe(groupBookId);
       expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
-      expect(group.pending?.proposalId).toBe(crafted);
-      // It waits for Sari, who can never answer, and for Andi, whom it leaves out (review round 2, B).
-      expect(group.waitingFor).toEqual([sari.memberId, andi.memberId]);
+      // It names Sari, who is not in the group: a Change never adds anyone, so it is not even waiting (wave 3 round 2).
+      expect(group.pending).toBeNull();
+      expect(group.waitingFor).toEqual([]);
+      expect(await d.database.db.values(sql`SELECT 1 FROM nw_proposals WHERE book_id = ${groupBookId} AND proposal_id = ${crafted}`)).toEqual([[1]]);
     }
   });
 });
@@ -425,19 +426,26 @@ describe('a departure never answers for anyone (review round 2, A)', () => {
     }
   });
 
-  it('someone asked who leaves without answering leaves the proposal waiting, and the group as it was', async () => {
-    const { home, rina, andi, sari, bookId, proposalId } = await active('separate');
+  it('someone asked who leaves without answering never answers for the change, and the group stays as it was', async () => {
+    // Wave 3 round 2: a Change never adds anyone, so the three start together and the change drops Andi.
+    const { home, rina, andi, sari, bookId } = await household();
+    const proposalId = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    await settle(home);
+    await andi.engine.answerNetWorth(bookId, proposalId, 'confirm');
+    await sari.engine.answerNetWorth(bookId, proposalId, 'confirm');
+    await settle(home);
     const change = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [sari.memberId] });
     await settle(home);
-    // Andi, in the group and left out of the change, agrees to it; Sari never answers, and goes.
+    // Andi, left out of the change, agrees to it; Sari never answers, and goes.
     await andi.engine.answerNetWorth(bookId, change, 'confirm');
     await sari.engine.leaveNetWorth(bookId);
     await settle(home);
     for (const d of [rina, andi]) {
       const group = await d.engine.netWorthGroup(bookId);
       expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
-      expect(group.pending?.proposalId).toBe(change);
-      expect(group.waitingFor).toEqual([sari.memberId]);
+      // Sari is out of the group now, so the change would add her back: it can never activate, and is not waiting.
+      expect(group.pending).toBeNull();
+      expect(change).not.toBe(proposalId);
     }
   });
 

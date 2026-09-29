@@ -428,7 +428,11 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
     }
   }
 
-  if (setup) return <NetWorthSetup bookId={bookId} members={detail.members} initial={setup.initial} onDone={() => setSetup(null)} />;
+  if (setup) {
+    // A Change (anything while a group is active) offers only its members (wave 3 round 2).
+    const activeMembers = group.data?.active?.members ?? null;
+    return <NetWorthSetup bookId={bookId} members={detail.members} initial={setup.initial} activeMembers={activeMembers} onDone={() => setSetup(null)} />;
+  }
 
   const me = group.data?.me ?? detail.memberId;
   const active = group.data?.active ?? null;

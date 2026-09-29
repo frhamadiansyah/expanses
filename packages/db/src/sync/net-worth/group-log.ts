@@ -13,6 +13,7 @@ import { SharingError } from '../seed';
 import type { InviteRecord, SyncTransport } from '../types';
 import { SyncTransportError } from '../types';
 import { uuidv5 } from '../uuidv5';
+import { admissibleMembers } from '../../repos/net-worth-sharing';
 import { localDate, refreshSummariesTx, sendSummariesTx } from './summaries';
 import { meetsMinVersion } from './version';
 
@@ -235,7 +236,10 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
   if (synced.ended) throw new SharingError('NOT_FOUND', "This device is not in this workspace's net-worth group");
   const epochKeys: InviteKey[] = (await host.sealer.epochKeysOf(groupBookId)).map(({ epoch, key }) => ({ epoch, key: bytesToBase64Url(key) }));
   if (epochKeys.length === 0) throw new SharingError('NO_KEYS', "This device can't open the net-worth group's keys");
-  const wanted = new Set([...memberIds, shared.memberId]);
+  // Wave 3 round 2: only the active group's members (before any activation, those listed on a live proposal) are ever
+  // let in — a Change never adds anyone, so nobody else is handed the keys to the log's history.
+  const admissible = await admissibleMembers(host.database.db, groupBookId);
+  const wanted = new Set([...memberIds, shared.memberId].filter((m) => admissible === null || admissible.has(m)));
   const self = host.device.deviceId;
   const candidates = await host.database.db.values<[string, string, string]>(sql`
     SELECT d.device_id, d.member_id, d.agree_jwk FROM book_devices d
@@ -319,7 +323,10 @@ export async function devicesToAdmit(host: GroupLogHost, workspaceBookId: string
       AND NOT EXISTS (SELECT 1 FROM sync_authority_devices g WHERE g.book_id = ${groupBookId} AND g.device_id = w.device_id)
     ORDER BY w.device_id`);
   const invited = await invitedBy(host, groupBookId);
-  return rows.filter(([deviceId]) => !((invited[deviceId] ?? 0) > host.now())).map(([deviceId, memberId]) => ({ deviceId, memberId }));
+  const admissible = await admissibleMembers(host.database.db, groupBookId);
+  return rows
+    .filter(([deviceId, memberId]) => (admissible === null || admissible.has(memberId)) && !((invited[deviceId] ?? 0) > host.now()))
+    .map(([deviceId, memberId]) => ({ deviceId, memberId }));
 }
 
 /** HKDF `info` of a group log's close proof. */

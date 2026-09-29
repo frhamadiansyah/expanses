@@ -66,12 +66,24 @@ function requiredOf(proposal: Proposal, current: readonly string[]): { listed: s
 }
 
 /**
- * Whether `proposal` activates while `current` are the active group's members: not cancelled, `canPropose`, every listed
+ * Whether a change lists someone outside the active group (wave 3 round 2). Such a change never activates and is never
+ * pending: the group log holds every summary ever sent and hands a new member every epoch key, so adding someone would
+ * show them the group's history. Adding someone is a fresh setup — the group ends and is set up again, in a new log.
+ */
+export function addsMembers(proposal: Pick<Proposal, 'members'>, current: readonly string[]): boolean {
+  return proposal.members.some((member) => !current.includes(member));
+}
+
+/**
+ * Whether `proposal` activates while `current` are the active group's members (null: no group has been active in this
+ * log): it lists nobody outside the group, not cancelled, `canPropose`, every listed
  * member confirmed or left, and every current member it leaves out confirmed.
  */
-function activatesWith(proposal: Proposal, final: Map<string, Answer>, current: readonly string[]): boolean {
+function activatesWith(proposal: Proposal, final: Map<string, Answer>, current: readonly string[] | null): boolean {
   if (proposal.cancelled) return false;
   if (!canPropose(proposal.mode, proposal.members)) return false;
+  if (current !== null && addsMembers(proposal, current)) return false;
+  current ??= [];
   const { listed, unlisted } = requiredOf(proposal, current);
   return (
     listed.every((member) => {
@@ -89,7 +101,7 @@ function replay(proposals: readonly Proposal[], final: Map<string, Answer>): { a
   const activated = new Set<string>();
   let active: Proposal | null = null;
   for (const proposal of inOrder(proposals)) {
-    if (activatesWith(proposal, final, currentMembers(active, final))) {
+    if (activatesWith(proposal, final, active ? currentMembers(active, final) : null)) {
       active = proposal;
       activated.add(proposal.proposalId);
     }
@@ -120,6 +132,7 @@ export function deriveGroup(proposals: readonly Proposal[], answers: readonly An
     if (proposal.cancelled) continue;
     if (activeHlc !== null && !(proposal.createdHlc > activeHlc)) continue;
     if (activated.has(proposal.proposalId)) continue;
+    if (active && addsMembers(proposal, current)) continue; // it can never activate (wave 3 round 2)
     const { listed, unlisted } = requiredOf(proposal, current);
     const declined = [...listed, ...unlisted].some((member) => answerFor(final, proposal.proposalId, member) === 'decline');
     if (declined) continue;

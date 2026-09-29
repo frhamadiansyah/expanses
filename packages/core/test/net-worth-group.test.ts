@@ -84,6 +84,20 @@ describe('a change needs every current member (task 5 review round 2, D6)', () =
     expect(s.active?.proposalId).toBe('p2');
   });
 
+  it('a Change can never add a member (wave 3 round 2): adding Sari never activates, even with every yes, and is never pending', () => {
+    const pair = p('p1', '001', 'separate', ['rina', 'andi']);
+    const addSari = p('p2', '002', 'separate', ['rina', 'andi', 'sari'], 'rina');
+    const yes = [a('p1', 'rina', 'confirm'), a('p1', 'andi', 'confirm'), a('p2', 'rina', 'confirm'), a('p2', 'andi', 'confirm'), a('p2', 'sari', 'confirm')];
+    const s = deriveGroup([pair, addSari], yes);
+    expect(s.active).toEqual({ proposalId: 'p1', mode: 'separate', members: ['rina', 'andi'] });
+    expect(s.pending).toBeNull();
+    expect(s.waitingFor).toEqual([]);
+    expect(isActivated(addSari, [pair, addSari], yes)).toBe(false);
+    // Also not by swapping someone in: Andi out, Sari in.
+    const swap = p('p3', '003', 'separate', ['rina', 'sari'], 'rina');
+    expect(deriveGroup([pair, swap], [...yes, a('p3', 'rina', 'confirm'), a('p3', 'sari', 'confirm'), a('p3', 'andi', 'confirm')]).active?.proposalId).toBe('p1');
+  });
+
   it('with no group active, only the listed members count', () => {
     expect(isActivated(dropAndi, [dropAndi], [a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm')])).toBe(true);
   });

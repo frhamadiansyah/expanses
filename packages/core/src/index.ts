@@ -474,6 +474,7 @@ export {
   withholdTax,
 } from './deposits/maturity';
 export {
+  addsMembers,
   type Answer,
   canPropose,
   deriveGroup,

@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, netWorthRowOf, notReadyLine, pendingPrompt, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
+import { canInvite, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -128,5 +128,19 @@ describe('the review (§6 Review, wave 3 merge)', () => {
     expect(needsReview({ mode: 'separate', reviewed: true, unreviewedItems: 1, pendingHidden: 0 })).toBe(true);
     expect(needsReview({ mode: 'joint', reviewed: true, unreviewedItems: 0, pendingHidden: 2 })).toBe(true);
     expect(needsReview({ mode: 'separate', reviewed: true, unreviewedItems: 0, pendingHidden: 2 })).toBe(false);
+  });
+});
+
+describe('a Change (wave 3 round 2: never adds anyone)', () => {
+  it('offers only the active group’s members, and says how to add someone; a first setup offers everyone', () => {
+    const others = [andi, sari];
+    expect(inviteesFor(others, ['r', 'a']).map((m) => m.memberId)).toEqual(['a']);
+    expect(inviteesFor(others, null).map((m) => m.memberId)).toEqual(['a', 's']);
+    expect(ADD_SOMEONE_LINE).toBe('To add someone, stop sharing net worth and set it up again.');
+  });
+
+  it('says the refusal in plain words', () => {
+    const said = sayNetWorthError(new NetWorthError('adds-members', 'x')) as Error;
+    expect(said.message).toBe(ADD_SOMEONE_LINE);
   });
 });

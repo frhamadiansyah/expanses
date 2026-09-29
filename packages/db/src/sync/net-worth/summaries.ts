@@ -195,10 +195,9 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
   // One group per person (§4): the one active group this member is in, read by the one group-state reader (task 5).
   const group = await activeNetWorthGroup(tx);
   if (!group) return 0;
-  // Nothing before this person's own review of this activation, except the refresh of a live item when nobody was
-  // added (§6 Review, wave 3 merge review round 1).
+  // Nothing new before this person's own review of this activation, except the refresh of a live item when nobody was
+  // added (§6 Review, wave 3 merge review round 1). A removal is never held back: it only takes away (round 2).
   const allowance = await sendAllowance(tx, group);
-  if (allowance === 'none') return 0;
   const { groupBookId, workspaceBookId, me: memberId } = group;
   const ws = await workspaceOfBook(tx, workspaceBookId);
   if (!ws) return 0;
@@ -213,6 +212,7 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
     const itemId = await itemIdOf(groupBookId, accountId);
     const account = await accountOf(tx, ws.workspaceId, accountId);
     const shared = (await isItem(tx, account)) && (await shareSettingOf(tx, accountId)) === 'total';
+    if (shared && allowance === 'none') continue; // a shared item waits for the Share; removals below always go
     if (shared) {
       const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today);
       const hash = summaryHash(summary);

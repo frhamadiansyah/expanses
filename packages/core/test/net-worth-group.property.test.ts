@@ -84,6 +84,8 @@ describe('deriveGroup convergence', () => {
           if (base.pending) {
             // Task 5 review round 2 (D6): a change also waits for the active group's current members it leaves out.
             for (const waiting of base.waitingFor) expect([...base.pending.members, ...(base.active?.members ?? [])]).toContain(waiting);
+            // Wave 3 round 2: a change never adds anyone — a pending change lists only the active group's members.
+            if (base.active) for (const member of base.pending.members) expect(base.active.members).toContain(member);
           } else {
             expect(base.waitingFor).toEqual([]);
           }
@@ -95,13 +97,13 @@ describe('deriveGroup convergence', () => {
 
   it('two proposals by different members, both fully confirmed: the greater HLC wins on every permutation', () => {
     const p1: Proposal = { proposalId: 'p1', mode: 'joint', members: ['rina', 'andi'], proposedBy: 'rina', createdHlc: '001', cancelled: false };
-    const p2: Proposal = { proposalId: 'p2', mode: 'separate', members: ['rina', 'andi', 'sari'], proposedBy: 'sari', createdHlc: '002', cancelled: false };
+    // Wave 3 round 2: a change keeps (or narrows) the members, so the later one is a mode change.
+    const p2: Proposal = { proposalId: 'p2', mode: 'separate', members: ['rina', 'andi'], proposedBy: 'andi', createdHlc: '002', cancelled: false };
     const answers: Answer[] = [
       { proposalId: 'p1', memberId: 'rina', answer: 'confirm' },
       { proposalId: 'p1', memberId: 'andi', answer: 'confirm' },
       { proposalId: 'p2', memberId: 'rina', answer: 'confirm' },
       { proposalId: 'p2', memberId: 'andi', answer: 'confirm' },
-      { proposalId: 'p2', memberId: 'sari', answer: 'confirm' },
     ];
     const proposalOrders = [
       [p1, p2],
@@ -110,7 +112,7 @@ describe('deriveGroup convergence', () => {
     for (const proposals of proposalOrders) {
       for (const seed of [1, 2, 3, 4, 5]) {
         const state = deriveGroup(proposals, shuffled(answers, seed));
-        expect(state.active).toEqual({ proposalId: 'p2', mode: 'separate', members: ['rina', 'andi', 'sari'] });
+        expect(state.active).toEqual({ proposalId: 'p2', mode: 'separate', members: ['rina', 'andi'] });
         expect(state.pending).toBeNull();
       }
     }

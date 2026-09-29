@@ -203,12 +203,19 @@ mode. No active proposal = no group. Every device derives the same answer from t
 - **Review.** When a proposal becomes active, each member reviews their own items (§8.1) before their phone sends
   anything. The phone keeps a local mark per activation (the active proposal) that its person pressed Share; a share
   setting, or a review of an earlier proposal, is not a review of this one. After a Change (mode or members) the review
-  is asked again: until that Share, items already live in the log keep refreshing only when the change added nobody;
-  when anyone was added, nothing is sent at all (wave 3 merge, review round 1).
+  is asked again: until that Share, items already live in the log keep refreshing and a new item waits. A removal
+  (Don't share, archive, delete) is never held back (wave 3 merge, review rounds 1–2).
 - **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed — by every
   member it lists **and** every current member of the active group it leaves out, so nobody is dropped without saying
   yes (D6, task 5 review round 2). The proposer may cancel; anyone asked may decline. Once made, a proposal's
   `proposedBy`, `createdHlc`, `mode` and `members` never change (refused at capture and on every peer).
+  **A Change never adds anyone** (wave 3 round 2): it may change the mode or leave members out, never list someone
+  outside the active group. The group log keeps every summary ever sent, and a device let in is handed every epoch
+  key, so a new member would read the group's whole history. Such a proposal never activates and is never pending
+  (every device derives it alike); the app refuses it (`adds-members`) and the Change screen offers only current
+  members: "To add someone, stop sharing net worth and set it up again." Setting up again (the group dissolves, §4)
+  makes a new group log with new keys. No device lets in a device of anyone but the active group's members (before
+  any activation: those listed on a live proposal).
 - **`joint` needs exactly two members.** A proposal with `joint` and not two members cannot be made in the UI and is
   never active on apply.
 - **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.

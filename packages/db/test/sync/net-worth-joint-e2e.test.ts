@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { expenseLines, isoDate } from '@expanses/core';
 import { activeNetWorthGroup, confirmReview, createAccount, pendingHidden, postTransaction, reviewedFor, setShareSetting } from '../../src/index';
+import { archiveAccount } from '../../src/index';
+import { withCapture } from '../../src/sync/capture';
+import { encodeHlc } from '../../src/sync/hlc';
 import { receivedItems } from '../../src/sync/net-worth/summaries';
 import { categoryOf, Household, type Device } from './household';
 
@@ -111,31 +114,67 @@ describe('joint net worth, end to end', () => {
     expect(await sari.engine.groupLogOf(bookId)).toBeNull();
   });
 
-  it('a Change that adds Sari sends nothing of Rina’s — not even a refresh — until her Share on the new group; then Sari receives it (review round 1, finding 1)', async () => {
-    const { home, rina, andi, sari, bookId, groupBookId, groceries } = await sharing('separate');
-    expect(await bankOf(andi, groupBookId, rina)).toMatchObject({ balanceMinor: 0 });
+  it('the API refuses a Change that adds Sari (adds-members), and nobody lets her into the log (wave 3 round 2)', async () => {
+    const { home, rina, andi, sari, bookId, groupBookId } = await sharing('separate');
+    await expect(rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] })).rejects.toMatchObject({ code: 'adds-members' });
+    await settle(home);
+    expect(await sari.engine.groupLogOf(bookId)).toBeNull();
+    expect(await sari.database.db.values(sql`SELECT 1 FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).toEqual([]);
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+  });
 
-    const change = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+  it('a crafted Change adding Sari, confirmed by Rina and Andi, never activates, and Sari is never admitted or given a key', async () => {
+    const { home, rina, andi, sari, bookId, groupBookId } = await sharing('separate');
+    const before = (await rina.engine.netWorthGroup(bookId)).active!;
+    const crafted = 'crafted-add-sari';
+    const members = [rina.memberId, andi.memberId, sari.memberId];
+    await rina.database.transaction(async (tx) => {
+      await withCapture(tx, { entity: 'nw_proposal', id: crafted, bookId: groupBookId }, async () => {
+        await tx.run(sql`
+          INSERT INTO nw_proposals (book_id, proposal_id, mode, members_json, proposed_by, created_hlc, cancelled)
+          VALUES (${groupBookId}, ${crafted}, 'separate', ${JSON.stringify(members)}, ${rina.memberId}, ${encodeHlc(Date.now() + 1000, 0, rina.deviceId)}, 0)`);
+      });
+    });
+    for (const d of [rina, andi]) {
+      await d.database.transaction((tx) =>
+        withCapture(tx, { entity: 'nw_answer', id: `${crafted}|${d.memberId}`, bookId: groupBookId }, async () => {
+          await tx.run(sql`INSERT INTO nw_answers (book_id, proposal_id, member_id, answer) VALUES (${groupBookId}, ${crafted}, ${d.memberId}, 'confirm')`);
+        }),
+      );
+    }
+    await settle(home);
+    // Even a direct admit (and every device's auto-admit on sync) lets no device of Sari's in.
+    await rina.engine.admitToGroupLog(bookId, [sari.memberId]);
+    await andi.engine.admitToGroupLog(bookId, [sari.memberId]);
+    await settle(home);
+    for (const d of [rina, andi]) {
+      const state = await d.engine.netWorthGroup(bookId);
+      expect(state.active).toEqual(before);
+      expect(state.pending).toBeNull();
+    }
+    expect(await sari.engine.groupLogOf(bookId)).toBeNull();
+    expect(await sari.database.db.values(sql`SELECT 1 FROM book_epoch_keys WHERE book_id = ${groupBookId}`)).toEqual([]);
+    expect(await sari.database.db.values(sql`SELECT * FROM nw_items`)).toEqual([]);
+  });
+
+  it('a removal is never held back: Don’t share and archive reach Andi at once while Rina’s review of a new mode waits', async () => {
+    const { home, rina, andi, bookId, groupBookId } = await sharing('joint');
+    const change = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId] });
     await settle(home);
     await andi.engine.answerNetWorth(bookId, change, 'confirm');
-    await sari.engine.answerNetWorth(bookId, change, 'confirm');
     await settle(home);
-    expect((await rina.engine.netWorthGroup(bookId)).active?.proposalId).toBe(change);
-    expect((await activeNetWorthGroup(rina.database))?.proposalId).toBe(change);
     expect(await reviewedFor(rina.database, groupBookId, change)).toBe(false);
+    expect(await namesFrom(andi, groupBookId, rina.memberId)).toEqual(['Rina Bank', 'Rina Dollars', 'Rina Wallet']);
 
-    // A write on a live item: the group grew, so not even its refresh goes out before Rina's Share.
-    await spend(rina, groceries, 1_000_000);
+    await setShareSetting(rina.database, rina.bank, 'hidden');
     await settle(home);
-    expect(await bankOf(andi, groupBookId, rina)).toMatchObject({ balanceMinor: 0 });
-    expect(await bankOf(sari, groupBookId, rina)).not.toMatchObject({ balanceMinor: -1_000_000 });
+    expect(await namesFrom(andi, groupBookId, rina.memberId)).toEqual(['Rina Dollars', 'Rina Wallet']);
 
-    await confirmReview(rina.database, rina.ws, {});
+    // Even with no review of this log at all on the phone, a removal still goes out.
+    await rina.database.db.run(sql`DELETE FROM settings WHERE key LIKE 'nw.reviewed.%'`);
+    await archiveAccount(rina.database, rina.ws, rina.cash);
     await settle(home);
-    expect(await reviewedFor(rina.database, groupBookId, change)).toBe(true);
-    expect(await namesFrom(sari, groupBookId, rina.memberId)).toEqual(['Rina Bank', 'Rina Dollars', 'Rina Wallet']);
-    expect(await bankOf(sari, groupBookId, rina)).toMatchObject({ balanceMinor: -1_000_000 });
-    expect(await bankOf(andi, groupBookId, rina)).toMatchObject({ balanceMinor: -1_000_000 });
+    expect(await namesFrom(andi, groupBookId, rina.memberId)).toEqual(['Rina Dollars']);
   });
 
   it('a mode change with the same members asks for the review again; live items keep refreshing, a new item waits for Share', async () => {

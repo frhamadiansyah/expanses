@@ -1,4 +1,4 @@
-import { canPropose, uuidv7, type FilingMode, type GroupState } from '@expanses/core';
+import { addsMembers, canPropose, uuidv7, type FilingMode, type GroupState } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../database';
 import { activeNetWorthGroup, departedMembers, groupDissolved, groupStateOf, NetWorthError, proposalOf, refreshPendingCount } from '../../repos/net-worth-sharing';
@@ -99,8 +99,13 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
   // devices were taken out for good, so they could never confirm.
   const departed = await departedMembers(host.database.db, groupBookId);
   if (members.some((m) => departed.has(m))) throw new NetWorthError('left-group', 'Someone you chose has left this net-worth group and cannot be asked back into it');
+  // Wave 3 round 2: a Change never adds anyone. The log holds every summary ever sent and a new member is handed every
+  // epoch key, so adding someone is a fresh setup: stop sharing net worth, and set it up again (a new log).
+  const state = await groupStateOf(host.database.db, groupBookId);
+  if (state.active && addsMembers({ members }, state.active.members)) {
+    throw new NetWorthError('adds-members', 'To add someone, stop sharing net worth and set it up again');
+  }
   const others = members.filter((m) => m !== me);
-  await admitToGroupLog(host, workspaceBookId, others);
   const proposalId = uuidv7();
   await host.database.transaction(async (tx) => {
     const createdHlc = await localTick(tx, host.device.deviceId, host.now());
@@ -111,6 +116,8 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
     });
     await writeAnswerTx(tx, groupBookId, proposalId, me, 'confirm');
   });
+  // After the proposal: admission lets in only who a live proposal lists (or the active group's members).
+  await admitToGroupLog(host, workspaceBookId, others);
   // The workspace's sync sends the invites (in the link) and syncs the group log after it.
   await quietly(host.syncOnce(workspaceBookId));
   return proposalId;

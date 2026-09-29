@@ -75,6 +75,7 @@ export function notReadyLine(outdated: readonly { deviceName: string }[]): strin
 export function sayNetWorthError(error: unknown): unknown {
   if (error instanceof NetWorthError) {
     if (error.code === 'not-ready') return new Error(notReadyLine(error.outdated));
+    if (error.code === 'adds-members') return new Error(ADD_SOMEONE_LINE);
     return new Error(error.message);
   }
   return error;
@@ -127,4 +128,15 @@ export function settingOnAdd(mode: FilingMode | null, share: boolean): 'total' |
  */
 export function needsReview(input: { mode: FilingMode; reviewed: boolean; unreviewedItems: number; pendingHidden: number }): boolean {
   return !input.reviewed || input.unreviewedItems > 0 || (input.mode === 'joint' && input.pendingHidden > 0);
+}
+
+/** A Change never adds anyone (wave 3 round 2): the group log's history would reach them. */
+export const ADD_SOMEONE_LINE = 'To add someone, stop sharing net worth and set it up again.';
+
+/**
+ * Who the setup may pick: everyone else in the workspace for a first setup; only the active group's other members for a
+ * Change (`activeMembers` given), since a Change can never add anyone.
+ */
+export function inviteesFor<T extends { memberId: string }>(others: readonly T[], activeMembers: readonly string[] | null): T[] {
+  return activeMembers === null ? [...others] : others.filter((member) => activeMembers.includes(member.memberId));
 }

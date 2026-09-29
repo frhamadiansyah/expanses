@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SubmitRow } from '../../ui/native';
-import { canInvite, FILING_CHOICES, FILING_QUESTION, type FilingMode, sayNetWorthError, toggleInvitee } from './net-worth-state';
+import { ADD_SOMEONE_LINE, canInvite, FILING_CHOICES, FILING_QUESTION, type FilingMode, inviteesFor, sayNetWorthError, toggleInvitee } from './net-worth-state';
 import { sayError } from './sharing-copy';
 
 /*
@@ -19,12 +19,15 @@ export function NetWorthSetup({
   bookId,
   members,
   initial,
+  activeMembers = null,
   onDone,
 }: {
   bookId: string;
   members: readonly SharedMemberDetail[];
   /** Where a change of filing starts from: the active mode and its other members. */
   initial?: { mode: FilingMode; members: string[] };
+  /** A Change of an active group: only its members may be picked (a Change never adds anyone). Null for a first setup. */
+  activeMembers?: readonly string[] | null;
   onDone: () => void;
 }) {
   const { sync } = useApp();
@@ -32,7 +35,11 @@ export function NetWorthSetup({
   const [chosen, setChosen] = useState<string[]>(initial?.members ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const others = members.filter((member) => !member.me);
+  const others = inviteesFor(members.filter((member) => !member.me), activeMembers);
+  const whoFooter =
+    activeMembers === null
+      ? 'They confirm on their own phone. Nothing is shared until they do and each of you has reviewed your items.'
+      : `They confirm on their own phone. ${ADD_SOMEONE_LINE}`;
 
   function pickMode(next: FilingMode) {
     setMode(next);
@@ -71,7 +78,7 @@ export function NetWorthSetup({
         ))}
       </InsetGroup>
       {mode ? (
-        <InsetGroup wide header={mode === 'joint' ? 'Who files with you' : 'Who to invite'} footer="They confirm on their own phone. Nothing is shared until they do and each of you has reviewed your items.">
+        <InsetGroup wide header={mode === 'joint' ? 'Who files with you' : 'Who to invite'} footer={whoFooter}>
           {others.map((member) => (
             <InsetRow
               key={member.memberId}

@@ -26,6 +26,8 @@ export type NetWorthErrorCode =
   | 'not-proposer'
   /** This person is not listed on that proposal, or it is not in the group log. */
   | 'not-listed'
+  /** A Change lists someone outside the active group: adding someone is a fresh setup (wave 3 round 2). */
+  | 'adds-members'
   /** Someone proposed was in this group log and left it: they can never confirm (review round 1, finding 1). */
   | 'left-group'
   /** This person is already in the net-worth group of another workspace (§4: one group per person). */
@@ -98,6 +100,22 @@ function parseMembers(json: string): string[] {
   } catch {
     return []; // malformed peer data is a proposal nobody can confirm
   }
+}
+
+/**
+ * Whose devices may be let into a group log (wave 3 round 2): the active group's members; before any activation, the
+ * members listed on a proposal not cancelled (nothing has been sent yet, so the log holds no summary); nobody once a
+ * group that was active has ended. A Change never adds anyone, so nobody else ever reads the log's history. Null — no
+ * limit — only while the log holds no proposal at all: it is empty of anything but its devices, and summaries need an
+ * active group (the set-up steps below the API, `openGroupLog` then `admitToGroupLog`, run in that window).
+ */
+export async function admissibleMembers(db: Db, groupBookId: string): Promise<Set<string> | null> {
+  const { proposals, answers } = await groupInputsOf(db, groupBookId);
+  if (proposals.length === 0) return null;
+  const state = deriveGroup(proposals, answers);
+  if (state.active) return new Set(state.active.members);
+  if (proposals.some((p) => isActivated(p, proposals, answers))) return new Set();
+  return new Set(proposals.filter((p) => !p.cancelled).flatMap((p) => p.members));
 }
 
 /** The group state of a group log, derived here as on every device (§6). */
@@ -206,9 +224,9 @@ async function afterReviewConfirmed(tx: Tx, today: string): Promise<void> {
  * Review before anything is sent (§6 Review; wave 3 merge, ruled in its review round 1): a member's phone sends no
  * summary for an activation of a group — its active proposal — until this person pressed Share on the review of that
  * proposal. A share setting alone is not enough, nor a review of an earlier proposal: a Change (a mode, or members) asks
- * again. One allowance: when the change added nobody (every member was in the group this person last reviewed in
- * this log), the items already live in the log keep refreshing (a period ending, a partner's edit) until the Share; a
- * new item still waits. When anyone was added, nothing goes out until the Share. Local, per device, like the settings.
+ * again. One allowance: when every member was in the group this person last reviewed in this log (a Change never adds
+ * anyone, round 2), the items already live in the log keep refreshing (a period ending, a partner's edit) until the
+ * Share; a new item still waits. A removal is never held back. Local, per device, like the settings.
  */
 const REVIEWED_PREFIX = (groupBookId: string) => `nw.reviewed.${groupBookId}.`;
 const REVIEWED_KEY = (groupBookId: string, proposalId: string) => `${REVIEWED_PREFIX(groupBookId)}${proposalId}`;
@@ -228,7 +246,7 @@ export async function reviewedFor(source: Database | Db, groupBookId: string, pr
 /**
  * What this device may send for the active group (§6 Review): `all` once this person reviewed its active proposal;
  * `live` — refreshes of items already live in the log, no new item — when not yet, but the group has nobody this person
- * did not review with last time in this log; `none` otherwise.
+ * did not review with last time in this log; `none` otherwise. Removals are sent under every allowance (round 2).
  */
 export async function sendAllowance(db: Db, group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'proposalId' | 'members'>): Promise<'all' | 'live' | 'none'> {
   if (await reviewedFor(db, group.groupBookId, group.proposalId)) return 'all';
