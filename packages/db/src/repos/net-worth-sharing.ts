@@ -68,14 +68,14 @@ async function groupInputsOf(db: Db, groupBookId: string): Promise<{ proposals: 
   const answers: Answer[] = (
     await db.values<[string, string, string]>(sql`SELECT proposal_id, member_id, answer FROM nw_answers WHERE book_id = ${groupBookId} ORDER BY proposal_id, member_id`)
   ).map(([proposalId, memberId, answer]) => ({ proposalId, memberId, answer: answer as Answer['answer'] }));
-  // Review round 1, finding 1: only a proposal made before they left counts them as having left. One made after names
-  // someone who can never confirm, so it waits for ever — it never activates, and never dissolves the group.
-  for (const [memberId, leftAt] of await departedMembers(db, groupBookId)) {
-    for (const proposal of proposals) {
-      if (proposal.members.includes(memberId) && proposal.createdHlc < leftAt) answers.push({ proposalId: proposal.proposalId, memberId, answer: 'left' });
-    }
-  }
-  return { proposals, answers };
+  // Review round 2, A: a member who went counts as having left only where they said yes — their `confirm` reads as
+  // `left`. Where they gave no answer, none is made up: a proposal waiting for them waits for ever, never activates,
+  // and never dissolves the group. Nothing here reads a proposer's own `createdHlc`.
+  const departed = await departedMembers(db, groupBookId);
+  return {
+    proposals,
+    answers: answers.map((ans) => (departed.has(ans.memberId) && ans.answer === 'confirm' ? { ...ans, answer: 'left' as const } : ans)),
+  };
 }
 
 /**
@@ -116,14 +116,14 @@ export async function groupStateOf(db: Db, groupBookId: string): Promise<GroupSt
 export async function groupDissolved(db: Db, groupBookId: string): Promise<boolean> {
   const { proposals, answers } = await groupInputsOf(db, groupBookId);
   if (deriveGroup(proposals, answers).active) return false;
-  return proposals.some((p) => isActivated(p, answers));
+  return proposals.some((p) => isActivated(p, proposals, answers));
 }
 
 /** One proposal of a group log, and whether it was ever activated (task 2 review: then it may only be left). */
 export async function proposalOf(db: Db, groupBookId: string, proposalId: string): Promise<{ proposal: Proposal; activated: boolean } | null> {
   const { proposals, answers } = await groupInputsOf(db, groupBookId);
   const proposal = proposals.find((p) => p.proposalId === proposalId);
-  return proposal ? { proposal, activated: isActivated(proposal, answers) } : null;
+  return proposal ? { proposal, activated: isActivated(proposal, proposals, answers) } : null;
 }
 
 export interface ActiveNetWorthGroup {

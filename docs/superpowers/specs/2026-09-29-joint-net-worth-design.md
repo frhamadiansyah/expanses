@@ -92,7 +92,14 @@ rotation (S5–S9). What differs:
   group's link closed writes it open again (same log, same relay book) on its next sync. A closed link names no group,
   so a new setup writes a new link over it. A new or re-opened link must name a version-5 id, and a device keeps an
   invite's keys only when epoch 1's key derives the id the link names. A member who left the group log is never
-  proposed back into it, and counts as having left only on proposals made before they went. Two members opening a group at the same moment:
+  proposed back into it; their `confirm` answers read as `left`, and where they gave no answer none is made up.
+
+  *Accepted residual (task 5 review round 2):* a former member who is still in the workspace can, with a modified
+  app, close the link and at once write a new link of their own before any member's device syncs. The household's
+  group log is then no longer linked: its members keep it and keep sharing, but a later device of theirs cannot be let
+  in, and a member's new device may join the other group instead. This is disruption only — nothing is shared with
+  anyone until that device's member confirms a proposal there. The remedy is for the members to set up net worth
+  again. Two members opening a group at the same moment:
   the first link in the workspace log is the link on every device; the device whose own link was not yet back from
   the log yields to it, abandons its lone group log, and joins the linked one when a member lets it in. A group
   member's device lets in any later device of a group member that the workspace has admitted.
@@ -192,8 +199,10 @@ mode. No active proposal = no group. Every device derives the same answer from t
   differently]". Choose differently = `decline` plus a new proposal of their own.
 - **Review.** When a proposal becomes active, each member reviews their own items (§8.1) before their phone sends
   anything.
-- **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed. The
-  proposer may cancel; anyone listed may decline.
+- **Change** (mode or members). A new proposal; the active one holds until the new one is fully confirmed — by every
+  member it lists **and** every current member of the active group it leaves out, so nobody is dropped without saying
+  yes (D6, task 5 review round 2). The proposer may cancel; anyone asked may decline. Once made, a proposal's
+  `proposedBy`, `createdHlc`, `mode` and `members` never change (refused at capture and on every peer).
 - **`joint` needs exactly two members.** A proposal with `joint` and not two members cannot be made in the UI and is
   never active on apply.
 - **Once active, a proposal stays active** until a newer one becomes active; a later `decline` does not undo it.

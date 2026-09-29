@@ -45,54 +45,92 @@ function answerFor(final: Map<string, Answer>, proposalId: string, memberId: str
   return final.get(`${proposalId}\u0000${memberId}`)?.answer;
 }
 
-/**
- * Whether a proposal is activated by these answers (the last per member wins): not cancelled, `canPropose`, and every
- * listed member confirmed or left. Once so, only `left` may follow it (task 2 review).
- */
-export function isActivated(proposal: Proposal, answers: readonly Answer[]): boolean {
-  return activatedBy(proposal, finalAnswers(answers));
+/** Proposals in creation order: HLC, then id, so equal clocks still order alike on every device. */
+function inOrder(proposals: readonly Proposal[]): Proposal[] {
+  return [...proposals].sort((a, b) =>
+    a.createdHlc < b.createdHlc ? -1 : a.createdHlc > b.createdHlc ? 1 : a.proposalId < b.proposalId ? -1 : a.proposalId > b.proposalId ? 1 : 0,
+  );
 }
 
-/** A proposal is activated when not cancelled, `canPropose`, and every listed member confirmed or left. */
-function activatedBy(proposal: Proposal, final: Map<string, Answer>): boolean {
+/** The active proposal's current members: its listed members who have not left it. */
+function currentMembers(active: Proposal | null, final: Map<string, Answer>): string[] {
+  return active ? active.members.filter((member) => answerFor(final, active.proposalId, member) !== 'left') : [];
+}
+
+/**
+ * Who must say yes to a proposal while `active` is the group (D6, task 5 review round 2): its listed members, and every
+ * current member of the active group it leaves out — a change can never drop someone without them.
+ */
+function requiredOf(proposal: Proposal, current: readonly string[]): { listed: string[]; unlisted: string[] } {
+  return { listed: proposal.members, unlisted: current.filter((member) => !proposal.members.includes(member)) };
+}
+
+/**
+ * Whether `proposal` activates while `current` are the active group's members: not cancelled, `canPropose`, every listed
+ * member confirmed or left, and every current member it leaves out confirmed.
+ */
+function activatesWith(proposal: Proposal, final: Map<string, Answer>, current: readonly string[]): boolean {
   if (proposal.cancelled) return false;
   if (!canPropose(proposal.mode, proposal.members)) return false;
-  return proposal.members.every((member) => {
-    const ans = answerFor(final, proposal.proposalId, member);
-    return ans === 'confirm' || ans === 'left';
-  });
+  const { listed, unlisted } = requiredOf(proposal, current);
+  return (
+    listed.every((member) => {
+      const ans = answerFor(final, proposal.proposalId, member);
+      return ans === 'confirm' || ans === 'left';
+    }) && unlisted.every((member) => answerFor(final, proposal.proposalId, member) === 'confirm')
+  );
+}
+
+/**
+ * The replay every device makes: in creation order, each proposal that activates against the group active before it
+ * becomes the group. Returns every proposal that ever became the group, and the last.
+ */
+function replay(proposals: readonly Proposal[], final: Map<string, Answer>): { activated: Set<string>; active: Proposal | null } {
+  const activated = new Set<string>();
+  let active: Proposal | null = null;
+  for (const proposal of inOrder(proposals)) {
+    if (activatesWith(proposal, final, currentMembers(active, final))) {
+      active = proposal;
+      activated.add(proposal.proposalId);
+    }
+  }
+  return { activated, active };
+}
+
+/**
+ * Whether a proposal ever became the group, replaying all of them (the last answer per member wins). Once so, only
+ * `left` may follow it (task 2 review).
+ */
+export function isActivated(proposal: Proposal, proposals: readonly Proposal[], answers: readonly Answer[]): boolean {
+  const all = proposals.some((p) => p.proposalId === proposal.proposalId) ? proposals : [...proposals, proposal];
+  return replay(all, finalAnswers(answers)).activated.has(proposal.proposalId);
 }
 
 export function deriveGroup(proposals: readonly Proposal[], answers: readonly Answer[]): GroupState {
   const final = finalAnswers(answers);
-  const sorted = [...proposals].sort((a, b) => (a.createdHlc < b.createdHlc ? -1 : a.createdHlc > b.createdHlc ? 1 : 0));
-
-  let active: Proposal | null = null;
-  for (const proposal of sorted) {
-    if (activatedBy(proposal, final)) active = proposal;
-  }
+  const { activated, active } = replay(proposals, final);
+  const current = currentMembers(active, final);
 
   let activeState: GroupState['active'] = null;
-  if (active) {
-    const members = active.members.filter((member) => answerFor(final, active!.proposalId, member) !== 'left');
-    if (members.length >= 2) {
-      activeState = { proposalId: active.proposalId, mode: active.mode, members };
-    }
-  }
+  if (active && current.length >= 2) activeState = { proposalId: active.proposalId, mode: active.mode, members: current };
 
   const activeHlc = active?.createdHlc ?? null;
   let pending: Proposal | null = null;
-  for (const proposal of sorted) {
+  for (const proposal of inOrder(proposals)) {
     if (proposal.cancelled) continue;
     if (activeHlc !== null && !(proposal.createdHlc > activeHlc)) continue;
-    if (activatedBy(proposal, final)) continue;
-    const declined = proposal.members.some((member) => answerFor(final, proposal.proposalId, member) === 'decline');
+    if (activated.has(proposal.proposalId)) continue;
+    const { listed, unlisted } = requiredOf(proposal, current);
+    const declined = [...listed, ...unlisted].some((member) => answerFor(final, proposal.proposalId, member) === 'decline');
     if (declined) continue;
-    if (!pending || proposal.createdHlc > pending.createdHlc) pending = proposal;
+    pending = proposal; // in creation order: the last one standing is the newest
   }
 
   const waitingFor = pending
-    ? pending.members.filter((member) => answerFor(final, pending!.proposalId, member) === undefined)
+    ? (() => {
+        const { listed, unlisted } = requiredOf(pending, current);
+        return [...listed, ...unlisted].filter((member) => answerFor(final, pending!.proposalId, member) === undefined);
+      })()
     : [];
 
   return { active: activeState, pending, waitingFor };

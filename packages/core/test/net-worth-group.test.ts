@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveGroup, canPropose, type Proposal, type Answer } from '../src/net-worth/group';
+import { deriveGroup, canPropose, isActivated, type Proposal, type Answer } from '../src/net-worth/group';
 
 const p = (id: string, hlc: string, mode: 'joint' | 'separate', members: string[], by = members[0]!, cancelled = false): Proposal =>
   ({ proposalId: id, mode, members, proposedBy: by, createdHlc: hlc, cancelled });
@@ -51,6 +51,41 @@ describe('deriveGroup', () => {
     const s = deriveGroup([p('p1', '001', 'joint', ['rina', 'andi', 'sari'])],
       [a('p1', 'rina', 'confirm'), a('p1', 'andi', 'confirm'), a('p1', 'sari', 'confirm')]);
     expect(s.active).toBeNull();
+  });
+});
+
+describe('a change needs every current member (task 5 review round 2, D6)', () => {
+  const group = p('p1', '001', 'separate', ['rina', 'andi', 'sari']);
+  const joined = [a('p1', 'rina', 'confirm'), a('p1', 'andi', 'confirm'), a('p1', 'sari', 'confirm')];
+  const dropAndi = p('p2', '002', 'separate', ['rina', 'sari'], 'rina');
+
+  it('the listed members alone cannot drop a current one: the change waits for Andi', () => {
+    const s = deriveGroup([group, dropAndi], [...joined, a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm')]);
+    expect(s.active?.proposalId).toBe('p1');
+    expect(s.pending?.proposalId).toBe('p2');
+    expect(s.waitingFor).toEqual(['andi']);
+    expect(isActivated(dropAndi, [group, dropAndi], [...joined, a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm')])).toBe(false);
+  });
+
+  it('Andi confirms: the change is the group, without him', () => {
+    const s = deriveGroup([group, dropAndi], [...joined, a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm'), a('p2', 'andi', 'confirm')]);
+    expect(s.active).toEqual({ proposalId: 'p2', mode: 'separate', members: ['rina', 'sari'] });
+  });
+
+  it('Andi declines: never', () => {
+    const s = deriveGroup([group, dropAndi], [...joined, a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm'), a('p2', 'andi', 'decline')]);
+    expect(s.active?.proposalId).toBe('p1');
+    expect(s.pending).toBeNull();
+  });
+
+  it('a member who left the group is not asked', () => {
+    const left = [a('p1', 'rina', 'confirm'), a('p1', 'andi', 'left'), a('p1', 'sari', 'confirm')];
+    const s = deriveGroup([group, dropAndi], [...left, a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm')]);
+    expect(s.active?.proposalId).toBe('p2');
+  });
+
+  it('with no group active, only the listed members count', () => {
+    expect(isActivated(dropAndi, [dropAndi], [a('p2', 'rina', 'confirm'), a('p2', 'sari', 'confirm')])).toBe(true);
   });
 });
 

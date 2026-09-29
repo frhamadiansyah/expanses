@@ -385,7 +385,8 @@ export function isWriter(entity: RowEntity, fields: Record<string, unknown>, key
  * writer — so nobody can grant themselves (or anyone else) a row already made (task 1 review round 1, finding 2).
  */
 const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  nw_proposal: ['proposedBy'],
+  // A proposal is what its members said yes to: who made it, when, how and for whom never change (task 5 review round 2).
+  nw_proposal: ['proposedBy', 'createdHlc', 'mode', 'members'],
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
   // The workspace's link to its group log (task 4 review round 1): which log, on which relay book, is written once, by

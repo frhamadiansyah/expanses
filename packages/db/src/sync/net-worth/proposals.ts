@@ -125,11 +125,15 @@ async function writeAnswerTx(tx: Tx, groupBookId: string, proposalId: string, me
   });
 }
 
-/** The proposal, read after a sync of the group log; `not-listed` when this member is not on it. */
+/**
+ * The proposal, read after a sync of the group log; `not-listed` when this member is not asked on it: neither listed,
+ * nor a current member of the active group (a change needs them too, D6 — task 5 review round 2).
+ */
 async function listedProposal(host: GroupLogHost, groupBookId: string, proposalId: string, me: string) {
   await quietly(host.syncOnce(groupBookId));
   const found = await proposalOf(host.database.db, groupBookId, proposalId);
-  if (!found || !found.proposal.members.includes(me)) throw new NetWorthError('not-listed', "You're not asked on that proposal");
+  const current = (await groupStateOf(host.database.db, groupBookId)).active?.members ?? [];
+  if (!found || !(found.proposal.members.includes(me) || current.includes(me))) throw new NetWorthError('not-listed', "You're not asked on that proposal");
   return found;
 }
 

@@ -290,7 +290,8 @@ describe('a member who left (review round 1, finding 1)', () => {
       expect(group.groupBookId).toBe(groupBookId);
       expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
       expect(group.pending?.proposalId).toBe(crafted);
-      expect(group.waitingFor).toEqual([sari.memberId]);
+      // It waits for Sari, who can never answer, and for Andi, whom it leaves out (review round 2, B).
+      expect(group.waitingFor).toEqual([sari.memberId, andi.memberId]);
     }
   });
 });
@@ -389,5 +390,116 @@ describe('both links reach the log before either device pulls (review round 1, f
     for (const d of [rina, andi, sari]) expect((await linkOf(d, bookId))?.[0]).toBe(rinaLog);
     for (const d of [rina, andi]) expect(await d.engine.groupLogOf(bookId)).toBe(rinaLog);
     expect(andiLog).not.toBe(rinaLog);
+  });
+});
+
+/* ------------------------------------------------------------------ review round 2 */
+
+/** Writes a proposal as a modified client would: straight through capture, with its own `createdHlc`. */
+async function craft(d: Device, groupBookId: string, members: string[], mode: 'joint' | 'separate', createdHlc: string): Promise<string> {
+  const id = uuidv7();
+  await d.database.transaction(async (tx) => {
+    await withCapture(tx, { entity: 'nw_proposal', id, bookId: groupBookId }, async () => {
+      await tx.run(sql`INSERT INTO nw_proposals (book_id, proposal_id, mode, members_json, proposed_by, created_hlc, cancelled)
+        VALUES (${groupBookId}, ${id}, ${mode}, ${JSON.stringify(members)}, ${d.memberId}, ${createdHlc}, 0)`);
+    });
+    await withCapture(tx, { entity: 'nw_answer', id: `${id}|${d.memberId}`, bookId: groupBookId }, async () => {
+      await tx.run(sql`INSERT INTO nw_answers (book_id, proposal_id, member_id, answer) VALUES (${groupBookId}, ${id}, ${d.memberId}, 'confirm')`);
+    });
+  });
+  return id;
+}
+
+describe('a departure never answers for anyone (review round 2, A)', () => {
+  it('a backdated proposal naming the departed member never activates and never dissolves the group', async () => {
+    const { home, rina, andi, sari, bookId, proposalId, groupBookId } = await sariLeft();
+    const crafted = await craft(rina, groupBookId, [rina.memberId, sari.memberId], 'joint', encodeHlc(1, 0, rina.deviceId));
+    await settle(home);
+    for (const d of [rina, andi]) {
+      const group = await d.engine.netWorthGroup(bookId);
+      expect(group.groupBookId).toBe(groupBookId);
+      expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
+      // Older than the group it would replace, it is not even waiting: it is simply history.
+      expect(group.pending).toBeNull();
+      expect(await d.database.db.values(sql`SELECT 1 FROM nw_proposals WHERE book_id = ${groupBookId} AND proposal_id = ${crafted}`)).toEqual([[1]]);
+    }
+  });
+
+  it('someone asked who leaves without answering leaves the proposal waiting, and the group as it was', async () => {
+    const { home, rina, andi, sari, bookId, proposalId } = await active('separate');
+    const change = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [sari.memberId] });
+    await settle(home);
+    // Andi, in the group and left out of the change, agrees to it; Sari never answers, and goes.
+    await andi.engine.answerNetWorth(bookId, change, 'confirm');
+    await sari.engine.leaveNetWorth(bookId);
+    await settle(home);
+    for (const d of [rina, andi]) {
+      const group = await d.engine.netWorthGroup(bookId);
+      expect(group.active).toEqual({ proposalId, mode: 'separate', members: [rina.memberId, andi.memberId] });
+      expect(group.pending?.proposalId).toBe(change);
+      expect(group.waitingFor).toEqual([sari.memberId]);
+    }
+  });
+
+  it("a proposal's createdHlc, mode and members never change after it is made, at capture and on every peer", async () => {
+    const { home, rina, andi, bookId, proposalId } = await active('separate');
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    await expect(
+      rina.database.transaction((tx) =>
+        withCapture(tx, { entity: 'nw_proposal', id: proposalId, bookId: groupBookId }, async () => {
+          await tx.run(sql`UPDATE nw_proposals SET created_hlc = '0' WHERE book_id = ${groupBookId} AND proposal_id = ${proposalId}`);
+        }),
+      ),
+    ).rejects.toThrow(/AUTHORITY: writer/);
+    const cs: ChangeSet = {
+      v: 1,
+      hlc: encodeHlc(Date.now() + 1_000, 0, rina.deviceId),
+      member: rina.memberId,
+      ops: [{ entity: 'nw_proposal', id: proposalId, op: 'upsert', fields: { createdHlc: '0', mode: 'joint' }, changed: ['createdHlc', 'mode'] }],
+    };
+    const [[epoch]] = (await rina.database.db.values<[number]>(sql`SELECT epoch FROM shared_books WHERE book_id = ${groupBookId}`)) as [[number]];
+    const [[relay]] = (await rina.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${groupBookId}`)) as [[string]];
+    await rina.transport.append(relay, await rina.engine.sealer.seal(groupBookId, Number(epoch), cs));
+    await settle(home);
+    const [row] = await andi.database.db.values<[string, string]>(sql`SELECT created_hlc, mode FROM nw_proposals WHERE book_id = ${groupBookId} AND proposal_id = ${proposalId}`);
+    expect(row![1]).toBe('separate');
+    expect(row![0]).not.toBe('0');
+    expect(await andi.database.db.values(sql`SELECT entity, error FROM sync_skipped WHERE book_id = ${groupBookId}`)).toEqual([['nw_proposal', 'AUTHORITY: writer']]);
+  });
+});
+
+describe('a change needs every current member (review round 2, B)', () => {
+  async function three() {
+    const h = await household();
+    const proposalId = await h.rina.engine.proposeNetWorth(h.bookId, { mode: 'separate', members: [h.andi.memberId, h.sari.memberId] });
+    await settle(h.home);
+    await h.andi.engine.answerNetWorth(h.bookId, proposalId, 'confirm');
+    await h.sari.engine.answerNetWorth(h.bookId, proposalId, 'confirm');
+    await settle(h.home);
+    const change = await h.rina.engine.proposeNetWorth(h.bookId, { mode: 'separate', members: [h.sari.memberId] });
+    await settle(h.home);
+    await h.sari.engine.answerNetWorth(h.bookId, change, 'confirm');
+    await settle(h.home);
+    return { ...h, proposalId, change };
+  }
+
+  it('Rina and Sari cannot drop Andi without him; when he confirms, they can', async () => {
+    const { home, rina, andi, sari, bookId, proposalId, change } = await three();
+    const asked = await andi.engine.netWorthGroup(bookId);
+    expect(asked.active?.proposalId).toBe(proposalId);
+    expect(asked.pending?.proposalId).toBe(change);
+    expect(asked.waitingFor).toEqual([andi.memberId]);
+    await andi.engine.answerNetWorth(bookId, change, 'confirm');
+    await settle(home);
+    for (const d of [rina, sari]) expect((await d.engine.netWorthGroup(bookId)).active).toEqual({ proposalId: change, mode: 'separate', members: [rina.memberId, sari.memberId] });
+  });
+
+  it('Andi declines: never', async () => {
+    const { home, rina, andi, bookId, proposalId } = await three();
+    await andi.engine.answerNetWorth(bookId, (await andi.engine.netWorthGroup(bookId)).pending!.proposalId, 'decline');
+    await settle(home);
+    const group = await rina.engine.netWorthGroup(bookId);
+    expect(group.active?.proposalId).toBe(proposalId);
+    expect(group.pending).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { deriveGroup, type Answer, type FilingMode, type Proposal } from '../src
  * Spec §6 `deriveGroup`: every device replays the same `Proposal`/`Answer` log and reaches the same
  * `GroupState`, regardless of the order the rows arrived in (convergence). Random proposals/answers,
  * shuffled, must (a) converge to one result independent of array order, (b) keep `active.members` at
- * >= 2 with `joint` always exactly 2, (c) keep `waitingFor` a subset of `pending.members`.
+ * >= 2 with `joint` always exactly 2, (c) keep `waitingFor` a subset of `pending.members` and the active group's.
  */
 const RUNS = 300;
 const SEED = 20260929;
@@ -82,7 +82,8 @@ describe('deriveGroup convergence', () => {
             if (base.active.mode === 'joint') expect(base.active.members.length).toBe(2);
           }
           if (base.pending) {
-            for (const waiting of base.waitingFor) expect(base.pending.members).toContain(waiting);
+            // Task 5 review round 2 (D6): a change also waits for the active group's current members it leaves out.
+            for (const waiting of base.waitingFor) expect([...base.pending.members, ...(base.active?.members ?? [])]).toContain(waiting);
           } else {
             expect(base.waitingFor).toEqual([]);
           }

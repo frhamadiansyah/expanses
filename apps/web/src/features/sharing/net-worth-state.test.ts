@@ -52,6 +52,14 @@ describe('the Share net worth row (§6, §8.1)', () => {
     );
   });
 
+  it('a change that leaves a current member out asks them too (review round 2, D6)', () => {
+    const active = { proposalId: 'p0', mode: 'separate' as const, members: ['r', 'a', 's'] };
+    const row = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['a'] }), members);
+    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group without you: separate tax IDs.' });
+    const answered = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['s'] }), members);
+    expect(answered.pending).toEqual({ kind: 'waiting', proposalId: 'p2', line: 'Waiting for Sari', cancellable: false });
+  });
+
   it('not listed on a pending proposal: nothing to say about it', () => {
     expect(netWorthRowOf(view('s', { pending: proposal(), waitingFor: ['a'] }), members).pending).toBeNull();
   });

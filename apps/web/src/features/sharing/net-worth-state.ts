@@ -52,9 +52,14 @@ export function netWorthRowOf(group: NetWorthGroupView | null | undefined, membe
   const p = group.pending;
   let pending: PendingRow | null = null;
   if (p) {
+    const listed = p.members.includes(group.me);
     if (group.waitingFor.includes(group.me)) {
-      pending = { kind: 'asked', proposalId: p.proposalId, mode: p.mode, line: `${nameOf(p.proposedBy)} set up household net worth: ${modeWords(p.mode)}.` };
-    } else if (p.members.includes(group.me)) {
+      // A change that leaves a current member out asks them too (D6, task 5 review round 2).
+      const line = listed
+        ? `${nameOf(p.proposedBy)} set up household net worth: ${modeWords(p.mode)}.`
+        : `${nameOf(p.proposedBy)} proposes a group without you: ${modeWords(p.mode)}.`;
+      pending = { kind: 'asked', proposalId: p.proposalId, mode: p.mode, line };
+    } else if (listed || group.active?.members.includes(group.me)) {
       pending = { kind: 'waiting', proposalId: p.proposalId, line: `Waiting for ${namesOf(group.waitingFor.map(nameOf))}`, cancellable: p.proposedBy === group.me };
     }
   }
