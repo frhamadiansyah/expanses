@@ -26,7 +26,7 @@ import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
-import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
+import { assetKindTile } from '../ownables/catalogue-view';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
@@ -66,9 +66,6 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { 
     </>
   );
 }
-
-/** Which section of the balance sheet an account's bare subtype files under, for the drawing it wears. Money is the rest. */
-const SECTION_OF_SUBTYPE: Record<string, string> = { receivable: 'receivable', investment: 'invest', vehicle: 'movable', property: 'immovable' };
 
 /** The ‹ › steppers are 28px drawn; their target reaches the 44pt floor around them. */
 const TAP_REACH = { '--ph-tap-y': '8px', '--ph-tap-x': '4px' } as CSSProperties;
@@ -285,17 +282,6 @@ function CardBody({
   const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? [])).filter(
     (a) => a.id === draft.toId || (canTransferWith(a) && (!account || canTransferBetween(account, a))),
   );
-  const transferGroups = [
-    { title: 'Accounts', kind: 'asset' as const },
-    { title: 'Credit cards & debts', kind: 'liability' as const },
-  ].map(({ title, kind }) => ({
-    title,
-    choices: landing.filter((a) => a.kind === kind).map((a) => {
-      // Each wears the drawing the Assets and Liabilities pages give its kind, so a scooter never reads as a bank.
-      const Glyph = kind === 'asset' ? assetKindTile(SECTION_OF_SUBTYPE[a.subtype] ?? 'liquid', a.subtype) : debtKindTile(a.subtype === 'loan' ? 'other_loans' : a.subtype);
-      return { value: a.id, label: a.name, caption: a.currency ?? undefined, glyph: <Glyph size={15} /> };
-    }),
-  }));
   /*
    * Every row of the card leads with a circle of the same size, so the lead column reads as one column. The rest
    * wear the kit's fill; a chosen category keeps its own colour, as it does everywhere else a category is drawn.
@@ -805,13 +791,23 @@ function CardBody({
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'to' && (
-        <ChoiceSheet
+        // The same sheet From uses — search, the picked row marked, Add account at the foot — so both sides read alike.
+        <PaymentSheet
           title="To"
-          value={draft.toId}
-          groups={transferGroups}
-          footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
-          onPick={(toId) => set({ toId })}
+          options={paymentOptions(landing, [])}
+          accounts={accounts}
+          chosenAccountId={draft.toId}
+          onPick={(option) => set({ toId: option.accountId })}
           onClose={() => setSheet(null)}
+          footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
+          adding={
+            initial
+              ? undefined
+              : {
+                  kinds: CASH_ITEMS.map((item) => item.id as MoneyAccountSubtype).filter((subtype) => canTransferWith({ id: '', kind: 'asset', subtype })),
+                  onAdded: (toId) => set({ toId }),
+                }
+          }
         />
       )}
       {sheet === 'goal' && (

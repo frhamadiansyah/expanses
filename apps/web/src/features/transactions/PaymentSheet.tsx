@@ -116,8 +116,9 @@ export function PaymentSheet({
   onClose,
   adding: addable,
   placeholders = new Set<string>(),
+  footer,
 }: {
-  /** "Paid with", "Received into" or "From", as the mode names it. */
+  /** "Paid with", "Received into", "From" or "To", as the mode names it. */
   title: string;
   options: readonly PaymentOption[];
   accounts: readonly AccountRow[];
@@ -139,6 +140,8 @@ export function PaymentSheet({
    * purchase another member paid for, and reads "Paid by <name>"; any other is dropped here, whatever the caller passed.
    */
   placeholders?: ReadonlySet<string>;
+  /** A line under the list, such as where to go instead for what is not on it. */
+  footer?: string;
 }) {
   const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
   const [search, setSearch] = useState('');
@@ -302,6 +305,7 @@ export function PaymentSheet({
         {!searching && sections.length === 0 ? (
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{tab === 'cards' ? 'No credit cards yet.' : 'No accounts yet.'}</p>
         ) : null}
+        {footer ? <p className="px-4 pt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{footer}</p> : null}
       </div>
       </>
       )}
