@@ -553,12 +553,12 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
               onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.id } })}
             />
           ))}
-          {/* The way to the rest is the box's last row, under the rows it continues, as iOS ends a short list. */}
+          {/* The way to the rest is the box's last row; no padding under it, so the panel's own edge is its bottom gap. */}
           <li>
             <Link
               to="/transactions"
               search={{ account: accountId }}
-              className="ph-focus flex items-center justify-between py-[11px] text-[15px] leading-[20px] text-[var(--ph-tint)]"
+              className="ph-focus flex items-center justify-between pt-[10px] text-[15px] leading-[20px] text-[var(--ph-tint)]"
             >
               See all
               <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
