@@ -139,9 +139,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
             currency={account.currency!}
             series={null}
             testId="deposit-card"
+            corner={<CurrencyFlag currency={account.currency!} />}
             caption={
               <>
-                <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
+                <span className="block">{[inst, typeLabel].filter(Boolean).join(' · ')}</span>
                 {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
               </>
             }
@@ -160,11 +161,13 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           currency={account.currency!}
           series={series}
           testId="balance-card"
+          corner={<CurrencyFlag currency={account.currency!} />}
           caption={
             <>
               <span className="block">
-                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. */}
-                {account.subtype === 'fund' && inst ? `RDN at ${inst} · ${account.currency}` : [inst, typeLabel, account.currency].filter(Boolean).join(' · ')}
+                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
+                    is the flag in the corner, so the line names only where the money is and what kind of account. */}
+                {account.subtype === 'fund' && inst ? `RDN at ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
               </span>
               {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
             </>
@@ -191,13 +194,11 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
 
+      {/* Only what the card does not already say: the broker is the title, the bank and the currency are on the card. */}
       <Details
         rows={[
-          account.subtype === 'fund' ? <InsetRow key="broker" title="Broker" value={account.name} chevron={false} /> : null,
-          inst ? <InsetRow key="bank" title={account.subtype === 'fund' ? 'RDN bank' : 'Bank'} value={inst} chevron={false} /> : null,
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
-          !pockets ? <InsetRow key="currency" title="Currency" value={`${account.currency} · ${currencyName(account.currency!)}`} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
           // Another currency makes a current or saving account one with pockets; a pocket cannot hold a pocket, and an
           // account that already has them takes one more through the same door, drawn among its actions.
@@ -347,6 +348,20 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
       {approxLine(minor, currency, ws.baseCurrency, rates?.rates ?? {})}
       {rate !== undefined && ` at ${rateLine(rate, currency, ws.baseCurrency)}`}
       {rate !== undefined && rates?.stale.includes(currency) && ' (last known)'}
+    </span>
+  );
+}
+
+/** The currency an account holds, as the round flag in its card's corner, named for a screen reader. */
+function CurrencyFlag({ currency }: { currency: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${currency} · ${currencyName(currency)}`}
+      data-testid="card-currency"
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[17px] leading-none"
+    >
+      {currencyFlag(currency)}
     </span>
   );
 }

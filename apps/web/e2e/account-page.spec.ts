@@ -29,7 +29,9 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
 
   await openMoney(page, 'Everyday');
-  await expect(page.getByText('Bank One · Current account · IDR')).toBeVisible();
+  // The line names where the money is and what kind of account; the currency is the flag in the corner.
+  await expect(page.getByText('Bank One · Current account', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
   for (const action of ['Spend', 'Receive', 'Transfer']) await expect(page.getByRole('button', { name: action, exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
   await expect(page.getByRole('link', { name: 'Add a currency' })).toBeVisible();
@@ -122,7 +124,8 @@ test('a deposit reads as its maturity, and its one action is Break early', async
   // One card: the balance with its maturity inside it, and no month's line — a deposit moves only when it pays.
   const figure = page.getByTestId('deposit-card');
   await expect(figure).toContainText('Balance');
-  await expect(figure).toContainText('Time deposit · IDR');
+  await expect(figure).toContainText('Time deposit');
+  await expect(figure.getByTestId('card-currency')).toHaveAccessibleName(/^IDR/);
   await expect(figure.getByTestId('deposit-maturity-card')).toBeVisible();
   await expect(figure).not.toContainText('30 days ago');
   await expect(page.getByText('Last 12 months')).toHaveCount(0);
