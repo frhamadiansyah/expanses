@@ -3,6 +3,7 @@ import { openAccount, openTypes } from './accounts';
 import { addForm, addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
+import { setCurrency } from './currency-field';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -42,6 +43,30 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await page.getByRole('link', { name: 'See all' }).click();
   await expect(page).toHaveURL(/\/transactions\?account=/);
   await expect(page.getByText('Groceries run')).toBeVisible();
+});
+
+test('a current account takes a second currency and becomes one with pockets, keeping what it held', async ({ page }) => {
+  await mockRates(page, { USD: 16_250 });
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
+  await openMoney(page, 'Everyday');
+  await page.getByRole('link', { name: 'Add a currency', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add a currency' })).toBeVisible();
+  // The currency it already holds is not offered again.
+  await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="IDR"]')).toHaveCount(0);
+  await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
+  await page.getByLabel('Opening USD').pressSequentially('500');
+  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add pocket' }).click();
+
+  // The same name, now an account with pockets: the rupiah it held (with the groceries behind it) and the dollars.
+  await expect(page.getByText('Balance, all pockets')).toBeVisible();
+  await expect(page.getByText('2 currencies')).toBeVisible();
+  await expect(page.getByTestId('pocket-IDR')).toContainText('12.255.000');
+  await expect(page.getByTestId('pocket-USD')).toContainText('500');
+  await page.getByTestId('pocket-IDR').click();
+  await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 });
 
 test('Spend opens a new transaction already paid with the account', async ({ page }) => {

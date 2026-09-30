@@ -3,7 +3,8 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId } from './accounts';
+import { withCapture } from '../sync/capture';
+import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId, writeAccountAuditTx } from './accounts';
 import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
 
@@ -97,6 +98,77 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       // After every pocket it has, archived ones included, so a re-added currency does not jump the queue.
       sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
+  });
+}
+
+/** The two kinds of money account that hold several currencies (spec §17.1): a current account and a saving one. */
+const POCKETED_SUBTYPES: readonly string[] = ['bank', 'savings'];
+
+export interface MakeMultiCurrencyInput {
+  accountId: string;
+  currency: string;
+  openingBalanceMinor?: number;
+  openedOn?: string;
+  openingRateToBase?: number;
+}
+
+/**
+ * A second currency in a plain current or saving account: the account becomes one with pockets.
+ *
+ * The account itself becomes the first pocket — same id, same entries, set-asides, bills, cards and goals — so
+ * nothing already recorded changes what it means; only its name gains the currency, as every pocket's does. A new
+ * parent takes over the old name and the old place among the accounts, and the new currency is a second pocket
+ * beside it, opened as `addPocket` opens one. The kas row (the bank, the chosen code) stays on the account, which is
+ * where an account with pockets keeps it. All of it in one transaction.
+ */
+export async function makeMultiCurrency(
+  database: Database,
+  ws: WorkspaceContext,
+  input: MakeMultiCurrencyInput,
+): Promise<{ parent: AccountRow; pocket: AccountRow }> {
+  return database.transaction(async (tx) => {
+    const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account || account.kind !== 'asset') throw new AccountError('Account not found');
+    if (!POCKETED_SUBTYPES.includes(account.subtype)) throw new AccountError('Only a current or saving account holds more than one currency');
+    if (account.archivedAt !== null) throw new AccountError(`${account.name} is archived`);
+    if (account.parentId !== null) throw new AccountError('A pocket cannot hold pockets of its own');
+    const [child] = await tx
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, account.id), eq(accounts.kind, 'asset')))
+      .limit(1);
+    if (child) throw new AccountError(`${account.name} already has pockets. Add one more to it instead.`);
+    if (account.currency === input.currency) throw new AccountError(`${account.name} already holds ${input.currency}`);
+
+    // The table requires a currency on every asset; the parent's is never read as money (spec §3.1).
+    const parent = await createAccountTx(tx, ws, {
+      name: account.name,
+      kind: 'asset',
+      subtype: account.subtype,
+      currency: ws.baseCurrency,
+      icon: account.icon,
+      sortOrder: account.sortOrder,
+    });
+    await withCapture(tx, { entity: 'category', id: account.id }, () =>
+      tx
+        .update(accounts)
+        .set({ parentId: parent.id, name: pocketName(account.name, account.currency!), sortOrder: 0 })
+        .where(eq(accounts.id, account.id)),
+    );
+    await writeAccountAuditTx(tx, ws, 'pocket', account.id, { parentId: parent.id });
+    const inst = (await getAssetProfileTx(tx, ws, account.id))?.coretaxFields.inst;
+    const pocket = await openCashAccountTx(tx, ws, {
+      item: account.subtype as MoneyAccountSubtype,
+      name: pocketName(parent.name, input.currency),
+      currency: input.currency,
+      openingBalanceMinor: input.openingBalanceMinor,
+      openedOn: input.openedOn,
+      openingRateToBase: input.openingRateToBase,
+      bank: inst?.trim() ? inst : undefined,
+      parentId: parent.id,
+      sortOrder: 1,
+    });
+    return { parent, pocket };
   });
 }
 
