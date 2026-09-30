@@ -568,6 +568,9 @@ export function AccountsPage() {
           {section.items.map((item) => (
             <InsetRow
               key={item.itemId}
+              /* The kind's drawing, ringed in its owner's colour, as the same item wears it on Net worth (D12). */
+              icon={<item.tile size={16} aria-hidden />}
+              iconRing={item.ring ?? undefined}
               title={item.name}
               subtitle={item.kindLabel}
               value={<Money minor={item.minor} currency={item.currency} />}

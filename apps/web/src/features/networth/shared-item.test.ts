@@ -33,6 +33,7 @@ const line = (over: Partial<PurchaseLine>): PurchaseLine => ({
   amountMinor: 300_000,
   currency: 'IDR',
   paidFromItemId: 'i-visa',
+  paidBy: 'm-andi',
   ...over,
 });
 
@@ -81,6 +82,20 @@ describe('sharedItemView', () => {
   it('a purchase recorded after the summary counts as waiting even when dated before it', () => {
     const view = sharedItemView(card, [line({ occurredOn: '2026-09-18', recordedOn: '2026-09-21' })], 'Rina');
     expect(view.details.notYet).toBe("1 purchase not yet on Rina's phone");
+  });
+
+  it('the owner\'s own purchase received late is not pending: her summary already holds it (finding 3)', () => {
+    const hers = line({ lineageId: 'hers', paidBy: 'm-rina', occurredOn: '2026-09-25', recordedOn: '2026-09-25', amountMinor: 1_000_000 });
+    const view = sharedItemView(card, [hers], 'Rina');
+    expect(view.lines[0]!.pending).toBe(false);
+    expect(view.details.notYet).toBeNull();
+    expect(view.bar!.availableMinor).toBe(7_000_000);
+  });
+
+  it('the chart never draws the summary\'s month twice (finding 7)', () => {
+    const view = sharedItemView({ ...card, monthEnds: [...card.monthEnds, { month: '2026-09', balanceMinor: 2_900_000 }] }, [], 'Rina');
+    expect(view.chart.months).toEqual(['2026-07', '2026-08', '2026-09']);
+    expect(view.chart.values).toEqual([800_000, 1_000_000, 3_000_000]);
   });
 
   it('an account that is not a card has no bar', () => {

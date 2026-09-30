@@ -29,7 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
-import { jointRows, type JointRows, type ReceivedItem } from './joint-rows';
+import { jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
 export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
@@ -204,19 +204,26 @@ export function useSharedNetWorth() {
       return { group: active, items, names };
     },
   });
-  return { ...read, isPending: group.isPending || (active !== null && read.isPending), data: active === null ? null : (read.data ?? null) };
+  return {
+    ...read,
+    isPending: group.isPending || (active !== null && read.isPending),
+    error: group.error ?? (active !== null ? read.error : null),
+    data: active === null ? null : (read.data ?? null),
+  };
 }
 
 /** A member's name for a line of copy; "Someone" for a member the workspace has not named. */
 export const memberName = (names: Record<string, string>, memberId: string) => names[memberId] ?? 'Someone';
 
 /**
- * The household's balance sheet when the group files jointly (§8.2, D12), or null (separate, or no group): own rows
- * read live, as Net worth always has, and the other's items converted with this device's rates on `date`.
+ * The household's balance sheet when the group files jointly (§8.2, D12): own rows read live, as Net worth always has,
+ * and the other's items converted with this device's rates on `date`. `status` says what the page may draw
+ * (`jointStatus`): the personal sheet only once the group is known not to file jointly — while the group or the
+ * household's inputs load it holds, and on an error it says so, never drawing the personal figure as the household's.
  */
 export function useJointSheet(date?: string): {
-  data: (JointRows & { members: string[]; names: Record<string, string>; me: string; received: ReceivedItem[]; ratesToBase: Record<string, number> }) | null;
-  isPending: boolean;
+  status: JointStatus;
+  data: (JointRows & { members: string[]; names: Record<string, string>; me: string; received: ReceivedItem[]; ratesToBase: Record<string, number>; ownMissing: readonly string[] }) | null;
   error: unknown;
 } {
   const { ws } = useApp();
@@ -231,10 +238,18 @@ export function useJointSheet(date?: string): {
     enabled: joint !== null,
     queryFn: async () => (await resolveRates(currencies, onDate)).rates,
   });
-  if (!joint) return { data: null, isPending: shared.isPending, error: shared.error };
-  if (!own.data || !rates.data) return { data: null, isPending: true, error: own.error ?? rates.error };
-  const rows = jointRows(own.data, joint.items, joint.group.me, rates.data, ws.baseCurrency, onDate);
-  return { data: { ...rows, members: joint.group.members, names: joint.names, me: joint.group.me, received: joint.items, ratesToBase: rates.data }, isPending: false, error: null };
+  const status = jointStatus({
+    group: { pending: shared.isPending, error: shared.error, mode: shared.data?.group.mode ?? null },
+    inputs: { pending: !own.data || !rates.data, error: own.error ?? rates.error },
+  });
+  const error = shared.error ?? (joint ? (own.error ?? rates.error) : null);
+  if (status !== 'joint' || !joint || !own.data || !rates.data) return { status, data: null, error };
+  const rows = jointRows(own.data, joint.items, joint.group.me, rates.data, ws.baseCurrency, { date: onDate, members: joint.group.members });
+  return {
+    status,
+    data: { ...rows, members: joint.group.members, names: joint.names, me: joint.group.me, received: joint.items, ratesToBase: rates.data, ownMissing: own.data.missing },
+    error: null,
+  };
 }
 
 /** The Household purchases of an item's period, for its page's "Lines you can see" (§8.3). */

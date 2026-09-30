@@ -1,6 +1,6 @@
 import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioInputs, ratioTotals, withEmergencyLoading } from './health-cards';
+import { emergencyGoalBase, JOINT_RATIO_KEYS, periodChoices, periodRange, ratioDisplay, ratioInputs, ratioTotals, withEmergencyLoading, withJointRatios } from './health-cards';
 import { jointRows, type ReceivedItem } from './joint-rows';
 
 const TODAY = '2026-09-12';
@@ -166,5 +166,39 @@ describe('ratioInputs (joint net worth §8.2: health ratios use the household to
   it('a received item with no rate names its currency and gives no ratios', () => {
     const joint = jointRows(own, [{ ...andi, currency: 'USD' }], 'm-rina', {}, 'IDR');
     expect(ratioTotals(ratioInputs(own, joint))).toEqual({ totals: null, missing: ['USD'] });
+  });
+});
+
+describe('withJointRatios (finding 8: only balance-sheet ratios are the household\'s)', () => {
+  const keys = ['emergency_fund', 'savings_ratio', 'surplus', 'liquidity', 'debt_payments', 'consumer_debt_payments', 'debt_to_assets', 'solvency', 'investments_to_net_worth'] as const;
+  const personal = keys.map((key) => ratio({ key, value: 1 }));
+  const joint = keys.map((key) => ratio({ key, value: 2 }));
+
+  it('takes net worth, debt to assets and the like from the joint sheet, and every ratio over income or spending from the own one', () => {
+    const mixed = withJointRatios(personal, joint);
+    expect(Object.fromEntries(mixed.map((r) => [r.key, r.value]))).toEqual({
+      emergency_fund: 1,
+      savings_ratio: 1,
+      surplus: 1,
+      liquidity: 1,
+      debt_payments: 1,
+      consumer_debt_payments: 1,
+      debt_to_assets: 2,
+      solvency: 2,
+      investments_to_net_worth: 2,
+    });
+    expect([...JOINT_RATIO_KEYS].sort()).toEqual(['debt_to_assets', 'investments_to_net_worth', 'solvency']);
+  });
+
+  it('with the joint sheet not there (loading, an error, a month it cannot tell), the household\'s ratios are blank, never personal ones', () => {
+    const mixed = withJointRatios(personal, null);
+    for (const r of mixed) {
+      if (JOINT_RATIO_KEYS.has(r.key)) expect(r).toMatchObject({ value: null, status: 'unknown' });
+      else expect(r.value).toBe(1);
+    }
+  });
+
+  it('personal mode is untouched', () => {
+    expect(withJointRatios(personal, undefined)).toBe(personal);
   });
 });

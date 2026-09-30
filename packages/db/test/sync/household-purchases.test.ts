@@ -1,6 +1,6 @@
 import { expenseLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { householdPurchases, postTransaction } from '../../src/index';
+import { householdPurchases, postTransaction, sharingDetail } from '../../src/index';
 import { categoryOf, Household, type Device } from './household';
 
 /* The Household purchases the partner's item page reads (joint-net-worth §8.3, task 9). */
@@ -33,6 +33,10 @@ describe('householdPurchases', () => {
         ['Dewi groceries', 20_000, 'IDR', '2026-09-12'],
       ]);
       for (const line of lines) expect(line.recordedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // Who paid each: the payer's member on every phone, so an owner's own purchase is never read as waiting.
+      const detail = (await sharingDetail(device.database, bookId, device.deviceId))!;
+      const nameOf = (id: string) => detail.members.find((m) => m.memberId === id)?.name;
+      expect(lines.map((l) => nameOf(l.paidBy))).toEqual(['Fandri', 'Dewi']);
       // Until Task 7's paidFrom is wired, no purchase names a shared item.
       for (const line of lines) expect(line.paidFromItemId).toBeNull();
     }

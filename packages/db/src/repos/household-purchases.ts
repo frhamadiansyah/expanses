@@ -19,6 +19,8 @@ export interface HouseholdPurchase {
   currency: string;
   /** The shared item the money side is on (`money.paidFrom.itemId`); null = the payer's own account. */
   paidFromItemId: string | null;
+  /** The member who paid (`money.paidBy`): whose purchase it is, which decides whether the item's owner has it yet. */
+  paidBy: string;
 }
 
 /**
@@ -34,17 +36,18 @@ async function paidFromItemIds(_database: Database, _lineageIds: readonly string
 export async function householdPurchases(database: Database, bookId: string, period: { start: string; end: string }): Promise<HouseholdPurchase[]> {
   const [table] = await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_lineage'`);
   if (!table) return [];
-  const rows = await database.db.values<[string, string, string, string, string, number, string]>(sql`
+  const rows = await database.db.values<[string, string, string, string, string, number, string, string]>(sql`
     SELECT l.lineage_id, t.id, t.occurred_on, t.created_at, t.description,
            COALESCE((SELECT sum(e.amount_minor) FROM entries e JOIN accounts a ON a.id = e.account_id
                      WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income')), 0),
            COALESCE((SELECT e.currency FROM entries e JOIN accounts a ON a.id = e.account_id
-                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') LIMIT 1), '')
+                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') LIMIT 1), ''),
+           l.paid_by
     FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
     WHERE l.book_id = ${bookId} AND t.status = 'posted' AND t.occurred_on >= ${period.start} AND t.occurred_on <= ${period.end}
     ORDER BY t.occurred_on, l.lineage_id`);
   const paidFrom = await paidFromItemIds(database, rows.map((row) => row[0]));
-  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency]) => ({
+  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency, paidBy]) => ({
     lineageId,
     transactionId,
     occurredOn,
@@ -53,6 +56,7 @@ export async function householdPurchases(database: Database, bookId: string, per
     amountMinor: Number(amountMinor),
     currency,
     paidFromItemId: paidFrom.get(lineageId) ?? null,
+    paidBy,
   }));
 }
 

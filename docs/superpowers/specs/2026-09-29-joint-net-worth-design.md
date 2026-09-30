@@ -281,6 +281,13 @@ same line). The add form for a new account, card or asset gets the switch of D9.
   the owner's ring color (member colors assigned in join order, fixed per group); same icon per kind; one line per
   row. Under the total a legend: "● Rina 58,8 jt · ● Andi 400 jt". Screen readers get the owner in the row's label.
   Health ratios use the household total.
+
+  *Ruling (controller, task 9 review round 1):* only the ratios built on the balance sheet alone — debt to assets,
+  solvency, investments to net worth — use the household's sheet. Every ratio with an income or spending denominator
+  (emergency fund, savings, surplus, debt payments) and liquidity stay personal, own sheet over own flows, so the
+  household's money is never divided by one person's spending. While the household's sheet cannot be told (loading, an
+  error, a rate missing) those three are blank, never personal figures. The page holds its figure, line and sheet the
+  same way until it knows the mode and has the household's inputs.
 - **`separate` or no group:** personal, as today. The other's shared items appear in **Accounts** under "Andi's,
   shared" and are not counted.
 
@@ -295,9 +302,12 @@ newer than the summary (the bar then subtracts them).
 summary" is read as a purchase paid from the item that is dated, or was recorded on this phone, after `asOf`; one
 recorded on the summary's own day counts as in it. Only the bar subtracts it (in the item's own currency); the balance
 shown is the summary's. With one tax ID the item's page is reached from Net worth; with separate IDs from Accounts'
-"Andi's, shared", which lists nothing in `joint` (the items are Net worth there). Health ratios read the joint balance
-sheet only; the cash flows they divide by stay the viewer's own. For an earlier balance date (a past calendar year) a
-received item reads the month-end it sent for that month, and 0 beyond the 24 it sends.
+"Andi's, shared", which lists nothing in `joint` (the items are Net worth there). Health ratios: see the ruling in §8.2. For an earlier balance date (a past calendar year) a
+received item reads the month-end it sent for that month; beyond the 24 it sends, it is unknown (its owner's part and
+the total are blank, and the household's line breaks there), never 0. Only a purchase someone other than the item's
+owner paid can be "not yet on her phone": her own was on her phone before her summary. A received debt is never due
+within a year on the sheet (a summary carries no schedule). With only received items missing a rate, the household's
+sheet is still drawn, those rows in their own currency and every total over them blank.
 
 ### 8.4 Tax report
 

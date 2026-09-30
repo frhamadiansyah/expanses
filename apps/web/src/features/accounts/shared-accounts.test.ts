@@ -35,6 +35,7 @@ describe('sharedSections (joint-net-worth §8.2: separate → "Andi\'s, shared" 
       ['m-budi', "Budi's, shared", ['b1']],
     ]);
     expect(sections[0]!.items[1]).toMatchObject({ name: 'Andi Visa', kindLabel: 'Credit card', minor: 500, currency: 'IDR', ring: 'var(--owner-2)' });
+    expect(typeof sections[0]!.items[1]!.tile).not.toBe('undefined');
   });
 
   it('is empty in joint mode, where the items are the household’s Net worth instead', () => {

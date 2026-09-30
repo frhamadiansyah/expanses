@@ -20,6 +20,8 @@ export interface PurchaseLine {
   currency: string;
   /** Which shared item its money side is on (`money.paidFrom.itemId`, Task 7); null = the payer's own account. */
   paidFromItemId: string | null;
+  /** The member who paid (the lineage's `paidBy`). */
+  paidBy: string;
 }
 
 /** The Household lines of the item's period whose money side is on the item (§3 "Household lines"). */
@@ -48,8 +50,14 @@ export interface SharedItemView {
  */
 const newerThan = (line: PurchaseLine, asOf: string) => line.occurredOn > asOf || line.recordedOn > asOf;
 
+/**
+ * Only a purchase someone else paid from the item can be missing from its owner's summary: the owner's own purchase
+ * was on her phone before her summary was, however late it reached this one (review round 1, finding 3).
+ */
+const waitingOn = (line: PurchaseLine, item: ReceivedItem) => line.paidBy !== item.owner && newerThan(line, item.asOf);
+
 export function sharedItemView(item: ReceivedItem, purchases: readonly PurchaseLine[], ownerName: string): SharedItemView {
-  const lines = linesPaidFrom(purchases, item).map((line) => ({ ...line, pending: newerThan(line, item.asOf) }));
+  const lines = linesPaidFrom(purchases, item).map((line) => ({ ...line, pending: waitingOn(line, item) }));
   const waiting = lines.filter((line) => line.pending);
   // Only purchases in the item's own currency move its balance here; another currency is the owner's phone to convert.
   const waitingMinor = waiting.reduce((sum, line) => (line.currency === item.currency ? sum + line.amountMinor : sum), 0);
@@ -76,7 +84,7 @@ export function sharedItemView(item: ReceivedItem, purchases: readonly PurchaseL
   return {
     name: item.name,
     balance: { minor: item.balanceMinor, currency: item.currency },
-    chart: { values: [...item.monthEnds.map((end) => end.balanceMinor), item.balanceMinor], months: [...item.monthEnds.map((end) => end.month), item.asOf.slice(0, 7)] },
+    chart: chartOf(item),
     lines,
     otherUse,
     bar,
@@ -86,4 +94,11 @@ export function sharedItemView(item: ReceivedItem, purchases: readonly PurchaseL
       notYet: waiting.length === 0 ? null : `${waiting.length} ${waiting.length === 1 ? 'purchase' : 'purchases'} not yet on ${ownerName}'s phone`,
     },
   };
+}
+
+/** The month-ends it sent, then today's balance for the summary's month — once, even if a month-end names it (finding 7). */
+function chartOf(item: ReceivedItem): SharedItemView['chart'] {
+  const current = item.asOf.slice(0, 7);
+  const ends = item.monthEnds.filter((end) => end.month < current);
+  return { values: [...ends.map((end) => end.balanceMinor), item.balanceMinor], months: [...ends.map((end) => end.month), current] };
 }

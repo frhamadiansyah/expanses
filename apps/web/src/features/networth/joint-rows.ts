@@ -45,6 +45,8 @@ export interface JointRows {
   byOwner: Record<string, number | null>;
   /** Every currency with no rate, own and received, sorted. */
   missing: string[];
+  /** Received items with no value on the date asked: older than the month-ends they sent (§5.2). Their owner's part is blank. */
+  noHistory: string[];
 }
 
 /** What a received asset is planned as, by the kind of account it is. Not read by the sheet; kept for its shape. */
@@ -65,13 +67,25 @@ function debtIconOf(subtype: string): DebtIcon {
 const LIABILITY_SUBTYPES = new Set(['credit_card', 'loan', 'payable']);
 
 /**
- * What a received item was worth on `date`: its balance on or after the owner's day, else the month-end it sent for
- * that month (the last 24 travel with it, §5.2). A month older than those reads 0 — the summary holds no more history.
+ * What a received item was worth in `month` (or on `date`): its balance from the owner's day (its month) on, else the
+ * month-end it sent for that month (the last 24 travel with it, §5.2). A month older than those is unknown — null,
+ * never 0: the summary holds no more history, and a 0 would be a figure made up (review round 1, finding 6).
  */
-function balanceOn(item: ReceivedItem, date: string | undefined): number {
+function balanceOn(item: ReceivedItem, date: string | undefined): number | null {
   if (date === undefined || date >= item.asOf) return item.balanceMinor;
-  const month = date.slice(0, 7);
-  return item.monthEnds.find((end) => end.month === month)?.balanceMinor ?? 0;
+  return monthEndOf(item, date.slice(0, 7));
+}
+
+function monthEndOf(item: ReceivedItem, month: string): number | null {
+  if (month >= item.asOf.slice(0, 7)) return item.balanceMinor;
+  return item.monthEnds.find((end) => end.month === month)?.balanceMinor ?? null;
+}
+
+/** An item's amount in the base currency: null with no rate for its currency. A zero needs no rate. */
+function toBase(nativeMinor: number, currency: string, baseCurrency: string, ratesToBase: Record<string, number>): number | null {
+  if (currency === baseCurrency || nativeMinor === 0) return nativeMinor;
+  const rate = ratesToBase[currency];
+  return rate !== undefined && rate > 0 ? convertMinor(nativeMinor, currency, baseCurrency, rate) : null;
 }
 
 /**
@@ -80,12 +94,22 @@ function balanceOn(item: ReceivedItem, date: string | undefined): number {
  * with its native balance and blanks its owner's subtotal and the total). `date`, when earlier than a summary's day,
  * reads that item's month-end instead of today's balance.
  */
-export function jointRows(own: OwnSheet, received: readonly ReceivedItem[], me: string, ratesToBase: Record<string, number>, baseCurrency: string, date?: string): JointRows {
+export function jointRows(
+  own: OwnSheet,
+  received: readonly ReceivedItem[],
+  me: string,
+  ratesToBase: Record<string, number>,
+  baseCurrency: string,
+  { date, members = [] }: { date?: string; members?: readonly string[] } = {},
+): JointRows {
   const rows: JointRows['rows'] = [];
   const assets: JointRows['assets'] = [];
   const liabilities: JointRows['liabilities'] = [];
+  // Every member of the group has a part, 0 until they share something: a legend's dash means "cannot tell", not "none".
   const byOwner: Record<string, number | null> = { [me]: 0 };
+  for (const member of members) byOwner[member] = 0;
   const missing = new Set<string>(own.missing);
+  const noHistory: string[] = [];
   const add = (owner: string, minor: number | null) => {
     const current = owner in byOwner ? byOwner[owner]! : 0;
     byOwner[owner] = current === null || minor === null ? null : current + minor;
@@ -105,14 +129,11 @@ export function jointRows(own: OwnSheet, received: readonly ReceivedItem[], me: 
   if (own.missing.length > 0) byOwner[me] = null;
 
   for (const item of received) {
-    const nativeMinor = balanceOn(item, date);
-    let amountMinor: number | null;
-    if (item.currency === baseCurrency || nativeMinor === 0) amountMinor = nativeMinor;
-    else {
-      const rate = ratesToBase[item.currency];
-      amountMinor = rate !== undefined && rate > 0 ? convertMinor(nativeMinor, item.currency, baseCurrency, rate) : null;
-    }
-    if (amountMinor === null) missing.add(item.currency);
+    const known = balanceOn(item, date);
+    if (known === null) noHistory.push(item.name);
+    const nativeMinor = known ?? 0;
+    const amountMinor = known === null ? null : toBase(known, item.currency, baseCurrency, ratesToBase);
+    if (known !== null && amountMinor === null) missing.add(item.currency);
     const side = item.kind === 'liability' ? 'liability' : 'asset';
     rows.push({ accountId: item.itemId, side, name: item.name, subtype: item.subtype, currency: item.currency, nativeMinor, amountMinor, received: true, owner: item.owner });
     if (side === 'asset') {
@@ -126,14 +147,41 @@ export function jointRows(own: OwnSheet, received: readonly ReceivedItem[], me: 
       }
       const subtype = (LIABILITY_SUBTYPES.has(item.subtype) ? item.subtype : 'loan') as SheetLiability['subtype'];
       const owed = amountMinor ?? 0;
-      liabilities.push({ accountId: item.itemId, name: item.name, subtype, balanceMinor: owed, dueWithinYearMinor: owed, note: null, item: null, icon: debtIconOf(item.subtype), owner: item.owner });
+      // Not due within a year: a summary carries no schedule, so nothing is said about when it falls due (the sheet
+      // lists it as long-term; its whole balance still counts in what is owed). Review round 1, finding 5.
+      liabilities.push({ accountId: item.itemId, name: item.name, subtype, balanceMinor: owed, dueWithinYearMinor: 0, note: null, item: null, icon: debtIconOf(item.subtype), owner: item.owner });
       add(item.owner, amountMinor === null ? null : -amountMinor);
     }
   }
 
   const parts = Object.values(byOwner);
   const totalMinor = missing.size > 0 || parts.some((part) => part === null) ? null : parts.reduce<number>((sum, part) => sum + part!, 0);
-  return { rows, assets, liabilities, totalMinor, byOwner, missing: [...missing].sort() };
+  return { rows, assets, liabilities, totalMinor, byOwner, missing: [...missing].sort(), noHistory };
+}
+
+/**
+ * A drawer's or section's figure: its total, or blank when any row in it has no base figure — a received row with no
+ * rate is drawn in its own currency, and a sum that counted it as 0 would be short (review round 1, finding 2).
+ */
+export function figureOf(totalMinor: number, accountIds: readonly string[], unrated: ReadonlySet<string>): number | null {
+  return accountIds.some((id) => unrated.has(id)) ? null : totalMinor;
+}
+
+/**
+ * What the Net worth page may show (review round 1, finding 1): `personal` only once the group is known not to file
+ * jointly; `joint` once the household's inputs are all in; otherwise it holds (`pending`) or says it failed (`error`),
+ * so a personal figure is never drawn where the household's belongs.
+ */
+export type JointStatus = 'personal' | 'pending' | 'error' | 'joint';
+export function jointStatus(p: {
+  group: { pending: boolean; error: unknown; mode: 'joint' | 'separate' | null };
+  inputs: { pending: boolean; error: unknown };
+}): JointStatus {
+  if (p.group.error) return 'error';
+  if (p.group.pending) return 'pending';
+  if (p.group.mode !== 'joint') return 'personal';
+  if (p.inputs.error) return 'error';
+  return p.inputs.pending ? 'pending' : 'joint';
 }
 
 /**
@@ -155,15 +203,17 @@ export function jointSeries(points: readonly NetWorthPoint[], received: readonly
   return points.map((point) => {
     let assets = 0;
     let owed = 0;
+    let unknown = false;
     const missing = new Set(point.missing);
     const stack = point.stack ? { assets: { ...point.stack.assets }, liabilities: { ...point.stack.liabilities } } : null;
     for (const item of received) {
-      const native = point.month >= item.asOf.slice(0, 7) ? item.balanceMinor : (item.monthEnds.find((end) => end.month === point.month)?.balanceMinor ?? 0);
-      let minor: number | null = native;
-      if (item.currency !== baseCurrency && native !== 0) {
-        const rate = ratesToBase[item.currency];
-        minor = rate !== undefined && rate > 0 ? convertMinor(native, item.currency, baseCurrency, rate) : null;
+      const native = monthEndOf(item, point.month);
+      // Older than the month-ends it sent: the month cannot be told, so it has no figure and the line breaks there.
+      if (native === null) {
+        unknown = true;
+        continue;
       }
+      const minor = toBase(native, item.currency, baseCurrency, ratesToBase);
       if (minor === null) {
         missing.add(item.currency);
         continue;
@@ -177,7 +227,7 @@ export function jointSeries(points: readonly NetWorthPoint[], received: readonly
         if (stack) stack.assets[sheetSectionOf({ code: null, subtype: item.subtype })] += minor;
       }
     }
-    if (missing.size > point.missing.length || point.netWorthMinor === null) {
+    if (unknown || missing.size > point.missing.length || point.netWorthMinor === null) {
       return { ...point, assetsMinor: null, liabilitiesMinor: null, netWorthMinor: null, missing: [...missing].sort(), stack: null };
     }
     return {

@@ -1,7 +1,7 @@
 import { balanceSheet, type ItemSummary } from '@expanses/core';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { jointRows, jointSeries, ownerRing, type ReceivedItem } from './joint-rows';
+import { figureOf, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem } from './joint-rows';
 import { rowKindOf, sheetDrawers } from './sheet-drawers';
 
 const RINA = 'm-rina';
@@ -104,8 +104,8 @@ describe('jointRows (spec §8.2, D12)', () => {
 
   it('on an earlier date a received item reads its month-end value (health ratios for a past year)', () => {
     const received = [item({ itemId: 'i-idr', balanceMinor: 9_000_000, monthEnds: [{ month: '2025-12', balanceMinor: 7_000_000 }] })];
-    expect(jointRows(own, received, RINA, {}, 'IDR', '2025-12-31').byOwner[ANDI]).toBe(7_000_000);
-    expect(jointRows(own, received, RINA, {}, 'IDR', '2026-09-30').byOwner[ANDI]).toBe(9_000_000);
+    expect(jointRows(own, received, RINA, {}, 'IDR', { date: '2025-12-31' }).byOwner[ANDI]).toBe(7_000_000);
+    expect(jointRows(own, received, RINA, {}, 'IDR', { date: '2026-09-30' }).byOwner[ANDI]).toBe(9_000_000);
   });
 
   it('property: the total is the sum of the owners’ subtotals and of the balance sheet it feeds', () => {
@@ -125,6 +125,51 @@ describe('jointRows (spec §8.2, D12)', () => {
         expect(balanceSheet(joint.assets, joint.liabilities).netWorthMinor).toBe(joint.totalMinor);
       }),
     );
+  });
+});
+
+describe('jointRows, review round 1', () => {
+  it('a member with nothing shared yet reads 0 in the legend, not a dash (finding 4)', () => {
+    expect(jointRows(own, [], RINA, {}, 'IDR', { members: [RINA, ANDI] }).byOwner).toEqual({ [RINA]: 58_800_000, [ANDI]: 0 });
+  });
+
+  it('a received debt is never due within a year: its summary carries no schedule (finding 5)', () => {
+    const joint = jointRows(own, [item({ itemId: 'i-loan', kind: 'liability', subtype: 'loan', balanceMinor: 20_000_000 })], RINA, {}, 'IDR');
+    const sheet = balanceSheet(joint.assets, joint.liabilities);
+    expect(sheet.shortTerm.rows.some((row) => row.accountId === 'i-loan')).toBe(false);
+    expect(sheet.longTerm.rows.find((row) => row.accountId === 'i-loan')?.amountMinor).toBe(20_000_000);
+    expect(sheet.netWorthMinor).toBe(joint.totalMinor);
+  });
+
+  it('a date older than the month-ends an item sent is unknown, not 0 (finding 6)', () => {
+    const received = [item({ itemId: 'i-idr', name: 'Andi BCA', balanceMinor: 9_000_000, monthEnds: [{ month: '2025-12', balanceMinor: 7_000_000 }] })];
+    const joint = jointRows(own, received, RINA, {}, 'IDR', { date: '2023-12-31' });
+    expect(joint.byOwner[ANDI]).toBeNull();
+    expect(joint.totalMinor).toBeNull();
+    expect(joint.missing).toEqual([]);
+    expect(joint.noHistory).toEqual(['Andi BCA']);
+    expect(joint.rows.find((row) => row.accountId === 'i-idr')?.amountMinor).toBeNull();
+  });
+
+  it('a figure over rows any of which has no rate is blank, never a sum that counts it as 0 (finding 2)', () => {
+    expect(figureOf(500, ['a', 'b'], new Set())).toBe(500);
+    expect(figureOf(500, ['a', 'b'], new Set(['b']))).toBeNull();
+    expect(figureOf(500, ['a'], new Set(['b']))).toBe(500);
+  });
+});
+
+describe('jointStatus (finding 1: the personal total is never shown as the household\'s)', () => {
+  const settled = { pending: false, error: null };
+  it('is personal only once the group is known not to file jointly', () => {
+    expect(jointStatus({ group: { pending: false, error: null, mode: null }, inputs: settled })).toBe('personal');
+    expect(jointStatus({ group: { pending: false, error: null, mode: 'separate' }, inputs: settled })).toBe('personal');
+  });
+  it('holds while the group or the joint inputs are loading, and says so on an error', () => {
+    expect(jointStatus({ group: { pending: true, error: null, mode: null }, inputs: settled })).toBe('pending');
+    expect(jointStatus({ group: { pending: false, error: new Error('x'), mode: null }, inputs: settled })).toBe('error');
+    expect(jointStatus({ group: { pending: false, error: null, mode: 'joint' }, inputs: { pending: true, error: null } })).toBe('pending');
+    expect(jointStatus({ group: { pending: false, error: null, mode: 'joint' }, inputs: { pending: true, error: new Error('rates') } })).toBe('error');
+    expect(jointStatus({ group: { pending: false, error: null, mode: 'joint' }, inputs: settled })).toBe('joint');
   });
 });
 
@@ -157,6 +202,11 @@ describe('jointSeries (the household line under a household total)', () => {
     expect(series.map((p) => p.netWorthMinor)).toEqual([100 + 7_000 - 3_000, 200 + 9_000 - 2_000]);
     expect(series[1]!.stack!.assets.liquid).toBe(200 + 9_000);
     expect(series[1]!.stack!.liabilities.loan).toBe(2_000);
+  });
+
+  it('a month older than the month-ends an item sent has no figure (finding 6)', () => {
+    const series = jointSeries([point('2023-01', 100)], [item({ itemId: 'i-bank', balanceMinor: 9_000, monthEnds: [{ month: '2026-08', balanceMinor: 7_000 }] })], {}, 'IDR');
+    expect(series[0]).toMatchObject({ netWorthMinor: null, stack: null });
   });
 
   it('a month a received item has no rate for has no figure and names the currency', () => {

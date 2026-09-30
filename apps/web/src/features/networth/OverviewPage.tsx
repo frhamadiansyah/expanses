@@ -15,7 +15,7 @@ import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { memberName, useJointSheet, useNetWorthSeries, useSheet } from './queries';
-import { jointSeries, ownerRing } from './joint-rows';
+import { figureOf, jointSeries, ownerRing } from './joint-rows';
 import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 
@@ -106,6 +106,7 @@ function SheetColumn({
   open,
   onToggle,
   ownerOf,
+  unrated = NONE,
 }: {
   title: string;
   groups: SheetGroup[];
@@ -130,6 +131,8 @@ function SheetColumn({
   onToggle: (key: string) => void;
   /** Whose each row is, when the household files jointly (§8.2); absent on a personal sheet. */
   ownerOf?: OwnerOf;
+  /** Rows with no base figure (a received item with no rate): drawn in their own currency, their totals blank. */
+  unrated?: ReadonlySet<string>;
 }) {
   return (
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
@@ -151,7 +154,7 @@ function SheetColumn({
                 /* What is inside, counted — the accounts the section is made of. Which *kinds* they are is what
                    opening it says, so that is not repeated in the count. */
                 under={`${held} ${held === 1 ? 'account' : 'accounts'}`}
-                figure={<Money minor={group.totalMinor} currency={currency} />}
+                figure={<SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}
                 open={shown}
                 /* A hairline above every section but the box's first: with the section headers inside the box, the
                    line is what tells one section from the next. */
@@ -160,19 +163,19 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated)}</div>] : []),
             ];
           })}
         </InsetGroup>
       ) : (
         groups.map((group) =>
           group.rows.length === 0 ? (
-            !oneGroupOnly && <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
+            !oneGroupOnly && <PanelHeader key={group.key} title={group.label} trailing={<SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />} />
           ) : (
             /* Marked by its own key, so a spec can say which section a row was drawn in. */
             <div key={group.key} data-testid={`sheet-section-${group.key}`}>
-              <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <Money minor={group.totalMinor} currency={currency} />}>
-                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf)}
+              <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}>
+                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated)}
               </InsetGroup>
             </div>
           ),
@@ -195,6 +198,15 @@ interface RowOwner {
   ring: string | null;
   name: string;
   received: boolean;
+  /** Set when the row has no base figure: its own balance, in its own currency (review round 1, finding 2). */
+  native: { minor: number; currency: string } | null;
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/** A total on the sheet, or a dash when a row under it has no rate: never a sum that counted that row as 0. */
+function SheetFigure({ minor, currency }: { minor: number | null; currency: string }) {
+  return minor === null ? <span className="text-[var(--ph-ink-3)]">—</span> : <Money minor={minor} currency={currency} />;
 }
 type OwnerOf = (accountId: string) => RowOwner | null;
 
@@ -206,6 +218,8 @@ type OwnerOf = (accountId: string) => RowOwner | null;
  */
 function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null) {
   const shared = owner?.received === true;
+  const shownMinor = owner?.native?.minor ?? row.amountMinor;
+  const shownCurrency = owner?.native?.currency ?? currency;
   return (
     <InsetRow
       key={row.accountId}
@@ -223,10 +237,10 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
         )
       }
       subtitle={row.note ?? undefined}
-      value={<Money minor={row.amountMinor} currency={currency} />}
+      value={<Money minor={shownMinor} currency={shownCurrency} />}
       valueTone="ink"
       chevron={shared ? undefined : false}
-      label={shared ? `${owner.name}'s ${row.name}, ${formatMinor(row.amountMinor, currency)}` : undefined}
+      label={shared ? `${owner.name}'s ${row.name}, ${formatMinor(shownMinor, shownCurrency)}` : undefined}
       testId={owner ? `sheet-row-${row.accountId}` : undefined}
       {...(shared ? { to: '/net-worth/shared/$itemId' as const, params: { itemId: row.accountId } } : {})}
     />
@@ -242,6 +256,7 @@ function fold(
   onToggle: (key: string) => void,
   currency: string,
   ownerOf?: OwnerOf,
+  unrated: ReadonlySet<string> = NONE,
 ) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
@@ -255,7 +270,7 @@ function fold(
         label={drawer.label}
         /* A count, because the drawer is what says how many accounts a kind is made of. */
         under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'account' : 'accounts'}`}
-        figure={<Money minor={drawer.totalMinor} currency={currency} />}
+        figure={<SheetFigure minor={figureOf(drawer.totalMinor, drawer.rows.map((row) => row.accountId), unrated)} currency={currency} />}
         open={shown}
         separator={index > 0}
         testId={`type-drawer-${key}`}
@@ -297,9 +312,16 @@ export function OverviewPage() {
    * same drawers, the figure and its line are the household's, and each row's ring says whose it is. Separate, or no
    * group: null, and the page is personal exactly as it was.
    */
-  const joint = useJointSheet().data;
+  const household = useJointSheet();
+  const joint = household.data;
+  /*
+   * Until the page knows whether the household files jointly — or while the household's inputs load, or when they fail
+   * — the figure, the line and the sheet are held: a personal total must never stand where the household's belongs
+   * (review round 1, finding 1).
+   */
+  const holding = household.status === 'pending' || household.status === 'error';
 
-  const points = joint ? jointSeries(series.data ?? [], joint.received, joint.ratesToBase, ws.baseCurrency) : (series.data ?? []);
+  const points = holding ? [] : joint ? jointSeries(series.data ?? [], joint.received, joint.ratesToBase, ws.baseCurrency) : (series.data ?? []);
   // The range the line is drawn over, out of the same snapshots the figure is: what is drawn is what is summed.
   const shown = spanSlice(points, span);
   const from = shown[0];
@@ -310,12 +332,21 @@ export function OverviewPage() {
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
   const sheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
   const owners = new Map((joint?.rows ?? []).map((row) => [row.accountId, row]));
+  const unrated = new Set((joint?.rows ?? []).filter((row) => row.amountMinor === null).map((row) => row.accountId));
   const ownerOf: OwnerOf | undefined = joint
     ? (accountId) => {
         const row = owners.get(accountId);
-        return row ? { ring: ownerRing(joint.members, row.owner), name: memberName(joint.names, row.owner), received: row.received } : null;
+        if (!row) return null;
+        const native = row.amountMinor === null ? { minor: row.nativeMinor, currency: row.currency } : null;
+        return { ring: ownerRing(joint.members, row.owner), name: memberName(joint.names, row.owner), received: row.received, native };
       }
     : undefined;
+  /*
+   * An own row with no rate reads 0 (it carries no figure of its own), so the sheet is not drawn then, as always. A
+   * received row carries its own balance, so with only those missing a rate the household's sheet is still drawn,
+   * each such row in its own currency and every total over it blank.
+   */
+  const sheetBlocked = joint ? joint.ownMissing.length > 0 : sheetMissing.length > 0;
 
   const waitingCount = waiting.items.length + waiting.warnings.length;
   /*
@@ -355,7 +386,7 @@ export function OverviewPage() {
     { key: 'debts', label: 'Liabilities', to: '/net-worth/loans' },
   ];
 
-  const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
+  const nothingYet = !holding && series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
   // The two things the empty state reads: whether there is any money account to add up at all.
   const accounts = useAccounts();
@@ -437,7 +468,7 @@ export function OverviewPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Net worth" actions={actions} max={3} />
-      <ErrorBox error={series.error ?? sheetInputs.error ?? waiting.error} />
+      <ErrorBox error={series.error ?? sheetInputs.error ?? waiting.error ?? household.error} />
 
       {nothingYet && (
         <Empty>
@@ -488,7 +519,10 @@ export function OverviewPage() {
         </div>
         <div className="px-4 md:px-0">
           <div data-testid="net-worth">
-            {sheetMissing.length > 0 ? (
+            {holding ? (
+              /* Held, not blank-and-personal: the kit's figure with no amount yet. */
+              <Hero minor={null} currency={ws.baseCurrency} />
+            ) : sheetMissing.length > 0 ? (
               <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
             ) : (
               <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} change={rangeChange(shown)} caption={covered} />
@@ -562,7 +596,7 @@ export function OverviewPage() {
        * Not drawn while a rate is missing: a pair of figures built from rows that read 0 would be two more things to
        * read past, and the sheet below says which rate it is waiting on.
        */}
-      {sheetMissing.length === 0 && (
+      {!holding && sheetMissing.length === 0 && (
         <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
           <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
             <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Assets</p>
@@ -586,12 +620,19 @@ export function OverviewPage() {
        */}
       <section className="mb-[18px]">
         {/* A row with no rate reads 0 here, so its totals would be short: the missing rate is named instead. */}
-        {sheetMissing.length > 0 ? (
+        {holding ? null : sheetBlocked ? (
           <Panel wide>
             <p data-testid="balance-sheet-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so the balance sheet cannot be added up.</p>
           </Panel>
         ) : (
         <>
+        {sheetMissing.length > 0 && (
+          <Panel wide className="mb-[18px]">
+            <p data-testid="balance-sheet-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">
+              No {sheetMissing.join(', ')} rate yet, so the household's totals cannot be added up. Those items show in their own currency.
+            </p>
+          </Panel>
+        )}
         {/*
          * A column gap and no row gap: stacked on a phone, the two sides are told apart by the group's own 18 px
          * margin — the same breathing room every other seam on this page has — and a grid row gap on top of it made
@@ -609,6 +650,7 @@ export function OverviewPage() {
             open={openDrawers}
             onToggle={toggleDrawer}
             ownerOf={ownerOf}
+            unrated={unrated}
           />
           <SheetColumn
             title="Liabilities"
@@ -620,6 +662,7 @@ export function OverviewPage() {
             open={openDrawers}
             onToggle={toggleDrawer}
             ownerOf={ownerOf}
+            unrated={unrated}
           />
         </div>
         </>
