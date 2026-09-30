@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { CircleUser, SquarePlus } from 'lucide-react';
+import { Plus, UserRound } from 'lucide-react';
 import { cx } from '../ui';
 import { TABS } from './nav';
 
@@ -7,8 +7,8 @@ import { TABS } from './nav';
  * The phone's tab bar: a capsule floating over the page rather than a strip welded to its foot.
  *
  * Icons alone, evenly spaced, names carried for screen readers rather than printed. The tab you are on
- * wears a filled pill behind its icon; the + is an icon the same size as the rest, because recording a
- * purchase is the commonest thing to do here, not the loudest.
+ * wears a filled pill behind its icon. The + is a filled circle in the app's green: recording a purchase is the
+ * commonest thing done here, so the thumb finds it without looking, and everything else on the bar stays quiet.
  */
 export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; onAccount: () => void; accountOpen: boolean }) {
   /*
@@ -33,7 +33,9 @@ export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; o
           </Link>
         ))}
         <button type="button" onClick={onAdd} aria-label="Add a transaction" className={cell}>
-          <SquarePlus size={24} strokeWidth={1.9} aria-hidden />
+          <span aria-hidden className="flex size-9 items-center justify-center rounded-full bg-[var(--ph-tint)] text-white">
+            <Plus size={20} strokeWidth={2.4} />
+          </span>
         </button>
         {TABS.slice(2).map((tab) => (
           <Link key={tab.to} to={tab.to} className={cell} aria-label={tab.label} activeProps={{ className: here, 'aria-current': 'page' }}>
@@ -41,7 +43,7 @@ export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; o
           </Link>
         ))}
         <button type="button" onClick={onAccount} aria-expanded={accountOpen} aria-label="Account" className={cx(cell, accountOpen && here)}>
-          <CircleUser size={24} strokeWidth={1.9} aria-hidden />
+          <UserRound size={24} strokeWidth={1.9} aria-hidden />
         </button>
       </nav>
     </div>
