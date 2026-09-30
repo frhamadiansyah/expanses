@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { SPENDABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -44,6 +45,7 @@ import { SetAsidePanel } from '../networth/SetAsidePanel';
 import { useAssetProfiles, useAssetValues, useDepositAutomation, usePositions } from '../networth/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { buildRows } from '../transactions/list-model';
+import { TransactionCard } from '../transactions/TransactionCard';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { BalanceCard } from './BalanceCard';
@@ -86,6 +88,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const balances = useBalances();
   const profiles = useAssetProfiles();
   const [actionError, setActionError] = useState<unknown>(null);
+  const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
   const pocketIds = pockets?.map((p) => p.id) ?? [];
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
   const rates = useHeldRates(currencies);
@@ -171,7 +174,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
-        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency)} />
+        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, setNewTx)} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
@@ -206,6 +209,11 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       <ShareWithHouseholdRow accountId={account.id} />
       {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
       {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
+      {newTx && (
+        <Sheet grouped tall title={NEW_TX_TITLE[newTx.mode]} onClose={() => setNewTx(null)}>
+          <TransactionCard fixedMode mode={newTx.mode} seed={{ moneyId: newTx.account, toId: newTx.to }} onDone={() => setNewTx(null)} />
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -282,15 +290,11 @@ function usePageMenu(
  * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
  * Adding another currency is the last row of its Pockets list.
  */
-function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurrency: string): RoundAction[] {
+function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurrency: string, open: (draft: NewTxDraft) => void): RoundAction[] {
   const id = account.id;
-  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], search: { mode: 'expense' | 'income' | 'transfer'; account?: string; to?: string }): RoundAction => ({
-    key,
-    label,
-    glyph,
-    to: '/transactions/new',
-    search,
-  });
+  // The form opens as a sheet over the account, not a screen of its own: the account stays underneath, and saving or
+  // closing lands back on it with its balance and Recent already showing the new row.
+  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], draft: NewTxDraft): RoundAction => ({ key, label, glyph, run: () => open(draft) });
   if (pockets) {
     // Spent, received and moved from a pocket: the one in the workspace's own currency, or the first — the form's
     // Paid with, Received into and From still switch to any other.
@@ -331,6 +335,16 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
       {rate !== undefined && rates?.stale.includes(currency) && ' (last known)'}
     </span>
   );
+}
+
+/** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
+const NEW_TX_TITLE: Record<NewTxDraft['mode'], string> = { expense: 'New expense', income: 'New income', transfer: 'New transfer' };
+
+/** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */
+interface NewTxDraft {
+  mode: 'expense' | 'income' | 'transfer';
+  account?: string;
+  to?: string;
 }
 
 /**

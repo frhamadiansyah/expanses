@@ -115,6 +115,8 @@ export function TransactionCard(props: {
   mode?: FormMode;
   /** A new transaction's accounts, filled in before the form opens: the page it was opened from knows them. */
   seed?: { moneyId?: string; toId?: string };
+  /** Opened for one kind only (Spend, Receive, Transfer on an account): no tabs, the sheet's title says which. */
+  fixedMode?: boolean;
   onDone: () => void;
   full?: boolean;
   label?: string;
@@ -144,6 +146,7 @@ function CardBody({
   initial,
   mode,
   seed,
+  fixedMode,
   onDone,
   full,
   label,
@@ -155,6 +158,7 @@ function CardBody({
   initial?: TransactionView;
   mode?: FormMode;
   seed?: { moneyId?: string; toId?: string };
+  fixedMode?: boolean;
   onDone: () => void;
   full?: boolean;
   /** The form's accessible name, on a screen of its own where no sheet's title names it. */
@@ -552,9 +556,11 @@ function CardBody({
     <form ref={formRef} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
       {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
-        <div className="px-3 pt-[10px] pb-[6px]">
-          <SegmentedControl label="What this is" segments={modes} value={draft.mode} onChange={(key) => chooseMode(key as FormMode)} />
-        </div>
+        {!fixedMode && (
+          <div className="px-3 pt-[10px] pb-[6px]">
+            <SegmentedControl label="What this is" segments={modes} value={draft.mode} onChange={(key) => chooseMode(key as FormMode)} />
+          </div>
+        )}
         {draft.mode === 'trade' ? (
           /*
            * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
