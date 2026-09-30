@@ -213,8 +213,8 @@ export function useSharedNetWorth() {
   };
 }
 
-/** A member's name for a line of copy; "Someone" for a member the workspace has not named. */
-export const memberName = (names: Record<string, string>, memberId: string) => names[memberId] ?? 'Someone';
+/** A member's name for a line of copy (pure, in joint-rows.ts so view-models share its fallback). */
+export { memberName } from './joint-rows';
 
 /**
  * The household's balance sheet when the group files jointly (§8.2, D12): own rows read live, as Net worth always has,

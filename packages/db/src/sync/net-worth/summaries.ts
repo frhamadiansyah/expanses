@@ -138,20 +138,25 @@ export async function computeItemSummary(
 
   // Every posted entry on the account, once: dated, signed in the item's sense, whether it is a Household line, and
   // whether it is this phone's side of a transfer between partners (its own part, `transferMinor`; wave 4 review).
+  // The transfer is named by its group-log id (round 2), which every group member holds; the local transaction id never
+  // goes out. A database from before the transfers table (migration 0057) has none.
+  const postings = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'member_transfer_postings'`)).length > 0;
+  const transferOf = postings ? sql`(SELECT p.transfer_id FROM member_transfer_postings p WHERE p.transaction_id = t.id LIMIT 1)` : sql`NULL`;
   const lines = (
-    await tx.values<[string, string, number, number, number]>(sql`
+    await tx.values<[string, string, number, number, string | null]>(sql`
       SELECT t.id, t.occurred_on, e.amount_minor,
              EXISTS (SELECT 1 FROM book_transactions bt WHERE bt.transaction_id = t.id AND bt.book_id = ${workspaceBookId}),
-             EXISTS (SELECT 1 FROM member_transfer_postings p WHERE p.transaction_id = t.id)
+             ${transferOf}
       FROM entries e JOIN transactions t ON t.id = e.transaction_id
       WHERE e.account_id = ${accountId} AND t.status = 'posted'
       ORDER BY t.occurred_on, e.rowid`)
-  ).map(([transactionId, occurredOn, amountMinor, household, transfer]) => ({
+  ).map(([transactionId, occurredOn, amountMinor, household, transferId]) => ({
     transactionId,
     occurredOn,
     amountMinor: sign * Number(amountMinor),
     household: Number(household) !== 0,
-    transfer: Number(transfer) !== 0,
+    transfer: transferId !== null,
+    transferId: transferId ?? undefined,
   }));
   const ledgerAt = (date: string) => lines.reduce((sum, line) => (line.occurredOn <= date ? sum + line.amountMinor : sum), 0);
 
@@ -164,7 +169,7 @@ export async function computeItemSummary(
   const [balanceMinor, openingMinor] = values as [number, number];
   const movements: PeriodMovement[] = lines
     .filter((line) => line.occurredOn >= period.start && line.occurredOn <= today)
-    .map(({ transactionId, amountMinor, household, transfer }) => ({ transactionId, amountMinor, household, transfer }));
+    .map(({ transactionId, amountMinor, household, transfer, transferId }) => ({ transactionId, amountMinor, household, transfer, transferId }));
   const split = splitPeriod(openingMinor, movements);
   const monthEnds: ItemSummary['monthEnds'] = months.map((month, i) => ({ month, balanceMinor: values[i + 2]! }));
 
@@ -186,6 +191,7 @@ export async function computeItemSummary(
     // Anything the ledger lines do not explain (a valued asset's new price) is other use, so the parts add up.
     otherUseMinor: split.otherUseMinor + (balanceMinor - split.closingMinor),
     transferMinor: split.transferMinor,
+    transfers: split.transfers,
     monthEnds,
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today) : null,
   };
@@ -294,6 +300,21 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
   return written;
 }
 
+/**
+ * A peer's `transferMinor` and `transfers` (new in this release; round 2), read defensively: the list only when every
+ * entry is a string id with a whole-number part and they sum to `transferMinor`; otherwise no list, and the figure as
+ * sent when it is a whole number, else 0. With no list, a partner's page shows no "Other transfers" row it cannot vouch for.
+ */
+function transfersOf(summary: Partial<Pick<ItemSummary, 'transferMinor' | 'transfers'>>): Pick<ItemSummary, 'transferMinor' | 'transfers'> {
+  const transferMinor = Number.isSafeInteger(summary.transferMinor) ? summary.transferMinor! : 0;
+  const list = summary.transfers;
+  const good =
+    Array.isArray(list) &&
+    list.every((x) => x !== null && typeof x === 'object' && typeof x.transferId === 'string' && Number.isSafeInteger(x.minor)) &&
+    list.reduce((sum, x) => sum + x.minor, 0) === transferMinor;
+  return { transferMinor, transfers: good ? list.map((x) => ({ transferId: x.transferId, minor: x.minor })) : [] };
+}
+
 /** The items other members share with this device's group (§8.2, §8.3): live ones only, never this member's own. */
 export async function receivedItems(database: Database, groupBookId: string): Promise<(ItemSummary & { itemId: string })[]> {
   const [self] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);
@@ -306,9 +327,7 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
     try {
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
-      // `transferMinor` is new in this release; a summary without a whole number there reads it as none.
-      if (summary && typeof summary === 'object')
-        out.push({ ...summary, transferMinor: Number.isSafeInteger(summary.transferMinor) ? summary.transferMinor : 0, owner, itemId });
+      if (summary && typeof summary === 'object') out.push({ ...summary, ...transfersOf(summary), owner, itemId });
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
     }

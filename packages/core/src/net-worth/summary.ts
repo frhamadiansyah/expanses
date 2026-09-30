@@ -20,6 +20,12 @@ export interface ItemSummary {
    * balance.
    */
   transferMinor: number;
+  /**
+   * The transfers `transferMinor` counted (wave 4 review round 2): each `member_transfer`'s group-log id — an id every
+   * group member already holds, never a local transaction id — with its part, in the item's currency and sense. They
+   * sum to `transferMinor`, so a partner's page can tell exactly which of the transfers it lists the summary holds.
+   */
+  transfers: { transferId: string; minor: number }[];
   monthEnds: { month: string; balanceMinor: number }[];
   /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
   tax: ItemTax;
@@ -31,22 +37,29 @@ export interface PeriodMovement {
   household: boolean;
   /** One side of a transfer between partners (`member_transfer_postings`): counted in `transferMinor`, never elsewhere. */
   transfer?: boolean;
+  /** With `transfer`: the `member_transfer`'s group-log id. */
+  transferId?: string;
 }
 
 /** Splits a period's movements on one item; amounts signed in the item's balance sense (owed for a liability). */
 export function splitPeriod(
   openingMinor: number,
   movements: readonly PeriodMovement[],
-): { householdMinor: number; otherUseMinor: number; transferMinor: number; closingMinor: number } {
+): { householdMinor: number; otherUseMinor: number; transferMinor: number; transfers: ItemSummary['transfers']; closingMinor: number } {
   let householdMinor = 0;
   let otherUseMinor = 0;
   let transferMinor = 0;
+  const byTransfer = new Map<string, number>();
   for (const m of movements) {
-    if (m.transfer === true) transferMinor += m.amountMinor;
-    else if (m.household) householdMinor += m.amountMinor;
+    if (m.transfer === true) {
+      transferMinor += m.amountMinor;
+      const id = m.transferId ?? '';
+      byTransfer.set(id, (byTransfer.get(id) ?? 0) + m.amountMinor);
+    } else if (m.household) householdMinor += m.amountMinor;
     else otherUseMinor += m.amountMinor;
   }
-  return { householdMinor, otherUseMinor, transferMinor, closingMinor: openingMinor + householdMinor + otherUseMinor + transferMinor };
+  const transfers = [...byTransfer].map(([transferId, minor]) => ({ transferId, minor }));
+  return { householdMinor, otherUseMinor, transferMinor, transfers, closingMinor: openingMinor + householdMinor + otherUseMinor + transferMinor };
 }
 
 /** Clamp to [0, 100], rounding to the nearest integer percent. */

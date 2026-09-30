@@ -167,6 +167,7 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
       householdMinor: 50_000_000,
       otherUseMinor: 100_000_000,
       transferMinor: 0,
+      transfers: [],
       balanceMinor: 150_000_000,
       asOf: today,
       // One tax ID (task 10): the card's slice of last year's report, which is empty — it owed nothing on 31 December.

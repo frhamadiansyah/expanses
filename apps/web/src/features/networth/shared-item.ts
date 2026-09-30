@@ -1,5 +1,5 @@
 import { cardBar, formatMinor } from '@expanses/core';
-import type { ReceivedItem } from './joint-rows';
+import { memberName, type ReceivedItem } from './joint-rows';
 
 /*
  * An item of the other's (joint-net-worth spec §8.3, D11, D13): what the read-only page says, worked out here so the
@@ -48,6 +48,8 @@ export interface TransferIn {
   counterpart: { owner: string; itemId: string };
   /** The other side's local name when it is this phone's own item. */
   counterpartName: string | null;
+  /** Voided: no row, but still known as a transfer with you. */
+  void: boolean;
 }
 
 export interface TransferLine {
@@ -73,7 +75,7 @@ export interface TransferLine {
 export function transferLines(transfers: readonly TransferIn[], item: Pick<ReceivedItem, 'kind'>, me: string): TransferLine[] {
   const sense = item.kind === 'liability' ? -1 : 1;
   return transfers
-    .filter((t) => t.counterpart.owner === me)
+    .filter((t) => t.counterpart.owner === me && !t.void)
     .sort((a, b) => (a.occurredOn === b.occurredOn ? a.transferId.localeCompare(b.transferId) : a.occurredOn < b.occurredOn ? -1 : 1))
     .map((t) => {
       const lead = t.direction === 'out' ? 'To you' : 'From you';
@@ -89,13 +91,13 @@ export function transferLines(transfers: readonly TransferIn[], item: Pick<Recei
 }
 
 /**
- * The owner's `transferMinor` less the transfers listed with you that her summary already holds (dated on or before its
- * `asOf`, in the item's currency): transfers with others, one figure. Null when nothing is left, so it is never shown as
- * a zero row (wave 4 review, finding 1: a transfer is counted once, as its row or in this figure, never in other use).
+ * The transfers the owner's summary counted (`item.transfers`, by group-log id) that are not transfers with you: one
+ * figure, exact whatever her phone has applied yet (round 2). A transfer with you — listed, edited or voided since — is
+ * never in it, however its amount now reads; one she has not counted yet is in neither. Null when nothing is left.
  */
-function otherTransfersOf(item: ReceivedItem, lines: readonly TransferLine[]): SharedItemView['otherTransfers'] {
-  const listed = lines.reduce((sum, line) => (line.occurredOn <= item.asOf && line.currency === item.currency ? sum + line.amountMinor : sum), 0);
-  const rest = item.transferMinor - listed;
+function otherTransfersOf(item: ReceivedItem, withYou: readonly TransferIn[], me: string): SharedItemView['otherTransfers'] {
+  const yours = new Set(withYou.filter((t) => t.counterpart.owner === me).map((t) => t.transferId));
+  const rest = item.transfers.reduce((sum, t) => (yours.has(t.transferId) ? sum : sum + t.minor), 0);
   return rest === 0 ? null : { label: 'Other transfers', minor: rest, currency: item.currency };
 }
 
@@ -165,7 +167,7 @@ export function sharedItemView(
     chart: chartOf(item),
     lines,
     transfers,
-    otherTransfers: otherTransfersOf(item, transfers),
+    otherTransfers: withYou ? otherTransfersOf(item, withYou.transfers, withYou.me) : otherTransfersOf(item, [], ''),
     otherUse,
     bar,
     details: {
@@ -197,6 +199,6 @@ export function itemPage(
   const back = shared?.group.mode === 'joint' ? { back: 'Net worth', backTo: '/net-worth' as const } : { back: 'Accounts', backTo: '/accounts' as const };
   const item = shared?.items.find((each) => each.itemId === itemId) ?? null;
   if (!shared || !item) return { item: null, view: null, back };
-  const owner = shared.names[item.owner] ?? 'Someone';
+  const owner = memberName(shared.names, item.owner);
   return { item, view: sharedItemView(item, purchases, owner, { transfers, me: shared.group.me }), back };
 }

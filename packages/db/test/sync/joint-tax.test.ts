@@ -280,6 +280,7 @@ describe('jointCoretaxInputs (property)', () => {
     householdMinor: 0,
     otherUseMinor: 0,
     transferMinor: 0,
+    transfers: [],
     monthEnds: december ? [{ month: `${year}-12`, balanceMinor: 1 }] : [{ month: `${year}-11`, balanceMinor: 1 }],
     tax:
       taxYear === null

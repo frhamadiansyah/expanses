@@ -7,7 +7,7 @@ describe('splitPeriod', () => {
       { transactionId: 't1', amountMinor: 50_000_000, household: true },
       { transactionId: 't2', amountMinor: 100_000_000, household: false },
     ]);
-    expect(r).toEqual({ householdMinor: 50_000_000, otherUseMinor: 100_000_000, transferMinor: 0, closingMinor: 150_000_000 });
+    expect(r).toEqual({ householdMinor: 50_000_000, otherUseMinor: 100_000_000, transferMinor: 0, transfers: [], closingMinor: 150_000_000 });
   });
 
   it('payment in cycle: a payment from her own bank is negative other use', () => {
@@ -15,16 +15,27 @@ describe('splitPeriod', () => {
       { transactionId: 't1', amountMinor: 50_000_000, household: true },
       { transactionId: 'pay', amountMinor: -200_000_000, household: false },
     ]);
-    expect(r).toEqual({ householdMinor: 50_000_000, otherUseMinor: -200_000_000, transferMinor: 0, closingMinor: 50_000_000 });
+    expect(r).toEqual({ householdMinor: 50_000_000, otherUseMinor: -200_000_000, transferMinor: 0, transfers: [], closingMinor: 50_000_000 });
   });
 
   it('a transfer between partners is its own part, never other use (wave 4 review)', () => {
     const r = splitPeriod(1_000_000, [
       { transactionId: 'h', amountMinor: 300_000, household: true },
-      { transactionId: 'x', amountMinor: -5_000_000, household: false, transfer: true },
+      { transactionId: 'x', amountMinor: -5_000_000, household: false, transfer: true, transferId: 'mt-1' },
       { transactionId: 'o', amountMinor: 200_000, household: false },
+      { transactionId: 'y', amountMinor: 1_000_000, household: false, transfer: true, transferId: 'mt-2' },
     ]);
-    expect(r).toEqual({ householdMinor: 300_000, otherUseMinor: 200_000, transferMinor: -5_000_000, closingMinor: -3_500_000 });
+    expect(r).toEqual({
+      householdMinor: 300_000,
+      otherUseMinor: 200_000,
+      transferMinor: -4_000_000,
+      // The group-log transfer ids it counted, each with its part: what lets a partner's page tell listed from other.
+      transfers: [
+        { transferId: 'mt-1', minor: -5_000_000 },
+        { transferId: 'mt-2', minor: 1_000_000 },
+      ],
+      closingMinor: -2_500_000,
+    });
   });
 });
 
@@ -56,7 +67,7 @@ describe('summaryHash', () => {
   it('ignores key order', () => {
     const a = {
       owner: 'r', kind: 'asset', subtype: 'bank', name: 'BCA', currency: 'IDR', balanceMinor: 1, asOf: '2026-09-29', card: null,
-      period: { start: '2026-09-01', end: '2026-09-30' }, openingMinor: 0, householdMinor: 0, otherUseMinor: 1, transferMinor: 0, monthEnds: [], tax: null,
+      period: { start: '2026-09-01', end: '2026-09-30' }, openingMinor: 0, householdMinor: 0, otherUseMinor: 1, transferMinor: 0, transfers: [], monthEnds: [], tax: null,
     } as const;
     const b = Object.fromEntries(Object.entries(a).reverse());
     expect(summaryHash(a as never)).toBe(summaryHash(b as unknown as ItemSummary));

@@ -226,10 +226,12 @@ export interface ItemTransfer {
   counterpart: MemberTransferSide;
   /** The other side's local account name when it is this phone's own item in this group; else null. */
   counterpartName: string | null;
+  /** Voided: listed as no row, but still known as this transfer (a summary made before the void may count it). */
+  void: boolean;
 }
 
 /**
- * The live (non-void) transfers of the group log `groupBookId` dated within `period` with `itemId` on either side, oldest
+ * The transfers (void ones flagged) of the group log `groupBookId` dated within `period` with `itemId` on either side, oldest
  * first. Only group-log rows every member of the group already holds are read; the other side is named only when it is
  * this phone's own item, by its local account name, which never leaves the phone.
  */
@@ -243,22 +245,22 @@ export async function itemTransfers(
   // name comes with it. `CASE WHEN json_valid` guards json_extract, so a malformed row is skipped, never an error.
   const fromItem = sql`CASE WHEN json_valid(m.from_json) THEN json_extract(m.from_json, '$.itemId') END`;
   const toItem = sql`CASE WHEN json_valid(m.to_json) THEN json_extract(m.to_json, '$.itemId') END`;
-  const rows = await database.db.values<[string, string, number, string, string | null, string, string, string | null]>(sql`
-    SELECT m.transfer_id, m.occurred_on, m.amount_minor, m.currency, m.description, m.from_json, m.to_json, a.name
+  const rows = await database.db.values<[string, string, number, string, string | null, string, string, string | null, number]>(sql`
+    SELECT m.transfer_id, m.occurred_on, m.amount_minor, m.currency, m.description, m.from_json, m.to_json, a.name, m.void
     FROM member_transfers m
     LEFT JOIN nw_item_map im ON im.group_book_id = m.book_id
       AND im.item_id = CASE WHEN ${fromItem} = ${itemId} THEN ${toItem} ELSE ${fromItem} END
     LEFT JOIN accounts a ON a.id = im.account_id
-    WHERE m.book_id = ${groupBookId} AND m.void = 0 AND m.occurred_on >= ${period.start} AND m.occurred_on <= ${period.end}
+    WHERE m.book_id = ${groupBookId} AND m.occurred_on >= ${period.start} AND m.occurred_on <= ${period.end}
       AND (${fromItem} = ${itemId} OR ${toItem} = ${itemId})
     ORDER BY m.occurred_on, m.transfer_id`);
   const out: ItemTransfer[] = [];
-  for (const [transferId, occurredOn, amountMinor, currency, description, fromJson, toJson, name] of rows) {
+  for (const [transferId, occurredOn, amountMinor, currency, description, fromJson, toJson, name, voided] of rows) {
     const from = sideOf(fromJson);
     const to = sideOf(toJson);
     if (!from || !to) continue;
     const direction = from.itemId === itemId ? 'out' : 'in';
-    out.push({ transferId, occurredOn, amountMinor: Number(amountMinor), currency, description, direction, counterpart: direction === 'out' ? to : from, counterpartName: name ?? null });
+    out.push({ transferId, occurredOn, amountMinor: Number(amountMinor), currency, description, direction, counterpart: direction === 'out' ? to : from, counterpartName: name ?? null, void: Number(voided) === 1 });
   }
   return out;
 }

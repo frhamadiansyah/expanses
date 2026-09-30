@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { confirmReview, createCardAccount, saveCardTerms, itemTransfers, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
-import { encodeHlc } from '../../src/sync/hlc';
+import { localTick } from '../../src/sync/hlc';
 import { itemIdOf } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet, Op } from '../../src/sync/types';
 import { Household, type Device } from './household';
@@ -85,7 +85,10 @@ function rinaToAndi(s: Setup, amountMinor = 5 * JT) {
 /** One change-set of one op, signed by `from`'s real key, appended straight to the group log's relay book. */
 async function sendToGroup(from: Device, groupBookId: string, member: string, op: Op, at = Date.now()): Promise<void> {
   const [row] = await from.database.db.values<[string, number]>(sql`SELECT relay_book_id, epoch FROM shared_books WHERE book_id = ${groupBookId}`);
-  const cs: ChangeSet = { v: 1, hlc: encodeHlc(at, 0, from.deviceId), member, ops: [op] };
+  // Strictly after anything the sender's device has stamped (its own clock, via localTick), so two forged change-sets in
+  // the same millisecond, or one right after a real write, still order as sent (round 2, finding D).
+  const hlc = await from.database.transaction((tx) => localTick(tx, from.deviceId, at));
+  const cs: ChangeSet = { v: 1, hlc, member, ops: [op] };
   await from.transport.append(row![0], await from.engine.sealer.seal(groupBookId, Number(row![1]), cs));
 }
 
@@ -370,8 +373,11 @@ describe('transfers between partners: review round 1 (task 8)', () => {
     await settle(s.home);
     const period = { start: today, end: today };
 
-    // Andi opens Rina's bank: the rent went out of it to his bank, and his 1 jt came in; the void one is gone.
-    const onAndi = await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, period);
+    // Andi opens Rina's bank: the rent went out of it to his bank, and his 1 jt came in; the void one is read as void
+    // (its page lists no row for it, but knows it was a transfer with him).
+    const all = await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, period);
+    expect(all.filter((t) => t.void).map((t) => t.transferId)).toEqual([gone]);
+    const onAndi = all.filter((t) => !t.void);
     expect(onAndi.map((t) => [t.transferId, t.direction, t.amountMinor, t.currency, t.counterpart, t.counterpartName]).sort()).toEqual(
       [
         [rent, 'out', 5 * JT, 'IDR', { owner: s.andi.memberId, itemId: s.andiItem }, 'Andi Bank'],
@@ -381,7 +387,7 @@ describe('transfers between partners: review round 1 (task 8)', () => {
     expect(onAndi.find((t) => t.transferId === rent)).toMatchObject({ occurredOn: today, description: 'For the rent' });
 
     // Rina opens Andi's bank: the same two, the other way round, against her own bank by its name on her phone.
-    const onRina = await itemTransfers(s.rina.database, s.groupBookId, s.andiItem, period);
+    const onRina = (await itemTransfers(s.rina.database, s.groupBookId, s.andiItem, period)).filter((t) => !t.void);
     expect(onRina.map((t) => [t.transferId, t.direction, t.counterpartName]).sort()).toEqual(
       [
         [rent, 'in', 'Rina Bank'],
@@ -389,8 +395,8 @@ describe('transfers between partners: review round 1 (task 8)', () => {
       ].sort(),
     );
     // The period is filtered here, inclusive at both ends: a period starting or ending today holds them, one before not.
-    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: today, end: '9999-12-31' })).toHaveLength(2);
-    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: today })).toHaveLength(2);
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: today, end: '9999-12-31' })).toHaveLength(3);
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: today })).toHaveLength(3);
     const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
     expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: yesterday })).toEqual([]);
     // A malformed row in the log is skipped, never an error.
@@ -409,9 +415,9 @@ describe('transfers between partners: review round 1 (task 8)', () => {
     await setShareSetting(s.rina.database, card.id, 'total');
     await settle(s.home);
     const cardItem = await itemIdOf(s.groupBookId, card.id);
-    await rinaToAndi(s);
+    const rent = await rinaToAndi(s);
     // Andi pays 1 jt of Rina's card down from his bank.
-    await recordMemberTransfer(s.andi.database, s.bookId, {
+    const down = await recordMemberTransfer(s.andi.database, s.bookId, {
       occurredOn: today,
       amountMinor: 1 * JT,
       currency: 'IDR',
@@ -427,5 +433,31 @@ describe('transfers between partners: review round 1 (task 8)', () => {
     const owed = received.find((i) => i.itemId === cardItem)!;
     expect(owed).toMatchObject({ transferMinor: -1 * JT, otherUseMinor: 0, balanceMinor: -1 * JT });
     for (const item of [bank, owed]) expect(item.openingMinor + item.householdMinor + item.otherUseMinor + item.transferMinor).toBe(item.balanceMinor);
+    // Each carries the group-log ids it counted (round 2): never a local transaction id.
+    expect(bank.transfers).toEqual([{ transferId: rent, minor: -5 * JT }]);
+    expect(owed.transfers).toEqual([{ transferId: down, minor: -1 * JT }]);
+    const local = (await s.rina.database.db.values<[string]>(sql`SELECT transaction_id FROM member_transfer_postings`)).map(([id]) => id);
+    expect(JSON.stringify(received)).not.toMatch(new RegExp(local.join('|')));
+  });
+
+  it('three members: the summary lists Rina’s transfers with Andi and with Sari by id, so Andi’s page can tell his from the rest (round 2)', async () => {
+    const s = await threeInGroup();
+    const sariItem = await itemIdOf(s.groupBookId, s.sari.bank);
+    const withAndi = await recordMemberTransfer(s.rina.database, s.bookId, {
+      occurredOn: today, amountMinor: 5 * JT, currency: 'IDR',
+      from: { owner: s.rina.memberId, itemId: s.rinaItem }, to: { owner: s.andi.memberId, itemId: s.andiItem }, description: null,
+    });
+    const withSari = await recordMemberTransfer(s.rina.database, s.bookId, {
+      occurredOn: today, amountMinor: 2 * JT, currency: 'IDR',
+      from: { owner: s.rina.memberId, itemId: s.rinaItem }, to: { owner: s.sari.memberId, itemId: sariItem }, description: null,
+    });
+    await settle(s.home);
+    const bank = (await receivedItems(s.andi.database, s.groupBookId)).find((i) => i.itemId === s.rinaItem)!;
+    expect(bank.transferMinor).toBe(-7 * JT);
+    expect([...bank.transfers].sort((a, b) => a.transferId.localeCompare(b.transferId))).toEqual(
+      [{ transferId: withAndi, minor: -5 * JT }, { transferId: withSari, minor: -2 * JT }].sort((a, b) => a.transferId.localeCompare(b.transferId)),
+    );
+    // Andi's page lists only his; the one with Sari is the rest, exactly.
+    expect((await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, bank.period)).filter((t) => t.counterpart.owner === s.andi.memberId).map((t) => t.transferId)).toEqual([withAndi]);
   });
 });

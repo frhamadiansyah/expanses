@@ -7,6 +7,7 @@ const movement: fc.Arbitrary<PeriodMovement> = fc.record({
   amountMinor: fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
   household: fc.boolean(),
   transfer: fc.boolean(),
+  transferId: fc.constantFrom('mt-a', 'mt-b', 'mt-c'),
 });
 
 describe('splitPeriod property', () => {
@@ -18,6 +19,10 @@ describe('splitPeriod property', () => {
         const sum = (keep: (m: PeriodMovement) => boolean) => movements.filter(keep).reduce((t, m) => t + m.amountMinor, 0);
         expect(r.transferMinor).toBe(sum((m) => m.transfer === true));
         expect(r.householdMinor).toBe(sum((m) => m.transfer !== true && m.household));
+        // The ids it counted add up to the part, one entry each, and each is that transfer's own movements.
+        expect(r.transfers.reduce((t, x) => t + x.minor, 0)).toBe(r.transferMinor);
+        expect(new Set(r.transfers.map((x) => x.transferId)).size).toBe(r.transfers.length);
+        for (const x of r.transfers) expect(x.minor).toBe(sum((m) => m.transfer === true && m.transferId === x.transferId));
       }),
     );
   });

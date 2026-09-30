@@ -1,6 +1,6 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import type { ReceivedItem } from './joint-rows';
+import { memberName, type ReceivedItem } from './joint-rows';
 import { itemPage, type PurchaseLine, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
 
 const card: ReceivedItem = {
@@ -18,6 +18,7 @@ const card: ReceivedItem = {
   householdMinor: 1_500_000,
   otherUseMinor: 500_000,
   transferMinor: 0,
+  transfers: [],
   monthEnds: [
     { month: '2026-07', balanceMinor: 800_000 },
     { month: '2026-08', balanceMinor: 1_000_000 },
@@ -126,6 +127,7 @@ describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', 
     direction: 'out',
     counterpart: { owner: 'm-andi', itemId: 'i-mandiri' },
     counterpartName: 'Mandiri Tabungan',
+    void: false,
     ...over,
   });
 
@@ -185,19 +187,43 @@ describe('transfers are counted once (wave 4 review, finding 1)', () => {
     direction: 'out',
     counterpart: { owner: 'm-andi', itemId: 'i-mandiri' },
     counterpartName: 'Mandiri Tabungan',
+    void: false,
   };
 
   it('other use stays other use, and no "Other transfers" row when the listed ones are all of them', () => {
-    const view = sharedItemView({ ...bank, otherUseMinor: 300_000, transferMinor: -5_000_000 }, [], 'Rina', { transfers: [mine], me: 'm-andi' });
+    const view = sharedItemView({ ...bank, otherUseMinor: 300_000, transferMinor: -5_000_000, transfers: [{ transferId: 't1', minor: -5_000_000 }] }, [], 'Rina', {
+      transfers: [mine],
+      me: 'm-andi',
+    });
     expect(view.otherUse.text).not.toContain('5.000.000');
     expect(view.otherTransfers).toBeNull();
   });
 
-  it('what the summary holds beyond your transfers is one "Other transfers" row; a listed one newer than the summary is not in it', () => {
-    const late: TransferIn = { ...mine, transferId: 't2', occurredOn: '2026-09-25', amountMinor: 1_000_000 };
-    // −5 jt with you and −2 jt with Sari are in the summary (−7 jt); the late −1 jt is not yet.
-    const view = sharedItemView({ ...bank, transferMinor: -7_000_000 }, [], 'Rina', { transfers: [mine, late], me: 'm-andi' });
+  it('three members: a transfer with Sari that the summary counted is the "Other transfers" row, exactly', () => {
+    const view = sharedItemView(
+      { ...bank, transferMinor: -7_000_000, transfers: [{ transferId: 't1', minor: -5_000_000 }, { transferId: 't-sari', minor: -2_000_000 }] },
+      [],
+      'Rina',
+      { transfers: [mine, { ...mine, transferId: 't-sari', counterpart: { owner: 'm-sari', itemId: 'i-sari' }, counterpartName: null }], me: 'm-andi' },
+    );
+    expect(view.transfers.map((t) => t.key)).toEqual(['t1']);
     expect(view.otherTransfers).toEqual({ label: 'Other transfers', minor: -2_000_000, currency: 'IDR' });
+  });
+
+  it('same-day lag: a transfer dated the summary’s own day that it has not counted yet makes no phantom row', () => {
+    const sameDay: TransferIn = { ...mine, transferId: 't-today', occurredOn: bank.asOf };
+    const view = sharedItemView({ ...bank, transferMinor: 0, transfers: [] }, [], 'Rina', { transfers: [sameDay], me: 'm-andi' });
+    expect(view.transfers).toHaveLength(1);
+    expect(view.otherTransfers).toBeNull();
+  });
+
+  it('an edit not yet on the owner’s phone (5 jt counted, 4 jt listed now) makes no phantom row; nor does a void one', () => {
+    const counted = { ...bank, transferMinor: -5_000_000, transfers: [{ transferId: 't1', minor: -5_000_000 }] };
+    expect(sharedItemView(counted, [], 'Rina', { transfers: [{ ...mine, amountMinor: 4_000_000 }], me: 'm-andi' }).otherTransfers).toBeNull();
+    // Voided since, not yet on her phone: no row of its own, and not "other" either — it was a transfer with you.
+    const view = sharedItemView(counted, [], 'Rina', { transfers: [{ ...mine, void: true }], me: 'm-andi' });
+    expect(view.transfers).toEqual([]);
+    expect(view.otherTransfers).toBeNull();
   });
 
   it('the card bar reads transfers in its other segment, from the owner’s summary', () => {
@@ -220,5 +246,7 @@ describe('itemPage (finding 3: Accounts → "Andi\'s, shared" → the item, in s
     expect(itemPage({ group: { ...group, mode: 'joint' }, items: [card], names: {} }, 'i-visa', [], []).back).toEqual({ back: 'Net worth', backTo: '/net-worth' });
     expect(itemPage({ group, items: [card], names: {} }, 'gone', [], []).view).toBeNull();
     expect(itemPage(null, 'i-visa', [], []).view).toBeNull();
+    // An owner the workspace has not named reads as memberName's fallback.
+    expect(itemPage({ group, items: [card], names: {} }, 'i-visa', [], []).view?.details.owner).toBe(memberName({}, 'm-rina'));
   });
 });

@@ -239,3 +239,6 @@ export function jointSeries(points: readonly NetWorthPoint[], received: readonly
     };
   });
 }
+
+/** A member's name for a line of copy; "Someone" for a member the workspace has not named. */
+export const memberName = (names: Record<string, string>, memberId: string) => names[memberId] ?? 'Someone';

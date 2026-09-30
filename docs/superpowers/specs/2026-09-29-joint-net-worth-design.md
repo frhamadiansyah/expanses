@@ -154,6 +154,7 @@ type ItemSummary = {
   householdMinor: number;     // Household lines in the period, signed
   otherUseMinor: number;      // everything else in the period, signed
   transferMinor: number;      // this phone's sides of transfers between partners in the period (§7.2), signed
+  transfers: { transferId: string; minor: number }[];  // the member_transfer ids transferMinor counted (group-log ids), summing to it
   monthEnds: { month: string; balanceMinor: number }[];  // last 24 month-ends, for the chart and year-end
   tax: TaxRow | null;         // only when the group's mode is joint (§8.4)
 };
@@ -357,9 +358,16 @@ in and − for money out; a debt − for money in (owed less) and + for money ou
 splits them out of other use: `transferMinor` is the period's movements on the item whose transaction is one of this
 phone's `member_transfer` sides (`member_transfer_postings`), in the item's currency and sense, and the invariant is
 `opening + household + otherUse + transfer = balance`. The card bar's other segment is `otherUse + transfer`. The page
-lists the viewer's transfers, then one "Other transfers · total only" row — `transferMinor` less the listed ones dated
-on or before `asOf` in the item's currency — only when that is not zero. Transfers are never flagged "not yet on her
-phone" and the bar does not subtract them. A received summary without a whole-number `transferMinor` reads it as 0.
+lists the viewer's transfers, then one "Other transfers · total only" row, only when it is not zero. Transfers are
+never flagged "not yet on her phone" and the bar does not subtract them.
+
+*Correction (wave 4 review round 2, controller ruling):* the remainder is exact. The summary carries `transfers`, the
+`member_transfer` ids it counted with each one's part (group-log ids every member holds, never a local transaction
+id), summing to `transferMinor`. "Other transfers" is the sum of the entries whose id is not a transfer with the viewer
+(listed, edited or voided since — the read returns void ones flagged, and lists no row for them). A transfer the owner
+has not counted yet is in neither, so a lagging summary never shows a phantom, sign-flipped figure. A received summary
+whose list is malformed, or does not sum to `transferMinor`, is read with no list (so no row); a `transferMinor` that is
+not a whole number reads as 0.
 
 ### 8.4 Tax report
 
