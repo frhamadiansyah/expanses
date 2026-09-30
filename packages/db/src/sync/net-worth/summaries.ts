@@ -142,21 +142,26 @@ export async function computeItemSummary(
   // goes out. A database from before the transfers table (migration 0057) has none.
   const postings = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'member_transfer_postings'`)).length > 0;
   const transferOf = postings ? sql`(SELECT p.transfer_id FROM member_transfer_postings p WHERE p.transaction_id = t.id LIMIT 1)` : sql`NULL`;
+  // An account's opening balance (its transaction has an entry on the `opening_balance` system account) is not activity
+  // in the period: one dated inside it is added to `openingMinor`, never counted as other use (final review item 4).
   const lines = (
-    await tx.values<[string, string, number, number, string | null]>(sql`
+    await tx.values<[string, string, number, number, string | null, number]>(sql`
       SELECT t.id, t.occurred_on, e.amount_minor,
              EXISTS (SELECT 1 FROM book_transactions bt WHERE bt.transaction_id = t.id AND bt.book_id = ${workspaceBookId}),
-             ${transferOf}
+             ${transferOf},
+             EXISTS (SELECT 1 FROM entries oe JOIN accounts oa ON oa.id = oe.account_id
+                     WHERE oe.transaction_id = t.id AND oa.system_key = 'opening_balance' AND oa.workspace_id = ${ws.workspaceId})
       FROM entries e JOIN transactions t ON t.id = e.transaction_id
       WHERE e.account_id = ${accountId} AND t.status = 'posted'
       ORDER BY t.occurred_on, e.rowid`)
-  ).map(([transactionId, occurredOn, amountMinor, household, transferId]) => ({
+  ).map(([transactionId, occurredOn, amountMinor, household, transferId, opening]) => ({
     transactionId,
     occurredOn,
     amountMinor: sign * Number(amountMinor),
     household: Number(household) !== 0,
     transfer: transferId !== null,
     transferId: transferId ?? undefined,
+    opening: Number(opening) !== 0,
   }));
   const ledgerAt = (date: string) => lines.reduce((sum, line) => (line.occurredOn <= date ? sum + line.amountMinor : sum), 0);
 
@@ -166,9 +171,11 @@ export async function computeItemSummary(
   const dates = [today, dayBefore(period.start), ...months.map(monthEnd)];
   const series = kind === 'asset' ? await assetValueSeries(readView(tx), ws, accountId, dates, ledgerAt) : null;
   const values = series ?? dates.map(ledgerAt);
-  const [balanceMinor, openingMinor] = values as [number, number];
-  const movements: PeriodMovement[] = lines
-    .filter((line) => line.occurredOn >= period.start && line.occurredOn <= today)
+  const [balanceMinor, openingBefore] = values as [number, number];
+  const inPeriod = lines.filter((line) => line.occurredOn >= period.start && line.occurredOn <= today);
+  const openingMinor = openingBefore + inPeriod.reduce((sum, line) => (line.opening ? sum + line.amountMinor : sum), 0);
+  const movements: PeriodMovement[] = inPeriod
+    .filter((line) => !line.opening)
     .map(({ transactionId, amountMinor, household, transfer, transferId }) => ({ transactionId, amountMinor, household, transfer, transferId }));
   const split = splitPeriod(openingMinor, movements);
   const monthEnds: ItemSummary['monthEnds'] = months.map((month, i) => ({ month, balanceMinor: values[i + 2]! }));

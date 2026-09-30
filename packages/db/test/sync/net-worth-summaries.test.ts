@@ -448,6 +448,22 @@ describe('computeItemSummary at the edges of a card cycle (task 6 review round 1
     expect(summary.monthEnds.at(-1)).toEqual({ month: '2026-03', balanceMinor: 7_000_000 });
   });
 
+  it('an account opened with a balance inside the period counts it in the opening, never as other use (final review item 4)', async () => {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const bookId = (await personalBook(rina.database, rina.ws)).id;
+    const bank = await createAccount(rina.database, rina.ws, { name: 'New bank', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 5_000_000, openedOn: '2026-04-10' });
+    const groceries = await categoryOf(rina.database, bookId, 'Groceries');
+    await postTransaction(rina.database, rina.ws, {
+      occurredOn: '2026-04-12',
+      description: 'x',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank.id, amountMinor: 1_000_000, currency: 'IDR' }),
+    });
+    const summary = await rina.database.transaction((tx) => computeItemSummary(tx, rina.ws, bank.id, rina.memberId, 'another-book', '2026-04-20'));
+    expect(summary.period).toEqual({ start: '2026-04-01', end: '2026-04-30' });
+    expect(summary).toMatchObject({ openingMinor: 5_000_000, householdMinor: 0, otherUseMinor: -1_000_000, transferMinor: 0, balanceMinor: 4_000_000 });
+  });
+
   it("a valued asset's month-ends are what the Net worth reader says at each month-end", async () => {
     const home = new Household();
     const rina = await home.device('Rina');

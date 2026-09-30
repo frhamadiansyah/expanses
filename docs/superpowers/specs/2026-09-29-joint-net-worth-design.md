@@ -163,6 +163,11 @@ type ItemSummary = {
 Invariant (tested): `openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor`. For a card,
 `available = limitMinor − balanceMinor`, so the partner's limit bar always adds up (the "where did 1 jt go" problem).
 
+*Correction (final review, item 4):* an account's opening-balance entry (a transaction with an entry on the
+`opening_balance` system account) dated inside the period is not activity in it: it is added to `openingMinor` and left
+out of the movements, so it is never counted as other use. `openingMinor` is the balance at `period.start` plus any such
+opening entry in the period.
+
 `TaxRow` is the item's row of the harta or utang list as `coretaxInputsFor` builds it for the latest finished tax year
 (code, acquisition year, cost, value at 31 December), in the shape `@expanses/core` already renders.
 Correction (task 10, code reality): `tax` is `{ taxYear, part: CoretaxRowPart } | null`, where `part` is the item's slice
