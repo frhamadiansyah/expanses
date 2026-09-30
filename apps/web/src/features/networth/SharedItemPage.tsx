@@ -2,7 +2,7 @@ import { formatMinor } from '@expanses/core';
 import { useParams } from '@tanstack/react-router';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
-import { memberName, useHouseholdPurchases, useSharedNetWorth } from './queries';
+import { memberName, useHouseholdPurchases, useItemTransfers, useSharedNetWorth } from './queries';
 import { sharedItemView } from './shared-item';
 import { ValueChart } from './ValueChart';
 
@@ -20,14 +20,15 @@ export function SharedItemPage() {
   const group = shared.data?.group ?? null;
   const item = shared.data?.items.find((each) => each.itemId === itemId) ?? null;
   const purchases = useHouseholdPurchases(group && item ? group.workspaceBookId : null, item ? item.period : null);
+  const transfers = useItemTransfers(group && item ? group.groupBookId : null, item?.itemId ?? null, item ? item.period : null);
   const owner = item && shared.data ? memberName(shared.data.names, item.owner) : '';
-  const view = item ? sharedItemView(item, purchases.data ?? [], owner) : null;
+  const view = item && group ? sharedItemView(item, purchases.data ?? [], owner, { transfers: transfers.data ?? [], me: group.me }) : null;
   const back = group?.mode === 'joint' ? { back: 'Net worth', backTo: '/net-worth' as const } : { back: 'Accounts', backTo: '/accounts' as const };
 
   return (
     <div className={SCREEN}>
       <LargeTitle title={view?.name ?? 'Shared item'} {...back} />
-      <ErrorBox error={shared.error ?? purchases.error} />
+      <ErrorBox error={shared.error ?? purchases.error ?? transfers.error} />
       {!view && !shared.isPending && <Empty>This item is not shared with you any more.</Empty>}
 
       {view && item && (
@@ -54,12 +55,22 @@ export function SharedItemPage() {
             </Panel>
           )}
 
-          <InsetGroup header="Lines you can see" footer={`Household purchases paid from it, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
+          <InsetGroup header="Lines you can see" footer={`Household purchases paid from it and transfers with you, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
             {view.lines.map((line) => (
               <InsetRow
                 key={line.lineageId}
                 title={line.description}
                 subtitle={line.pending ? `${DAY_LABEL(line.occurredOn)} · not yet on ${owner}'s phone` : DAY_LABEL(line.occurredOn)}
+                value={<Money minor={line.amountMinor} currency={line.currency} />}
+                valueTone="ink"
+                chevron={false}
+              />
+            ))}
+            {view.transfers.map((line) => (
+              <InsetRow
+                key={line.key}
+                title={line.title}
+                subtitle={DAY_LABEL(line.occurredOn)}
                 value={<Money minor={line.amountMinor} currency={line.currency} />}
                 valueTone="ink"
                 chevron={false}

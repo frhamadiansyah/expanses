@@ -36,12 +36,58 @@ export function linesPaidFrom(purchases: readonly PurchaseLine[], item: Pick<Rec
     .sort((a, b) => (a.occurredOn === b.occurredOn ? a.lineageId.localeCompare(b.lineageId) : a.occurredOn < b.occurredOn ? -1 : 1));
 }
 
+/** A transfer between partners seen from the item's side, as `itemTransfers` reads it (task 8's `member_transfer`). */
+export interface TransferIn {
+  transferId: string;
+  occurredOn: string;
+  amountMinor: number;
+  currency: string;
+  description: string | null;
+  /** `out` = the item sent it, `in` = the item received it. */
+  direction: 'out' | 'in';
+  counterpart: { owner: string; itemId: string };
+  /** The other side's local name when it is this phone's own item. */
+  counterpartName: string | null;
+}
+
+export interface TransferLine {
+  key: string;
+  /** "To you: Mandiri Tabungan" / "From you: Mandiri Tabungan". */
+  title: string;
+  occurredOn: string;
+  /** Signed as it moved the item: money out of it is negative. */
+  amountMinor: number;
+  currency: string;
+}
+
+/**
+ * The transfers of the item's period between it and one of your own items (first mockup: "To you: Mandiri Tabungan
+ * −5.000.000"). Only transfers with you: one between the owner and a third member is theirs, not a line you are party to.
+ */
+export function transferLines(transfers: readonly TransferIn[], item: Pick<ReceivedItem, 'period'>, me: string): TransferLine[] {
+  return transfers
+    .filter((t) => t.counterpart.owner === me && t.occurredOn >= item.period.start && t.occurredOn <= item.period.end)
+    .sort((a, b) => (a.occurredOn === b.occurredOn ? a.transferId.localeCompare(b.transferId) : a.occurredOn < b.occurredOn ? -1 : 1))
+    .map((t) => {
+      const lead = t.direction === 'out' ? 'To you' : 'From you';
+      return {
+        key: t.transferId,
+        title: t.counterpartName ? `${lead}: ${t.counterpartName}` : lead,
+        occurredOn: t.occurredOn,
+        amountMinor: t.direction === 'out' ? -t.amountMinor : t.amountMinor,
+        currency: t.currency,
+      };
+    });
+}
+
 export interface SharedItemView {
   name: string;
   balance: { minor: number; currency: string };
   chart: { values: number[]; months: string[] };
   /** The Household lines paid from it; `pending` = newer than the summary, so not on the owner's phone yet. */
   lines: (PurchaseLine & { pending: boolean })[];
+  /** Transfers between the item and your own items, in its period. */
+  transfers: TransferLine[];
   otherUse: { label: string; under: string; text: string; credit: boolean };
   /** A card's bar (Household · other use · available), with anything waiting already subtracted. */
   bar: { householdPct: number; otherPct: number; availableMinor: number; limitMinor: number } | null;
@@ -61,7 +107,12 @@ const newerThan = (line: PurchaseLine, asOf: string) => line.occurredOn > asOf |
  */
 const waitingOn = (line: PurchaseLine, item: ReceivedItem) => line.paidBy !== item.owner && newerThan(line, item.asOf);
 
-export function sharedItemView(item: ReceivedItem, purchases: readonly PurchaseLine[], ownerName: string): SharedItemView {
+export function sharedItemView(
+  item: ReceivedItem,
+  purchases: readonly PurchaseLine[],
+  ownerName: string,
+  withYou: { transfers: readonly TransferIn[]; me: string } | null = null,
+): SharedItemView {
   const lines = linesPaidFrom(purchases, item).map((line) => ({ ...line, pending: waitingOn(line, item) }));
   const waiting = lines.filter((line) => line.pending);
   // Only purchases in the item's own currency move its balance here; another currency is the owner's phone to convert.
@@ -91,6 +142,7 @@ export function sharedItemView(item: ReceivedItem, purchases: readonly PurchaseL
     balance: { minor: item.balanceMinor, currency: item.currency },
     chart: chartOf(item),
     lines,
+    transfers: withYou ? transferLines(withYou.transfers, item, withYou.me) : [],
     otherUse,
     bar,
     details: {

@@ -1,7 +1,7 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import type { ReceivedItem } from './joint-rows';
-import { type PurchaseLine, sharedItemView, linesPaidFrom } from './shared-item';
+import { type PurchaseLine, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
 
 const card: ReceivedItem = {
   itemId: 'i-visa',
@@ -111,5 +111,52 @@ describe('sharedItemView', () => {
 
   it('an account that is not a card has no bar', () => {
     expect(sharedItemView({ ...card, kind: 'asset', subtype: 'bank', card: null }, [], 'Rina').bar).toBeNull();
+  });
+});
+
+describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', () => {
+  const bank: ReceivedItem = { ...card, itemId: 'i-bca', kind: 'asset', subtype: 'bank', name: 'BCA Tabungan', card: null, period: { start: '2026-09-01', end: '2026-09-30' } };
+  const transfer = (over: Partial<TransferIn>): TransferIn => ({
+    transferId: 't1',
+    occurredOn: '2026-09-12',
+    amountMinor: 5_000_000,
+    currency: 'IDR',
+    description: null,
+    direction: 'out',
+    counterpart: { owner: 'm-andi', itemId: 'i-mandiri' },
+    counterpartName: 'Mandiri Tabungan',
+    ...over,
+  });
+
+  it('reads "To you: Mandiri Tabungan −5.000.000" for money the item sent you, and "From you" with a plus for money you sent it', () => {
+    const lines = transferLines(
+      [transfer({}), transfer({ transferId: 't2', direction: 'in', amountMinor: 1_000_000, occurredOn: '2026-09-15' })],
+      bank,
+      'm-andi',
+    );
+    expect(lines).toEqual([
+      { key: 't1', title: 'To you: Mandiri Tabungan', occurredOn: '2026-09-12', amountMinor: -5_000_000, currency: 'IDR' },
+      { key: 't2', title: 'From you: Mandiri Tabungan', occurredOn: '2026-09-15', amountMinor: 1_000_000, currency: 'IDR' },
+    ]);
+  });
+
+  it('shows only transfers with you, and only in the item’s period', () => {
+    const lines = transferLines(
+      [
+        transfer({ transferId: 'with-sari', counterpart: { owner: 'm-sari', itemId: 'i-sari' }, counterpartName: null }),
+        transfer({ transferId: 'august', occurredOn: '2026-08-31' }),
+        transfer({ transferId: 'mine' }),
+      ],
+      bank,
+      'm-andi',
+    );
+    expect(lines.map((l) => l.key)).toEqual(['mine']);
+  });
+
+  it('with no local name for your side it still says who, and sharedItemView carries the lines', () => {
+    expect(transferLines([transfer({ counterpartName: null })], bank, 'm-andi')[0]!.title).toBe('To you');
+    const view = sharedItemView(bank, [], 'Rina', { transfers: [transfer({})], me: 'm-andi' });
+    expect(view.transfers.map((t) => t.title)).toEqual(['To you: Mandiri Tabungan']);
+    expect(sharedItemView(bank, [], 'Rina').transfers).toEqual([]);
   });
 });

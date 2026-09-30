@@ -212,6 +212,53 @@ export async function memberTransfersOf(database: Database, transactionIds: read
   return out;
 }
 
+/** A live transfer seen from one item's side (joint-net-worth §8.3 "Lines you can see"; task 9 × task 8). */
+export interface ItemTransfer {
+  transferId: string;
+  occurredOn: string;
+  /** The transfer's amount, in `currency` (always above zero; `direction` says which way it moved the item). */
+  amountMinor: number;
+  currency: string;
+  description: string | null;
+  /** `out` = the item is the transfer's `from` side, `in` = its `to` side. */
+  direction: 'out' | 'in';
+  /** The other side. */
+  counterpart: MemberTransferSide;
+  /** The other side's local account name when it is this phone's own item in this group; else null. */
+  counterpartName: string | null;
+}
+
+/**
+ * The live (non-void) transfers of the group log `groupBookId` dated within `period` with `itemId` on either side, oldest
+ * first. Only group-log rows every member of the group already holds are read; the other side is named only when it is
+ * this phone's own item, by its local account name, which never leaves the phone.
+ */
+export async function itemTransfers(
+  database: Database,
+  groupBookId: string,
+  itemId: string,
+  period: { start: string; end: string },
+): Promise<ItemTransfer[]> {
+  const rows = await database.db.values<[string, string, number, string, string | null, string, string]>(sql`
+    SELECT transfer_id, occurred_on, amount_minor, currency, description, from_json, to_json FROM member_transfers
+    WHERE book_id = ${groupBookId} AND void = 0 AND occurred_on >= ${period.start} AND occurred_on <= ${period.end}
+    ORDER BY occurred_on, transfer_id`);
+  const out: ItemTransfer[] = [];
+  for (const [transferId, occurredOn, amountMinor, currency, description, fromJson, toJson] of rows) {
+    const from = sideOf(fromJson);
+    const to = sideOf(toJson);
+    if (!from || !to) continue;
+    const direction = from.itemId === itemId ? 'out' : to.itemId === itemId ? 'in' : null;
+    if (!direction) continue;
+    const counterpart = direction === 'out' ? to : from;
+    const [named] = await database.db.values<[string]>(sql`
+      SELECT a.name FROM nw_item_map m JOIN accounts a ON a.id = m.account_id
+      WHERE m.item_id = ${counterpart.itemId} AND m.group_book_id = ${groupBookId}`);
+    out.push({ transferId, occurredOn, amountMinor: Number(amountMinor), currency, description, direction, counterpart, counterpartName: named?.[0] ?? null });
+  }
+  return out;
+}
+
 /**
  * Tries again every transfer side this phone left unposted (review round 1): after each group-log sync, and after a rate
  * is saved — a rate, a mapped item or the group may be here now. Each is judged by the author it was left for. Returns

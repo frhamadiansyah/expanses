@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { confirmReview, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
+import { confirmReview, itemTransfers, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet, Op } from '../../src/sync/types';
@@ -353,5 +353,44 @@ describe('transfers between partners: review round 1 (task 8)', () => {
     await upsertRate(s.rina.database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: today, rate: 16_000, source: 'manual', sourceDate: today });
     expect(await balance(s.rina, s.rina.usd)).toBe(-100_00);
     expect(await memberTransferUnposted(s.rina.database, s.groupBookId)).toEqual([]);
+  });
+  it('an item’s page reads its live transfers of the period, each against the other side, named when it is this phone’s own (task 9 × 8 wiring)', async () => {
+    const s = await sharing();
+    const rent = await rinaToAndi(s);
+    const back = await recordMemberTransfer(s.andi.database, s.bookId, {
+      occurredOn: today,
+      amountMinor: 1 * JT,
+      currency: 'IDR',
+      from: { owner: s.andi.memberId, itemId: s.andiItem },
+      to: { owner: s.rina.memberId, itemId: s.rinaItem },
+      description: null,
+    });
+    const gone = await rinaToAndi(s, 2 * JT);
+    await voidMemberTransfer(s.rina.database, s.bookId, gone);
+    await settle(s.home);
+    const period = { start: today, end: today };
+
+    // Andi opens Rina's bank: the rent went out of it to his bank, and his 1 jt came in; the void one is gone.
+    const onAndi = await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, period);
+    expect(onAndi.map((t) => [t.transferId, t.direction, t.amountMinor, t.currency, t.counterpart, t.counterpartName]).sort()).toEqual(
+      [
+        [rent, 'out', 5 * JT, 'IDR', { owner: s.andi.memberId, itemId: s.andiItem }, 'Andi Bank'],
+        [back, 'in', 1 * JT, 'IDR', { owner: s.andi.memberId, itemId: s.andiItem }, 'Andi Bank'],
+      ].sort(),
+    );
+    expect(onAndi.find((t) => t.transferId === rent)).toMatchObject({ occurredOn: today, description: 'For the rent' });
+
+    // Rina opens Andi's bank: the same two, the other way round, against her own bank by its name on her phone.
+    const onRina = await itemTransfers(s.rina.database, s.groupBookId, s.andiItem, period);
+    expect(onRina.map((t) => [t.transferId, t.direction, t.counterpartName]).sort()).toEqual(
+      [
+        [rent, 'in', 'Rina Bank'],
+        [back, 'out', 'Rina Bank'],
+      ].sort(),
+    );
+    // Another period, another item, a device outside the group: nothing.
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: '2000-01-31' })).toEqual([]);
+    expect(await itemTransfers(s.andi.database, s.groupBookId, 'no-such-item', period)).toEqual([]);
+    expect(await itemTransfers(s.sari.database, s.groupBookId, s.rinaItem, period)).toEqual([]);
   });
 });

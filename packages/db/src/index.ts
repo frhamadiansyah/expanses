@@ -171,10 +171,12 @@ export type { PaidFrom } from './sync/capture';
 // Joint net worth §7.2 (task 8): transfers between partners, recorded once in the group log, posted on each party's phone.
 export {
   editMemberTransfer,
+  itemTransfers,
   memberTransfersOf,
   memberTransferUnposted,
   recordMemberTransfer,
   voidMemberTransfer,
+  type ItemTransfer,
   type MemberTransferInput,
   type MemberTransferPatch,
   type MemberTransferSide,

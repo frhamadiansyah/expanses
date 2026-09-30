@@ -1,6 +1,7 @@
 import { isoDate } from '@expanses/core';
 import {
   householdPurchases,
+  itemTransfers,
   listBooks,
   receivedItems,
   sharingDetail,
@@ -259,5 +260,15 @@ export function useHouseholdPurchases(bookId: string | null, period: { start: st
     queryKey: ['net-worth', 'household-purchases', bookId, period?.start, period?.end],
     enabled: bookId !== null && period !== null,
     queryFn: () => householdPurchases(database, bookId!, period!),
+  });
+}
+
+/** The live transfers of an item's period with it on either side, for its page's "Lines you can see" (§8.3, task 8). */
+export function useItemTransfers(groupBookId: string | null, itemId: string | null, period: { start: string; end: string } | null) {
+  const { database } = useApp();
+  return useQuery({
+    queryKey: ['net-worth', 'item-transfers', groupBookId, itemId, period?.start, period?.end],
+    enabled: groupBookId !== null && itemId !== null && period !== null,
+    queryFn: () => itemTransfers(database, groupBookId!, itemId!, period!),
   });
 }
