@@ -26,6 +26,7 @@ import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } f
 import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './shared-entities';
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
+import { postTransferSideTx } from './net-worth/transfers';
 import { uuidv5 } from './uuidv5';
 
 /*
@@ -339,6 +340,11 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
   }
 
   const winners = await rowWinnersOf(tx, ctx, op, hlc);
+  // Joint net worth §7.2: a transfer between partners once void stays void — a later op never brings it back.
+  if (entity.entity === 'member_transfer' && exists && winners.has('void') && !Number(winners.get('void')!.value)) {
+    const [stored] = await tx.values<[number]>(sql`SELECT void FROM member_transfers WHERE ${where}`);
+    if (stored && Number(stored[0]) === 1) winners.delete('void');
+  }
   const record = async () => {
     for (const [field, { hlc: at }] of winners) await setClock(tx, ctx, entity.entity, op.id, field, at);
   };
@@ -752,6 +758,9 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     await guarded(tx, ctx, run, op, async () => {
       if (decision instanceof AuthorityError) throw decision;
       await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
+      // Joint net worth §7.2 (task 8): this device's side of a transfer between partners follows its row — posted only
+      // for a party, while the group is active and the author (the authority view's, never the change-set's claim) is in it.
+      if (entity.entity === 'member_transfer' && op.op === 'upsert') await postTransferSideTx(tx, ctx.bookId, op.id, await authorMemberOf(tx, ctx.bookId, author));
     });
   }
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.

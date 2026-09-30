@@ -281,6 +281,15 @@ Placeholders are excluded from Net worth (S4.4), so her Net worth drops 5 jt and
 sides; `void` wins. Either party may record or edit it. In the Transfer form the **To** list (and **From**, for the
 receiving side) shows the other member's shared items under "Andi's, shared with Household".
 
+Correction (task 8, code reality): a side posts only while this person's group is active and is the transfer's log,
+both parties are its members, and the op's author (the signing device's member in the authority view, never the
+change-set's claim) is a member — the task 7 trust rule. Otherwise that phone posts or changes nothing, and keeps why
+in a local table, `member_transfer_unposted` (migration 0059; `group-inactive`, `author-not-member`, `party-not-member`,
+`item-not-here`, `no-rate`, `malformed`). Void wins for ever: apply never takes a later `void = 0`, and a side voided
+here is never posted again. A side in another currency than the workspace's posts at the rate this phone holds for it
+(the transfer carries no base figure). A side's note, when the transfer has none, is "Transfer to Andi" / "Transfer from
+Rina" on that phone only. Correcting or deleting a side on either phone corrects or deletes the transfer.
+
 ## 8. Screens
 
 ### 8.1 Setup and review

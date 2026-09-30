@@ -230,6 +230,16 @@ export class CaptureSession {
     this.enabled = false;
   }
 
+  /** Whether this transaction still captures (not paused). */
+  get capturing(): boolean {
+    return this.enabled;
+  }
+
+  /** Captures again after `pause` — only `withCaptureSuspended` does, around writes that belong to no shared book. */
+  resume(): void {
+    this.enabled = true;
+  }
+
   close(): void {
     if (sessions.get(this.tx) === this) sessions.delete(this.tx);
   }
@@ -482,6 +492,22 @@ export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applyin
   }
   await observer?.end(tx);
   return result;
+}
+
+/**
+ * Runs `fn` with capture off, then on again as it was (joint-net-worth §7.2, task 8): a transfer between partners' local
+ * posting belongs to no workspace book and must never be emitted, but the group-log row written beside it in the same
+ * transaction is. What `fn` posts still marks its accounts dirty, so their summaries go out at flush as for any write.
+ */
+export async function withCaptureSuspended<T>(tx: Db, fn: () => Promise<T>): Promise<T> {
+  const session = sessionOf(tx);
+  const was = session?.capturing ?? false;
+  session?.pause();
+  try {
+    return await fn();
+  } finally {
+    if (was) session?.resume();
+  }
 }
 
 /**

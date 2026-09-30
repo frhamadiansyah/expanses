@@ -37,6 +37,13 @@ import {
 } from './net-worth/group-log';
 import { afterWorkspaceSync, answerNetWorth, cancelNetWorth, leaveNetWorth, netWorthGroup, proposeNetWorth, type NetWorthGroupView } from './net-worth/proposals';
 import type { FilingMode } from '@expanses/core';
+import {
+  editMemberTransfer as editTransfer,
+  recordMemberTransfer as recordTransfer,
+  voidMemberTransfer as voidTransfer,
+  type MemberTransferInput,
+  type MemberTransferPatch,
+} from './net-worth/transfers';
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
@@ -1062,6 +1069,21 @@ export class SyncEngine {
   /** The workspace's net-worth group as this device derives it. */
   netWorthGroup(workspaceBookId: string): Promise<NetWorthGroupView> {
     return netWorthGroup(this.groupHost(), workspaceBookId);
+  }
+
+  /** Records a transfer between this member and a partner (§7.2), posting this device's side; returns its id. */
+  recordMemberTransfer(workspaceBookId: string, t: MemberTransferInput): Promise<string> {
+    return recordTransfer(this.database, workspaceBookId, t);
+  }
+
+  /** Either party changes a transfer's date, amount or note; both sides follow. */
+  editMemberTransfer(workspaceBookId: string, transferId: string, patch: MemberTransferPatch): Promise<void> {
+    return editTransfer(this.database, workspaceBookId, transferId, patch);
+  }
+
+  /** Either party deletes a transfer: both sides voided, for ever. */
+  voidMemberTransfer(workspaceBookId: string, transferId: string): Promise<void> {
+    return voidTransfer(this.database, workspaceBookId, transferId);
   }
 
   /* ---------------------------------------------------------------- restore */

@@ -11,7 +11,6 @@ import {
   replaceTransaction,
   type SetAsideChoice,
   type TransactionView,
-  voidTransaction,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -50,6 +49,7 @@ import { NotRecorded } from './NotRecorded';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
+import { deleteTransaction } from './member-transfer';
 import { canEditInSheet } from './tx-form';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
@@ -586,7 +586,7 @@ export function TransactionsPage() {
         This was a purchase
       </button>
     );
-    const deleteButton = twoTap(tx.id, 'Delete this transaction', 'Click again to delete', () => voidTransaction(database, ws, tx.id));
+    const deleteButton = twoTap(tx.id, 'Delete this transaction', 'Click again to delete', () => deleteTransaction(database, ws, tx.id));
     if (editing?.kind === 'tx' && editing.id === tx.id) {
       const { needs } = readQuick(editing.values, accounts, today, ws.baseCurrency);
       const values = editing.values;
@@ -697,7 +697,7 @@ export function TransactionsPage() {
         // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
         // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
         onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
-        onDelete={clickable ? () => void run(tx.id, () => voidTransaction(database, ws, tx.id)) : undefined}
+        onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
         // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
         // write it already asked for is going out.
         busy={busy === tx.id}
@@ -770,7 +770,7 @@ export function TransactionsPage() {
     saveRecorded,
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
-    deleteRecorded: (id) => run(id, () => voidTransaction(database, ws, id)),
+    deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,

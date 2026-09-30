@@ -15,7 +15,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import { NetWorthError, type AccountRow, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
+import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -74,6 +74,53 @@ export interface FormDraft {
    * once one of this person's own accounts is picked, and undefined — "as the purchase already says" — until either.
    */
   paidFrom?: PaidFrom | null;
+  /**
+   * Joint net worth §7.2: on the Transfer tab, the partner's shared item the money goes to (`side: 'to'`, To names it
+   * and `toId` is unused) or came from (`side: 'from'`, From names it and `moneyId` is unused); null or absent — none.
+   */
+  partner?: PartnerItem | null;
+}
+
+/** A partner's shared item one side of a transfer names (§7.2), with the currency the transfer must then be in. */
+export interface PartnerItem {
+  side: 'to' | 'from';
+  owner: string;
+  itemId: string;
+  currency: string;
+}
+
+/** This person's own account in a transfer with a partner: From when the money goes to them, To when it came from them. */
+export function ownTransferAccountId(draft: Pick<FormDraft, 'partner' | 'moneyId' | 'toId'>): string {
+  return draft.partner?.side === 'from' ? draft.toId : draft.moneyId;
+}
+
+/**
+ * A transfer with a partner as the form holds it (§7.2), checked, in the shape `recordMemberTransfer` takes: this person's
+ * own account — `ownItemId`, its shared item, is the caller's to name (`itemIdOf`) — the partner's item, one currency, the
+ * figure. Throws a user-readable Error when a row is missing or the two sides' currencies differ.
+ */
+export function memberTransferOf(draft: FormDraft, accounts: readonly AccountRow[], me: string, ownItemId: string): MemberTransferInput {
+  const partner = draft.partner;
+  if (draft.mode !== 'transfer' || !partner) throw new Error('Choose who the transfer is with');
+  const own = accounts.find((a) => a.id === ownTransferAccountId(draft));
+  if (!own?.currency) throw new Error(partner.side === 'to' ? 'Choose the From account' : 'Choose the To account');
+  if (own.currency !== partner.currency) throw new Error(`Pick an account in ${partner.currency}`);
+  const amountMinor = positive(draft.amount, own.currency, 'Amount');
+  const mine = { owner: me, itemId: ownItemId };
+  const theirs = { owner: partner.owner, itemId: partner.itemId };
+  return {
+    occurredOn: draft.occurredOn,
+    amountMinor,
+    currency: own.currency,
+    from: partner.side === 'to' ? mine : theirs,
+    to: partner.side === 'to' ? theirs : mine,
+    description: draft.description.trim() || null,
+  };
+}
+
+/** The typed figure of a transfer with a partner being corrected, in minor units of its currency (§7.2). */
+export function transferFigure(draft: Pick<FormDraft, 'amount'>, currency: string): number {
+  return positive(draft.amount, currency, 'Amount');
 }
 
 /**

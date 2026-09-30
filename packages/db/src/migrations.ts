@@ -56,6 +56,7 @@ import loanItemsSql from '../migrations/0055_loan_items.sql?raw';
 import householdSharing from '../migrations/0056_household_sharing.sql?raw';
 import jointNetWorth from '../migrations/0057_joint_net_worth.sql?raw';
 import paidFrom from '../migrations/0058_paid_from.sql?raw';
+import memberTransferUnposted from '../migrations/0059_member_transfer_unposted.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -122,6 +123,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 56, name: 'household_sharing', sql: householdSharing },
   { version: 57, name: 'joint_net_worth', sql: jointNetWorth },
   { version: 58, name: 'paid_from', sql: paidFrom },
+  { version: 59, name: 'member_transfer_unposted', sql: memberTransferUnposted },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -99,10 +99,11 @@ export const sharedTitle = (ownerName: string | null): string => (ownerName ? `$
  */
 export function sharedPaymentSections(
   items: readonly PaidWithItem[],
-  where: { formBookId: string; groupWorkspaceBookId: string | null | undefined },
+  where: { formBookId: string; groupWorkspaceBookId: string | null | undefined; title?: (ownerName: string | null) => string },
   tab: PaymentTab | null,
   typed: string,
 ): SharedPaymentSection[] {
+  const titleOf = where.title ?? sharedTitle;
   if (!where.groupWorkspaceBookId || where.formBookId !== where.groupWorkspaceBookId) return [];
   const wanted = typed.trim().toLowerCase();
   const onTab = (item: PaidWithItem) => wanted !== '' || tab === null || (item.subtype === 'credit_card' ? 'cards' : 'accounts') === tab;
@@ -111,7 +112,7 @@ export function sharedPaymentSections(
   for (const item of items) {
     if (!onTab(item) || !matches(item)) continue;
     let section = sections.find((s) => s.key === item.owner);
-    if (!section) sections.push((section = { key: item.owner, title: sharedTitle(item.ownerName), items: [] }));
+    if (!section) sections.push((section = { key: item.owner, title: titleOf(item.ownerName), items: [] }));
     section.items.push(item);
   }
   return sections;
@@ -179,6 +180,8 @@ export function PaymentSheet({
     groupWorkspaceBookId: string | null | undefined;
     chosenItemId: string | null;
     onPick: (item: PaidWithItem) => void;
+    /** The heading over an owner's items: "Rina’s, shared" unless the caller says otherwise (Transfer, §7.2). */
+    title?: (ownerName: string | null) => string;
   };
 }) {
   const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
@@ -245,7 +248,7 @@ export function PaymentSheet({
       <li key={`shared:${item.itemId}`}>
         <button
           type="button"
-          aria-label={`${item.name}, ${sharedTitle(item.ownerName)}`}
+          aria-label={`${item.name}, ${(shared?.title ?? sharedTitle)(item.ownerName)}`}
           aria-current={isPicked ? 'true' : undefined}
           onClick={() => {
             shared?.onPick(item);

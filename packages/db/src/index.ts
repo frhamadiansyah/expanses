@@ -168,3 +168,15 @@ export { markAccountDirtyTx } from './sync/capture';
 // Joint net worth §5.3, §7.1 (task 7): Paid with the other's shared item.
 export { paidFromAccount, paidWithItems, PAYABLE_SUBTYPES, type PaidWithItem } from './sync/net-worth/paid-from';
 export type { PaidFrom } from './sync/capture';
+// Joint net worth §7.2 (task 8): transfers between partners, recorded once in the group log, posted on each party's phone.
+export {
+  editMemberTransfer,
+  memberTransfersOf,
+  memberTransferUnposted,
+  recordMemberTransfer,
+  voidMemberTransfer,
+  type MemberTransferInput,
+  type MemberTransferPatch,
+  type MemberTransferSide,
+  type UnpostedReason,
+} from './sync/net-worth/transfers';
