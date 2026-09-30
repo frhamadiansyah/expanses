@@ -354,6 +354,7 @@ export {
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
 export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
+export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
 export {
   type ConverterHeader,
   ConverterError,

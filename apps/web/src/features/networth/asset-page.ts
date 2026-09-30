@@ -29,10 +29,14 @@ export interface Gain {
   tone: 'gain' | 'loss';
 }
 
-/** What it has made or lost since it was bought, as money and as a share of what it cost. None when it cost nothing. */
+/**
+ * What it has made or lost since it was bought, as money and as a share of what it cost. None when it cost nothing,
+ * and none while it is still worth exactly what it cost — "+Rp 0 · +0,0%" says nothing a reader wants.
+ */
 export function gainPill(valueMinor: number, costMinor: number, currency: string): Gain | null {
   if (costMinor <= 0) return null;
   const gain = valueMinor - costMinor;
+  if (gain === 0) return null;
   return { text: `${signed(gain, currency)} · ${percentLabel(gain, costMinor)}`, tone: gain < 0 ? 'loss' : 'gain' };
 }
 

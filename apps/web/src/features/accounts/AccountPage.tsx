@@ -37,11 +37,12 @@ import {
 import { DepositMoneyOut } from '../networth/DepositMoneyOut';
 import { DepositProposalCard } from '../networth/DepositProposalCard';
 import { DepositMaturityBlock, DepositTermRow } from '../networth/DepositTerms';
-import { dayLabel } from '../networth/asset-page';
+import { dayLabel, quantityLabel } from '../networth/asset-page';
 import { MaturitySettings } from '../networth/MaturitySettings';
 import { RecordedByHand } from '../networth/RecordedByHand';
 import { SetAsidePanel } from '../networth/SetAsidePanel';
-import { useAssetProfiles, useDepositAutomation } from '../networth/queries';
+import { useAssetProfiles, useAssetValues, useDepositAutomation, usePositions } from '../networth/queries';
+import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
@@ -156,7 +157,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           testId="balance-card"
           caption={
             <>
-              <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
+              <span className="block">
+                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. */}
+                {account.subtype === 'fund' && inst ? `RDN at ${inst} · ${account.currency}` : [inst, typeLabel, account.currency].filter(Boolean).join(' · ')}
+              </span>
               {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
             </>
           }
@@ -176,13 +180,16 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
         <PocketList parentId={account.id} pockets={pockets} held={held} />
       ) : deposit ? (
         <MaturitySettings accountId={account.id} currency={account.currency!} />
+      ) : account.subtype === 'fund' ? (
+        <HeldAtBroker brokerAccountId={account.id} />
       ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
 
       <Details
         rows={[
-          inst ? <InsetRow key="bank" title="Bank" value={inst} chevron={false} /> : null,
+          account.subtype === 'fund' ? <InsetRow key="broker" title="Broker" value={account.name} chevron={false} /> : null,
+          inst ? <InsetRow key="bank" title={account.subtype === 'fund' ? 'RDN bank' : 'Bank'} value={inst} chevron={false} /> : null,
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
           !pockets ? <InsetRow key="currency" title="Currency" value={`${account.currency} · ${currencyName(account.currency!)}`} chevron={false} /> : null,
@@ -444,6 +451,44 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
         </ul>
       )}
     </Panel>
+  );
+}
+
+/**
+ * What this broker keeps: every holding whose Kept at names this fund account, with how much of it and what it is
+ * worth, each opening its own page. Nothing is drawn while it keeps nothing.
+ */
+function HeldAtBroker({ brokerAccountId }: { brokerAccountId: string }) {
+  const links = useHoldingLinks();
+  const securities = useSecurities();
+  const values = useAssetValues();
+  const profiles = useAssetProfiles();
+  const positions = usePositions();
+  const held = (links.data ?? []).filter((link) => link.brokerAccountId === brokerAccountId);
+  const rows = held.flatMap((link) => {
+    const value = (values.data ?? []).find((row) => row.accountId === link.accountId);
+    if (!value) return [];
+    const security = (securities.data ?? []).find((row) => row.id === link.securityId);
+    const profile = (profiles.data ?? []).find((row) => row.accountId === link.accountId);
+    const units = positions.data?.[link.accountId]?.unitsMicro ?? 0;
+    return [{ id: link.accountId, title: security?.ticker || security?.name || value.name, units, unitKind: profile?.unitKind ?? null, lotSize: security?.lotSize ?? profile?.lotSize ?? null, value }];
+  });
+  if (rows.length === 0) return null;
+  return (
+    <InsetGroup header="Held at this broker">
+      {rows.map((row) => (
+        <InsetRow
+          key={row.id}
+          testId="broker-holding"
+          title={row.title}
+          subtitle={row.units > 0 ? quantityLabel(row.units, row.unitKind, row.lotSize) : 'Sold'}
+          value={<Money minor={row.value.valueMinor} currency={row.value.currency} />}
+          valueTone="ink"
+          to="/net-worth/assets/$accountId"
+          params={{ accountId: row.id }}
+        />
+      ))}
+    </InsetGroup>
   );
 }
 

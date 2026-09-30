@@ -48,10 +48,18 @@ export const INDONESIAN_BANKS: readonly IndonesianBank[] = [
  * name already — the field has it.
  */
 export function bankMatches(typed: string, limit = 3): IndonesianBank[] {
+  return namedMatches(INDONESIAN_BANKS, typed, limit);
+}
+
+/**
+ * The one way a typed name is matched against a list of names people also know by shorter ones — banks, brokers.
+ * Exported for the lists beside this one, so a bank and a broker are found the same way.
+ */
+export function namedMatches<T extends { name: string; also: readonly string[] }>(list: readonly T[], typed: string, limit: number): T[] {
   const want = typed.trim().toLowerCase();
-  if (!want || INDONESIAN_BANKS.some((bank) => bank.name.toLowerCase() === want)) return [];
+  if (!want || list.some((entry) => entry.name.toLowerCase() === want)) return [];
   const starts = (text: string) => text.toLowerCase().startsWith(want);
-  const byShort = INDONESIAN_BANKS.filter((bank) => bank.also.some(starts));
-  const byName = INDONESIAN_BANKS.filter((bank) => !byShort.includes(bank) && (starts(bank.name) || bank.name.split(/\s+/).some(starts)));
+  const byShort = list.filter((entry) => entry.also.some(starts));
+  const byName = list.filter((entry) => !byShort.includes(entry) && (starts(entry.name) || entry.name.split(/\s+/).some(starts)));
   return [...byShort, ...byName].slice(0, limit);
 }

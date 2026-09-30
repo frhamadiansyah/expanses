@@ -29,7 +29,7 @@ import { useLoans } from '../loans/queries';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
-import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
+import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
@@ -110,6 +110,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const openings = useOpenings([accountId]);
   const held = useHeldRates(currency === ws.baseCurrency ? [] : [currency]);
   const stock = useStockAndBroker(accountId);
+  const profiles = useAssetProfiles();
+  const brokerId = stock.link?.brokerAccountId ?? null;
+  const rdnBank = brokerId ? (profiles.data ?? []).find((row) => row.accountId === brokerId)?.coretaxFields.inst?.trim() || null : null;
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [all, setAll] = useState(false);
@@ -400,6 +403,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           choice ? (
             <InsetRow key="source" title="Price source" value={choice === 'world' ? 'World price' : "I'll type it"} onClick={() => setSheet({ kind: 'source' })} />
           ) : null,
+          // The broker's cash sits at a bank: buying takes it from there, and selling puts it back.
+          rdnBank ? <InsetRow key="cash" title="Cash through" value={`RDN at ${rdnBank}`} chevron={false} /> : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,

@@ -59,7 +59,7 @@ export interface NewAccount {
   interestRate?: string;
   /** The account the money moves from, for an opening balance that is a transfer. */
   from?: string;
-  /** A card's bank, and a loan's lender — the doors each ask for one. */
+  /** A card's bank, a fund account's RDN bank, and a loan's lender — the doors each ask for one. */
   bank?: string;
   lender?: string;
   /** A card's last four digits, when the walk says them rather than typing them into an extra. */
@@ -80,7 +80,13 @@ export async function openAccount(page: Page, o: NewAccount) {
    * exact — and anchored rather than loose, because several other rows say "cash" in their own subtitle. */
   const label = MONEY_KIND[o.subtype] ?? 'Current account';
   await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\b|$)`) }).click();
-  await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
+  // A fund account has no name of its own: it is called by its broker, and its bank is the RDN's.
+  if (o.subtype === 'fund') {
+    await page.getByLabel('Broker', { exact: true }).pressSequentially(o.name);
+    if (o.bank) await page.getByLabel('RDN bank', { exact: true }).pressSequentially(o.bank);
+  } else {
+    await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
+  }
   if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.balance) await page.getByLabel('Balance now', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });

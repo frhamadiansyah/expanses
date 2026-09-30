@@ -173,7 +173,8 @@ test('the asset picker never offers money, whatever is typed into its search', a
 test('a code can be changed afterwards, in the words the form uses', async ({ page }) => {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Fund account' }).click();
-  await page.getByLabel('Name', { exact: true }).fill('RDN Mandiri Sekuritas');
+  // A fund account is called by its broker: it has no Name row of its own.
+  await page.getByLabel('Broker', { exact: true }).fill('RDN Mandiri Sekuritas');
   await page.getByLabel('Balance now', { exact: true }).fill('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/accounts$/);

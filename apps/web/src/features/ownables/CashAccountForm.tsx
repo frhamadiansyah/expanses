@@ -1,4 +1,4 @@
-import { bankMatches, cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { bankMatches, brokerMatches, cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -100,6 +100,60 @@ function BankNameRow({
           title: choice.also[0] ?? choice.name,
           detail: choice.also.length > 0 ? choice.name : undefined,
           onPick: () => onBank(choice.name),
+        }))}
+      />
+    </div>
+  );
+}
+
+/**
+ * A name typed on a row of its own, with the names it could be offered over the keyboard as it is typed — the banks
+ * or the brokers of a rupiah workspace — the way the bank row offers them. Anything else typed is kept as typed.
+ */
+function SuggestRow({
+  label,
+  value,
+  onChange,
+  placeholder,
+  offers,
+  stripLabel,
+  position,
+}: GroupChild & {
+  label: string;
+  /** What the strip of offered names is called, for a screen reader: "Brokers", "Banks". */
+  stripLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  /** What to offer for what is typed; empty offers nothing. */
+  offers: (typed: string) => readonly { name: string; also: readonly string[] }[];
+}) {
+  const [typing, setTyping] = useState(false);
+  const offered = typing ? offers(value) : [];
+  return (
+    <div className="relative">
+      <TextRow
+        label={label}
+        position={position}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setTyping(true)}
+        onBlur={() => {
+          setTyping(false);
+          onChange(value.trim());
+        }}
+        autoComplete="off"
+        autoCapitalize="words"
+        placeholder={placeholder}
+      />
+      <KeyboardStrip
+        label={stripLabel}
+        cells={offered.map((choice) => ({
+          key: choice.name,
+          label: choice.name,
+          title: choice.also[0] ?? choice.name,
+          detail: choice.also.length > 0 ? choice.name : undefined,
+          onPick: () => onChange(choice.name),
         }))}
       />
     </div>
@@ -235,7 +289,9 @@ export function CashAccountForm({
   const locked = asks.includes('matures');
   const foreign = currency !== ws.baseCurrency;
   // The kinds held at an institution, and not a deposit: its terms are per deposit (spec §16.3).
-  const canPocket = asks.includes('bank') && !locked;
+  const fund = item === 'fund';
+  // A broker's RDN is one currency at one broker: an account in another currency there is an RDN of its own.
+  const canPocket = asks.includes('bank') && !locked && !fund;
   const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   // Where a typed balance could move from: accounts the owner can spend from, in the same currency, newest name order.
   const sources = (useAccounts().data ?? [])
@@ -312,7 +368,12 @@ export function CashAccountForm({
             locked ? 'Cannot be spent from directly. When it matures, take the money out with Withdraw on its page.' : undefined
           ) : (
             <>
-              {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.{asks.includes('bank') ? ' The bank goes on your yearly tax report; the name is what you call it here.' : ' Name is what you call yours.'}
+              {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.
+              {fund
+                ? ' It is called by its broker, one account per broker; the RDN bank goes on the yearly tax report.'
+                : asks.includes('bank')
+                  ? ' The bank goes on your yearly tax report; the name is what you call it here.'
+                  : ' Name is what you call yours.'}
               {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
               {locked && ' When it matures, take the money out with Withdraw on its page.'}
             </>
@@ -329,7 +390,12 @@ export function CashAccountForm({
             ))}
           </SelectRow>
         )}
-        {asks.includes('bank') ? (
+        {/* A fund account is one broker's RDN: called by its broker, with the bank the cash sits at. No name of its own. */}
+        {fund && (
+          <SuggestRow label="Broker" stripLabel="Brokers" value={name} onChange={setName} placeholder="Securities firm" offers={(typed) => (ws.baseCurrency === 'IDR' ? brokerMatches(typed) : [])} />
+        )}
+        {fund && <SuggestRow label="RDN bank" stripLabel="Banks" value={bank} onChange={setBank} placeholder="Bank" offers={(typed) => (ws.baseCurrency === 'IDR' ? bankMatches(typed) : [])} />}
+        {fund ? null : asks.includes('bank') ? (
           <BankNameRow bank={bank} onBank={setBank} name={name} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} />
         ) : (
           <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />

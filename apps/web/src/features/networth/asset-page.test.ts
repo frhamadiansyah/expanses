@@ -13,8 +13,9 @@ describe('the gain beside the figure', () => {
     expect(loss?.tone).toBe('loss');
   });
 
-  it('is not drawn when nothing was paid for it', () => {
+  it('is not drawn when nothing was paid for it, nor while it is worth just what it cost', () => {
     expect(gainPill(5_000_000, 0, 'IDR')).toBeNull();
+    expect(gainPill(2_100_000, 2_100_000, 'IDR')).toBeNull();
   });
 });
 
