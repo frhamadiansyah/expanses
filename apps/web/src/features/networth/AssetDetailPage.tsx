@@ -1,4 +1,4 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
 import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
@@ -27,6 +27,7 @@ import { LINE_DAYS, useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
+import { ListedTradeSheet } from './ListedTradeSheet';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
@@ -58,6 +59,7 @@ type Sheet =
   | { kind: 'value' }
   | { kind: 'source' }
   | { kind: 'listed-source' }
+  | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string };
 
@@ -219,10 +221,13 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       : [];
 
   const trade = (title: string, initial: Partial<TradeDraft>) => () => setSheet({ kind: 'trade', title, initial, editing: null });
+  // A share listed on IDX buys and sells in its own sheet: price on IDX's tick, whole lots, the broker's fee.
+  const idxShare = listedSecurity && isIdxListing(listedSecurity) ? listedSecurity : null;
+  const buyOrSell = (kind: 'buy' | 'sell', title: string) => (idxShare ? () => setSheet({ kind: 'listed-trade', trade: kind }) : trade(title, { kind }));
   const actions: RoundAction[] = priced
     ? [
-        { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: trade('Buy', { kind: 'buy' }) },
-        { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: trade('Sell', { kind: 'sell' }) },
+        { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
+        { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: buyOrSell('sell', 'Sell') },
         // Gold pays nothing while it is held; a share, a fund and a bond each pay in their own word.
         ...(kind === 'gold'
           ? []
@@ -532,6 +537,18 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               }
             })();
           }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'listed-trade' && idxShare && (
+        <ListedTradeSheet
+          kind={sheet.trade}
+          holding={holding}
+          security={idxShare}
+          lastPrice={latestPrice}
+          position={position}
+          brokerAccountId={brokerId}
+          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
         />
       )}
