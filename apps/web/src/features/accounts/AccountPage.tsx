@@ -89,6 +89,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const profiles = useAssetProfiles();
   const [actionError, setActionError] = useState<unknown>(null);
   const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
+  const [txReady, setTxReady] = useState(false);
   const pocketIds = pockets?.map((p) => p.id) ?? [];
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
   const rates = useHeldRates(currencies);
@@ -210,8 +211,21 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
       {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
       {newTx && (
-        <Sheet grouped tall title={NEW_TX_TITLE[newTx.mode]} onClose={() => setNewTx(null)}>
-          <TransactionCard fixedMode mode={newTx.mode} seed={{ moneyId: newTx.account, toId: newTx.to }} onDone={() => setNewTx(null)} />
+        <Sheet
+          grouped
+          tall
+          title={NEW_TX_TITLE[newTx.mode]}
+          onClose={() => setNewTx(null)}
+          // ✕ and ✓ in the header, as every other sheet that makes something: no Save bar floating at the foot.
+          confirm={{ label: 'Save', disabled: !txReady, run: () => (document.getElementById(NEW_TX_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <TransactionCard
+            fixedMode
+            headerSave={{ formId: NEW_TX_FORM, onReady: setTxReady }}
+            mode={newTx.mode}
+            seed={{ moneyId: newTx.account, toId: newTx.to }}
+            onDone={() => setNewTx(null)}
+          />
         </Sheet>
       )}
     </div>
@@ -338,6 +352,7 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
 }
 
 /** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
+const NEW_TX_FORM = 'account-new-transaction';
 const NEW_TX_TITLE: Record<NewTxDraft['mode'], string> = { expense: 'New expense', income: 'New income', transfer: 'New transfer' };
 
 /** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */

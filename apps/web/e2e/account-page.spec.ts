@@ -184,3 +184,21 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).first().click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
+
+test('an expense added from an account is saved by the sheet’s ✓ and shows in its Recent', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openMoney(page, 'Everyday');
+  await page.getByRole('button', { name: 'Spend', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'New expense' });
+  // No Save bar at the foot: ✕ and ✓ in the header, the ✓ dimmed until the expense would save.
+  const save = sheet.getByRole('button', { name: 'Save' });
+  await expect(save).toBeDisabled();
+  await sheet.getByLabel('Amount', { exact: true }).fill('45000');
+  await sheet.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await sheet.getByLabel('Note').fill('Market');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('account-recent')).toContainText('Market');
+});

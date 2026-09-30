@@ -117,6 +117,11 @@ export function TransactionCard(props: {
   seed?: { moneyId?: string; toId?: string };
   /** Opened for one kind only (Spend, Receive, Transfer on an account): no tabs, the sheet's title says which. */
   fixedMode?: boolean;
+  /**
+   * Save lives in the sheet's header (✕ … ✓) rather than a bar at the card's foot: the form takes this id so the
+   * header's ✓ can submit it, and says whether it would save so the ✓ is dimmed until then.
+   */
+  headerSave?: { formId: string; onReady: (ready: boolean) => void };
   onDone: () => void;
   full?: boolean;
   label?: string;
@@ -147,6 +152,7 @@ function CardBody({
   mode,
   seed,
   fixedMode,
+  headerSave,
   onDone,
   full,
   label,
@@ -159,6 +165,7 @@ function CardBody({
   mode?: FormMode;
   seed?: { moneyId?: string; toId?: string };
   fixedMode?: boolean;
+  headerSave?: { formId: string; onReady: (ready: boolean) => void };
   onDone: () => void;
   full?: boolean;
   /** The form's accessible name, on a screen of its own where no sheet's title names it. */
@@ -420,6 +427,9 @@ function CardBody({
     }
   })();
 
+  const onReady = headerSave?.onReady;
+  useEffect(() => onReady?.(ready), [onReady, ready]);
+
   /*
    * What every row of the Buy / sell tab says, worked out once in `buy-rows.ts`: the accessible name each row
    * has always had, and — separately — the caption, the prompt and the hint that are drawn. The tab reads like
@@ -553,7 +563,7 @@ function CardBody({
   );
 
   const body = (
-    <form ref={formRef} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
+    <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
       {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
         {!fixedMode && (
@@ -880,6 +890,9 @@ function CardBody({
         scroll; on its own screen or in a list it simply ends the card. Cancel stays beside it — the sheet's ✕ is
         a way out, but the full-screen form has no ✕, and a form with no Cancel there has no way out but Back.
       */}
+      {headerSave ? (
+        <ErrorBox error={error} />
+      ) : (
       <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2">
         <ErrorBox error={error} />
         <div className={cx('flex items-center gap-2', title !== undefined && 'hidden')}>
@@ -899,6 +912,7 @@ function CardBody({
           </button>
         </div>
       </div>
+      )}
     </form>
   );
 
