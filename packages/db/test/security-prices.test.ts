@@ -60,12 +60,12 @@ describe('one price per security', () => {
     await upsertPrice(database, ws, { accountId: mandiriBbca.id, onDate: '2026-09-20', priceMicro: idr(9_800) });
     expect(await valueOn('2026-09-20', stockbitBbca.id)).toBe(9_800_000);
     expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${mandiriBbca.id}`)).toEqual([[0]]);
-    expect(await listPrices(database, ws, stockbitBbca.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(9_800) }]);
+    expect(await listPrices(database, ws, stockbitBbca.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(9_800), source: 'manual' }]);
   });
 
   it('leaves a holding with no security exactly as it was', async () => {
     await upsertPrice(database, ws, { accountId: gold.id, onDate: '2026-09-20', priceMicro: idr(1_900_000) });
-    expect(await listPrices(database, ws, gold.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(1_900_000) }]);
+    expect(await listPrices(database, ws, gold.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(1_900_000), source: 'manual' }]);
     expect(await valueOn('2026-09-20', gold.id)).toBe(19_000_000);
   });
 });
@@ -83,7 +83,7 @@ describe('on a database without 0051', () => {
     await saveAssetProfile(older, ows, { accountId: bar.id, assetKind: 'gold' });
     await recordTrade(older, ows, { accountId: bar.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: shares(10), grossMinor: 18_600_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
     await upsertPrice(older, ows, { accountId: bar.id, onDate: '2026-09-20', priceMicro: idr(1_900_000) });
-    expect(await listPrices(older, ows, bar.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(1_900_000) }]);
+    expect(await listPrices(older, ows, bar.id)).toEqual([{ onDate: '2026-09-20', priceMicro: idr(1_900_000), source: 'manual' }]);
     expect((await assetValuesAt(older, ows, '2026-09-20'))[0]!.valueMinor).toBe(19_000_000);
   });
 

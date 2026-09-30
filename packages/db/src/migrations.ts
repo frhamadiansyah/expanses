@@ -55,6 +55,7 @@ import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
 import loanItemsSql from '../migrations/0055_loan_items.sql?raw';
 import householdSharing from '../migrations/0056_household_sharing.sql?raw';
 import categoryColours from '../migrations/0059_category_colours.sql?raw';
+import worldGoldPrice from '../migrations/0060_world_gold_price.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -120,6 +121,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 55, name: 'loan_items', sql: loanItemsSql },
   { version: 56, name: 'household_sharing', sql: householdSharing },
   { version: 59, name: 'category_colours', sql: categoryColours },
+  { version: 60, name: 'world_gold_price', sql: worldGoldPrice },
 ];
 
 /** The highest version this build of the app knows how to produce. */

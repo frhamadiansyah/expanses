@@ -2,10 +2,11 @@ import { expect, test } from '@playwright/test';
 import { addEstimated, addPriced, openAsset, typePrice } from './asset-page';
 
 test('by thumb: gold’s grid and purchases, and a laptop valued again from its sheet', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20395000']]);
   await openAsset(page, 'Antam gold bars');
   await typePrice(page, '2485000');
-  await expect(page.getByTestId('asset-grid')).toContainText('Buyback today');
+  await expect(page.getByTestId('asset-grid')).toContainText('Your price');
   await expect(page.getByTestId('price-line')).toContainText('Typed · ');
   await expect(page.getByTestId('asset-history-row').first()).toContainText('+Rp 4.455.000');
 

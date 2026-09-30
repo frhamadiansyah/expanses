@@ -1,5 +1,6 @@
-import { formatMinor, formatPriceMicro, formatUnits, isoDate, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor, type ValuationBasis } from '@expanses/core';
+import { formatMinor, formatPriceMicro, formatUnits, type GoldPriceChoice, isoDate, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor, type ValuationBasis } from '@expanses/core';
 import { recordValuation, type TradeRow, upsertPrice } from '@expanses/db';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
@@ -201,6 +202,36 @@ export function TradeActionsSheet({ title, onEdit, onDelete, onClose }: { title:
         <InsetRow title="Edit" chevron={false} onClick={onEdit} />
         <InsetRow title="Delete" chevron={false} onClick={onDelete} />
       </InsetGroup>
+    </Sheet>
+  );
+}
+
+const SOURCES: { choice: GoldPriceChoice; label: string; detail: string }[] = [
+  { choice: 'world', label: 'World price (XAU)', detail: 'Updated daily · spot price, not buyback' },
+  { choice: 'typed', label: "I'll type it", detail: 'No automatic price' },
+];
+
+/** Where a gold holding's price comes from: two answers, the chosen one ticked, each saying in a line what it means. */
+export function PriceSourceSheet({ choice, onPick, onClose }: { choice: GoldPriceChoice; onPick: (choice: GoldPriceChoice) => void; onClose: () => void }) {
+  return (
+    <Sheet grouped title="Price source" onClose={onClose}>
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+        {SOURCES.map((source) => (
+          <button
+            key={source.choice}
+            type="button"
+            aria-pressed={choice === source.choice}
+            onClick={() => (choice === source.choice ? onClose() : onPick(source.choice))}
+            className="ph-focus-inset flex min-h-11 w-full items-center gap-3 px-4 py-2 text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] leading-[20px] text-[var(--ph-ink)]">{source.label}</span>
+              <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{source.detail}</span>
+            </span>
+            {choice === source.choice && <Check size={18} aria-hidden className="text-[var(--ph-tint)]" />}
+          </button>
+        ))}
+      </div>
     </Sheet>
   );
 }

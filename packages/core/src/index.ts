@@ -283,6 +283,7 @@ export {
   wholeSince,
 } from './goals/set-aside';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
+export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {
   borrowPostings,
   type DebtAccounts,

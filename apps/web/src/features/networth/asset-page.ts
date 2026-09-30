@@ -92,6 +92,10 @@ export function heroLine(o: {
 export interface Tile {
   label: string;
   value: string;
+  /** A small word beside the label that qualifies the figure: "not buyback" on a world gold price. */
+  tag?: string;
+  /** What the figure is, behind an ⓘ beside the label. */
+  info?: string;
 }
 
 /** A price per unit, in the words of the unit: "Rp 2.485.000/g" for gold, a plain price for a share. */
@@ -109,8 +113,10 @@ export function pricedTiles(o: {
   currency: string;
   /** The latest price, or null when none has been saved. */
   priceMicro: number | null;
-  /** What the price tile is called: "Buyback today", "Close today", "Price today". */
+  /** What the price tile is called: "Buyback today", "Close today", "World price". */
   priceLabel: string;
+  /** The price tile's tag and ⓘ, when its label needs qualifying. */
+  priceTag?: { tag: string; info: string };
 }): Tile[] {
   const held = o.unitsMicro > 0;
   const average = held ? priceMicroFrom(o.costMinor, o.unitsMicro) : null;
@@ -128,7 +134,7 @@ export function pricedTiles(o: {
             : { label: 'Held', value: heldLabel(o.unitsMicro, o.unitKind, o.lotSize) },
           { label: 'Invested', value: formatMinor(o.costMinor, o.currency) },
           average === null ? null : { label: 'Average buy', value: perUnit(average, o.currency, o.unitKind) },
-          o.priceMicro === null ? null : { label: o.priceLabel, value: perUnit(o.priceMicro, o.currency, o.unitKind) },
+          o.priceMicro === null ? null : { label: o.priceLabel, value: perUnit(o.priceMicro, o.currency, o.unitKind), ...o.priceTag },
         ];
   return tiles.filter((tile): tile is Tile => tile !== null);
 }
@@ -185,4 +191,20 @@ export function tradeLine(
   if (trade.kind === 'sell') return { title: `Sold ${quantity}`, subtitle: `${dayLabel(trade.occurredOn)}${at}`, value: formatMinor(trade.grossMinor, o.currency), note: 'received', tone: 'quiet' };
   if (trade.kind === 'income') return { title: o.incomeWord, subtitle: dayLabel(trade.occurredOn), value: `+${formatMinor(trade.grossMinor, o.currency)}`, note: 'income', tone: 'gain' };
   return { title: 'Units changed', subtitle: `${dayLabel(trade.occurredOn)} · ${quantity}`, value: '', note: null, tone: 'quiet' };
+}
+
+/**
+ * The line under the grid, for a priced thing: where the price came from and the day it is for. A world price says so
+ * by name; a price typed on the page, or a security's, is "Typed". A day that is not today and a fetch that failed
+ * add the quiet way to try again.
+ */
+export function priceLine(o: {
+  latest: { onDate: string; source: 'manual' | 'world' } | null;
+  followsWorld: boolean;
+  failed: boolean;
+  today: string;
+}): string {
+  if (!o.latest) return o.followsWorld && o.failed ? 'No price yet · ↻ to try again' : 'No price yet, so it is valued at what was paid';
+  const said = `${o.latest.source === 'world' ? 'World price (XAU)' : 'Typed'} · ${dayLabel(o.latest.onDate)}`;
+  return o.followsWorld && o.failed && o.latest.onDate < o.today ? `${said} · ↻ to try again` : said;
 }

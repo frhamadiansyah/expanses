@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayLabel, estimatedTiles, gainPill, heroLine, percentOfFace, pricedTiles, quantityLabel, tradeLine } from './asset-page';
+import { dayLabel, estimatedTiles, gainPill, heroLine, percentOfFace, priceLine, pricedTiles, quantityLabel, tradeLine } from './asset-page';
 
 const M = 1_000_000;
 const plain = (text: string | undefined) => text?.replace(/ /g, ' ');
@@ -99,5 +99,20 @@ describe('each purchase on its own', () => {
     const income = tradeLine({ kind: 'income', occurredOn: '2026-04-15', unitsMicro: 0, grossMinor: 48_000, feeMinor: 0 }, { ...gold, unitKind: 'shares', lotSize: 100, priceMicro: null, incomeWord: 'Dividend' });
     expect([income.title, income.subtitle, plain(income.value)]).toEqual(['Dividend', '15 Apr 2026', '+Rp 48.000']);
     expect(tradeLine({ kind: 'sell', occurredOn: '2026-05-01', unitsMicro: 5 * M, grossMinor: 12_000_000, feeMinor: 0 }, { ...gold, priceMicro: null }).title).toBe('Sold 5 g');
+  });
+});
+
+describe('the price line', () => {
+  const today = '2026-09-30';
+  it('names a world price and a typed one, with the day each is for', () => {
+    expect(priceLine({ latest: { onDate: today, source: 'world' }, followsWorld: true, failed: false, today })).toBe('World price (XAU) · 30 Sep 2026');
+    expect(priceLine({ latest: { onDate: today, source: 'manual' }, followsWorld: true, failed: false, today })).toBe('Typed · 30 Sep 2026');
+  });
+
+  it('keeps an older price when today’s could not be fetched, and says ↻ tries again', () => {
+    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'world' }, followsWorld: true, failed: true, today })).toBe('World price (XAU) · 28 Sep 2026 · ↻ to try again');
+    // A holding that takes only typed prices never fetches, so it never offers to try again.
+    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'manual' }, followsWorld: false, failed: true, today })).toBe('Typed · 28 Sep 2026');
+    expect(priceLine({ latest: null, followsWorld: false, failed: false, today })).toBe('No price yet, so it is valued at what was paid');
   });
 });

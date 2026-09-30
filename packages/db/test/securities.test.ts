@@ -185,7 +185,7 @@ describe('linkHolding', () => {
       { onDate: '2026-09-05', priceMicro: 9_400_000_000 },
     ]);
     // TLKM's own series is untouched and never became BBCA's.
-    expect(await listPrices(database, ws, tlkm.id)).toEqual([{ onDate: '2026-08-01', priceMicro: 3_800_000_000 }]);
+    expect(await listPrices(database, ws, tlkm.id)).toEqual([{ onDate: '2026-08-01', priceMicro: 3_800_000_000, source: 'manual' }]);
     expect((await getAssetProfile(database, ws, b.id))!.lotSize).toBe(100);
     // Ruling m12: once moved, the holding's own rows are removed — no stale series is left to come back.
     expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${b.id}`)).toEqual([[0]]);
@@ -209,7 +209,7 @@ describe('linkHolding', () => {
     const before = await ledger();
     const valueBefore = await valueOf(a.id);
     await linkHolding(database, ws, { accountId: a.id, security: null });
-    expect(await listPrices(database, ws, a.id)).toEqual([{ onDate: '2026-09-19', priceMicro: 9_775_000_000 }]);
+    expect(await listPrices(database, ws, a.id)).toEqual([{ onDate: '2026-09-19', priceMicro: 9_775_000_000, source: 'manual' }]);
     expect(await ledger()).toEqual(before);
     expect(before.positions[a.id]).toMatchObject({ unitsMicro: 300_000_000, costMinor: 2_625_000 });
     expect(before.integrity).toEqual([]);

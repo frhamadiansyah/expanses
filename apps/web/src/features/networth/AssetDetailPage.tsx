@@ -1,7 +1,7 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, presetFor, type UnitKind } from '@expanses/core';
-import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, type TradeRow } from '@expanses/db';
+import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, setGoldPriceChoice, type TradeRow } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ArrowDownLeft, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, Settings, SquarePen } from 'lucide-react';
+import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -26,13 +26,14 @@ import { AccountPage } from '../accounts/AccountPage';
 import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
-import { dayLabel, estimatedTiles, gainPill, heroLine, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
-import { PriceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
+import { dayLabel, estimatedTiles, gainPill, heroLine, priceLine, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
+import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { ValueChart } from './ValueChart';
+import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
 
 const MONTH_LABEL = (month: string) => dayLabel(`${month}-01`).split(' ')[1]!;
 
@@ -54,6 +55,7 @@ const incomeWordOf = (kind: AssetKind | null) => (kind === 'stock' ? 'Dividend' 
 type Sheet =
   | { kind: 'price' }
   | { kind: 'value' }
+  | { kind: 'source' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string };
 
@@ -124,6 +126,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // A linked holding counts in the security's lots; one of its own, in the lot its settings say.
   const lotSize = stock.security?.lotSize ?? profile.data?.lotSize ?? null;
   const latestPrice = prices.data?.[0] ?? null;
+  // Gold counted in grams follows the world price unless its owner chose to type every price.
+  const gold = priced && kind === 'gold' && unitKind === 'grams';
+  const choiceQuery = useGoldPriceChoice(accountId, gold);
+  const choice = gold ? (choiceQuery.data ?? null) : null;
+  const world = useWorldGoldPrice({ accountId, currency, choice, latest: latestPrice, ready: prices.isSuccess && choiceQuery.isSuccess });
   const latestValuation = (valuations.data ?? []).find((row) => row.basis !== 'njop' && row.asOf === value.asOf) ?? null;
   const kindLabel = assetItemOfCode(value.coretaxCode)?.label ?? (kind ? presetFor(kind).label : 'Asset');
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
@@ -144,7 +151,17 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   });
 
   const tiles: Tile[] = priced
-    ? pricedTiles({ unitKind, unitsMicro, costMinor: value.costMinor, lotSize, currency, priceMicro: latestPrice?.priceMicro ?? null, priceLabel: unitKind ? PRICE_TILE[unitKind] : 'Price today' })
+    ? pricedTiles({
+        unitKind,
+        unitsMicro,
+        costMinor: value.costMinor,
+        lotSize,
+        currency,
+        priceMicro: latestPrice?.priceMicro ?? null,
+        ...(gold && latestPrice?.source === 'world'
+          ? { priceLabel: 'World price', priceTag: { tag: 'not buyback', info: 'The world spot price. A dealer usually buys gold back a few percent below it.' } }
+          : { priceLabel: gold ? 'Your price' : unitKind ? PRICE_TILE[unitKind] : 'Price today' }),
+      })
     : estimated
       ? estimatedTiles({
           costMinor: value.costMinor,
@@ -305,9 +322,23 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
       {tiles.length > 0 && <NumberGrid tiles={tiles} />}
       {priced && (
-        <p className="-mt-[10px] mb-[20px] px-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)] md:max-w-2xl" data-testid="price-line">
-          {latestPrice ? `Typed · ${dayLabel(latestPrice.onDate)}` : 'No price yet, so it is valued at what was paid'}
-        </p>
+        <div className="-mt-[12px] mb-[20px] flex items-center justify-between gap-2 px-[6px] md:max-w-2xl">
+          <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="price-line">
+            {priceLine({ latest: latestPrice, followsWorld: choice === 'world', failed: world.state === 'failed', today: isoDate() })}
+          </p>
+          {/* Only a holding that follows the world price can fetch one; a typed-only holding has nothing to refresh. */}
+          {choice === 'world' && (
+            <button
+              type="button"
+              aria-label="Fetch today’s world price"
+              disabled={world.state === 'fetching'}
+              onClick={world.retry}
+              className="ph-focus flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-tint)] disabled:opacity-40"
+            >
+              <RotateCw size={14} aria-hidden className={world.state === 'fetching' ? 'animate-spin' : undefined} />
+            </button>
+          )}
+        </div>
       )}
 
       {history.data && history.data.some((point) => point !== 0) && (
@@ -359,6 +390,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               ))}
             </SelectRow>
           ) : null,
+          choice ? (
+            <InsetRow key="source" title="Price source" value={choice === 'world' ? 'World price' : "I'll type it"} onClick={() => setSheet({ kind: 'source' })} />
+          ) : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,
@@ -392,6 +426,23 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onClose={() => setSheet(null)}
         />
       )}
+      {sheet?.kind === 'source' && choice && (
+        <PriceSourceSheet
+          choice={choice}
+          onPick={(next) => {
+            setSheet(null);
+            void (async () => {
+              try {
+                await setGoldPriceChoice(database, ws, accountId, next);
+                await invalidate();
+              } catch (e) {
+                setError(e);
+              }
+            })();
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'trade' && (
         <TradeSheet title={sheet.title} holding={holding} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
@@ -410,7 +461,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
 /** The labelled figures, two to a row: a small grey label, the figure under it. */
 function NumberGrid({ tiles }: { tiles: Tile[] }) {
+  const [explained, setExplained] = useState<string | null>(null);
+  const said = tiles.find((tile) => tile.label === explained)?.info;
   return (
+    <>
     <dl
       className="mb-[20px] grid w-full grid-cols-2 gap-px overflow-hidden rounded-[11px] bg-[var(--ph-hair)] md:max-w-2xl"
       data-testid="asset-grid"
@@ -418,11 +472,28 @@ function NumberGrid({ tiles }: { tiles: Tile[] }) {
       {tiles.map((tile, i) => (
         // An odd last tile spans the row, so the grid never ends on a hole.
         <div key={tile.label} className={cx('bg-[var(--ph-surface)] px-[13px] py-[9px]', i === tiles.length - 1 && tiles.length % 2 === 1 && 'col-span-2')}>
-          <dt className="text-[12px] leading-[16px] text-[var(--ph-ink-3)]">{tile.label}</dt>
+          <dt className="flex items-center gap-[5px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
+            <span className="whitespace-nowrap">{tile.label}</span>
+            {tile.info && (
+              <button
+                type="button"
+                aria-label={`About ${tile.label}`}
+                aria-expanded={explained === tile.label}
+                onClick={() => setExplained((was) => (was === tile.label ? null : tile.label))}
+                className="ph-focus ph-tap flex h-[16px] w-[16px] items-center justify-center rounded-full"
+              >
+                <Info size={13} aria-hidden />
+              </button>
+            )}
+          </dt>
           <dd className="tabular text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{tile.value}</dd>
+          {/* The word that qualifies the figure sits under it, where a half-width tile has the room. */}
+          {tile.tag && <dd className="mt-[3px] inline-block rounded-full bg-[var(--ph-fill)] px-[7px] text-[11px] leading-[16px] text-[var(--ph-ink-3)]">{tile.tag}</dd>}
         </div>
       ))}
     </dl>
+    {said && <p className="-mt-[12px] mb-[20px] px-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)] md:max-w-2xl">{said}</p>}
+    </>
   );
 }
 
