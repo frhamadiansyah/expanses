@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createAccount, listAccounts, personalBook, postTransaction, postTransactionTx, renameAccount, saveBudget, voidTransactionTx } from '../../src/index';
 import { setupDb } from '../helpers';
 import { withCapturePaused } from '../../src/sync/capture';
-import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
+import { installCaptureTriggers, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
 import { shareBookForTest } from './sync-helpers';
 
 async function watchedBook() {
@@ -110,5 +110,20 @@ describe('the capture harness (§6.4)', () => {
     await shareBookForTest(t.database, book.id);
     await t.database.db.run(sql`UPDATE accounts SET name = 'After' WHERE id = ${groceries.id}`);
     expect(await uncapturedWrites(t.database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
+  });
+});
+
+describe('the watch ends only when the database does (wave 3 merge)', () => {
+  it('a closed or restored database is a watch that is gone; any other error fails the check', async () => {
+    expect(watchGone(new TypeError('The database connection is not open'))).toBe(true);
+    expect(watchGone(new Error('no such table: temp.__writes'))).toBe(true);
+    expect(watchGone(new Error('Failed query', { cause: new Error('no such table: temp.__sealed') }))).toBe(true);
+    expect(watchGone(new Error('no such table: accounts'))).toBe(false);
+    expect(watchGone(new Error('boom'))).toBe(false);
+
+    const { database, book } = await watchedBook();
+    await database.db.run(sql`INSERT INTO temp.__sealed (book_id, entry_json) VALUES (${book.id}, '{}')`);
+    await database.db.run(sql`ALTER TABLE book_member_accounts RENAME TO book_member_accounts_away`);
+    await expect(privateLeaks(database)).rejects.toThrow();
   });
 });

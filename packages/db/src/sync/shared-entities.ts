@@ -34,6 +34,14 @@ export interface RowEntity {
   localOnInsert: readonly string[];
   /** Made by migration 0056 (spec §4.2), so absent from a database migrated today. */
   createdBy0056?: true;
+  /**
+   * Joint-net-worth spec §5.1: the member allowed to write this row, read from the op's fields merged over the row
+   * already here (so a partial edit is judged by the row's owner, not just what it names) and the op's key.
+   * `'either-party'` (a `member_transfer`) means either side of the transfer, read from its `from`/`to` fields'
+   * `owner`. `null` (the default, entities without a `writer`) means anyone may write it, as before. Checked in
+   * `apply.ts`'s `applyRowOp`.
+   */
+  writer?: (fields: Record<string, unknown>, key: Record<string, string>) => string | 'either-party' | null;
 }
 
 /** The purchase: a lineage of `transactions` rows and the rows about them, captured at the ledger's doors. */
@@ -135,6 +143,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       agreeJwk: 'agree_jwk',
       addedAt: 'added_at',
       removedAt: 'removed_at',
+      // The app version this device last wrote its own row at (joint-net-worth spec §9): read by every peer to
+      // decide whether it meets NET_WORTH_MIN_APP_VERSION before proposing joint mode.
+      appVersion: 'app_version',
     },
     localOnInsert: ['book_id'],
     createdBy0056: true,
@@ -231,6 +242,91 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     localOnInsert: ['created_at'],
   },
   {
+    kind: 'row',
+    entity: 'net_worth_group',
+    table: 'group_logs',
+    // The one joint-net-worth row of the WORKSPACE log (joint-net-worth spec §4, task 4): which group log the
+    // workspace's net-worth group keeps, and the relay invites to it, each sealed to one admitted device. A member
+    // outside the group learns that a group exists and how many invites wait, nothing else.
+    scopeRule: "book_id = bookId (the workspace's own book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['book_id'],
+    // `groupBookId` and `relayBookId` are written once (authority.ts `WRITER_FROZEN_FIELDS`, task 4 review round 1):
+    // a member outside the group cannot point a not-yet-joined member at a log of their own. `invites` stays appendable.
+    fields: { groupBookId: 'group_book_id', relayBookId: 'relay_book_id', invites: 'invites_json' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'nw_proposal',
+    table: 'nw_proposals',
+    scopeRule: "book_id = bookId (the group log's local book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['proposal_id'],
+    fields: { mode: 'mode', members: 'members_json', proposedBy: 'proposed_by', createdHlc: 'created_hlc', cancelled: 'cancelled' },
+    localOnInsert: ['book_id'],
+    // Its proposer alone writes it (joint-net-worth spec §5.1), `cancelled` included: nobody else may withdraw it.
+    writer: (fields) => (typeof fields.proposedBy === 'string' ? fields.proposedBy : null),
+  },
+  {
+    kind: 'row',
+    entity: 'nw_answer',
+    table: 'nw_answers',
+    scopeRule: "book_id = bookId (the group log's local book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['proposal_id', 'member_id'],
+    fields: { answer: 'answer' },
+    localOnInsert: ['book_id'],
+    // Each member answers only for themselves.
+    writer: (_fields, key) => key.member_id ?? null,
+  },
+  {
+    kind: 'row',
+    entity: 'nw_item',
+    table: 'nw_items',
+    scopeRule: "book_id = bookId (the group log's local book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['item_id'],
+    fields: { owner: 'owner', summary: 'summary_json', removed: 'removed' },
+    localOnInsert: ['book_id'],
+    // Its owner alone writes it, in joint mode as much as separate.
+    writer: (fields) => (typeof fields.owner === 'string' ? fields.owner : null),
+  },
+  {
+    kind: 'row',
+    entity: 'nw_pending',
+    table: 'nw_pending',
+    scopeRule: "book_id = bookId (the group log's local book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['member_id'],
+    fields: { count: 'count' },
+    localOnInsert: ['book_id'],
+    // Each member's own pending count is theirs to write.
+    writer: (_fields, key) => key.member_id ?? null,
+  },
+  {
+    kind: 'row',
+    entity: 'member_transfer',
+    table: 'member_transfers',
+    scopeRule: "book_id = bookId (the group log's local book id)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['transfer_id'],
+    fields: {
+      occurredOn: 'occurred_on',
+      amountMinor: 'amount_minor',
+      currency: 'currency',
+      from: 'from_json',
+      to: 'to_json',
+      description: 'description',
+      void: 'void',
+      recordedBy: 'recorded_by',
+    },
+    localOnInsert: ['book_id'],
+    // Either side of the transfer may write it (its payer or its receiver): apply.ts resolves the sentinel against
+    // `from.owner` and `to.owner`.
+    writer: () => 'either-party',
+  },
+  {
     kind: 'purchase',
     entity: 'purchase',
     table: 'transactions',
@@ -305,6 +401,13 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   // book_id is this row's own scope, not a synced field: apply writes it locally on insert (migration 0056).
   book_members: ['book_id'],
   book_devices: ['book_id'],
+  // Joint-net-worth's five synced tables (migration 0057): book_id is the group log's local book id, written locally
+  // on insert like any other entity scoped by its book.
+  nw_proposals: ['book_id'],
+  nw_answers: ['book_id'],
+  nw_items: ['book_id'],
+  nw_pending: ['book_id'],
+  member_transfers: ['book_id'],
 };
 
 export function entityOf(name: string): SharedEntity {

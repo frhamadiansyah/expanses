@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
-import { clearAuthorityTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { clearAuthorityTx, groupLogWorkspaceOf, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
@@ -23,6 +23,28 @@ import {
 } from './invite';
 import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
+import {
+  admitToGroupLog,
+  dropInviteMarksTx,
+  exitGroupOf,
+  groupLogOf,
+  groupMembersReady,
+  leaveGroupLog,
+  openGroupLog,
+  removeFromGroupLog,
+  sweepBeforeDrain,
+  syncGroupAfter,
+  type GroupLogHost,
+} from './net-worth/group-log';
+import { afterWorkspaceSync, answerNetWorth, cancelNetWorth, leaveNetWorth, netWorthGroup, proposeNetWorth, type NetWorthGroupView } from './net-worth/proposals';
+import type { FilingMode } from '@expanses/core';
+import {
+  editMemberTransfer as editTransfer,
+  recordMemberTransfer as recordTransfer,
+  voidMemberTransfer as voidTransfer,
+  type MemberTransferInput,
+  type MemberTransferPatch,
+} from './net-worth/transfers';
 import { MissingEpochKeyError, Sealer } from './seal';
 import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
@@ -40,6 +62,9 @@ import { removedFromBook, SyncTransportError } from './types';
  * - `removeDevice` and `maybeRotate` (§8.4).
  * - `checkRestore` and rejoining through `joinBook` (§8.7).
  * - `makeOwner`, `leave`, `stopSharing`, `isFrozen` and `bookSyncStatus` (§8.4–§8.7, §11; task 9a).
+ * - The net-worth group log (joint-net-worth §4; net-worth/group-log.ts): `openGroupLog`, `admitToGroupLog`,
+ *   `leaveGroupLog`, `removeFromGroupLog`, `groupLogOf`, `groupMembersReady`; `syncOnce` of a workspace syncs its group
+ *   log too.
  */
 
 /** Only an owner may do this (§8.5): make an owner, stop sharing. Decided by the authority view. */
@@ -118,6 +143,13 @@ export interface SyncOnceResult extends PullResult {
    * `403 removed`: an owner removed this device (§8.4, final review I2). The book is read-only after.
    */
   ended?: 'unshared' | 'left' | 'removed';
+  /** A workspace's sync also syncs its net-worth group log, when this device is in it (joint-net-worth §4): that sync. */
+  group?: SyncOnceResult;
+  /**
+   * The group log's part failed on the relay (task 4 review round 1): the workspace's own sync still counts, and the
+   * group log is tried again on the next run.
+   */
+  groupError?: SyncTransportError | Error;
 }
 
 export interface CreatedInvite {
@@ -156,16 +188,25 @@ export interface JoinInput {
   memberId?: string;
 }
 
+export interface SyncEngineOptions {
+  /** This app's own version (joint-net-worth spec §9), written on `book_devices.app_version` whenever this device
+   * writes its own row (`shareBook`, `joinBook`), so a peer can tell whether it meets `NET_WORTH_MIN_APP_VERSION`. */
+  appVersion?: string;
+}
+
 export class SyncEngine {
   readonly sealer: Sealer;
+  private readonly appVersion?: string;
 
   constructor(
     private readonly database: Database,
     private readonly transport: SyncTransport,
     readonly device: DeviceKeys,
     private readonly now: () => number = Date.now,
+    options: SyncEngineOptions = {},
   ) {
     this.sealer = new Sealer(database, device);
+    this.appVersion = options.appVersion;
     // The one device-id seam (§5.1): every hlc and entry this database emits carries the KeyStore's id.
     configureCapture(database, { deviceId: device.deviceId });
   }
@@ -199,6 +240,7 @@ export class SyncEngine {
           deviceId: this.deviceId,
           deviceName: input.deviceName,
           device: this.device.public,
+          appVersion: this.appVersion,
         });
       });
       return { relayBookId, memberId, changeSets };
@@ -222,12 +264,13 @@ export class SyncEngine {
   }
 
   /** `drain`, with whatever a stale-epoch re-pull applied collected into `pulls`, for `syncActive` to act on. */
-  private async drainInto(bookId: string, seen: SeenLog | undefined, pulls: PullResult[]): Promise<number> {
+  private async drainInto(bookId: string, seen: SeenLog | undefined, pulls: PullResult[], skipSummaries = false): Promise<number> {
     let shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') return 0;
     const rows = await this.database.db.values<[string, string]>(sql`SELECT id, entry_json FROM sync_outbox WHERE book_id = ${bookId} ORDER BY hlc`);
     let pushed = 0;
     for (const [id, changeSetJson] of rows) {
+      if (skipSummaries && (JSON.parse(changeSetJson) as ChangeSet).ops.some((op) => op.entity === 'nw_item')) continue;
       for (let attempt = 0; ; attempt += 1) {
         const entry = await this.sealer.seal(bookId, shared.epoch, JSON.parse(changeSetJson) as ChangeSet);
         try {
@@ -235,8 +278,23 @@ export class SyncEngine {
           break;
         } catch (error) {
           if (!(error instanceof SyncTransportError && error.status === 409 && attempt === 0)) throw error;
-          pulls.push(await this.pull(bookId, seen));
+          const repulled = await this.pull(bookId, seen);
+          pulls.push(repulled);
           const now = await this.sharedRow(bookId);
+          if (
+            now &&
+            now.state === 'active' &&
+            now.epoch === shared.epoch &&
+            !repulled.stopped &&
+            (await groupLogWorkspaceOf(this.database.db, bookId)) !== null &&
+            (await this.database.transaction((tx) => viewDevice(tx, bookId, this.deviceId))) === null
+          ) {
+            // Joint net worth, final review item 5: the group log rotated past this device before its introduction
+            // landed, and a pull to the end of the log brought no key for it — it joined on an invite made before the
+            // rotation. Not in the log's view, it is invited again by a group member's device: it waits for that fresh
+            // invite (`needs_invite`), which the workspace's next sync claims (the restored phone's path).
+            await this.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+          }
           if (!now || now.state !== 'active' || now.epoch === shared.epoch) throw error;
           shared = now;
         }
@@ -254,6 +312,31 @@ export class SyncEngine {
    * and cursor stay put.
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    const result = await this.syncBook(bookId, seen);
+    // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
+    // No failure of the group log's part — a relay error or any other — fails the workspace's sync (task 4 review round
+    // 1; final review item 6): it comes back as `groupError`, and the next run tries again.
+    let group: SyncOnceResult | undefined;
+    try {
+      group = await syncGroupAfter(this.groupHost(), bookId, result);
+    } catch (error) {
+      return { ...result, groupError: error instanceof Error ? error : new Error(String(error)) };
+    }
+    // Its proposals' consequences (task 5): a lost lone log abandoned, a dissolved group's log deleted or a closed live
+    // link opened again, a member's later device let in, the pending count written. None of it ever fails the
+    // workspace's own sync (review round 1, finding 7): what goes wrong is the group's, reported as `groupError`, and
+    // tried again on the next run.
+    try {
+      await afterWorkspaceSync(this.groupHost(), bookId, result);
+    } catch (error) {
+      const groupError = error instanceof Error ? error : new Error(String(error));
+      return group ? { ...result, group, groupError } : { ...result, groupError };
+    }
+    return group ? { ...result, group } : result;
+  }
+
+  /** `syncOnce` of the book alone. */
+  private async syncBook(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
     try {
       return await this.syncActive(bookId, seen);
@@ -264,13 +347,40 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * A device that shared or joined before it carried its own version — or was upgraded since — keeps whatever
+   * `app_version` it last wrote (possibly `NULL`) until it says otherwise (task 1 review round 1, ruling on the app
+   * version): every `syncOnce` corrects it here, captured so the write reaches the outbox and its peers.
+   */
+  private async syncOwnAppVersion(bookId: string): Promise<void> {
+    if (!this.appVersion) return;
+    const [row] = await this.database.db.values<[string | null]>(
+      sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`,
+    );
+    if (!row || row[0] === this.appVersion) return;
+    await this.database.transaction((tx) =>
+      withCapture(tx, { entity: 'device', id: this.deviceId, bookId }, async () => {
+        await tx.run(sql`UPDATE book_devices SET app_version = ${this.appVersion} WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`);
+      }),
+    );
+  }
+
   private async syncActive(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    await this.syncOwnAppVersion(bookId);
     const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
     let pushed = 0;
     if (!result.stopped) {
       const pulls: PullResult[] = [];
-      pushed = await this.drainInto(bookId, seen, pulls);
+      let skipSummaries = false;
+      // Joint net worth, wave 3 round 4: in a group log, nothing waiting is sealed under a key someone outside the group
+      // still holds — a removal the pull brought is rotated past first, anyone outside the active group is taken out,
+      // and while one is still in, no summary op leaves (it waits in the outbox for the next sync).
+      if ((await groupLogWorkspaceOf(this.database.db, bookId)) !== null) {
+        result = await this.rotateBeforeDrain(bookId, result, seen);
+        skipSummaries = !(await sweepBeforeDrain(this.groupHost(), bookId));
+      }
+      pushed = await this.drainInto(bookId, seen, pulls, skipSummaries);
       for (const pulled of pulls) result = merge(result, pulled);
       result = merge(result, await this.pull(bookId, seen));
     }
@@ -304,6 +414,22 @@ export class SyncEngine {
       );
     }
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
+  }
+
+  /**
+   * Wave 3 round 4, for a group log: the rotation a removal just pulled calls for (§8.4) is made before the outbox is
+   * drained, so what waits is sealed under a key the removed device never holds. A leave this device follows is left to
+   * `syncActive`'s own loop (it leaves, sealing nothing). A removal rotated here is `skipped` there: the epoch moved.
+   */
+  private async rotateBeforeDrain(bookId: string, result: PullResult, seen?: SeenLog): Promise<PullResult> {
+    let out = result;
+    for (const removal of result.removals) {
+      if (removal.target === this.deviceId) continue;
+      if (removal.leave && (await this.followsLeave(bookId, removal.target, removal.seq))) break;
+      const outcome = await this.maybeRotate(bookId, removal.epoch);
+      if (outcome !== 'skipped') out = merge(out, await this.pull(bookId, seen));
+    }
+    return out;
   }
 
   private pull(bookId: string, seen?: SeenLog): Promise<PullResult> {
@@ -529,9 +655,9 @@ export class SyncEngine {
       }
       // The same device rejoining (an unshared copy, C1) already has its row: it is this device's again.
       await tx.run(sql`
-        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL)
-        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL`);
+        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL, ${this.appVersion ?? null})
+        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL, app_version = excluded.app_version`);
       const book = { bookId, memberId, epoch };
       const ops = [
         ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),
@@ -605,9 +731,13 @@ export class SyncEngine {
       if (error instanceof SyncTransportError && error.status === 409) return 'conflict';
       throw error;
     }
+    const groupLog = (await groupLogWorkspaceOf(this.database.db, bookId)) !== null;
     await this.database.transaction(async (tx) => {
       await this.sealer.storeEpochKeyTx(tx, bookId, next, key);
       await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${next}) WHERE book_id = ${bookId}`);
+      // Joint net worth, final review item 5: the invites this device made into a group log before now carry no key for
+      // the new epoch; a device not yet in is invited again, with the current keys.
+      if (groupLog) await dropInviteMarksTx(tx, bookId);
     });
     return next;
   }
@@ -728,6 +858,7 @@ export class SyncEngine {
     }
     this.sealer.forget();
     await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+    await this.exitGroupQuietly(bookId, false); // §6: nobody is in a workspace no longer shared, nor in its group
   }
 
   /**
@@ -748,6 +879,20 @@ export class SyncEngine {
     }
     this.sealer.forget();
     await this.database.transaction((tx) => this.dropSyncStateTx(tx, bookId, shared.memberId));
+    await this.exitGroupQuietly(bookId, false);
+  }
+
+  /**
+   * §6 (task 4 review round 1): out of the workspace here is out of its net-worth group log. Best effort on the relay
+   * (`exitGroupOf` forgets the group locally either way); a no-op for a book with no group log here, a group log itself
+   * included.
+   */
+  private async exitGroupQuietly(bookId: string, leave: boolean): Promise<void> {
+    try {
+      await exitGroupOf(this.groupHost(), bookId, leave);
+    } catch (error) {
+      if (!(error instanceof SyncTransportError)) throw error;
+    }
   }
 
   /**
@@ -870,6 +1015,95 @@ export class SyncEngine {
       await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by}, unshared_reason = ${reason} WHERE book_id = ${bookId}`);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
+    // §6: a device out of the workspace is out of its group log (a leave, a removal, the sharing stopped).
+    await this.exitGroupQuietly(bookId, reason === 'left');
+  }
+
+  /* ------------------------------------------------------ net-worth group log */
+
+  /** What the group log (net-worth/group-log.ts) borrows from this engine. */
+  private groupHost(): GroupLogHost {
+    return {
+      database: this.database,
+      transport: this.transport,
+      device: this.device,
+      sealer: this.sealer,
+      now: this.now,
+      ...(this.appVersion === undefined ? {} : { appVersion: this.appVersion }),
+      syncOnce: (bookId) => this.syncOnce(bookId),
+      removeDevice: (bookId, target) => this.removeDevice(bookId, target),
+      leaveNow: (bookId, leave) => this.leaveNow(bookId, leave),
+    };
+  }
+
+  /** Makes the workspace's net-worth group log, or returns the one this device is in (joint-net-worth §4). */
+  openGroupLog(workspaceBookId: string): Promise<string> {
+    return openGroupLog(this.groupHost(), workspaceBookId);
+  }
+
+  /** The workspace's group log this device reads and writes, or null (none, or one this device is not in). */
+  groupLogOf(workspaceBookId: string): Promise<string | null> {
+    return groupLogOf(this.groupHost(), workspaceBookId);
+  }
+
+  /** Invites these members' pinned devices into the group log; they join on their next workspace sync. */
+  admitToGroupLog(workspaceBookId: string, memberIds: readonly string[]): Promise<void> {
+    return admitToGroupLog(this.groupHost(), workspaceBookId, memberIds);
+  }
+
+  /** This member leaves the group log: its devices removed with rotation, the group's rows forgotten here. */
+  leaveGroupLog(workspaceBookId: string): Promise<void> {
+    return leaveGroupLog(this.groupHost(), workspaceBookId);
+  }
+
+  /** Takes a member who left out of the group log, with rotation: by any other group member. */
+  removeFromGroupLog(workspaceBookId: string, memberId: string): Promise<void> {
+    return removeFromGroupLog(this.groupHost(), workspaceBookId, memberId);
+  }
+
+  /** Whether every device of these members runs an app new enough for joint net worth (§9). */
+  groupMembersReady(workspaceBookId: string, memberIds: readonly string[]): Promise<{ ready: boolean; outdated: { memberId: string; deviceName: string }[] }> {
+    return groupMembersReady(this.groupHost(), workspaceBookId, memberIds);
+  }
+
+  /** Proposes how the household files and who is in the group (§6); returns the proposal's id. */
+  proposeNetWorth(workspaceBookId: string, input: { mode: FilingMode; members: string[] }): Promise<string> {
+    return proposeNetWorth(this.groupHost(), workspaceBookId, input);
+  }
+
+  /** Confirms or declines a proposal this member is asked on; a decline of an active one is refused. */
+  answerNetWorth(workspaceBookId: string, proposalId: string, answer: 'confirm' | 'decline'): Promise<void> {
+    return answerNetWorth(this.groupHost(), workspaceBookId, proposalId, answer);
+  }
+
+  /** The proposer withdraws a proposal not yet active. */
+  cancelNetWorth(workspaceBookId: string, proposalId: string): Promise<void> {
+    return cancelNetWorth(this.groupHost(), workspaceBookId, proposalId);
+  }
+
+  /** Stop sharing my net worth: `left`, then out of the group log, or the group dissolves. */
+  leaveNetWorth(workspaceBookId: string): Promise<void> {
+    return leaveNetWorth(this.groupHost(), workspaceBookId);
+  }
+
+  /** The workspace's net-worth group as this device derives it. */
+  netWorthGroup(workspaceBookId: string): Promise<NetWorthGroupView> {
+    return netWorthGroup(this.groupHost(), workspaceBookId);
+  }
+
+  /** Records a transfer between this member and a partner (§7.2), posting this device's side; returns its id. */
+  recordMemberTransfer(workspaceBookId: string, t: MemberTransferInput): Promise<string> {
+    return recordTransfer(this.database, workspaceBookId, t);
+  }
+
+  /** Either party changes a transfer's date, amount or note; both sides follow. */
+  editMemberTransfer(workspaceBookId: string, transferId: string, patch: MemberTransferPatch): Promise<void> {
+    return editTransfer(this.database, workspaceBookId, transferId, patch);
+  }
+
+  /** Either party deletes a transfer: both sides voided, for ever. */
+  voidMemberTransfer(workspaceBookId: string, transferId: string): Promise<void> {
+    return voidTransfer(this.database, workspaceBookId, transferId);
   }
 
   /* ---------------------------------------------------------------- restore */

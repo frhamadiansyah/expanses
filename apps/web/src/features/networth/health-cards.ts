@@ -5,6 +5,7 @@ import {
   type EmergencyBase,
   type Goal,
   type HealthRatio,
+  type RatioKey,
   householdEmergencyMonths,
   monthOf,
   type RatioStatus,
@@ -105,4 +106,37 @@ export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLi
   const missing = [...(inputs?.missing ?? [])];
   if (missing.length > 0) return { totals: null, missing };
   return { totals: sheetTotals(balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? [])), missing: [] };
+}
+
+/**
+ * What the ratios are read from (joint-net-worth §8.2): the household's sheet when the group files jointly — this
+ * phone's rows and the other's shared items, its missing rates included — else this phone's own sheet, as always.
+ * Only the balance sheet is joint; the cash flows the ratios divide by stay this phone's own.
+ */
+export function ratioInputs<T extends { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] }>(
+  own: T | undefined,
+  joint: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | null,
+): { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined {
+  return joint ? { assets: joint.assets, liabilities: joint.liabilities, missing: joint.missing } : own;
+}
+
+/**
+ * The ratios the household's balance sheet answers (joint-net-worth §8.2, controller ruling, review round 1): those
+ * built on the sheet alone — debt to assets, solvency, investments to net worth. Every ratio with an income or spending
+ * denominator (emergency fund, savings, surplus, debt payments) and liquidity stay this phone's own, own sheet over own
+ * flows: the flows are one person's, and a household's money over one person's spending would overstate it.
+ */
+export const JOINT_RATIO_KEYS: ReadonlySet<RatioKey> = new Set<RatioKey>(['debt_to_assets', 'solvency', 'investments_to_net_worth']);
+
+/**
+ * The ratios as the page shows them. `joint` undefined: not filing jointly, the personal ratios as they are. `joint`
+ * null: filing jointly but the household's sheet cannot be told (loading, an error, a month it holds no value for) —
+ * its ratios are blank, never the personal figures under the household's name.
+ */
+export function withJointRatios(personal: HealthRatio[], joint: HealthRatio[] | null | undefined): HealthRatio[] {
+  if (joint === undefined) return personal;
+  return personal.map((ratio) => {
+    if (!JOINT_RATIO_KEYS.has(ratio.key)) return ratio;
+    return joint?.find((each) => each.key === ratio.key) ?? { ...ratio, value: null, status: 'unknown' };
+  });
 }

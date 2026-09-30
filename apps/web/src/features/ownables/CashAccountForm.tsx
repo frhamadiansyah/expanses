@@ -10,6 +10,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
+import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
 /**
  * The form that follows a choice on the account picker.
@@ -38,6 +39,7 @@ export function CashAccountForm({
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
+  const household = useShareOnAdd();
   const [name, setName] = useState('');
   const [balance, setBalance] = useState('');
   const [bank, setBank] = useState('');
@@ -94,7 +96,8 @@ export function CashAccountForm({
             openingRateToBase: await openingRateFor({ database, ws, currency: pocket.currency, openedOn, openingBalanceMinor: pocket.openingBalanceMinor, typed: pocket.typedRate, resolveRates }),
           });
         }
-        const { parent } = await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
+        const { parent, pockets: opened } = await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
+        await household.save([parent.id, ...opened.map((pocket) => pocket.id)]);
         await invalidate();
         if (onCreated) onCreated(parent.id);
         else await navigate({ to: '/accounts' });
@@ -115,6 +118,7 @@ export function CashAccountForm({
         rateBps: locked && rate.trim() ? Math.round(parseRate(rate) * 100) : undefined,
         sourceAccountId: source?.id,
       });
+      await household.save([opened.id]);
       await invalidate();
       if (onCreated) onCreated(opened.id);
       else await navigate({ to: '/accounts' });
@@ -242,6 +246,7 @@ export function CashAccountForm({
           {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
         </InsetGroup>
       )}
+      {household.element}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />

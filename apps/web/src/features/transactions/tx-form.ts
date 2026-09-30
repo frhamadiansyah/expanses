@@ -15,7 +15,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import type { AccountRow, PostTransactionInput, RecordTradeInput, SplitBillInput, TaggedTransferInput, TransactionView } from '@expanses/db';
+import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -69,6 +69,86 @@ export interface FormDraft {
   /** True while correcting a transaction rather than adding one: With is not offered on an edit (§15.6). */
   editing: boolean;
   purchase: PurchaseDraft; // buy-in-form.ts, unchanged
+  /**
+   * Joint net worth §7.1: the partner's shared item Paid with names (`moneyId` is then the partner's placeholder), null
+   * once one of this person's own accounts is picked, and undefined — "as the purchase already says" — until either.
+   */
+  paidFrom?: PaidFrom | null;
+  /**
+   * Joint net worth §7.2: on the Transfer tab, the partner's shared item the money goes to (`side: 'to'`, To names it
+   * and `toId` is unused) or came from (`side: 'from'`, From names it and `moneyId` is unused); null or absent — none.
+   */
+  partner?: PartnerItem | null;
+}
+
+/** A partner's shared item one side of a transfer names (§7.2), with the currency the transfer must then be in. */
+export interface PartnerItem {
+  side: 'to' | 'from';
+  owner: string;
+  itemId: string;
+  currency: string;
+}
+
+/** This person's own account in a transfer with a partner: From when the money goes to them, To when it came from them. */
+export function ownTransferAccountId(draft: Pick<FormDraft, 'partner' | 'moneyId' | 'toId'>): string {
+  return draft.partner?.side === 'from' ? draft.toId : draft.moneyId;
+}
+
+/**
+ * A transfer with a partner as the form holds it (§7.2), checked, in the shape `recordMemberTransfer` takes: this person's
+ * own account — `ownItemId`, its shared item, is the caller's to name (`itemIdOf`) — the partner's item, one currency, the
+ * figure. Throws a user-readable Error when a row is missing or the two sides' currencies differ.
+ */
+export function memberTransferOf(draft: FormDraft, accounts: readonly AccountRow[], me: string, ownItemId: string): MemberTransferInput {
+  const partner = draft.partner;
+  if (draft.mode !== 'transfer' || !partner) throw new Error('Choose who the transfer is with');
+  const own = accounts.find((a) => a.id === ownTransferAccountId(draft));
+  if (!own?.currency) throw new Error(partner.side === 'to' ? 'Choose the From account' : 'Choose the To account');
+  if (own.currency !== partner.currency) throw new Error(`Pick an account in ${partner.currency}`);
+  const amountMinor = positive(draft.amount, own.currency, 'Amount');
+  const mine = { owner: me, itemId: ownItemId };
+  const theirs = { owner: partner.owner, itemId: partner.itemId };
+  return {
+    occurredOn: draft.occurredOn,
+    amountMinor,
+    currency: own.currency,
+    from: partner.side === 'to' ? mine : theirs,
+    to: partner.side === 'to' ? theirs : mine,
+    description: draft.description.trim() || null,
+  };
+}
+
+/** The typed figure of a transfer with a partner being corrected, in minor units of its currency (§7.2). */
+export function transferFigure(draft: Pick<FormDraft, 'amount'>, currency: string): number {
+  return positive(draft.amount, currency, 'Amount');
+}
+
+/**
+ * The form's words for a save refused because Paid with names a partner's item that has stopped being shared (§7.1):
+ * the item by the name the row shows, "Rina Card ···· 1234 is no longer shared", else the refusal's own words.
+ */
+export function sayPaidWithError(error: unknown, itemName: string | null | undefined): unknown {
+  if (error instanceof NetWorthError && error.code === 'item-not-shared' && itemName) return new Error(`${itemName} is no longer shared. Pick another way to pay.`);
+  return error;
+}
+
+/** What the ledger is told about Paid with (§5.3): the choice when one was made in this form, else nothing. */
+export function paidFromHint(draft: Pick<FormDraft, 'mode' | 'paidFrom'>): { paidFrom?: PaidFrom | null } {
+  return draft.mode === 'expense' && draft.paidFrom !== undefined ? { paidFrom: draft.paidFrom } : {};
+}
+
+/**
+ * The partner's shared item this form pays with (§7.1), or null for this person's own accounts: the one picked here,
+ * else — until something is picked — the one the edited purchase was paid from, when this person paid it from an
+ * item that is not their own (`saved`, the purchase's payer as `purchasePayers` reads it).
+ */
+export function sharedPaymentOf(
+  draft: Pick<FormDraft, 'mode' | 'paidFrom'>,
+  saved: { paidBy: string; mine: boolean; paidFrom: PaidFrom | null } | null | undefined,
+): PaidFrom | null {
+  if (draft.mode !== 'expense') return null;
+  if (draft.paidFrom !== undefined) return draft.paidFrom;
+  return saved?.mine && saved.paidFrom && saved.paidFrom.owner !== saved.paidBy ? saved.paidFrom : null;
 }
 
 export function emptyForm(bookId: string, today: string = isoDate()): FormDraft {
@@ -691,6 +771,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       excludedFromReport: draft.excluded,
       eventId: draft.eventId || null,
       photoIds: draft.photoIds,
+      // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
+      ...paidFromHint(draft),
     },
   };
 }

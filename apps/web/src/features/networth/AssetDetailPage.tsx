@@ -24,6 +24,7 @@ import { SetAsidePanel } from './SetAsidePanel';
 import { useAssetProfile, useAssetValues, useDepositAutomation, useDepositTerms, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -276,6 +277,9 @@ export function AssetDetailPage() {
       {/* A deposit's own terms, for a deposit: a wallet, a bank account or a bar of gold has no day the money comes back. */}
       {value && account?.subtype === 'time_deposit' && <DepositTermsCard accountId={accountId} />}
       {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
+
+      {/* Joint net worth (§8.1): what the household sees of it. Nothing while this person is in no group. */}
+      {account && <ShareWithHouseholdRow accountId={account.id} />}
 
       {value && !canArchive && (
         /* Why the corner's archive is dimmed: the way the page says it without a row of its own. */

@@ -111,6 +111,7 @@ export {
   type JoinInput,
   type PreviewedInvite,
   type ShareInput,
+  type SyncEngineOptions,
   type SyncOnceResult,
 } from './sync/engine';
 export { BookReadOnlyError, LastOwnerError, SyncNotReadyError } from './sync/capture';
@@ -135,3 +136,53 @@ export * from './repos/sharing';
 export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry, type SyncTransport } from './sync/types';
 // The in-memory relay, for the app's own tests of its sync wiring (it is the reference the real relay matches).
 export { MemoryTransport } from './sync/memory-transport';
+// Joint net worth (spec §9): the app-version gate every device's book_devices row carries.
+export { meetsMinVersion, NET_WORTH_MIN_APP_VERSION } from './sync/net-worth/version';
+// Joint net worth (spec §6, §8.1): the group's proposals and answers, and what each person shares of their own items.
+export { type NetWorthGroupView } from './sync/net-worth/proposals';
+// `markReviewedTx` and `sendAllowance` stay internal (the summaries' send gate): only Share records a review.
+export {
+  activeNetWorthGroup,
+  confirmReview,
+  departedMembers,
+  getShareSetting,
+  groupDissolved,
+  groupStateOf,
+  NetWorthError,
+  pendingCounts,
+  pendingHidden,
+  proposalOf,
+  refreshPendingCount,
+  reviewedFor,
+  reviewItems,
+  setShareSetting,
+  type ActiveNetWorthGroup,
+  type NetWorthErrorCode,
+  type ReviewItem,
+  type ShareSetting,
+} from './repos/net-worth-sharing';
+// Joint net worth (spec §5.2, §9, task 6): summaries — compute, send, receive — and the dirty mark a repository sets
+// when it changes an account's value or profile outside the ledger doors (a share setting, say).
+export { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from './sync/net-worth/summaries';
+export { markAccountDirtyTx } from './sync/capture';
+// Joint net worth §5.3, §7.1 (task 7): Paid with the other's shared item.
+export { paidFromAccount, paidWithItems, PAYABLE_SUBTYPES, type PaidWithItem } from './sync/net-worth/paid-from';
+export type { PaidFrom } from './sync/capture';
+// Joint net worth §7.2 (task 8): transfers between partners, recorded once in the group log, posted on each party's phone.
+export {
+  editMemberTransfer,
+  itemTransfers,
+  memberTransfersOf,
+  memberTransferUnposted,
+  recordMemberTransfer,
+  voidMemberTransfer,
+  type ItemTransfer,
+  type MemberTransferInput,
+  type MemberTransferPatch,
+  type MemberTransferSide,
+  type UnpostedReason,
+} from './sync/net-worth/transfers';
+// Joint net worth (spec §8.3, task 9): the Household purchases of a period, with the shared item each was paid from.
+export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';
+// Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
+export { type JointReport, reportInputsFor } from './repos/joint-tax';

@@ -1,5 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { listPhotos, listTransactions, ownerScope, type TransactionPhotoRow, voidTransaction } from '@expanses/db';
+import { listPhotos, listTransactions, ownerScope, type TransactionPhotoRow } from '@expanses/db';
+import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import { Pencil } from 'lucide-react';
@@ -135,7 +136,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     setError(null);
     setBusy(true);
     try {
-      await voidTransaction(database, ws, transactionId);
+      await deleteTransaction(database, ws, transactionId);
       await invalidate();
       await navigate({ to: '/transactions' });
     } catch (e) {

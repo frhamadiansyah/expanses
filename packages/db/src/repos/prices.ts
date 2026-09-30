@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { prices, valuations } from '../schema-assets';
+import { markAccountDirtyTx } from '../sync/capture';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { listSecurityPrices, securityOfHolding, upsertSecurityPriceTx } from './securities';
 
@@ -24,6 +25,7 @@ export async function upsertPrice(database: Database, ws: WorkspaceContext, inpu
   };
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
     // A linked holding's price is its security's: one entry values every broker that holds it (spec §3.2).
     const securityId = await securityOfHolding(tx, ws, input.accountId);
     if (securityId) {
@@ -56,6 +58,7 @@ export async function recordValuation(
   const id = uuidv7();
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
     await tx.insert(valuations).values({
       id,
       workspaceId: ws.workspaceId,

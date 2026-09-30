@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
 import { useGoalCalculators, useGoals } from '../goals/queries';
-import { emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading } from './health-cards';
+import { emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading, withJointRatios } from './health-cards';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -49,6 +49,8 @@ export function HealthRatios({
   today,
   earliestYear,
   monthsNote,
+  jointTotals,
+  jointMissing = [],
 }: {
   flows: PeriodFlows | undefined;
   /** Null while a currency on the balance date has no rate; `missing` names it. */
@@ -59,6 +61,13 @@ export function HealthRatios({
   today: string;
   earliestYear: number;
   monthsNote: string;
+  /**
+   * The household's totals when the group files jointly (§8.2): its balance-sheet ratios are read from them, the rest
+   * stay this phone's own. Undefined when not filing jointly; null while they cannot be told (those ratios blank).
+   */
+  jointTotals?: SheetTotals | null;
+  /** Currencies the household's sheet has no rate for, named under the ratios they blank. */
+  jointMissing?: readonly string[];
 }) {
   // The base stays unset until it is switched: until then it is the emergency goal's own.
   const [settings, setSettings] = useState<RatioSettings>({ debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
@@ -71,11 +80,15 @@ export function HealthRatios({
   // It opens on the base that goal counts, so the card and the goal it grades against measure the same months.
   const emergencyBase = settings.emergencyBase ?? emergencyGoalBase(goals.data ?? [], calculators.data ?? []) ?? DEFAULT_EMERGENCY_BASE;
   // No ratios at all without every rate: a ratio worked out from a total that left some money at 0 is wrong, not partial.
+  const ratioSettings = { ...settings, emergencyBase, emergencyTargetMonths };
   const ratios =
     totals === null
       ? []
       : withEmergencyLoading(
-          healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyBase, emergencyTargetMonths }),
+          withJointRatios(
+            healthRatios(flows ?? EMPTY_FLOWS, totals, ratioSettings),
+            jointTotals === undefined ? undefined : jointTotals === null ? null : healthRatios(flows ?? EMPTY_FLOWS, jointTotals, ratioSettings),
+          ),
           goals.isPending || calculators.isPending,
         );
   const choices = periodChoices(today, earliestYear);
@@ -110,6 +123,14 @@ export function HealthRatios({
         <Panel wide className="mb-[18px]">
           <p data-testid="ratios-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">
             No {missing.join(', ')} rate yet, so the ratios cannot be worked out.
+          </p>
+        </Panel>
+      )}
+
+      {totals !== null && jointMissing.length > 0 && (
+        <Panel wide className="mb-[18px]">
+          <p data-testid="joint-ratios-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">
+            No {jointMissing.join(', ')} rate yet, so the household's balance-sheet ratios cannot be worked out.
           </p>
         </Panel>
       )}

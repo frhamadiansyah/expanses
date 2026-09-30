@@ -12,6 +12,7 @@ import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, 
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { LentEntrySheet } from './LentEntrySheet';
 import { RepaymentForm } from './RepaymentForm';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /**
  * Each history line's circle: money in is green, money out red, a forgiveness grey — and the + that records the next
@@ -268,6 +269,8 @@ export function LoanPage() {
         </InsetGroup>
       )}
 
+      {/* Joint net worth (§8.1): what the household sees of it. Nothing while this person is in no group. */}
+      <ShareWithHouseholdRow accountId={accountId} />
     </div>
   );
 }

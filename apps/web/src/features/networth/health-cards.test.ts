@@ -1,6 +1,7 @@
 import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioTotals, withEmergencyLoading } from './health-cards';
+import { emergencyGoalBase, JOINT_RATIO_KEYS, periodChoices, periodRange, ratioDisplay, ratioInputs, ratioTotals, withEmergencyLoading, withJointRatios } from './health-cards';
+import { jointRows, type ReceivedItem } from './joint-rows';
 
 const TODAY = '2026-09-12';
 
@@ -124,5 +125,82 @@ describe('ratioTotals', () => {
 
   it('are none, with the currency named, while a rate is missing — never totals that count that money as 0', () => {
     expect(ratioTotals({ assets, liabilities, missing: ['USD'] })).toEqual({ totals: null, missing: ['USD'] });
+  });
+});
+
+describe('ratioInputs (joint net worth §8.2: health ratios use the household total)', () => {
+  const own = {
+    assets: [{ accountId: 'bca', name: 'Rina BCA', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 50_000_000 }],
+    liabilities: [],
+    missing: [],
+  };
+  const andi: ReceivedItem = {
+    itemId: 'i-andi',
+    owner: 'm-andi',
+    kind: 'asset',
+    subtype: 'bank',
+    name: 'Andi Mandiri',
+    currency: 'IDR',
+    balanceMinor: 400_000_000,
+    asOf: '2026-09-12',
+    card: null,
+    period: { start: '2026-09-01', end: '2026-09-30' },
+    openingMinor: 400_000_000,
+    householdMinor: 0,
+    otherUseMinor: 0,
+    transferMinor: 0,
+    transfers: [],
+    monthEnds: [],
+    tax: null,
+  };
+
+  it('reads the joint sheet in joint mode, so net worth and cash are the household’s', () => {
+    const joint = jointRows(own, [andi], 'm-rina', {}, 'IDR');
+    const { totals } = ratioTotals(ratioInputs(own, joint));
+    expect(totals?.netWorthMinor).toBe(450_000_000);
+    expect(totals?.liquidMinor).toBe(450_000_000);
+  });
+
+  it('reads this phone’s own sheet when the household does not file jointly', () => {
+    expect(ratioTotals(ratioInputs(own, null)).totals?.netWorthMinor).toBe(50_000_000);
+  });
+
+  it('a received item with no rate names its currency and gives no ratios', () => {
+    const joint = jointRows(own, [{ ...andi, currency: 'USD' }], 'm-rina', {}, 'IDR');
+    expect(ratioTotals(ratioInputs(own, joint))).toEqual({ totals: null, missing: ['USD'] });
+  });
+});
+
+describe('withJointRatios (finding 8: only balance-sheet ratios are the household\'s)', () => {
+  const keys = ['emergency_fund', 'savings_ratio', 'surplus', 'liquidity', 'debt_payments', 'consumer_debt_payments', 'debt_to_assets', 'solvency', 'investments_to_net_worth'] as const;
+  const personal = keys.map((key) => ratio({ key, value: 1 }));
+  const joint = keys.map((key) => ratio({ key, value: 2 }));
+
+  it('takes net worth, debt to assets and the like from the joint sheet, and every ratio over income or spending from the own one', () => {
+    const mixed = withJointRatios(personal, joint);
+    expect(Object.fromEntries(mixed.map((r) => [r.key, r.value]))).toEqual({
+      emergency_fund: 1,
+      savings_ratio: 1,
+      surplus: 1,
+      liquidity: 1,
+      debt_payments: 1,
+      consumer_debt_payments: 1,
+      debt_to_assets: 2,
+      solvency: 2,
+      investments_to_net_worth: 2,
+    });
+    expect([...JOINT_RATIO_KEYS].sort()).toEqual(['debt_to_assets', 'investments_to_net_worth', 'solvency']);
+  });
+
+  it('with the joint sheet not there (loading, an error, a month it cannot tell), the household\'s ratios are blank, never personal ones', () => {
+    const mixed = withJointRatios(personal, null);
+    for (const r of mixed) {
+      if (JOINT_RATIO_KEYS.has(r.key)) expect(r).toMatchObject({ value: null, status: 'unknown' });
+      else expect(r.value).toBe(1);
+    }
+  });
+
+  it('personal mode is untouched', () => {
+    expect(withJointRatios(personal, undefined)).toBe(personal);
   });
 });

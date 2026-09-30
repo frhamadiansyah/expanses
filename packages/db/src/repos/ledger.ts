@@ -7,7 +7,7 @@ import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
-import { captureVoidingTx, capturePostedTx } from '../sync/capture';
+import { captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
@@ -86,6 +86,12 @@ export interface PostTransactionInput {
   id?: string;
   /** The member whose change this posting applies (spec §7.3): lands in the audit 'post' payload, as all input does. */
   syncAuthor?: string;
+  /**
+   * Joint net worth §5.3, a sync-only hint like `syncAuthor`: the group member's shared item this purchase is paid from
+   * (Paid with, §7.1), its money side posted on that member's placeholder (`paidFromAccount`). Read by capture alone,
+   * never stored on the row: the purchase's lineage keeps it. Undefined means "as the lineage already says"; null, none.
+   */
+  paidFrom?: PaidFrom | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -226,7 +232,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
   if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
-  await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null);
+  await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
   return id;
 }

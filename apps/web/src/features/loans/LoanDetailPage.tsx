@@ -17,6 +17,7 @@ import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
 import { TermsForm } from './TermsForm';
 import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /**
  * What this loan files as in Bagian B, changed here rather than only where it was opened.
@@ -524,6 +525,8 @@ export function LoanDetailPage() {
           </InsetGroup>
         </>
       )}
+      {/* Joint net worth (§8.1): what the household sees of it. Nothing while this person is in no group. */}
+      <ShareWithHouseholdRow accountId={accountId} />
     </div>
   );
 }

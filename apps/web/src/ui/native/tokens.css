@@ -103,6 +103,19 @@
    * under the pile was the one shadow in the app with nothing beneath it to cast it.
    */
   --ph-card-edge: 0 -3px 8px -2px rgb(0 0 0 / 0.28), 0 -0.5px 0 rgb(0 0 0 / 0.12);
+
+  /*
+   * Whose an item is, in a household's Net worth (joint-net-worth §8.2): the ring round a row's icon circle and the
+   * dot beside a name in the legend. Assigned by a member's place in the group, so a person is one colour on every
+   * phone. Hues no kind, status or tint uses — blue, purple, teal, indigo, brown, pink — so a ring never reads as a
+   * warning or as a kind of account.
+   */
+  --owner-1: #007aff;
+  --owner-2: #af52de;
+  --owner-3: #30b0c7;
+  --owner-4: #5856d6;
+  --owner-5: #a2845e;
+  --owner-6: #d6336c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -146,6 +159,14 @@
 
     /* On black a shadow alone vanishes, so the edge also catches a hairline of light, as a card does at night. */
     --ph-card-edge: 0 -3px 10px -2px rgb(0 0 0 / 0.7), 0 -0.5px 0 rgb(255 255 255 / 0.14);
+
+    /* The owner rings as iOS lifts the same hues for a dark ground. */
+    --owner-1: #0a84ff;
+    --owner-2: #bf5af2;
+    --owner-3: #40c8e0;
+    --owner-4: #5e5ce6;
+    --owner-5: #ac8e68;
+    --owner-6: #ff6482;
   }
 }
 

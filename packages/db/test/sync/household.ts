@@ -61,7 +61,7 @@ export class Household {
   bookId = '';
   relayBookId = '';
 
-  async device(name: string, memberId: string = `member-${name}`, baseCurrency = 'IDR'): Promise<Device> {
+  async device(name: string, memberId: string = `member-${name}`, baseCurrency = 'IDR', appVersion = '0.3.0'): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency);
     const keys = await generateDevice();
     const { deviceId, public: pub } = keys;
@@ -69,7 +69,20 @@ export class Household {
     const usd = await createAccount(database, ws, { name: `${name} Dollars`, kind: 'asset', subtype: 'bank', currency: 'USD' });
     const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
     const transport = this.relay.as(requestSignerOf(keys));
-    const device: Device = { name, database, ws, deviceId, public: pub, keys, transport, engine: new SyncEngine(database, transport, keys), bank: bank.id, cash: cash.id, usd: usd.id, memberId };
+    const device: Device = {
+      name,
+      database,
+      ws,
+      deviceId,
+      public: pub,
+      keys,
+      transport,
+      engine: new SyncEngine(database, transport, keys, undefined, { appVersion }),
+      bank: bank.id,
+      cash: cash.id,
+      usd: usd.id,
+      memberId,
+    };
     this.devices.push(device);
     return device;
   }

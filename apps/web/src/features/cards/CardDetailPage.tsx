@@ -48,6 +48,7 @@ import { BookOpen, Plus, Trash2 } from 'lucide-react';
 import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { type CardPoints, type CycleResult, formatPoints, loadCardPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 const route = getRouteApi('/cards/$cardId');
 
@@ -984,6 +985,7 @@ export function CardDetailPage() {
       )}
 
       {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
+      {on('card') && <ShareWithHouseholdRow accountId={card.id} />}
       </div>
       </WideColumn>
       )}

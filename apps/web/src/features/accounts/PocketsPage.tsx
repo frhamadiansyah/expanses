@@ -17,6 +17,7 @@ import { ValueChart } from '../networth/ValueChart';
 import { useAssetProfiles, useMonthEndValues } from '../networth/queries';
 import { currencyName, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates, useOpenings } from './queries';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /** The kinds of money account, so an account's own page can say what it is and which code it files under. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -189,6 +190,7 @@ export function PocketsPage() {
         <InsetRow title="Add a pocket" subtitle="Another currency this account holds" to="/accounts/$accountId/pocket" params={{ accountId }} />
         <InsetRow title="See their transactions" to="/transactions" search={{ account: accountId }} />
       </InsetGroup>
+      <ShareWithHouseholdRow accountId={parent.id} />
     </div>
   );
 }
@@ -255,6 +257,7 @@ function AccountPage({ account }: { account: AccountRow }) {
           params={{ accountId: account.id }}
         />
       </InsetGroup>
+      <ShareWithHouseholdRow accountId={account.id} />
     </div>
   );
 }

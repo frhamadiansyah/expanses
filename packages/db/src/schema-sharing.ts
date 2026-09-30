@@ -69,6 +69,9 @@ export const syncLineage = sqliteTable('sync_lineage', {
   headTransactionId: text('head_transaction_id'),
   paidBy: text('paid_by').notNull(),
   paidLabel: text('paid_label').notNull(),
+  /** Joint net worth §5.3: whose shared item the money side is on (migration 0058); null = the payer's own account. */
+  paidFromOwner: text('paid_from_owner'),
+  paidFromItem: text('paid_from_item'),
 });
 
 export const syncOutbox = sqliteTable('sync_outbox', {

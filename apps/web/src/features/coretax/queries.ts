@@ -1,7 +1,22 @@
 import { coretaxRows, isoDate, utangRows } from '@expanses/core';
-import { businessInputsFor, coretaxInputsFor, foreignCurrenciesFor, incomeInputsFor, kmkRateRowsFor, kmkRatesFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
+import {
+  businessInputsFor,
+  type Database,
+  foreignCurrenciesOf,
+  incomeInputsFor,
+  kmkRateRowsFor,
+  kmkRatesFor,
+  listReports,
+  reportFor,
+  reportInputsFor,
+  rowDifferences,
+  savedRows,
+  type WorkspaceContext,
+} from '@expanses/db';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useApp } from '../../app/context';
+import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
 
 export function useReports() {
   const { database, ws } = useApp();
@@ -22,22 +37,62 @@ export function useReport(taxYear: number) {
 }
 
 /**
+ * Which group the report's inputs are read under: a mode change or a new proposal arrives with a sync run and the
+ * net-worth queries re-read it, so the inputs' key moves with it. `undefined` while it is still being read.
+ */
+function useGroupKey(): string | null | undefined {
+  const active = useActiveNetWorthGroup();
+  if (active.isPending) return undefined;
+  return active.data ? `${active.data.proposalId}:${active.data.mode}` : null;
+}
+
+/**
+ * The year's inputs — this phone's own, plus with one tax ID each received row (joint-net-worth §8.4) — read once and
+ * shared by the rows, the joint banner and the currencies that need a KMK rate.
+ */
+function inputsQuery(database: Database, ws: WorkspaceContext, taxYear: number, groupKey: string | null | undefined) {
+  return { queryKey: ['tax-inputs', ws.workspaceId, taxYear, groupKey ?? null], queryFn: () => reportInputsFor(database, ws, taxYear) };
+}
+
+/**
  * The rows for a year: live from the ledger while the report is a draft, and the saved copy once
  * it has been frozen, which is what makes a later ledger edit show up as a difference.
  */
 export function useReportRows(taxYear: number) {
   const { database, ws } = useApp();
+  const queryClient = useQueryClient();
+  const groupKey = useGroupKey();
   return useQuery({
-    queryKey: ['tax-rows', ws.workspaceId, taxYear],
+    queryKey: ['tax-rows', ws.workspaceId, taxYear, groupKey ?? null],
+    enabled: groupKey !== undefined,
     queryFn: async () => {
       const report = await reportFor(database, ws, taxYear);
       if (!report) return [];
       if (report.status !== 'draft') return savedRows(database, ws, taxYear);
-      const inputs = await coretaxInputsFor(database, ws, taxYear);
+      const { inputs } = await queryClient.fetchQuery(inputsQuery(database, ws, taxYear, groupKey));
       const settings = { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps: await kmkRatesFor(database, ws, taxYear) };
       return [...coretaxRows(taxYear, inputs, settings), ...utangRows(taxYear, inputs, settings)];
     },
   });
+}
+
+/**
+ * With one tax ID, whose report it is and what it still waits for (joint-net-worth §8.4); null otherwise. A partner's
+ * rows, a year-end and a pending count arrive with a sync run, so while the group files jointly the report's live reads
+ * are re-read after each one; otherwise a sync run changes nothing here and nothing is re-read.
+ */
+export function useJointReport(taxYear: number) {
+  const { database, ws, sync } = useApp();
+  const queryClient = useQueryClient();
+  const groupKey = useGroupKey();
+  const joint = groupKey?.endsWith(':joint') ?? false;
+  useEffect(() => {
+    if (!joint) return undefined;
+    return sync.subscribe(() => {
+      for (const key of ['tax-inputs', 'tax-rows']) void queryClient.invalidateQueries({ queryKey: [key, ws.workspaceId] });
+    });
+  }, [joint, sync, queryClient, ws.workspaceId]);
+  return useQuery({ ...inputsQuery(database, ws, taxYear, groupKey), enabled: groupKey !== undefined, select: (read) => read.joint });
 }
 
 /** Last year's saved rows, which this year carries over from. */
@@ -76,9 +131,12 @@ export function useBusinessReport(taxYear: number) {
 /** The currencies this year actually needs a Menteri Keuangan rate for. */
 export function useForeignCurrencies(taxYear: number) {
   const { database, ws } = useApp();
+  const groupKey = useGroupKey();
+  // With one tax ID the partner's currencies need rates too: read from the same inputs as the rows.
   return useQuery({
-    queryKey: ['tax-currencies', ws.workspaceId, taxYear],
-    queryFn: () => foreignCurrenciesFor(database, ws, taxYear),
+    ...inputsQuery(database, ws, taxYear, groupKey),
+    enabled: groupKey !== undefined,
+    select: (read) => foreignCurrenciesOf(read.inputs, ws.baseCurrency),
   });
 }
 
