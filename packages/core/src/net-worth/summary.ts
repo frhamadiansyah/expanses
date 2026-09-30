@@ -62,25 +62,40 @@ export function splitPeriod(
   return { householdMinor, otherUseMinor, transferMinor, transfers, closingMinor: openingMinor + householdMinor + otherUseMinor + transferMinor };
 }
 
-/** Clamp to [0, 100], rounding to the nearest integer percent. */
-function clampPct(fraction: number): number {
-  return Math.max(0, Math.min(100, Math.round(fraction * 100)));
-}
-
+/**
+ * A card's limit bar (§8.3; final review item 3): "From earlier" (what the cycle opened owing), Household, and other use
+ * (with transfers between partners), drawn in that order, then what is available. The three segments fill exactly the
+ * balance, clamped to the limit — so the filled width is balance ÷ limit and `availableMinor` = limit − balance.
+ *
+ * A negative part (a payment, a refund) takes no width of its own: it pays down what was owed from earlier first, then
+ * other use, then Household. Each segment is the difference of rounded cumulative boundaries, so rounding never makes
+ * the bar overshoot or fall short of the balance.
+ */
 export function cardBar(
   limitMinor: number,
   s: Pick<ItemSummary, 'openingMinor' | 'householdMinor' | 'otherUseMinor' | 'transferMinor' | 'balanceMinor'>,
-): { householdPct: number; otherPct: number; availableMinor: number } {
+): { openingPct: number; householdPct: number; otherPct: number; availableMinor: number } {
   const availableMinor = limitMinor - s.balanceMinor;
-  if (limitMinor <= 0) return { householdPct: 0, otherPct: 0, availableMinor };
-  const householdPct = clampPct(s.householdMinor / limitMinor);
-  // Household is drawn first; other use fills the remaining width so the two bars never overlap
-  // past 100%, even when independent rounding of each share would otherwise push the sum over.
-  // The other segment is everything not Household: other use and transfers between partners together (wave 4 review).
-  const other = s.otherUseMinor + s.transferMinor;
-  const otherRaw = other > 0 ? clampPct(other / limitMinor) : 0;
-  const otherPct = Math.min(otherRaw, 100 - householdPct);
-  return { householdPct, otherPct, availableMinor };
+  if (limitMinor <= 0) return { openingPct: 0, householdPct: 0, otherPct: 0, availableMinor };
+  const parts = { opening: s.openingMinor, household: s.householdMinor, other: s.otherUseMinor + s.transferMinor };
+  let credit = 0;
+  for (const key of ['opening', 'household', 'other'] as const) {
+    if (parts[key] < 0) {
+      credit += -parts[key];
+      parts[key] = 0;
+    }
+  }
+  for (const key of ['opening', 'other', 'household'] as const) {
+    const off = Math.min(parts[key], credit);
+    parts[key] -= off;
+    credit -= off;
+  }
+  const cap = Math.max(0, Math.min(limitMinor, s.balanceMinor));
+  const edge = (minor: number) => Math.round((Math.min(minor, cap) / limitMinor) * 100);
+  const afterOpening = edge(parts.opening);
+  const afterHousehold = edge(parts.opening + parts.household);
+  const afterOther = edge(parts.opening + parts.household + parts.other);
+  return { openingPct: afterOpening, householdPct: afterHousehold - afterOpening, otherPct: afterOther - afterHousehold, availableMinor };
 }
 
 /** Stable JSON (sorted keys) of a value, used so key order never changes the hash. */

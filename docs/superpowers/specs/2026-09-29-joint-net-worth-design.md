@@ -338,9 +338,14 @@ same line). The add form for a new account, card or asset gets the switch of D9.
 ### 8.3 An item of the other's
 
 Tapping opens a read-only page: balance, the chart from `monthEnds`, the Household lines of the period, one **"Rina's
-other use"** line (`otherUseMinor`, "total only"), and for a card the limit bar (Household · other use · available).
-The details show Owner, Updated (`asOf`), and "not yet on Rina's phone" when purchases paid from it are in the log but
-newer than the summary (the bar then subtracts them).
+other use"** line (`otherUseMinor`, "total only"), and for a card the limit bar (From earlier · Household · other use ·
+available). The details show Owner, Updated (`asOf`), and "not yet on Rina's phone" when purchases paid from it are in
+the log but newer than the summary (the bar then subtracts them).
+
+*Correction (final review, item 3):* the bar had no segment for `openingMinor`, so a cycle that opened owing drew less
+than the balance while "available" said limit − balance. `cardBar` now draws "From earlier" (`openingMinor`) first, and
+its three segments fill exactly the balance clamped to the limit (filled width = balance ÷ limit). A negative part (a
+payment, a refund) takes no width: it pays down what was owed from earlier first, then other use, then Household.
 
 *Correction (task 9, code reality):* a summary carries only its owner's day (`asOf`), not a clock, so "newer than the
 summary" is read as a purchase paid from the item that is dated, or was recorded on this phone, after `asOf`; one

@@ -112,8 +112,8 @@ export interface SharedItemView {
   /** The owner's other transfers between partners of the period, one figure; null when none. */
   otherTransfers: { label: string; minor: number; currency: string } | null;
   otherUse: { label: string; under: string; text: string; credit: boolean };
-  /** A card's bar (Household · other use · available), with anything waiting already subtracted. */
-  bar: { householdPct: number; otherPct: number; availableMinor: number; limitMinor: number } | null;
+  /** A card's bar (From earlier · Household · other use · available), with anything waiting already subtracted. */
+  bar: { openingPct: number; householdPct: number; otherPct: number; availableMinor: number; limitMinor: number } | null;
   details: { owner: string; updated: string; notYet: string | null };
 }
 

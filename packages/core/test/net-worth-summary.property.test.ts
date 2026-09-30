@@ -45,9 +45,23 @@ describe('cardBar property', () => {
           expect(bar.householdPct).toBeLessThanOrEqual(100);
           expect(bar.otherPct).toBeGreaterThanOrEqual(0);
           expect(bar.otherPct).toBeLessThanOrEqual(100);
-          expect(bar.householdPct + bar.otherPct).toBeLessThanOrEqual(100);
+          expect(bar.openingPct + bar.householdPct + bar.otherPct).toBeLessThanOrEqual(100);
         },
       ),
+    );
+  });
+
+  it('the segments fill exactly the balance, clamped, whenever the parts add up to it (final review item 3)', () => {
+    const part = fc.integer({ min: -5_000_000_000, max: 5_000_000_000 });
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 10_000_000_000 }), part, part, part, part, (limitMinor, openingMinor, householdMinor, otherUseMinor, transferMinor) => {
+        const balanceMinor = openingMinor + householdMinor + otherUseMinor + transferMinor;
+        const bar = cardBar(limitMinor, { openingMinor, householdMinor, otherUseMinor, transferMinor, balanceMinor });
+        const filled = Math.max(0, Math.min(100, Math.round((Math.max(0, balanceMinor) / limitMinor) * 100)));
+        for (const pct of [bar.openingPct, bar.householdPct, bar.otherPct]) expect(pct).toBeGreaterThanOrEqual(0);
+        expect(bar.openingPct + bar.householdPct + bar.otherPct).toBe(filled);
+        expect(bar.availableMinor).toBe(limitMinor - balanceMinor);
+      }),
     );
   });
 
@@ -66,6 +80,8 @@ describe('cardBar property', () => {
           expect(bar.householdPct).toBeLessThanOrEqual(100);
           expect(bar.otherPct).toBeGreaterThanOrEqual(0);
           expect(bar.otherPct).toBeLessThanOrEqual(100);
+          expect(bar.openingPct).toBeGreaterThanOrEqual(0);
+          expect(bar.openingPct + bar.householdPct + bar.otherPct).toBeLessThanOrEqual(100);
         },
       ),
     );

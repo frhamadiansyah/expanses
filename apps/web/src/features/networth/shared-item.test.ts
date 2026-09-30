@@ -69,7 +69,7 @@ describe('sharedItemView', () => {
     expect(view.otherUse).toMatchObject({ label: "Rina's other use", under: 'total only', credit: false });
     expect(view.otherUse.text).toBe(view.otherUse.text.replace('−', '')); // no minus sign on a charge
     expect(view.details).toEqual({ owner: 'Rina', updated: '2026-09-20', notYet: null });
-    expect(view.bar).toEqual({ householdPct: 15, otherPct: 5, availableMinor: 7_000_000, limitMinor: 10_000_000 });
+    expect(view.bar).toEqual({ openingPct: 10, householdPct: 15, otherPct: 5, availableMinor: 7_000_000, limitMinor: 10_000_000 });
     // The chart: the month-ends, then today's balance.
     expect(view.chart.values).toEqual([800_000, 1_000_000, 3_000_000]);
   });
@@ -89,7 +89,7 @@ describe('sharedItemView', () => {
     expect(view.lines.find((l) => l.lineageId === 'late')?.pending).toBe(true);
     expect(view.lines.find((l) => l.lineageId === 'p')?.pending).toBe(false);
     // available 10 jt − (3 jt + 1 jt waiting) = 6 jt; household share grows by what waits.
-    expect(view.bar).toEqual({ householdPct: 25, otherPct: 5, availableMinor: 6_000_000, limitMinor: 10_000_000 });
+    expect(view.bar).toEqual({ openingPct: 10, householdPct: 25, otherPct: 5, availableMinor: 6_000_000, limitMinor: 10_000_000 });
   });
 
   it('a purchase recorded after the summary counts as waiting even when dated before it', () => {
@@ -226,9 +226,16 @@ describe('transfers are counted once (wave 4 review, finding 1)', () => {
     expect(view.otherTransfers).toBeNull();
   });
 
+  it('the card bar fills to what is owed: From earlier, Household, other use (final review item 3)', () => {
+    const bar = sharedItemView(card, [], 'Rina').bar!;
+    // Owes 3 jt of a 10 jt limit: 30% filled, 7 jt available.
+    expect(bar.openingPct + bar.householdPct + bar.otherPct).toBe(30);
+    expect(bar.availableMinor).toBe(bar.limitMinor - card.balanceMinor);
+  });
+
   it('the card bar reads transfers in its other segment, from the owner’s summary', () => {
     const view = sharedItemView({ ...card, otherUseMinor: 500_000, transferMinor: 1_000_000, balanceMinor: 4_000_000 }, [], 'Rina');
-    expect(view.bar).toEqual({ householdPct: 15, otherPct: 15, availableMinor: 6_000_000, limitMinor: 10_000_000 });
+    expect(view.bar).toEqual({ openingPct: 10, householdPct: 15, otherPct: 15, availableMinor: 6_000_000, limitMinor: 10_000_000 });
   });
 });
 
