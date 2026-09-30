@@ -21,7 +21,7 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
   await page.getByTestId('pocket-SGD').tap();
   await expect(page.getByRole('heading', { name: 'Valas Plus · SGD' })).toBeVisible();
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
+  await page.getByRole('button', { name: 'Valas Plus', exact: true }).tap();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

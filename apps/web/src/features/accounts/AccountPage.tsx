@@ -17,6 +17,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
+import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { SPENDABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
@@ -92,6 +93,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const navigate = useNavigate();
   const balances = useBalances();
   const profiles = useAssetProfiles();
+  const goBack = useBack(parent ? `/accounts/${parent.id}` : '/accounts');
   const [actionError, setActionError] = useState<unknown>(null);
   const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
   const [txReady, setTxReady] = useState(false);
@@ -135,9 +137,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
        */}
       <PushedTitle
         title={title}
-        back={parent?.name ?? 'Accounts'}
-        backTo={parent ? '/accounts/$accountId' : '/accounts'}
-        backParams={parent ? { accountId: parent.id } : undefined}
+        back={parent?.name ?? 'Back'}
+        // Back goes where the page was opened from — Net worth, Assets, Accounts, a search — and only a page opened
+        // with nothing behind it (a fresh launch, a link) falls back to its account or the Accounts list.
+        onBack={goBack}
         actions={menu}
       />
       <ErrorBox error={actionError ?? balances.error ?? profiles.error ?? rates.error} />

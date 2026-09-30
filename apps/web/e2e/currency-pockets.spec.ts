@@ -45,8 +45,8 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await openSettings(page);
   await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0102');
   // Back to the pocket's page, and from there to its account.
-  await page.getByRole('link', { name: /Valas Plus · USD/ }).first().click();
-  await page.getByRole('link', { name: 'Valas Plus' }).first().click();
+  await page.getByRole('button', { name: 'Valas Plus · USD', exact: true }).click();
+  await page.getByRole('button', { name: 'Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 

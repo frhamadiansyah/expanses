@@ -283,7 +283,7 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Valas Plus · USD' })).toBeVisible();
   await expect(page.getByText('Opened at')).toBeVisible();
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 
