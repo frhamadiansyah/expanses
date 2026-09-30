@@ -35,7 +35,7 @@ test('phone: a sell of more lots than are held is refused, and a broker’s fees
   await page.getByLabel('Buy fee %', { exact: true }).click();
   // Saved as the row is left: the page read again (back, and in again) shows it once the save has landed.
   await expect(async () => {
-    await page.getByRole('link', { name: 'Mandiri Sekuritas', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Mandiri Sekuritas', exact: true }).click();
     await openSettings(page);
     await expect(page.getByLabel('Sell fee %', { exact: true })).toHaveValue('0,3', { timeout: 1_000 });
   }).toPass();

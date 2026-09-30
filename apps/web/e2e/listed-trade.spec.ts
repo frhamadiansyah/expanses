@@ -77,7 +77,7 @@ test('a broker’s fees are set on its cash account, and the Buy sheet works fro
   await page.getByLabel('Minimum fee per day', { exact: true }).click();
   // Saved as the row is left: the page read again (back, and in again) shows it once the save has landed.
   await expect(async () => {
-    await page.getByRole('link', { name: 'Stockbit Sekuritas', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Stockbit Sekuritas', exact: true }).click();
     await openSettings(page);
     await expect(page.getByLabel('Buy fee %', { exact: true })).toHaveValue('0,19', { timeout: 1_000 });
   }).toPass();
