@@ -107,6 +107,31 @@ test('a deposit reads as its maturity, and its one action is Break early', async
   await expect(card.getByRole('progressbar')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Break early' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Spend', exact: true })).toHaveCount(0);
+  // The deposit keeps its own figure: no month's line in a card of its own.
+  await expect(page.getByTestId('balance-card')).toHaveCount(0);
+});
+
+test('cash and a current account draw the balance as one card with the month behind it, read a day at a time', async ({ page }) => {
+  await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  for (const name of ['Pocket cash', 'Everyday']) {
+    await openMoney(page, name);
+    const card = page.getByTestId('balance-card');
+    await expect(card).toContainText('Balance');
+    await expect(card).toContainText('30 days ago');
+    await expect(card).toContainText('today');
+    // The year's chart is gone: the card's month is the page's one line.
+    await expect(page.getByText('Last 12 months')).toHaveCount(0);
+  }
+  const line = page.getByTestId('balance-line');
+  const box = (await line.boundingBox())!;
+  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
+  await line.click({ position: { x: box.width - 4, y: box.height / 2 } });
+  const reading = page.getByTestId('net-worth-reading');
+  await expect(reading).toContainText('12.500.000');
+  await expect(reading).toContainText(/\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}/);
+  await line.press('Escape');
+  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
 });
 
 test('an account with pockets lists them, and a pocket opens its own page with the parent as the way back', async ({ page }) => {
@@ -115,6 +140,11 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await openMoney(page, 'Valas Plus');
   await expect(page.getByText('Balance, all pockets')).toBeVisible();
   await expect(page.getByText('Bank One · Saving account · 2 currencies')).toBeVisible();
+  await expect(page.getByTestId('balance-card')).toContainText('30 days ago');
+  // Each pocket is its own row under the actions: its flag, its code and its amount, with no name repeated under it.
+  await expect(page.getByTestId('pocket-USD')).toContainText('USD');
+  await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
+  await expect(page.getByTestId('pocket-USD')).not.toContainText('US Dollar');
   await expect(page.getByRole('link', { name: 'Move', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await page.getByTestId('pocket-USD').click();

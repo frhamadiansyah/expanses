@@ -1,3 +1,5 @@
+import { sumToBase } from '@expanses/core';
+
 /**
  * The tile's balance, day by day, walked backwards from today.
  *
@@ -80,4 +82,25 @@ export function crossing(series: readonly DayBalance[]): BalanceCrossing | null 
     if (before >= 0 && at < 0) return { on: series[index]!.on, through: before === at ? 0 : before / (before - at) };
   }
   return null;
+}
+
+/**
+ * An account with pockets, day by day: each pocket's own run of balances, added up in the base currency at today's
+ * rates — the rates its figure is added up at, so the line ends exactly on it. Null when a rate is missing on a day a
+ * foreign pocket held money, as the figure is.
+ */
+export function pocketsSeries(
+  parts: readonly { currency: string; series: readonly DayBalance[] }[],
+  baseCurrency: string,
+  ratesToBase: Readonly<Record<string, number>>,
+): DayBalance[] | null {
+  const first = parts[0]?.series;
+  if (!first) return null;
+  const out: DayBalance[] = [];
+  for (const [index, day] of first.entries()) {
+    const total = sumToBase({ amounts: parts.map((part) => ({ minor: part.series[index]?.minor ?? 0, currency: part.currency })), baseCurrency, ratesToBase });
+    if (total.totalMinor === null) return null;
+    out.push({ on: day.on, minor: total.totalMinor });
+  }
+  return out;
 }

@@ -2,6 +2,7 @@ import { isoDate } from '@expanses/core';
 import { listTransactions, openingsOf, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { daysBefore } from './balance-series';
 import { useStoredRates } from '../../lib/queries';
 
 /** Rates this device already holds for a day — never fetched just because a screen opened (see `useStoredRates`). */
@@ -34,5 +35,30 @@ export function useRecentTransactions(accountIds: readonly string[]) {
     queryKey: ['account-recent', ws.workspaceId, ids.join(',')],
     enabled: ids.length > 0,
     queryFn: () => listTransactions(database, ownerScope(ws), { accountIds: ids, limit: RECENT_LIMIT }),
+  });
+}
+
+/** How many days an account's line walks back: the month its card reads. */
+export const LINE_DAYS = 30;
+
+/**
+ * What moved in and out of each of these accounts on each of the last `LINE_DAYS` days, in each account's own
+ * currency: the steps its line walks back through from today's balance. Owner-wide, as Recent is, so the line agrees
+ * with the balance above it.
+ */
+export function useAccountFlows(accountIds: readonly string[]) {
+  const { database, ws } = useApp();
+  const ids = [...accountIds].sort();
+  const today = isoDate();
+  return useQuery({
+    queryKey: ['account-line-flows', ws.workspaceId, today, ids.join(',')],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const wanted = new Set(ids);
+      const rows = await listTransactions(database, ownerScope(ws), { accountIds: ids, from: daysBefore(today, LINE_DAYS), to: today });
+      return rows.flatMap((row) =>
+        row.entries.filter((entry) => wanted.has(entry.accountId)).map((entry) => ({ accountId: entry.accountId, on: row.occurredOn, minor: entry.amountMinor })),
+      );
+    },
   });
 }

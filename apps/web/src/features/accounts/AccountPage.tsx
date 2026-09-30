@@ -1,4 +1,4 @@
-import { isoDate, lastNMonths, monthOf } from '@expanses/core';
+import { isoDate } from '@expanses/core';
 import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import {
@@ -40,15 +40,14 @@ import { DepositTermsCard } from '../networth/DepositTermsCard';
 import { MaturitySettings } from '../networth/MaturitySettings';
 import { RecordedByHand } from '../networth/RecordedByHand';
 import { SetAsidePanel } from '../networth/SetAsidePanel';
-import { ValueChart } from '../networth/ValueChart';
-import { useAssetProfiles, useMonthEndValues } from '../networth/queries';
+import { useAssetProfiles } from '../networth/queries';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
+import { BalanceCard } from './BalanceCard';
+import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
-import { useHeldRates, useOpenings, useRecentTransactions } from './queries';
-
-const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
+import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 
 /**
  * `/accounts/$accountId` — one page for every money account.
@@ -88,6 +87,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
   const rates = useHeldRates(currencies);
   const openings = useOpenings(pockets ? [] : [account.id]);
+  const flows = useAccountFlows(pockets || account.subtype === 'time_deposit' ? [] : [account.id]);
   const held = rates.data?.rates ?? {};
   const minor = balances.data?.[account.id] ?? 0;
 
@@ -97,6 +97,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const typeLabel = SUBTYPE_LABELS[account.subtype];
   const foreign = !pockets && account.currency !== ws.baseCurrency;
   const opened = openings.data?.[account.id];
+  // The month behind the balance, ending on it: walked back from today through what moved.
+  const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
   const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError });
@@ -117,13 +119,27 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       />
       <ErrorBox error={actionError ?? balances.error ?? profiles.error ?? rates.error} />
 
-      {pockets ? (
-        <ParentHero pockets={pockets} typeLabel={typeLabel} inst={inst} held={held} />
-      ) : (
+      {account.subtype === 'time_deposit' && !pockets ? (
         <Hero
           label="Balance"
           minor={minor}
           currency={account.currency!}
+          caption={
+            <>
+              <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
+              {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
+            </>
+          }
+        />
+      ) : pockets ? (
+        <ParentCard pockets={pockets} typeLabel={typeLabel} inst={inst} held={held} />
+      ) : (
+        <BalanceCard
+          label="Balance"
+          minor={minor}
+          currency={account.currency!}
+          series={series}
+          testId="balance-card"
           caption={
             <>
               <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
@@ -152,9 +168,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           <MaturitySettings accountId={account.id} currency={account.currency!} />
           <RecordedByHand accountId={account.id} currency={account.currency!} />
         </>
-      ) : (
-        <AccountChart accountId={account.id} currency={account.currency!} />
-      )}
+      ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
 
@@ -287,27 +301,52 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
   );
 }
 
-/** An account with pockets: what they come to in the base currency, or which rate is missing to add them up. */
-function ParentHero({ pockets, typeLabel, inst, held }: { pockets: AccountRow[]; typeLabel: string; inst: string | null; held: Record<string, number> }) {
+/**
+ * An account with pockets: what they come to in the base currency with the month behind it, or which rate is missing
+ * to add them up. The line is each pocket's own balance, added up at today's rates, as the figure is.
+ */
+function ParentCard({ pockets, typeLabel, inst, held }: { pockets: AccountRow[]; typeLabel: string; inst: string | null; held: Record<string, number> }) {
   const { ws } = useApp();
   const balances = useBalances();
+  const flows = useAccountFlows(pockets.map((p) => p.id));
   const total = parentTotal(pockets, balances.data ?? {}, ws.baseCurrency, held);
   const count = new Set(pockets.map((p) => p.currency)).size;
   if (total.totalMinor === null) {
     return <Empty>No {total.missing.join(', ')} rate yet, so the pockets cannot be added up. Each balance below is exact.</Empty>;
   }
+  const series: DayBalance[] | null =
+    flows.data && balances.isSuccess
+      ? pocketsSeries(
+          pockets.map((pocket) => ({
+            currency: pocket.currency!,
+            series: balanceSeries({
+              todayMinor: balances.data?.[pocket.id] ?? 0,
+              today: isoDate(),
+              days: LINE_DAYS,
+              flows: flows.data.filter((flow) => flow.accountId === pocket.id),
+            }),
+          })),
+          ws.baseCurrency,
+          held,
+        )
+      : null;
   return (
-    <Hero
+    <BalanceCard
       label="Balance, all pockets"
       minor={total.totalMinor}
       currency={ws.baseCurrency}
       approximate={pockets.some((p) => p.currency !== ws.baseCurrency)}
+      series={series}
+      testId="balance-card"
       caption={[inst, typeLabel, `${count} ${count === 1 ? 'currency' : 'currencies'}`].filter(Boolean).join(' · ')}
     />
   );
 }
 
-/** Each pocket in its own currency, with what a foreign one comes to here, opening to the pocket's own page. */
+/**
+ * Each pocket in its own currency, with what a foreign one comes to here, opening to the pocket's own page: its flag,
+ * its code, and the amount. The currency's name is not repeated under the code the flag already says.
+ */
 function PocketList({ pockets, held }: { pockets: AccountRow[]; held: Record<string, number> }) {
   const { ws } = useApp();
   const balances = useBalances();
@@ -321,7 +360,6 @@ function PocketList({ pockets, held }: { pockets: AccountRow[]; held: Record<str
             testId={`pocket-${pocket.currency}`}
             icon={<span className="text-[17px] leading-none">{currencyFlag(pocket.currency!)}</span>}
             title={pocket.currency}
-            subtitle={currencyName(pocket.currency!)}
             value={<ApproxFigure figure={<Money minor={minor} currency={pocket.currency!} />} beneath={approxLine(minor, pocket.currency!, ws.baseCurrency, held)} />}
             valueTone="ink"
             to="/accounts/$accountId"
@@ -330,18 +368,6 @@ function PocketList({ pockets, held }: { pockets: AccountRow[]; held: Record<str
         );
       })}
     </InsetGroup>
-  );
-}
-
-/** The balance over the year: the chart the asset page drew for a derived value. */
-function AccountChart({ accountId, currency }: { accountId: string; currency: string }) {
-  const months = lastNMonths(monthOf(isoDate()), 12);
-  const history = useMonthEndValues(accountId, months);
-  if (!history.data || !history.data.some((point) => point !== 0)) return null;
-  return (
-    <Panel header="Last 12 months">
-      <ValueChart values={history.data} labels={months.map(MONTH_LABEL)} currency={currency} />
-    </Panel>
   );
 }
 
