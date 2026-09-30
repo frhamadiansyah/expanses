@@ -298,13 +298,13 @@ export class SyncEngine {
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     const result = await this.syncBook(bookId, seen);
     // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
-    // A relay failure of the group log's part never fails the workspace's sync (task 4 review round 1).
+    // No failure of the group log's part — a relay error or any other — fails the workspace's sync (task 4 review round
+    // 1; final review item 6): it comes back as `groupError`, and the next run tries again.
     let group: SyncOnceResult | undefined;
     try {
       group = await syncGroupAfter(this.groupHost(), bookId, result);
     } catch (error) {
-      if (!(error instanceof SyncTransportError)) throw error;
-      return { ...result, groupError: error };
+      return { ...result, groupError: error instanceof Error ? error : new Error(String(error)) };
     }
     // Its proposals' consequences (task 5): a lost lone log abandoned, a dissolved group's log deleted or a closed live
     // link opened again, a member's later device let in, the pending count written. None of it ever fails the

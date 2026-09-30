@@ -372,4 +372,19 @@ describe("the group log's failure is not the workspace's (task 4 review round 1,
     expect(again.group).toBeDefined();
     void home;
   });
+
+  it('any other error in the group log’s part comes back as groupError too, never failing the workspace sync (final review item 6)', async () => {
+    const { rina, bookId, groupBookId } = await group();
+    const relay = await relayOf(rina, groupBookId);
+    const pull = rina.transport.pull.bind(rina.transport);
+    rina.transport.pull = async (id, since) => {
+      if (id === relay) throw new TypeError('not a transport error');
+      return pull(id, since);
+    };
+    const result = await rina.engine.syncOnce(bookId);
+    expect(result.groupError).toBeInstanceOf(TypeError);
+    expect(result.stopped).toBeUndefined();
+    rina.transport.pull = pull;
+    expect((await rina.engine.syncOnce(bookId)).groupError).toBeUndefined();
+  });
 });
