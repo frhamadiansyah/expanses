@@ -1,69 +1,90 @@
-import { TERM_MONTHS, type TermMonths } from '@expanses/core';
+import { formatMinor, isoDate, TERM_MONTHS, type TermMonths } from '@expanses/core';
 import { saveDepositTerms, saveDepositTermMonths } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input } from '../../ui';
-import { depositLine, rateBpsFrom, rateInputText } from './deposit-terms';
+import { daysLeftLabel, maturityLabel, maturityProgress, rateBpsFrom, rateInputText, rateLabel } from './deposit-terms';
 import { termLabel } from './maturity-settings';
 import { useDepositAutomation, useDepositTerms } from './queries';
 import { Panel, SelectRow } from '../../ui/native';
 
 /**
- * A time deposit's own two facts, on the account's own page: the day the money comes back and what it pays.
+ * A time deposit's own facts, on the account's own page: the day the money comes back, how far through its term it
+ * is, and what the term pays.
  *
- * Both are asked for when the deposit is opened and both were write-only until now, which is no good for a
- * date typed off a paper certificate — a mistyped year is invisible, and a rollover changes both. So they are
- * printed here in the words a person would say them in, and corrected here too.
+ * The maturity and the rate are asked for when the deposit is opened and were write-only until they were printed
+ * here, which is no good for a date typed off a paper certificate — a mistyped year is invisible, and a rollover
+ * changes both. So they are said back in the words a person would say them in, and corrected here too.
  *
- * Nothing is automated off the maturity: the money leaves a deposit by a transfer, the way it arrived.
+ * The term sits here as well: it is the third thing the certificate says (how long the money is in), and it is what
+ * the bar is drawn over. It is stored with the deposit's automation — the maturity schedule counts monthly payouts
+ * off it — and saved on its own column, so a save here cannot put back an older payout choice and the settings
+ * group's save cannot put back an older term.
  *
- * The term sits here too: it is the third thing the certificate says (how long the money is in), read off the same
- * line as the rate and the date, so it is corrected in the same place. It is stored with the deposit's automation —
- * the maturity schedule counts monthly payouts off it — and it is saved on its own column, so a save here cannot put
- * back an older payout choice and the settings group's save cannot put back an older term.
+ * `balanceMinor` is what the term's interest is worked out on; a caller without one gets the card without the
+ * estimate.
  */
-export function DepositTermsCard({ accountId }: { accountId: string }) {
+export function DepositTermsCard({ accountId, balanceMinor, currency }: { accountId: string; balanceMinor?: number; currency?: string }) {
   const deposits = useDepositTerms();
+  const automation = useDepositAutomation(accountId);
   const terms = (deposits.data ?? []).find((row) => row.accountId === accountId);
   const [editing, setEditing] = useState(false);
 
   // A deposit whose rate and date were never said is asked here, not left out: the same card, its form open.
   if (!terms) {
     return (
-      <Panel className="space-y-3">
-        <div>
-          <h2 className="text-sm font-semibold">Deposit terms</h2>
-          <p className="text-sm text-slate-600">Not set yet: say the day the money comes back and what it pays.</p>
-        </div>
+      <Panel header="Deposit terms" className="space-y-3">
+        <p className="text-[15px] leading-[20px] text-[var(--ph-ink-3)]">Not set yet: say the day the money comes back and what it pays.</p>
         <TermRow accountId={accountId} />
         <DepositTermsForm accountId={accountId} maturesOn="" rateBps={0} onSaved={() => undefined} />
       </Panel>
     );
   }
+  const progress = maturityProgress(
+    terms,
+    { termMonths: automation.data?.termMonths ?? 1, termStartedOn: automation.data?.termStartedOn ?? null },
+    balanceMinor ?? 0,
+    isoDate(),
+  );
+  const line = [
+    daysLeftLabel(progress.daysLeft),
+    terms.rateBps > 0 ? rateLabel(terms.rateBps) : null,
+    currency && progress.interestMinor > 0 ? `pays ≈ ${formatMinor(progress.interestMinor, currency)}` : null,
+  ].filter((part): part is string => part !== null);
   return (
-    <Panel className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold">Deposit terms</h2>
-          <p className="text-sm text-slate-600">{depositLine(terms)}</p>
-        </div>
-        <Button variant="ghost" onClick={() => setEditing((open) => !open)}>
+    <Panel header="Deposit terms" footer="When it matures, take the money out with Withdraw." testId="deposit-maturity-card">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink)]">Matures {maturityLabel(terms.maturesOn)}</p>
+        <Button variant="ghost" className="-my-2 -mr-2 text-[var(--ph-tint)]" onClick={() => setEditing((open) => !open)}>
           {editing ? 'Close' : 'Change'}
         </Button>
       </div>
-      <TermRow accountId={accountId} />
-      {editing && (
-        <DepositTermsForm
-          // A fresh form whenever the saved terms change, so the boxes never hold what was already put right.
-          key={`${terms.maturesOn}·${terms.rateBps}`}
-          accountId={accountId}
-          maturesOn={terms.maturesOn}
-          rateBps={terms.rateBps}
-          onSaved={() => setEditing(false)}
-        />
-      )}
-      <p className="text-xs text-slate-500">When it matures, move the money to an account with a transfer.</p>
+      {/* The term from its first day to its last: how much of the wait is behind it. */}
+      <div
+        role="progressbar"
+        aria-label="Through the term"
+        aria-valuenow={Math.round(progress.fraction * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="mt-[10px] h-[4px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]"
+      >
+        <div className="h-full rounded-full bg-[var(--ph-tint)]" style={{ width: `${progress.fraction * 100}%` }} />
+      </div>
+      <p className="tabular mt-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{line.join(' · ')}</p>
+      <div className="mt-3 space-y-3">
+        <TermRow accountId={accountId} />
+        {editing && (
+          <DepositTermsForm
+            // A fresh form whenever the saved terms change, so the boxes never hold what was already put right.
+            key={`${terms.maturesOn}·${terms.rateBps}`}
+            accountId={accountId}
+            maturesOn={terms.maturesOn}
+            rateBps={terms.rateBps}
+            onSaved={() => setEditing(false)}
+          />
+        )}
+      </div>
     </Panel>
   );
 }

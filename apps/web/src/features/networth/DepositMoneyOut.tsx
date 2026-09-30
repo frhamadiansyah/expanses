@@ -6,25 +6,32 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { ArrowUpFromLine, LockOpen } from 'lucide-react';
+import { ActionButtons, InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { defaultInto, landsText, MONEY_OUT_FOOTER, MONEY_OUT_TITLE, type MoneyOutMode, moneyOutDraft, moneyOutMode, readMoneyOut } from './deposit-money-out';
 import { payoutChoices } from './maturity-settings';
 import { useDepositAutomation, useDepositTerms } from './queries';
 
 /**
- * The one way money leaves a deposit by hand: a row under its figure, "Break early" before the maturity and
- * "Withdraw" from it on. Not there once the deposit is empty or closed.
+ * The one way money leaves a deposit by hand: "Break early" before the maturity and "Withdraw" from it on. Not there
+ * once the deposit is empty or closed.
+ *
+ * Drawn as a row under the figure, or — on the account's own page, where every money account's actions are round
+ * buttons under its figure — as the one round button a deposit has (`look="action"`). The sheet and what it posts are
+ * the same either way.
  */
 export function DepositMoneyOut({
   accountId,
   currency,
   balanceMinor,
   onClosed,
+  look = 'row',
 }: {
   accountId: string;
   currency: string;
   balanceMinor: number;
   onClosed: (archived: boolean) => void;
+  look?: 'row' | 'action';
 }) {
   const accounts = useAccounts();
   const terms = useDepositTerms();
@@ -36,9 +43,23 @@ export function DepositMoneyOut({
   const mode = moneyOutMode(deposit?.maturesOn, isoDate());
   return (
     <>
-      <InsetGroup>
-        {[<InsetRow key="out" title={MONEY_OUT_TITLE[mode]} chevron={false} onClick={() => setOpen(true)} testId="deposit-money-out" />]}
-      </InsetGroup>
+      {look === 'action' ? (
+        <ActionButtons
+          actions={[
+            {
+              key: 'out',
+              label: MONEY_OUT_TITLE[mode],
+              glyph: mode === 'withdraw' ? <ArrowUpFromLine size={20} aria-hidden /> : <LockOpen size={20} aria-hidden />,
+              run: () => setOpen(true),
+              testId: 'deposit-money-out',
+            },
+          ]}
+        />
+      ) : (
+        <InsetGroup>
+          {[<InsetRow key="out" title={MONEY_OUT_TITLE[mode]} chevron={false} onClick={() => setOpen(true)} testId="deposit-money-out" />]}
+        </InsetGroup>
+      )}
       {open && (
         <MoneyOutSheet
           mode={mode}

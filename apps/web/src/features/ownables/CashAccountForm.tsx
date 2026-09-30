@@ -309,12 +309,12 @@ export function CashAccountForm({
         header={embedded ? undefined : `${chosen.label}${locked ? ' · cannot be spent from directly' : ''}`}
         footer={
           embedded ? (
-            locked ? 'Cannot be spent from directly. When it matures, move the money to an account with a transfer.' : undefined
+            locked ? 'Cannot be spent from directly. When it matures, take the money out with Withdraw on its page.' : undefined
           ) : (
             <>
               {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.{asks.includes('bank') ? ' The bank goes on your yearly tax report; the name is what you call it here.' : ' Name is what you call yours.'}
               {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
-              {locked && ' When it matures, move the money to an account with a transfer.'}
+              {locked && ' When it matures, take the money out with Withdraw on its page.'}
             </>
           )
         }

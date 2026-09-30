@@ -1,6 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
 import { openAssets } from './drawers';
+
+
+/** The deposit's card: the day it matures on its first line, the rate on the line under the bar. */
+async function expectTerms(page: Page, matures: string, rate: string) {
+  const card = page.getByTestId('deposit-maturity-card');
+  await expect(card).toContainText(matures);
+  await expect(card).toContainText(rate);
+}
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -126,7 +134,7 @@ test('proposes on the day and posts what was confirmed, with a new term', async 
   await expect(card).toContainText('Roll over 3 months · interest to BCA Tahapan');
   await card.getByRole('button', { name: 'Confirm' }).click();
   await expect(card).toHaveCount(0);
-  await expect(page.getByText('Matures 15 Jan 2027 · 4,25%')).toBeVisible();
+  await expectTerms(page, 'Matures 15 Jan 2027', '4,25%');
   await expectBalance(page, s.payoutName, '1.428.493');
 });
 
@@ -151,7 +159,7 @@ test('posts edited gross and tax as typed, lands their difference, and a new rat
   await page.getByLabel('New term').selectOption('6');
   await card.getByRole('button', { name: 'Confirm' }).click();
   await expect(card).toHaveCount(0);
-  await expect(page.getByText('Matures 15 Apr 2027 · 4%')).toBeVisible();
+  await expectTerms(page, 'Matures 15 Apr 2027', '4%');
   await expectBalance(page, s.payoutName, '1.428.560');
 });
 
@@ -178,7 +186,7 @@ test('once the editor is closed, the card shows exactly what Confirm posts', asy
   await expect(card).not.toContainText('428.493');
   await card.getByRole('button', { name: 'Confirm' }).click();
   await expect(card).toHaveCount(0);
-  await expect(page.getByText('Matures 15 Apr 2027 · 4,1%')).toBeVisible();
+  await expectTerms(page, 'Matures 15 Apr 2027', '4,1%');
   await expectBalance(page, s.payoutName, '1.428.560');
 });
 
@@ -261,7 +269,7 @@ test('undoes a payout recorded by hand: nothing posts or is voided, it is propos
   await page.clock.setSystemTime(at(s.matures));
   await page.reload();
   await confirmEach(page, ['144.384', '144.384', '139.726']);
-  await expect(page.getByText('Matures 15 Jan 2027 · 4,25%')).toBeVisible();
+  await expectTerms(page, 'Matures 15 Jan 2027', '4,25%');
   // The first payout of the new term, recorded by hand.
   await page.clock.setSystemTime(at('2026-11-15'));
   await page.reload();
