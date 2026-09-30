@@ -206,6 +206,13 @@ maps — goes on the **paying member's** placeholder, never the owner's own. The
 with choice of an item that is not live in the active group's log (`item-not-shared`: "Rina Card ···· 1234 is no longer
 shared. Pick another way to pay."); an edit that leaves Paid with alone keeps what the purchase already says.
 
+*Correction (final review, item 2):* "already recorded stay" holds whatever the group's state: a purchase whose lineage
+already names the same `paidFrom`, and whose head already has its money side in that currency on one of the owner
+phone's own accounts, stays on that account and card — checked before the group and map checks, so an edit after the
+group has ended (its map forgotten) or while a restored phone waits for its group-log invite does not move it off her
+card. The lineage keeps only the `paidFrom` in effect on that device: null when the owner's phone refused to land it
+(the money side went on the payer's placeholder), so the purchase never reads as on her item there.
+
 ### 5.4 Local tables (never synced)
 
 - `nw_share_settings(account_id PK, setting 'total' | 'hidden')` — owner scope, like the accounts it describes. Absent

@@ -433,9 +433,10 @@ interface PaidFromTrust {
  * The local account a `paidFrom` names on its owner's phone (§5.3): the account `nw_item_map` maps the item to, or null —
  * and the money side goes on the paying member's placeholder. Only while this person's net-worth group is active, is
  * this workspace's, and the map is that group's; only in the line's currency; and only when the op's author is a
- * member of the group, or the purchase already sits on that account with the same `paidFrom` (an ordinary edit keeps
- * it there). So nobody outside the group, and no former partner once it has ended, can put a purchase on the owner's
- * real card (task 7 review round 1). The card is the one the head already names on that account (a supplementary
+ * member of the group. A purchase that already sits on one of this device's own accounts with the same `paidFrom`
+ * stays there, group or no group (an ordinary edit keeps it; §7.1 "already recorded stay", final review item 2). So
+ * nobody outside the group, and no former partner once it has ended, can put a new purchase on the owner's real card
+ * (task 7 review round 1). The card is the one the head already names on that account (a supplementary
  * card), else the account's primary.
  */
 async function paidFromAccountHere(
@@ -445,6 +446,19 @@ async function paidFromAccountHere(
   currency: string,
   trust: PaidFromTrust,
 ): Promise<{ accountId: string; cardId: string | null } | null> {
+  const unchangedFrom = trust.known !== null && trust.known.owner === paidFrom.owner && trust.known.itemId === paidFrom.itemId && trust.head !== null;
+  if (unchangedFrom) {
+    // Final review item 2: a purchase already recorded on this member's own item stays there (§7.1) — whether the group
+    // is still active, has ended (its map forgotten), or its log is waiting on an invite after a restore. Same
+    // `paidFrom` as the lineage knows, and the head already has its money side, in this currency, on one of this
+    // device's own accounts: keep that account (and card).
+    const [held] = await tx.values<[string]>(sql`
+      SELECT e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id = ${trust.head} AND e.currency = ${currency} AND a.kind IN ('asset', 'liability')
+        AND e.account_id NOT IN (SELECT account_id FROM book_member_accounts)
+      ORDER BY e.rowid LIMIT 1`);
+    if (held) return cardHere(tx, held[0], trust.head);
+  }
   if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_item_map'`)).length === 0) return null;
   const group = await activeNetWorthGroup(tx);
   if (!group || group.workspaceBookId !== ctx.bookId || group.me !== paidFrom.owner) return null;
@@ -454,16 +468,15 @@ async function paidFromAccountHere(
       AND a.kind IN ('asset', 'liability') AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
   if (!row) return null;
   const accountId = row[0];
-  const byMember = trust.authorMember !== null && group.members.includes(trust.authorMember);
-  const unchanged =
-    trust.known !== null &&
-    trust.known.owner === paidFrom.owner &&
-    trust.known.itemId === paidFrom.itemId &&
-    trust.head !== null &&
-    (await tx.values(sql`SELECT 1 FROM entries WHERE transaction_id = ${trust.head} AND account_id = ${accountId}`)).length > 0;
-  if (!byMember && !unchanged) return null;
-  const [kept] = trust.head
-    ? await tx.values<[string]>(sql`SELECT c.id FROM transactions t JOIN cards c ON c.id = t.card_id WHERE t.id = ${trust.head} AND c.account_id = ${accountId}`)
+  // Only a group member lands a purchase here; one already on this account with the same `paidFrom` was kept above.
+  if (trust.authorMember === null || !group.members.includes(trust.authorMember)) return null;
+  return cardHere(tx, accountId, trust.head);
+}
+
+/** The card a purchase on `accountId` names: the one the head already names on it (a supplementary card), else its primary. */
+async function cardHere(tx: Db, accountId: string, head: string | null): Promise<{ accountId: string; cardId: string | null }> {
+  const [kept] = head
+    ? await tx.values<[string]>(sql`SELECT c.id FROM transactions t JOIN cards c ON c.id = t.card_id WHERE t.id = ${head} AND c.account_id = ${accountId}`)
     : [];
   if (kept) return { accountId, cardId: kept[0] };
   const [card] = await tx.values<[string]>(
@@ -506,8 +519,9 @@ async function postingLines(
   head: string | null,
   money: PurchaseMoney,
   trust: PaidFromTrust,
-): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined }> {
+): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined; refused: boolean }> {
   const lines: PostingLine[] = [];
+  let refused = false;
   const perCurrency = new Map<string, { amount: number; base: number }>();
   const ratesToBase: Record<string, number> = {};
   for (const line of money.lines) {
@@ -553,6 +567,7 @@ async function postingLines(
         cardId = item.cardId;
       } else {
         // Not landed on the owner's item here: the payer's placeholder (task 7 review round 1), as for any other purchase.
+        if (money.paidFrom && accountOwner === ctx.memberId) refused = true;
         const holder = accountOwner === ctx.memberId ? money.paidBy : accountOwner;
         lines.push({ accountId: await placeholderAccountTx(tx, ctx, holder, currency), amountMinor: target, currency });
         if (cardId === undefined && own.length === 0) cardId = null;
@@ -566,7 +581,7 @@ async function postingLines(
     }
     for (const entry of mine) if (entry.amountMinor !== 0) lines.push(entry);
   }
-  return { lines, ratesToBase, cardId };
+  return { lines, ratesToBase, cardId, refused };
 }
 
 /**
@@ -581,8 +596,8 @@ async function ledgerInput(
   winners: Record<string, unknown>,
   author: string,
   trust: PaidFromTrust,
-): Promise<PostTransactionInput> {
-  const { lines, ratesToBase, cardId } = await postingLines(tx, ctx, head, state.money, trust);
+): Promise<{ input: PostTransactionInput; refused: boolean }> {
+  const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
   // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
   if (cardId !== undefined) input.cardId = cardId;
@@ -596,7 +611,7 @@ async function ledgerInput(
     input.originalCurrency = state.money.originalCurrency;
     input.originalAmountMinor = state.money.originalAmountMinor;
   }
-  return input;
+  return { input, refused };
 }
 
 async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, won: ReadonlyMap<string, { hlc: string }>): Promise<void> {
@@ -637,18 +652,21 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     known: lineage?.paidFrom ?? null,
     head: lineage?.head ?? null,
   };
-  const input = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust);
+  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust);
+  // Final review item 2: the lineage keeps the `paidFrom` in effect here — none when this device refused to land it on
+  // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
+  const from = refused ? null : state.money.paidFrom;
   if (!lineage) {
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: op.id });
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
-          VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${state.money.paidFrom?.owner ?? null}, ${state.money.paidFrom?.itemId ?? null})`,
+          VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
     );
   } else {
     const id = await replaceTransactionTx(tx, ctx.ws, lineage.head!, input);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},
-          paid_from_owner = ${state.money.paidFrom?.owner ?? null}, paid_from_item = ${state.money.paidFrom?.itemId ?? null} WHERE lineage_id = ${op.id}`,
+          paid_from_owner = ${from?.owner ?? null}, paid_from_item = ${from?.itemId ?? null} WHERE lineage_id = ${op.id}`,
     );
   }
   await recordPurchaseClocks(tx, ctx, op.id, won);

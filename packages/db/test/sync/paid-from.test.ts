@@ -346,4 +346,59 @@ describe('paid with the other’s item (task 7)', () => {
     expect(await moneySide(s.rina, head)).toEqual([s.card]);
     expect(await cardIdOf(s.rina, head)).toBe(supplementary);
   });
+
+  /** Andi re-files his purchase paid from Rina's card under another category, its money side as it was. */
+  async function andiRecategorises(s: Awaited<ReturnType<typeof sharing>>, lineage: string): Promise<void> {
+    const andiHead = (await headOf(s.andi.database, lineage))!;
+    const dining = await categoryOf(s.andi.database, s.bookId, 'Restaurants');
+    await replaceTransaction(s.andi.database, s.andi.ws, andiHead, {
+      occurredOn: today,
+      description: 'Household groceries',
+      lines: expenseLines({ categoryAccountId: dining, paymentAccountId: (await moneySide(s.andi, andiHead))[0]!, amountMinor: 300_000_00, currency: 'IDR' }),
+    });
+  }
+
+  it('after the group ends, a partner re-filing a purchase already on Rina’s card leaves it on her card (final review item 2)', async () => {
+    const s = await sharing();
+    const lineage = await andiPaysFromRinaCard(s);
+    await settle(s.home);
+    expect(await moneySide(s.rina, (await headOf(s.rina.database, lineage))!)).toEqual([s.card]);
+    await s.andi.engine.leaveNetWorth(s.bookId);
+    await settle(s.home);
+    expect(await activeNetWorthGroup(s.rina.database)).toBeNull();
+
+    await andiRecategorises(s, lineage);
+    await settle(s.home);
+    const head = (await headOf(s.rina.database, lineage))!;
+    expect(await moneySide(s.rina, head)).toEqual([s.card]);
+    expect(await cardIdOf(s.rina, head)).toBe(s.cardId);
+    expect(await placeholderOf(s.rina, s.bookId, s.rina.memberId)).toBeNull();
+  });
+
+  it('while Rina’s restored phone waits for its group-log invite, a re-filed purchase stays on her card (final review item 2)', async () => {
+    const s = await sharing();
+    const lineage = await andiPaysFromRinaCard(s);
+    await settle(s.home);
+    // The restore window: the workspace syncs again, the group log is not back yet.
+    await s.rina.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${s.groupBookId}`);
+    expect(await activeNetWorthGroup(s.rina.database)).toBeNull();
+
+    await andiRecategorises(s, lineage);
+    await s.andi.engine.syncOnce(s.bookId);
+    await s.rina.engine.syncOnce(s.bookId);
+    const head = (await headOf(s.rina.database, lineage))!;
+    expect(await moneySide(s.rina, head)).toEqual([s.card]);
+    expect(await cardIdOf(s.rina, head)).toBe(s.cardId);
+  });
+
+  it('a purchase refused Rina’s card keeps no paidFrom in her lineage (final review item 2)', async () => {
+    const s = await sharing();
+    await crafted(s, s.sari, s.andi, '01a0f000-0000-7000-8000-000000000003');
+    const [row] = await s.rina.database.db.values<[string | null, string | null]>(
+      sql`SELECT paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${'01a0f000-0000-7000-8000-000000000003'}`,
+    );
+    expect(row).toEqual([null, null]);
+    const head = (await headOf(s.rina.database, '01a0f000-0000-7000-8000-000000000003'))!;
+    expect((await purchasePayers(s.rina.database, [head]))[head]).toMatchObject({ paidBy: s.andi.memberId, paidFrom: null });
+  });
 });
