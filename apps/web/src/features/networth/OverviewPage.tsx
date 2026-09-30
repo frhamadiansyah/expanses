@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { BellRing, ChartColumn, ChartLine, Gauge, type LucideIcon } from 'lucide-react';
+import { BellRing, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -96,6 +96,20 @@ function rememberedChartView(): ChartView {
  *
  * The two columns stay two columns on a desktop.
  */
+/** One side's total: its label, its figure, and a › to that side's own page. */
+function TotalCard({ label, to, testId, figure }: { label: string; to: '/net-worth/assets' | '/net-worth/loans'; testId: string; figure: string }) {
+  return (
+    // The › sits on the label's line, so the figure keeps the card's whole width: beside it, a rupiah total ran into it.
+    <Link to={to} aria-label={label} className="block rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px] active:opacity-60">
+      <p className="flex items-center justify-between text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+        {label}
+        <ChevronRight size={14} aria-hidden className="-mr-1 shrink-0" />
+      </p>
+      <p data-testid={testId} className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{figure}</p>
+    </Link>
+  );
+}
+
 function SheetColumn({
   title,
   groups,
@@ -387,6 +401,7 @@ export function OverviewPage() {
      * the screens worth a corner of their own have one, and the rest are one tap further. A section row at the top of
      * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
      */
+    // Also opened from their total cards; these stay for when the cards are not drawn (a rate missing).
     { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
     { key: 'trades', label: 'Buy & sell', to: '/net-worth/trades' },
     { key: 'debts', label: 'Liabilities', to: '/net-worth/loans' },
@@ -610,14 +625,9 @@ export function OverviewPage() {
        */}
       {!holding && sheetMissing.length === 0 && (
         <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
-          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
-            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Assets</p>
-            <p data-testid="sheet-total-assets" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)}</p>
-          </div>
-          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
-            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Liabilities</p>
-            <p data-testid="sheet-total-liabilities" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)}</p>
-          </div>
+          {/* Each card opens its side's own page, as the ⋯ rows do. */}
+          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)} />
+          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)} />
         </section>
       )}
 

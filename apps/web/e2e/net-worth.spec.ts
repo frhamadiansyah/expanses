@@ -436,3 +436,13 @@ test('a currency with no rate stops net worth, the balance sheet and the ratios,
   await expect(page.getByTestId('ratios-missing')).toContainText('No USD rate yet, so the ratios cannot be worked out.');
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toHaveCount(0);
 });
+
+test('the Assets and Liabilities totals open their own pages', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await page.goto('/net-worth');
+  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Assets', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await page.goto('/net-worth');
+  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Liabilities', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/loans$/);
+});
