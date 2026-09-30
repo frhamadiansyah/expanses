@@ -127,6 +127,11 @@ export interface InsetRowProps extends GroupChild {
   /** A tinted circular icon: a 12 % wash of `colour`, with the glyph in `colour` itself. */
   icon?: ReactNode;
   iconColour?: string;
+  /**
+   * A ring round the icon circle, in this colour: whose the row is, in a household's Net worth (joint-net-worth §8.2).
+   * The glyph stays the kind's; only the ring says the owner, so the row stays one line.
+   */
+  iconRing?: string;
   title: ReactNode;
   subtitle?: ReactNode;
   /** The trailing figure. Set in tabular numerals and never truncated — it is what the row is for. */
@@ -179,12 +184,19 @@ export interface InsetRowProps extends GroupChild {
  * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
 /** A row's leading glyph, in the kit's own 28 px circle: the neutral fill, or the caller's tint when it gave one. */
-export function RowIcon({ tint, children }: { tint?: { background: string; foreground: string } | null; children: ReactNode }) {
+export function RowIcon({ tint, ring, children }: { tint?: { background: string; foreground: string } | null; ring?: string; children: ReactNode }) {
   return (
     <span
       aria-hidden
       className="flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: 28, height: 28, background: tint?.background ?? 'var(--ph-fill)', color: tint?.foreground ?? 'var(--ph-ink-2)' }}
+      style={{
+        width: 28,
+        height: 28,
+        background: tint?.background ?? 'var(--ph-fill)',
+        color: tint?.foreground ?? 'var(--ph-ink-2)',
+        // Drawn inside the 28 px circle, so a ringed row is exactly as tall and as wide as any other.
+        boxShadow: ring ? `inset 0 0 0 2px ${ring}` : undefined,
+      }}
     >
       {children}
     </span>
@@ -194,6 +206,7 @@ export function RowIcon({ tint, children }: { tint?: { background: string; foreg
 export function InsetRow({
   icon,
   iconColour,
+  iconRing,
   title,
   subtitle,
   value,
@@ -221,7 +234,11 @@ export function InsetRow({
     <span className="w-full text-center text-[15px] leading-[20px] font-normal text-[var(--ph-alarm)]">{title}</span>
   ) : (
     <>
-      {icon && <RowIcon tint={tint}>{icon}</RowIcon>}
+      {icon && (
+        <RowIcon tint={tint} ring={iconRing}>
+          {icon}
+        </RowIcon>
+      )}
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}

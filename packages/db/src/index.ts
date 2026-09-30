@@ -180,3 +180,5 @@ export {
   type MemberTransferSide,
   type UnpostedReason,
 } from './sync/net-worth/transfers';
+// Joint net worth (spec §8.3, task 9): the Household purchases of a period, with the shared item each was paid from.
+export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';
