@@ -45,7 +45,8 @@ function latest<T>(rows: T[], dateOf: (row: T) => string, onOrBefore: string): T
   let best: T | undefined;
   for (const row of rows) {
     if (dateOf(row) > onOrBefore) continue;
-    if (!best || dateOf(row) > dateOf(best)) best = row;
+    // A later row wins a tie on the day: rows come oldest saved first, so a correction made the same day counts.
+    if (!best || dateOf(row) >= dateOf(best)) best = row;
   }
   return best;
 }

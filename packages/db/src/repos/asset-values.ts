@@ -124,8 +124,10 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     const accountPrices: PriceRow[] = securityId
       ? securityPriceRows.filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
       : priceRows.filter((row) => row.accountId === account.id).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }));
+    // Oldest saved first, so of two values for the same day the one saved last is the one that counts.
     const accountValuations: ValuationRow[] = valuationRows
       .filter((row) => row.accountId === account.id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
       .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
     const value = assetValueAt(
       {
