@@ -1083,6 +1083,22 @@ export async function capturePostedTx(
   if (inShared) await session.touchLineage(lineageId, transactionId);
 }
 
+/**
+ * A money account about to be renamed (a rename, or a plain account becoming the first pocket of one with pockets):
+ * every shared purchase it paid for names it in `paidLabel`, so each is touched before the name changes and goes out
+ * again with the new label at flush. Called before the write, so each lineage's before still reads the old name.
+ */
+export async function captureMoneyAccountRenamingTx(tx: Db, accountId: string): Promise<void> {
+  const session = sessionOf(tx);
+  if (!session) return;
+  if ((await session.sharedBooks()).length === 0) return;
+  const rows = await tx.values<[string, string]>(sql`
+    SELECT l.lineage_id, l.head_transaction_id FROM sync_lineage l
+    WHERE l.head_transaction_id IS NOT NULL
+      AND l.head_transaction_id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId})`);
+  for (const [lineageId, head] of rows) await session.touchLineage(lineageId, head);
+}
+
 /** The ledger's void door (`markVoidTx`), called before the status changes, so the lineage's before is still readable. */
 export async function captureVoidingTx(tx: Db, transactionId: string): Promise<void> {
   const session = sessionOf(tx);

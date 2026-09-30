@@ -8,7 +8,7 @@ import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
 import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { hasBooks, personalBookIdTx } from './books';
 import { postTransactionTx } from './ledger';
-import { withCapture } from '../sync/capture';
+import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
 
 export type AccountRow = typeof accounts.$inferSelect;
 export type AccountSubtype = AccountRow['subtype'];
@@ -217,6 +217,8 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   if (!trimmed) throw new AccountError('Name is required');
   await database.transaction(async (tx) => {
     const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    // A shared purchase paid from it names it (paidLabel): it goes out again under the new name.
+    if (before) await captureMoneyAccountRenamingTx(tx, id);
     await withCapture(tx, { entity: 'category', id }, () =>
       tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId))),
     );
@@ -228,6 +230,7 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
         .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
       for (const pocket of pockets) {
         if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
+          await captureMoneyAccountRenamingTx(tx, pocket.id);
           await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));
         }
       }

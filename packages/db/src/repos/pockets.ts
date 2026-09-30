@@ -3,7 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { withCapture } from '../sync/capture';
+import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
 import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId, writeAccountAuditTx } from './accounts';
 import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
@@ -149,6 +149,8 @@ export async function makeMultiCurrency(
       icon: account.icon,
       sortOrder: account.sortOrder,
     });
+    // Its shared purchases name it by its old name; they go out again as the pocket's.
+    await captureMoneyAccountRenamingTx(tx, account.id);
     await withCapture(tx, { entity: 'category', id: account.id }, () =>
       tx
         .update(accounts)
