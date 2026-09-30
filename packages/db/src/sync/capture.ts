@@ -3,7 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
-import { activeNetWorthGroup } from '../repos/net-worth-sharing';
+import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
@@ -906,7 +906,9 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
   } else if (moneySide.length > 0) {
     const holder = moneySide[0]!.placeholderMember!;
     if (hint && hint.owner === holder && hint.owner !== memberId) {
-      // This member paid from the holder's shared item (Paid with, §7.1): labelled as the item's summary names it.
+      // This member paid from the holder's shared item (Paid with, §7.1): labelled as the item's summary names it. Only
+      // an item still shared in this workspace's active group may be named (task 7 review round 1).
+      await assertPayableTx(tx, transactionId, hint);
       paidBy = memberId;
       paidFrom = hint;
       paidLabel = (await itemNameTx(tx, hint)) ?? moneySide.map((m) => m.name).join(' + ');
@@ -961,6 +963,25 @@ async function mappedItemTx(tx: Db, accountId: string): Promise<{ groupBookId: s
     SELECT m.group_book_id, m.item_id, (SELECT s.setting FROM nw_share_settings s WHERE s.account_id = m.account_id)
     FROM nw_item_map m WHERE m.account_id = ${accountId}`);
   return row ? { groupBookId: row[0], itemId: row[1], setting: row[2] } : null;
+}
+
+/**
+ * Refuses a Paid with choice of another member's item unless this person's net-worth group is active, is the
+ * workspace the row is filed in, lists the item's owner, and the item is live in its log (not removed): what the form
+ * offers, checked again at the write, so a stale form cannot name an item that has stopped being shared.
+ */
+async function assertPayableTx(tx: Db, transactionId: string, item: PaidFrom): Promise<void> {
+  const group = await activeNetWorthGroup(tx);
+  const bookId = await bookOfTransaction(tx, transactionId);
+  const live =
+    group !== null &&
+    group.workspaceBookId === bookId &&
+    group.members.includes(item.owner) &&
+    (await tx.values(sql`SELECT 1 FROM nw_items WHERE book_id = ${group.groupBookId} AND item_id = ${item.itemId} AND owner = ${item.owner} AND removed = 0`)).length > 0;
+  if (live) return;
+  const [member] = bookId ? await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${item.owner}`) : [];
+  const whose = member?.[0] ? `${member[0]}’s item` : 'That item';
+  throw new NetWorthError('item-not-shared', `${whose} is no longer shared. Pick another way to pay.`);
 }
 
 /** A member's shared item's name, as its latest summary gives it; null when this device holds none. */

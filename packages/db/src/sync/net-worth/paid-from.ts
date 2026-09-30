@@ -27,11 +27,11 @@ export async function paidWithItems(database: Database, bookId: string): Promise
   const names = new Map(await database.db.values<[string, string]>(sql`SELECT member_id, name FROM book_members WHERE book_id = ${bookId}`));
   return (await receivedItems(database, group.groupBookId))
     .filter((item) => item.owner !== group.me && members.has(item.owner) && PAYABLE_SUBTYPES.includes(item.subtype))
-    .map((item) => ({ ...item, ownerName: names.get(item.owner) || 'Household member' }));
+    .map((item) => ({ ...item, ownerName: names.get(item.owner) || null }));
 }
 
-/** A partner's shared item Paid with can offer, with the name its owner goes by in the workspace. */
-export type PaidWithItem = ItemSummary & { itemId: string; ownerName: string };
+/** A partner's shared item Paid with can offer, with the name its owner goes by in the workspace (null when unknown here). */
+export type PaidWithItem = ItemSummary & { itemId: string; ownerName: string | null };
 
 /**
  * The account this device posts a purchase paid from `owner`'s item on (§5.3): `owner`'s placeholder in the book, in the

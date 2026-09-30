@@ -89,8 +89,8 @@ export interface SharedPaymentSection {
   items: PaidWithItem[];
 }
 
-/** The group heading a partner's shared items sit under. */
-export const sharedTitle = (ownerName: string): string => `${ownerName}’s, shared`;
+/** The group heading a partner's shared items sit under; an owner this device has no name for reads as the household's. */
+export const sharedTitle = (ownerName: string | null): string => (ownerName ? `${ownerName}’s, shared` : 'Shared in the household');
 
 /**
  * The partner's shared items Paid with offers (§7.1, D14), one section per owner after this person's own accounts: only
@@ -106,7 +106,7 @@ export function sharedPaymentSections(
   if (!where.groupWorkspaceBookId || where.formBookId !== where.groupWorkspaceBookId) return [];
   const wanted = typed.trim().toLowerCase();
   const onTab = (item: PaidWithItem) => wanted !== '' || tab === null || (item.subtype === 'credit_card' ? 'cards' : 'accounts') === tab;
-  const matches = (item: PaidWithItem) => !wanted || [item.name, item.ownerName, item.currency].some((text) => text.toLowerCase().includes(wanted));
+  const matches = (item: PaidWithItem) => !wanted || [item.name, item.ownerName ?? '', item.currency].some((text) => text.toLowerCase().includes(wanted));
   const sections: SharedPaymentSection[] = [];
   for (const item of items) {
     if (!onTab(item) || !matches(item)) continue;

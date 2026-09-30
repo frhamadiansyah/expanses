@@ -2,6 +2,8 @@ import { expenseLines, isoDate, statementCycleFor } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  activeNetWorthGroup,
+  addCard,
   cardSpendLines,
   cardStatement,
   confirmReview,
@@ -14,7 +16,10 @@ import {
   saveCardTerms,
   setShareSetting,
 } from '../../src/index';
-import { itemIdOf } from '../../src/sync/net-worth/summaries';
+import { applyChangeSet } from '../../src/sync/apply';
+import { encodeHlc } from '../../src/sync/hlc';
+import { itemIdOf, receivedItems } from '../../src/sync/net-worth/summaries';
+import type { ChangeSet } from '../../src/sync/types';
 import { categoryOf, headOf, Household, type Device } from './household';
 
 /*
@@ -35,8 +40,11 @@ async function sharing() {
   const home = new Household();
   const rina = await home.device('Rina');
   const andi = await home.device('Andi');
+  // Sari is in the workspace and never in the group.
+  const sari = await home.device('Sari');
   const bookId = await home.share(rina);
   await home.join(andi, rina);
+  await home.join(sari, rina);
   await home.settle();
   const card = await createCardAccount(rina.database, rina.ws, { name: 'Rina Card', subtype: 'credit_card', currency: 'IDR', last4: '1234' });
   await saveCardTerms(rina.database, rina.ws, { accountId: card.id, statementDay: 25, dueDay: 10, creditLimitMinor: 500_000_000, annualFeeMinor: null });
@@ -51,7 +59,7 @@ async function sharing() {
   const cardItem = await itemIdOf(groupBookId, card.id);
   const [primary] = await rina.database.db.values<[string]>(sql`SELECT id FROM cards WHERE account_id = ${card.id}`);
   const groceries = await categoryOf(andi.database, bookId, 'Groceries');
-  return { home, rina, andi, bookId, groupBookId, card: card.id, cardItem, cardId: primary![0], groceries };
+  return { home, rina, andi, sari, bookId, groupBookId, card: card.id, cardItem, cardId: primary![0], groceries };
 }
 
 /** The money side of a posted row: its non-category entries' accounts. */
@@ -85,6 +93,42 @@ async function andiPaysFromRinaCard(s: Awaited<ReturnType<typeof sharing>>, amou
   });
 }
 
+/**
+ * A purchase as a modified client would write it straight into the workspace log, signed by `by`'s device (its hlc)
+ * while the change-set claims `claimed` as its member: paid from Rina's card.
+ */
+async function crafted(s: Awaited<ReturnType<typeof sharing>>, by: Device, claimed: Device, lineageId: string): Promise<void> {
+  const groceries = await categoryOf(s.rina.database, s.bookId, 'Groceries');
+  const changeSet: ChangeSet = {
+    v: 1,
+    hlc: encodeHlc(Date.now(), 0, by.deviceId),
+    member: claimed.memberId,
+    ops: [
+      {
+        entity: 'purchase',
+        id: lineageId,
+        op: 'upsert',
+        fields: {
+          occurredOn: today,
+          description: 'On your card',
+          channel: null,
+          excluded: 0,
+          bill: null,
+          money: {
+            lines: [{ categoryId: groceries, amountMinor: 999_000_00, currency: 'IDR', amountBaseMinor: 999_000_00, memo: null }],
+            originalCurrency: null,
+            originalAmountMinor: null,
+            paidBy: claimed.memberId,
+            paidLabel: 'Rina Card',
+            paidFrom: { owner: s.rina.memberId, itemId: s.cardItem },
+          },
+        },
+      },
+    ],
+  };
+  await applyChangeSet(s.rina.database, s.bookId, changeSet);
+}
+
 describe('paid with the other’s item (task 7)', () => {
   it('Andi pays from Rina’s card: her real card on her phone (statement), her placeholder on his; paid by Andi on both', async () => {
     const s = await sharing();
@@ -104,6 +148,10 @@ describe('paid with the other’s item (task 7)', () => {
 
     const andiHead = (await headOf(s.andi.database, lineage))!;
     expect(await moneySide(s.andi, andiHead)).toEqual([await placeholderOf(s.andi, s.bookId, s.rina.memberId)]);
+
+    // Rina's phone recomputed her card's summary after apply put the purchase on it, and sent it: Andi sees what is owed.
+    const cardSummary = (await receivedItems(s.andi.database, s.groupBookId)).find((item) => item.itemId === s.cardItem);
+    expect(cardSummary).toMatchObject({ balanceMinor: 300_000_00, householdMinor: 300_000_00 });
 
     for (const [d, head] of [[s.rina, rinaHead], [s.andi, andiHead]] as const) {
       const payer = (await purchasePayers(d.database, [head]))[head]!;
@@ -205,5 +253,74 @@ describe('paid with the other’s item (task 7)', () => {
     const andiHead = (await headOf(s.andi.database, fromCard))!;
     expect(await moneySide(s.andi, andiHead)).toEqual([await placeholderOf(s.andi, s.bookId, s.rina.memberId)]);
     expect((await purchasePayers(s.andi.database, [andiHead]))[andiHead]).toMatchObject({ paidBy: s.rina.memberId, paidFrom: { owner: s.rina.memberId, itemId: s.cardItem } });
+  });
+
+  it('a workspace member outside the group cannot land a purchase on Rina’s card, whoever the change-set claims (review round 1)', async () => {
+    const s = await sharing();
+    await crafted(s, s.sari, s.andi, '01a0f000-0000-7000-8000-000000000001');
+    const head = (await headOf(s.rina.database, '01a0f000-0000-7000-8000-000000000001'))!;
+    // Not on her card, and not on her own placeholder: on the claimed payer's.
+    expect(await moneySide(s.rina, head)).toEqual([await placeholderOf(s.rina, s.bookId, s.andi.memberId)]);
+    expect(await cardIdOf(s.rina, head)).toBeNull();
+    const statement = await cardStatement(s.rina.database, s.rina.ws, s.card, statementCycleFor(today, 25), today);
+    expect(statement.lines).toEqual([]);
+  });
+
+  it('once the group has ended, a former partner’s new purchase does not land on Rina’s card (review round 1)', async () => {
+    const s = await sharing();
+    await s.andi.engine.leaveNetWorth(s.bookId);
+    await settle(s.home);
+    expect(await activeNetWorthGroup(s.rina.database)).toBeNull();
+    await crafted(s, s.andi, s.andi, '01a0f000-0000-7000-8000-000000000002');
+    const head = (await headOf(s.rina.database, '01a0f000-0000-7000-8000-000000000002'))!;
+    expect(await moneySide(s.rina, head)).toEqual([await placeholderOf(s.rina, s.bookId, s.andi.memberId)]);
+  });
+
+  it('when Rina’s phone no longer maps the item, the purchase goes on Andi’s placeholder, never Rina’s own (review round 1)', async () => {
+    const s = await sharing();
+    const lineage = await andiPaysFromRinaCard(s);
+    await s.rina.database.db.run(sql`DELETE FROM nw_item_map WHERE account_id = ${s.card}`);
+    await settle(s.home);
+    const head = (await headOf(s.rina.database, lineage))!;
+    expect(await moneySide(s.rina, head)).toEqual([await placeholderOf(s.rina, s.bookId, s.andi.memberId)]);
+    expect(await placeholderOf(s.rina, s.bookId, s.rina.memberId)).toBeNull();
+  });
+
+  it('refuses to pay with an item that is no longer shared, and writes nothing (review round 1)', async () => {
+    const s = await sharing();
+    const account = await paidFromAccount(s.andi.database, s.bookId, s.rina.memberId, 'IDR');
+    await setShareSetting(s.rina.database, s.card, 'hidden');
+    await settle(s.home);
+    const before = await s.andi.database.db.values(sql`SELECT count(*) FROM transactions`);
+    await expect(
+      postTransaction(s.andi.database, s.andi.ws, {
+        occurredOn: today,
+        description: 'Household groceries',
+        lines: expenseLines({ categoryAccountId: s.groceries, paymentAccountId: account, amountMinor: 300_000_00, currency: 'IDR' }),
+        paidFrom: { owner: s.rina.memberId, itemId: s.cardItem },
+      }),
+    ).rejects.toMatchObject({ code: 'item-not-shared', message: 'Rina’s item is no longer shared. Pick another way to pay.' });
+    expect(await s.andi.database.db.values(sql`SELECT count(*) FROM transactions`)).toEqual(before);
+  });
+
+  it('keeps the supplementary card a purchase already names on Rina’s card account (review round 1)', async () => {
+    const s = await sharing();
+    const supplementary = await addCard(s.rina.database, s.rina.ws, { accountId: s.card, last4: '5678', holderName: 'Rina' });
+    const lineage = await andiPaysFromRinaCard(s);
+    await settle(s.home);
+    const first = (await headOf(s.rina.database, lineage))!;
+    expect(await cardIdOf(s.rina, first)).toBe(s.cardId);
+    await s.rina.database.db.run(sql`UPDATE transactions SET card_id = ${supplementary} WHERE id = ${first}`);
+    const andiHead = (await headOf(s.andi.database, lineage))!;
+    await replaceTransaction(s.andi.database, s.andi.ws, andiHead, {
+      occurredOn: today,
+      description: 'Groceries, on the other card',
+      lines: expenseLines({ categoryAccountId: s.groceries, paymentAccountId: (await moneySide(s.andi, andiHead))[0]!, amountMinor: 300_000_00, currency: 'IDR' }),
+    });
+    await settle(s.home);
+    const head = (await headOf(s.rina.database, lineage))!;
+    expect(head).not.toBe(first);
+    expect(await moneySide(s.rina, head)).toEqual([s.card]);
+    expect(await cardIdOf(s.rina, head)).toBe(supplementary);
   });
 });

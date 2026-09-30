@@ -33,7 +33,9 @@ export type NetWorthErrorCode =
   /** This person is already in the net-worth group of another workspace (§4: one group per person). */
   | 'other-group'
   /** `Don't share` is refused while the household files with one tax ID (D7). */
-  | 'joint-forbids-hidden';
+  | 'joint-forbids-hidden'
+  /** Paid with names a partner's item that is no longer shared, or a group no longer active (§7.1, task 7). */
+  | 'item-not-shared';
 
 export class NetWorthError extends Error {
   constructor(

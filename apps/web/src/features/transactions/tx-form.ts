@@ -15,7 +15,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import type { AccountRow, PaidFrom, PostTransactionInput, RecordTradeInput, SplitBillInput, TaggedTransferInput, TransactionView } from '@expanses/db';
+import { NetWorthError, type AccountRow, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -74,6 +74,15 @@ export interface FormDraft {
    * once one of this person's own accounts is picked, and undefined — "as the purchase already says" — until either.
    */
   paidFrom?: PaidFrom | null;
+}
+
+/**
+ * The form's words for a save refused because Paid with names a partner's item that has stopped being shared (§7.1):
+ * the item by the name the row shows, "Rina Card ···· 1234 is no longer shared", else the refusal's own words.
+ */
+export function sayPaidWithError(error: unknown, itemName: string | null | undefined): unknown {
+  if (error instanceof NetWorthError && error.code === 'item-not-shared' && itemName) return new Error(`${itemName} is no longer shared. Pick another way to pay.`);
+  return error;
 }
 
 /** What the ledger is told about Paid with (§5.3): the choice when one was made in this form, else nothing. */

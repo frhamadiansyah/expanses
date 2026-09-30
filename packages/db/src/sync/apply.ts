@@ -3,10 +3,12 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
+import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
   AuthorityError,
+  authorMemberOf,
   decideOpsTx,
   groupLogWorkspaceOf,
   NO_REVIVE,
@@ -412,24 +414,56 @@ function carriedPaidFrom(value: unknown): PaidFrom | null {
   return typeof owner === 'string' && typeof itemId === 'string' ? paidFromOf(owner, itemId) : null;
 }
 
+/** Who may land a purchase on this device's own item (task 7 review round 1): the op's author and what the lineage had. */
+interface PaidFromTrust {
+  /** The member the signing device writes as, per the authority view (`authorMemberOf`) — never `changeSet.member`. */
+  authorMember: string | null;
+  /** The `paidFrom` the lineage already carried here, and the head it is posted as. */
+  known: PaidFrom | null;
+  head: string | null;
+}
+
 /**
- * The local account a `paidFrom` names on its owner's phone (§5.3): the account `nw_item_map` maps the item to, while it
- * is an item of a net-worth group of this very workspace and its currency is the line's — else null, and the money
- * side goes on the owner's placeholder as any other member's does. With the account's primary card, if it has one.
+ * The local account a `paidFrom` names on its owner's phone (§5.3): the account `nw_item_map` maps the item to, or null —
+ * and the money side goes on the paying member's placeholder. Only while this person's net-worth group is active, is
+ * this workspace's, and the map is that group's; only in the line's currency; and only when the op's author is a
+ * member of the group, or the purchase already sits on that account with the same `paidFrom` (an ordinary edit keeps
+ * it there). So nobody outside the group, and no former partner once it has ended, can put a purchase on the owner's
+ * real card (task 7 review round 1). The card is the one the head already names on that account (a supplementary
+ * card), else the account's primary.
  */
-async function paidFromAccountHere(tx: Db, ctx: BookContext, paidFrom: PaidFrom, currency: string): Promise<{ accountId: string; cardId: string | null } | null> {
+async function paidFromAccountHere(
+  tx: Db,
+  ctx: BookContext,
+  paidFrom: PaidFrom,
+  currency: string,
+  trust: PaidFromTrust,
+): Promise<{ accountId: string; cardId: string | null } | null> {
   if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_item_map'`)).length === 0) return null;
+  const group = await activeNetWorthGroup(tx);
+  if (!group || group.workspaceBookId !== ctx.bookId || group.me !== paidFrom.owner) return null;
   const [row] = await tx.values<[string]>(sql`
-    SELECT m.account_id FROM nw_item_map m
-    JOIN nw_group_books g ON g.group_book_id = m.group_book_id
-    JOIN accounts a ON a.id = m.account_id
-    WHERE m.item_id = ${paidFrom.itemId} AND g.book_id = ${ctx.bookId} AND a.currency = ${currency} AND a.kind IN ('asset', 'liability')
-      AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
+    SELECT m.account_id FROM nw_item_map m JOIN accounts a ON a.id = m.account_id
+    WHERE m.item_id = ${paidFrom.itemId} AND m.group_book_id = ${group.groupBookId} AND a.currency = ${currency}
+      AND a.kind IN ('asset', 'liability') AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
   if (!row) return null;
+  const accountId = row[0];
+  const byMember = trust.authorMember !== null && group.members.includes(trust.authorMember);
+  const unchanged =
+    trust.known !== null &&
+    trust.known.owner === paidFrom.owner &&
+    trust.known.itemId === paidFrom.itemId &&
+    trust.head !== null &&
+    (await tx.values(sql`SELECT 1 FROM entries WHERE transaction_id = ${trust.head} AND account_id = ${accountId}`)).length > 0;
+  if (!byMember && !unchanged) return null;
+  const [kept] = trust.head
+    ? await tx.values<[string]>(sql`SELECT c.id FROM transactions t JOIN cards c ON c.id = t.card_id WHERE t.id = ${trust.head} AND c.account_id = ${accountId}`)
+    : [];
+  if (kept) return { accountId, cardId: kept[0] };
   const [card] = await tx.values<[string]>(
-    sql`SELECT id FROM cards WHERE account_id = ${row[0]} AND archived_at IS NULL ORDER BY is_primary DESC, created_at, id LIMIT 1`,
+    sql`SELECT id FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL ORDER BY is_primary DESC, created_at, id LIMIT 1`,
   );
-  return { accountId: row[0], cardId: card?.[0] ?? null };
+  return { accountId, cardId: card?.[0] ?? null };
 }
 
 /** A line's category on this device, or the book's Uncategorised when it is unknown or gone (rule 4). */
@@ -456,13 +490,16 @@ function rateFromPair(currency: string, base: string, amountMinor: number, amoun
  *
  * Joint net worth §5.3: the money side is the **account owner's** — `paidFrom?.owner ?? paidBy`. On the owner's phone a
  * purchase paid from their item posts on the item's own account (and card), so its statement, cycle and points see it;
- * everywhere else on the owner's placeholder. `cardId` is the card the row should now name: undefined keeps the head's.
+ * everywhere else on the owner's placeholder. On the owner's phone a purchase that may not land there (see
+ * `paidFromAccountHere`) goes on the paying member's placeholder, never this member's own: it is not this member's
+ * spending. `cardId` is the card the row should now name: undefined keeps the head's.
  */
 async function postingLines(
   tx: Db,
   ctx: BookContext,
   head: string | null,
   money: PurchaseMoney,
+  trust: PaidFromTrust,
 ): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined }> {
   const lines: PostingLine[] = [];
   const perCurrency = new Map<string, { amount: number; base: number }>();
@@ -504,12 +541,14 @@ async function postingLines(
     if (target === 0) continue;
     const mine = own.filter((entry) => entry.currency === currency);
     if (mine.length === 0) {
-      const item = money.paidFrom && accountOwner === ctx.memberId ? await paidFromAccountHere(tx, ctx, money.paidFrom, currency) : null;
+      const item = money.paidFrom && accountOwner === ctx.memberId ? await paidFromAccountHere(tx, ctx, money.paidFrom, currency, trust) : null;
       if (item) {
         lines.push({ accountId: item.accountId, amountMinor: target, currency });
         cardId = item.cardId;
       } else {
-        lines.push({ accountId: await placeholderAccountTx(tx, ctx, accountOwner, currency), amountMinor: target, currency });
+        // Not landed on the owner's item here: the payer's placeholder (task 7 review round 1), as for any other purchase.
+        const holder = accountOwner === ctx.memberId ? money.paidBy : accountOwner;
+        lines.push({ accountId: await placeholderAccountTx(tx, ctx, holder, currency), amountMinor: target, currency });
         if (cardId === undefined && own.length === 0) cardId = null;
       }
       continue;
@@ -528,8 +567,16 @@ async function postingLines(
  * The ledger input for a purchase as it should now read (§7.4). Every fact that is not a winner stays `undefined`, so
  * `replaceTransactionTx` carries it exactly as when the payer edits it themselves; a `null` would clear it.
  */
-async function ledgerInput(tx: Db, ctx: BookContext, head: string | null, state: PurchaseFields, winners: Record<string, unknown>, author: string): Promise<PostTransactionInput> {
-  const { lines, ratesToBase, cardId } = await postingLines(tx, ctx, head, state.money);
+async function ledgerInput(
+  tx: Db,
+  ctx: BookContext,
+  head: string | null,
+  state: PurchaseFields,
+  winners: Record<string, unknown>,
+  author: string,
+  trust: PaidFromTrust,
+): Promise<PostTransactionInput> {
+  const { lines, ratesToBase, cardId } = await postingLines(tx, ctx, head, state.money, trust);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
   // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
   if (cardId !== undefined) input.cardId = cardId;
@@ -551,10 +598,10 @@ async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string,
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
-export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number }[]>;
+export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number; author: string }[]>;
 
 /** §7.2 `applyPurchase`. Returns false when the op had to be held. */
-async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet): Promise<boolean> {
+async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet, authorDevice: string): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id);
   if (lineage && lineage.head === null) return true; // void wins, for ever
   const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
@@ -579,7 +626,12 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   const current = lineage ? await projectPurchase(tx, lineage.head!, ctx.memberId, lineage) : null;
   const state = { ...(current ?? {}), ...winners } as PurchaseFields;
   state.money = { ...state.money, paidFrom: carriedPaidFrom(state.money.paidFrom) };
-  const input = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member);
+  const trust: PaidFromTrust = {
+    authorMember: state.money.paidFrom?.owner === ctx.memberId ? await authorMemberOf(tx, ctx.bookId, authorDevice) : null,
+    known: lineage?.paidFrom ?? null,
+    head: lineage?.head ?? null,
+  };
+  const input = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust);
   if (!lineage) {
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: op.id });
     await tx.run(
@@ -692,7 +744,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     if (entity.kind === 'purchase') {
       if (op.op !== 'upsert') continue; // a purchase is never deleted, only voided
       await guarded(tx, ctx, run, op, async () => {
-        if (!(await applyPurchase(tx, ctx, op, changeSet))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet, seq: run.seq }]);
+        if (!(await applyPurchase(tx, ctx, op, changeSet, author))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet, seq: run.seq, author }]);
       });
       continue;
     }
@@ -706,7 +758,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
   for (const [lineageId, ops] of [...held]) {
     if (!(await lineageOf(tx, lineageId))) continue;
     held.delete(lineageId);
-    for (const { op, changeSet: from } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from)));
+    for (const { op, changeSet: from, author: by } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from, by)));
   }
 }
 

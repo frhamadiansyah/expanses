@@ -188,7 +188,16 @@ on the ledger input (`PostTransactionInput.paidFrom`, like `syncAuthor`); an edi
 lineage says. A purchase a member pays from their **own** shared item carries `paidFrom = { owner: self, itemId }` too
 (Task 9's ruling, so the partner's item page can find its Household lines), but only in the group's own workspace; an
 account that is not a `total` item carries null. On the owner's phone the money side lands on the mapped account only
-while it is in the line's currency, with the account's primary card; otherwise on the owner's placeholder.
+while it is in the line's currency, with the card the purchase already names on that account, else the primary card.
+
+*Correction (task 7 review round 1):* the owner's phone lands a purchase on the item's real account only while its
+net-worth group is active and is this workspace's, the item is mapped in that group's log, and either the op's author
+(the member its signing device writes as, per the authority view — never the change-set's claimed `member`) is a group
+member, or the purchase already sits on that account with the same `paidFrom` (an ordinary edit keeps it there). Anything
+else — a workspace member outside the group, a former partner once the group has ended, an item this phone no longer
+maps — goes on the **paying member's** placeholder, never the owner's own. The payer's phone refuses to save a Paid
+with choice of an item that is not live in the active group's log (`item-not-shared`: "Rina Card ···· 1234 is no longer
+shared. Pick another way to pay."); an edit that leaves Paid with alone keeps what the purchase already says.
 
 ### 5.4 Local tables (never synced)
 
@@ -254,7 +263,7 @@ mode. No active proposal = no group. Every device derives the same answer from t
 In the shared workspace's add form, **Paid with** lists the member's own accounts, then a group **"Rina's, shared"**
 with Rina's shared items that can pay (bank, cash, e-wallet, credit card). Picking one sets `paidFrom`. Outside the
 shared workspace the group never appears (D14). An item that stops being shared disappears from the list; purchases
-already recorded stay.
+already recorded stay. A form still showing it is refused at Save (§5.3, task 7 review round 1).
 
 ### 7.2 Transfer between partners
 

@@ -47,7 +47,7 @@ import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { clearStashedDraft, readStashedDraft, stashDraft } from './draft-handoff';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField, sharedPaymentOf } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -320,7 +320,7 @@ function CardBody({
       await invalidate();
       onDone();
     } catch (e) {
-      setError(e);
+      setError(sayPaidWithError(e, sharedShown?.value));
     } finally {
       setBusy(false);
     }
