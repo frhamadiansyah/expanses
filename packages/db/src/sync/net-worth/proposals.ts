@@ -16,12 +16,12 @@ import {
   removeOutsiders,
   dissolveGroupLog,
   groupLogOf,
-  groupMembersReady,
   leaveGroupLog,
   linkOf,
   openGroupLog,
   quietly,
   reopenClosedLink,
+  workspaceDevicesReady,
   type GroupLogHost,
 } from './group-log';
 
@@ -75,7 +75,7 @@ async function ensureGroupLog(host: GroupLogHost, workspaceBookId: string): Prom
  * Proposes a filing mode and members (§6 Setup, Change). This member is always listed; `members` names the others (it
  * may name this member too). `invalid` when the proposal cannot be made (`canPropose`, or someone not in the
  * workspace); `other-group` when this person is in another workspace's group (§4); `not-ready` with each outdated
- * device when a listed member's device runs an app too old (§9). Returns the proposal's id.
+ * device when any device in the workspace — asked or not — runs an app too old (§9; final review item 1). Returns the proposal's id.
  */
 export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: string, input: { mode: FilingMode; members: string[] }): Promise<string> {
   const me = await workspaceMember(host, workspaceBookId);
@@ -93,7 +93,7 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
   if (!known) throw new NetWorthError('invalid', 'Everyone you choose must be in this workspace');
   const other = await activeNetWorthGroup(host.database);
   if (other && other.workspaceBookId !== workspaceBookId) throw new NetWorthError('other-group', 'You already share your net worth in another workspace');
-  const ready = await groupMembersReady(host, workspaceBookId, members);
+  const ready = await workspaceDevicesReady(host, workspaceBookId);
   if (!ready.ready) throw new NetWorthError('not-ready', 'Every device must run the latest app first', ready.outdated);
 
   const groupBookId = await ensureGroupLog(host, workspaceBookId);

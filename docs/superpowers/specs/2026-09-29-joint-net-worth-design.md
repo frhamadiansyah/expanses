@@ -387,8 +387,10 @@ not a whole number reads as 0.
 - **Paid with while the owner is offline.** The purchase waits in the workspace log and lands on her card when her
   phone syncs; meanwhile the partner's view subtracts it (§8.3).
 - **Stale app version.** A device that does not understand `paidFrom` or the group entities must not be the card
-  owner's only device: setup requires every group member's devices to report the minimum version; a device below it
-  blocks setup with "Update the app on Andi's iPad". (Plan correction: the relay records no app version, so each
+  owner's only device: setup requires every device in the workspace — a group member's or not — to report the minimum
+  version; a device below it blocks setup with "Update the app on Andi's iPad". (Final review correction: it was only
+  the proposal's members' devices, but setup writes `net_worth_group` to the workspace log and an older app stops
+  syncing the whole workspace on an entity it does not know, so a non-member's old device must block too.) (Plan correction: the relay records no app version, so each
   device reports it itself as a new synced field `appVersion` on the workspace's `device` entity; a device that never
   sent one is below the minimum.)
 - **Currencies.** Summaries are in the item's currency. The joint total converts with the viewer's rates, as Net worth

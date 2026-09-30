@@ -99,6 +99,15 @@ describe('proposals and answers (joint-net-worth §6)', () => {
     });
   });
 
+  it("a device on an old app blocks setup even when its person is not asked: it could not read the group's workspace rows", async () => {
+    const { rina, andi, sari, bookId } = await household({ sari: '0.2.0' });
+    await expect(rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] })).rejects.toMatchObject({
+      code: 'not-ready',
+      outdated: [{ memberId: sari.memberId, deviceName: "Sari's phone" }],
+    });
+    expect(await linkOf(rina, bookId)).toBeNull();
+  });
+
   it('the proposer may cancel a proposal not yet active; anyone else may not', async () => {
     const { home, rina, andi, sari, bookId } = await household();
     const proposalId = await rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] });

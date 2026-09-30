@@ -737,24 +737,33 @@ export async function removeFromGroupLog(host: GroupLogHost, workspaceBookId: st
   await database.transaction((tx) => dropDepartedTx(tx, groupBookId));
 }
 
-/**
- * Whether every device of these members still in the workspace (per its view) runs an app that understands joint net
- * worth (§9): setup waits for `ready`, and names each `outdated` device ("Update the app on Andi's iPad").
- */
-export async function groupMembersReady(
-  host: GroupLogHost,
-  workspaceBookId: string,
-  memberIds: readonly string[],
-): Promise<{ ready: boolean; outdated: { memberId: string; deviceName: string }[] }> {
-  if (memberIds.length === 0) return { ready: true, outdated: [] };
+type Readiness = { ready: boolean; outdated: { memberId: string; deviceName: string }[] };
+
+async function devicesReady(host: GroupLogHost, workspaceBookId: string, memberIds: readonly string[] | null): Promise<Readiness> {
+  if (memberIds !== null && memberIds.length === 0) return { ready: true, outdated: [] };
+  const only = memberIds === null ? sql`` : sql`AND d.member_id IN (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`;
   const rows = await host.database.db.values<[string, string, string | null]>(sql`
     SELECT d.member_id, d.name, d.app_version FROM book_devices d
     JOIN sync_authority_devices a ON a.book_id = d.book_id AND a.device_id = d.device_id
-    WHERE d.book_id = ${workspaceBookId} AND a.removed_seq IS NULL AND d.member_id IN (${sql.join(
-      memberIds.map((id) => sql`${id}`),
-      sql`, `,
-    )})
+    WHERE d.book_id = ${workspaceBookId} AND a.removed_seq IS NULL ${only}
     ORDER BY d.member_id, d.added_at, d.device_id`);
   const outdated = rows.filter(([, , version]) => !meetsMinVersion(version)).map(([memberId, deviceName]) => ({ memberId, deviceName }));
   return { ready: outdated.length === 0, outdated };
+}
+
+/**
+ * Whether every device of these members still in the workspace (per its view) runs an app that understands joint net
+ * worth (§9): names each `outdated` device ("Update the app on Andi's iPad").
+ */
+export function groupMembersReady(host: GroupLogHost, workspaceBookId: string, memberIds: readonly string[]): Promise<Readiness> {
+  return devicesReady(host, workspaceBookId, memberIds);
+}
+
+/**
+ * Whether EVERY device still in the workspace (per its view) runs an app that understands joint net worth — members of
+ * the proposal or not (final review, item 1): setting up writes `net_worth_group` to the workspace log, and an older
+ * app stops syncing on an entity it does not know. Setup waits for `ready` and names each `outdated` device.
+ */
+export function workspaceDevicesReady(host: GroupLogHost, workspaceBookId: string): Promise<Readiness> {
+  return devicesReady(host, workspaceBookId, null);
 }
