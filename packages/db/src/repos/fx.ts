@@ -32,7 +32,13 @@ export async function upsertRate(
     WHERE excluded.source IN ('manual', 'kmk') OR fx_rates.source = 'frankfurter'
   `);
   // Joint net worth §7.2 (task 8 review round 1): a transfer between partners left unposted for want of a rate posts now.
-  await retryUnpostedTransfers(database);
+  // The rate is already stored: a retry that fails is reported, never the save's failure (final review item 9); the
+  // group log's next sync tries the transfer again.
+  try {
+    await retryUnpostedTransfers(database);
+  } catch (error) {
+    console.warn('Saved the rate; a waiting transfer between partners could not be posted yet', error);
+  }
 }
 
 /** Exact date if stored, otherwise the latest earlier date flagged stale. */

@@ -13,6 +13,20 @@ describe('fx rates', () => {
     expect(await findRate(database, 'THB', 'IDR', '2026-09-01')).toBeUndefined();
   });
 
+  it('a failed retry of waiting partner transfers never fails a rate save that is already stored (final review item 9)', async () => {
+    const { database } = await setupDb();
+    // A retry that throws: the waiting-transfers table is unreadable.
+    await database.execScript('DROP TABLE member_transfer_unposted; CREATE TABLE member_transfer_unposted (x TEXT)');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await expect(upsertRate(database, { fromCurrency: 'THB', toCurrency: 'IDR', onDate: '2026-09-05', rate: 540, source: 'manual', sourceDate: '2026-09-05' })).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+    expect(await findRate(database, 'THB', 'IDR', '2026-09-05')).toMatchObject({ rate: 540, source: 'manual' });
+  });
+
   it('lets a corrected KMK rate replace the one already stored', async () => {
     const { database } = await setupDb();
     // A rate typed from the wrong week, then corrected. A tax figure must not be stuck at the mistake.
