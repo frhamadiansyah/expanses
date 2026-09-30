@@ -128,7 +128,9 @@ test('Buy opens the Buy & sell form over the page with this holding already chos
   await offline(page);
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20395000']]);
   await openAsset(page, 'Antam gold bars');
+  // Gold's Buy is a short sheet of its own; its More options is the full form.
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByRole('button', { name: 'More options' }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByLabel('Holding')).toHaveValue(/.+/);
   await expect(sheet.getByLabel('What happened')).toHaveValue('buy');

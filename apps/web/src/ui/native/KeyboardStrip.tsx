@@ -29,14 +29,23 @@ export type StripCell = { key: string; label: string; title: ReactNode; detail?:
  * small grey line under it. A tap takes the cell without the field losing focus. Drawn only on a phone; a desktop
  * has no keyboard for it to ride.
  */
-export function KeyboardStrip({ label, cells }: { label: string; cells: readonly StripCell[] }) {
+export function KeyboardStrip({
+  label,
+  cells,
+  scroll = false,
+}: {
+  label: string;
+  cells: readonly StripCell[];
+  /** Many short cells (a brand's bar sizes) in one row that scrolls sideways, rather than up to three sharing the width. */
+  scroll?: boolean;
+}) {
   const inset = useKeyboardInset();
   if (cells.length === 0) return null;
   return createPortal(
     <div
       role="listbox"
       aria-label={label}
-      className="fixed inset-x-0 z-50 flex border-t-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-bar)] md:hidden"
+      className={`fixed inset-x-0 z-50 flex border-t-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-bar)] md:hidden${scroll ? ' overflow-x-auto overscroll-x-contain' : ''}`}
       style={{
         bottom: inset,
         backdropFilter: 'saturate(180%) blur(20px)',
@@ -57,7 +66,7 @@ export function KeyboardStrip({ label, cells }: { label: string; cells: readonly
             // Down, not click: a click would take the focus off the field first and fold the keyboard away under the tap.
             onPointerDown={(e) => e.preventDefault()}
             onClick={cell.onPick}
-            className="ph-focus-inset flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center px-2 py-1 text-center active:bg-[var(--ph-fill)]"
+            className={`ph-focus-inset flex min-h-[48px] flex-col items-center justify-center px-2 py-1 text-center active:bg-[var(--ph-fill)] ${scroll ? 'min-w-[56px] shrink-0' : 'min-w-0 flex-1'}`}
           >
             <span className="w-full truncate text-[15px] leading-5 text-[var(--ph-ink)]">{cell.title}</span>
             {cell.detail && <span className="w-full truncate text-[11px] leading-[14px] text-[var(--ph-ink-3)]">{cell.detail}</span>}

@@ -497,3 +497,6 @@ export {
 export {
   FUND_UNIT_DECIMALS, type FundSell, type FundTrade, fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, isMoneyMarketFund,
 } from './assets/fund-trade';
+export {
+  GOLD_BAR_SIZES, type GoldBrand, goldBarSizes, goldBrandOf, goldGainMinor, goldSellGrams, gramsMicro, gramsText, typedGramsMicro,
+} from './assets/gold-trade';
