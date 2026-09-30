@@ -27,6 +27,8 @@ export * as categoryColoursSchema from './schema-category-colours';
 export * from './repos/mcc';
 export * from './repos/point-actuals';
 export * from './repos/ledger';
+export * from './repos/adjust-balance';
+export * from './repos/money-in';
 export * from './repos/integrity';
 export * from './repos/fx';
 export * from './repos/reports';

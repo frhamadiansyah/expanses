@@ -437,6 +437,8 @@ export interface TransactionEntryView {
    * so a view built by hand in a test need not name it; every view read from the ledger carries it.
    */
   accountSubtype?: string;
+  /** The ledger's own key on a system account — `balance_correction` tells a correction from an opening balance. */
+  accountSystemKey?: string | null;
   amountMinor: number;
   currency: string;
   fxRateToBase: number;
@@ -547,6 +549,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       accountName: accounts.name,
       accountKind: accounts.kind,
       accountSubtype: accounts.subtype,
+      accountSystemKey: accounts.systemKey,
       amountMinor: entries.amountMinor,
       currency: entries.currency,
       fxRateToBase: entries.fxRateToBase,
@@ -631,9 +634,14 @@ export async function nativeBalances(
   ws: WorkspaceContext,
   asOf?: string,
 ): Promise<Record<string, number>> {
+  return nativeBalancesTx(database.db, ws, asOf);
+}
+
+/** `nativeBalances` inside an open transaction, so a write can read the balance it is about to change. */
+export async function nativeBalancesTx(db: Db, ws: WorkspaceContext, asOf?: string): Promise<Record<string, number>> {
   const conds: SQL[] = [eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted')];
   if (asOf) conds.push(lte(transactions.occurredOn, asOf));
-  const rows = await database.db
+  const rows = await db
     .select({ accountId: entries.accountId, total: sql<number>`sum(${entries.amountMinor})` })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
