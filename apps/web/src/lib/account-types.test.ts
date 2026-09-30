@@ -2,7 +2,7 @@ import { CASH_ITEMS } from '@expanses/core';
 import type { AccountRow, AccountSubtype } from '@expanses/db';
 import { BALANCE_SUBTYPES, MONEY_SUBTYPES as LEDGER_MONEY, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_TYPES, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
+import { ACCOUNT_TYPES, canMoveMoneyIn, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
 
 describe('the account types someone can open', () => {
   /**
@@ -174,5 +174,25 @@ describe('which accounts may pair in a transfer', () => {
   it('lets other money move freely, but never into itself', () => {
     expect(canTransferBetween(a('wallet', 'ewallet'), a('cash', 'cash'))).toBe(true);
     expect(canTransferBetween(a('cash', 'cash'), a('cash', 'cash'))).toBe(false);
+  });
+});
+
+describe('what Withdraw and Top up may bring money in from', () => {
+  const a = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype']) => ({ id, kind, subtype });
+  const cash = a('cash', 'asset', 'cash');
+  const wallet = a('gopay', 'asset', 'ewallet');
+  it('takes money you hold, never a broker cash account or itself', () => {
+    expect(canMoveMoneyIn(a('bca', 'asset', 'bank'), cash)).toBe(true);
+    expect(canMoveMoneyIn(a('tabungan', 'asset', 'savings'), wallet)).toBe(true);
+    expect(canMoveMoneyIn(a('rdn', 'asset', 'fund'), cash)).toBe(false);
+    expect(canMoveMoneyIn(a('house', 'asset', 'property'), cash)).toBe(false);
+    expect(canMoveMoneyIn(cash, cash)).toBe(false);
+  });
+  it('takes a credit card into a wallet only, while a transfer still takes none', () => {
+    const card = a('card', 'liability', 'credit_card');
+    expect(canMoveMoneyIn(card, wallet)).toBe(true);
+    expect(canMoveMoneyIn(card, cash)).toBe(false);
+    expect(canMoveMoneyIn(a('kpr', 'liability', 'loan'), wallet)).toBe(false);
+    expect(canTransferWith(card)).toBe(false);
   });
 });

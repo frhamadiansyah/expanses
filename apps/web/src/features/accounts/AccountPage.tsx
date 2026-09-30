@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Repeat,
+  Scale,
   Settings,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
@@ -49,6 +50,9 @@ import { TransactionCard } from '../transactions/TransactionCard';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { AddCurrencyForm } from './AddPocketPage';
+import { AdjustBalanceForm } from './AdjustBalanceForm';
+import { adjustTitle } from './adjust-model';
+import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { BalanceCard } from './BalanceCard';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
@@ -93,6 +97,9 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const [txReady, setTxReady] = useState(false);
   const [addingCurrency, setAddingCurrency] = useState(false);
   const [currencyReady, setCurrencyReady] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  const [movingIn, setMovingIn] = useState<MoneyInMode | null>(null);
+  const [sheetReady, setSheetReady] = useState(false);
   const pocketIds = pockets?.map((p) => p.id) ?? [];
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
   const rates = useHeldRates(currencies);
@@ -115,7 +122,9 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
-  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError });
+  // A plain current or saving account takes another currency from its ⋯; one with pockets from the foot of its list.
+  const takesCurrency = !parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings');
+  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError, onAddCurrency: takesCurrency ? () => setAddingCurrency(true) : undefined });
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
@@ -181,16 +190,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
-        <ActionButtons
-          actions={[
-            ...actionsFor(account, pockets, ws.baseCurrency, setNewTx),
-            // A current or saving account takes another currency as its fourth action; one with pockets adds one from
-            // the foot of its Pockets list, where its fourth action is Move.
-            ...(!parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings')
-              ? [{ key: 'currency', label: 'Add currency', glyph: <Plus size={20} aria-hidden />, run: () => setAddingCurrency(true) }]
-              : []),
-          ]}
-        />
+        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, { newTx: setNewTx, moneyIn: setMovingIn, adjust: () => setAdjusting(true) })} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
@@ -238,6 +238,28 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           />
         </Sheet>
       )}
+      {adjusting && (
+        <Sheet
+          grouped
+          tall
+          title={adjustTitle(account.subtype)}
+          onClose={() => setAdjusting(false)}
+          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <AdjustBalanceForm account={account} formId={ADJUST_FORM} onCanSave={setSheetReady} onDone={() => setAdjusting(false)} />
+        </Sheet>
+      )}
+      {movingIn && (
+        <Sheet
+          grouped
+          tall
+          title={MONEY_IN[movingIn].title}
+          onClose={() => setMovingIn(null)}
+          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <MoneyInForm into={account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
+        </Sheet>
+      )}
       {newTx && (
         <Sheet
           grouped
@@ -273,7 +295,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
  */
 function usePageMenu(
   account: AccountRow,
-  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void },
+  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void; onAddCurrency?: () => void },
 ): CornerAction[] {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -287,6 +309,8 @@ function usePageMenu(
       to: '/net-worth/assets/$accountId/settings',
       params: { accountId: account.id },
     },
+    // Once a round action of its own; it is done once in an account's life, so it waits here with the settings.
+    ...(o.onAddCurrency ? [{ key: 'currency', label: 'Add a currency', glyph: <Plus size={18} aria-hidden />, run: o.onAddCurrency }] : []),
     {
       key: 'edit',
       label: 'Edit',
@@ -324,19 +348,29 @@ function usePageMenu(
 }
 
 /**
- * What the account does, by kind. Money that can be spent is spent, received into and moved; an RDN is only topped
- * up from a current account and withdrawn to one, so both open a transfer with the RDN on the side the words say —
- * the pairing rule keeps the other side to current accounts. A deposit's one action is its own (`DepositMoneyOut`).
+ * What the account does, by kind. Spend comes first on everything that can be spent from; what follows is what that
+ * kind of money is for. Cash is filled from a bank and counted: Withdraw, Count cash. A wallet is topped up — from a
+ * bank or a card — and paid into by others, so Top up comes before Receive. A bank or a saving account moves money
+ * on. Anything but cash can be adjusted to what its bank or app says, which Count cash is for cash.
+ *
+ * An RDN is only topped up from a current account and withdrawn to one, so both open a transfer with the RDN on the
+ * side the words say — the pairing rule keeps the other side to current accounts. A deposit's one action is its own
+ * (`DepositMoneyOut`).
  *
  * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Spend, Receive and
  * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
- * Adding another currency is the last row of its Pockets list.
+ * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
-function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurrency: string, open: (draft: NewTxDraft) => void): RoundAction[] {
+function actionsFor(
+  account: AccountRow,
+  pockets: AccountRow[] | null,
+  baseCurrency: string,
+  open: { newTx: (draft: NewTxDraft) => void; moneyIn: (mode: MoneyInMode) => void; adjust: () => void },
+): RoundAction[] {
   const id = account.id;
   // The form opens as a sheet over the account, not a screen of its own: the account stays underneath, and saving or
   // closing lands back on it with its balance and Recent already showing the new row.
-  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], draft: NewTxDraft): RoundAction => ({ key, label, glyph, run: () => open(draft) });
+  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], draft: NewTxDraft): RoundAction => ({ key, label, glyph, run: () => open.newTx(draft) });
   if (pockets) {
     // Spent, received and moved from a pocket: the one in the workspace's own currency, or the first — the form's
     // Paid with, Received into and From still switch to any other.
@@ -359,11 +393,16 @@ function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurre
     ];
   }
   if (!SPENDABLE_SUBTYPES.includes(account.subtype)) return [];
-  return [
-    newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id }),
-    newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id }),
-    newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id }),
-  ];
+  const spend = newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id });
+  const receive = newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id });
+  const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <Scale size={20} aria-hidden />, run: open.adjust });
+  if (account.subtype === 'cash') {
+    return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Count cash')];
+  }
+  if (account.subtype === 'ewallet') {
+    return [spend, { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') }, receive, adjust('Adjust')];
+  }
+  return [spend, receive, newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id }), adjust('Adjust')];
 }
 
 /** What a foreign balance comes to here, and the rate that says so: "≈ Rp 39.000.000 at 16.250 IDR per 1 USD". */
@@ -396,6 +435,8 @@ function CurrencyFlag({ currency }: { currency: string }) {
 /** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
 const NEW_TX_FORM = 'account-new-transaction';
 const ADD_CURRENCY_FORM = 'account-add-currency';
+const ADJUST_FORM = 'account-adjust-balance';
+const MONEY_IN_FORM = 'account-money-in';
 const NEW_TX_TITLE: Record<NewTxDraft['mode'], string> = { expense: 'New expense', income: 'New income', transfer: 'New transfer' };
 
 /** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */

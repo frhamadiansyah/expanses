@@ -2,8 +2,8 @@ import type { TransactionView } from '@expanses/db';
 import { classify } from './classify';
 
 /**
- * Opening balances post against system equity and have no form that can represent them; a row already voided is
- * not a row to correct. Six screens ask this, so it is asked in one place.
+ * Opening balances and balance corrections post against system equity and have no form that can represent them; a
+ * row already voided is not a row to correct. Six screens ask this, so it is asked in one place.
  *
  * All that is left of the old form's helper. `TransactionForm.tsx` was deleted and this file kept its whole
  * money pipeline alive behind its own test — `draftToLines`, `draftToExtras`, `emptyDraft`,
@@ -13,7 +13,7 @@ import { classify } from './classify';
  * `tx-form.ts` is the pipeline now, and it is the only one.
  */
 export function isEditable(tx: TransactionView): boolean {
-  return tx.status === 'posted' && classify(tx).type !== 'opening' && !isPersonWithCategory(tx);
+  return tx.status === 'posted' && !['opening', 'correction'].includes(classify(tx).type) && !isPersonWithCategory(tx);
 }
 
 /**

@@ -15,7 +15,7 @@ export function billTagOf(tx: Pick<TransactionView, 'occurredOn' | 'billMonth'>)
   return tx.billMonth && tx.billMonth !== tx.occurredOn.slice(0, 7) ? `${monthName(tx.billMonth, 'short')} bill` : null;
 }
 
-export type RowType = 'expense' | 'income' | 'transfer' | 'opening' | 'debt';
+export type RowType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction' | 'debt';
 
 export interface ListRow {
   kind: 'tx' | 'draft';
@@ -189,7 +189,7 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     }
     if (f.type === 'expense' && row.type !== 'expense') return false;
     if (f.type === 'income' && row.type !== 'income') return false;
-    if (f.type === 'transfer' && !['transfer', 'debt', 'opening'].includes(row.type)) return false;
+    if (f.type === 'transfer' && !['transfer', 'debt', 'opening', 'correction'].includes(row.type)) return false;
     if (f.cat && !withinCategory(row.categoryId, f.cat, byId)) return false;
     if (f.paid.startsWith('card:') && row.cardId !== f.paid.slice(5)) return false;
     if (f.paid.startsWith('acct:') && !row.accountIds.includes(f.paid.slice(5))) return false;

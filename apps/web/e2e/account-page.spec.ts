@@ -32,14 +32,14 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   // The line names where the money is and what kind of account; the currency is the flag in the corner.
   await expect(page.getByText('Bank One · Current account', { exact: true })).toBeVisible();
   await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
-  for (const action of ['Spend', 'Receive', 'Transfer']) await expect(page.getByRole('button', { name: action, exact: true })).toBeVisible();
+  const actions = page.getByRole('group', { name: 'Actions' }).getByRole('button');
+  await expect(actions).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
-  // A current account's fourth action adds a currency, in a sheet over it.
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Add currency', exact: true })).toBeVisible();
 
-  // The ⋯ holds the settings, the rename and the archive; the code it files under lives in the settings alone.
+  // The ⋯ holds the settings, adding a currency, the rename and the archive; the code it files under lives in the
+  // settings alone.
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  for (const item of ['Settings', 'Edit', 'Archive']) await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
+  for (const item of ['Settings', 'Add a currency', 'Edit', 'Archive']) await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
@@ -54,7 +54,8 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
   await openMoney(page, 'Everyday');
-  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add a currency', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   // The currency it already holds is not offered again.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="IDR"]')).toHaveCount(0);
@@ -100,6 +101,104 @@ test('cash has nothing to add a currency to', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await expect(page.getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Add a currency', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
+test('cash is withdrawn into and counted: a short count is unrecorded spending, and the balance is what was counted', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '932500' });
+  await openMoney(page, 'Pocket cash');
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Count cash']);
+
+  await page.getByRole('button', { name: 'Count cash', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Count cash' });
+  await expect(sheet).toContainText('Rp 932.500');
+  await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await sheet.getByLabel('Actually have').fill('887500');
+  await expect(sheet.getByTestId('adjust-difference')).toContainText('45.000 less than the app says.');
+  // Cash that comes up short was nearly always spent: that is the answer it starts on.
+  await expect(sheet.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await expect(page.getByTestId('balance-card')).toContainText('887.500');
+  await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Counted cash');
+  await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Unrecorded spending');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 45.000');
+});
+
+test('Withdraw brings cash in from a current account, with its ATM fee as spending', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '0' });
+  await openMoney(page, 'Pocket cash');
+  await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Cash withdrawal' });
+  await expect(sheet.getByLabel('From')).toHaveValue(/.+/);
+  await expect(sheet.getByLabel('From').locator('option:checked')).toHaveText('Everyday');
+  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
+  await sheet.getByLabel('ATM fee').fill('7500');
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('balance-card')).toContainText('500.000');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 7.500');
+});
+
+test('a current account adjusted as just a correction moves its balance and nothing in Cashflow', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openMoney(page, 'Everyday');
+  await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
+  await sheet.getByLabel('Actually have').fill('12480000');
+  // Anything but cash starts on a correction.
+  await expect(sheet.getByRole('radio', { name: /Just a correction/ })).toBeChecked();
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('balance-card')).toContainText('12.480.000');
+  await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Balance correction');
+
+  await page.goto('/transactions');
+  await expect(page.getByText('Balance adjusted').first()).toBeVisible();
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 0');
+});
+
+test('a wallet is topped up from a card, with a fee; the ordinary transfer still names no card', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openAccount(page, { subtype: 'credit_card', name: 'Travel Card', balance: '0', last4: '4321' });
+  await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '0' });
+  await openMoney(page, 'GoPay');
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Top up', 'Receive', 'Adjust']);
+
+  await page.getByRole('button', { name: 'Top up', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Top up' });
+  await expect(sheet.getByLabel('From').locator('option:checked')).toHaveText('Everyday');
+  await sheet.getByLabel('From').selectOption({ label: 'Travel Card ···· 4321' });
+  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
+  await sheet.getByLabel('Top-up fee').fill('1500');
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('balance-card')).toContainText('500.000');
+
+  // The card owes the amount and the fee.
+  await page.goto('/net-worth/loans');
+  await expect(page.getByTestId('debts-kind-total-credit_card')).toHaveText('Rp 501.500');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 1.500');
+
+  // The ordinary Transfer: its From and To list money you hold, never the card.
+  await openMoney(page, 'Everyday');
+  await page.getByRole('button', { name: 'Transfer', exact: true }).click();
+  const transfer = page.getByRole('dialog', { name: 'New transfer' });
+  for (const side of [/^To/, /^From/]) {
+    await transfer.getByRole('button', { name: side }).click();
+    const list = page.getByRole('dialog', { name: /^(To|From)$/ });
+    await expect(list).toContainText('GoPay');
+    await expect(list).not.toContainText('Travel Card');
+    await list.getByRole('button', { name: 'Close' }).click();
+  }
 });
 
 test('an RDN is topped up from a current account: Top up opens a transfer into it', async ({ page }) => {
