@@ -76,9 +76,8 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   await openAssets(page);
   await page.getByRole('link', { name: /BBRI/ }).click();
   await openSettings(page);
-  await page.getByLabel('How its income is taxed').selectOption('final');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await page.getByLabel('How its income is taxed', { exact: true }).selectOption('final');
+  await expect(page.getByLabel('How its income is taxed', { exact: true })).toHaveValue('final');
 
   await recordDividend(page);
 

@@ -50,18 +50,21 @@ export function PickerRow({
   onOpen,
   position,
   hint,
+  disabled = false,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
   placeholder?: string;
   onOpen: () => void;
   hint?: ReactNode;
+  /** Greyed and inert: the answer still reads, but nothing opens — a code while the thing is kept off the report. */
+  disabled?: boolean;
 }) {
   const plan = planFormRow('picker', value, placeholder);
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      <button type="button" onClick={onOpen} className="ph-focus-inset flex w-full items-center gap-3" style={shell(false)}>
+      <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(false)}>
         <span className={LABEL}>{label}</span>
         <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
           <span className={cx('truncate text-right text-[15px] leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
@@ -168,13 +171,20 @@ export function TextRow({
 export function SelectRow({
   label,
   hint,
+  info,
   position,
   className,
   children,
   ...props
-}: GroupChild & { label: string; hint?: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
+}: GroupChild & {
+  label: string;
+  hint?: ReactNode;
+  /** What the choice means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
+  info?: ReactNode;
+} & SelectHTMLAttributes<HTMLSelectElement>) {
   const generated = useId();
   const id = props.id ?? generated;
+  const [explained, setExplained] = useState(false);
   const value = props.value === undefined || props.value === null ? '' : String(props.value);
   // The same decision `PickerRow` asks: an answer is drawn a shade darker than the prompt still waiting for one.
   const plan = planFormRow('picker', value);
@@ -184,9 +194,22 @@ export function SelectRow({
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
-        <label htmlFor={id} className={LABEL}>
-          {label}
-        </label>
+        <span className="flex shrink-0 items-center gap-[6px]">
+          <label htmlFor={id} className={LABEL}>
+            {label}
+          </label>
+          {info && (
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          )}
+        </span>
         <span
           className={cx(
             'relative flex min-w-0 flex-1 items-center justify-end gap-[6px]',
@@ -207,6 +230,7 @@ export function SelectRow({
         </span>
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }

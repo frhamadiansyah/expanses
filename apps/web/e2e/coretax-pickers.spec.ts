@@ -186,9 +186,10 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await openDrawers(page);
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
   await openSettings(page);
-  await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  // Saved as it is tapped, in the words it was chosen with.
+  await page.getByRole('button', { name: /^What it is/ }).click();
+  await page.getByRole('button', { name: 'Saving account', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
 
   // 0102 is a current *or* a saving account, and the code itself is what changed. A code is read on the report,
   // so that is where the change is checked — the same fact the Accounts list used to carry in a second line.
@@ -212,9 +213,11 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await openDrawers(page);
   await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
   await openSettings(page);
-  await expect(page.getByLabel('What it is')).toHaveValue('savings');
+  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
+  await page.getByRole('button', { name: /^What it is/ }).click();
+  await expect(page.getByRole('button', { name: 'Saving account', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.
-  await page.getByLabel('What it is').selectOption({ label: 'Type a code instead' });
-  await expect(page.getByLabel('Tax report code')).toBeFocused();
+  await page.getByRole('button', { name: 'Type a code instead' }).click();
+  await expect(page.getByRole('textbox', { name: 'Code', exact: true })).toBeFocused();
 });

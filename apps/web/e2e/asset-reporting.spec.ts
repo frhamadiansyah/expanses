@@ -19,7 +19,7 @@ async function openSettings(page: Page) {
   // Settings live behind the account's ⋯ now, on a page of their own — off the chart and the history they sat under.
   await openSettingsMenu(page);
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
+  await expect(page.getByLabel('Report as harta', { exact: true })).toBeVisible();
 }
 
 async function startReport(page: Page) {
@@ -33,9 +33,9 @@ test('an asset kept off the report still counts toward net worth', async ({ page
   await addBankAsset(page);
 
   await openSettings(page);
-  await page.getByLabel('Report this as harta').uncheck();
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  // Kept as it is switched: the switch reads off once that is saved.
+  await page.getByLabel('Report as harta', { exact: true }).click();
+  await expect(page.getByLabel('Report as harta', { exact: true })).not.toBeChecked();
 
   await startReport(page);
   await expect(page.getByText('0102')).toHaveCount(0);
@@ -50,10 +50,11 @@ test('the tax report uses the code you chose, not the one the preset guessed', a
 
   await openSettings(page);
   // DJP tells you to pick what matches: DPLK can be savings, setara kas, or an investment code.
-  await page.getByLabel('Tax report code').fill('0109');
+  await page.getByRole('button', { name: /^Tax report code/ }).click();
+  await page.getByRole('textbox', { name: 'Code', exact: true }).fill('0109');
   await expect(page.getByText('Setara kas lainnya')).toBeVisible();
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save code' }).click();
+  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0109 · Setara kas lainnya');
 
   await startReport(page);
   await expect(page.getByText('0109').first()).toBeVisible();

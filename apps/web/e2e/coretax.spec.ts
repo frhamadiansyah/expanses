@@ -99,8 +99,9 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
   await page.getByLabel('Lokasi harta').fill('IDN');
-  await page.getByRole('button', { name: 'Save tax-report details' }).click();
-  await expect(page.getByText('Saved')).toBeVisible();
+  // Each row is kept when it is left; the count reads what is kept.
+  await page.getByLabel('Lokasi harta').press('Enter');
+  await expect(page.getByText('Nothing missing')).toBeVisible();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
@@ -199,8 +200,9 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
   await page.getByLabel('Lokasi harta').fill('IDN');
-  await page.getByRole('button', { name: 'Save tax-report details' }).click();
-  await expect(page.getByText('Saved')).toBeVisible();
+  // Each row is kept when it is left; the count reads what is kept.
+  await page.getByLabel('Lokasi harta').press('Enter');
+  await expect(page.getByText('Nothing missing')).toBeVisible();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));

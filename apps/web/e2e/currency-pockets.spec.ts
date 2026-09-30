@@ -43,7 +43,7 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await expect(page.getByRole('main').getByText('16.250 IDR per 1 USD', { exact: true })).toBeVisible();
   // Its kode harta lives in its settings.
   await openSettings(page);
-  await expect(page.getByLabel('Tax report code')).toHaveValue('0102');
+  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0102');
   // Back to the pocket's page, and from there to its account.
   await page.getByRole('link', { name: /Valas Plus · USD/ }).first().click();
   await page.getByRole('link', { name: 'Valas Plus' }).first().click();

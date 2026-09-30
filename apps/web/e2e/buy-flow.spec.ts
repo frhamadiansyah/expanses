@@ -129,9 +129,9 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await openAssets(page);
   await page.getByRole('link', { name: /RDN Stockbit/ }).click();
   await openSettings(page);
-  await page.getByLabel('Counts as').selectOption('invest');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  // Saved as it is picked: the row reads the choice back once it is kept.
+  await page.getByLabel('Counts as', { exact: true }).selectOption('invest');
+  await expect(page.getByLabel('Counts as', { exact: true })).toHaveValue('invest');
 
   await page.goto('/goals');
   await openGoalForm(page, 'Education');

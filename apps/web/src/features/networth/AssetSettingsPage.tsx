@@ -1,14 +1,14 @@
 import { CASH_ITEMS } from '@expanses/core';
-import { deleteUnusedAccount, taxTreatmentOf } from '@expanses/db';
+import { archiveAccount, deleteUnusedAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, LargeTitle, Panel, SCREEN } from '../../ui/native';
-import { useHoldingLinks, useSecurities } from '../investments/queries';
+import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
-import { CoretaxFieldsForm } from './CoretaxFieldsForm';
+import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
 import { useAssetProfile, useAssetValues } from './queries';
 
 /** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
@@ -20,10 +20,12 @@ export function AssetSettingsRoute() {
 }
 
 /**
- * An asset's settings on a page of their own: what it counts as, its tax treatment and its tax-report code —
- * and, for the things the DJP form asks more of, the fields that form wants. They used to sit at the bottom
- * of the asset's page, under a chart and a history, for the once or twice a year anyone changes them; the
- * gear in the page's top corner is where iOS keeps them, and where they live now.
+ * An account's or an asset's settings on a page of their own: its name, what it counts as, its tax treatment and its
+ * tax-report code, and the fields the DJP form asks of its table. They are changed once or twice a year, so they wait
+ * behind the ⋯ of the page they belong to, which is where the round ‹ goes back to.
+ *
+ * Every row saves as it is changed, as iOS's own settings do; the page has no Save. The way out — archive, or delete
+ * for a thing opened by mistake — is the last group, in ink rather than alarm, each asking first.
  */
 export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const { database, ws } = useApp();
@@ -33,73 +35,82 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const profile = useAssetProfile(accountId);
   const accounts = useAccounts();
   const links = useHoldingLinks();
-  const securities = useSecurities();
   const [error, setError] = useState<unknown>(null);
-  // The delete arms on the first tap and fires on the second: the same two taps the ledger's rows use.
-  const [arming, setArming] = useState(false);
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
   const money = account !== undefined && CASH_SUBTYPES.has(account.subtype);
-  // A holding linked to a security takes its lot size from the security, so the box is not offered.
+  // A holding linked to a security takes its lot size from the security, so the row is not offered.
   const linkedToSecurity = (links.data ?? []).some((link) => link.accountId === accountId && link.securityId !== null);
+  const name = value?.name ?? account?.name ?? 'Asset';
+  const list = () => navigate(money ? { to: '/accounts' } : { to: '/net-worth/assets' });
 
-  async function remove() {
-    if (!arming) {
-      setArming(true);
-      return;
-    }
+  async function leaveBy(ask: string, act: () => Promise<void>) {
+    if (!window.confirm(ask)) return;
     setError(null);
     try {
-      await deleteUnusedAccount(database, ws, accountId);
+      await act();
       await invalidate();
-      await navigate({ to: '/net-worth/assets' });
+      await list();
     } catch (e) {
       setError(e);
-      setArming(false);
     }
   }
 
   return (
     <div className={SCREEN}>
-      <LargeTitle
+      <PushedTitle
         title="Settings"
-        back={value?.name ?? account?.name ?? 'Asset'}
+        back={name}
         // Money is opened on its account page, and its ⋯ is how these settings were reached: back goes there.
         backTo={money ? '/accounts/$accountId' : '/net-worth/assets/$accountId'}
         backParams={{ accountId }}
       />
-      <ErrorBox error={values.error ?? profile.error ?? error} />
+      <ErrorBox error={values.error ?? profile.error} />
       {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
 
-      {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
+      {/* Only once the profile is in: the rows fill themselves when they mount, and an empty code reads as "not chosen". */}
       {value && !profile.isPending && (
         <AssetSettings
           key={accountId}
           accountId={accountId}
           name={value.name}
           group={profile.data?.planGroup ?? value.planGroup}
+          assetKind={profile.data?.assetKind ?? null}
+          subtype={account?.subtype}
           lotSize={profile.data?.lotSize ?? null}
-          showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams' && !linkedToSecurity}
+          // A lot is a share count: listed shares only, never a fund's units, a bond's face or gold's grams.
+          showLotSize={value.mode === 'market' && profile.data?.unitKind === 'shares' && !linkedToSecurity}
           reportable={profile.data?.reportable ?? true}
           coretaxCode={profile.data?.coretaxCode ?? null}
-          // What the thing is, for the codes two items share: a saving account must not read back as a current one.
-          itemId={account?.subtype}
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
         />
       )}
 
-      {profile.data?.coretaxSection && (
-        <Panel>
-          <CoretaxFieldsForm profile={profile.data} section={profile.data.coretaxSection} />
-        </Panel>
-      )}
+      {profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
 
       {value && (
-        <InsetGroup footer="Only when it was opened by mistake: it holds nothing but its opening entry, and no goal promises its money. Otherwise move the money out, then archive it.">
-          <DestructiveRow label={arming ? 'Click again to delete' : 'Delete'} onClick={() => void remove()} />
-        </InsetGroup>
+        <>
+          <InsetGroup>
+            <InsetRow
+              title="Archive"
+              chevron={false}
+              onClick={() => void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))}
+            />
+            <InsetRow
+              title="Delete"
+              chevron={false}
+              onClick={() =>
+                void leaveBy(
+                  `Delete ${name}? Only for something opened by mistake: it must hold nothing but its opening entry, with no goal promising its money. Otherwise move the money out and archive it.`,
+                  () => deleteUnusedAccount(database, ws, accountId),
+                )
+              }
+            />
+          </InsetGroup>
+          <ErrorBox error={error} />
+        </>
       )}
     </div>
   );

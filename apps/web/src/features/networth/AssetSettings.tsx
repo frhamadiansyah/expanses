@@ -1,144 +1,182 @@
-import { hartaLabel, type PlanGroup } from '@expanses/core';
+import type { AssetKind, PlanGroup } from '@expanses/core';
 import { renameAccount, setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
-import { useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, Field, Input, Select } from '../../ui';
-import { CodePicker } from '../ownables/CodePicker';
-import { PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
-import { Panel } from '../../ui/native';
+import { errorMessage } from '../../ui';
+import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { CodeSheet, WhatItIsSheet } from './CodeSheets';
+import { PLAN_GROUP_LABELS } from './labels';
+import { choiceForCode, codeChoices } from '../ownables/catalogue-view';
+import { codeLine, planGroupChoices, TAX_TREATMENT_LABELS } from './settings-model';
 
-/** Which side of the plan an asset counts on, and how many shares make a lot at your broker. */
+type Treatment = 'final' | 'not_object' | 'ordinary';
+
+/**
+ * A row's own complaint, under it in the alarm's ink: the save that row tried was refused, and the row keeps what was
+ * typed so it can be put right where it was typed.
+ */
+export function errorHint(error: unknown): ReactNode {
+  if (!error) return undefined;
+  return (
+    <span role="alert" className="text-[var(--ph-alarm)]">
+      {errorMessage(error)}
+    </span>
+  );
+}
+
+/**
+ * A thing's settings, as iOS keeps settings: every row is saved as it is changed — a choice when it is picked, a typed
+ * row when it is left — so there is no Save to forget. A refusal is written under the row that asked.
+ */
 export function AssetSettings({
   accountId,
   name: currentName,
   group: current,
+  assetKind,
+  subtype,
   lotSize,
   showLotSize,
-  reportable: currentReportable,
+  reportable,
   coretaxCode: currentCode,
-  itemId,
-  taxTreatment: currentTreatment,
+  taxTreatment,
 }: {
   accountId: string;
   /** What it is called; renameAccount changes it, pockets named after it included. */
   name: string;
   group: PlanGroup;
+  /** What the profile says the thing is — which sides of the plan it can sensibly count on. Null with no profile. */
+  assetKind: AssetKind | null;
+  /** The account's subtype: what a money account is, which tells two items sharing a code apart. */
+  subtype?: string;
   /** Null when the holding is counted in single units, or has no profile yet. */
   lotSize: number | null;
   showLotSize: boolean;
   reportable: boolean;
-  /** Null when the asset has no profile yet. */
+  /** Null when the asset has no profile yet, or takes its kind's usual code. */
   coretaxCode: string | null;
-  /** What this thing is, as the catalogue names it — the account's subtype. Tells two items sharing a code apart. */
-  itemId?: string;
   /** How its income is taxed. Null means the owner has not said. */
-  taxTreatment: 'final' | 'not_object' | 'ordinary' | null;
+  taxTreatment: Treatment | null;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [nameText, setNameText] = useState(currentName);
-  const [group, setGroup] = useState<PlanGroup>(current);
   const [lots, setLots] = useState(lotSize === null ? '' : String(lotSize));
-  const [reportable, setReportable] = useState(currentReportable);
-  const [code, setCode] = useState(currentCode ?? '');
-  const [treatment, setTreatment] = useState<string>(currentTreatment ?? '');
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-  // Choosing "Type a code instead" is a request for this box; without the cursor it looks like nothing happened.
-  const codeBox = useRef<HTMLInputElement>(null);
+  const [sheet, setSheet] = useState<'what' | 'code' | null>(null);
+  const [errors, setErrors] = useState<Record<string, unknown>>({});
+  // Which of two items sharing a code was tapped — a saving account, not the current account also filed as 0102.
+  const [picked, setPicked] = useState<string | null>(null);
+  const code = currentCode ?? '';
 
-  async function save() {
-    setError(null);
-    setNotice('');
-    setBusy(true);
+  async function save(row: string, write: () => Promise<void>) {
+    setErrors((was) => ({ ...was, [row]: null }));
     try {
-      if (nameText.trim() !== currentName) await renameAccount(database, ws, accountId, nameText);
-      if (group !== current) await setAssetGroup(database, ws, accountId, group);
-      if (showLotSize) {
-        const typed = lots.trim();
-        const size = typed === '' ? null : Number(typed);
-        if (size !== null && !Number.isInteger(size)) throw new Error('A lot is a whole number of shares');
-        if (size !== lotSize) await setLotSize(database, ws, accountId, size);
-      }
-      const typedCode = code.trim();
-      const treatmentChanged = treatment !== (currentTreatment ?? '');
-      if (reportable !== currentReportable || typedCode !== (currentCode ?? '') || treatmentChanged) {
-        await setAssetReporting(database, ws, accountId, {
-          reportable,
-          ...(typedCode === (currentCode ?? '') ? {} : { coretaxCode: typedCode === '' ? null : typedCode }),
-          ...(treatmentChanged ? { taxTreatment: treatment === '' ? null : (treatment as 'final' | 'not_object' | 'ordinary') } : {}),
-        });
-      }
+      await write();
       await invalidate();
-      setNotice('Saved.');
     } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
+      setErrors((was) => ({ ...was, [row]: e }));
     }
   }
 
-  return (
-    <Panel className="space-y-3">
-      <h2 className="text-sm font-semibold">Settings</h2>
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Name" hint="What this is called, everywhere it is read.">
-          <Input value={nameText} onChange={(e) => setNameText(e.target.value)} required />
-        </Field>
-        <Field label="Counts as" hint="Broker cash set to Investments is money meant to be invested, not your emergency buffer.">
-          <Select value={group} onChange={(e) => setGroup(e.target.value as PlanGroup)}>
-            {PLAN_GROUP_ORDER.map((key) => (
-              <option key={key} value={key}>
-                {PLAN_GROUP_LABELS[key]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {showLotSize && (
-          <Field label="Shares in a lot" hint="100 on the IDX, 1 for US shares. Empty counts in single units.">
-            <Input value={lots} inputMode="numeric" onChange={(e) => setLots(e.target.value)} placeholder="100" />
-          </Field>
-        )}
-        <Field
-          label="How its income is taxed"
-          hint="A government coupon is final; a holding abroad is ordinary. A dividend you reinvest is marked on the payment itself."
-        >
-          <Select value={treatment} onChange={(e) => setTreatment(e.target.value)}>
-            <option value="">Not set</option>
-            <option value="final">Final — reported, not added to taxable income</option>
-            <option value="not_object">Tidak termasuk objek pajak — no tax</option>
-            <option value="ordinary">Ordinary — added to taxable income</option>
-          </Select>
-        </Field>
-        {/* The words first, the digits second: the list answers "which of these is it?", the box takes anything else. */}
-        <CodePicker flow="asset" code={code.trim()} itemId={itemId} onChange={setCode} onTypeInstead={() => codeBox.current?.focus()} disabled={!reportable} />
-        <Field
-          label="Tax report code"
-          hint={code.trim() === '' ? 'Four digits. Empty uses the code this kind of asset normally takes.' : hartaLabel(code.trim()) || 'Not a code the form knows.'}
-        >
-          <Input ref={codeBox} value={code} inputMode="numeric" onChange={(e) => setCode(e.target.value)} placeholder="0109" disabled={!reportable} />
-        </Field>
-      </div>
+  const saveName = () => {
+    if (nameText.trim() === currentName) return;
+    void save('name', () => renameAccount(database, ws, accountId, nameText));
+  };
+  const saveLots = () => {
+    const typed = lots.trim();
+    const size = typed === '' ? null : Number(typed);
+    if (size === lotSize) return;
+    void save('lots', async () => {
+      if (size !== null && !Number.isInteger(size)) throw new Error('A lot is a whole number of shares');
+      await setLotSize(database, ws, accountId, size);
+    });
+  };
+  const saveCode = (next: string, value?: string) => {
+    setSheet(null);
+    setPicked(value ?? null);
+    if (next === code) return;
+    void save('code', () => setAssetReporting(database, ws, accountId, { coretaxCode: next === '' ? null : next }));
+  };
 
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1" checked={reportable} onChange={(e) => setReportable(e.target.checked)} />
-        <span>
-          Report this as harta
-          <span className="block text-xs text-slate-500">
-            Turn it off for money that is yours but is not reported yet — a pension balance that counts only once it has been paid out, for
-            instance. It still counts toward your net worth.
-          </span>
-        </span>
-      </label>
-      <ErrorBox error={error} />
-      <div className="flex items-center gap-3">
-        <Button onClick={save} disabled={busy}>
-          Save settings
-        </Button>
-        {notice && <span className="text-sm text-emerald-700">{notice}</span>}
-      </div>
-    </Panel>
+  const chosen = choiceForCode(codeChoices('asset', code), code, picked ?? subtype);
+  const groups = planGroupChoices(assetKind, subtype, current);
+  const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
+
+  return (
+    <>
+      <InsetGroup>
+        <TextRow
+          label="Name"
+          value={nameText}
+          onChange={(e) => setNameText(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={leave}
+          placeholder="Name"
+          hint={errorHint(errors.name)}
+        />
+        <SelectRow
+          label="Counts as"
+          value={current}
+          onChange={(e) => void save('group', () => setAssetGroup(database, ws, accountId, e.target.value as PlanGroup))}
+          info={
+            subtype === 'fund'
+              ? 'Broker cash set to Investments is money meant to be invested, not an emergency buffer.'
+              : 'Which part of the plan this counts toward: money to hand, what is invested, what is owed, or what is lived with.'
+          }
+          hint={errorHint(errors.group)}
+        >
+          {groups.map((key) => (
+            <option key={key} value={key}>
+              {PLAN_GROUP_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+        {showLotSize && (
+          <TextRow
+            label="Shares in a lot"
+            value={lots}
+            inputMode="numeric"
+            onChange={(e) => setLots(e.target.value)}
+            onBlur={saveLots}
+            onKeyDown={leave}
+            placeholder="Single shares"
+            info="100 on the IDX, 1 for US shares. Empty counts in single shares."
+            hint={errorHint(errors.lots)}
+          />
+        )}
+        <SelectRow
+          label="How its income is taxed"
+          // "Not set" is an answer the row prints, so it has a value of its own rather than the empty one a prompt has.
+          value={taxTreatment ?? 'unset'}
+          onChange={(e) =>
+            void save('treatment', () => setAssetReporting(database, ws, accountId, { taxTreatment: e.target.value === 'unset' ? null : (e.target.value as Treatment) }))
+          }
+          info="Final: reported, not added to taxable income — a government coupon. Not a tax object: no tax at all. Ordinary: added to taxable income — a holding abroad. A dividend you reinvest is marked on the payment itself."
+          hint={errorHint(errors.treatment)}
+        >
+          <option value="unset">Not set</option>
+          {(Object.keys(TAX_TREATMENT_LABELS) as Treatment[]).map((key) => (
+            <option key={key} value={key}>
+              {TAX_TREATMENT_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+      </InsetGroup>
+
+      <InsetGroup header="Tax report">
+        <SwitchRow
+          label="Report as harta"
+          checked={reportable}
+          onChange={(on) => void save('reportable', () => setAssetReporting(database, ws, accountId, { reportable: on }))}
+          info="Turn it off for money that is yours but is not reported yet — a pension balance that counts only once it has been paid out, for instance. It still counts toward net worth."
+          hint={errorHint(errors.reportable)}
+        />
+        <PickerRow label="What it is" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />
+        <PickerRow label="Tax report code" value={codeLine(code)} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />
+      </InsetGroup>
+
+      {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
+      {sheet === 'code' && <CodeSheet code={code} onSave={saveCode} onClose={() => setSheet(null)} />}
+    </>
   );
 }
