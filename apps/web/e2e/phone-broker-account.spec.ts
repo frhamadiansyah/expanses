@@ -18,6 +18,6 @@ test('by thumb: the broker and the RDN bank are picked from what the keyboard of
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().tap();
-  await expect(page.getByTestId('balance-card')).toContainText('RDN at CIMB Niaga · IDR');
+  await expect(page.getByTestId('balance-card')).toContainText('RDN at CIMB Niaga');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

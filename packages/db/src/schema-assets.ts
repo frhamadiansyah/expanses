@@ -68,6 +68,16 @@ export const goldPriceChoices = sqliteTable('gold_price_choices', {
   choice: text('choice', { enum: ['world', 'typed'] }).notNull(),
 });
 
+/** What a broker charges (0063), on its cash account. No row is the broker's defaults, by its name. */
+export const brokerFees = sqliteTable('broker_fees', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  buyPpm: integer('buy_ppm').notNull(),
+  sellPpm: integer('sell_ppm').notNull(),
+  minDailyMinor: integer('min_daily_minor'),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const valuations = sqliteTable('valuations', {
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),

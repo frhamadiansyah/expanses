@@ -6,8 +6,10 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
+import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
 import { useAssetProfile, useAssetValues } from './queries';
 
@@ -57,14 +59,15 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
     }
   }
 
+  const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
     <div className={SCREEN}>
       <PushedTitle
         title="Settings"
         back={name}
-        // Money is opened on its account page, and its ⋯ is how these settings were reached: back goes there.
-        backTo={money ? '/accounts/$accountId' : '/net-worth/assets/$accountId'}
-        backParams={{ accountId }}
+        // Back to the page these settings were opened from (its ⋯); a page opened with nothing behind it falls back
+        // to the account's or the asset's own page.
+        onBack={goBack}
       />
       <ErrorBox error={values.error ?? profile.error} />
       {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
@@ -87,6 +90,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
         />
       )}
+
+      {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
+      {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}
 
       {profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
 

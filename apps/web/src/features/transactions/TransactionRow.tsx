@@ -124,7 +124,7 @@ export function TransactionRow({
         className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
       >
         <span className="block truncate text-sm font-medium">
-          {label ?? (row.categoryName || (transfer ? 'Transfer' : 'Uncategorised'))}
+          {label ?? (row.categoryName || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
           {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
           {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
         </span>

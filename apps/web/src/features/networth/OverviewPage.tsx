@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { BellRing, ChartColumn, ChartLine, Gauge, type LucideIcon } from 'lucide-react';
+import { BellRing, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -18,6 +18,7 @@ import { memberName, useJointSheet, useNetWorthSeries, useSheet } from './querie
 import { figureOf, jointSeries, ownerRing } from './joint-rows';
 import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
+import { accountDestination, type AccountDestination } from '../accounts/destination';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -95,6 +96,20 @@ function rememberedChartView(): ChartView {
  *
  * The two columns stay two columns on a desktop.
  */
+/** One side's total: its label, its figure, and a › to that side's own page. */
+function TotalCard({ label, to, testId, figure }: { label: string; to: '/net-worth/assets' | '/net-worth/loans'; testId: string; figure: string }) {
+  return (
+    // The › sits on the label's line, so the figure keeps the card's whole width: beside it, a rupiah total ran into it.
+    <Link to={to} aria-label={label} className="block rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px] active:opacity-60">
+      <p className="flex items-center justify-between text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+        {label}
+        <ChevronRight size={14} aria-hidden className="-mr-1 shrink-0" />
+      </p>
+      <p data-testid={testId} className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{figure}</p>
+    </Link>
+  );
+}
+
 function SheetColumn({
   title,
   groups,
@@ -106,6 +121,7 @@ function SheetColumn({
   open,
   onToggle,
   ownerOf,
+  linkOf,
   unrated = NONE,
 }: {
   title: string;
@@ -131,6 +147,8 @@ function SheetColumn({
   onToggle: (key: string) => void;
   /** Whose each row is, when the household files jointly (§8.2); absent on a personal sheet. */
   ownerOf?: OwnerOf;
+  /** Where each of this person's own rows opens: the same page it opens from Accounts or Assets. */
+  linkOf?: (accountId: string) => AccountDestination | undefined;
   /** Rows with no base figure (a received item with no rate): drawn in their own currency, their totals blank. */
   unrated?: ReadonlySet<string>;
 }) {
@@ -163,7 +181,7 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf, 1)}</div>] : []),
             ];
           })}
         </InsetGroup>
@@ -175,7 +193,7 @@ function SheetColumn({
             /* Marked by its own key, so a spec can say which section a row was drawn in. */
             <div key={group.key} data-testid={`sheet-section-${group.key}`}>
               <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}>
-                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated)}
+                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf)}
               </InsetGroup>
             </div>
           ),
@@ -189,8 +207,8 @@ function SheetColumn({
 type Tile = (groupKey: string, kindKey: string | null) => LucideIcon;
 
 /** A drawing at the size a row draws one, for the kit's circle to hold. */
-function TileIcon({ tile: Glyph }: { tile: LucideIcon }) {
-  return <Glyph size={16} aria-hidden />;
+function TileIcon({ tile: Glyph, small = false }: { tile: LucideIcon; small?: boolean }) {
+  return <Glyph size={small ? 14 : 16} aria-hidden />;
 }
 
 /** Whose a row is on the household's sheet: the ring its circle wears, the name a screen reader hears, and whether it is the other's. */
@@ -216,14 +234,17 @@ type OwnerOf = (accountId: string) => RowOwner | null;
  * On the household's sheet (D12, D13) the owner is the ring round the circle and nothing else — the row stays one
  * line, with no name and no date under it — and a screen reader hears whose it is. The other's item opens its own page.
  */
-function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null) {
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0) {
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
+  // Deep in a tree the circle is left off: the kind above already wears it, and three circles a line crowded the
+  // row. Its name then sits level with the kind's. A household's row keeps it, because its ring says whose it is.
+  const drawn = depth < 2 || owner?.ring ? icon : undefined;
   return (
     <InsetRow
       key={row.accountId}
-      icon={icon}
+      icon={drawn}
       iconRing={owner?.ring ?? undefined}
       title={
         owner && !shared ? (
@@ -237,12 +258,14 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
         )
       }
       subtitle={row.note ?? undefined}
+      depth={depth}
       value={<Money minor={shownMinor} currency={shownCurrency} />}
       valueTone="ink"
-      chevron={shared ? undefined : false}
+      chevron={shared || link ? undefined : false}
       label={shared ? `${owner.name}'s ${row.name}, ${formatMinor(shownMinor, shownCurrency)}` : undefined}
       testId={owner ? `sheet-row-${row.accountId}` : undefined}
-      {...(shared ? { to: '/net-worth/shared/$itemId' as const, params: { itemId: row.accountId } } : {})}
+      // A partner's shared item opens what they shared; one of this person's own opens its own page.
+      {...(shared ? { to: '/net-worth/shared/$itemId' as const, params: { itemId: row.accountId } } : link ?? {})}
     />
   );
 }
@@ -257,12 +280,18 @@ function fold(
   currency: string,
   ownerOf?: OwnerOf,
   unrated: ReadonlySet<string> = NONE,
+  linkOf?: (accountId: string) => AccountDestination | undefined,
+  /**
+   * How far down the tree the kinds sit: 1 inside a section's drawer, so a section's kinds sit under its name and the
+   * next section, level again, reads as the next one. Each kind's accounts go one further in.
+   */
+  depth = 0,
 ) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
     const shown = open.has(key);
-    const icon = <TileIcon tile={tileOf(group.key, drawer.key)} />;
+    const icon = <TileIcon tile={tileOf(group.key, drawer.key)} small={depth > 0} />;
     return [
       <Drawer
         key={key}
@@ -273,10 +302,11 @@ function fold(
         figure={<SheetFigure minor={figureOf(drawer.totalMinor, drawer.rows.map((row) => row.accountId), unrated)} currency={currency} />}
         open={shown}
         separator={index > 0}
+        depth={depth}
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
       />,
-      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null)) : []),
+      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null, linkOf?.(row.accountId), depth > 0 ? depth + 1 : 0)) : []),
     ];
   });
 }
@@ -381,6 +411,7 @@ export function OverviewPage() {
      * the screens worth a corner of their own have one, and the rest are one tap further. A section row at the top of
      * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
      */
+    // Also opened from their total cards; these stay for when the cards are not drawn (a rate missing).
     { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
     { key: 'trades', label: 'Buy & sell', to: '/net-worth/trades' },
     { key: 'debts', label: 'Liabilities', to: '/net-worth/loans' },
@@ -390,6 +421,12 @@ export function OverviewPage() {
 
   // The two things the empty state reads: whether there is any money account to add up at all.
   const accounts = useAccounts();
+  // Every row of the sheet opens its account's own page; a row this device has no account for (a partner's) stays put.
+  const byAccount = new Map((accounts.data ?? []).map((account) => [account.id, account]));
+  const linkOf = (accountId: string) => {
+    const account = byAccount.get(accountId);
+    return account ? accountDestination(account) : undefined;
+  };
   const money = (accounts.data ?? []).filter(isMoneyAccount);
   /*
    * What kind of account each row of the balance sheet is. The sheet does not carry it — a row is a name and a figure,
@@ -598,14 +635,9 @@ export function OverviewPage() {
        */}
       {!holding && sheetMissing.length === 0 && (
         <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
-          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
-            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Assets</p>
-            <p data-testid="sheet-total-assets" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)}</p>
-          </div>
-          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
-            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Liabilities</p>
-            <p data-testid="sheet-total-liabilities" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)}</p>
-          </div>
+          {/* Each card opens its side's own page, as the ⋯ rows do. */}
+          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)} />
+          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)} />
         </section>
       )}
 
@@ -650,6 +682,7 @@ export function OverviewPage() {
             open={openDrawers}
             onToggle={toggleDrawer}
             ownerOf={ownerOf}
+            linkOf={linkOf}
             unrated={unrated}
           />
           <SheetColumn
@@ -662,6 +695,7 @@ export function OverviewPage() {
             open={openDrawers}
             onToggle={toggleDrawer}
             ownerOf={ownerOf}
+            linkOf={linkOf}
             unrated={unrated}
           />
         </div>

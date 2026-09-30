@@ -93,7 +93,7 @@ test('renames an account from its settings page, and every list reads the new na
   // Kept when the row is left, as every settings row is: the way back then carries the new name.
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Utama');
   await page.getByLabel('Name', { exact: true }).press('Enter');
-  await expect(page.getByRole('link', { name: 'BCA Tahapan Utama' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'BCA Tahapan Utama', exact: true })).toBeVisible();
 
   await page.goto('/net-worth/assets');
   await openDrawers(page);

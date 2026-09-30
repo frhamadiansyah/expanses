@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cx } from '../../ui';
 import { heroFigure, Panel } from '../../ui/native';
 import { crossing, type DayBalance } from './balance-series';
 import { BalanceSpark } from './BalanceSpark';
@@ -20,6 +21,7 @@ export function BalanceCard({
   ends,
   throughZero = true,
   testId,
+  corner,
   children,
 }: {
   label: string;
@@ -34,15 +36,18 @@ export function BalanceCard({
   /** Whether the line is read against nothing: money is, a thing's value is not. */
   throughZero?: boolean;
   testId?: string;
+  /** Drawn in the card's top-right corner, level with the label: the round flag of the currency it holds. */
+  corner?: ReactNode;
   children?: ReactNode;
 }) {
   const figure = heroFigure(minor, currency);
   return (
     <Panel className="space-y-3" testId={testId}>
-      <div>
+      <div className="relative">
+        {corner && <div className="absolute top-0 right-0">{corner}</div>}
         <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{label}</p>
         {/* One line, whatever the amount is: a figure that wraps reads as two figures where there is one. */}
-        <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="card-figure">
+        <p className={cx('tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]', corner ? 'pr-11' : undefined)} data-testid="card-figure">
           {approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
           {figure.text}
         </p>

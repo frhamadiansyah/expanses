@@ -1,5 +1,6 @@
-import { CASH_ITEMS } from '@expanses/core';
+import { CASH_ITEMS, isoDate, priceAgeDays } from '@expanses/core';
 import { Plus } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -28,8 +29,13 @@ function KindIcon({ section, kind }: { section: string; kind: string }) {
   return <Glyph size={16} aria-hidden />;
 }
 
-function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string; money: Set<string> }) {
-  const icon = <KindIcon section={row.section} kind={row.kind.key} />;
+/**
+ * `nested`: drawn inside its kind's open drawer, one step in and with no circle — the drawer above already wears it, and
+ * the name then sits level with the kind's.
+ */
+function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean }) {
+  const icon = nested ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
+  const depth = nested ? 1 : 0;
   // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
   // ≈ on its figure only when a pocket is held in another currency.
   if (row.pockets !== null)
@@ -38,6 +44,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
         to="/accounts/$accountId"
         params={{ accountId: row.accountId }}
         icon={icon}
+        depth={depth}
         title={row.name}
         subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
@@ -54,6 +61,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
         to="/net-worth/lend-borrow"
         search={{ person: row.person }}
         icon={icon}
+        depth={depth}
         title={row.name}
         subtitle={rowSubtitle(row)}
         value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -71,6 +79,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
       to={to}
       params={{ accountId: row.accountId }}
       icon={icon}
+        depth={depth}
       title={row.name}
       subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -116,7 +125,7 @@ function Group({ group, baseCurrency, money }: { group: AssetGroup; baseCurrency
             testId={`type-drawer-${key}`}
             onToggle={() => drawers.toggle(key)}
           />,
-          ...(shown ? drawer.rows.map((row) => <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} />) : []),
+          ...(shown ? drawer.rows.map((row) => <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested />) : []),
         ];
       })}
       {/* The same holdings read by stock and by broker: its last row, under the group's own total. */}
@@ -145,6 +154,10 @@ export function AssetsPage() {
   const live = liveGroups(groups);
   const sold = soldRows(groups);
   const stale = staleRows(groups);
+  // Shares and funds, whose prices Update prices brings up to date; and how many of them are more than a week old.
+  const kinds = new Map((profiles.data ?? []).map((profile) => [profile.accountId, profile.assetKind]));
+  const listed = (values.data ?? []).filter((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0 && ['stock', 'fund'].includes(kinds.get(row.accountId) ?? ''));
+  const oldPrices = listed.filter((row) => row.source !== 'price' || !row.asOf || priceAgeDays(row.asOf, isoDate()) > 7).length;
   // The bar divides what is held: a section taken below nought by an overdraft is named under it instead.
   const shares = heldShares(assetSegments(live));
   // Which of the rows drawn below are money: those open their own page, not the asset page.
@@ -220,10 +233,27 @@ export function AssetsPage() {
           </Panel>
         ))}
 
+      {oldPrices > 0 && (
+        <div className="mb-[18px] flex items-center justify-between gap-3 rounded-[11px] bg-[var(--ph-surface)] px-3 py-[9px] md:max-w-2xl" data-testid="old-prices">
+          <p className="min-w-0 text-[13px] leading-[17px] text-[var(--ph-warn)]">
+            {oldPrices === 1 ? '1 price is' : `${oldPrices} prices are`} more than a week old
+          </p>
+          <Link to="/net-worth/prices" className="ph-focus shrink-0 rounded text-[13px] leading-[17px] font-semibold text-[var(--ph-tint)]">
+            Update ›
+          </Link>
+        </div>
+      )}
+
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
       {live.map((group) => (
         <Group key={group.group} group={group} baseCurrency={baseCurrency} money={money} />
       ))}
+
+      {listed.length > 0 && (
+        <InsetGroup>
+          <InsetRow title="Stock and fund prices" to="/net-worth/prices" />
+        </InsetGroup>
+      )}
 
       {sold.length > 0 && (
         <>

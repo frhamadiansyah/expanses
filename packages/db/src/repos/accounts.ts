@@ -134,6 +134,36 @@ export async function systemAccountId(tx: Db, ws: WorkspaceContext, key: SystemA
   return row.id;
 }
 
+/**
+ * A system account, made the first time it is needed in a workspace that predates it. Equity belongs to no book and
+ * never leaves the device, so it is written without capture, as a new workspace writes its own.
+ */
+export async function ensureSystemAccountTx(tx: Db, ws: WorkspaceContext, key: SystemAccountKey): Promise<string> {
+  const [row] = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.systemKey, key), eq(accounts.kind, 'equity')));
+  if (row) return row.id;
+  const spec = SYSTEM_ACCOUNTS.find((s) => s.key === key)!;
+  const id = uuidv7();
+  await tx.insert(accounts).values({
+    id,
+    workspaceId: ws.workspaceId,
+    parentId: null,
+    kind: 'equity',
+    subtype: 'equity',
+    name: spec.name,
+    icon: null,
+    currency: null,
+    valuationMode: 'derived',
+    systemKey: key,
+    sortOrder: 0,
+    archivedAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  return id;
+}
+
 export async function createAccount(database: Database, ws: WorkspaceContext, input: CreateAccountInput): Promise<AccountRow> {
   return database.transaction((tx) => createAccountTx(tx, ws, input));
 }
