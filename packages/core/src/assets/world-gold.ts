@@ -9,11 +9,15 @@ import { PRICE_SCALE } from './units';
 /** Grams in one troy ounce, the unit XAU is quoted in. */
 export const GRAMS_PER_TROY_OUNCE = 31.1034768;
 
-/** A price per troy ounce, in `currency`, as the price of one gram in the app's stored form (millionths of a minor unit). */
+/**
+ * A price per troy ounce, in `currency`, as the price of one gram in the app's stored form (millionths of a minor unit),
+ * rounded to the currency's own smallest unit: a whole rupiah, a cent. Dividing by 31,1 grams leaves fractions of a
+ * rupiah no dealer quotes, and the page then read "Rp 2.399.717,19/g".
+ */
 export function gramPriceMicroFromOunce(perOunce: number, currency: string): number {
   if (!(perOunce > 0)) throw new Error('A world gold price is above zero');
   const { exponent } = currencyInfo(currency);
-  return Math.round((perOunce / GRAMS_PER_TROY_OUNCE) * PRICE_SCALE * 10 ** exponent);
+  return Math.round((perOunce / GRAMS_PER_TROY_OUNCE) * 10 ** exponent) * PRICE_SCALE;
 }
 
 /** Where a gold holding's price comes from: the world price, fetched once a day, or only what the owner types. */

@@ -142,11 +142,13 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   await mockRates(page, { XAU: 74_639_548 });
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '20', '46000000']]);
   await openAsset(page, 'Antam gold bars');
-  // 74.639.548 an ounce is 2.399.717,19 a gram; 20 g of it.
+  // 74.639.548 an ounce is 2.399.717 a gram, to the whole rupiah; 20 g of it.
   await expect(page.getByTestId('price-line')).toHaveText(/^World price \(XAU\) · \d{1,2} \w{3} \d{4}$/);
-  await expect(page.getByText('Rp 47.994.344').first()).toBeVisible();
+  await expect(page.getByText('Rp 47.994.340').first()).toBeVisible();
   const grid = page.getByTestId('asset-grid');
   await expect(grid).toContainText('World price');
+  await expect(grid).toContainText('Rp 2.399.717/g');
+  await expect(grid).not.toContainText(',19');
   await expect(grid).toContainText('not buyback');
   await grid.getByRole('button', { name: 'About World price' }).click();
   await expect(page.getByText(/buys gold back a few percent below it/)).toBeVisible();
@@ -179,7 +181,7 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText("I'll type it");
   // No ↻, and the price it has stays.
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toHaveCount(0);
-  await expect(page.getByText('Rp 47.994.344').first()).toBeVisible();
+  await expect(page.getByText('Rp 47.994.340').first()).toBeVisible();
 
   const before = asked;
   await page.reload();
