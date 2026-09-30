@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { TAP } from './metrics';
 
 /**
- * What a money account's page does, under its figure: up to three round buttons, each a glyph in the tint on the
- * list's own white and a word under it — the row a bank's app draws beneath a balance.
+ * What a money account's or an asset's page does, under its figure: up to four round buttons, each a glyph in the
+ * tint on the list's own white and a word under it — the row a bank's app draws beneath a balance.
  *
  * Each one is a real link when it goes somewhere (a new transaction, the Move screen) and a real button when it
  * opens something in place (a deposit's Break early sheet), so a desktop keeps its middle-click and a spec can tell
@@ -28,7 +28,13 @@ export interface RoundAction {
 export function ActionButtons({ actions }: { actions: RoundAction[] }) {
   if (actions.length === 0) return null;
   return (
-    <div className="mb-[20px] grid w-full grid-cols-3 gap-2 md:max-w-sm" role="group" aria-label="Actions">
+    // Three columns at least, so one or two actions sit where the first of three would; a fourth takes a column more.
+    <div
+      className="mb-[20px] grid w-full gap-2 md:max-w-sm"
+      style={{ gridTemplateColumns: `repeat(${Math.max(3, actions.length)}, minmax(0, 1fr))` }}
+      role="group"
+      aria-label="Actions"
+    >
       {actions.map((action) => {
         const face = (
           <>

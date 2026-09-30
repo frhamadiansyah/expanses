@@ -193,8 +193,8 @@ export async function openLoan(page: Page, o: NewLoan) {
 }
 
 /**
- * Opens an account's or an asset's settings. A money account keeps them behind its page's ⋯, with the tax code; a
- * thing you own still has its gear in the corner. Waits for whichever the page draws, then takes that way in.
+ * Opens an account's or an asset's settings, behind the page's ⋯. A gear in the corner is still taken if a page
+ * draws one. Waits for whichever the page draws, then takes that way in.
  */
 export async function openSettings(page: Page) {
   const main = page.getByRole('main');

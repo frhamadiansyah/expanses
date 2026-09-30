@@ -119,7 +119,7 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
   // listed BBCA, the only result with a market behind it.
   await page.getByRole('button', { name: /^BBCA\b.*IDX/ }).click();
   await page.getByLabel('Kept at').selectOption({ label: 'Stockbit' });
-  await expect(page.getByText(/The price is BBCA’s/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
   await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('broker-row').filter({ hasText: 'Stockbit' })).toContainText('875.000');
@@ -188,7 +188,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
-  await expect(page.getByText(/The price is BBCA’s/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
 
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
   await expect(
