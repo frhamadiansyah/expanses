@@ -489,5 +489,8 @@ export {
 export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
 export { CURRENCY_EXPONENT, findAmounts, type FoundAmount } from './capture/amount';
+export { findDateTime } from './capture/date';
+export { fingerprintOf, sameSource } from './capture/fingerprint';
+export { accountHintOf, readCapture } from './capture/read';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
