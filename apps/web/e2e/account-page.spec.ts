@@ -107,8 +107,21 @@ test('a deposit reads as its maturity, and its one action is Break early', async
   await expect(card.getByRole('progressbar')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Break early' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Spend', exact: true })).toHaveCount(0);
-  // The deposit keeps its own figure: no month's line in a card of its own.
-  await expect(page.getByTestId('balance-card')).toHaveCount(0);
+  // One card: the balance with its maturity inside it, and no month's line — a deposit moves only when it pays.
+  const figure = page.getByTestId('deposit-card');
+  await expect(figure).toContainText('Balance');
+  await expect(figure).toContainText('Time deposit · IDR');
+  await expect(figure.getByTestId('deposit-maturity-card')).toBeVisible();
+  await expect(figure).not.toContainText('30 days ago');
+  await expect(page.getByText('Last 12 months')).toHaveCount(0);
+  // What happens at maturity, said in words; the term and the day it was placed among the facts.
+  await expect(page.getByLabel('Roll over', { exact: true })).toHaveValue('off');
+  await expect(page.getByTestId('maturity-settings')).toContainText('Ask me on the day');
+  await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
+  await expect(page.getByText('Placed on')).toBeVisible();
+  // The terms are changed from the card: Change opens them in a sheet.
+  await card.getByRole('button', { name: 'Change' }).click();
+  await expect(page.getByRole('dialog', { name: 'Deposit terms' })).toBeVisible();
 });
 
 test('cash and a current account draw the balance as one card with the month behind it, read a day at a time', async ({ page }) => {

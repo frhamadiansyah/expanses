@@ -4,11 +4,15 @@ import { rateBpsFrom, termLabel } from './deposit-terms';
 
 export { termLabel };
 
-/** The three things that can happen when the term ends: the picker's own options, in the order it lists them. */
-export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string }[] = [
-  { id: 'principal', title: 'Roll over the principal' },
-  { id: 'principal_interest', title: 'Roll over principal + interest' },
+/**
+ * What can happen when the term ends, as the Roll over row says it: the three choices the automation carries out, and
+ * "Ask me on the day" — the automation off, which proposes nothing and leaves the day to the owner.
+ */
+export const ROLL_OVER: readonly { id: MaturityChoice | 'off'; title: string }[] = [
+  { id: 'principal_interest', title: 'Principal + interest' },
+  { id: 'principal', title: 'Principal only' },
   { id: 'close', title: "Don't roll over" },
+  { id: 'off', title: 'Ask me on the day' },
 ];
 
 /**

@@ -32,7 +32,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   // A wallet has no day the money comes back: the deposit's terms card belongs to deposits only.
   await openAssets(page);
   await page.getByRole('link', { name: /^GoPay/ }).first().click();
-  await expect(page.getByText('Deposit terms')).toHaveCount(0);
+  await expect(page.getByTestId('deposit-maturity-card')).toHaveCount(0);
 });
 
 test('a deposit funded from an account moves the money, and says where it came from', async ({ page }) => {
@@ -63,7 +63,7 @@ test('a deposit funded from an account moves the money, and says where it came f
   // A deposit keeps its own terms card, with the term beside the rate and date; a wallet has neither.
   await openAssets(page);
   await page.getByRole('link', { name: /^bluuu/ }).first().click();
-  await expect(page.getByText('Deposit terms')).toBeVisible();
+  await expect(page.getByTestId('deposit-maturity-card')).toBeVisible();
   await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
 });
 

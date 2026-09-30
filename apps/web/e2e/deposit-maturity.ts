@@ -125,16 +125,15 @@ export async function openDeposit(page: Page, name: string) {
 }
 
 export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
-  // The deposit's own term first, on its terms card…
+  // The deposit's own term first, a row of its Details…
   await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
   await expect(page.getByTestId('deposit-term')).toHaveAttribute('aria-busy', 'false');
-  // …then the decision, one picker at a time under the switch.
-  await page.getByLabel('Automate at maturity').check();
-  await expect(page.getByLabel('At maturity', { exact: true })).toBeVisible();
-  // Monthly first: choosing everything rolling over freezes it, and the walk must set it before that.
+  // …then the decision, said in words: what rolls over, and then how the interest is paid.
+  await page.getByLabel('Roll over', { exact: true }).selectOption(c.choice);
+  await settingsSaved(page);
+  // Everything rolling over pins the interest to maturity, so only the other two ask it.
   if (c.choice !== 'principal_interest') await page.getByLabel('Interest paid').selectOption(c.paid);
-  await page.getByLabel('At maturity', { exact: true }).selectOption(c.choice);
-  if (c.exempt) await page.getByLabel('Tax-free deposit').check();
+  if (c.exempt) await page.getByLabel('Tax-free deposit', { exact: true }).check();
   await settingsSaved(page);
 }
 

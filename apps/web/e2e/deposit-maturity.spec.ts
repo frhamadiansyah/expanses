@@ -17,9 +17,9 @@ test.beforeEach(({ page }) => {
 test('is off by default and changes nothing', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
-  // Off is the switch alone; nothing it reveals is on the page at all.
-  await expect(page.getByLabel('Automate at maturity')).not.toBeChecked();
-  await expect(page.getByLabel('At maturity', { exact: true })).toHaveCount(0);
+  // Off is "Ask me on the day", one row; nothing it would reveal is on the page at all.
+  await expect(page.getByLabel('Roll over', { exact: true })).toHaveValue('off');
+  await expect(page.getByLabel('Pay out into')).toHaveCount(0);
   await expect(page.getByLabel('Interest paid')).toHaveCount(0);
   await page.clock.setSystemTime(at(s.matures));
   await openAssets(page);
@@ -58,31 +58,29 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await page.getByLabel('Tax withheld %').press('Tab');
   await settingsSaved(page);
   await page.reload();
-  // The switch and the rows read the saved answers, all of them on the page.
-  await expect(page.getByLabel('Automate at maturity')).toBeChecked();
-  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('close');
+  // The rows read the saved answers, all of them on the page.
+  await expect(page.getByLabel('Roll over', { exact: true })).toHaveValue('close');
   await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
   await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
-  await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
+  await expect(page.getByLabel('Pay out into')).toHaveValue(/.+/);
   await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
 });
 
-test('the switch opens one picker per question, and an answer that cannot apply is frozen, not removed', async ({ page }) => {
+test('the roll-over opens one picker per question it raises, and an answer that cannot apply is frozen or stands down', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
   const group = page.getByTestId('maturity-settings');
 
-  // Off: the switch alone, and the term still a fact of the deposit, on its own card.
-  await expect(group).not.toContainText('At maturity');
+  // Off: the one row, and the term still a fact of the deposit, in its Details.
+  await expect(group).toContainText('Ask me on the day');
   await expect(group).not.toContainText('Interest paid');
   await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
 
-  await page.getByLabel('Automate at maturity').check();
+  await page.getByLabel('Roll over', { exact: true }).selectOption('principal');
   await settingsSaved(page);
-  // One picker for the three answers, one for the interest, one for where it lands — and the tax in its own group.
-  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('principal');
+  // Where the principal is paid out, how the interest is paid — and the tax in its own group.
   await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
-  await expect(page.getByLabel('Lands in')).toBeVisible();
+  await expect(page.getByLabel('Pay out into')).toHaveValue(/.+/);
   await expect(page.getByLabel('Keep the rate when it rolls over')).toBeVisible();
   await expect(group).toContainText('Tax-free deposit');
 
@@ -90,27 +88,27 @@ test('the switch opens one picker per question, and an answer that cannot apply 
   await page.getByLabel('Interest paid').selectOption('monthly');
   await settingsSaved(page);
   // …and freezes — still listed, not pickable — once everything rolls over; nothing lands anywhere, and it says so.
-  await page.getByLabel('At maturity', { exact: true }).selectOption('principal_interest');
+  await page.getByLabel('Roll over', { exact: true }).selectOption('principal_interest');
   await settingsSaved(page);
   await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
   await expect(page.getByLabel('Interest paid').locator('option[value="monthly"]')).toBeDisabled();
-  await expect(page.getByLabel('Lands in')).toContainText('Nothing lands');
-  await expect(page.getByLabel('Lands in')).toBeDisabled();
+  // Nothing is paid out, so there is nowhere to pay it into.
+  await expect(page.getByLabel('Pay out into')).toHaveCount(0);
   // A roll-over still asks about the rate.
   await expect(page.getByLabel('Keep the rate when it rolls over')).toBeVisible();
 
   // A close rolls nothing over, so the rate question stands down and the payout comes back.
-  await page.getByLabel('At maturity', { exact: true }).selectOption('close');
+  await page.getByLabel('Roll over', { exact: true }).selectOption('close');
   await settingsSaved(page);
   await expect(page.getByLabel('Keep the rate when it rolls over')).toHaveCount(0);
-  await expect(page.getByLabel('Lands in')).toBeEnabled();
+  await expect(page.getByLabel('Pay out into')).toBeEnabled();
   await expect(page.getByLabel('Interest paid').locator('option[value="monthly"]')).toBeEnabled();
 
   // The freeze is a stored answer, not a drawn one: it survives the reload, and monthly can be picked again after.
   await page.reload();
-  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('close');
+  await expect(page.getByLabel('Roll over', { exact: true })).toHaveValue('close');
   await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
-  await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
+  await expect(page.getByLabel('Pay out into')).toHaveValue(/.+/);
   await page.getByLabel('Interest paid').selectOption('monthly');
   await settingsSaved(page);
   await page.reload();

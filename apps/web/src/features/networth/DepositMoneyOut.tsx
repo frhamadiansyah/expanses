@@ -6,7 +6,7 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { ArrowUpFromLine, LockOpen } from 'lucide-react';
+import { Eject } from 'lucide-react';
 import { ActionButtons, InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { defaultInto, landsText, MONEY_OUT_FOOTER, MONEY_OUT_TITLE, type MoneyOutMode, moneyOutDraft, moneyOutMode, readMoneyOut } from './deposit-money-out';
 import { payoutChoices } from './maturity-settings';
@@ -49,7 +49,8 @@ export function DepositMoneyOut({
             {
               key: 'out',
               label: MONEY_OUT_TITLE[mode],
-              glyph: mode === 'withdraw' ? <ArrowUpFromLine size={20} aria-hidden /> : <LockOpen size={20} aria-hidden />,
+              // The money coming out, early or on time: an eject, not a padlock — nothing is being unlocked.
+              glyph: <Eject size={20} aria-hidden />,
               run: () => setOpen(true),
               testId: 'deposit-money-out',
             },

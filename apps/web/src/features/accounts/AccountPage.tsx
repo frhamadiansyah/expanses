@@ -24,7 +24,6 @@ import {
   ApproxFigure,
   approxLine,
   type CornerAction,
-  Hero,
   InsetGroup,
   InsetRow,
   LargeTitle,
@@ -36,11 +35,12 @@ import {
 } from '../../ui/native';
 import { DepositMoneyOut } from '../networth/DepositMoneyOut';
 import { DepositProposalCard } from '../networth/DepositProposalCard';
-import { DepositTermsCard } from '../networth/DepositTermsCard';
+import { DepositMaturityBlock, DepositTermRow } from '../networth/DepositTerms';
+import { dayLabel } from '../networth/asset-page';
 import { MaturitySettings } from '../networth/MaturitySettings';
 import { RecordedByHand } from '../networth/RecordedByHand';
 import { SetAsidePanel } from '../networth/SetAsidePanel';
-import { useAssetProfiles } from '../networth/queries';
+import { useAssetProfiles, useDepositAutomation } from '../networth/queries';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
@@ -97,6 +97,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const typeLabel = SUBTYPE_LABELS[account.subtype];
   const foreign = !pockets && account.currency !== ws.baseCurrency;
   const opened = openings.data?.[account.id];
+  const deposit = account.subtype === 'time_deposit' && !pockets;
+  const automation = useDepositAutomation(deposit ? account.id : '');
+  // When the money went in: the current term's start, or the balance's own first day.
+  const placedOn = automation.data?.termStartedOn ?? opened?.occurredOn ?? null;
   // The month behind the balance, ending on it: walked back from today through what moved.
   const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
@@ -119,18 +123,27 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       />
       <ErrorBox error={actionError ?? balances.error ?? profiles.error ?? rates.error} />
 
-      {account.subtype === 'time_deposit' && !pockets ? (
-        <Hero
-          label="Balance"
-          minor={minor}
-          currency={account.currency!}
-          caption={
-            <>
-              <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
-              {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
-            </>
-          }
-        />
+      {deposit ? (
+        <>
+          {/* A deposit's card has no month's line — its balance only moves on the day it pays — but its maturity. */}
+          <BalanceCard
+            label="Balance"
+            minor={minor}
+            currency={account.currency!}
+            series={null}
+            testId="deposit-card"
+            caption={
+              <>
+                <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
+                {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
+              </>
+            }
+          >
+            <DepositMaturityBlock accountId={account.id} balanceMinor={minor} currency={account.currency!} />
+          </BalanceCard>
+          {/* A due event of an automated deposit, directly under what it is about. */}
+          <DepositProposalCard accountId={account.id} onClosed={(archived) => archived && closedTo()} />
+        </>
       ) : pockets ? (
         <ParentCard pockets={pockets} typeLabel={typeLabel} inst={inst} held={held} />
       ) : (
@@ -149,7 +162,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
         />
       )}
 
-      {account.subtype === 'time_deposit' && !pockets ? (
+      {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
         <ActionButtons actions={actionsFor(account, pockets)} />
@@ -160,14 +173,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 
       {pockets ? (
         <PocketList pockets={pockets} held={held} />
-      ) : account.subtype === 'time_deposit' ? (
-        <>
-          {/* A due event of an automated deposit, then the term itself: when it comes back and what it pays. */}
-          <DepositProposalCard accountId={account.id} onClosed={(archived) => archived && closedTo()} />
-          <DepositTermsCard accountId={account.id} balanceMinor={minor} currency={account.currency!} />
-          <MaturitySettings accountId={account.id} currency={account.currency!} />
-          <RecordedByHand accountId={account.id} currency={account.currency!} />
-        </>
+      ) : deposit ? (
+        <MaturitySettings accountId={account.id} currency={account.currency!} />
       ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
@@ -175,6 +182,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       <Details
         rows={[
           inst ? <InsetRow key="bank" title="Bank" value={inst} chevron={false} /> : null,
+          deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
+          deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
           !pockets ? <InsetRow key="currency" title="Currency" value={`${account.currency} · ${currencyName(account.currency!)}`} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
           // Another currency makes a current or saving account one with pockets; a pocket cannot hold a pocket, and an
@@ -184,6 +193,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           ) : null,
         ]}
       />
+      {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
+      {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
     </div>
   );
 }
