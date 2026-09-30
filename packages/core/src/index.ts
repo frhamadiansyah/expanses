@@ -488,3 +488,6 @@ export {
 } from './net-worth/group';
 export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
+export { CURRENCY_EXPONENT, findAmounts, type FoundAmount } from './capture/amount';
+export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
+export { WORDS } from './capture/words';
