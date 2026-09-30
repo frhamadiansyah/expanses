@@ -1,3 +1,4 @@
+import { CASH_ITEMS } from '@expanses/core';
 import { deleteUnusedAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -9,6 +10,9 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { useAssetProfile, useAssetValues } from './queries';
+
+/** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
+const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 
 export function AssetSettingsRoute() {
   const { accountId } = useParams({ from: '/net-worth/assets/$accountId/settings' });
@@ -36,6 +40,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
+  const money = account !== undefined && CASH_SUBTYPES.has(account.subtype);
   // A holding linked to a security takes its lot size from the security, so the box is not offered.
   const linkedToSecurity = (links.data ?? []).some((link) => link.accountId === accountId && link.securityId !== null);
 
@@ -60,7 +65,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       <LargeTitle
         title="Settings"
         back={value?.name ?? account?.name ?? 'Asset'}
-        backTo="/net-worth/assets/$accountId"
+        // Money is opened on its account page, and its ⋯ is how these settings were reached: back goes there.
+        backTo={money ? '/accounts/$accountId' : '/net-worth/assets/$accountId'}
         backParams={{ accountId }}
       />
       <ErrorBox error={values.error ?? profile.error ?? error} />

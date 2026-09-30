@@ -5,12 +5,12 @@ import { addTransaction } from './add-transaction';
 
 /**
  * An account's history, reached the way a reader reaches it: its row on Accounts, which opens the account's own
- * page, then the row on that page that leads to its ledger.
+ * page, then See all over the last few rows it lists.
  */
 async function openHistory(page: Page, name: string) {
   await openTypes(page);
   await page.getByRole('link', { name, exact: true }).click();
-  await page.getByRole('link', { name: /Its transactions/ }).click();
+  await page.getByRole('link', { name: 'See all' }).click();
 }
 
 /**

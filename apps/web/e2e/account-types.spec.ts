@@ -52,7 +52,7 @@ test('a deposit funded from an account moves the money, and says where it came f
   // A deposit is a row on the asset list, not on Accounts: it holds money it cannot be paid from.
   await openAssets(page);
   await page.getByRole('link', { name: /^bluuu/ }).click();
-  await page.getByRole('link', { name: /Its transactions/ }).click();
+  await page.getByRole('link', { name: 'See all' }).click();
   const row = page.getByRole('main').getByRole('listitem');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('Transfer');

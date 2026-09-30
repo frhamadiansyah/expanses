@@ -191,3 +191,20 @@ export async function openLoan(page: Page, o: NewLoan) {
   // line the target and the name part of its label.
   await expect(page.getByText(o.name, { exact: true }).first()).toBeVisible();
 }
+
+/**
+ * Opens an account's or an asset's settings. A money account keeps them behind its page's ⋯, with the tax code; a
+ * thing you own still has its gear in the corner. Waits for whichever the page draws, then takes that way in.
+ */
+export async function openSettings(page: Page) {
+  const main = page.getByRole('main');
+  const gear = main.getByRole('link', { name: 'Settings', exact: true });
+  const more = main.getByRole('button', { name: 'More', exact: true });
+  await gear.or(more).first().waitFor();
+  if ((await gear.count()) > 0) {
+    await gear.click();
+    return;
+  }
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+}

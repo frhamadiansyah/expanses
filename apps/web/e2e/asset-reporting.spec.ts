@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings as openSettingsMenu } from './accounts';
 import { openAssets } from './drawers';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
@@ -16,8 +16,8 @@ async function addBankAsset(page: Page) {
 async function openSettings(page: Page) {
   await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
-  // Settings live behind the gear now, on a page of their own — off the chart and the history they sat under.
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  // Settings live behind the account's ⋯ now, on a page of their own — off the chart and the history they sat under.
+  await openSettingsMenu(page);
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
 }

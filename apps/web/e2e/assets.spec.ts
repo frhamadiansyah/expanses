@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings as openSettingsMenu } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addTransfer } from './add-transaction';
 import { openDrawers } from './drawers';
@@ -83,7 +83,7 @@ async function openSettings(page: Page, name: string) {
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettingsMenu(page);
 }
 
 test('renames an account from its settings page, and every list reads the new name', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
@@ -94,7 +94,7 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   // The tax-report details live on the asset's settings page now, behind its gear.
   await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettings(page);
   await page.getByLabel('Nomor akun').fill('1234567890');
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
@@ -194,7 +194,7 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   // The kas sheet needs its account number, owner, institution and country before it can be built.
   await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettings(page);
   await page.getByLabel('Nomor akun').fill('1234567890');
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');

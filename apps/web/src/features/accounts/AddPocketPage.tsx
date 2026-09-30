@@ -7,7 +7,7 @@ import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/querie
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { NoPockets } from './PocketsPage';
+import { NoPockets } from './AccountPage';
 import { pocketsOf, readPockets } from './pockets';
 
 export function AddPocketPage() {

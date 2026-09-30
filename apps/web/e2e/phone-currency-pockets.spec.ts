@@ -14,7 +14,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   });
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
-  await page.getByRole('link', { name: /Move between pockets/ }).tap();
+  await page.getByRole('link', { name: 'Move', exact: true }).tap();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByTestId('spread')).toContainText('35.160');
@@ -40,7 +40,7 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   // Two rows and nothing under them, on a phone too.
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
-  await page.getByRole('link', { name: /Add a pocket/ }).tap();
+  await page.getByRole('link', { name: 'Add a currency', exact: true }).tap();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByRole('button', { name: 'Add pocket' }).tap();

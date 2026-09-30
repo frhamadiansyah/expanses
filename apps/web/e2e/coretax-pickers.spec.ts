@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openTypes } from './accounts';
+import { openTypes, openSettings } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openDrawers } from './drawers';
 
@@ -25,7 +25,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Time deposit' }).click();
-  await expect(page.getByText('When it matures, move the money to an account with a transfer.')).toBeVisible();
+  await expect(page.getByText('When it matures, take the money out with Withdraw on its page.')).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill('Deposito BCA 6 bulan');
   await page.getByLabel('Balance now', { exact: true }).fill('100000000');
   // Every money account is asked which currency it holds, a deposit included: money abroad is ordinary.
@@ -42,12 +42,14 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped. The way in is
   // the deposit's own page, reached from the asset list: the Accounts list shows no tax line to click any more.
   await openDeposit(page, 'Deposito BCA 6 bulan');
-  await expect(page.getByText('Matures 1 Mar 2027 · 6,25%')).toBeVisible();
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('Matures 1 Mar 2027');
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('6,25%');
   await page.getByRole('button', { name: 'Change' }).click();
   await page.getByLabel('Matures on').fill('2027-12-01');
   await page.getByLabel('Interest rate').fill('6,75');
   await page.getByRole('button', { name: 'Save terms' }).click();
-  await expect(page.getByText('Matures 1 Dec 2027 · 6,75%')).toBeVisible();
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('Matures 1 Dec 2027');
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('6,75%');
 
   // Money you hold: net worth counts it, and the balance sheet calls it cash.
   await page.goto('/net-worth');
@@ -183,7 +185,7 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettings(page);
   await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
@@ -209,7 +211,7 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettings(page);
   await expect(page.getByLabel('What it is')).toHaveValue('savings');
 
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.

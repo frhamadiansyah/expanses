@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openTypes } from './accounts';
+import { openAccount, openTypes, openSettings } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
 import { cardSection } from './card-section';
@@ -128,7 +128,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   // Broker cash is money meant to be invested, not the emergency buffer. Its gear page is where that is said.
   await openAssets(page);
   await page.getByRole('link', { name: /RDN Stockbit/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettings(page);
   await page.getByLabel('Counts as').selectOption('invest');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
