@@ -3,7 +3,7 @@ import { Children, cloneElement, createContext, isValidElement, type ReactElemen
 import { cx } from '../index';
 import { SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
-import { GROUP_GAP, GROUP_RADIUS, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
+import { GROUP_GAP, GROUP_RADIUS, NEST_STEP, NESTED_ICON, nestedPad, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
 
 /**
@@ -134,6 +134,8 @@ export interface InsetRowProps extends GroupChild {
   iconRing?: string;
   title: ReactNode;
   subtitle?: ReactNode;
+  /** How many levels down a tree the row sits: its start and its hairline move in, and its circle is smaller. */
+  depth?: number;
   /** The trailing figure. Set in tabular numerals and never truncated — it is what the row is for. */
   value?: ReactNode;
   valueTone?: Tone;
@@ -184,14 +186,14 @@ export interface InsetRowProps extends GroupChild {
  * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
 /** A row's leading glyph, in the kit's own 28 px circle: the neutral fill, or the caller's tint when it gave one. */
-export function RowIcon({ tint, ring, children }: { tint?: { background: string; foreground: string } | null; ring?: string; children: ReactNode }) {
+export function RowIcon({ tint, ring, size = 28, children }: { tint?: { background: string; foreground: string } | null; ring?: string; size?: number; children: ReactNode }) {
   return (
     <span
       aria-hidden
       className="flex shrink-0 items-center justify-center rounded-full"
       style={{
-        width: 28,
-        height: 28,
+        width: size,
+        height: size,
         background: tint?.background ?? 'var(--ph-fill)',
         color: tint?.foreground ?? 'var(--ph-ink-2)',
         // Drawn inside the 28 px circle, so a ringed row is exactly as tall and as wide as any other.
@@ -209,6 +211,7 @@ export function InsetRow({
   iconRing,
   title,
   subtitle,
+  depth = 0,
   value,
   valueTone = 'ink-3',
   chevron,
@@ -235,7 +238,7 @@ export function InsetRow({
   ) : (
     <>
       {icon && (
-        <RowIcon tint={tint} ring={iconRing}>
+        <RowIcon tint={tint} ring={iconRing} size={depth > 0 ? NESTED_ICON : undefined}>
           {icon}
         </RowIcon>
       )}
@@ -256,7 +259,7 @@ export function InsetRow({
       style={{
         gap: icon ? 10 : 8,
         minHeight: rowHeight(Boolean(subtitle)),
-        padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px`,
+        padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px ${ROW_PAD_Y}px ${nestedPad(depth)}px`,
       }}
     >
       {body}
@@ -268,7 +271,7 @@ export function InsetRow({
     <span
       aria-hidden
       className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]"
-      style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset, right: ROW_PAD_X }}
+      style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset + depth * NEST_STEP, right: ROW_PAD_X }}
     />
   ) : null;
   const slides = !disabled && (onSwipeRight !== undefined || leftAction !== undefined);

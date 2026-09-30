@@ -181,7 +181,7 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf, 1)}</div>] : []),
             ];
           })}
         </InsetGroup>
@@ -207,8 +207,8 @@ function SheetColumn({
 type Tile = (groupKey: string, kindKey: string | null) => LucideIcon;
 
 /** A drawing at the size a row draws one, for the kit's circle to hold. */
-function TileIcon({ tile: Glyph }: { tile: LucideIcon }) {
-  return <Glyph size={16} aria-hidden />;
+function TileIcon({ tile: Glyph, small = false }: { tile: LucideIcon; small?: boolean }) {
+  return <Glyph size={small ? 14 : 16} aria-hidden />;
 }
 
 /** Whose a row is on the household's sheet: the ring its circle wears, the name a screen reader hears, and whether it is the other's. */
@@ -234,7 +234,7 @@ type OwnerOf = (accountId: string) => RowOwner | null;
  * On the household's sheet (D12, D13) the owner is the ring round the circle and nothing else — the row stays one
  * line, with no name and no date under it — and a screen reader hears whose it is. The other's item opens its own page.
  */
-function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination) {
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0) {
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
@@ -255,6 +255,7 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
         )
       }
       subtitle={row.note ?? undefined}
+      depth={depth}
       value={<Money minor={shownMinor} currency={shownCurrency} />}
       valueTone="ink"
       chevron={shared || link ? undefined : false}
@@ -277,12 +278,17 @@ function fold(
   ownerOf?: OwnerOf,
   unrated: ReadonlySet<string> = NONE,
   linkOf?: (accountId: string) => AccountDestination | undefined,
+  /**
+   * How far down the tree the kinds sit: 1 inside a section's drawer, so a section's kinds sit under its name and the
+   * next section, level again, reads as the next one. Each kind's accounts go one further in.
+   */
+  depth = 0,
 ) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
     const shown = open.has(key);
-    const icon = <TileIcon tile={tileOf(group.key, drawer.key)} />;
+    const icon = <TileIcon tile={tileOf(group.key, drawer.key)} small={depth > 0} />;
     return [
       <Drawer
         key={key}
@@ -293,10 +299,11 @@ function fold(
         figure={<SheetFigure minor={figureOf(drawer.totalMinor, drawer.rows.map((row) => row.accountId), unrated)} currency={currency} />}
         open={shown}
         separator={index > 0}
+        depth={depth}
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
       />,
-      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null, linkOf?.(row.accountId))) : []),
+      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null, linkOf?.(row.accountId), depth > 0 ? depth + 1 : 0)) : []),
     ];
   });
 }

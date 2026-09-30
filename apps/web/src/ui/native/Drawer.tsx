@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { cx } from '../index';
 import { RowIcon } from './InsetList';
-import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
+import { NESTED_ICON, nestedPad, ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
 
 /**
  * Primitive 11: the drawer — a line that folds the rows of one kind away, and says how many there are and what they
@@ -45,6 +45,7 @@ export function Drawer({
   figure,
   open,
   separator = false,
+  depth = 0,
   testId,
   onToggle,
 }: {
@@ -59,23 +60,25 @@ export function Drawer({
   open: boolean;
   /** Whether a hairline belongs above this line, which only a caller with siblings knows. */
   separator?: boolean;
+  /** How many levels down a tree the drawer sits: a section's kinds are one, under the section's name. */
+  depth?: number;
   testId?: string;
   onToggle: () => void;
 }) {
   return (
     <div className="relative">
-      {separator && <span aria-hidden className="pointer-events-none absolute top-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      {separator && <span aria-hidden className="pointer-events-none absolute top-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: nestedPad(depth), right: ROW_PAD_X }} />}
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         data-testid={testId}
         className="ph-focus-inset flex w-full items-center gap-[10px] text-left"
-        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
+        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px ${ROW_PAD_Y}px ${nestedPad(depth)}px` }}
       >
-        {icon && <RowIcon>{icon}</RowIcon>}
+        {icon && <RowIcon size={depth > 0 ? NESTED_ICON : undefined}>{icon}</RowIcon>}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
+          <span className={cx('block truncate text-[15px] leading-[20px] text-[var(--ph-ink)]', depth === 0 && 'font-medium')}>{label}</span>
           {under !== undefined && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{under}</span>}
         </span>
         {figure}
