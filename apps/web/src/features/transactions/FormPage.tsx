@@ -17,9 +17,13 @@ import { TransactionCard } from './TransactionCard';
  * A static segment outranks a dynamic one in this router, so this is matched before `/transactions/$transactionId`
  * and "new" is never read as an id. `add-transaction.spec.ts` asserts exactly that rather than trusting it.
  */
+const newRoute = getRouteApi('/transactions/new');
+
 export function NewTransactionRoute() {
   const back = useBack('/transactions');
   const readOnly = useOpenBookReadOnly();
+  // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither.
+  const { mode, account, to } = newRoute.useSearch();
   return (
     <div className={SCREEN}>
       {/*
@@ -28,7 +32,7 @@ export function NewTransactionRoute() {
        * sheet this page replaced closed onto the screen underneath.
        */}
       {/* A share that ended here takes nothing new (§8.6): the notice above says why, and there is no form to fill. */}
-      {readOnly ? null : <TransactionCard full title="New transaction" label="Add a transaction" onBack={back} onDone={back} />}
+      {readOnly ? null : <TransactionCard full title="New transaction" label="Add a transaction" mode={mode} seed={{ moneyId: account, toId: to }} onBack={back} onDone={back} />}
     </div>
   );
 }

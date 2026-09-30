@@ -102,6 +102,8 @@ export function stepDay(iso: string, days: number): string {
 export function TransactionCard(props: {
   initial?: TransactionView;
   mode?: FormMode;
+  /** A new transaction's accounts, filled in before the form opens: the page it was opened from knows them. */
+  seed?: { moneyId?: string; toId?: string };
   onDone: () => void;
   full?: boolean;
   label?: string;
@@ -121,9 +123,16 @@ export function TransactionCard(props: {
   return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
 }
 
+/** Only ids this device holds: an address typed or kept from another workspace names nothing, and fills nothing in. */
+function seedIds(seed: { moneyId?: string; toId?: string } | undefined, accounts: readonly AccountRow[]): Partial<FormDraft> {
+  const known = (id: string | undefined) => (id && accounts.some((a) => a.id === id) ? id : '');
+  return { moneyId: known(seed?.moneyId), toId: known(seed?.toId) };
+}
+
 function CardBody({
   initial,
   mode,
+  seed,
   onDone,
   full,
   label,
@@ -134,6 +143,7 @@ function CardBody({
 }: {
   initial?: TransactionView;
   mode?: FormMode;
+  seed?: { moneyId?: string; toId?: string };
   onDone: () => void;
   full?: boolean;
   /** The form's accessible name, on a screen of its own where no sheet's title names it. */
@@ -158,7 +168,7 @@ function CardBody({
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
   const [draft, setDraft] = useState<FormDraft>(() =>
-    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
+    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts) },
   );
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.

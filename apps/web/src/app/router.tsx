@@ -75,6 +75,23 @@ export interface TransactionsSearch {
   view?: 'list' | 'table';
 }
 
+/**
+ * A new transaction opened from somewhere that already knows part of it: an account's own page, whose Spend,
+ * Receive and Transfer open the form in that mode with the account filled in. `account` is the Paid with, Received
+ * into or From; `to` a transfer's To. Nothing given, the form opens as the tab bar's ＋ opens it.
+ */
+export interface NewTransactionSearch {
+  mode?: 'expense' | 'income' | 'transfer';
+  account?: string;
+  to?: string;
+}
+
+const newTransactionSearch = (search: Record<string, unknown>): NewTransactionSearch => ({
+  ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' ? { mode: search.mode } : {}),
+  ...(typeof search.account === 'string' && search.account !== '' ? { account: search.account } : {}),
+  ...(typeof search.to === 'string' && search.to !== '' ? { to: search.to } : {}),
+});
+
 export interface LendBorrowSearch {
   /** One person, when Lend & borrow is opened from their row on Debts. */
   person?: string;
@@ -141,7 +158,7 @@ const routeTree = rootRoute.addChildren([
   // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are
   // ordered here — asserted in `add-transaction.spec.ts` rather than trusted, since being wrong about it means
   // opening a receipt for a transaction called "new".
-  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — what the edit sheet's ⋯ reaches for what a sheet cannot hold.
