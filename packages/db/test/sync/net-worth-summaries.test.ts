@@ -166,6 +166,7 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
       openingMinor: 0,
       householdMinor: 50_000_000,
       otherUseMinor: 100_000_000,
+      transferMinor: 0,
       balanceMinor: 150_000_000,
       asOf: today,
       // One tax ID (task 10): the card's slice of last year's report, which is empty — it owed nothing on 31 December.
@@ -175,7 +176,7 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     expect(item!.period).toEqual({ start: item!.card!.cycleStart, end: item!.card!.cycleEnd });
     expect(item!.period.start <= today && today <= item!.period.end).toBe(true);
     expect(item!.monthEnds).toHaveLength(24);
-    expect(item!.openingMinor + item!.householdMinor + item!.otherUseMinor).toBe(item!.balanceMinor);
+    expect(item!.openingMinor + item!.householdMinor + item!.otherUseMinor + item!.transferMinor).toBe(item!.balanceMinor);
     // Rina's own phone never lists her own item as received.
     expect(await receivedItems(rina.database, groupBookId)).toEqual([]);
   });
@@ -292,7 +293,7 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     const items = await receivedItems(andi.database, groupBookId);
     const got = items.find((i) => i.subtype === 'property')!;
     expect(got).toMatchObject({ kind: 'asset', balanceMinor: 1_380_000_000, householdMinor: 0 });
-    expect(got.openingMinor + got.householdMinor + got.otherUseMinor).toBe(got.balanceMinor);
+    expect(got.openingMinor + got.householdMinor + got.otherUseMinor + got.transferMinor).toBe(got.balanceMinor);
     expect(items.find((i) => i.subtype === 'credit_card')!.card).toMatchObject({ limitMinor: 700_000_000 });
   });
 

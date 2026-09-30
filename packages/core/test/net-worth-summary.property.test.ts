@@ -6,14 +6,18 @@ const movement: fc.Arbitrary<PeriodMovement> = fc.record({
   transactionId: fc.string({ minLength: 1, maxLength: 8 }),
   amountMinor: fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
   household: fc.boolean(),
+  transfer: fc.boolean(),
 });
 
 describe('splitPeriod property', () => {
-  it('opening + household + other always equals closing', () => {
+  it('opening + household + other + transfer always equals closing, and a transfer is never other use', () => {
     fc.assert(
       fc.property(fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }), fc.array(movement, { maxLength: 30 }), (opening, movements) => {
         const r = splitPeriod(opening, movements);
-        expect(opening + r.householdMinor + r.otherUseMinor).toBe(r.closingMinor);
+        expect(opening + r.householdMinor + r.otherUseMinor + r.transferMinor).toBe(r.closingMinor);
+        const sum = (keep: (m: PeriodMovement) => boolean) => movements.filter(keep).reduce((t, m) => t + m.amountMinor, 0);
+        expect(r.transferMinor).toBe(sum((m) => m.transfer === true));
+        expect(r.householdMinor).toBe(sum((m) => m.transfer !== true && m.household));
       }),
     );
   });
@@ -27,10 +31,11 @@ describe('cardBar property', () => {
         fc.integer({ min: 0, max: 10_000_000_000 }),
         fc.integer({ min: 0, max: 10_000_000_000 }),
         fc.integer({ min: 0, max: 10_000_000_000 }),
-        (limitMinor, openingMinor, householdMinor, otherUseMinor) => {
-          const balanceMinor = openingMinor + householdMinor + otherUseMinor;
+        fc.integer({ min: 0, max: 10_000_000_000 }),
+        (limitMinor, openingMinor, householdMinor, otherUseMinor, transferMinor) => {
+          const balanceMinor = openingMinor + householdMinor + otherUseMinor + transferMinor;
           fc.pre(balanceMinor <= limitMinor);
-          const bar = cardBar(limitMinor, { openingMinor, householdMinor, otherUseMinor, balanceMinor });
+          const bar = cardBar(limitMinor, { openingMinor, householdMinor, otherUseMinor, transferMinor, balanceMinor });
           expect(bar.householdPct).toBeGreaterThanOrEqual(0);
           expect(bar.householdPct).toBeLessThanOrEqual(100);
           expect(bar.otherPct).toBeGreaterThanOrEqual(0);
@@ -49,8 +54,9 @@ describe('cardBar property', () => {
         fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
         fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
         fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
-        (limitMinor, openingMinor, householdMinor, otherUseMinor, balanceMinor) => {
-          const bar = cardBar(limitMinor, { openingMinor, householdMinor, otherUseMinor, balanceMinor });
+        fc.integer({ min: -5_000_000_000, max: 5_000_000_000 }),
+        (limitMinor, openingMinor, householdMinor, otherUseMinor, transferMinor, balanceMinor) => {
+          const bar = cardBar(limitMinor, { openingMinor, householdMinor, otherUseMinor, transferMinor, balanceMinor });
           expect(bar.householdPct).toBeGreaterThanOrEqual(0);
           expect(bar.householdPct).toBeLessThanOrEqual(100);
           expect(bar.otherPct).toBeGreaterThanOrEqual(0);

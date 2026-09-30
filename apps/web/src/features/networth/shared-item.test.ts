@@ -1,7 +1,7 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import type { ReceivedItem } from './joint-rows';
-import { type PurchaseLine, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
+import { itemPage, type PurchaseLine, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
 
 const card: ReceivedItem = {
   itemId: 'i-visa',
@@ -17,6 +17,7 @@ const card: ReceivedItem = {
   openingMinor: 1_000_000,
   householdMinor: 1_500_000,
   otherUseMinor: 500_000,
+  transferMinor: 0,
   monthEnds: [
     { month: '2026-07', balanceMinor: 800_000 },
     { month: '2026-08', balanceMinor: 1_000_000 },
@@ -128,19 +129,31 @@ describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', 
     ...over,
   });
 
-  it('reads "To you: Mandiri Tabungan −5.000.000" for money the item sent you, and "From you" with a plus for money you sent it', () => {
+  it('on an asset reads "To you: Mandiri Tabungan −5.000.000" for money it sent you, and "From you" with a plus for money you sent it', () => {
     const lines = transferLines(
-      [transfer({}), transfer({ transferId: 't2', direction: 'in', amountMinor: 1_000_000, occurredOn: '2026-09-15' })],
+      [transfer({}), transfer({ transferId: 't2', direction: 'in', amountMinor: 1_000_000, occurredOn: '2026-09-15', description: 'Groceries back' })],
       bank,
       'm-andi',
     );
     expect(lines).toEqual([
-      { key: 't1', title: 'To you: Mandiri Tabungan', occurredOn: '2026-09-12', amountMinor: -5_000_000, currency: 'IDR' },
-      { key: 't2', title: 'From you: Mandiri Tabungan', occurredOn: '2026-09-15', amountMinor: 1_000_000, currency: 'IDR' },
+      { key: 't1', title: 'To you: Mandiri Tabungan', note: null, occurredOn: '2026-09-12', amountMinor: -5_000_000, currency: 'IDR' },
+      { key: 't2', title: 'From you: Mandiri Tabungan', note: 'Groceries back', occurredOn: '2026-09-15', amountMinor: 1_000_000, currency: 'IDR' },
     ]);
   });
 
-  it('shows only transfers with you, and only in the item’s period', () => {
+  it('on a card reads in what it owes, like the purchase rows around it: paid down by you is −, charged to send you money is +', () => {
+    const lines = transferLines(
+      [transfer({ transferId: 'down', direction: 'in', amountMinor: 1_000_000 }), transfer({ transferId: 'charged', direction: 'out', amountMinor: 200_000 })],
+      card,
+      'm-andi',
+    );
+    expect(lines.map((l) => [l.key, l.amountMinor])).toEqual([
+      ['charged', 200_000],
+      ['down', -1_000_000],
+    ]);
+  });
+
+  it('shows only transfers with you; the period is the read’s to filter, so none is dropped here', () => {
     const lines = transferLines(
       [
         transfer({ transferId: 'with-sari', counterpart: { owner: 'm-sari', itemId: 'i-sari' }, counterpartName: null }),
@@ -150,13 +163,62 @@ describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', 
       bank,
       'm-andi',
     );
-    expect(lines.map((l) => l.key)).toEqual(['mine']);
+    expect(lines.map((l) => l.key)).toEqual(['august', 'mine']);
   });
 
   it('with no local name for your side it still says who, and sharedItemView carries the lines', () => {
     expect(transferLines([transfer({ counterpartName: null })], bank, 'm-andi')[0]!.title).toBe('To you');
-    const view = sharedItemView(bank, [], 'Rina', { transfers: [transfer({})], me: 'm-andi' });
+    const view = sharedItemView({ ...bank, transferMinor: -5_000_000 }, [], 'Rina', { transfers: [transfer({})], me: 'm-andi' });
     expect(view.transfers.map((t) => t.title)).toEqual(['To you: Mandiri Tabungan']);
     expect(sharedItemView(bank, [], 'Rina').transfers).toEqual([]);
+  });
+});
+
+describe('transfers are counted once (wave 4 review, finding 1)', () => {
+  const bank: ReceivedItem = { ...card, itemId: 'i-bca', kind: 'asset', subtype: 'bank', name: 'BCA Tabungan', card: null, asOf: '2026-09-20', period: { start: '2026-09-01', end: '2026-09-30' } };
+  const mine: TransferIn = {
+    transferId: 't1',
+    occurredOn: '2026-09-12',
+    amountMinor: 5_000_000,
+    currency: 'IDR',
+    description: null,
+    direction: 'out',
+    counterpart: { owner: 'm-andi', itemId: 'i-mandiri' },
+    counterpartName: 'Mandiri Tabungan',
+  };
+
+  it('other use stays other use, and no "Other transfers" row when the listed ones are all of them', () => {
+    const view = sharedItemView({ ...bank, otherUseMinor: 300_000, transferMinor: -5_000_000 }, [], 'Rina', { transfers: [mine], me: 'm-andi' });
+    expect(view.otherUse.text).not.toContain('5.000.000');
+    expect(view.otherTransfers).toBeNull();
+  });
+
+  it('what the summary holds beyond your transfers is one "Other transfers" row; a listed one newer than the summary is not in it', () => {
+    const late: TransferIn = { ...mine, transferId: 't2', occurredOn: '2026-09-25', amountMinor: 1_000_000 };
+    // −5 jt with you and −2 jt with Sari are in the summary (−7 jt); the late −1 jt is not yet.
+    const view = sharedItemView({ ...bank, transferMinor: -7_000_000 }, [], 'Rina', { transfers: [mine, late], me: 'm-andi' });
+    expect(view.otherTransfers).toEqual({ label: 'Other transfers', minor: -2_000_000, currency: 'IDR' });
+  });
+
+  it('the card bar reads transfers in its other segment, from the owner’s summary', () => {
+    const view = sharedItemView({ ...card, otherUseMinor: 500_000, transferMinor: 1_000_000, balanceMinor: 4_000_000 }, [], 'Rina');
+    expect(view.bar).toEqual({ householdPct: 15, otherPct: 15, availableMinor: 6_000_000, limitMinor: 10_000_000 });
+  });
+});
+
+describe('itemPage (finding 3: Accounts → "Andi\'s, shared" → the item, in separate mode)', () => {
+  const group = { mode: 'separate' as const, me: 'm-andi', groupBookId: 'g', workspaceBookId: 'w' };
+
+  it('draws the item in separate mode, and goes back to Accounts', () => {
+    const page = itemPage({ group, items: [card], names: { 'm-rina': 'Rina' } }, 'i-visa', [], []);
+    expect(page.view?.name).toBe('BCA Visa ···· 1234');
+    expect(page.view?.details.owner).toBe('Rina');
+    expect(page.back).toEqual({ back: 'Accounts', backTo: '/accounts' });
+  });
+
+  it('goes back to Net worth in joint mode, and has nothing for an item no longer shared or no group', () => {
+    expect(itemPage({ group: { ...group, mode: 'joint' }, items: [card], names: {} }, 'i-visa', [], []).back).toEqual({ back: 'Net worth', backTo: '/net-worth' });
+    expect(itemPage({ group, items: [card], names: {} }, 'gone', [], []).view).toBeNull();
+    expect(itemPage(null, 'i-visa', [], []).view).toBeNull();
   });
 });

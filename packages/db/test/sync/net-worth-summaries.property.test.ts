@@ -21,7 +21,7 @@ import { categoryOf } from './household';
 /*
  * Summary maths (joint-net-worth spec §10, task 6 review round 1): for random ledgers on a bank account and a card —
  * lines before, inside and after the period, Household or private, any statement day (29–31 included) and any
- * "today" (month ends, a leap day) — the parts add up (`openingMinor + householdMinor + otherUseMinor = balanceMinor`)
+ * "today" (month ends, a leap day) — the parts add up (`openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor`)
  * and the balance is what the Net worth reader says for that account on that day.
  */
 
@@ -85,7 +85,7 @@ describe('computeItemSummary (property)', () => {
             await computeItemSummary(tx, ws, card.id, 'me', home, today),
           ]);
           for (const s of [bankSummary, cardSummary]) {
-            expect(s.openingMinor + s.householdMinor + s.otherUseMinor).toBe(s.balanceMinor);
+            expect(s.openingMinor + s.householdMinor + s.otherUseMinor + s.transferMinor).toBe(s.balanceMinor);
             expect(s.period.start <= today && today <= s.period.end).toBe(true);
           }
           expect(bankSummary.balanceMinor).toBe((await assetValuesAt(database, ws, today)).find((r) => r.accountId === bank.id)!.valueMinor);

@@ -107,7 +107,8 @@ function readView(tx: Db): Database {
  *   else the calendar month of `today`. Movements count from the period's start up to `today`.
  * - Household: an entry whose transaction is filed in the workspace's book (`book_transactions.book_id`). Everything
  *   else is other use, summed into one figure. A valued asset's value change beyond its ledger movements (a new price,
- *   a new estimate) is other use too, so `openingMinor + householdMinor + otherUseMinor = balanceMinor` always holds.
+ *   a new estimate) is other use too, so `openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor`
+ *   always holds. `transferMinor`: this phone's sides of transfers between partners in the period (wave 4 review).
  * - `monthEnds`: the value at each of the last 24 month-ends (`lastMonthEnds`), for the chart and year-end.
  * - `tax`: only when `taxGroup` is given — the active group, passed by the sender only once this person has Shared its
  *   active proposal (allowance `all`) — and it files with one tax ID from this workspace (`itemTaxOf`). Else null.
@@ -135,15 +136,23 @@ export async function computeItemSummary(
   const period = cycle ?? calendarCycleFor(today);
   const card = terms && cycle ? { limitMinor: Number(terms[0] ?? 0), cycleStart: cycle.start, cycleEnd: cycle.end } : null;
 
-  // Every posted entry on the account, once: dated, signed in the item's sense, and whether it is a Household line.
+  // Every posted entry on the account, once: dated, signed in the item's sense, whether it is a Household line, and
+  // whether it is this phone's side of a transfer between partners (its own part, `transferMinor`; wave 4 review).
   const lines = (
-    await tx.values<[string, string, number, number]>(sql`
+    await tx.values<[string, string, number, number, number]>(sql`
       SELECT t.id, t.occurred_on, e.amount_minor,
-             EXISTS (SELECT 1 FROM book_transactions bt WHERE bt.transaction_id = t.id AND bt.book_id = ${workspaceBookId})
+             EXISTS (SELECT 1 FROM book_transactions bt WHERE bt.transaction_id = t.id AND bt.book_id = ${workspaceBookId}),
+             EXISTS (SELECT 1 FROM member_transfer_postings p WHERE p.transaction_id = t.id)
       FROM entries e JOIN transactions t ON t.id = e.transaction_id
       WHERE e.account_id = ${accountId} AND t.status = 'posted'
       ORDER BY t.occurred_on, e.rowid`)
-  ).map(([transactionId, occurredOn, amountMinor, household]) => ({ transactionId, occurredOn, amountMinor: sign * Number(amountMinor), household: Number(household) !== 0 }));
+  ).map(([transactionId, occurredOn, amountMinor, household, transfer]) => ({
+    transactionId,
+    occurredOn,
+    amountMinor: sign * Number(amountMinor),
+    household: Number(household) !== 0,
+    transfer: Number(transfer) !== 0,
+  }));
   const ledgerAt = (date: string) => lines.reduce((sum, line) => (line.occurredOn <= date ? sum + line.amountMinor : sum), 0);
 
   // An asset is worth what the Net worth reader says (a price, an estimate, or its ledger balance), its inputs read
@@ -155,7 +164,7 @@ export async function computeItemSummary(
   const [balanceMinor, openingMinor] = values as [number, number];
   const movements: PeriodMovement[] = lines
     .filter((line) => line.occurredOn >= period.start && line.occurredOn <= today)
-    .map(({ transactionId, amountMinor, household }) => ({ transactionId, amountMinor, household }));
+    .map(({ transactionId, amountMinor, household, transfer }) => ({ transactionId, amountMinor, household, transfer }));
   const split = splitPeriod(openingMinor, movements);
   const monthEnds: ItemSummary['monthEnds'] = months.map((month, i) => ({ month, balanceMinor: values[i + 2]! }));
 
@@ -176,6 +185,7 @@ export async function computeItemSummary(
     householdMinor: split.householdMinor,
     // Anything the ledger lines do not explain (a valued asset's new price) is other use, so the parts add up.
     otherUseMinor: split.otherUseMinor + (balanceMinor - split.closingMinor),
+    transferMinor: split.transferMinor,
     monthEnds,
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today) : null,
   };
@@ -296,7 +306,9 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
     try {
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
-      if (summary && typeof summary === 'object') out.push({ ...summary, owner, itemId });
+      // `transferMinor` is new in this release; a summary without a whole number there reads it as none.
+      if (summary && typeof summary === 'object')
+        out.push({ ...summary, transferMinor: Number.isSafeInteger(summary.transferMinor) ? summary.transferMinor : 0, owner, itemId });
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
     }

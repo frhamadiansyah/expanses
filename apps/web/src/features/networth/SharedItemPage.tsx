@@ -2,8 +2,8 @@ import { formatMinor } from '@expanses/core';
 import { useParams } from '@tanstack/react-router';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
-import { memberName, useHouseholdPurchases, useItemTransfers, useSharedNetWorth } from './queries';
-import { sharedItemView } from './shared-item';
+import { useHouseholdPurchases, useItemTransfers, useSharedNetWorth } from './queries';
+import { itemPage } from './shared-item';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
@@ -18,12 +18,13 @@ export function SharedItemPage() {
   const { itemId } = useParams({ from: '/net-worth/shared/$itemId' });
   const shared = useSharedNetWorth();
   const group = shared.data?.group ?? null;
-  const item = shared.data?.items.find((each) => each.itemId === itemId) ?? null;
-  const purchases = useHouseholdPurchases(group && item ? group.workspaceBookId : null, item ? item.period : null);
-  const transfers = useItemTransfers(group && item ? group.groupBookId : null, item?.itemId ?? null, item ? item.period : null);
-  const owner = item && shared.data ? memberName(shared.data.names, item.owner) : '';
-  const view = item && group ? sharedItemView(item, purchases.data ?? [], owner, { transfers: transfers.data ?? [], me: group.me }) : null;
-  const back = group?.mode === 'joint' ? { back: 'Net worth', backTo: '/net-worth' as const } : { back: 'Accounts', backTo: '/accounts' as const };
+  const found = shared.data?.items.find((each) => each.itemId === itemId) ?? null;
+  const purchases = useHouseholdPurchases(group && found ? group.workspaceBookId : null, found ? found.period : null);
+  const transfers = useItemTransfers(group && found ? group.groupBookId : null, found?.itemId ?? null, found ? found.period : null);
+  // Either mode: Net worth's rows with one tax ID, Accounts' "Andi's, shared" with separate ones (itemPage, tested).
+  const { item, view, back } = itemPage(shared.data, itemId, purchases.data ?? [], transfers.data ?? []);
+  const owner = view?.details.owner ?? '';
+  const withTransfers = view !== null && (view.transfers.length > 0 || view.otherTransfers !== null);
 
   return (
     <div className={SCREEN}>
@@ -55,7 +56,7 @@ export function SharedItemPage() {
             </Panel>
           )}
 
-          <InsetGroup header="Lines you can see" footer={`Household purchases paid from it and transfers with you, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
+          <InsetGroup header="Lines you can see" footer={`Household purchases paid from it${withTransfers ? ' and transfers between partners' : ''}, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
             {view.lines.map((line) => (
               <InsetRow
                 key={line.lineageId}
@@ -70,12 +71,22 @@ export function SharedItemPage() {
               <InsetRow
                 key={line.key}
                 title={line.title}
-                subtitle={DAY_LABEL(line.occurredOn)}
+                subtitle={line.note ? `${DAY_LABEL(line.occurredOn)} · ${line.note}` : DAY_LABEL(line.occurredOn)}
                 value={<Money minor={line.amountMinor} currency={line.currency} />}
                 valueTone="ink"
                 chevron={false}
               />
             ))}
+            {view.otherTransfers && (
+              <InsetRow
+                title={view.otherTransfers.label}
+                subtitle="total only"
+                value={<Money minor={view.otherTransfers.minor} currency={view.otherTransfers.currency} />}
+                valueTone="ink"
+                chevron={false}
+                testId="other-transfers"
+              />
+            )}
             <InsetRow
               title={view.otherUse.label}
               subtitle={view.otherUse.under}

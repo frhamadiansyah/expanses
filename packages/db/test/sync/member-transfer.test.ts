@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { confirmReview, itemTransfers, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
+import { confirmReview, createCardAccount, saveCardTerms, itemTransfers, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet, Op } from '../../src/sync/types';
@@ -388,9 +388,44 @@ describe('transfers between partners: review round 1 (task 8)', () => {
         [back, 'out', 'Rina Bank'],
       ].sort(),
     );
+    // The period is filtered here, inclusive at both ends: a period starting or ending today holds them, one before not.
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: today, end: '9999-12-31' })).toHaveLength(2);
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: today })).toHaveLength(2);
+    const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: yesterday })).toEqual([]);
+    // A malformed row in the log is skipped, never an error.
+    await s.andi.database.db.run(sql`INSERT INTO member_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, from_json, to_json, recorded_by)
+      VALUES (${s.groupBookId}, 'zz-bad', ${today}, 1, 'IDR', 'not json', ${JSON.stringify({ owner: s.rina.memberId, itemId: s.rinaItem })}, ${s.rina.memberId})`);
+    expect((await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, period)).map((t) => t.transferId)).not.toContain('zz-bad');
     // Another period, another item, a device outside the group: nothing.
     expect(await itemTransfers(s.andi.database, s.groupBookId, s.rinaItem, { start: '2000-01-01', end: '2000-01-31' })).toEqual([]);
     expect(await itemTransfers(s.andi.database, s.groupBookId, 'no-such-item', period)).toEqual([]);
     expect(await itemTransfers(s.sari.database, s.groupBookId, s.rinaItem, period)).toEqual([]);
+  });
+  it('the owner’s summary keeps transfers apart from other use, in the item’s own sense: a bank sent is −, a card paid down is − owed (wave 4 review)', async () => {
+    const s = await sharing();
+    const card = await createCardAccount(s.rina.database, s.rina.ws, { name: 'Rina Card', subtype: 'credit_card', currency: 'IDR', last4: '1234' });
+    await saveCardTerms(s.rina.database, s.rina.ws, { accountId: card.id, statementDay: 25, dueDay: 10, creditLimitMinor: 50 * JT, annualFeeMinor: null });
+    await setShareSetting(s.rina.database, card.id, 'total');
+    await settle(s.home);
+    const cardItem = await itemIdOf(s.groupBookId, card.id);
+    await rinaToAndi(s);
+    // Andi pays 1 jt of Rina's card down from his bank.
+    await recordMemberTransfer(s.andi.database, s.bookId, {
+      occurredOn: today,
+      amountMinor: 1 * JT,
+      currency: 'IDR',
+      from: { owner: s.andi.memberId, itemId: s.andiItem },
+      to: { owner: s.rina.memberId, itemId: cardItem },
+      description: null,
+    });
+    await settle(s.home);
+
+    const received = await receivedItems(s.andi.database, s.groupBookId);
+    const bank = received.find((i) => i.itemId === s.rinaItem)!;
+    expect(bank).toMatchObject({ transferMinor: -5 * JT, otherUseMinor: 0, balanceMinor: -5 * JT });
+    const owed = received.find((i) => i.itemId === cardItem)!;
+    expect(owed).toMatchObject({ transferMinor: -1 * JT, otherUseMinor: 0, balanceMinor: -1 * JT });
+    for (const item of [bank, owed]) expect(item.openingMinor + item.householdMinor + item.otherUseMinor + item.transferMinor).toBe(item.balanceMinor);
   });
 });

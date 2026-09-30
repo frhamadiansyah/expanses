@@ -15,6 +15,7 @@ const item = (over: Partial<ItemSummary> & { itemId: string }): ItemSummary & { 
   openingMinor: 0,
   householdMinor: 0,
   otherUseMinor: 0,
+  transferMinor: 0,
   monthEnds: [],
   tax: null,
   ...over,

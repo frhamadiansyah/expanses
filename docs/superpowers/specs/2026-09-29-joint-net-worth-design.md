@@ -153,12 +153,13 @@ type ItemSummary = {
   openingMinor: number;       // balance at period.start
   householdMinor: number;     // Household lines in the period, signed
   otherUseMinor: number;      // everything else in the period, signed
+  transferMinor: number;      // this phone's sides of transfers between partners in the period (§7.2), signed
   monthEnds: { month: string; balanceMinor: number }[];  // last 24 month-ends, for the chart and year-end
   tax: TaxRow | null;         // only when the group's mode is joint (§8.4)
 };
 ```
 
-Invariant (tested): `openingMinor + householdMinor + otherUseMinor = balanceMinor`. For a card,
+Invariant (tested): `openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor`. For a card,
 `available = limitMinor − balanceMinor`, so the partner's limit bar always adds up (the "where did 1 jt go" problem).
 
 `TaxRow` is the item's row of the harta or utang list as `coretaxInputsFor` builds it for the latest finished tax year
@@ -348,8 +349,17 @@ sheet is still drawn, those rows in their own currency and every total over them
 `paid_from_owner`: a purchase is listed when both name this item and its owner (paid by the partner or by the owner
 herself); one naming the item under another owner is left out. The page also lists the live `member_transfer`s of the
 period between the item and one of the viewer's own items (§7.2), as "To you: Mandiri Tabungan −5.000.000" / "From
-you: … +…", the viewer's side named by its local account name; a transfer between the owner and a third member is not
-listed. Transfers are never flagged "not yet on her phone" and the bar does not subtract them.
+you: … +…", the viewer's side named by its local account name, with its note; a transfer between the owner and a
+third member is not listed. Each amount is in the item's own sense, like every figure on its page: an asset + for money
+in and − for money out; a debt − for money in (owed less) and + for money out (owed more).
+
+*Correction (wave 4 review round 1, controller ruling):* so a transfer is never counted twice, the owner's summary
+splits them out of other use: `transferMinor` is the period's movements on the item whose transaction is one of this
+phone's `member_transfer` sides (`member_transfer_postings`), in the item's currency and sense, and the invariant is
+`opening + household + otherUse + transfer = balance`. The card bar's other segment is `otherUse + transfer`. The page
+lists the viewer's transfers, then one "Other transfers · total only" row — `transferMinor` less the listed ones dated
+on or before `asOf` in the item's currency — only when that is not zero. Transfers are never flagged "not yet on her
+phone" and the bar does not subtract them. A received summary without a whole-number `transferMinor` reads it as 0.
 
 ### 8.4 Tax report
 
@@ -387,7 +397,7 @@ listed. Transfers are never flagged "not yet on her phone" and the bar does not 
     estimate, a security price for every holding of it, a holding's link, card terms, an asset profile; task 5's share
     setting should call it too).
   - **Valued assets.** A price or estimate moves the value without a ledger line; that change counts as other use, so
-    `openingMinor + householdMinor + otherUseMinor = balanceMinor` still holds.
+    `openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor` still holds.
   - **Restored backup.** At open the group log goes `needs_invite` like the workspace (S8.7). Once the workspace is
     rejoined, any group member's device re-admits the phone (`admitToGroupLog`, as for a new device). The phone then
     clears its copy of the group log, pulls it from the first entry, and sends every shared item (`nw_sent` cleared).
@@ -402,7 +412,7 @@ listed. Transfers are never flagged "not yet on her phone" and the bar does not 
 
 Money and merge logic test-first; property tests with `fast-check`.
 
-- **Summary maths:** `openingMinor + householdMinor + otherUseMinor = balanceMinor` for random ledgers, cards and
+- **Summary maths:** `openingMinor + householdMinor + otherUseMinor + transferMinor = balanceMinor` for random ledgers, cards and
   periods; a card's `limitMinor − balanceMinor` is its available.
 - **Privacy:** a capture-harness check that no op in the group log or workspace outbox carries a private line's
   amount, description or id, or any `accountId`; a `hidden` item emits nothing; a member outside the group cannot

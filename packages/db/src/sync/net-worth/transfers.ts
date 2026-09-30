@@ -239,22 +239,26 @@ export async function itemTransfers(
   itemId: string,
   period: { start: string; end: string },
 ): Promise<ItemTransfer[]> {
-  const rows = await database.db.values<[string, string, number, string, string | null, string, string]>(sql`
-    SELECT transfer_id, occurred_on, amount_minor, currency, description, from_json, to_json FROM member_transfers
-    WHERE book_id = ${groupBookId} AND void = 0 AND occurred_on >= ${period.start} AND occurred_on <= ${period.end}
-    ORDER BY occurred_on, transfer_id`);
+  // One read: the period filter lives here and only here (the page does not filter again), and the other side's local
+  // name comes with it. `CASE WHEN json_valid` guards json_extract, so a malformed row is skipped, never an error.
+  const fromItem = sql`CASE WHEN json_valid(m.from_json) THEN json_extract(m.from_json, '$.itemId') END`;
+  const toItem = sql`CASE WHEN json_valid(m.to_json) THEN json_extract(m.to_json, '$.itemId') END`;
+  const rows = await database.db.values<[string, string, number, string, string | null, string, string, string | null]>(sql`
+    SELECT m.transfer_id, m.occurred_on, m.amount_minor, m.currency, m.description, m.from_json, m.to_json, a.name
+    FROM member_transfers m
+    LEFT JOIN nw_item_map im ON im.group_book_id = m.book_id
+      AND im.item_id = CASE WHEN ${fromItem} = ${itemId} THEN ${toItem} ELSE ${fromItem} END
+    LEFT JOIN accounts a ON a.id = im.account_id
+    WHERE m.book_id = ${groupBookId} AND m.void = 0 AND m.occurred_on >= ${period.start} AND m.occurred_on <= ${period.end}
+      AND (${fromItem} = ${itemId} OR ${toItem} = ${itemId})
+    ORDER BY m.occurred_on, m.transfer_id`);
   const out: ItemTransfer[] = [];
-  for (const [transferId, occurredOn, amountMinor, currency, description, fromJson, toJson] of rows) {
+  for (const [transferId, occurredOn, amountMinor, currency, description, fromJson, toJson, name] of rows) {
     const from = sideOf(fromJson);
     const to = sideOf(toJson);
     if (!from || !to) continue;
-    const direction = from.itemId === itemId ? 'out' : to.itemId === itemId ? 'in' : null;
-    if (!direction) continue;
-    const counterpart = direction === 'out' ? to : from;
-    const [named] = await database.db.values<[string]>(sql`
-      SELECT a.name FROM nw_item_map m JOIN accounts a ON a.id = m.account_id
-      WHERE m.item_id = ${counterpart.itemId} AND m.group_book_id = ${groupBookId}`);
-    out.push({ transferId, occurredOn, amountMinor: Number(amountMinor), currency, description, direction, counterpart, counterpartName: named?.[0] ?? null });
+    const direction = from.itemId === itemId ? 'out' : 'in';
+    out.push({ transferId, occurredOn, amountMinor: Number(amountMinor), currency, description, direction, counterpart: direction === 'out' ? to : from, counterpartName: name ?? null });
   }
   return out;
 }

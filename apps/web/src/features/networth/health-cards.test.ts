@@ -148,6 +148,7 @@ describe('ratioInputs (joint net worth §8.2: health ratios use the household to
     openingMinor: 400_000_000,
     householdMinor: 0,
     otherUseMinor: 0,
+    transferMinor: 0,
     monthEnds: [],
     tax: null,
   };
