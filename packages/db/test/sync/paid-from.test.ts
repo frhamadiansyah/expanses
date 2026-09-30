@@ -17,7 +17,7 @@ import {
   setShareSetting,
 } from '../../src/index';
 import { applyChangeSet } from '../../src/sync/apply';
-import { captureConfigOf } from '../../src/sync/capture';
+import { SyncEngine } from '../../src/sync/engine';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf, receivedItems } from '../../src/sync/net-worth/summaries';
 import { type ChangeSet, SyncTransportError } from '../../src/sync/types';
@@ -183,8 +183,9 @@ describe('paid with the other’s item (task 7)', () => {
     expect(result.groupError).toBeDefined();
     expect(await moneySide(s.rina, (await headOf(s.rina.database, lineage))!)).toEqual([s.card]);
     s.rina.transport.pull = pull;
-    // The app is closed and opened again: whatever it held in memory is gone.
-    (captureConfigOf(s.rina.database) as { pendingSummaries?: Set<string> }).pendingSummaries?.clear();
+    // The app is closed and opened again: a fresh engine over the same database, nothing kept in memory. What the
+    // failed sync still owes is in the database itself (`addPendingSummaryAccountsTx`).
+    s.rina.engine = new SyncEngine(s.rina.database, s.rina.transport, s.rina.keys, undefined, { appVersion: '0.3.0' });
     await settle(s.home);
     const cardSummary = (await receivedItems(s.andi.database, s.groupBookId)).find((item) => item.itemId === s.cardItem);
     expect(cardSummary).toMatchObject({ balanceMinor: 300_000_00, householdMinor: 300_000_00 });

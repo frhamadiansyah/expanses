@@ -167,7 +167,8 @@ export function sharedItemView(
     chart: chartOf(item),
     lines,
     transfers,
-    otherTransfers: withYou ? otherTransfersOf(item, withYou.transfers, withYou.me) : otherTransfersOf(item, [], ''),
+    // No list of the transfers with you to compare against: no "Other transfers" figure it cannot vouch for (final review item 10).
+    otherTransfers: withYou ? otherTransfersOf(item, withYou.transfers, withYou.me) : null,
     otherUse,
     bar,
     details: {

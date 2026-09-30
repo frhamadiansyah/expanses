@@ -226,6 +226,12 @@ describe('transfers are counted once (wave 4 review, finding 1)', () => {
     expect(view.otherTransfers).toBeNull();
   });
 
+  it('with no transfer list to compare against (withYou = null), no "Other transfers" row is claimed (final review item 10)', () => {
+    const view = sharedItemView({ ...bank, transferMinor: -5_000_000, transfers: [{ transferId: 't1', minor: -5_000_000 }] }, [], 'Rina');
+    expect(view.transfers).toEqual([]);
+    expect(view.otherTransfers).toBeNull();
+  });
+
   it('the card bar fills to what is owed: From earlier, Household, other use (final review item 3)', () => {
     const bar = sharedItemView(card, [], 'Rina').bar!;
     // Owes 3 jt of a 10 jt limit: 30% filled, 7 jt available.
