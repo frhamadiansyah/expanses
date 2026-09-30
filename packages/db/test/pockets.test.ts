@@ -11,6 +11,8 @@ import {
   getAssetProfile,
   listAccounts,
   makeMultiCurrency,
+  getShareSetting,
+  setShareSetting,
   nativeBalances,
   netWorthAt,
   openCashAccount,
@@ -133,6 +135,21 @@ describe('a second currency in a plain account', () => {
     });
     return { bca, lunch };
   };
+
+  it('keeps its say in joint net worth: the new parent and pocket take the setting it had, not "Not reviewed"', async () => {
+    const { bca } = await current();
+    await setShareSetting(database, bca.id, 'total');
+    const { parent, pocket } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD' });
+    expect(await getShareSetting(database, parent.id)).toBe('total');
+    expect(await getShareSetting(database, pocket.id)).toBe('total');
+    expect(await getShareSetting(database, bca.id)).toBe('total');
+  });
+
+  it('writes no setting for an account that was never reviewed', async () => {
+    const { bca } = await current();
+    const { parent } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD' });
+    expect(await getShareSetting(database, parent.id)).toBeNull();
+  });
 
   it('keeps the account as its first pocket, with every entry and its balance, under a parent that takes its name', async () => {
     const { bca, lunch } = await current();

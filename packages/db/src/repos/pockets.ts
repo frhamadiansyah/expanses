@@ -7,6 +7,7 @@ import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
 import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId, writeAccountAuditTx } from './accounts';
 import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
+import { carryShareSettingTx } from './net-worth-sharing';
 
 export interface PocketInput {
   currency: string;
@@ -170,6 +171,7 @@ export async function makeMultiCurrency(
       parentId: parent.id,
       sortOrder: 1,
     });
+    await carryShareSettingTx(tx, account.id, [parent.id, pocket.id]);
     return { parent, pocket };
   });
 }
