@@ -2,9 +2,9 @@ import { monthRange } from '@expanses/core';
 import { categoryTotalsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
-import { useAccounts } from '../../lib/queries';
+import { useAccounts, useCategoryColours } from '../../lib/queries';
 import { Card, Money } from '../../ui';
-import { categoryColour } from './category-colours';
+import { chartColour } from './category-colours';
 
 const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 
@@ -17,6 +17,7 @@ const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / w
 export function IncomeFlow({ month }: { month: string }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
+  const chosen = useCategoryColours().data;
   const { from, to } = monthRange(month);
   const spending = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, 'expense', month],
@@ -70,7 +71,7 @@ export function IncomeFlow({ month }: { month: string }) {
           y += thickness + 4;
           const fromY = 12 + (top / height) * inHeight + thickness / 2;
           const toY = top + thickness / 2;
-          const colour = categoryColour(band.id);
+          const colour = chartColour(band.id, chosen);
           return (
             <g key={band.id}>
               <path

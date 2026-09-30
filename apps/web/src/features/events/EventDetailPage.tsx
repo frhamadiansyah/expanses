@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'rea
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   DestructiveRow,
@@ -28,7 +28,7 @@ import { coverTarget, isNothingLeft } from './buy-item';
 import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { BudgetGauge } from '../transactions/BudgetGauge';
 import { ShareLine } from '../transactions/CategoryLines';
-import { categoryColour } from '../transactions/category-colours';
+import { chartColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { buildRows } from '../transactions/list-model';
@@ -93,6 +93,7 @@ export function EventDetailPage() {
   const suggestions = useEventSuggestions(eventId, openTab);
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
+  const chosenColours = useCategoryColours().data;
   // Spending recorded into an event is paid with something, so a locked deposit is no answer.
   const money = moneyHolders(accounts).filter((a) => canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
@@ -312,7 +313,7 @@ export function EventDetailPage() {
   const donut = (
     <div data-testid="event-total">
       <Donut
-        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: categoryColour(line.categoryId ?? 'none') }))}
+        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: chartColour(line.categoryId ?? 'none', chosenColours) }))}
         // What went out, not the net: the slices are what the categories spent, and a slice may never be longer
         // than the ring it is drawn on. The middle stays the event's own total, with the difference said under it.
         totalMinor={whole}
@@ -502,7 +503,7 @@ export function EventDetailPage() {
               {rows.map((row) => (
                 <div key={row.categoryId ?? 'none'} className="flex min-h-12 flex-col justify-center py-2.5">
                   <ShareLine
-                    colour={categoryColour(row.categoryId ?? 'none')}
+                    colour={chartColour(row.categoryId ?? 'none', chosenColours)}
                     name={row.categoryId === null ? row.name : planName(row.categoryId)}
                     // Clamped: a category whose refunds outweigh its purchases still cannot have spent less than
                     // nothing. What came back is named under the ring, on the page that can explain it.

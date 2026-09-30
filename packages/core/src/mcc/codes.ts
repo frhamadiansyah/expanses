@@ -989,3 +989,37 @@ export const MCC_NAMES: Readonly<Record<string, string>> = {
 export function mccName(code: string): string | null {
   return MCC_NAMES[code] ?? null;
 }
+
+/** 3000–3999: codes for one named airline, car-rental firm or hotel chain each, not a kind of merchant. */
+const isBrandCode = (code: string) => code >= '3000' && code <= '3999';
+
+export interface MccMatch {
+  code: string;
+  name: string;
+}
+
+/**
+ * The codes worth offering for what is typed into a merchant category code field. Digits are the start of a code
+ * ("49" offers 4900 and its neighbours); words are looked for in the names, every word somewhere in the name. Names
+ * where the typed words start a word come first ("rest" finds Restaurants before Forest), then by code — and the
+ * general codes before the 3000–3999 block, where each code is one airline, car-rental firm or hotel chain, so
+ * "airline" leads with 4511 Airlines, Air Carriers rather than a page of single carriers. Nothing for an
+ * empty field.
+ */
+export function searchMccs(typed: string, limit = 8): MccMatch[] {
+  const text = typed.trim().toLowerCase();
+  if (!text) return [];
+  const all = Object.entries(MCC_NAMES).map(([code, name]) => ({ code, name }));
+  if (/^\d+$/.test(text)) return all.filter((m) => m.code.startsWith(text)).slice(0, limit);
+  const words = text.split(/\s+/);
+  const scored = all
+    .map((m) => {
+      const name = m.name.toLowerCase();
+      if (!words.every((w) => name.includes(w))) return null;
+      const starts = words.filter((w) => new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(name)).length;
+      return { m, starts, brand: isBrandCode(m.code) };
+    })
+    .filter((x): x is { m: MccMatch; starts: number; brand: boolean } => x !== null)
+    .sort((a, b) => Number(a.brand) - Number(b.brand) || b.starts - a.starts || a.m.code.localeCompare(b.m.code));
+  return scored.slice(0, limit).map((x) => x.m);
+}

@@ -192,6 +192,22 @@ async function writeSetting(db: Db, accountId: string, setting: ShareSetting): P
     ON CONFLICT (account_id) DO UPDATE SET setting = excluded.setting`);
 }
 
+/**
+ * An account that becomes one with pockets keeps its say in joint net worth: the new parent (which the item's row now
+ * is) and the new pocket take the setting the account had, rather than reading "Not reviewed" as if never asked. Only
+ * copied when there is one; nothing is written for an account that was never reviewed.
+ */
+export async function carryShareSettingTx(tx: Tx, fromAccountId: string, toAccountIds: readonly string[]): Promise<void> {
+  if (!(await tableExists(tx, 'nw_share_settings'))) return;
+  const [row] = await tx.values<[string]>(sql`SELECT setting FROM nw_share_settings WHERE account_id = ${fromAccountId}`);
+  const setting = row?.[0] as ShareSetting | undefined;
+  if (!setting) return;
+  for (const id of toAccountIds) {
+    await writeSetting(tx, id, setting);
+    await afterShareSettingChanged(tx, id);
+  }
+}
+
 const JOINT_FORBIDS_HIDDEN = 'Your household files with one tax ID, so every item is in the joint report.';
 
 /** Sets one item's setting. `hidden` is refused while the active group files jointly (D7). */

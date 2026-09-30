@@ -361,7 +361,7 @@ test('every row on the card is big enough for a thumb', async ({ page }) => {
   }
 });
 
-test('Paid with adds an account on the way, and the transaction comes back as typed with it picked', async ({ page }) => {
+test('Paid with adds an account as a step of its own sheet, and the transaction keeps what was typed', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -372,23 +372,50 @@ test('Paid with adds an account on the way, and the transaction comes back as ty
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByLabel('Note').fill('Superindo');
 
-  // Not on the list yet: the list's own last row opens New account, and its way back names where it came from.
+  // Not on the list yet: the list's own last row turns the same sheet into New account — no page, no second sheet.
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
-  await expect(page).toHaveURL(/\/accounts\/new/);
-  await expect(page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first()).toBeVisible();
-  await page.getByRole('button', { name: /^Current account(\b|$)/ }).click();
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Jago');
-  await page.getByRole('button', { name: 'Add account' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const detent = await sheet.getAttribute('data-detent');
+  await sheet.getByRole('button', { name: 'Add account' }).click();
+  const step = page.getByRole('dialog', { name: 'New account' });
+  await expect(step).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page).toHaveURL(/\/transactions/);
+  await expect(step).toHaveAttribute('data-detent', detent!);
+  await expect(step.getByRole('button', { name: 'Paid with', exact: true })).toBeVisible();
+  const save = step.getByRole('button', { name: 'Save', exact: true });
+  // Nothing to save until it has a name.
+  await expect(save).toBeDisabled();
+  await expect(step.getByLabel('Type')).toBeVisible();
+  await step.getByLabel('Name', { exact: true }).pressSequentially('Jago');
+  await save.click();
 
   // Back on the form, as it was, with Jago paying.
-  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Superindo');
   await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('85.000');
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
 });
 
-test('backing out of New account returns to the transaction as typed, with nothing picked', async ({ page }) => {
+test('New account offers currencies over the keyboard, not in a floating bubble', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  const step = page.getByRole('dialog', { name: 'New account' });
+  const currency = step.getByLabel('Currency', { exact: true });
+  await currency.fill('JP');
+  // The phone's field carries no browser list, whose iOS bubble floated over the sheet's title.
+  await expect(currency).not.toHaveAttribute('list');
+  const strip = page.getByRole('listbox', { name: 'Currencies' });
+  await strip.getByRole('option', { name: 'JPY, Japanese Yen' }).click();
+  await expect(currency).toHaveValue('JPY');
+  await expect(currency).toBeFocused();
+  await expect(strip).toHaveCount(0);
+});
+
+test('‹ out of New account returns to the list, and makes nothing', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -396,10 +423,15 @@ test('backing out of New account returns to the transaction as typed, with nothi
   await form.getByLabel('Note').fill('Parking');
   await form.getByRole('button', { name: 'Paid with' }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
-  await expect(page).toHaveURL(/\/accounts\/new/);
+  const step = page.getByRole('dialog', { name: 'New account' });
+  await step.getByLabel('Name', { exact: true }).fill('Never saved');
 
-  await page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first().click();
-  await expect(page).toHaveURL(/\/transactions\/new/);
+  await step.getByRole('button', { name: 'Paid with', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Never saved' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(form.getByLabel('Note')).toHaveValue('Parking');
   await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA');
 });
@@ -412,8 +444,12 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
   const form = addForm(page);
   await form.getByRole('button', { name: 'Paid with' }).click();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  const search = sheet.getByRole('textbox', { name: 'Search Paid with' });
+  const search = sheet.getByRole('searchbox', { name: 'Search Paid with' });
 
+  // No field on the list until ⌕ in the header asks for one.
+  await expect(search).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(search).toBeFocused();
   await search.fill('jago');
   await expect(sheet.getByRole('button', { name: 'Jago Syariah', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
@@ -466,18 +502,36 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
 
+  // The sheet stands at one height, as an iOS sheet does: switching the tab does not move its top edge.
+  const top = (await sheet.boundingBox())!.y;
   // Credit cards: only cards, and the last row adds a card.
   await tabs.getByRole('radio', { name: 'Credit cards' }).click();
+  expect((await sheet.boundingBox())!.y).toBe(top);
   await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Add credit card' })).toBeVisible();
 
-  // A search looks across both, under their headings, whatever tab is open; the ✕ clears it.
-  await sheet.getByRole('textbox', { name: 'Search Paid with' }).fill('bca');
+  // ⌕ in the header puts the search where the tabs were; it looks across both, under their headings. Its ✕ closes
+  // it, and the tab that was open comes back.
+  const list = sheet.getByTestId('payment-sections');
+  const before = (await list.boundingBox())!.y - (await sheet.boundingBox())!.y;
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(tabs).toHaveCount(0);
+  // The field takes the tabs' own row, so the list does not move, and the sheet stays at the detent it was left at;
+  // only one ✕ is on the sheet, the field's.
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  await expect.poll(async () => (await list.boundingBox())!.y - (await sheet.boundingBox())!.y).toBe(before);
+  // And the field spans the row, edge to edge with the list under it.
+  const pill = sheet.getByRole('searchbox', { name: 'Search Paid with' }).locator('xpath=..');
+  expect(Math.round((await pill.boundingBox())!.width)).toBe(Math.round((await list.boundingBox())!.width));
+  await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+  await sheet.getByRole('searchbox', { name: 'Search Paid with' }).fill('bca');
   await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();
   await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
-  await sheet.getByRole('button', { name: 'Clear search' }).click();
-  await expect(sheet.getByRole('textbox', { name: 'Search Paid with' })).toHaveValue('');
+  await sheet.getByRole('button', { name: 'Close search' }).click();
+  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+  await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
 
   // Nothing chosen yet, so nothing is marked.
@@ -491,7 +545,7 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toHaveAttribute('aria-current', 'true');
 });
 
-test('Add credit card on the Credit cards tab opens the card form, and the card comes back picked', async ({ page }) => {
+test('Add credit card on the Credit cards tab is a step of the sheet, and the card comes back picked', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -503,15 +557,22 @@ test('Add credit card on the Credit cards tab opens the card form, and the card 
   await expect(sheet.getByText('No credit cards yet.')).toBeVisible();
   await sheet.getByRole('button', { name: 'Add credit card' }).click();
 
-  // Straight to the card's own form, not the list of debts.
-  await expect(page).toHaveURL(/\/debts\/new/);
-  await page.getByLabel('Name', { exact: true }).fill('UOB PRVI');
-  await page.getByLabel('Last 4 digits').fill('3310');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  // Straight to the card's own form, in the same sheet.
+  const step = page.getByRole('dialog', { name: 'New credit card' });
+  await expect(step).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(step.getByRole('button', { name: 'Add card' })).toHaveCount(0);
+  await step.getByLabel('Name', { exact: true }).fill('UOB PRVI');
+  await step.getByLabel('Last 4 digits').fill('3310');
+  await step.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
+  // Picked as the card row is: the sheet opens on Credit cards with it marked.
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await expect(sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
+  await expect(sheet.getByRole('button', { name: /^UOB PRVI/ })).toHaveAttribute('aria-current', 'true');
 });
 
 test('Note offers past notes over the keyboard, and a pick brings its category', async ({ page }) => {
@@ -555,4 +616,46 @@ test('a note typed out in full brings its category on leaving Note, but never ov
   await note.fill('Kopi Kenangan');
   await note.blur();
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
+});
+
+test('Paid with opens at the medium detent, drags up to large and back, and closes when pulled well down', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  const handle = sheet.getByTestId('sheet-drag');
+  const drag = async (dy: number) => {
+    const box = (await handle.boundingBox())!;
+    const x = box.x + 40;
+    const y = box.y + 10;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step += 1) await page.mouse.move(x, y + (dy * step) / 12);
+    await page.mouse.up();
+  };
+
+  await drag(-300);
+  await expect(sheet).toHaveAttribute('data-detent', 'large');
+  await drag(300);
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  // Let the sheet settle at its detent before tapping in its header.
+  await page.waitForTimeout(400);
+  // A tap on the header's buttons is still a tap, and opening the search leaves the sheet where it was.
+  await sheet.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toBeVisible();
+  await expect(sheet).toHaveAttribute('data-detent', 'medium');
+  await sheet.getByRole('button', { name: 'Close search' }).click();
+  await drag(700);
+  await expect(sheet).toHaveCount(0);
+});
+
+test('Select category ends in Manage categories, which opens the Categories page', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  await addForm(page).getByRole('button', { name: /^Category/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Select category' });
+  await sheet.getByRole('link', { name: 'Manage categories' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page).toHaveURL(/\/categories$/);
 });

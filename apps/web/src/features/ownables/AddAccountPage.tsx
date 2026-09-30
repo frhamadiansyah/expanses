@@ -1,7 +1,5 @@
 import type { MoneyAccountSubtype } from '@expanses/core';
-import { useRouter, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
-import { noteAddedAccount } from '../transactions/draft-handoff';
 import { CashAccountForm } from './CashAccountForm';
 import { handOverRows } from './catalogue-view';
 import { OwnablePicker } from './OwnablePicker';
@@ -15,16 +13,6 @@ import { OwnablePicker } from './OwnablePicker';
  */
 export function AddAccountPage() {
   const [chosen, setChosen] = useState<string | null>(null);
-  const { returnTo } = useSearch({ from: '/accounts/new' });
-  const router = useRouter();
-  // From New transaction: the account made is noted for Paid with, and back is the way to the form set aside.
-  const onCreated =
-    returnTo === 'transaction'
-      ? (accountId: string) => {
-          noteAddedAccount(accountId);
-          router.history.back();
-        }
-      : undefined;
   return (
     <OwnablePicker
       flow="account"
@@ -33,9 +21,8 @@ export function AddAccountPage() {
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('account')}
-      backLabel={returnTo === 'transaction' ? 'New transaction' : undefined}
     >
-      {chosen && <CashAccountForm key={chosen} item={chosen as MoneyAccountSubtype} onCreated={onCreated} />}
+      {chosen && <CashAccountForm key={chosen} item={chosen as MoneyAccountSubtype} />}
     </OwnablePicker>
   );
 }

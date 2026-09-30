@@ -3,7 +3,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { MovePage } from '../features/accounts/MovePage';
-import { PocketsPage } from '../features/accounts/PocketsPage';
+import { AccountPage } from '../features/accounts/AccountPage';
 import { BackupPage } from '../features/backup/BackupPage';
 import { CoverPage } from '../features/events/CoverPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
@@ -76,6 +76,23 @@ export interface TransactionsSearch {
   view?: 'list' | 'table';
 }
 
+/**
+ * A new transaction opened from somewhere that already knows part of it: an account's own page, whose Spend,
+ * Receive and Transfer open the form in that mode with the account filled in. `account` is the Paid with, Received
+ * into or From; `to` a transfer's To. Nothing given, the form opens as the tab bar's ＋ opens it.
+ */
+export interface NewTransactionSearch {
+  mode?: 'expense' | 'income' | 'transfer';
+  account?: string;
+  to?: string;
+}
+
+const newTransactionSearch = (search: Record<string, unknown>): NewTransactionSearch => ({
+  ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' ? { mode: search.mode } : {}),
+  ...(typeof search.account === 'string' && search.account !== '' ? { account: search.account } : {}),
+  ...(typeof search.to === 'string' && search.to !== '' ? { to: search.to } : {}),
+});
+
 export interface LendBorrowSearch {
   /** One person, when Lend & borrow is opened from their row on Debts. */
   person?: string;
@@ -142,7 +159,7 @@ const routeTree = rootRoute.addChildren([
   // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are
   // ordered here — asserted in `add-transaction.spec.ts` rather than trusted, since being wrong about it means
   // opening a receipt for a transaction called "new".
-  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — what the edit sheet's ⋯ reaches for what a sheet cannot hold.
@@ -178,15 +195,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/accounts/new',
-    component: AddAccountPage,
-    // Opened from New transaction's Paid with: saving goes back there with the account picked, not to Accounts.
-    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction' } => ({ returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined }),
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: AccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage, validateSearch: categoriesSearch }),
@@ -266,16 +277,7 @@ const routeTree = rootRoute.addChildren([
   }),
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/debts/new',
-    component: AddDebtPage,
-    // From Paid with's Credit cards tab: the card form opens straight away, and saving goes back to the transaction.
-    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction'; item?: string } => ({
-      returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined,
-      item: typeof search.item === 'string' ? search.item : undefined,
-    }),
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),

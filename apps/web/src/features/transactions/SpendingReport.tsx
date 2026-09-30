@@ -5,13 +5,13 @@ import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInOpenBook } from '../../lib/queries';
+import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
 import { Button, Card, Empty, Money } from '../../ui';
 import { SegmentedControl } from '../../ui/native';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { budgetProgress } from './budget-progress';
 import { BudgetGauge } from './BudgetGauge';
-import { categoryColour, OTHER_COLOUR, ringSlices, shade } from './category-colours';
+import { categoryColour, chartColour, OTHER_COLOUR, ringSlices, shade } from './category-colours';
 import { CapLine, ShareLine } from './CategoryLines';
 import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
@@ -131,8 +131,9 @@ function Ring({
 }) {
   // One tap on the chart, whichever way the list is at the time.
   const fold = showRows ? onFold : onAsk;
+  const chosen = useCategoryColours().data;
   const ordered = [...nodes].sort((a, b) => b.totalMinor - a.totalMinor);
-  const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })));
+  const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })), 8, chosen);
   const byId = new Map(ordered.map((node) => [node.id, node]));
   const slices: DonutSlice[] = shown.map((slice, index) => ({
     key: slice.item.id,
@@ -203,7 +204,7 @@ function Ring({
             <Row
               key={node.id}
               node={node}
-              colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : categoryColour(node.id))}
+              colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : chartColour(node.id, chosen))}
               totalMinor={totalMinor}
               month={month}
               currency={currency}
@@ -248,6 +249,7 @@ export function SpendingReport({
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
+  const chosen = useCategoryColours().data;
   const inOpenBook = useInOpenBook();
   // The categories are folded away until asked for: the list underneath is what most days are about.
   const [showAll, setShowAll] = useState(false);
@@ -375,7 +377,7 @@ export function SpendingReport({
           currency={currency}
           transactions={countIn(open)}
           showRows
-          colourOf={(_, index) => shade(categoryColour(open.id), index, Math.max(2, open.children.length))}
+          colourOf={(_, index) => shade(chartColour(open.id, chosen), index, Math.max(2, open.children.length))}
         />
       ) : (
         <>

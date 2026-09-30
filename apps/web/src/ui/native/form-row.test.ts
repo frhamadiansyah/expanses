@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROW_PAD_X, rowHeight } from './metrics';
-import { planFormRow, planSwitchRow } from './form-row';
+import { currencyMatches, planFormRow, planSwitchRow } from './form-row';
 
 describe('planFormRow', () => {
   it('shows a chosen picker value in the tint, with the chevron that says it reopens', () => {
@@ -58,5 +58,25 @@ describe('planSwitchRow', () => {
   it('draws no hint paragraph when there is no hint', () => {
     expect(planSwitchRow({ checked: false }).hint).toBe(false);
     expect(planSwitchRow({ checked: false, hint: true }).hint).toBe(true);
+  });
+});
+
+describe('currencyMatches', () => {
+  const codes = [
+    { code: 'IDR', name: 'Indonesian Rupiah' },
+    { code: 'INR', name: 'Indian Rupee' },
+    { code: 'JPY', name: 'Japanese Yen' },
+    { code: 'USD', name: 'US Dollar' },
+    { code: 'SGD', name: 'Singapore Dollar' },
+  ];
+  it('offers nothing before a letter is typed', () => {
+    expect(currencyMatches(codes, '')).toEqual([]);
+  });
+  it('puts codes starting with the letters before names', () => {
+    expect(currencyMatches(codes, 'i').map((c) => c.code)).toEqual(['IDR', 'INR']);
+    expect(currencyMatches(codes, 'd').map((c) => c.code)).toEqual(['USD', 'SGD']);
+  });
+  it('offers nothing once the code is whole', () => {
+    expect(currencyMatches(codes, 'JPY')).toEqual([]);
   });
 });

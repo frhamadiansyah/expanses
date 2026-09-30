@@ -1,7 +1,7 @@
 export { uuidv7 } from './ids';
 export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
-export { MCC_NAMES, mccName } from './mcc/codes';
-export { CATEGORY_COLOURS, CATEGORY_ICONS, categoryVisual, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
+export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
+export { CATEGORY_COLOURS, CATEGORY_ICONS, CATEGORY_PALETTE, categoryVisual, isPaletteColour, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
 export {
   type CategoryOption,
   type DayRow,
@@ -283,6 +283,7 @@ export {
   wholeSince,
 } from './goals/set-aside';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
+export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {
   borrowPostings,
   type DebtAccounts,
@@ -352,6 +353,8 @@ export {
   reconciliation,
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
+export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
+export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
 export {
   type ConverterHeader,
   ConverterError,

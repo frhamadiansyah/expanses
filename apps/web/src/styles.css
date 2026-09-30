@@ -99,3 +99,10 @@ body {
     scroll-margin-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
 }
+
+/* A field that suggests from a list (<datalist>) draws no arrow of its own, so what is typed sits flush right like
+   every other answer; the suggestions still come, over the keyboard on a phone. */
+input[list]::-webkit-calendar-picker-indicator,
+input[list]::-webkit-list-button {
+  display: none !important;
+}

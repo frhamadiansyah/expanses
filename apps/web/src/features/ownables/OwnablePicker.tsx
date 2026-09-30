@@ -31,7 +31,6 @@ export function OwnablePicker({
   chosen,
   onChoose,
   handOver = [],
-  backLabel,
   children,
 }: {
   flow: OwnableFlow;
@@ -44,8 +43,6 @@ export function OwnablePicker({
   chosen: string | null;
   onChoose: (id: string | null) => void;
   handOver?: HandOverRow[];
-  /** What the way back names, when the screen was opened from somewhere other than its own list. */
-  backLabel?: string;
   /** The chosen item's form. */
   children?: ReactNode;
 }) {
@@ -142,7 +139,7 @@ export function OwnablePicker({
        */}
       <PushedTitle
         title={more ? 'Something else' : title}
-        back={backLabel ?? BACK_TO[flow]}
+        back={BACK_TO[flow]}
         onBack={() => (canGoBack ? back() : router.history.back())}
         field={
           phone && showSearch ? (

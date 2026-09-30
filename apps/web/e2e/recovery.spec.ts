@@ -358,7 +358,7 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByRole('link', { name: 'Add account' }).click();
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
-  await page.getByLabel('Balance now').pressSequentially('1000000');
+  await page.getByLabel('Balance now', { exact: true }).pressSequentially('1000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Entered after the update', exact: true })).toBeVisible();
 

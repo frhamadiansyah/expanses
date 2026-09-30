@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
 import { categoryMark } from '../categories/CategoryIcon';
@@ -112,6 +112,7 @@ function LatestTransactions({
   currency: string;
   onSeeAll: () => void;
 }) {
+  const chosen = useCategoryColours().data;
   // One row per purchase, however many lines its split made, newest first.
   const purchases = new Map<string, { id: string; on: string; description: string; categoryId: string; amountMinor: number }>();
   for (const line of lines) {
@@ -126,7 +127,7 @@ function LatestTransactions({
       <InsetGroup>
         {latest.length === 0 && <InsetRow title="No purchases this cycle" subtitle="What this card pays for shows here." />}
         {latest.map((purchase) => {
-          const mark = categoryMark(purchase.categoryId, accounts);
+          const mark = categoryMark(purchase.categoryId, accounts, chosen);
           return (
             <InsetRow
               key={purchase.id}

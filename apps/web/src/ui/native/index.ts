@@ -13,12 +13,13 @@ export { CornerButton, LargeTitle, OverflowMenu, PushedTitle } from './NavTitle'
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { SearchPill } from './SearchPill';
-export { DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
+export { CurrencyCode, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
 export { Drawer, useDrawers } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { ActionLine, LineAction } from './ActionLine';
+export { ActionButtons, type RoundAction } from './ActionButtons';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
 /* The shared parts for a figure in another currency and a row that adds its children up (pockets, then securities). */
 export { ApproxFigure, GroupedRow } from './Grouped';

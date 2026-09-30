@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceSeries, crossing, dayBefore } from './balance-series';
+import { balanceSeries, crossing, dayBefore, pocketsSeries } from './balance-series';
 
 /*
  * The tile's line: a balance walked backwards through what moved, and the day it went below nothing. The arithmetic
@@ -67,5 +67,20 @@ describe('the tile’s balance line', () => {
     const series = balanceSeries({ todayMinor: -10, today: '2026-09-24', days: 1, flows: [{ on: '2026-09-24', minor: -40 }] });
     expect(series.map((day) => day.minor)).toEqual([30, -10]);
     expect(crossing(series)?.through).toBeCloseTo(30 / 40, 10);
+  });
+});
+
+describe('an account with pockets, day by day', () => {
+  it('adds each pocket’s own balance up at today’s rates, ending on the figure', () => {
+    const idr = [{ on: '2026-09-29', minor: 5_000_000 }, { on: '2026-09-30', minor: 5_000_000 }];
+    const usd = [{ on: '2026-09-29', minor: 0 }, { on: '2026-09-30', minor: 30_000 }];
+    expect(pocketsSeries([{ currency: 'IDR', series: idr }, { currency: 'USD', series: usd }], 'IDR', { USD: 16_250 })).toEqual([
+      { on: '2026-09-29', minor: 5_000_000 },
+      { on: '2026-09-30', minor: 9_875_000 },
+    ]);
+  });
+
+  it('draws nothing when a pocket that held money has no rate', () => {
+    expect(pocketsSeries([{ currency: 'USD', series: [{ on: '2026-09-30', minor: 30_000 }] }], 'IDR', {})).toBeNull();
   });
 });

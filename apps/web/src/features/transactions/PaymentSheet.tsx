@@ -1,10 +1,12 @@
-import { CreditCard, Landmark, Plus, Search, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { CreditCard, Landmark, Plus } from 'lucide-react';
+import { useId, useState } from 'react';
 import { cx } from '../../ui';
-import { type Segment, SegmentedControl } from '../../ui/native';
-import type { PaymentOption } from '@expanses/core';
+import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
+import type { MoneyAccountSubtype, PaymentOption } from '@expanses/core';
 import type { AccountRow, PaidWithItem } from '@expanses/db';
-import { Sheet } from '../../app/Sheet';
+import { Sheet, SheetSearchButton } from '../../app/Sheet';
+import { NewCardForm } from '../ownables/AddDebtPage';
+import { CashAccountForm } from '../ownables/CashAccountForm';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 
@@ -148,11 +150,12 @@ export function PaymentSheet({
   cards = false,
   onPick,
   onClose,
-  onAddAccount,
+  adding: addable,
   placeholders = new Set<string>(),
+  footer,
   shared,
 }: {
-  /** "Paid with", "Received into" or "From", as the mode names it. */
+  /** "Paid with", "Received into", "From" or "To", as the mode names it. */
   title: string;
   options: readonly PaymentOption[];
   accounts: readonly AccountRow[];
@@ -163,13 +166,19 @@ export function PaymentSheet({
   cards?: boolean;
   onPick: (option: PaymentOption) => void;
   onClose: () => void;
-  /** Offered at the foot of the list, for the account or card that is not on it yet: which kind the tab says. */
-  onAddAccount?: (kind: PaymentTab) => void;
+  /**
+   * Add account (or, on the Credit cards tab, Add credit card) at the foot of the list, for the one that is not on it
+   * yet. It is a step inside this sheet — ‹ back, ✓ save — and what it makes is handed to `onAdded`, already picked.
+   * `kinds` are the kinds of account this question can take, the first of them the one the form starts on.
+   */
+  adding?: { kinds: readonly MoneyAccountSubtype[]; onAdded: (accountId: string) => void };
   /**
    * Placeholder accounts (§4.4): who paid, never a way to pay. One stays on the list only as the current value of a
    * purchase another member paid for, and reads "Paid by <name>"; any other is dropped here, whatever the caller passed.
    */
   placeholders?: ReadonlySet<string>;
+  /** A line under the list, such as where to go instead for what is not on it. */
+  footer?: string;
   /**
    * Joint net worth §7.1: the partner's shared items that can pay, offered under "Rina's, shared" when the form's
    * workspace is the group's. `chosenItemId` is the one Paid with names now, which no own row then does.
@@ -186,8 +195,9 @@ export function PaymentSheet({
 }) {
   const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
   const [search, setSearch] = useState('');
+  // D of the search mockup: no field on screen until ⌕ in the header asks for one; it then takes the tabs' row.
+  const [finding, setFinding] = useState(false);
   const [tab, setTab] = useState<PaymentTab>(() => openingPaymentTab(options, accounts, chosenAccountId, chosenCardId));
-  const input = useRef<HTMLInputElement>(null);
   const searching = search.trim() !== '';
   // Tabs wherever a card can pay, even with no card yet: the Credit cards tab is where one is added.
   const tabbed = cards;
@@ -196,6 +206,11 @@ export function PaymentSheet({
   // Headings only where two kinds share the screen: a search across both, or a partner's shared items below one's own.
   const headed = sections.length > 1 || sharedSections.length > 0;
   const adding: PaymentTab = tabbed ? tab : 'accounts';
+  // New account / New credit card: a step this sheet moves to, not a sheet stacked on it, and not a page away.
+  const [making, setMaking] = useState<PaymentTab | null>(null);
+  const [kind, setKind] = useState<MoneyAccountSubtype>(() => addable?.kinds[0] ?? 'bank');
+  const [canSave, setCanSave] = useState(false);
+  const formId = useId();
   // The row already in Paid with: its icon sits in a filled circle, so the currencies stay where they are.
   const picked = shared?.chosenItemId
     ? undefined
@@ -278,13 +293,13 @@ export function PaymentSheet({
     );
   };
 
-  const addRow = onAddAccount ? (
+  const addRow = addable ? (
     <li key="add">
       <button
         type="button"
         onClick={() => {
-          onClose();
-          onAddAccount(adding);
+          setCanSave(false);
+          setMaking(adding);
         }}
         className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
       >
@@ -298,11 +313,69 @@ export function PaymentSheet({
     </li>
   ) : null;
 
+  const searchField = (
+    <SearchPill
+      value={search}
+      onChange={setSearch}
+      onClose={() => {
+        setSearch('');
+        setFinding(false);
+      }}
+      compact
+      placeholder="Search"
+      label={`Search ${title}`}
+    />
+  );
+
+  const stepBack = () => setMaking(null);
+  const added = (accountId: string) => {
+    addable?.onAdded(accountId);
+    onClose();
+  };
+  // The form is the sheet's step; the header's ✓ submits it by id, so the browser still checks what it requires.
+  const embedded = { formId, onCanSave: setCanSave };
+
+  // One sheet for the list and for the step, so moving between them keeps whatever detent it was left at.
   return (
-    <Sheet grouped title={title} onClose={onClose}>
-      {tabbed ? <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="mb-3" /> : null}
+    <Sheet
+      grouped
+      tall
+      title={making === 'cards' ? 'New credit card' : making ? 'New account' : title}
+      onClose={making ? stepBack : onClose}
+      {...(making
+        ? {
+            back: { label: title, run: stepBack },
+            confirm: { label: 'Save', disabled: !canSave, run: () => (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit() },
+          }
+        : {
+            closeHidden: finding,
+            heading: !tabbed && finding ? searchField : undefined,
+            action: (
+              <SheetSearchButton
+                open={finding}
+                onClick={() => {
+                  if (finding) setSearch('');
+                  setFinding((was) => !was);
+                }}
+              />
+            ),
+          })}
+    >
+      {making === 'cards' ? (
+        <NewCardForm embedded={embedded} onCreated={added} />
+      ) : making && addable ? (
+        <CashAccountForm item={kind} kinds={{ items: addable.kinds, onChange: setKind }} embedded={embedded} onCreated={added} />
+      ) : (
+      <>
+      {/* One row of a fixed 32 px for the tabs or the search that replaces them, so opening the search moves no row
+          below it. A sheet with no tabs takes the search in its header instead, in the title's place. */}
+      {tabbed ? (
+        <div className="mb-3 flex h-8 items-center">
+          {finding ? <div className="w-full">{searchField}</div> : <SegmentedControl segments={TABS} value={tab} onChange={(key) => setTab(key as PaymentTab)} label={`${title}: which kind`} className="w-full" />}
+        </div>
+      ) : null}
       {/* Scrolling the list puts the keyboard away, as a native list does, so the rows it covered can be reached. */}
-      <div onTouchMove={() => input.current?.blur()} data-testid="payment-sections">
+      <div onTouchMove={() => (document.activeElement as HTMLElement | null)?.blur()} data-testid="payment-sections">
         {sections.map((section, index) => (
           <section key={section.key} aria-label={section.title}>
             {headed ? (
@@ -329,34 +402,10 @@ export function PaymentSheet({
         {!searching && sections.length === 0 && sharedSections.length === 0 ? (
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{tab === 'cards' ? 'No credit cards yet.' : 'No accounts yet.'}</p>
         ) : null}
+        {footer ? <p className="px-4 pt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{footer}</p> : null}
       </div>
-      {/* The category picker's search, in the same place: pinned at the foot, where the thumb already is. */}
-      <div className="sticky bottom-0 px-1 pt-2 pb-1">
-        <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
-          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-          <input
-            ref={input}
-            aria-label={`Search ${title}`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search"
-            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-          />
-          {searching ? (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setSearch('');
-                input.current?.focus();
-              }}
-              className="ph-focus flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-ink-3)] text-[var(--ph-surface)]"
-            >
-              <X size={11} strokeWidth={3} aria-hidden />
-            </button>
-          ) : null}
-        </label>
-      </div>
+      </>
+      )}
     </Sheet>
   );
 }

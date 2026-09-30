@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
+import { setCurrency } from './currency-field';
 
 /**
  * Opening an account the way the app opens one now: the picker asks what it is, the form asks only that.
@@ -58,7 +59,7 @@ export interface NewAccount {
   interestRate?: string;
   /** The account the money moves from, for an opening balance that is a transfer. */
   from?: string;
-  /** A card's bank, and a loan's lender — the doors each ask for one. */
+  /** A card's bank, a fund account's RDN bank, and a loan's lender — the doors each ask for one. */
   bank?: string;
   lender?: string;
   /** A card's last four digits, when the walk says them rather than typing them into an extra. */
@@ -79,9 +80,15 @@ export async function openAccount(page: Page, o: NewAccount) {
    * exact — and anchored rather than loose, because several other rows say "cash" in their own subtitle. */
   const label = MONEY_KIND[o.subtype] ?? 'Current account';
   await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\b|$)`) }).click();
-  await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
-  if (o.balance) await page.getByLabel('Balance now').pressSequentially(o.balance);
+  // A fund account has no name of its own: it is called by its broker, and its bank is the RDN's.
+  if (o.subtype === 'fund') {
+    await page.getByLabel('Broker', { exact: true }).pressSequentially(o.name);
+    if (o.bank) await page.getByLabel('RDN bank', { exact: true }).pressSequentially(o.bank);
+  } else {
+    await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
+  }
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
+  if (o.balance) await page.getByLabel('Balance now', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);
   if (o.interestRate) await page.getByLabel('Interest rate').pressSequentially(o.interestRate);
@@ -146,7 +153,7 @@ export async function openCard(page: Page, o: NewCard) {
   await page.getByRole('button', { name: 'Credit card' }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.bank) await page.getByLabel('Bank').selectOption({ label: o.bank });
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);
   if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
@@ -178,7 +185,7 @@ export async function openLoan(page: Page, o: NewLoan) {
   await page.getByRole('button', { name: o.kind }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
-  if (o.currency && o.currency !== 'IDR') await page.getByLabel('Currency', { exact: true }).selectOption(o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
   if (o.lender) await page.getByLabel('Lender').fill(o.lender);
   if (o.interestRate) await page.getByLabel('Interest rate').fill(o.interestRate);
@@ -189,4 +196,21 @@ export async function openLoan(page: Page, o: NewLoan) {
   // Read as text, not as a link: the desk names the debt in its row, while the phone's list makes the whole
   // line the target and the name part of its label.
   await expect(page.getByText(o.name, { exact: true }).first()).toBeVisible();
+}
+
+/**
+ * Opens an account's or an asset's settings, behind the page's ⋯. A gear in the corner is still taken if a page
+ * draws one. Waits for whichever the page draws, then takes that way in.
+ */
+export async function openSettings(page: Page) {
+  const main = page.getByRole('main');
+  const gear = main.getByRole('link', { name: 'Settings', exact: true });
+  const more = main.getByRole('button', { name: 'More', exact: true });
+  await gear.or(more).first().waitFor();
+  if ((await gear.count()) > 0) {
+    await gear.click();
+    return;
+  }
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
 }

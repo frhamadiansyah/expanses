@@ -19,3 +19,16 @@ export function frankfurterFetcher(fetchImpl: typeof fetch = (input, init) => fe
     return { rate: match.rate, sourceDate: match.date };
   };
 }
+
+/**
+ * The world gold price: what one troy ounce of gold (XAU) is worth in `currency` on `onDate`, from the same service
+ * and in the same shape as the exchange rates. Plain `fetch`, as the rates are — it answers with CORS headers.
+ */
+export async function worldGoldPerOunce(currency: string, onDate: string, fetchImpl: typeof fetch = (input, init) => fetch(input, init)): Promise<number> {
+  const res = await fetchImpl(`https://api.frankfurter.dev/v2/rates?date=${onDate}&base=XAU&quotes=${currency}`);
+  if (!res.ok) throw new Error(`Frankfurter responded ${res.status}`);
+  const body = (await res.json()) as FrankfurterRate[];
+  const match = Array.isArray(body) ? body.find((r) => r.base === 'XAU' && r.quote === currency) : undefined;
+  if (!match || !(match.rate > 0)) throw new Error(`No world gold price in ${currency} for ${onDate}`);
+  return match.rate;
+}

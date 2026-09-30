@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { openTypes } from './accounts';
+import { openTypes, openSettings } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openDrawers } from './drawers';
-import { chooseTo } from './add-transaction';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -17,18 +16,18 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Balance now').fill('20000000');
-  // The balance is optional here, and the form says what happens to it.
-  await expect(page.getByText('Optional. Posted as an opening balance.')).toBeVisible();
+  await page.getByLabel('Balance now', { exact: true }).fill('20000000');
+  // The balance is optional here, and the group's footer says what happens to it.
+  await expect(page.getByText('The balance is optional; it is posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
   await openTypes(page);
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Time deposit' }).click();
-  await expect(page.getByText('When it matures, move the money to an account with a transfer.')).toBeVisible();
+  await expect(page.getByText('When it matures, take the money out with Withdraw on its page.')).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill('Deposito BCA 6 bulan');
-  await page.getByLabel('Balance now').fill('100000000');
+  await page.getByLabel('Balance now', { exact: true }).fill('100000000');
   // Every money account is asked which currency it holds, a deposit included: money abroad is ordinary.
   await expect(page.getByLabel('Currency', { exact: true })).toBeVisible();
   await page.getByLabel('Matures on').fill('2027-03-01');
@@ -43,12 +42,14 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped. The way in is
   // the deposit's own page, reached from the asset list: the Accounts list shows no tax line to click any more.
   await openDeposit(page, 'Deposito BCA 6 bulan');
-  await expect(page.getByText('Matures 1 Mar 2027 · 6,25%')).toBeVisible();
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('Matures 1 Mar 2027');
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('6,25%');
   await page.getByRole('button', { name: 'Change' }).click();
   await page.getByLabel('Matures on').fill('2027-12-01');
   await page.getByLabel('Interest rate').fill('6,75');
   await page.getByRole('button', { name: 'Save terms' }).click();
-  await expect(page.getByText('Matures 1 Dec 2027 · 6,75%')).toBeVisible();
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('Matures 1 Dec 2027');
+  await expect(page.getByTestId('deposit-maturity-card')).toContainText('6,75%');
 
   // Money you hold: net worth counts it, and the balance sheet calls it cash.
   await page.goto('/net-worth');
@@ -64,17 +65,18 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(payer).not.toContainText('Deposito BCA 6 bulan');
   await payer.getByRole('button', { name: 'Close' }).click();
 
-  // It comes back with a transfer, which is the only honest way out. A transfer may move money between any two
-  // money accounts, so the deposit that cannot pay for lunch is offered here.
+  // Nor is it a transfer's From: money leaves a deposit only from its own page, where the bank's terms are read.
   await form.getByRole('radio', { name: 'Transfer' }).click();
   await form.getByRole('button', { name: 'From' }).click();
-  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Deposito BCA 6 bulan', exact: true }).click();
-  // Exact, as every other transfer spec asks: rows now end in a "Receipt for …" ⓘ, and a loose "To" matches
-  // any description with "to" in it — "Deposito BCA 6 bulan", here.
-  await chooseTo(form, 'BCA Tahapan (IDR)');
-  await form.getByLabel('Amount', { exact: true }).fill('100000000');
-  await form.getByRole('button', { name: 'Save' }).click();
-  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'From' })).not.toContainText('Deposito BCA 6 bulan');
+
+  // Before its maturity, that is breaking it early: the whole of it lands in the current account.
+  await openDeposit(page, 'Deposito BCA 6 bulan');
+  await page.getByRole('button', { name: 'Break early' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Break early' });
+  await expect(sheet.getByTestId('money-out-lands')).toContainText('Lands in BCA Tahapan');
+  await sheet.getByRole('button', { name: 'Break early' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await page.goto('/accounts');
   await openTypes(page);
   await expect(
@@ -132,7 +134,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Digital wallet' }).click();
   await page.getByLabel('Name', { exact: true }).fill('GoPay');
-  await page.getByLabel('Balance now').fill('500000');
+  await page.getByLabel('Balance now', { exact: true }).fill('500000');
   await page.getByLabel('Balance as of').fill('2026-01-05');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'GoPay', exact: true })).toBeVisible();
@@ -171,8 +173,9 @@ test('the asset picker never offers money, whatever is typed into its search', a
 test('a code can be changed afterwards, in the words the form uses', async ({ page }) => {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Fund account' }).click();
-  await page.getByLabel('Name', { exact: true }).fill('RDN Mandiri Sekuritas');
-  await page.getByLabel('Balance now').fill('8000000');
+  // A fund account is called by its broker: it has no Name row of its own.
+  await page.getByLabel('Broker', { exact: true }).fill('RDN Mandiri Sekuritas');
+  await page.getByLabel('Balance now', { exact: true }).fill('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
   /* A broker's cash is on no money list — it cannot be paid from — so it is looked for where it is priced, below. */
@@ -183,10 +186,11 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
-  await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await openSettings(page);
+  // Saved as it is tapped, in the words it was chosen with.
+  await page.getByRole('button', { name: /^What it is/ }).click();
+  await page.getByRole('button', { name: 'Saving account', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
 
   // 0102 is a current *or* a saving account, and the code itself is what changed. A code is read on the report,
   // so that is where the change is checked — the same fact the Accounts list used to carry in a second line.
@@ -209,10 +213,12 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByLabel('What it is')).toHaveValue('savings');
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
+  await page.getByRole('button', { name: /^What it is/ }).click();
+  await expect(page.getByRole('button', { name: 'Saving account', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.
-  await page.getByLabel('What it is').selectOption({ label: 'Type a code instead' });
-  await expect(page.getByLabel('Tax report code')).toBeFocused();
+  await page.getByRole('button', { name: 'Type a code instead' }).click();
+  await expect(page.getByRole('textbox', { name: 'Code', exact: true })).toBeFocused();
 });

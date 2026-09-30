@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { categoryDefaultMcc, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, isMcc, isMccSpec, type MccSources, mccInRange, mccName, resolveMcc } from '../src/index';
+import { categoryDefaultMcc, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, isMcc, isMccSpec, type MccSources, mccInRange, mccName, resolveMcc, searchMccs } from '../src/index';
 
 const sources = (overrides: Partial<MccSources> = {}): MccSources => ({
   typed: null,
@@ -88,5 +88,29 @@ describe('category default MCC', () => {
     expect(DEFAULT_CATEGORY_MCCS['utilities.internet_provider']).toBe('4814');
     expect(DEFAULT_CATEGORY_MCCS['utilities.mobile_phone']).toBe('4814');
     expect(DEFAULT_CATEGORY_MCCS.fees).toBeUndefined();
+  });
+});
+
+describe('searchMccs', () => {
+  it('offers the codes a half-typed number could become', () => {
+    expect(searchMccs('4900')).toEqual([{ code: '4900', name: 'Electric, Gas, Sanitary and Water Utilities' }]);
+    expect(searchMccs('49').every((m) => m.code.startsWith('49'))).toBe(true);
+    expect(searchMccs('49').length).toBeGreaterThan(0);
+  });
+
+  it('finds codes by words in their names, ignoring case', () => {
+    const util = searchMccs('util').map((m) => m.code);
+    expect(util).toEqual(expect.arrayContaining(['4900', '5561', '7513']));
+    const eat = searchMccs('restaurants').map((m) => m.code);
+    expect(eat).toEqual(expect.arrayContaining(['5812', '5814']));
+    expect(searchMccs('fast food').map((m) => m.code)).toContain('5814');
+    // The general code leads the dozens named after one airline each.
+    expect(searchMccs('airline')[0]?.code).toBe('4511');
+  });
+
+  it('offers nothing for an empty field or a word no name has, and keeps to its limit', () => {
+    expect(searchMccs('   ')).toEqual([]);
+    expect(searchMccs('zzqx')).toEqual([]);
+    expect(searchMccs('5', 3)).toHaveLength(3);
   });
 });

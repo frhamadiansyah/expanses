@@ -1,4 +1,4 @@
-import { parseRate } from '@expanses/core';
+import { daysFrom, depositInterest, parseRate, termStart, type TermMonths } from '@expanses/core';
 
 /**
  * What a time deposit's terms read as, in one line.
@@ -41,3 +41,37 @@ export const rateInputText = (rateBps: number): string => (rateBps === 0 ? '' : 
 
 /** A typed percent into basis points, read by `parseRate`: "4,25" is 425, "12,5" is 1250. */
 export const rateBpsFrom = (text: string): number => Math.round(parseRate(text) * 100);
+
+export interface MaturityProgress {
+  /** How far through the term today is, 0 to 1: the bar on the deposit's card. */
+  fraction: number;
+  /** Days until the money comes back; 0 on the day and after it. */
+  daysLeft: number;
+  /** What the whole term pays on today's balance at the stored rate, before tax; 0 with no rate typed. */
+  interestMinor: number;
+}
+
+/**
+ * Where a deposit stands in its term: the bar from the day it started to the day it matures, the days left, and what
+ * the term pays. The start is the core's `termStart` — the stored one after a roll-over, otherwise dated back from the
+ * maturity by the term — so the bar and the maturity schedule never disagree about when this term began. The interest
+ * is `depositInterest` over the whole term, the same actual/365 estimate a withdrawal proposes.
+ */
+export function maturityProgress(
+  terms: { maturesOn: string; rateBps: number },
+  term: { termMonths: TermMonths; termStartedOn: string | null },
+  balanceMinor: number,
+  today: string,
+): MaturityProgress {
+  const startsOn = termStart({ maturesOn: terms.maturesOn, termMonths: term.termMonths, termStartedOn: term.termStartedOn, interestPaid: 'at_maturity', enabledOn: '' });
+  const length = daysFrom(startsOn, terms.maturesOn);
+  const gone = daysFrom(startsOn, today);
+  return {
+    fraction: length <= 0 ? 1 : Math.min(1, Math.max(0, gone / length)),
+    daysLeft: Math.max(0, daysFrom(today, terms.maturesOn)),
+    interestMinor: depositInterest(balanceMinor, terms.rateBps, length),
+  };
+}
+
+/** "12 days left", "1 day left", or "Matured" from the day itself. */
+export const daysLeftLabel = (days: number): string => (days <= 0 ? 'Matured' : `${days} ${days === 1 ? 'day' : 'days'} left`);

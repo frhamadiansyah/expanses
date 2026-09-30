@@ -26,7 +26,16 @@ export const READING_ROOM = PILL_HEIGHT + PILL_GAP;
  *
  * A month with no figure is stepped over rather than answered with an empty reading — there is nothing to say about it.
  */
-export function useChartReading(points: readonly (ChartPoint | null)[], width: number) {
+export function useChartReading(
+  points: readonly (ChartPoint | null)[],
+  width: number,
+  options: {
+    /** What the drawing is, for a screen reader. */
+    label?: string;
+    /** A mouse reads the drawing by passing over it, without a press — a desktop has no thumb to drag. */
+    hover?: boolean;
+  } = {},
+) {
   const [picked, setPicked] = useState<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const reading = picked === null ? null : (points[picked] ?? null);
@@ -47,7 +56,7 @@ export function useChartReading(points: readonly (ChartPoint | null)[], width: n
     svgProps: {
       role: 'group' as const,
       tabIndex: 0,
-      'aria-label': 'Net worth by month. Tap a month to read it, or use the arrow keys.',
+      'aria-label': options.label ?? 'Net worth by month. Tap a month to read it, or use the arrow keys.',
       /*
        * No focus ring and no tap flash: the drawing is read by tapping it, and a blue border around the whole chart in
        * answer to a tap is the phone's guess at what a tap meant, not this app's. What a keyboard gets instead is the
@@ -60,7 +69,10 @@ export function useChartReading(points: readonly (ChartPoint | null)[], width: n
         setScrubbing(true);
         pick(event);
       },
-      onPointerMove: (event: React.PointerEvent<SVGSVGElement>) => scrubbing && pick(event),
+      onPointerMove: (event: React.PointerEvent<SVGSVGElement>) => (scrubbing || (options.hover && event.pointerType === 'mouse')) && pick(event),
+      onPointerLeave: (event: React.PointerEvent<SVGSVGElement>) => {
+        if (options.hover && event.pointerType === 'mouse' && !scrubbing) setPicked(null);
+      },
       onPointerUp: () => setScrubbing(false),
       onPointerCancel: () => setScrubbing(false),
       onBlur: () => setScrubbing(false),

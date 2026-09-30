@@ -1,4 +1,4 @@
-import { isoDate, type PaymentOption, tradeRateNeeds } from '@expanses/core';
+import { CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
@@ -20,11 +20,10 @@ import {
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
@@ -35,7 +34,7 @@ import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
-import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
+import { assetKindTile } from '../ownables/catalogue-view';
 import { useActiveNetWorthGroup, usePaidWithItems } from '../sharing/net-worth-queries';
 import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
@@ -48,11 +47,10 @@ import { ChoiceSheet } from './ChoiceSheet';
 import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
-import { partnerChoice, partnerItemOfChoice, partnerTitle, partnerTransferSections } from './member-transfer';
+import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { clearStashedDraft, readStashedDraft, stashDraft } from './draft-handoff';
 import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -79,9 +77,6 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { 
     </>
   );
 }
-
-/** Which section of the balance sheet an account's bare subtype files under, for the drawing it wears. Money is the rest. */
-const SECTION_OF_SUBTYPE: Record<string, string> = { receivable: 'receivable', investment: 'invest', vehicle: 'movable', property: 'immovable' };
 
 /** The ‹ › steppers are 28px drawn; their target reaches the 44pt floor around them. */
 const TAP_REACH = { '--ph-tap-y': '8px', '--ph-tap-x': '4px' } as CSSProperties;
@@ -118,6 +113,8 @@ export function stepDay(iso: string, days: number): string {
 export function TransactionCard(props: {
   initial?: TransactionView;
   mode?: FormMode;
+  /** A new transaction's accounts, filled in before the form opens: the page it was opened from knows them. */
+  seed?: { moneyId?: string; toId?: string };
   onDone: () => void;
   full?: boolean;
   label?: string;
@@ -137,9 +134,16 @@ export function TransactionCard(props: {
   return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
 }
 
+/** Only ids this device holds: an address typed or kept from another workspace names nothing, and fills nothing in. */
+function seedIds(seed: { moneyId?: string; toId?: string } | undefined, accounts: readonly AccountRow[]): Partial<FormDraft> {
+  const known = (id: string | undefined) => (id && accounts.some((a) => a.id === id) ? id : '');
+  return { moneyId: known(seed?.moneyId), toId: known(seed?.toId) };
+}
+
 function CardBody({
   initial,
   mode,
+  seed,
   onDone,
   full,
   label,
@@ -150,6 +154,7 @@ function CardBody({
 }: {
   initial?: TransactionView;
   mode?: FormMode;
+  seed?: { moneyId?: string; toId?: string };
   onDone: () => void;
   full?: boolean;
   /** The form's accessible name, on a screen of its own where no sheet's title names it. */
@@ -184,29 +189,9 @@ function CardBody({
   // The placeholders among `accounts`: what the edited purchase names that this device's own list leaves out (§4.4).
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
-  // A new transaction set aside while an account was added for it comes back as typed, with that account picked
-  // when it can pay (or receive, or move) the way this transaction does.
-  const [handoff] = useState(() => (!initial && full ? readStashedDraft() : null));
-  useEffect(() => {
-    if (handoff) clearStashedDraft();
-  }, [handoff]);
-  const [draft, setDraft] = useState<FormDraft>(() => {
-    if (initial) return formFromTransaction(initial, accounts, bookId, photoIds);
-    if (!handoff) return { ...emptyForm(bookId), mode: mode ?? 'expense' };
-    const added = accounts.find((a) => a.id === handoff.addedAccountId);
-    const fits = handoff.draft.mode === 'transfer' ? canTransferWith : handoff.draft.mode === 'income' ? canReceiveInto : canPayWith;
-    return added && fits(added, '') ? { ...handoff.draft, moneyId: added.id, cardId: '' } : handoff.draft;
-  });
-  const navigate = useNavigate();
-  /**
-   * Off to New account — or, from the Credit cards tab, straight to a new credit card — with what is typed set aside;
-   * saving there, or going back, returns here with it.
-   */
-  const addAccount = (kind: 'accounts' | 'cards') => {
-    stashDraft(draft);
-    if (kind === 'cards') void navigate({ to: '/debts/new', search: { returnTo: 'transaction', item: 'credit_card' } });
-    else void navigate({ to: '/accounts/new', search: { returnTo: 'transaction' } });
-  };
+  const [draft, setDraft] = useState<FormDraft>(() =>
+    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts) },
+  );
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -248,7 +233,9 @@ function CardBody({
    * is bought through flows of their own. The account the row already names is kept, so an old row opens as saved.
    */
   const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
-  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId));
+  // A transfer's From also has to pair with the To already chosen: a broker's cash moves only with a current account.
+  const pairsWithTo = (a: AccountRow) => draft.mode !== 'transfer' || !toAccount || a.id === draft.moneyId || canTransferBetween(a, toAccount);
+  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId) && pairsWithTo(a));
   // A card is a way to pay, never somewhere money arrives or moves to.
   // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
   // Joint net worth §7.1: the partner's shared item Paid with names now, if any; its placeholder is then no row of its own.
@@ -397,21 +384,15 @@ function CardBody({
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
-  // Where a transfer may land, as the From list draws its own: accounts first, then cards and debts it can pay down.
-  // Only what this device lists: a placeholder the edited purchase names (useAccountsFor) is never a place money can
-  // be moved to (spec §4.4, fix round 1).
-  const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? []));
-  const transferGroups = [
-    { title: 'Accounts', kind: 'asset' as const },
-    { title: 'Credit cards & debts', kind: 'liability' as const },
-  ].map(({ title, kind }) => ({
-    title,
-    choices: landing.filter((a) => a.kind === kind).map((a) => {
-      // Each wears the drawing the Assets and Liabilities pages give its kind, so a scooter never reads as a bank.
-      const Glyph = kind === 'asset' ? assetKindTile(SECTION_OF_SUBTYPE[a.subtype] ?? 'liquid', a.subtype) : debtKindTile(a.subtype === 'loan' ? 'other_loans' : a.subtype);
-      return { value: a.id, label: a.name, caption: a.currency ?? undefined, glyph: <Glyph size={15} /> };
-    }),
-  }));
+  // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
+  // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never
+  // a time deposit or a loan with a person, which have flows of their own. And only what pairs with the From
+  // already chosen. Only what this device lists: a placeholder the edited purchase names (useAccountsFor) is never a
+  // place money can be moved to (spec §4.4, fix round 1). The account the row names is kept, so an old transfer
+  // opens as it was saved.
+  const landing = moneyHolders(transferTargets(accounts.filter((a) => listedIds.has(a.id)), assetValues.data ?? [])).filter(
+    (a) => a.id === draft.toId || (canTransferWith(a) && (!account || canTransferBetween(account, a))),
+  );
   /*
    * Every row of the card leads with a circle of the same size, so the lead column reads as one column. The rest
    * wear the kit's fill; a chosen category keeps its own colour, as it does everywhere else a category is drawn.
@@ -521,7 +502,7 @@ function CardBody({
             fillCategoryFromNote();
           }}
           placeholder="Note"
-          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
         />
       </span>
     </div>
@@ -935,24 +916,38 @@ function CardBody({
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'to' && (
-        <ChoiceSheet
+        // The same sheet From uses — search, the picked row marked, Add account at the foot — so both sides read alike.
+        <PaymentSheet
           title="To"
-          value={draft.partner?.side === 'to' ? partnerChoice(draft.partner.itemId) : draft.toId}
-          groups={[
-            ...transferGroups,
-            ...toPartners.map((section) => ({
-              title: section.title,
-              choices: section.items.map((item) => ({ value: partnerChoice(item.itemId), label: item.name, caption: item.currency, glyph: <Landmark size={15} /> })),
-            })),
-          ]}
-          footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
-          onPick={(value) => {
-            const itemId = partnerItemOfChoice(value);
-            const item = itemId ? (paidWith.data ?? []).find((i) => i.itemId === itemId) : undefined;
-            if (item) set({ toId: '', partner: partnerOf(item, 'to') });
-            else set({ toId: value, partner: draft.partner?.side === 'from' ? draft.partner : null });
-          }}
+          options={paymentOptions(landing, [])}
+          accounts={accounts}
+          chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
+          // One's own account clears a partner's item on this side; a partner on the From side stays.
+          onPick={(option) => set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null })}
+          // Joint net worth §7.2: the partner's shared items in the From's currency, a section of their own under the
+          // money one holds — not accounts of this person's, so the money-you-hold rule above does not judge them.
+          shared={
+            toPartners.length > 0
+              ? {
+                  items: toPartners.flatMap((section) => section.items),
+                  formBookId: draft.bookId,
+                  groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId,
+                  chosenItemId: draft.partner?.side === 'to' ? draft.partner.itemId : null,
+                  onPick: (item) => set({ toId: '', partner: partnerOf(item, 'to') }),
+                  title: (ownerName) => partnerTitle(ownerName, workspaceName),
+                }
+              : undefined
+          }
           onClose={() => setSheet(null)}
+          footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
+          adding={
+            initial
+              ? undefined
+              : {
+                  kinds: CASH_ITEMS.map((item) => item.id as MoneyAccountSubtype).filter((subtype) => canTransferWith({ id: '', kind: 'asset', subtype })),
+                  onAdded: (toId) => set({ toId }),
+                }
+          }
         />
       )}
       {sheet === 'goal' && (
@@ -975,14 +970,19 @@ function CardBody({
           chosenCardId={draft.cardId}
           cards={draft.mode === 'expense'}
           // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
-          onPick={(option) =>
+          onPick={(option) => {
+            const picked = byId.get(option.accountId);
+            // A To that cannot pair with the new From is no longer an answer (the From list already keeps them apart;
+            // this covers an old row opened with a pair made before the rule).
+            const unpaired = draft.mode === 'transfer' && picked && toAccount && !canTransferBetween(picked, toAccount);
             set({
               moneyId: option.accountId,
               cardId: option.cardId ?? '',
               paidFrom: placeholders.has(option.accountId) ? undefined : null,
               ...(draft.partner?.side === 'from' ? { partner: null } : {}),
-            })
-          }
+              ...(unpaired ? { toId: '' } : {}),
+            });
+          }}
           shared={
             draft.mode === 'expense'
               ? {
@@ -1005,8 +1005,16 @@ function CardBody({
                 : undefined
           }
           onClose={() => setSheet(null)}
-          // Only a new transaction on its own screen: an edit, or the card in a sheet, has nowhere to come back to.
-          onAddAccount={full && !initial ? addAccount : undefined}
+          // Only a new transaction: an edit changes what is there rather than making more. The kinds offered are the
+          // ones this question can name, so the account made is always one the row can then hold.
+          adding={
+            initial
+              ? undefined
+              : {
+                  kinds: CASH_ITEMS.map((item) => item.id as MoneyAccountSubtype).filter((subtype) => namedBy({ id: '', kind: 'asset', subtype }, '')),
+                  onAdded: (accountId) => set({ moneyId: accountId, cardId: '' }),
+                }
+          }
         />
       )}
       {sheet === 'category' && (

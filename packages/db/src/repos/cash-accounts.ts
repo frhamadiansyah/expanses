@@ -1,5 +1,5 @@
 import { cashItem, type MoneyAccountSubtype, transferLines } from '@expanses/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
@@ -45,6 +45,7 @@ export async function openCashAccountTx(tx: Db, ws: WorkspaceContext, input: Ope
   // Every row of CASH_ITEMS opens money; saying so is what narrows the catalogue's union for the compiler.
   if (behaviour.opens !== 'money') throw new AccountError(`${item.label} is not a money account`);
   if (behaviour.valuedBy === 'deposit' && !input.maturesOn) throw new AccountError('Say when the deposit matures');
+  if (behaviour.subtype === 'fund' && !input.parentId) await refuseSecondBrokerTx(tx, ws, input.name);
   const opening = input.openingBalanceMinor ?? 0;
   // Only a balance is worth asking about: nothing can move into an account opened at zero, a source or not.
   const source = input.sourceAccountId && opening !== 0 ? await fundingSourceTx(tx, ws, input.sourceAccountId, input.currency) : null;
@@ -97,4 +98,19 @@ async function fundingSourceTx(tx: Db, ws: WorkspaceContext, id: string, currenc
   if (row.currency !== currency) throw new AccountError(`${row.name} holds ${row.currency}; a ${currency} balance cannot come out of it`);
   if (!(SPENDABLE_SUBTYPES as readonly string[]).includes(row.subtype)) throw new AccountError(`${row.name} cannot move money; pick an account you can spend from`);
   return { id: row.id, name: row.name };
+}
+
+/**
+ * A fund account is one broker's RDN, and a broker opens one RDN per client: the account is called by its broker, so a
+ * second open one under the same name would be the same broker twice. Compared without case or outer spaces, since
+ * "stockbit sekuritas" typed is the Stockbit Sekuritas already there.
+ */
+async function refuseSecondBrokerTx(tx: Db, ws: WorkspaceContext, broker: string): Promise<void> {
+  const want = broker.trim().toLowerCase();
+  const open = await tx
+    .select({ name: accounts.name })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'fund'), isNull(accounts.archivedAt)));
+  const same = open.find((row) => row.name.trim().toLowerCase() === want);
+  if (same) throw new AccountError(`${same.name} already has a fund account. A broker keeps one RDN for you; add to that one.`);
 }

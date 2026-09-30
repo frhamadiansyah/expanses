@@ -1,7 +1,8 @@
 import { Info, Search } from 'lucide-react';
 import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react';
 import { cx } from '../index';
-import { type FormKind, planFormRow, planSwitchRow } from './form-row';
+import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
+import { KeyboardStrip } from './KeyboardStrip';
 import { type GroupChild, toneClass } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 /**
@@ -49,18 +50,21 @@ export function PickerRow({
   onOpen,
   position,
   hint,
+  disabled = false,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
   placeholder?: string;
   onOpen: () => void;
   hint?: ReactNode;
+  /** Greyed and inert: the answer still reads, but nothing opens — a code while the thing is kept off the report. */
+  disabled?: boolean;
 }) {
   const plan = planFormRow('picker', value, placeholder);
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      <button type="button" onClick={onOpen} className="ph-focus-inset flex w-full items-center gap-3" style={shell(false)}>
+      <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(false)}>
         <span className={LABEL}>{label}</span>
         <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
           <span className={cx('truncate text-right text-[15px] leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
@@ -86,11 +90,14 @@ export function TextRow({
   label,
   hint,
   info,
+  middle,
   position,
   className,
   ...props
 }: GroupChild & {
   label: string;
+  /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
+  middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
   hint?: ReactNode;
   /**
@@ -127,6 +134,7 @@ export function TextRow({
             {label}
           </label>
         )}
+        {middle}
         <input
           {...props}
           id={id}
@@ -163,13 +171,20 @@ export function TextRow({
 export function SelectRow({
   label,
   hint,
+  info,
   position,
   className,
   children,
   ...props
-}: GroupChild & { label: string; hint?: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
+}: GroupChild & {
+  label: string;
+  hint?: ReactNode;
+  /** What the choice means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
+  info?: ReactNode;
+} & SelectHTMLAttributes<HTMLSelectElement>) {
   const generated = useId();
   const id = props.id ?? generated;
+  const [explained, setExplained] = useState(false);
   const value = props.value === undefined || props.value === null ? '' : String(props.value);
   // The same decision `PickerRow` asks: an answer is drawn a shade darker than the prompt still waiting for one.
   const plan = planFormRow('picker', value);
@@ -179,9 +194,22 @@ export function SelectRow({
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
-        <label htmlFor={id} className={LABEL}>
-          {label}
-        </label>
+        <span className="flex shrink-0 items-center gap-[6px]">
+          <label htmlFor={id} className={LABEL}>
+            {label}
+          </label>
+          {info && (
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          )}
+        </span>
         <span
           className={cx(
             'relative flex min-w-0 flex-1 items-center justify-end gap-[6px]',
@@ -202,6 +230,7 @@ export function SelectRow({
         </span>
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }
@@ -278,9 +307,19 @@ export function SwitchRow({
   onChange,
   disabled = false,
   hint,
+  info,
   position,
-}: GroupChild & { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean; hint?: ReactNode }) {
+}: GroupChild & {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  hint?: ReactNode;
+  /** What the switch means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
+  info?: ReactNode;
+}) {
   const id = useId();
+  const [explained, setExplained] = useState(false);
   const plan = planSwitchRow({ checked, hint: hint !== undefined && hint !== null && hint !== false, disabled });
   return (
     <div className="relative">
@@ -288,9 +327,22 @@ export function SwitchRow({
       {/* The pill is the row's content, and 31 px of it inside the row's 44 leaves less air above and below than
           a line of text would: the padding is what keeps a switch row the height of every other row. */}
       <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
-        <label htmlFor={id} className={cx('min-w-0 flex-1 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
-          {label}
-        </label>
+        <span className="flex min-w-0 flex-1 items-center gap-[6px]">
+          <label htmlFor={id} className={cx('min-w-0 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
+            {label}
+          </label>
+          {info && (
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          )}
+        </span>
         <span
           className={cx(
             'ph-focus-within relative shrink-0 rounded-full transition-colors',
@@ -315,6 +367,7 @@ export function SwitchRow({
         </span>
       </div>
       {plan.hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }
@@ -359,3 +412,86 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
 
 /** The kinds this file draws, named so a caller can see the set is closed. */
 export const FORM_KINDS: readonly FormKind[] = ['picker', 'typed', 'static'];
+
+/**
+ * A currency typed as its three-letter code — no list of 160 to scroll. The field is only as wide as its code, so
+ * the › drawn after it by the caller sits right beside it. A code counts once all three letters are a known one;
+ * anything else goes back to the last good code when the field is left. While typing, a phone offers matching
+ * currencies over the keyboard and a desktop gets the browser's own list.
+ */
+export function CurrencyCode({
+  label,
+  value,
+  onChange,
+  codes,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (code: string) => void;
+  codes: readonly { code: string; name: string }[];
+  className?: string;
+}) {
+  const id = useId();
+  const listId = `${id}-codes`;
+  const [typed, setTyped] = useState<string | null>(null);
+  const known = (code: string) => codes.some((c) => c.code === code);
+  const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
+  const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
+  const sized = cx('text-[16px] leading-[20px] tracking-[0.5px] uppercase md:text-[15px]', className);
+  return (
+    <>
+      {/* As wide as the code it shows, so the caller's › sits right after it: an unseen copy sets the width. */}
+      <span className="inline-grid shrink-0">
+        <span aria-hidden className={cx('invisible col-start-1 row-start-1 whitespace-pre', sized)}>
+          {(typed ?? value) || 'IDR'}
+        </span>
+      <input
+        aria-label={label}
+        // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
+        // instead: iOS floats its list in a bubble that lands over the sheet's title, and keeps room for a
+        // suggestion button at the field's end that pushes the code off the right edge.
+        list={typed !== null && desktop ? listId : undefined}
+        value={typed ?? value}
+        onFocus={(e) => {
+          setTyped(value);
+          e.currentTarget.select();
+        }}
+        onChange={(e) => {
+          const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+          setTyped(next);
+          if (next.length === 3 && known(next)) onChange(next);
+        }}
+        onBlur={() => setTyped(null)}
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={3}
+        placeholder="IDR"
+        size={1}
+        className={cx('ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent placeholder:text-[var(--ph-ink-3)]', sized)}
+      />
+      </span>
+      <KeyboardStrip
+        label="Currencies"
+        cells={offered.map((c) => ({
+          key: c.code,
+          label: `${c.code}, ${c.name}`,
+          title: c.code,
+          detail: c.name,
+          onPick: () => {
+            onChange(c.code);
+            setTyped(c.code);
+          },
+        }))}
+      />
+      <datalist id={listId}>
+        {codes.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.name}
+          </option>
+        ))}
+      </datalist>
+    </>
+  );
+}

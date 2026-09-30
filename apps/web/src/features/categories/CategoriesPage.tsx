@@ -5,7 +5,7 @@ import { Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, LargeTitle, SCREEN, SegmentedControl } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, LargeTitle, SCREEN, SearchPill, SegmentedControl } from '../../ui/native';
 import { pickerGroups } from '../transactions/CategoryPicker';
 import { CategoryIcon } from './CategoryIcon';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
@@ -41,8 +41,8 @@ function CategoryLine({ category, accounts, child }: { category: AccountRow; acc
 
 /**
  * The Categories list: the same tree the category picker draws, one card per top-level category, every line a link
- * to that category's page. A search pill rides the foot of the screen, above the tab bar, and narrows the tree the
- * way the picker's does — by `pickerGroups`, so the two can never disagree about what a category list holds.
+ * to that category's page. 🔍 in the corner swaps a search field into the title's row, as Cashflow's does, and it
+ * narrows the tree the way the picker's does — by `pickerGroups`, so the two can never disagree about what a category list holds.
  */
 export function CategoriesPage() {
   const { kind = 'expense' } = useSearch({ from: '/categories' });
@@ -53,15 +53,32 @@ export function CategoriesPage() {
   const sets = useCategorySets().data ?? [];
   const actions = useCategoryActions();
   const [search, setSearch] = useState('');
+  const [searching, setSearching] = useState(false);
   // The monthly tree only, and only the open book's: a set's categories are managed on the sets page.
   const groups = pickerGroups(accounts, kind, membership, inOpenBook, search);
 
   /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
-  const corner: CornerAction[] = [{ key: 'add', label: 'Add category', glyph: <Plus size={22} aria-hidden />, run: () => actions.add(kind, null) }];
+  const corner: CornerAction[] = [
+    { key: 'add', label: 'Add category', glyph: <Plus size={22} aria-hidden />, run: () => actions.add(kind, null) },
+    { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: searching, run: () => setSearching((was) => !was) },
+  ];
+  // Cashflow's search: the kit's pill drawn in the title's own row, so nothing below it moves when it opens.
+  const searchField = (
+    <SearchPill
+      value={search}
+      onChange={setSearch}
+      onClose={() => {
+        setSearch('');
+        setSearching(false);
+      }}
+      placeholder="Search categories…"
+      label="Search categories"
+    />
+  );
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Categories" actions={corner} />
+      <LargeTitle title="Categories" actions={corner} field={searching ? searchField : undefined} />
       <SegmentedControl
         className="mb-[18px] md:max-w-xs"
         label="Which categories"
@@ -99,21 +116,6 @@ export function CategoriesPage() {
         </InsetGroup>
       )}
 
-      {/* The picker's floating search pill, riding the foot of the screen just above the phone's tab bar. */}
-      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-10 w-full px-1 pt-2 pb-1 md:bottom-4 md:max-w-2xl">
-        <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
-          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-          <input
-            aria-label="Search categories"
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search"
-            autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-          />
-        </label>
-      </div>
     </div>
   );
 }

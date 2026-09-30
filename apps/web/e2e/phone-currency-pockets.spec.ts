@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAssets } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
+import { setCurrency } from './currency-field';
 
 test('by thumb: open the account, a pocket, and move between pockets one key at a time', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
@@ -13,7 +14,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   });
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
-  await page.getByRole('link', { name: /Move between pockets/ }).tap();
+  await page.getByRole('link', { name: 'Move', exact: true }).tap();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByTestId('spread')).toContainText('35.160');
@@ -39,8 +40,8 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   // Two rows and nothing under them, on a phone too.
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
-  await page.getByRole('link', { name: /Add a pocket/ }).tap();
-  await page.getByLabel('Currency', { exact: true }).selectOption('IDR');
+  await page.getByRole('link', { name: 'Add a currency', exact: true }).tap();
+  await setCurrency(page.getByLabel('Currency', { exact: true }), 'IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByRole('button', { name: 'Add pocket' }).tap();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
@@ -49,4 +50,18 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await expect(row).toContainText('3 pockets');
   await expect(row).toContainText('58.982.000');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('a saving account names its bank and itself on one row, and typing the bank offers Indonesian banks', async ({ page }) => {
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  const bank = page.getByLabel('Bank', { exact: true });
+  await bank.fill('jen');
+  await page.getByRole('listbox', { name: 'Banks' }).getByRole('option', { name: 'Bank SMBC Indonesia' }).click();
+  await expect(bank).toHaveValue('Bank SMBC Indonesia');
+  await expect(page.getByRole('listbox', { name: 'Banks' })).toHaveCount(0);
+  // A bank not on the list is kept as typed.
+  await bank.fill('Bank Kecil');
+  await page.getByLabel('Name', { exact: true }).fill('Emergency');
+  await expect(bank).toHaveValue('Bank Kecil');
 });

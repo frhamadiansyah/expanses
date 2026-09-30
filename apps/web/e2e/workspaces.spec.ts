@@ -5,12 +5,12 @@ import { addTransaction } from './add-transaction';
 
 /**
  * An account's history, reached the way a reader reaches it: its row on Accounts, which opens the account's own
- * page, then the row on that page that leads to its ledger.
+ * page, then See all over the last few rows it lists.
  */
 async function openHistory(page: Page, name: string) {
   await openTypes(page);
   await page.getByRole('link', { name, exact: true }).click();
-  await page.getByRole('link', { name: /Its transactions/ }).click();
+  await page.getByRole('link', { name: 'See all' }).click();
 }
 
 /**
@@ -126,9 +126,11 @@ test('a category made in the picker belongs to that workspace and to no other', 
   await form.getByRole('button', { name: /^Category/ }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await picker.getByRole('button', { name: 'New category' }).click();
-  const made = page.getByRole('dialog', { name: 'New category' });
+  // The same sheet moves to New category — no second sheet on top of it.
+  const made = page.getByRole('dialog', { name: 'New expense category' });
+  await expect(page.getByRole('dialog')).toHaveCount(2); // the form underneath, and this one sheet
   await made.getByLabel('Name', { exact: true }).fill('Boba');
-  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
   await made.getByRole('button', { name: 'Save' }).click();
   await expect(picker).toHaveCount(0);
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Boba');

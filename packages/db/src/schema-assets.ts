@@ -57,8 +57,15 @@ export const prices = sqliteTable('prices', {
   workspaceId: text('workspace_id').notNull(),
   onDate: text('on_date').notNull(),
   priceMicro: integer('price_micro').notNull(),
-  source: text('source', { enum: ['manual'] }).notNull(),
+  source: text('source', { enum: ['manual', 'world'] }).notNull(),
   createdAt: text('created_at').notNull(),
+});
+
+/** A gold holding's price source (0061): the world price, or only what the owner types. No row is the world price. */
+export const goldPriceChoices = sqliteTable('gold_price_choices', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  choice: text('choice', { enum: ['world', 'typed'] }).notNull(),
 });
 
 export const valuations = sqliteTable('valuations', {

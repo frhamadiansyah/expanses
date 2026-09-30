@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate } from '@expanses/core';
-import { addPocket, pocketParentIds } from '@expanses/db';
+import { addPocket, makeMultiCurrency, pocketParentIds } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -7,7 +7,7 @@ import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/querie
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { NoPockets } from './PocketsPage';
+import { NoPockets } from './AccountPage';
 import { pocketsOf, readPockets } from './pockets';
 
 export function AddPocketPage() {
@@ -19,7 +19,11 @@ export function AddPocketPage() {
   const loaded = useAccounts();
   const accounts = loaded.data ?? [];
   const parent = accounts.find((a) => a.id === accountId);
-  const taken = new Set(pocketsOf(accountId, accounts).map((p) => p.currency));
+  const hasPockets = pocketParentIds(accounts).has(accountId);
+  // A plain current or saving account takes a second currency too: it becomes an account with pockets, the
+  // currency it already holds being the first of them.
+  const plain = Boolean(parent && !hasPockets && !parent.parentId && (parent.subtype === 'bank' || parent.subtype === 'savings'));
+  const taken = new Set(plain ? [parent!.currency] : pocketsOf(accountId, accounts).map((p) => p.currency));
   const offered = CURRENCIES.filter((c) => !taken.has(c.code));
   const [currency, setCurrency] = useState('');
   const [balance, setBalance] = useState('');
@@ -39,9 +43,13 @@ export function AddPocketPage() {
       const [pocket] = readPockets([{ currency: code, balance, rate }]);
       const { openingBalanceMinor } = pocket!;
       const openingRateToBase = await openingRateFor({ database, ws, currency: code, openedOn, openingBalanceMinor, typed: pocket!.typedRate, resolveRates });
-      await addPocket(database, ws, { parentId: accountId, currency: code, openingBalanceMinor, openedOn, openingRateToBase });
+      const input = { currency: code, openingBalanceMinor, openedOn, openingRateToBase };
+      // The page to land on is the account with pockets: this one, or the parent a plain account now sits under.
+      let landing = accountId;
+      if (plain) landing = (await makeMultiCurrency(database, ws, { accountId, ...input })).parent.id;
+      else await addPocket(database, ws, { parentId: accountId, ...input });
       await invalidate();
-      await navigate({ to: '/accounts/$accountId', params: { accountId } });
+      await navigate({ to: '/accounts/$accountId', params: { accountId: landing } });
     } catch (e) {
       setError(e);
     } finally {
@@ -49,11 +57,11 @@ export function AddPocketPage() {
     }
   }
 
-  if (loaded.isSuccess && parent && !pocketParentIds(accounts).has(parent.id)) return <NoPockets name={parent.name} />;
+  if (loaded.isSuccess && parent && !hasPockets && !plain) return <NoPockets name={parent.name} />;
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Add a pocket" back={parent?.name ?? 'Account'} backTo="/accounts/$accountId" backParams={{ accountId }} />
+      <LargeTitle title="Add a currency" back={parent?.name ?? 'Account'} backTo="/accounts/$accountId" backParams={{ accountId }} />
       {/* Every currency taken: nothing to offer, so no form that would submit a pocket with no currency. */}
       {offered.length === 0 ? (
         <Empty>This account already holds every currency.</Empty>

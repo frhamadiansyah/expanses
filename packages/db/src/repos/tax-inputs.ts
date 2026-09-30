@@ -104,7 +104,9 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
         priceMicro,
         // Harga perolehan is historical rupiah (Pasal 10): a foreign holding's buys at their own days' rates, never today's.
         byYear: foreign ? (costs.positions[value.accountId]?.byYear ?? {}) : position.byYear,
-        fields,
+        // The institution a holding is kept at is its broker: the fund account names it. What the owner typed on
+        // the holding itself still stands; the broker only fills a field left empty.
+        fields: brokerName && !fields.inst?.trim() ? { ...fields, inst: brokerName } : fields,
         ...(foreign
           ? {
               // Only buys on or before 31 December of the report year: the note counts what the year's figure holds.

@@ -1,16 +1,16 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Check, Menu, Plus, Search } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
-import { Sheet } from '../../app/Sheet';
+import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
-import { SegmentedControl } from '../../ui/native';
+import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { NewCategorySheet } from './NewCategorySheet';
+import { useNewCategoryForm } from './NewCategorySheet';
 
 /** One top-level category and what hangs off it — the card the picker draws per root. */
 export interface PickerGroup {
@@ -85,8 +85,8 @@ function CategoryButton({
  * Choosing a category, for every screen that files one: the form's Category row, the edit sheet's, and the
  * list's category gesture.
  *
- * B7's tree — one card per top-level category, its children indented under it, a search pill at the foot and
- * **+ New category** at the head. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
+ * B7's tree — one card per top-level category, its children indented under it, ⌕ in the header for a search and
+ * **＋** in the header makes a new category. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
  * a heading, and a tree that only let leaves be chosen would take that answer away.
  *
  * One component, three ways in. The card, the row and the edit sheet each open this and none of them was
@@ -123,6 +123,8 @@ export function CategoryPicker({
   const inOpenBook = useInOpenBook();
   const [showing, setShowing] = useState<'expense' | 'income'>(kind);
   const [search, setSearch] = useState('');
+  // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
+  const [finding, setFinding] = useState(false);
   const [making, setMaking] = useState(false);
   const groups = pickerGroups(accounts, showing, membership, inOpenBook, search);
   // What a new category may be filed under: the roots this picker itself offers, of the kind it is showing.
@@ -132,48 +134,85 @@ export function CategoryPicker({
     onPick(categoryId);
     onClose();
   };
+  // New category is a step this sheet moves to, not a sheet stacked on it.
+  const newCategory = useNewCategoryForm({ kind: showing, parents, onCreated: (categoryId) => choose(categoryId) });
 
+  const searchField = (
+    <SearchPill
+      value={search}
+      onChange={setSearch}
+      onClose={() => {
+        setSearch('');
+        setFinding(false);
+      }}
+      compact
+      placeholder="Search"
+      label="Search categories"
+    />
+  );
+
+  // One sheet for the list and for New category, so moving between them keeps whatever detent it was left at.
+  const stepBack = () => setMaking(false);
   return (
-    <Sheet grouped title={title} onClose={onClose}>
+    <Sheet
+      grouped
+      tall
+      title={making ? (newCategory.choosingLook ? 'Icon and colour' : `New ${showing} category`) : title}
+      onClose={making ? (newCategory.choosingLook ? newCategory.closeLook : stepBack) : onClose}
+      {...(making
+        ? newCategory.choosingLook
+          ? // The look is chosen as it is tapped; ✓ and ‹ both return to the form with it.
+            { back: { label: `New ${showing} category`, run: newCategory.closeLook }, confirm: { label: 'Done', run: newCategory.closeLook } }
+          : { back: { label: title, run: stepBack }, confirm: { label: 'Save', disabled: !newCategory.canSave, run: newCategory.save } }
+        : {
+            closeHidden: finding,
+            heading: lockKind && finding ? searchField : undefined,
+            action: (
+              <>
+                {/* Making the category you meant, when none of the rows is it: in the corner, out of the list's way. */}
+                {!finding && (
+                  <SheetAddButton
+                    label="New category"
+                    onClick={() => {
+                      newCategory.reset();
+                      setMaking(true);
+                    }}
+                  />
+                )}
+                <SheetSearchButton
+                  open={finding}
+                  onClick={() => {
+                    if (finding) setSearch('');
+                    setFinding((was) => !was);
+                  }}
+                />
+              </>
+            ),
+          })}
+    >
+      {making ? newCategory.view : (
       <div className="flex flex-col gap-[10px]">
-        <div className="flex items-center gap-2">
-          {!lockKind && (
-            <SegmentedControl
-              className="min-w-0 flex-1"
-              label="Kind"
-              segments={[
-                { key: 'expense', label: 'Expense' },
-                { key: 'income', label: 'Income' },
-              ]}
-              value={showing}
-              onChange={(key) => setShowing(key as 'expense' | 'income')}
-            />
-          )}
-          {/* The way to the whole tree, for what this sheet is deliberately too small for: renaming, archiving,
-              a category's card MCC, the sets. It closes the sheet on its way, since it leaves the screen. */}
-          <Link
-            to="/categories"
-            onClick={onClose}
-            aria-label="Manage categories"
-            className="ph-focus ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ph-tint)]"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)]">
-              <Menu size={16} aria-hidden />
-            </span>
-          </Link>
-        </div>
+        {/* The tabs and the search that replaces them share one fixed 32 px row, so nothing below moves. With no
+            tabs (a sheet locked to one kind), the search takes the title's place in the header instead. */}
+        {!lockKind && (
+          <div className="flex h-8 items-center">
+            {finding ? (
+              <div className="w-full">{searchField}</div>
+            ) : (
+              <SegmentedControl
+                className="w-full"
+                label="Kind"
+                segments={[
+                  { key: 'expense', label: 'Expense' },
+                  { key: 'income', label: 'Income' },
+                ]}
+                value={showing}
+                onChange={(key) => setShowing(key as 'expense' | 'income')}
+              />
+            )}
+          </div>
+        )}
 
-        {/* First, and green: making the category you meant is the answer when none of the rows below is. */}
-        <button
-          type="button"
-          onClick={() => setMaking(true)}
-          className="ph-focus flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ph-surface)] text-[15px] font-semibold text-[var(--ph-tint)] active:bg-[var(--ph-fill)]"
-        >
-          <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
-            <Plus size={14} strokeWidth={3} />
-          </span>
-          New category
-        </button>
 
         {groups.map((group) => (
           <div
@@ -192,29 +231,17 @@ export function CategoryPicker({
           </p>
         )}
 
-        {/* B7's floating search pill: it rides the foot of the sheet, so a long tree can be narrowed without
-            scrolling back up. */}
-        <div className="sticky bottom-0 px-1 pt-2 pb-1">
-          <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
-            <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-            <input
-              aria-label="Search categories"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search"
-              className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-            />
-          </label>
-        </div>
-      </div>
+        {/* The way to the whole tree — renaming, archiving, a category's code, the sets — at the list's foot, drawn as
+            Add more details is: words in the secondary ink, no box. It closes the sheet on its way. */}
+        <Link
+          to="/categories"
+          onClick={onClose}
+          className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
+        >
+          Manage categories
+        </Link>
 
-      {making && (
-        <NewCategorySheet
-          kind={showing}
-          parents={parents}
-          onCreated={(categoryId) => choose(categoryId)}
-          onClose={() => setMaking(false)}
-        />
+      </div>
       )}
     </Sheet>
   );

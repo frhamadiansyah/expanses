@@ -64,6 +64,14 @@ describe('assetValuesAt', () => {
     expect(valueOf(rows, house.id)).toMatchObject({ valueMinor: 1_380_000_000, source: 'valuation', planGroup: 'use', stale: true });
   });
 
+  it('takes the estimate saved last when two share a day', async () => {
+    await recordValuation(database, ws, { accountId: house.id, asOf: '2026-09-30', valueMinor: 1_420_000_000, basis: 'estimate' });
+    await recordValuation(database, ws, { accountId: house.id, asOf: '2026-09-30', valueMinor: 1_480_000_000, basis: 'appraisal' });
+
+    const rows = await assetValuesAt(database, ws, '2026-09-30');
+    expect(valueOf(rows, house.id)).toMatchObject({ valueMinor: 1_480_000_000, source: 'valuation' });
+  });
+
   it('marks a price older than 30 days', async () => {
     await upsertPrice(database, ws, { accountId: gold.id, onDate: '2026-08-01', priceMicro: 1_815_000_000_000 });
 

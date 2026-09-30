@@ -25,7 +25,7 @@ test('moving between pockets asks only when it takes promised money, and the pro
 
   await page.goto('/accounts');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
-  await page.getByRole('link', { name: /Move between pockets/ }).click();
+  await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');
   await page.getByLabel('To').selectOption('SGD');
   const leaves = page.getByLabel('Leaves USD');

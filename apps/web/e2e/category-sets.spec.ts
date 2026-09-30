@@ -113,17 +113,29 @@ test('an event can be called done, and put back', async ({ page }) => {
 
 test('a set category can be given a card MCC, so its spending earns the right rate', async ({ page }) => {
   await page.goto('/categories/sets');
-  answerPrompts(page, ['4511']);
-
   await page.getByTestId('set-Holiday').getByRole('link', { name: 'Flights', exact: true }).click();
   const mcc = page.getByTestId('category-mcc');
   await expect(mcc).toContainText('None');
-  await page.getByRole('button', { name: 'Card MCC for Flights' }).click();
-  await expect(mcc).toContainText('4511');
-  await expect(mcc).toContainText('set by you');
 
-  // Clearing puts it back to having none, the same as the monthly categories behave.
-  await page.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
+  // The app's own sheet, not the browser's prompt: a word searches the names, and a match is a tap away.
+  await page.getByRole('button', { name: 'Merchant category code for Flights' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Merchant category code' });
+  const field = sheet.getByRole('textbox', { name: 'Merchant category code for Flights' });
+  await field.fill('airline');
+  await sheet.getByRole('button', { name: /^4511, / }).click();
+  await expect(field).toHaveValue('4511');
+  await expect(sheet.getByTestId('mcc-meaning')).not.toBeEmpty();
+  await sheet.getByRole('button', { name: 'Save merchant category code' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(mcc).toContainText('4511');
+  // What the code means and where it came from sit behind the ⓘ beside the title.
+  await expect(mcc).not.toContainText('custom');
+  await mcc.getByRole('button', { name: 'About Merchant category code' }).click();
+  await expect(mcc).toContainText('custom');
+
+  // Removing it, from the same sheet, puts it back to having none, the same as the monthly categories behave.
+  await page.getByRole('button', { name: 'Merchant category code for Flights' }).click();
+  await sheet.getByRole('button', { name: 'Remove my code' }).click();
   await expect(mcc).not.toContainText('4511');
   await expect(mcc).toContainText('None');
 });

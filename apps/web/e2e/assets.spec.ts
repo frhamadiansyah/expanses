@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings as openSettingsMenu } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addTransfer } from './add-transaction';
 import { openDrawers } from './drawers';
@@ -83,23 +83,24 @@ async function openSettings(page: Page, name: string) {
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await openSettingsMenu(page);
 }
 
 test('renames an account from its settings page, and every list reads the new name', async ({ page }) => {
   await addBank(page);
   await openSettings(page, 'BCA Tahapan');
 
+  // Kept when the row is left, as every settings row is: the way back then carries the new name.
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Utama');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await page.getByLabel('Name', { exact: true }).press('Enter');
+  await expect(page.getByRole('link', { name: 'BCA Tahapan Utama' })).toBeVisible();
 
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /BCA Tahapan Utama/ })).toBeVisible();
 });
 
-test('an account opened by mistake deletes, armed on the first tap; one with entries refuses and says why', async ({ page }) => {
+test('an account opened by mistake deletes once asked; one with entries refuses and says why', async ({ page }) => {
   await addBank(page);
   await openAccount(page, { subtype: 'savings', name: 'Jenius', balance: '0' });
   // A third account, opened and never touched again: this one can go.
@@ -109,15 +110,14 @@ test('an account opened by mistake deletes, armed on the first tap; one with ent
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '5000000' });
 
   await openSettings(page, 'Jenius');
-  await page.getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('has entries of its own');
 
   // The one that was only opened goes, opening entry and all.
   await openSettings(page, 'Hana');
-  await page.getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('button', { name: 'Click again to delete' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  // Money goes back to the list it lives on.
+  await expect(page).toHaveURL(/\/accounts$/);
   await expect(page.getByRole('link', { name: /Hana/ })).toHaveCount(0);
 });
 

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
@@ -75,10 +75,9 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   // How its income is taxed belongs to the holding: this one is final. It is set on the holding's own settings page.
   await openAssets(page);
   await page.getByRole('link', { name: /BBRI/ }).click();
-  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
-  await page.getByLabel('How its income is taxed').selectOption('final');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await openSettings(page);
+  await page.getByLabel('How its income is taxed', { exact: true }).selectOption('final');
+  await expect(page.getByLabel('How its income is taxed', { exact: true })).toHaveValue('final');
 
   await recordDividend(page);
 

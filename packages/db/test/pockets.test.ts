@@ -10,6 +10,9 @@ import {
   type Database,
   getAssetProfile,
   listAccounts,
+  makeMultiCurrency,
+  getShareSetting,
+  setShareSetting,
   nativeBalances,
   netWorthAt,
   openCashAccount,
@@ -115,6 +118,94 @@ describe('adding a pocket', () => {
     await expect(addPocket(database, ws, { parentId: parent.id, currency: 'USD' })).rejects.toThrow('already has a USD pocket');
     const plain = await openCashAccount(database, ws, { item: 'savings', name: 'Mandiri Valas', currency: 'USD', openingBalanceMinor: 180_000, openingRateToBase: 15_720 });
     await expect(addPocket(database, ws, { parentId: plain.id, currency: 'SGD' })).rejects.toThrow('has no pockets');
+  });
+});
+
+describe('a second currency in a plain account', () => {
+  const current = async () => {
+    const bca = await openCashAccount(database, ws, { item: 'bank', name: 'Everyday', bank: 'Some Bank', currency: 'IDR', openingBalanceMinor: 5_000_000, openedOn: '2026-01-02' });
+    const food = await createAccount(database, ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+    const lunch = await postTransaction(database, ws, {
+      occurredOn: '2026-03-04',
+      description: 'Lunch',
+      lines: [
+        { accountId: food.id, amountMinor: 75_000, currency: 'IDR' },
+        { accountId: bca.id, amountMinor: -75_000, currency: 'IDR' },
+      ],
+    });
+    return { bca, lunch };
+  };
+
+  it('keeps its say in joint net worth: the new parent and pocket take the setting it had, not "Not reviewed"', async () => {
+    const { bca } = await current();
+    await setShareSetting(database, bca.id, 'total');
+    const { parent, pocket } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD' });
+    expect(await getShareSetting(database, parent.id)).toBe('total');
+    expect(await getShareSetting(database, pocket.id)).toBe('total');
+    expect(await getShareSetting(database, bca.id)).toBe('total');
+  });
+
+  it('writes no setting for an account that was never reviewed', async () => {
+    const { bca } = await current();
+    const { parent } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD' });
+    expect(await getShareSetting(database, parent.id)).toBeNull();
+  });
+
+  it('keeps the account as its first pocket, with every entry and its balance, under a parent that takes its name', async () => {
+    const { bca, lunch } = await current();
+    const entriesBefore = await database.db.select().from(schema.entries).where(eq(schema.entries.accountId, bca.id));
+    const { parent, pocket } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD', openingBalanceMinor: 50_000, openedOn: '2026-09-30', openingRateToBase: 16_250 });
+
+    const rows = new Map((await listAccounts(database, ws)).map((a) => [a.id, a]));
+    expect(rows.get(parent.id)).toMatchObject({ name: 'Everyday', subtype: 'bank', parentId: null });
+    expect(rows.get(bca.id)).toMatchObject({ name: 'Everyday · IDR', currency: 'IDR', parentId: parent.id, sortOrder: 0 });
+    expect(rows.get(pocket.id)).toMatchObject({ name: 'Everyday · USD', currency: 'USD', subtype: 'bank', parentId: parent.id, sortOrder: 1 });
+    expect(pocketParentIds([...rows.values()])).toEqual(new Set([parent.id]));
+
+    // Nothing recorded moved: the same entries on the same account, the lunch among them.
+    const entriesAfter = await database.db.select().from(schema.entries).where(eq(schema.entries.accountId, bca.id));
+    expect(entriesAfter).toEqual(entriesBefore);
+    expect(entriesAfter.some((row) => row.transactionId === lunch)).toBe(true);
+    const balances = await nativeBalances(database, ws);
+    expect([balances[bca.id], balances[pocket.id], balances[parent.id]]).toEqual([4_925_000, 50_000, undefined]);
+    expect((await openingsOf(database, ws, [pocket.id]))[pocket.id]).toEqual({ occurredOn: '2026-09-30', amountMinor: 50_000, currency: 'USD', fxRateToBase: 16_250 });
+
+    // The parent adds the two up, and is itself nothing to any reader.
+    expect((await netWorthAt(database, ws, '2026-09-30', { USD: 16_250 })).assetsMinor).toBe(4_925_000 + 500 * 16_250);
+    expect((await assetValuesAt(database, ws, '2026-09-30')).some((row) => row.accountId === parent.id)).toBe(false);
+    // The kas row stays with the account; the new pocket files under the same code at the same bank.
+    expect(await getAssetProfile(database, ws, parent.id)).toBeUndefined();
+    expect((await getAssetProfile(database, ws, bca.id))!.coretaxFields).toEqual({ inst: 'Some Bank' });
+    expect(await getAssetProfile(database, ws, pocket.id)).toMatchObject({ coretaxCode: '0102', coretaxFields: { inst: 'Some Bank' } });
+  });
+
+  it('is an account with pockets from then on: postings to the parent are refused, a third currency is added, a rename follows', async () => {
+    const { bca } = await current();
+    const { parent } = await makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'USD' });
+    await expect(
+      postTransaction(database, ws, { occurredOn: '2026-09-30', description: 'Into the parent', lines: transferLines({ fromAccountId: bca.id, toAccountId: parent.id, amountMinor: 1_000, currency: 'IDR' }) }),
+    ).rejects.toMatchObject({ code: 'POCKET_PARENT' });
+    const sgd = await addPocket(database, ws, { parentId: parent.id, currency: 'SGD' });
+    expect(sgd.sortOrder).toBe(2);
+    await renameAccount(database, ws, parent.id, 'Main');
+    expect((await listAccounts(database, ws)).find((a) => a.id === bca.id)!.name).toBe('Main · IDR');
+    await expect(archiveAccount(database, ws, parent.id)).rejects.toThrow('still has pockets');
+  });
+
+  it('refuses the same currency, a kind that holds one currency, a pocket, a parent and an archived account — leaving nothing behind', async () => {
+    const { bca } = await current();
+    const count = async () => (await listAccounts(database, ws, { includeArchived: true })).length;
+    const before = await count();
+    await expect(makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'IDR' })).rejects.toThrow('already holds IDR');
+    const wallet = await openCashAccount(database, ws, { item: 'ewallet', name: 'Wallet', currency: 'IDR' });
+    await expect(makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'USD' })).rejects.toThrow('Only a current or saving account');
+    const empty = await openCashAccount(database, ws, { item: 'savings', name: 'Spare', currency: 'IDR' });
+    await archiveAccount(database, ws, empty.id);
+    await expect(makeMultiCurrency(database, ws, { accountId: empty.id, currency: 'USD' })).rejects.toThrow('is archived');
+    expect(await count()).toBe(before + 2);
+    const { parent, pockets } = await valas();
+    await expect(makeMultiCurrency(database, ws, { accountId: parent.id, currency: 'JPY' })).rejects.toThrow('already has pockets');
+    await expect(makeMultiCurrency(database, ws, { accountId: pockets[0]!.id, currency: 'JPY' })).rejects.toThrow('A pocket cannot hold pockets');
   });
 });
 

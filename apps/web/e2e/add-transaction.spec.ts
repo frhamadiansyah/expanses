@@ -6,6 +6,7 @@ import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
 import { todayIn } from './today';
+import { setCurrency } from './currency-field';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -179,10 +180,10 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
 
 test('a transfer moves money between two accounts and is filed in no workspace', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   await page.goto('/transactions');
 
@@ -222,10 +223,10 @@ test('a transfer moves money between two accounts and is filed in no workspace',
 test('a transfer offers no currency of its own, and moves the figure its row shows', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jago', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   // A USD account opened with a balance stores today's USD→IDR rate, which is what used to fill the row in.
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
@@ -275,7 +276,7 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   // USD has exponent 2, so a figure read in the wrong currency lands 100× out rather than looking identical.
   // The rate is stored as the opening balance's own conversion, so the balance has to be worth converting.
@@ -308,10 +309,10 @@ test('a transfer into a USD account asks for the received amount, and will not s
 
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Balance now').fill('0');
+    await page.getByLabel('Balance now', { exact: true }).fill('0');
   });
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
 
@@ -494,7 +495,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
 test('a transfer that crosses currencies can be tagged to a goal', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('20000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('20000000');
   });
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
@@ -662,7 +663,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'Wise Card', 'credit_card', async () => {
-    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
     await page.getByLabel('Owed now').fill('0');
   });
 
@@ -704,7 +705,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
  */
 test('a split by category posts one line per category, each with its own figure', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -751,7 +752,7 @@ test('a split by category posts one line per category, each with its own figure'
  */
 test('Split by category and With refuse each other in words, before Save', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -811,7 +812,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // No balance, so nothing stores a USD→IDR rate on the way in: the save is the first thing to want one.
   await addAccount(page, 'Wise USD', 'bank', async () => {
-    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   });
 
   await page.goto('/transactions');
@@ -911,7 +912,7 @@ test('a bill split equally between three people leaves each of them owing their 
  */
 test('a typed share leaves the rest of the bill as your own spending', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Balance now').fill('50000000');
+    await page.getByLabel('Balance now', { exact: true }).fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -1051,6 +1052,7 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await expect(child).toHaveCSS('padding-left', '34px');
 
   // The search narrows on the whole path: a parent brings its children, and nothing else stays.
+  await picker.getByRole('button', { name: 'Search', exact: true }).click();
   const search = picker.getByLabel('Search categories');
   await search.fill('food');
   await expect(child).toHaveCount(1);
@@ -1066,10 +1068,24 @@ test('the category picker is a tree, it searches, and a new category is made wit
   // + New category: the name, where it goes, and the icon it draws.
   await form.getByRole('button', { name: /^Category/ }).click();
   await picker.getByRole('button', { name: 'New category' }).click();
-  const made = page.getByRole('dialog', { name: 'New category' });
+  // The same sheet moves to New category — no second sheet on top of it.
+  const made = page.getByRole('dialog', { name: 'New expense category' });
+  await expect(page.getByRole('dialog')).toHaveCount(2); // the form underneath, and this one sheet
+  // Its kind is in the title rather than a row of its own.
+  await expect(made.getByText('Kind', { exact: true })).toHaveCount(0);
+  // ‹ goes back to the list in the same sheet, and New category comes back empty.
+  await made.getByLabel('Name', { exact: true }).fill('Bob');
+  await made.getByRole('button', { name: 'Select category' }).click();
+  await expect(picker.getByRole('button', { name: 'New category' })).toBeVisible();
+  await picker.getByRole('button', { name: 'New category' }).click();
+  await expect(made.getByLabel('Name', { exact: true })).toHaveValue('');
   await made.getByLabel('Name', { exact: true }).fill('Boba');
-  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
-  await made.getByRole('button', { name: 'coffee', exact: true }).click();
+  await made.getByLabel('Parent', { exact: true }).selectOption({ label: 'Food and beverage' });
+  // Its look is behind the circle: one step further in the same sheet, then back to the form.
+  await made.getByRole('button', { name: 'Icon and colour' }).click();
+  const look = page.getByRole('dialog', { name: 'Icon and colour' });
+  await look.getByRole('button', { name: 'coffee', exact: true }).click();
+  await look.getByRole('button', { name: 'Done' }).click();
   await made.getByRole('button', { name: 'Save' }).click();
 
   // Back on the form with it chosen — no second trip through the picker to say so.

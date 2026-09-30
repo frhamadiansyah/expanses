@@ -13,6 +13,7 @@ export function SearchPill({
   onClose,
   placeholder,
   label = placeholder,
+  compact = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -20,10 +21,12 @@ export function SearchPill({
   placeholder: string;
   /** What a screen reader hears on the field itself; the placeholder by default. */
   label?: string;
+  /** The segmented control's own 32 px, for a field that takes a tab row's place in a sheet and must not change it. */
+  compact?: boolean;
 }) {
   return (
-    <div className="flex h-11 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4">
-      <Search size={18} className="shrink-0 text-[var(--ph-ink-3)]" aria-hidden />
+    <div className={`flex items-center rounded-full bg-[var(--ph-corner)] ${compact ? 'h-8 gap-2 px-3' : 'h-11 gap-2.5 px-4'}`}>
+      <Search size={compact ? 15 : 18} className="shrink-0 text-[var(--ph-ink-3)]" aria-hidden />
       <input
         // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
         autoFocus
@@ -39,9 +42,9 @@ export function SearchPill({
         type="button"
         aria-label="Close search"
         onClick={onClose}
-        className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+        className={`flex shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)] ${compact ? 'ph-tap -mr-1 h-7 w-7' : '-mr-2 h-9 w-9'}`}
       >
-        <X size={18} aria-hidden />
+        <X size={compact ? 15 : 18} aria-hidden />
       </button>
     </div>
   );

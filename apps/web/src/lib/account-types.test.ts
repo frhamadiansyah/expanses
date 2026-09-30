@@ -2,7 +2,7 @@ import { CASH_ITEMS } from '@expanses/core';
 import type { AccountRow, AccountSubtype } from '@expanses/db';
 import { BALANCE_SUBTYPES, MONEY_SUBTYPES as LEDGER_MONEY, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_TYPES, canPayWith, canReceiveInto, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
+import { ACCOUNT_TYPES, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
 
 describe('the account types someone can open', () => {
   /**
@@ -135,11 +135,13 @@ describe('what a picker may offer as a way to pay', () => {
 describe('what a transfer may move money between', () => {
   const account = (subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset') => ({ id: subtype, kind, subtype }) as AccountRow;
 
-  it('offers money you hold, deposits included, and the person-shaped pair', () => {
-    for (const subtype of ['bank', 'cash', 'savings', 'ewallet', 'other_cash', 'fund', 'time_deposit', 'receivable'] as const) {
+  it('offers money you hold, and nothing owed by or to a person', () => {
+    for (const subtype of ['bank', 'cash', 'savings', 'ewallet', 'other_cash', 'fund'] as const) {
       expect(canTransferWith(account(subtype)), subtype).toBe(true);
     }
-    expect(canTransferWith(account('payable', 'liability'))).toBe(true);
+    // A loan with a person moves through the person's own forms.
+    expect(canTransferWith(account('receivable'))).toBe(false);
+    expect(canTransferWith(account('payable', 'liability'))).toBe(false);
   });
 
   it('never offers a thing you own, nor a debt', () => {
@@ -148,11 +150,29 @@ describe('what a transfer may move money between', () => {
     expect(canTransferWith(account('vehicle'))).toBe(false); // a car
     expect(canTransferWith(account('credit_card', 'liability'))).toBe(false);
     expect(canTransferWith(account('loan', 'liability'))).toBe(false); // KPR, a car loan
+    // A deposit's money leaves through its own Break early or Withdraw.
+    expect(canTransferWith(account('time_deposit'))).toBe(false);
   });
 
   it('always keeps the account the row already names', () => {
     expect(canTransferWith(account('property'), 'property')).toBe(true);
     expect(canTransferWith(account('loan', 'liability'), 'loan')).toBe(true);
     expect(canTransferWith(account('property'), 'bank')).toBe(false);
+  });
+});
+
+describe('which accounts may pair in a transfer', () => {
+  const a = (id: string, subtype: AccountRow['subtype']) => ({ id, subtype });
+  it('pairs a broker cash account with a current account only, both ways', () => {
+    expect(canTransferBetween(a('rdn', 'fund'), a('everyday', 'bank'))).toBe(true);
+    expect(canTransferBetween(a('everyday', 'bank'), a('rdn', 'fund'))).toBe(true);
+    for (const subtype of ['cash', 'savings', 'ewallet', 'other_cash'] as const) {
+      expect(canTransferBetween(a('rdn', 'fund'), a('x', subtype)), subtype).toBe(false);
+      expect(canTransferBetween(a('x', subtype), a('rdn', 'fund')), subtype).toBe(false);
+    }
+  });
+  it('lets other money move freely, but never into itself', () => {
+    expect(canTransferBetween(a('wallet', 'ewallet'), a('cash', 'cash'))).toBe(true);
+    expect(canTransferBetween(a('cash', 'cash'), a('cash', 'cash'))).toBe(false);
   });
 });
