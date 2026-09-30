@@ -597,10 +597,17 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   if (open.length > 0) await payCardPurchases(database, ws, { cardAccountId: accor.id, fromAccountId: bca.id, occurredOn: addDays(today, -1), purchaseTransactionIds: open.map((p) => p.id) });
 
   // ---- Waiting to be recorded ----
-  await captureDrafts(database, ws, [
-    { source: 'csv', occurredOn: addDays(today, -2), description: 'APOTEK K24 KEMANG', amountMinor: 186_500, currency: 'IDR', accountId: bca.id, externalRef: 'sample:k24', categoryAccountId: null },
-    { source: 'csv', occurredOn: addDays(today, -1), description: 'SUPERINDO KEBAYORAN 0912', amountMinor: 412_300, currency: 'IDR', accountId: bca.id, externalRef: 'sample:superindo', categoryAccountId: await cat('household.groceries') },
-    { source: 'email', occurredOn: today, description: 'TIKET.COM KAI JKT-BDG', amountMinor: 320_000, currency: 'IDR', accountId: krisflyer.id, externalRef: 'sample:kai', categoryAccountId: null },
-  ]);
-  await createDraft(database, ws, { source: 'manual', occurredOn: today, description: 'Pak Joko car wash', amountMinor: 0, currency: 'IDR', accountId: cash.id });
+  /*
+   * A draft carries the kind it will post as and the capture it was read out of, and both are columns 0062 added. On
+   * an older schema there is nowhere to put them — the repositories are this build's, and they write every column — so
+   * the queue is left out there, as the other things a schema cannot hold yet are.
+   */
+  if (has(62)) {
+    await captureDrafts(database, ws, [
+      { source: 'csv', occurredOn: addDays(today, -2), description: 'APOTEK K24 KEMANG', amountMinor: 186_500, currency: 'IDR', accountId: bca.id, externalRef: 'sample:k24', categoryAccountId: null },
+      { source: 'csv', occurredOn: addDays(today, -1), description: 'SUPERINDO KEBAYORAN 0912', amountMinor: 412_300, currency: 'IDR', accountId: bca.id, externalRef: 'sample:superindo', categoryAccountId: await cat('household.groceries') },
+      { source: 'email', occurredOn: today, description: 'TIKET.COM KAI JKT-BDG', amountMinor: 320_000, currency: 'IDR', accountId: krisflyer.id, externalRef: 'sample:kai', categoryAccountId: null },
+    ]);
+    await createDraft(database, ws, { source: 'manual', occurredOn: today, description: 'Pak Joko car wash', amountMinor: 0, currency: 'IDR', accountId: cash.id });
+  }
 }

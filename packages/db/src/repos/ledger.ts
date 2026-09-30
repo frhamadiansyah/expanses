@@ -33,7 +33,25 @@ import {
 } from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
-export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
+export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
+
+/** The five channels the ledger's own CHECK knows: what `transactions.source` may actually hold. */
+export type LedgerSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
+
+/**
+ * The channel a captured row is filed under.
+ *
+ * A phone captures under notification, screen or photo, and `transactions.source` names a channel — manual, csv, voice,
+ * receipt, email — whose CHECK knows none of the three. So a capture is filed under the channel it arrived on: a
+ * photographed receipt is a receipt, and a notification or a screenshot is the institution's own message about the
+ * payment. The draft keeps the exact source, which is what the queue reads. Widening the ledger's enum needs a rebuild
+ * of a table every entry references, which is not a migration for a reader to make.
+ */
+export function ledgerSourceOf(source: TransactionSource): LedgerSource {
+  if (source === 'photo') return 'receipt';
+  if (source === 'notification' || source === 'screen') return 'email';
+  return source;
+}
 
 export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT';
 
@@ -185,7 +203,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     workspaceId: ws.workspaceId,
     occurredOn: input.occurredOn,
     description: input.description.trim(),
-    source: input.source ?? 'manual',
+    source: ledgerSourceOf(input.source ?? 'manual'),
     externalRef: input.externalRef ?? null,
     eventId: input.eventId ?? null,
     status: 'posted',

@@ -82,6 +82,7 @@ export * from './repos/event-items';
 export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';
 export * as draftsSchema from './schema-drafts';
+export * as captureSchema from './schema-capture';
 export * from './repos/drafts';
 export * from './repos/entry';
 export * from './repos/statements';

@@ -95,7 +95,7 @@ export function ReviewPage() {
       return;
     }
     await run(draft.id, async () => {
-      const transactionId = await confirmDraft(database, ws, draft.id, { setAside: null });
+      const { transactionId } = await confirmDraft(database, ws, draft.id, { setAside: null });
       if (undoable) resolved(draft, 'recorded', transactionId);
     });
   }
@@ -271,7 +271,7 @@ export function ReviewPage() {
         <SetAsideSheet
           door={asking.door}
           onSave={async (choice) => {
-            const transactionId = await confirmDraft(database, ws, asking.id, { setAside: choice });
+            const { transactionId } = await confirmDraft(database, ws, asking.id, { setAside: choice });
             await invalidate();
             const draft = list.find((row) => row.id === asking.id);
             if (asking.undoable && draft) resolved(draft, 'recorded', transactionId);
