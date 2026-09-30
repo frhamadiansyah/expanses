@@ -25,6 +25,7 @@ import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import {
   admitToGroupLog,
+  dropInviteMarksTx,
   exitGroupOf,
   groupLogOf,
   groupMembersReady,
@@ -279,6 +280,12 @@ export class SyncEngine {
           if (!(error instanceof SyncTransportError && error.status === 409 && attempt === 0)) throw error;
           pulls.push(await this.pull(bookId, seen));
           const now = await this.sharedRow(bookId);
+          if (now && now.state === 'active' && now.epoch === shared.epoch && (await groupLogWorkspaceOf(this.database.db, bookId)) !== null) {
+            // Joint net worth, final review item 5: the group log rotated past this device and the pull brought no key
+            // for it — it joined on an invite made before the rotation. It waits for a fresh invite (`needs_invite`),
+            // which a group member's device makes; the workspace's next sync claims it (the restored phone's path).
+            await this.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+          }
           if (!now || now.state !== 'active' || now.epoch === shared.epoch) throw error;
           shared = now;
         }
@@ -715,9 +722,13 @@ export class SyncEngine {
       if (error instanceof SyncTransportError && error.status === 409) return 'conflict';
       throw error;
     }
+    const groupLog = (await groupLogWorkspaceOf(this.database.db, bookId)) !== null;
     await this.database.transaction(async (tx) => {
       await this.sealer.storeEpochKeyTx(tx, bookId, next, key);
       await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${next}) WHERE book_id = ${bookId}`);
+      // Joint net worth, final review item 5: the invites this device made into a group log before now carry no key for
+      // the new epoch; a device not yet in is invited again, with the current keys.
+      if (groupLog) await dropInviteMarksTx(tx, bookId);
     });
     return next;
   }

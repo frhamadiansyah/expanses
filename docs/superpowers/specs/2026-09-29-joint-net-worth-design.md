@@ -94,6 +94,16 @@ rotation (S5–S9). What differs:
   invite's keys only when epoch 1's key derives the id the link names. A member who left the group log is never
   proposed back into it; their `confirm` answers read as `left`, and where they gave no answer none is made up.
 
+  *Correction (final review, item 5):* an invite carries the epoch keys that exist when it is made, and a rotation
+  seals the new key only to the devices already in the log's view, so an invite made before a rotation used to strand
+  whoever claimed it (joined, never able to read or write). Now: (a) a device that rotates a group log drops its
+  record of the invites it made (`nw.invited.<group>`), so a device not yet in is invited again, with the current keys,
+  on its next workspace sync; (b) a claimant whose claimed invite holds no key for the relay's current epoch tries its
+  other invites, and when none is fresh the group log waits here as `needs_invite` (a claimed-before-the-rotation device
+  whose introduction was refused as `409 stale epoch`, with no key after the re-pull, does the same) — the next
+  workspace sync claims a fresh invite by the restored phone's path. An invite signed by a device that is no owner of
+  the relay book any more (`403`, an old phone removed since) is skipped like a spent one, never failing the sync.
+
   *Accepted residual (task 5 review round 2):* a former member who is still in the workspace can, with a modified
   app, close the link and at once write a new link of their own before any member's device syncs. The household's
   group log is then no longer linked: its members keep it and keep sharing, but a later device of theirs cannot be let

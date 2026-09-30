@@ -9,7 +9,7 @@ import { encodeHlc, localTick } from '../../src/sync/hlc';
 import { encodeInviteCode, INVITE_TTL_MS, inviteAad, inviteKeyOf, newInviteSecret, sealInviteJson } from '../../src/sync/invite';
 import { closeProofFrom } from '../../src/sync/net-worth/group-log';
 import { bytesToBase64Url, inviteSigningBytes } from '../../src/sync/relay-signing';
-import type { ChangeSet } from '../../src/sync/types';
+import { type ChangeSet, SyncTransportError } from '../../src/sync/types';
 import { uuidv5 } from '../../src/sync/uuidv5';
 import { Household, type Device } from './household';
 
@@ -228,6 +228,126 @@ describe("a member's later device (task 5)", () => {
     expect(await pad.engine.groupLogOf(bookId)).toBe(groupBookId);
     expect((await pad.engine.netWorthGroup(bookId)).active?.proposalId).toBe(proposalId);
     expect(await pad.database.db.values(sql`SELECT seq, entity, error FROM sync_skipped WHERE book_id = ${groupBookId}`)).toEqual([]);
+  });
+});
+
+describe('an invite made before a rotation never strands its claimant (final review item 5)', () => {
+  const groupOf = async (d: Device, bookId: string) => (await d.engine.netWorthGroup(bookId)).groupBookId;
+  /** The group log's epoch on the relay, and whether `d` is in the log at it: its row active there and its key held. */
+  async function current(home: Household, d: Device, groupBookId: string) {
+    const [[relayBookId]] = (await d.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${groupBookId}`)) as [[string]];
+    const relayEpoch = home.relay.peek(relayBookId)!.epoch;
+    const [row] = await d.database.db.values<[string, number]>(sql`SELECT state, epoch FROM shared_books WHERE book_id = ${groupBookId}`);
+    const [key] = await d.database.db.values(sql`SELECT 1 FROM book_epoch_keys WHERE book_id = ${groupBookId} AND epoch = ${relayEpoch}`);
+    return { relayEpoch, state: row?.[0], epoch: Number(row?.[1]), holdsKey: key !== undefined };
+  }
+
+  it('a third member leaves before the partner claims: his stale invite leaves him waiting, the rotation re-invites him, and he is in at the current key', async () => {
+    const { home, rina, andi, sari, bookId } = await household();
+    await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    // Sari joins the group log and leaves the workspace at once; Rina rotates past her before Andi has synced at all.
+    await sari.engine.syncOnce(bookId);
+    await sari.engine.leave(bookId);
+    // Rina's fresh invite of Andi fails on the relay for now: the only invite Andi can claim is the stale one.
+    const putInvite = rina.transport.putInvite.bind(rina.transport);
+    rina.transport.putInvite = async () => {
+      throw new SyncTransportError(503, 'offline');
+    };
+    await home.settle([rina]);
+    await home.settle([rina]);
+    const groupBookId = (await groupOf(rina, bookId))!;
+    expect((await andi.engine.syncOnce(bookId)).groupError).toBeUndefined();
+    expect(await groupOf(andi, bookId)).toBeNull();
+    expect(await andi.database.db.values(sql`SELECT state FROM shared_books WHERE book_id = ${groupBookId}`)).toEqual([['needs_invite']]);
+
+    rina.transport.putInvite = putInvite;
+    await settle(home);
+    await settle(home);
+    expect(await groupOf(andi, bookId)).toBe(groupBookId);
+    const now = await current(home, andi, groupBookId);
+    expect(now.relayEpoch).toBeGreaterThan(1);
+    expect(now).toMatchObject({ state: 'active', epoch: now.relayEpoch, holdsKey: true });
+    // And he can answer: his confirm reaches Rina.
+    const pending = (await andi.engine.netWorthGroup(bookId)).pending!;
+    await andi.engine.answerNetWorth(bookId, pending.proposalId, 'confirm');
+    await settle(home);
+    expect((await rina.engine.netWorthGroup(bookId)).waitingFor).not.toContain(andi.memberId);
+  });
+
+  it("Rina replaces her phone: the old phone's invite, made before the rotation, is spent, and the new phone gets in on a fresh one", async () => {
+    const { home, rina, andi, bookId, proposalId } = await active();
+    const groupBookId = (await groupOf(rina, bookId))!;
+    // Rina's iPad is in the group too, so taking the old phone out leaves her in it.
+    const pad = await home.device('RinaPad', rina.memberId);
+    const padCode = (await rina.engine.createInvite(bookId, { inviterName: 'Rina', sameMember: true })).code;
+    await pad.engine.joinBook(padCode, { ws: pad.ws, memberName: 'Rina', deviceName: "Rina's iPad" });
+    await settle(home);
+    expect(await groupOf(pad, bookId)).toBe(groupBookId);
+
+    const phone = await home.device('RinaNew', rina.memberId);
+    const { code } = await rina.engine.createInvite(bookId, { inviterName: 'Rina', sameMember: true });
+    await phone.engine.joinBook(code, { ws: phone.ws, memberName: 'Rina', deviceName: "Rina's new phone" });
+    // The new phone cannot reach the group log's invites yet, while the old phone invites it (epoch 1's key only).
+    const claim = phone.transport.claimInvite.bind(phone.transport);
+    phone.transport.claimInvite = async () => {
+      throw new SyncTransportError(503, 'offline');
+    };
+    await home.settle([rina, phone]);
+    // The new phone takes the old one out of the workspace; Andi's phone takes it out of the group log and rotates. His
+    // invite of the new phone fails on the relay for now, so the only invite the new phone can claim is the stale one.
+    const putInvite = andi.transport.putInvite.bind(andi.transport);
+    andi.transport.putInvite = async () => {
+      throw new SyncTransportError(503, 'offline');
+    };
+    const padPut = pad.transport.putInvite.bind(pad.transport);
+    pad.transport.putInvite = andi.transport.putInvite;
+    await phone.engine.removeDevice(bookId, rina.deviceId);
+    await home.settle([andi, pad]);
+    await home.settle([andi, pad]);
+    phone.transport.claimInvite = claim;
+    // The old phone's invite is spent: it is no owner on the relay any more (403). Nothing is claimed, and the
+    // workspace's sync is not failed for it.
+    expect((await phone.engine.syncOnce(bookId)).groupError).toBeUndefined();
+    expect(await groupOf(phone, bookId)).toBeNull();
+
+    andi.transport.putInvite = putInvite;
+    pad.transport.putInvite = padPut;
+    await settle(home);
+    await settle(home);
+    expect(await groupOf(phone, bookId)).toBe(groupBookId);
+    const now = await current(home, phone, groupBookId);
+    expect(now.relayEpoch).toBeGreaterThan(1);
+    expect(now).toMatchObject({ state: 'active', epoch: now.relayEpoch, holdsKey: true });
+    expect((await phone.engine.netWorthGroup(bookId)).active?.proposalId).toBe(proposalId);
+    expect(await andi.database.db.values(sql`SELECT removed_seq FROM sync_authority_devices WHERE book_id = ${groupBookId} AND device_id = ${phone.deviceId}`)).toEqual([[null]]);
+  });
+
+  it('a partner who claimed before the rotation but whose introduction had not landed waits, then gets in on a fresh invite', async () => {
+    const { home, rina, andi, sari, bookId } = await household();
+    await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId, sari.memberId] });
+    const groupBookId = (await groupOf(rina, bookId))!;
+    const [[relay]] = (await rina.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${groupBookId}`)) as [[string]];
+    // Andi claims his invite, but nothing he writes reaches the group log yet.
+    const append = andi.transport.append.bind(andi.transport);
+    andi.transport.append = async (bookId, entry) => {
+      if (bookId === relay) throw new SyncTransportError(503, 'offline');
+      return append(bookId, entry);
+    };
+    await andi.engine.syncOnce(bookId);
+    expect(await groupOf(andi, bookId)).toBe(groupBookId);
+    // Sari joins and leaves the workspace; Rina rotates past her (Andi is not in the log's view: no key for him).
+    await sari.engine.syncOnce(bookId);
+    await sari.engine.leave(bookId);
+    await home.settle([rina]);
+    await home.settle([rina]);
+    expect(home.relay.peek(relay)!.epoch).toBeGreaterThan(1);
+    andi.transport.append = append;
+    await settle(home);
+    await settle(home);
+    expect(await groupOf(andi, bookId)).toBe(groupBookId);
+    const now = await current(home, andi, groupBookId);
+    expect(now).toMatchObject({ state: 'active', epoch: now.relayEpoch, holdsKey: true });
+    expect(await rina.database.db.values(sql`SELECT removed_seq FROM sync_authority_devices WHERE book_id = ${groupBookId} AND device_id = ${andi.deviceId}`)).toEqual([[null]]);
   });
 });
 

@@ -299,6 +299,16 @@ export async function admitToGroupLog(host: GroupLogHost, workspaceBookId: strin
 /** Local only: the devices this device invited into a group log, and when each invite expires (ms). */
 const INVITED_KEY = (groupBookId: string) => `nw.invited.${groupBookId}`;
 
+/**
+ * Final review item 5: this device just rotated the group log, so every invite it made before carries keys only up to
+ * the old epoch — a device claiming one would hold no key for the log as it is now. Its marks go: a device not yet in
+ * the log is invited again, with the current keys, on this device's next workspace sync (`devicesToAdmit`,
+ * `membersNotYetIn`). A device already in the view is never invited again anyway (`admitToGroupLog`).
+ */
+export async function dropInviteMarksTx(tx: Tx, groupBookId: string): Promise<void> {
+  await tx.run(sql`DELETE FROM settings WHERE key = ${INVITED_KEY(groupBookId)}`);
+}
+
 async function invitedBy(host: GroupLogHost, groupBookId: string): Promise<Record<string, number>> {
   const [row] = await host.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${INVITED_KEY(groupBookId)}`);
   try {
@@ -417,6 +427,7 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
   const workspace = await sharedRowOf(host.database, workspaceBookId);
   if (!workspace || workspace.state !== 'active' || !link.relayBookId) return false;
   const self = host.device.deviceId;
+  let stale: { relayBookId: string; epoch: number } | null = null;
   for (const invite of link.invites) {
     if (!(Date.parse(invite.expiresAt) > host.now())) continue;
     let code: string;
@@ -449,8 +460,9 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
       if (preview?.groupBookId !== link.groupBookId || preview?.relayBookId !== link.relayBookId) continue;
       claim = await host.transport.claimInvite(inviteId, host.device.public);
     } catch (error) {
-      // Claimed already, expired, or its book deleted: another invite may still be this device's.
-      if (error instanceof SyncTransportError && [404, 409, 410].includes(error.status)) continue;
+      // Claimed already, expired, or its book deleted — or signed by a device that is no owner there any more (403: an
+      // old phone removed since; final review item 5): another invite may still be this device's.
+      if (error instanceof SyncTransportError && [403, 404, 409, 410].includes(error.status)) continue;
       throw error;
     }
     if (claim.bookId !== link.relayBookId) continue;
@@ -460,7 +472,14 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
     const first = keys.find((k) => k.epoch === 1);
     if (!first || (await uuidv5(GROUP_LINK_NS, await closeProofFrom(base64UrlToBytes(first.key)))) !== link.groupBookId) continue;
     const held = new Set(keys.map((k) => k.epoch));
-    const epoch = held.has(claim.epoch) ? claim.epoch : Math.max(...held);
+    // Final review item 5: an invite made before the log rotated carries no key for its epoch now — joining on it, this
+    // device could neither read what follows nor write (its entries would be sealed under an epoch the relay has left).
+    // Another invite may be a fresh one; else the log waits for one (below).
+    if (!held.has(claim.epoch)) {
+      stale = { relayBookId: claim.bookId, epoch: claim.epoch };
+      continue;
+    }
+    const epoch = claim.epoch;
     // The keys, the row and the introduction in one transaction: a device holding the log's keys always has its
     // introduction waiting in the outbox, so nothing it writes can reach the log before it (an entry from a device
     // nobody pinned stops every peer's pull, §5.4). Its member row goes with it every time: when another device of the
@@ -481,6 +500,18 @@ async function joinFromInvites(host: GroupLogHost, workspaceBookId: string, link
       await introduceTx(host, tx, workspaceBookId, link.groupBookId, workspace.memberId, epoch);
     });
     return true;
+  }
+  if (stale) {
+    // Only a stale invite was this device's: the group log waits here for a fresh one (`needs_invite`), which a group
+    // member's device makes after its rotation; the next workspace sync claims it by the restored phone's path.
+    const found = stale;
+    await host.database.transaction(async (tx) => {
+      await recordGroupBookTx(tx, link.groupBookId, workspaceBookId);
+      await tx.run(sql`
+        INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at)
+        VALUES (${link.groupBookId}, ${found.relayBookId}, ${found.epoch}, ${workspace.memberId}, 'needs_invite', ${new Date(host.now()).toISOString()})
+        ON CONFLICT (book_id) DO UPDATE SET state = 'needs_invite'`);
+    });
   }
   return false;
 }
