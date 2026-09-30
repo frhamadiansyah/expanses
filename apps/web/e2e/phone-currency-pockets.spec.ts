@@ -40,10 +40,10 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   // Two rows and nothing under them, on a phone too.
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
-  await page.getByRole('link', { name: 'Add a currency', exact: true }).tap();
+  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().tap();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
-  await page.getByRole('button', { name: 'Add pocket' }).tap();
+  await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).tap();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
   await openAssets(page);
   const row = page.getByRole('link', { name: /^Thumb Valas/ });

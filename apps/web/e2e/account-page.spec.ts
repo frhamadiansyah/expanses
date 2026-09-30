@@ -34,7 +34,8 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
   for (const action of ['Spend', 'Receive', 'Transfer']) await expect(page.getByRole('button', { name: action, exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
-  await expect(page.getByRole('link', { name: 'Add a currency' })).toBeVisible();
+  // A current account's fourth action adds a currency, in a sheet over it.
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Add currency', exact: true })).toBeVisible();
 
   // The ⋯ holds the settings, the rename and the archive; the code it files under lives in the settings alone.
   await page.getByRole('button', { name: 'More', exact: true }).click();
@@ -53,14 +54,14 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
   await openMoney(page, 'Everyday');
-  await page.getByRole('link', { name: 'Add a currency', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Add a currency' })).toBeVisible();
+  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   // The currency it already holds is not offered again.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="IDR"]')).toHaveCount(0);
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('500');
-  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add pocket' }).click();
+  await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
+  await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
 
   // The same name, now an account with pockets: the rupiah it held (with the groceries behind it) and the dollars.
   await expect(page.getByText('Balance, all pockets')).toBeVisible();
@@ -98,7 +99,7 @@ test('cash has nothing to add a currency to', async ({ page }) => {
   await openMoney(page, 'Pocket cash');
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
-  await expect(page.getByRole('link', { name: 'Add a currency' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);
 });
 
 test('an RDN is topped up from a current account: Top up opens a transfer into it', async ({ page }) => {
@@ -176,9 +177,8 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   // Four actions in one row; adding a currency is the Pockets list's last row, not an action.
   for (const action of ['Spend', 'Receive', 'Transfer']) await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: action, exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Move', exact: true })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Add a currency' })).toHaveCount(0);
-  const rows = page.locator('section').filter({ has: page.getByTestId('pocket-USD') }).locator('a');
-  await expect(rows.last()).toHaveText(/Add a currency/);
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);
+  await expect(page.getByTestId('pocket-add')).toHaveText(/Add a currency/);
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await page.getByTestId('pocket-USD').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
