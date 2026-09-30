@@ -176,7 +176,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         priceMicro: latestPrice?.priceMicro ?? null,
         priceLabel,
         ...(gold && latestPrice?.source === 'world'
-          ? { priceTag: { tag: 'not buyback', info: 'The world spot price. A dealer usually buys gold back a few percent below it.' } }
+          ? { priceTag: { info: 'Not buyback: this is the world spot price. A dealer usually buys gold back a few percent below it.' } }
           : {}),
       })
     : [];
@@ -499,7 +499,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
 /**
  * The labelled figures inside the card, two to a row: a small grey label, the figure under it. The one a word
- * qualifies ("not buyback") carries it under the figure, and its ⓘ opens what it means under the grid.
+ * qualifies carries it under the figure, and its ⓘ opens what it means (a world gold price: "Not buyback") under the grid.
  */
 function NumberGrid({ tiles, refresh }: { tiles: Tile[]; refresh?: { label: string; busy: boolean; run: () => void } }) {
   const [explained, setExplained] = useState<string | null>(null);

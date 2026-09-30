@@ -145,13 +145,14 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '20', '46000000']]);
   await openAsset(page, 'Antam gold bars');
   // 74.639.548 an ounce is 2.399.717 a gram, to the whole rupiah; 20 g of it.
-  await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\) · \d{1,2} \w{3} \d{4}\. The world spot price/);
+  await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\) · \d{1,2} \w{3} \d{4}\. Not buyback: this is the world spot price/);
   await expect(page.getByText('Rp 47.994.340').first()).toBeVisible();
   const grid = page.getByTestId('asset-grid');
   await expect(grid).toContainText('World price');
   await expect(grid).toContainText('Rp 2.399.717/g');
   await expect(grid).not.toContainText(',19');
-  await expect(grid).toContainText('not buyback');
+  // "Not buyback" is said behind the ⓘ, not as a tag under the figure.
+  await expect(grid).not.toContainText('not buyback');
   await expect(page.getByText(/buys gold back a few percent below it/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText('World price');
 

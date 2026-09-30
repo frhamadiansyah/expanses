@@ -97,7 +97,7 @@ export function heroLine(o: {
 export interface Tile {
   label: string;
   value: string;
-  /** A small word beside the label that qualifies the figure: "not buyback" on a world gold price. */
+  /** A small word under the figure that qualifies it. */
   tag?: string;
   /** What the figure is, behind an ⓘ beside the label. */
   info?: string;
@@ -121,7 +121,7 @@ export function pricedTiles(o: {
   /** What the price tile is called: "Buyback today", "Close today", "World price". */
   priceLabel: string;
   /** The price tile's tag and ⓘ, when its label needs qualifying. */
-  priceTag?: { tag: string; info: string };
+  priceTag?: { tag?: string; info: string };
 }): Tile[] {
   const held = o.unitsMicro > 0;
   const average = held ? priceMicroFrom(o.costMinor, o.unitsMicro) : null;
