@@ -1,6 +1,6 @@
 import type { CoretaxRow, ReadinessIssue } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { carryPillLabel, readinessLinks, reportCheck, screenSections } from './report-rows';
+import { carryPillLabel, jointReportView, readinessLinks, reportCheck, screenSections } from './report-rows';
 
 const row = (partial: Partial<CoretaxRow> & Pick<CoretaxRow, 'key'>): CoretaxRow => ({
   section: 'kas',
@@ -104,6 +104,13 @@ describe('readinessLinks', () => {
     expect(links[0]!.issue.level).toBe('warning');
   });
 
+  it('with one tax ID, an issue on a partner’s row names who fixes it and links nowhere of this phone’s', () => {
+    const house = row({ key: 'item-house', section: 'tidak_bergerak', code: '0509', name: 'House in Bintaro' });
+    const links = readinessLinks([issue({ key: 'item-house:missing:loc', rowKey: 'item-house' })], [house], new Map([['item-house', 'Andi']]));
+
+    expect(links[0]).toMatchObject({ to: '/tax-report', owner: 'Andi' });
+  });
+
   it('has nothing to link when the year is ready', () => {
     expect(readinessLinks([], rows)).toEqual([]);
   });
@@ -138,5 +145,61 @@ describe('reportCheck', () => {
     expect(got.missing).toEqual(['USD']);
     // The report's own figures do not need the balance sheet, so they stand.
     expect(got.report).toEqual({ hartaMinor: 50_000_000, utangMinor: 700_000_000, reportNetMinor: -650_000_000 });
+  });
+
+  it('with one tax ID, makes no comparison: the balance sheet holds only this phone’s items, the report both people’s', () => {
+    const house = row({ key: 'item-house', section: 'tidak_bergerak', code: '0509', costMinor: 900_000_000, valueMinor: 900_000_000, balanceMinor: 0 });
+    const got = reportCheck([bca, house], [], { assets, liabilities: [], missing: [] }, { joint: true });
+    expect(got.check).toBeNull();
+    expect(got.missing).toEqual([]);
+    expect(got.joint).toBe(true);
+    expect(got.report.hartaMinor).toBe(950_000_000);
+  });
+});
+
+describe('jointReportView', () => {
+  const names: Record<string, string> = { rina: 'Rina', andi: 'Andi' };
+  const nameOf = (id: string) => names[id] ?? 'Someone';
+  const base = { members: ['rina', 'andi'], me: 'andi', waiting: [], pending: {} };
+
+  it('separate tax IDs, or no group: nothing to say, the report is unchanged', () => {
+    expect(jointReportView(null, nameOf)).toBeNull();
+    expect(jointReportView(undefined, nameOf)).toBeNull();
+  });
+
+  it('names whose report it is, and is complete when nothing is missing', () => {
+    expect(jointReportView(base, nameOf)).toEqual({ banner: 'Joint report · Rina and Andi', complete: true, lines: [], freezeWarning: null });
+  });
+
+  it('waits for the members’ names rather than drawing “Someone and Someone”', () => {
+    expect(jointReportView({ ...base, pending: { rina: 1 } }, () => undefined)).toBeNull();
+    expect(jointReportView(base, (id) => (id === 'rina' ? 'Rina' : undefined))).toBeNull();
+  });
+
+  it('warns before a freeze that leaves someone’s items out', () => {
+    expect(jointReportView({ ...base, me: 'rina', waiting: [{ owner: 'andi', name: 'House in Bintaro' }] }, nameOf)!.freezeWarning).toBe(
+      "Andi's items are still missing — freezing now leaves them out",
+    );
+    expect(jointReportView({ ...base, pending: { andi: 1 } }, nameOf)!.freezeWarning).toBe('Some of your items are still missing — freezing now leaves them out');
+    expect(jointReportView({ ...base, pending: { andi: 1, rina: 2 } }, nameOf)!.freezeWarning).toBe(
+      "Rina's items and some of yours are still missing — freezing now leaves them out",
+    );
+  });
+
+  it('Rina has an item not yet shared: says so, and the report is not complete', () => {
+    const view = jointReportView({ ...base, pending: { rina: 1 } }, nameOf)!;
+    expect(view.complete).toBe(false);
+    expect(view.lines).toEqual(["Rina hasn't added 1 item yet"]);
+  });
+
+  it('counts items, and speaks to this phone’s own person as you', () => {
+    const view = jointReportView({ ...base, pending: { andi: 2, rina: 3 } }, nameOf)!;
+    expect(view.lines).toEqual(["Rina hasn't added 3 items yet", "You haven't added 2 items yet"]);
+  });
+
+  it('an item whose year-end has not arrived: waiting for its owner’s phone, and not complete', () => {
+    const view = jointReportView({ ...base, me: 'rina', waiting: [{ owner: 'andi', name: 'House in Bintaro' }, { owner: 'andi', name: 'Andi Bank' }] }, nameOf)!;
+    expect(view.complete).toBe(false);
+    expect(view.lines).toEqual(["Waiting for Andi's phone: House in Bintaro, Andi Bank"]);
   });
 });

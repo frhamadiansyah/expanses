@@ -1,3 +1,4 @@
+import type { ItemTax } from './joint-tax';
 /** One owner's item, as sent to the group log (spec §5.2). */
 export interface ItemSummary {
   owner: string;
@@ -13,7 +14,8 @@ export interface ItemSummary {
   householdMinor: number;
   otherUseMinor: number;
   monthEnds: { month: string; balanceMinor: number }[];
-  tax: unknown | null;
+  /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
+  tax: ItemTax;
 }
 
 export interface PeriodMovement {

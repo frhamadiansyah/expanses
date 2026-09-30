@@ -1,4 +1,4 @@
-import { cashCodeForSubtype, type CoretaxInputs, priceMicroFrom, taxHoldingName } from '@expanses/core';
+import { cashCodeForSubtype, type CoretaxInputs, type CoretaxRowPart, priceMicroFrom, taxHoldingName } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -149,4 +149,26 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
   }
 
   return inputs;
+}
+
+/** Only one account's rows of a year's inputs, in the same shape; null when the account files nothing that year. */
+export function rowPartOf(inputs: CoretaxInputs, accountId: string): CoretaxRowPart | null {
+  const mine = <T extends { accountId: string }>(rows: T[]) => rows.filter((row) => row.accountId === accountId);
+  const part: CoretaxRowPart = {
+    cash: mine(inputs.cash),
+    holdings: mine(inputs.holdings),
+    estimated: mine(inputs.estimated),
+    receivables: mine(inputs.receivables),
+    debts: mine(inputs.debts),
+  };
+  return Object.values(part).some((rows) => rows.length > 0) ? part : null;
+}
+
+/**
+ * One account's slice of `coretaxInputsFor` for `taxYear` (joint-net-worth §5.2 `tax`): the rows its owner's own report
+ * has for it, exactly, or null when it files nothing that year. Still keyed by the local account id: the summary
+ * renames it to the item's id before anything leaves the phone.
+ */
+export async function taxRowFor(database: Database, ws: WorkspaceContext, accountId: string, taxYear: number): Promise<CoretaxRowPart | null> {
+  return rowPartOf(await coretaxInputsFor(database, ws, taxYear), accountId);
 }
