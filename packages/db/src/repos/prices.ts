@@ -5,7 +5,8 @@ import type { Database } from '../database';
 import { goldPriceChoices, prices, valuations } from '../schema-assets';
 import { markAccountDirtyTx } from '../sync/capture';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { listSecurityPrices, securityOfHolding, upsertSecurityPriceTx } from './securities';
+import { securityPrices } from '../schema-securities';
+import { securityOfHolding, upsertSecurityPriceTx } from './securities';
 
 export interface ValuationWithNote extends ValuationRow {
   id: string;
@@ -82,14 +83,20 @@ export async function setGoldPriceChoice(database: Database, ws: WorkspaceContex
 }
 
 export interface SourcedPrice extends PriceRow {
-  /** Typed by the owner, or fetched as the world price. A security's prices are all typed. */
+  /** Typed by the owner, fetched as the world price, or — a security's — from Yahoo Finance or IDX's daily file. */
   source: PriceSource;
 }
 
 /** Prices for one holding, newest first, each with where it came from. A linked holding's are its security's. */
 export async function listPrices(database: Database, ws: WorkspaceContext, accountId: string): Promise<SourcedPrice[]> {
   const securityId = await securityOfHolding(database.db, ws, accountId);
-  if (securityId) return (await listSecurityPrices(database, ws, securityId)).map((row) => ({ ...row, source: 'manual' as const }));
+  if (securityId) {
+    return database.db
+      .select({ onDate: securityPrices.onDate, priceMicro: securityPrices.priceMicro, source: securityPrices.source })
+      .from(securityPrices)
+      .where(and(eq(securityPrices.securityId, securityId), eq(securityPrices.workspaceId, ws.workspaceId)))
+      .orderBy(desc(securityPrices.onDate));
+  }
   const rows = await database.db
     .select({ onDate: prices.onDate, priceMicro: prices.priceMicro, source: prices.source })
     .from(prices)

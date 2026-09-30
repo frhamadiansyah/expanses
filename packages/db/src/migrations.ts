@@ -59,6 +59,7 @@ import paidFrom from '../migrations/0058_paid_from.sql?raw';
 import memberTransferUnposted from '../migrations/0059_member_transfer_unposted.sql?raw';
 import categoryColours from '../migrations/0060_category_colours.sql?raw';
 import worldGoldPrice from '../migrations/0061_world_gold_price.sql?raw';
+import listedSharePrices from '../migrations/0062_listed_share_prices.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -128,6 +129,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 59, name: 'member_transfer_unposted', sql: memberTransferUnposted },
   { version: 60, name: 'category_colours', sql: categoryColours },
   { version: 61, name: 'world_gold_price', sql: worldGoldPrice },
+  { version: 62, name: 'listed_share_prices', sql: listedSharePrices },
 ];
 
 /** The highest version this build of the app knows how to produce. */

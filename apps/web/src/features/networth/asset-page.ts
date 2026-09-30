@@ -1,4 +1,5 @@
-import { assetValueAt, currencyInfo, formatMinor, formatPriceMicro, formatUnits, PRICE_SCALE, priceMicroFrom, type UnitKind, unitsValueMinor, positionAfter, type TradeRecord, type ValuationBasis } from '@expanses/core';
+import { assetValueAt, currencyInfo, formatMinor, formatPriceMicro, formatUnits, PRICE_SCALE, priceMicroFrom, type UnitKind, unitsValueMinor, positionAfter, type PriceSource, type TradeRecord, type ValuationBasis } from '@expanses/core';
+import { SOURCE_LABELS } from '../prices/price-sources';
 
 /**
  * What an asset's own page says, worked out apart from the page: the gain beside the figure, the line under it, the
@@ -199,19 +200,19 @@ export function tradeLine(
 }
 
 /**
- * The line under the grid, for a priced thing: where the price came from and the day it is for. A world price says so
- * by name; a price typed on the page, or a security's, is "Typed". A day that is not today and a fetch that failed
- * add the quiet way to try again.
+ * Where the price came from and the day it is for, behind the price figure's ⓘ: a world price, a Yahoo Finance close
+ * and an IDX closing price say so by name; a price typed on the page, or a security's, is "Typed". A holding that
+ * fetches its price (`fetches`) and failed today adds the quiet way to try again.
  */
 export function priceLine(o: {
-  latest: { onDate: string; source: 'manual' | 'world' } | null;
-  followsWorld: boolean;
+  latest: { onDate: string; source: PriceSource } | null;
+  fetches: boolean;
   failed: boolean;
   today: string;
 }): string {
-  if (!o.latest) return o.followsWorld && o.failed ? 'No price yet · ↻ to try again' : 'No price yet, so it is valued at what was paid';
-  const said = `${o.latest.source === 'world' ? 'World price (XAU)' : 'Typed'} · ${dayLabel(o.latest.onDate)}`;
-  return o.followsWorld && o.failed && o.latest.onDate < o.today ? `${said} · ↻ to try again` : said;
+  if (!o.latest) return o.fetches && o.failed ? 'No price yet · ↻ to try again' : 'No price yet, so it is valued at what was paid';
+  const said = `${SOURCE_LABELS[o.latest.source]} · ${dayLabel(o.latest.onDate)}`;
+  return o.fetches && o.failed && o.latest.onDate < o.today ? `${said} · ↻ to try again` : said;
 }
 
 /** The ISO day `days` before `iso`, in UTC so no timezone moves it. */

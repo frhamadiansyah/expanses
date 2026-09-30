@@ -28,7 +28,8 @@ CREATE TABLE holding_links (
 );
 CREATE INDEX holding_links_security ON holding_links (workspace_id, security_id);
 
-CREATE TABLE security_prices (
+/* IF NOT EXISTS since 0062: on a database that meets 0051 after later migrations, 0062 has already made the table. */
+CREATE TABLE IF NOT EXISTS security_prices (
   security_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
   on_date TEXT NOT NULL,

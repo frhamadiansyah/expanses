@@ -1,5 +1,6 @@
-import { CASH_ITEMS } from '@expanses/core';
+import { CASH_ITEMS, isoDate, priceAgeDays } from '@expanses/core';
 import { Plus } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -145,6 +146,10 @@ export function AssetsPage() {
   const live = liveGroups(groups);
   const sold = soldRows(groups);
   const stale = staleRows(groups);
+  // Shares and funds, whose prices Update prices brings up to date; and how many of them are more than a week old.
+  const kinds = new Map((profiles.data ?? []).map((profile) => [profile.accountId, profile.assetKind]));
+  const listed = (values.data ?? []).filter((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0 && ['stock', 'fund'].includes(kinds.get(row.accountId) ?? ''));
+  const oldPrices = listed.filter((row) => row.source !== 'price' || !row.asOf || priceAgeDays(row.asOf, isoDate()) > 7).length;
   // The bar divides what is held: a section taken below nought by an overdraft is named under it instead.
   const shares = heldShares(assetSegments(live));
   // Which of the rows drawn below are money: those open their own page, not the asset page.
@@ -220,10 +225,27 @@ export function AssetsPage() {
           </Panel>
         ))}
 
+      {oldPrices > 0 && (
+        <div className="mb-[18px] flex items-center justify-between gap-3 rounded-[11px] bg-[var(--ph-surface)] px-3 py-[9px] md:max-w-2xl" data-testid="old-prices">
+          <p className="min-w-0 text-[13px] leading-[17px] text-[var(--ph-warn)]">
+            {oldPrices === 1 ? '1 price is' : `${oldPrices} prices are`} more than a week old
+          </p>
+          <Link to="/net-worth/prices" className="ph-focus shrink-0 rounded text-[13px] leading-[17px] font-semibold text-[var(--ph-tint)]">
+            Update ›
+          </Link>
+        </div>
+      )}
+
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
       {live.map((group) => (
         <Group key={group.group} group={group} baseCurrency={baseCurrency} money={money} />
       ))}
+
+      {listed.length > 0 && (
+        <InsetGroup>
+          <InsetRow title="Stock and fund prices" to="/net-worth/prices" />
+        </InsetGroup>
+      )}
 
       {sold.length > 0 && (
         <>

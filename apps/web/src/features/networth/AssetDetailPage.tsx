@@ -1,6 +1,6 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, presetFor, type UnitKind } from '@expanses/core';
-import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, setGoldPriceChoice, type TradeRow } from '@expanses/db';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
+import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -27,13 +27,16 @@ import { LINE_DAYS, useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
-import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
+import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
+import { CHOICE_LABELS, listedChoiceOf, listedSourceOptions, SOURCE_LABELS } from '../prices/price-sources';
+import { useSecurityPriceChoices } from '../prices/queries';
+import { useYahooClose } from '../prices/yahoo';
 
 /** The kinds of money account: their own page is the account page, whichever list they were opened from. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -54,6 +57,7 @@ type Sheet =
   | { kind: 'price' }
   | { kind: 'value' }
   | { kind: 'source' }
+  | { kind: 'listed-source' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string };
 
@@ -132,6 +136,21 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const choiceQuery = useGoldPriceChoice(accountId, gold);
   const choice = gold ? (choiceQuery.data ?? null) : null;
   const world = useWorldGoldPrice({ accountId, currency, choice, latest: latestPrice, ready: prices.isSuccess && choiceQuery.isSuccess });
+  // A listed share with a ticker follows its security's choice: Yahoo Finance's close, IDX's daily file, or typing.
+  const listedSecurity = priced && stock.security?.ticker ? stock.security : null;
+  const listedChoices = useSecurityPriceChoices();
+  const listedChoice = listedSecurity && listedChoices.isSuccess ? listedChoiceOf(listedSecurity, listedChoices.data[listedSecurity.id] ?? null) : null;
+  const yahoo = useYahooClose({ security: listedSecurity, choice: listedChoice, latest: latestPrice, ready: prices.isSuccess && listedChoices.isSuccess });
+  // The price this page can fetch, if any: gold's world price or a share's Yahoo close, each with its ↻.
+  const fetcher =
+    choice === 'world'
+      ? { label: 'Fetch today’s world price', state: world.state, run: world.retry }
+      : listedChoice === 'yahoo'
+        ? { label: 'Fetch the latest close', state: yahoo.state, run: yahoo.retry }
+        : null;
+  // A share or a fund whose price has gone a few days without an update says so, with the way to Update prices.
+  const listedLike = priced && (kind === 'stock' || kind === 'fund' || Boolean(stock.security));
+  const priceAge = latestPrice ? priceAgeDays(latestPrice.onDate, isoDate()) : 0;
   const latestValuation = (valuations.data ?? []).find((row) => row.basis !== 'njop' && row.asOf === value.asOf) ?? null;
   const kindLabel = assetItemOfCode(value.coretaxCode)?.label ?? (kind ? presetFor(kind).label : 'Asset');
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
@@ -164,8 +183,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
   // Where the price came from and the day it is for ("Typed · 24 Sep 2026"): behind the price figure's ⓘ rather than
   // a line of its own, since it only matters when someone asks how current the figure is.
-  const saidPrice = priced ? priceLine({ latest: latestPrice, followsWorld: choice === 'world', failed: world.state === 'failed', today: isoDate() }) : '';
-  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Your price' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
+  const saidPrice = priced ? priceLine({ latest: latestPrice, fetches: fetcher !== null, failed: fetcher?.state === 'failed', today: isoDate() }) : '';
+  // A close from Yahoo or IDX's file is the last session's, not today's.
+  const outsideClose = latestPrice?.source === 'yahoo' || latestPrice?.source === 'idx';
+  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Your price' : outsideClose ? 'Last close' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
   const pricedTileList: Tile[] = priced
     ? pricedTiles({
         unitKind,
@@ -177,7 +198,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         priceLabel,
         ...(gold && latestPrice?.source === 'world'
           ? { priceTag: { info: 'Not buyback: this is the world spot price. A dealer usually buys gold back a few percent below it.' } }
-          : {}),
+          : latestPrice?.source === 'yahoo'
+            ? { priceTag: { info: 'Delayed; the last close, not a live price.' } }
+            : {}),
       })
     : [];
   const tiles: Tile[] = priced
@@ -347,16 +370,23 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         {tiles.length > 0 && (
           <NumberGrid
             tiles={tiles}
-            refresh={
-              priced && latestPrice && choice === 'world'
-                ? { label: 'Fetch today’s world price', busy: world.state === 'fetching', run: world.retry }
-                : undefined
-            }
+            refresh={priced && latestPrice && fetcher ? { label: fetcher.label, busy: fetcher.state === 'fetching', run: fetcher.run } : undefined}
           />
         )}
       </BalanceCard>
 
       <ActionButtons actions={actions} />
+
+      {listedLike && latestPrice && priceAge > STALE_PRICE_DAYS && (
+        <div className="-mt-[6px] mb-[18px] flex items-center justify-between gap-3 rounded-[11px] bg-[var(--ph-surface)] px-3 py-[9px] md:max-w-2xl" data-testid="price-age">
+          <p className="min-w-0 text-[13px] leading-[17px] text-[var(--ph-warn)]">
+            {SOURCE_LABELS[latestPrice.source]} · {dayLabel(latestPrice.onDate)} · {priceAge} days old
+          </p>
+          <Link to="/net-worth/prices" className="ph-focus shrink-0 rounded text-[13px] leading-[17px] font-semibold text-[var(--ph-tint)]">
+            Update ›
+          </Link>
+        </div>
+      )}
 
       {/* With a price, its source and day are behind the price figure's ⓘ; with none yet there is no figure to hang it on. */}
       {priced && !latestPrice && (
@@ -364,16 +394,16 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="price-line">
             {saidPrice}
           </p>
-          {/* Only a holding that follows the world price can fetch one; a typed-only holding has nothing to refresh. */}
-          {choice === 'world' && (
+          {/* Only a holding that follows a fetched price can fetch one; a typed-only holding has nothing to refresh. */}
+          {fetcher && (
             <button
               type="button"
-              aria-label="Fetch today’s world price"
-              disabled={world.state === 'fetching'}
-              onClick={world.retry}
+              aria-label={fetcher.label}
+              disabled={fetcher.state === 'fetching'}
+              onClick={fetcher.run}
               className="ph-focus flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-tint)] disabled:opacity-40"
             >
-              <RotateCw size={14} aria-hidden className={world.state === 'fetching' ? 'animate-spin' : undefined} />
+              <RotateCw size={14} aria-hidden className={fetcher.state === 'fetching' ? 'animate-spin' : undefined} />
             </button>
           )}
         </div>
@@ -426,6 +456,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           choice ? (
             <InsetRow key="source" title="Price source" value={choice === 'world' ? 'World price' : "I'll type it"} onClick={() => setSheet({ kind: 'source' })} />
           ) : null,
+          listedChoice ? (
+            <InsetRow key="listed-source" title="Price source" value={CHOICE_LABELS[listedChoice]} onClick={() => setSheet({ kind: 'listed-source' })} />
+          ) : null,
+          // Every share and fund held, each with its price box and IDX's file to fill the shares.
+          listedLike ? <InsetRow key="prices" title="Update prices" to="/net-worth/prices" /> : null,
           // The broker's cash sits at a bank: buying takes it from there, and selling puts it back.
           rdnBank ? <InsetRow key="cash" title="Cash through" value={`RDN at ${rdnBank}`} chevron={false} /> : null,
           boughtWith ? (
@@ -467,11 +502,30 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       {sheet?.kind === 'source' && choice && (
         <PriceSourceSheet
           choice={choice}
+          options={GOLD_SOURCES}
           onPick={(next) => {
             setSheet(null);
             void (async () => {
               try {
                 await setGoldPriceChoice(database, ws, accountId, next);
+                await invalidate();
+              } catch (e) {
+                setError(e);
+              }
+            })();
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'listed-source' && listedSecurity && listedChoice && (
+        <PriceSourceSheet
+          choice={listedChoice}
+          options={listedSourceOptions(listedSecurity)}
+          onPick={(next) => {
+            setSheet(null);
+            void (async () => {
+              try {
+                await setSecurityPriceChoice(database, ws, listedSecurity.id, next);
                 await invalidate();
               } catch (e) {
                 setError(e);

@@ -106,15 +106,20 @@ describe('each purchase on its own', () => {
 describe('the price line', () => {
   const today = '2026-09-30';
   it('names a world price and a typed one, with the day each is for', () => {
-    expect(priceLine({ latest: { onDate: today, source: 'world' }, followsWorld: true, failed: false, today })).toBe('World price (XAU) · 30 Sep 2026');
-    expect(priceLine({ latest: { onDate: today, source: 'manual' }, followsWorld: true, failed: false, today })).toBe('Typed · 30 Sep 2026');
+    expect(priceLine({ latest: { onDate: today, source: 'world' }, fetches: true, failed: false, today })).toBe('World price (XAU) · 30 Sep 2026');
+    expect(priceLine({ latest: { onDate: today, source: 'manual' }, fetches: true, failed: false, today })).toBe('Typed · 30 Sep 2026');
+  });
+
+  it('names a listed share’s close by where it came from', () => {
+    expect(priceLine({ latest: { onDate: '2026-09-29', source: 'yahoo' }, fetches: true, failed: false, today })).toBe('Yahoo Finance close · 29 Sep 2026');
+    expect(priceLine({ latest: { onDate: '2026-09-29', source: 'idx' }, fetches: false, failed: false, today })).toBe('IDX closing price · 29 Sep 2026');
   });
 
   it('keeps an older price when today’s could not be fetched, and says ↻ tries again', () => {
-    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'world' }, followsWorld: true, failed: true, today })).toBe('World price (XAU) · 28 Sep 2026 · ↻ to try again');
+    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'world' }, fetches: true, failed: true, today })).toBe('World price (XAU) · 28 Sep 2026 · ↻ to try again');
     // A holding that takes only typed prices never fetches, so it never offers to try again.
-    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'manual' }, followsWorld: false, failed: true, today })).toBe('Typed · 28 Sep 2026');
-    expect(priceLine({ latest: null, followsWorld: false, failed: false, today })).toBe('No price yet, so it is valued at what was paid');
+    expect(priceLine({ latest: { onDate: '2026-09-28', source: 'manual' }, fetches: false, failed: true, today })).toBe('Typed · 28 Sep 2026');
+    expect(priceLine({ latest: null, fetches: false, failed: false, today })).toBe('No price yet, so it is valued at what was paid');
   });
 });
 
