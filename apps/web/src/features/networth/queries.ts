@@ -30,7 +30,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
-import { jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
+import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
 export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
@@ -198,7 +198,7 @@ export function useSharedNetWorth() {
       if (!active) return null;
       const books = await listBooks(database, ws);
       if (!books.some((book) => book.id === active.workspaceBookId)) return null;
-      const items: ReceivedItem[] = await receivedItems(database, active.groupBookId);
+      const items: ReceivedItem[] = groupItems(await receivedItems(database, active.groupBookId), active.members);
       const detail = await sharingDetail(database, active.workspaceBookId, null);
       const names: Record<string, string> = {};
       for (const member of detail?.members ?? []) names[member.memberId] = member.name;

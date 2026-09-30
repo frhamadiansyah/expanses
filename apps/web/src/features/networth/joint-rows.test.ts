@@ -1,7 +1,7 @@
 import { balanceSheet, type ItemSummary } from '@expanses/core';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { figureOf, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem } from './joint-rows';
+import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem } from './joint-rows';
 import { rowKindOf, sheetDrawers } from './sheet-drawers';
 
 const RINA = 'm-rina';
@@ -214,5 +214,13 @@ describe('jointSeries (the household line under a household total)', () => {
   it('a month a received item has no rate for has no figure and names the currency', () => {
     const series = jointSeries([point('2026-09', 200)], [item({ itemId: 'i-usd', currency: 'USD', balanceMinor: 100 })], {}, 'IDR');
     expect(series[0]).toMatchObject({ netWorthMinor: null, stack: null, missing: ['USD'] });
+  });
+});
+
+describe('groupItems (final review item 8)', () => {
+  it("keeps only the active group's members' items: a former member's rows still in the log are not the household's", () => {
+    const items = [item({ itemId: 'a', owner: ANDI }), item({ itemId: 's', owner: 'm-sari' }), item({ itemId: 'a2', owner: ANDI })];
+    expect(groupItems(items, [RINA, ANDI]).map((i) => i.itemId)).toEqual(['a', 'a2']);
+    expect(groupItems(items, [RINA])).toEqual([]);
   });
 });

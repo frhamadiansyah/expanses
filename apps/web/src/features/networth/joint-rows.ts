@@ -10,6 +10,14 @@ import type { LiabilityKind, NetWorthPoint } from '@expanses/db';
 /** A summary received from another member, known by its `itemId` (never an account id: §5.1). */
 export type ReceivedItem = ItemSummary & { itemId: string };
 
+/**
+ * The received items that are the active group's (final review item 8): only its members' own. A member who left may
+ * still have rows in the log until every phone drops them; they are never counted in the household's figures.
+ */
+export function groupItems(items: readonly ReceivedItem[], members: readonly string[]): ReceivedItem[] {
+  return items.filter((item) => members.includes(item.owner));
+}
+
 /** This phone's own balance sheet inputs, as `sheetInputsAt` reads them: already in the base currency. */
 export interface OwnSheet {
   assets: SheetAsset[];
