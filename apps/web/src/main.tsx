@@ -28,12 +28,19 @@ if (import.meta.hot) {
   window.addEventListener('error', mark);
   window.addEventListener('unhandledrejection', mark);
   import.meta.hot.on('vite:error', mark);
-  const report = console.error.bind(console);
-  console.error = (...args: unknown[]) => {
-    // React names a render that threw this way; the router's boundary then draws over the app.
-    if (args.some((arg) => typeof arg === 'string' && /The above error occurred|An error occurred in the|Failed to reload|Importing a module script failed/.test(arg))) mark();
-    report(...args);
-  };
+  // React names a render that threw this way — as an error or, for one no boundary caught, as a warning.
+  const failed = /The above error occurred|An error occurred in the|Failed to reload|Importing a module script failed/;
+  for (const level of ['error', 'warn'] as const) {
+    const report = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      if (args.some((arg) => typeof arg === 'string' && failed.test(arg))) mark();
+      report(...args);
+    };
+  }
+  // An edit this file cannot take in place — one whose update reaches here because no component took it — would
+  // otherwise run this file again and start a second app on the same page, which tears the first one down to white.
+  // So an update that reaches this file reloads the page instead.
+  import.meta.hot.accept(() => window.location.reload());
   import.meta.hot.on('vite:afterUpdate', () => {
     if (broken) window.location.reload();
     // However it broke, an update that leaves nothing drawn is a broken page: a render that threw with no boundary
