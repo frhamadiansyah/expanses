@@ -494,3 +494,6 @@ export { idxDate, IdxFileError, type IdxSummary, type InflateRaw, parseIdxRows, 
 export {
   brokerFeeDefaults, type BrokerFees, DEFAULT_BROKER_FEES, IDX_SALE_TAX_PPM, type IdxCharge, idxCharge, idxTickSize, isIdxTick, parsePercentPpm, ppmOf, ppmPercent, stepIdxPrice,
 } from './assets/idx-trade';
+export {
+  FUND_UNIT_DECIMALS, type FundSell, type FundTrade, fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, isMoneyMarketFund,
+} from './assets/fund-trade';

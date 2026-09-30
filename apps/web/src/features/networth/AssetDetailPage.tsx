@@ -28,6 +28,8 @@ import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { ListedTradeSheet } from './ListedTradeSheet';
+import { FundTradeSheet } from './FundTradeSheet';
+import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
@@ -60,6 +62,7 @@ type Sheet =
   | { kind: 'source' }
   | { kind: 'listed-source' }
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
+  | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string };
 
@@ -223,7 +226,12 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const trade = (title: string, initial: Partial<TradeDraft>) => () => setSheet({ kind: 'trade', title, initial, editing: null });
   // A share listed on IDX buys and sells in its own sheet: price on IDX's tick, whole lots, the broker's fee.
   const idxShare = listedSecurity && isIdxListing(listedSecurity) ? listedSecurity : null;
-  const buyOrSell = (kind: 'buy' | 'sell', title: string) => (idxShare ? () => setSheet({ kind: 'listed-trade', trade: kind }) : trade(title, { kind }));
+  // A mutual fund counted in units buys and sells by amount in its own sheet: the units come from the NAV.
+  const fundHolding = priced && kind === 'fund' && unitKind === 'units' && !idxShare;
+  const buyOrSell = (kind: 'buy' | 'sell', title: string) =>
+    idxShare ? () => setSheet({ kind: 'listed-trade', trade: kind }) : fundHolding ? () => setSheet({ kind: 'fund-trade', trade: kind }) : trade(title, { kind });
+  // The kind's own drawing, as the Assets list draws it, for the short sheets' holding line.
+  const KindGlyph = ASSET_TILES[assetItemOfCode(value.coretaxCode)?.id ?? kind ?? ''] ?? ASSET_TILES.fund!;
   const actions: RoundAction[] = priced
     ? [
         { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
@@ -548,6 +556,18 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           lastPrice={latestPrice}
           position={position}
           brokerAccountId={brokerId}
+          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'fund-trade' && fundHolding && (
+        <FundTradeSheet
+          kind={sheet.trade}
+          holding={holding}
+          icon={<KindGlyph size={16} aria-hidden />}
+          lastPrice={latestPrice}
+          position={position}
+          defaultCashId={brokerId}
           onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
         />
