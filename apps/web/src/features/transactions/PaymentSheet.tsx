@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { cx } from '../../ui';
 import { type Segment, SegmentedControl } from '../../ui/native';
 import type { PaymentOption } from '@expanses/core';
-import type { AccountRow } from '@expanses/db';
+import type { AccountRow, PaidWithItem } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
@@ -82,6 +82,41 @@ export function paymentSections(options: readonly PaymentOption[], accounts: rea
   return sections.filter((section) => section.options.length > 0 && (searching || tab === null || tab === section.key));
 }
 
+/** A partner's shared items, under their name: "Rina's, shared" (joint net worth §7.1). */
+export interface SharedPaymentSection {
+  key: string;
+  title: string;
+  items: PaidWithItem[];
+}
+
+/** The group heading a partner's shared items sit under. */
+export const sharedTitle = (ownerName: string): string => `${ownerName}’s, shared`;
+
+/**
+ * The partner's shared items Paid with offers (§7.1, D14), one section per owner after this person's own accounts: only
+ * when the form's workspace is the net-worth group's (`groupWorkspaceBookId`), never in another. A tab narrows to its
+ * own kind — a credit card on Credit cards, the rest on Accounts — and a search looks across both, as the own rows do.
+ */
+export function sharedPaymentSections(
+  items: readonly PaidWithItem[],
+  where: { formBookId: string; groupWorkspaceBookId: string | null | undefined },
+  tab: PaymentTab | null,
+  typed: string,
+): SharedPaymentSection[] {
+  if (!where.groupWorkspaceBookId || where.formBookId !== where.groupWorkspaceBookId) return [];
+  const wanted = typed.trim().toLowerCase();
+  const onTab = (item: PaidWithItem) => wanted !== '' || tab === null || (item.subtype === 'credit_card' ? 'cards' : 'accounts') === tab;
+  const matches = (item: PaidWithItem) => !wanted || [item.name, item.ownerName, item.currency].some((text) => text.toLowerCase().includes(wanted));
+  const sections: SharedPaymentSection[] = [];
+  for (const item of items) {
+    if (!onTab(item) || !matches(item)) continue;
+    let section = sections.find((s) => s.key === item.owner);
+    if (!section) sections.push((section = { key: item.owner, title: sharedTitle(item.ownerName), items: [] }));
+    section.items.push(item);
+  }
+  return sections;
+}
+
 /** The label with the typed words marked, as search in Mail marks them. */
 function Marked({ text, typed }: { text: string; typed: string }) {
   const wanted = typed.trim().toLowerCase();
@@ -114,6 +149,7 @@ export function PaymentSheet({
   onClose,
   onAddAccount,
   placeholders = new Set<string>(),
+  shared,
 }: {
   /** "Paid with", "Received into" or "From", as the mode names it. */
   title: string;
@@ -133,6 +169,17 @@ export function PaymentSheet({
    * purchase another member paid for, and reads "Paid by <name>"; any other is dropped here, whatever the caller passed.
    */
   placeholders?: ReadonlySet<string>;
+  /**
+   * Joint net worth §7.1: the partner's shared items that can pay, offered under "Rina's, shared" when the form's
+   * workspace is the group's. `chosenItemId` is the one Paid with names now, which no own row then does.
+   */
+  shared?: {
+    items: readonly PaidWithItem[];
+    formBookId: string;
+    groupWorkspaceBookId: string | null | undefined;
+    chosenItemId: string | null;
+    onPick: (item: PaidWithItem) => void;
+  };
 }) {
   const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
   const [search, setSearch] = useState('');
@@ -142,12 +189,15 @@ export function PaymentSheet({
   // Tabs wherever a card can pay, even with no card yet: the Credit cards tab is where one is added.
   const tabbed = cards;
   const sections = paymentSections(options, accounts, tabbed ? tab : null, search);
-  // Headings only where two kinds share the screen: a search across both.
-  const headed = sections.length > 1;
+  const sharedSections = shared ? sharedPaymentSections(shared.items, shared, tabbed ? tab : null, search) : [];
+  // Headings only where two kinds share the screen: a search across both, or a partner's shared items below one's own.
+  const headed = sections.length > 1 || sharedSections.length > 0;
   const adding: PaymentTab = tabbed ? tab : 'accounts';
   // The row already in Paid with: its icon sits in a filled circle, so the currencies stay where they are.
-  const picked = options.find((option) => option.accountId === chosenAccountId && (option.cardId ?? '') === chosenCardId)
-    ?? options.find((option) => option.accountId === chosenAccountId);
+  const picked = shared?.chosenItemId
+    ? undefined
+    : (options.find((option) => option.accountId === chosenAccountId && (option.cardId ?? '') === chosenCardId)
+      ?? options.find((option) => option.accountId === chosenAccountId));
 
   const row = (option: PaymentOption) => {
     const account = accounts.find((a) => a.id === option.accountId);
@@ -181,6 +231,43 @@ export function PaymentSheet({
             </span>
             <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
               {[option.holderName, account?.currency].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        </button>
+      </li>
+    );
+  };
+
+  const sharedRow = (item: PaidWithItem) => {
+    const Glyph = item.subtype === 'credit_card' ? CreditCard : Landmark;
+    const isPicked = shared?.chosenItemId === item.itemId;
+    return (
+      <li key={`shared:${item.itemId}`}>
+        <button
+          type="button"
+          aria-label={`${item.name}, ${sharedTitle(item.ownerName)}`}
+          aria-current={isPicked ? 'true' : undefined}
+          onClick={() => {
+            shared?.onPick(item);
+            onClose();
+          }}
+          className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
+        >
+          <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-ink-2)]">
+            {isPicked ? (
+              <span className="flex size-[30px] items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
+                <Glyph size={15} />
+              </span>
+            ) : (
+              <Glyph size={16} />
+            )}
+          </span>
+          <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+            <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
+              <Marked text={item.name} typed={search} />
+            </span>
+            <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
+              {item.currency}
             </span>
           </span>
         </button>
@@ -226,10 +313,17 @@ export function PaymentSheet({
           </section>
         ))}
         {sections.length === 0 && addRow ? <ul className={cx(LIST, 'mt-3')}>{addRow}</ul> : null}
-        {searching && sections.length === 0 ? (
+        {/* The partner's shared items, after one's own and the way to add one (§7.1): whose they are is the heading. */}
+        {sharedSections.map((section) => (
+          <section key={`shared:${section.key}`} aria-label={section.title}>
+            <h3 className="px-[14px] pt-[10px] pb-[6px] text-[12px] tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">{section.title}</h3>
+            <ul className={LIST}>{section.items.map(sharedRow)}</ul>
+          </section>
+        ))}
+        {searching && sections.length === 0 && sharedSections.length === 0 ? (
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing here matches “{search.trim()}”.</p>
         ) : null}
-        {!searching && sections.length === 0 ? (
+        {!searching && sections.length === 0 && sharedSections.length === 0 ? (
           <p className="px-4 pt-3 text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{tab === 'cards' ? 'No credit cards yet.' : 'No accounts yet.'}</p>
         ) : null}
       </div>

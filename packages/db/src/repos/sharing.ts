@@ -167,6 +167,8 @@ export interface PurchasePayer {
   payerName: string | null;
   /** The payer is this device's own member. */
   mine: boolean;
+  /** Joint net worth §5.3: whose shared item the money side is on (the payer's own included), or null. */
+  paidFrom: { owner: string; itemId: string } | null;
 }
 
 /** The payer of each of these transactions that heads a purchase in a shared book; others are left out. */
@@ -176,8 +178,8 @@ export async function purchasePayers(database: Database, transactionIds: readonl
   // Bound parameters are capped per statement; a month's list stays well inside one chunk, a year's in a few.
   for (let i = 0; i < transactionIds.length; i += 400) {
     const chunk = transactionIds.slice(i, i + 400);
-    const rows = await database.db.values<[string, string, string, string | null, string]>(sql`
-      SELECT l.head_transaction_id, l.paid_by, l.paid_label, m.name, s.member_id
+    const rows = await database.db.values<[string, string, string, string | null, string, string | null, string | null]>(sql`
+      SELECT l.head_transaction_id, l.paid_by, l.paid_label, m.name, s.member_id, l.paid_from_owner, l.paid_from_item
       FROM sync_lineage l
       JOIN shared_books s ON s.book_id = l.book_id
       LEFT JOIN book_members m ON m.book_id = l.book_id AND m.member_id = l.paid_by
@@ -185,8 +187,8 @@ export async function purchasePayers(database: Database, transactionIds: readonl
         chunk.map((id) => sql`${id}`),
         sql`, `,
       )})`);
-    for (const [transactionId, paidBy, paidLabel, payerName, self] of rows) {
-      out[transactionId] = { paidBy, paidLabel, payerName, mine: paidBy === self };
+    for (const [transactionId, paidBy, paidLabel, payerName, self, fromOwner, fromItem] of rows) {
+      out[transactionId] = { paidBy, paidLabel, payerName, mine: paidBy === self, paidFrom: fromOwner && fromItem ? { owner: fromOwner, itemId: fromItem } : null };
     }
   }
   return out;

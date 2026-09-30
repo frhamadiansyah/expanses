@@ -2,7 +2,10 @@ import { isoDate, type PaymentOption, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
+  listAccounts,
   noteCategory,
+  paidFromAccount,
+  type PaidWithItem,
   type NoteSuggestion,
   postTransaction,
   recordTaggedTransfer,
@@ -17,7 +20,7 @@ import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, 
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
@@ -28,6 +31,8 @@ import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
+import { useActiveNetWorthGroup, usePaidWithItems } from '../sharing/net-worth-queries';
+import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
@@ -38,11 +43,11 @@ import { ChoiceSheet } from './ChoiceSheet';
 import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
-import { PaymentSheet, chosenPayment } from './PaymentSheet';
+import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { clearStashedDraft, readStashedDraft, stashDraft } from './draft-handoff';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField, sharedPaymentOf } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -134,7 +139,7 @@ function CardBody({
   label,
   title,
   onBack,
-  accounts,
+  accounts: ownAccounts,
   photoIds,
 }: {
   initial?: TransactionView;
@@ -153,6 +158,17 @@ function CardBody({
   const resolveRates = useResolveRates();
   const openBook = useOpenBook();
   const bookId = ws.bookId ?? '';
+  // Joint net worth §7.1: the partner's placeholder a shared item was picked onto, which this device's list leaves out.
+  const [picked, setPicked] = useState<AccountRow[]>([]);
+  const accounts = useMemo(
+    () => (picked.length ? [...ownAccounts, ...picked.filter((p) => !ownAccounts.some((a) => a.id === p.id))] : ownAccounts),
+    [ownAccounts, picked],
+  );
+  // The partner's shared items Paid with offers, in the group's workspace only (D14), and what the edited purchase says.
+  const netWorthGroup = useActiveNetWorthGroup();
+  const paidWith = usePaidWithItems(bookId);
+  const bookShared = useIsBookShared();
+  const savedPayer = usePurchasePayers(initial ? [initial.id] : [], bookShared);
   const allCards = useCards().data ?? [];
   const goals = useGoals().data ?? [];
   const assetValues = useAssetValues();
@@ -229,11 +245,34 @@ function CardBody({
   const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId));
   // A card is a way to pay, never somewhere money arrives or moves to.
   // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
+  // Joint net worth §7.1: the partner's shared item Paid with names now, if any; its placeholder is then no row of its own.
+  const sharedPaying = sharedPaymentOf(draft, initial ? savedPayer(initial.id) : null);
   const payable: PaymentOption[] = withoutPlaceholders(
     paymentOptions(money, draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : []),
     listedIds,
-    draft.moneyId,
+    sharedPaying ? '' : draft.moneyId,
   );
+  const sharedItem = sharedPaying ? (paidWith.data ?? []).find((item) => item.itemId === sharedPaying.itemId) : undefined;
+  // What Paid with reads while it names a partner's item: the item's name, and whose it is; an item no longer shared keeps the saved label.
+  const sharedShown = sharedPaying
+    ? {
+        value: sharedItem?.name ?? (initial ? (savedPayer(initial.id)?.paidLabel ?? '') : ''),
+        caption: sharedItem ? sharedTitle(sharedItem.ownerName) : 'Shared',
+      }
+    : null;
+  /** Picking a partner's item (§7.1): the money side goes on their placeholder here, which the item's owner's phone reads as the item. */
+  async function payWithShared(item: PaidWithItem) {
+    try {
+      const id = await paidFromAccount(database, bookId, item.owner, item.currency);
+      if (!accounts.some((a) => a.id === id)) {
+        const row = (await listAccounts(database, ws, { includeArchived: true, includePlaceholders: true })).find((a) => a.id === id);
+        if (row) setPicked((rows) => [...rows, row]);
+      }
+      set({ moneyId: id, cardId: '', paidFrom: { owner: item.owner, itemId: item.itemId } });
+    } catch (e) {
+      setError(e);
+    }
+  }
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -608,8 +647,8 @@ function CardBody({
               lead="value"
               icon={<RowGlyph>{payGlyph}</RowGlyph>}
               label={payLabel}
-              value={paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)}
-              caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel}
+              value={sharedShown ? sharedShown.value : paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)}
+              caption={sharedShown ? sharedShown.caption : paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel}
               onClick={() => setSheet('money')}
             />
 
@@ -848,7 +887,19 @@ function CardBody({
           chosenAccountId={draft.moneyId}
           chosenCardId={draft.cardId}
           cards={draft.mode === 'expense'}
-          onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
+          // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
+          onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '', paidFrom: placeholders.has(option.accountId) ? undefined : null })}
+          shared={
+            draft.mode === 'expense'
+              ? {
+                  items: paidWith.data ?? [],
+                  formBookId: draft.bookId,
+                  groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId,
+                  chosenItemId: sharedPaying?.itemId ?? null,
+                  onPick: (item) => void payWithShared(item),
+                }
+              : undefined
+          }
           onClose={() => setSheet(null)}
           // Only a new transaction on its own screen: an edit, or the card in a sheet, has nowhere to come back to.
           onAddAccount={full && !initial ? addAccount : undefined}

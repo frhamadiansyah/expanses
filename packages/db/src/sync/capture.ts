@@ -3,6 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
@@ -165,6 +166,17 @@ export interface PurchaseMoney {
   originalAmountMinor: number | null;
   paidBy: string;
   paidLabel: string;
+  /**
+   * Joint net worth §5.3: whose shared item the money side is on — a group member's, the payer's own included — or null
+   * for an account that is not a shared item (as before). Absent on the wire reads as null.
+   */
+  paidFrom: PaidFrom | null;
+}
+
+/** A group member's shared item, by its opaque id (§5.1): never a local account id. */
+export interface PaidFrom {
+  owner: string;
+  itemId: string;
 }
 
 interface LineageRow {
@@ -173,7 +185,11 @@ interface LineageRow {
   head: string | null;
   paidBy: string;
   paidLabel: string;
+  paidFrom: PaidFrom | null;
 }
+
+/** What a lineage already says about its payer, which a projection keeps where the row alone cannot tell. */
+export type KnownPayer = Pick<LineageRow, 'paidBy' | 'paidLabel'> & { paidFrom?: PaidFrom | null };
 
 interface LineageTouch {
   lineageId: string;
@@ -196,6 +212,8 @@ export class CaptureSession {
   private unshared: ReadonlySet<string> = new Set();
   private readonly slots: Slot[] = [];
   private readonly lineages = new Map<string, LineageTouch>();
+  /** Joint net worth §5.3: the item the ledger was told a row's money side is on (`PostTransactionInput.paidFrom`). */
+  private readonly paidFromHints = new Map<string, PaidFrom | null>();
   /** Joint net worth (§9): accounts, and transactions whose accounts, this transaction changed; their summaries are recomputed at flush. */
   private readonly dirtyAccounts = new Set<string>();
   private readonly dirtyTransactions = new Set<string>();
@@ -245,6 +263,11 @@ export class CaptureSession {
 
   markTransactionDirty(transactionId: string): void {
     this.dirtyTransactions.add(transactionId);
+  }
+
+  /** The Paid with choice a posting carried (§7.1): read when its lineage is projected at flush. */
+  hintPaidFrom(transactionId: string, paidFrom: PaidFrom | null): void {
+    this.paidFromHints.set(transactionId, paidFrom);
   }
 
   /**
@@ -344,9 +367,10 @@ export class CaptureSession {
       const book = books.find((b) => b.bookId === known.bookId);
       if (!book) return null;
       if (head && headBook === known.bookId) {
-        const after = (await projectPurchase(this.tx, head, book.memberId, known))!;
+        const after = (await projectPurchase(this.tx, head, book.memberId, known, this.paidFromHints.get(head)))!;
         await this.tx.run(
-          sql`UPDATE sync_lineage SET head_transaction_id = ${head}, paid_by = ${after.money.paidBy}, paid_label = ${after.money.paidLabel} WHERE lineage_id = ${lineageId}`,
+          sql`UPDATE sync_lineage SET head_transaction_id = ${head}, paid_by = ${after.money.paidBy}, paid_label = ${after.money.paidLabel},
+              paid_from_owner = ${after.money.paidFrom?.owner ?? null}, paid_from_item = ${after.money.paidFrom?.itemId ?? null} WHERE lineage_id = ${lineageId}`,
         );
         const fields = diffFields(touch.before as unknown as Record<string, unknown> | null, after as unknown as Record<string, unknown>);
         return Object.keys(fields).length ? { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields } } : null;
@@ -358,9 +382,10 @@ export class CaptureSession {
 
     const book = head && headBook ? books.find((b) => b.bookId === headBook) : undefined;
     if (!head || !book) return null;
-    const after = (await projectPurchase(this.tx, head, book.memberId, null))!;
+    const after = (await projectPurchase(this.tx, head, book.memberId, null, this.paidFromHints.get(head)))!;
     await this.tx.run(
-      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${lineageId}, ${book.bookId}, ${head}, ${after.money.paidBy}, ${after.money.paidLabel})`,
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+          VALUES (${lineageId}, ${book.bookId}, ${head}, ${after.money.paidBy}, ${after.money.paidLabel}, ${after.money.paidFrom?.owner ?? null}, ${after.money.paidFrom?.itemId ?? null})`,
     );
     return { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields: { ...after } } };
   }
@@ -777,11 +802,11 @@ export async function rowUpsertsTx(tx: Db, book: SharedBook, entityName: string)
 /* ---------------------------------------------------------------- purchases */
 
 async function lineageRowOf(tx: Db, lineageId: string): Promise<LineageRow | null> {
-  const rows = await tx.values<[string, string | null, string, string]>(
-    sql`SELECT book_id, head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+  const rows = await tx.values<[string, string | null, string, string, string | null, string | null]>(
+    sql`SELECT book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
   );
   const row = rows[0];
-  return row ? { lineageId, bookId: row[0], head: row[1], paidBy: row[2], paidLabel: row[3] } : null;
+  return row ? { lineageId, bookId: row[0], head: row[1], paidBy: row[2], paidLabel: row[3], paidFrom: paidFromOf(row[4], row[5]) } : null;
 }
 
 /**
@@ -799,6 +824,11 @@ export async function lineageOfTransaction(tx: Db, transactionId: string): Promi
     )
     SELECT id FROM chain ORDER BY depth DESC LIMIT 1`);
   return rows[0]?.[0] ?? transactionId;
+}
+
+/** A lineage's `paid_from_*` columns as the purchase's `paidFrom`: both or nothing. */
+export function paidFromOf(owner: string | null | undefined, itemId: string | null | undefined): PaidFrom | null {
+  return owner && itemId ? { owner, itemId } : null;
 }
 
 async function bookOfTransaction(tx: Db, transactionId: string): Promise<string | null> {
@@ -821,8 +851,15 @@ async function postedHeadOf(tx: Db, touch: LineageTouch): Promise<string | null>
  * What a posted row reads as, as a purchase (spec §4.3). `memberId` is this device's member in the row's book; the
  * payer is this member when the money side names one of this device's own accounts, else the member whose
  * placeholder account it names (keeping the label the lineage already carries).
+ *
+ * Joint net worth §5.3 (`paidFrom`): the money side of a purchase paid from a group member's shared item sits on that
+ * member's placeholder everywhere but on the owner's phone, where it is the item's own account. So a row on a
+ * placeholder reads as paid from the placeholder's member's item when the posting said so (`hint`, the Paid with
+ * choice) or the lineage already does (`known`), with the payer the lineage names; a row on the owner's own account
+ * reads as the lineage says while that account is still the item. Otherwise a row on this member's own account reads
+ * as paid by this member, from their own shared item when the account is one (Task 9 ruling), else from nothing.
  */
-export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: Pick<LineageRow, 'paidBy' | 'paidLabel'> | null): Promise<PurchaseFields | null> {
+export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: KnownPayer | null, hint?: PaidFrom | null): Promise<PurchaseFields | null> {
   const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null]>(
     sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id FROM transactions WHERE id = ${transactionId}`,
   );
@@ -849,17 +886,42 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
 
   let paidBy: string;
   let paidLabel: string;
+  let paidFrom: PaidFrom | null = null;
+  const knownFrom = known?.paidFrom ?? null;
   const own = moneySide.filter((m) => m.placeholderMember === null);
   if (own.length > 0) {
-    paidBy = memberId;
-    const [card] = cardId ? await tx.values<[string, string | null]>(sql`SELECT account_id, last4 FROM cards WHERE id = ${cardId}`) : [];
-    paidLabel = own.map((m) => (card && card[1] && card[0] === m.accountId ? `${m.name} ···· ${card[1]}` : m.name)).join(' + ');
+    const mapped = own.length === 1 ? await mappedItemTx(tx, own[0]!.accountId) : null;
+    if (known && knownFrom && knownFrom.owner === memberId && known.paidBy !== memberId && mapped?.itemId === knownFrom.itemId) {
+      // Another member paid from this member's item, and it still sits on that item here.
+      paidBy = known.paidBy;
+      paidLabel = known.paidLabel;
+      paidFrom = knownFrom;
+    } else {
+      paidBy = memberId;
+      const [card] = cardId ? await tx.values<[string, string | null]>(sql`SELECT account_id, last4 FROM cards WHERE id = ${cardId}`) : [];
+      paidLabel = own.map((m) => (card && card[1] && card[0] === m.accountId ? `${m.name} ···· ${card[1]}` : m.name)).join(' + ');
+      const item = mapped?.setting === 'total' ? await ownSharedItemTx(tx, transactionId, mapped) : null;
+      paidFrom = item ? { owner: memberId, itemId: item } : null;
+    }
   } else if (moneySide.length > 0) {
-    paidBy = moneySide[0]!.placeholderMember!;
-    paidLabel = known?.paidLabel ?? moneySide.map((m) => m.name).join(' + ');
+    const holder = moneySide[0]!.placeholderMember!;
+    if (hint && hint.owner === holder && hint.owner !== memberId) {
+      // This member paid from the holder's shared item (Paid with, §7.1): labelled as the item's summary names it.
+      paidBy = memberId;
+      paidFrom = hint;
+      paidLabel = (await itemNameTx(tx, hint)) ?? moneySide.map((m) => m.name).join(' + ');
+    } else if (known && knownFrom && knownFrom.owner === holder && hint === undefined) {
+      paidBy = known.paidBy;
+      paidLabel = known.paidLabel;
+      paidFrom = knownFrom;
+    } else {
+      paidBy = holder;
+      paidLabel = known?.paidLabel ?? moneySide.map((m) => m.name).join(' + ');
+    }
   } else {
     paidBy = known?.paidBy ?? memberId;
     paidLabel = known?.paidLabel ?? '';
+    paidFrom = knownFrom;
   }
 
   return {
@@ -874,8 +936,42 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
       originalAmountMinor: originalAmountMinor === null ? null : Number(originalAmountMinor),
       paidBy,
       paidLabel,
+      paidFrom,
     },
   };
+}
+
+/**
+ * The item id of this member's own account when it is a shared item of the active group whose workspace the row is
+ * filed in (Task 9 ruling: a Household purchase paid from one's own shared item carries it, so the partner's item page
+ * can find it): an `nw_item_map` row and a `total` setting. Null for anything else, and outside that workspace, so no
+ * other workspace's log ever carries an item id.
+ */
+async function ownSharedItemTx(tx: Db, transactionId: string, mapped: { groupBookId: string; itemId: string }): Promise<string | null> {
+  const group = await activeNetWorthGroup(tx);
+  if (!group || group.groupBookId !== mapped.groupBookId) return null;
+  if ((await bookOfTransaction(tx, transactionId)) !== group.workspaceBookId) return null;
+  return mapped.itemId;
+}
+
+/** The item one of this device's own accounts is known by (`nw_item_map`), with its share setting; null when it never was one. */
+async function mappedItemTx(tx: Db, accountId: string): Promise<{ groupBookId: string; itemId: string; setting: string | null } | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_item_map'`)).length === 0) return null;
+  const [row] = await tx.values<[string, string, string | null]>(sql`
+    SELECT m.group_book_id, m.item_id, (SELECT s.setting FROM nw_share_settings s WHERE s.account_id = m.account_id)
+    FROM nw_item_map m WHERE m.account_id = ${accountId}`);
+  return row ? { groupBookId: row[0], itemId: row[1], setting: row[2] } : null;
+}
+
+/** A member's shared item's name, as its latest summary gives it; null when this device holds none. */
+async function itemNameTx(tx: Db, item: PaidFrom): Promise<string | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${item.itemId} AND owner = ${item.owner}`);
+  try {
+    const name = row ? (JSON.parse(row[0]) as { name?: unknown } | null)?.name : null;
+    return typeof name === 'string' && name ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -883,10 +979,17 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
  * or a new one rooted at itself. Cheap when nothing is shared: a fresh post filed in no shared book returns after the
  * one lookup.
  */
-export async function capturePostedTx(tx: Db, transactionId: string, bookId: string | null, replacesTransactionId: string | null): Promise<void> {
+export async function capturePostedTx(
+  tx: Db,
+  transactionId: string,
+  bookId: string | null,
+  replacesTransactionId: string | null,
+  paidFrom?: PaidFrom | null,
+): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
   session.markTransactionDirty(transactionId);
+  if (paidFrom !== undefined) session.hintPaidFrom(transactionId, paidFrom);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (readOnly.size > 0) {

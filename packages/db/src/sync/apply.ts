@@ -3,7 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
-import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
+import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
   AuthorityError,
@@ -394,12 +394,42 @@ interface LineageRow {
   head: string | null;
   paidBy: string;
   paidLabel: string;
+  paidFrom: PaidFrom | null;
 }
 
 async function lineageOf(tx: Db, lineageId: string): Promise<LineageRow | null> {
-  const rows = await tx.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+  const rows = await tx.values<[string | null, string, string, string | null, string | null]>(
+    sql`SELECT head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+  );
   const row = rows[0];
-  return row ? { head: row[0], paidBy: row[1], paidLabel: row[2] } : null;
+  return row ? { head: row[0], paidBy: row[1], paidLabel: row[2], paidFrom: paidFromOf(row[3], row[4]) } : null;
+}
+
+/** A carried `paidFrom` as this device reads it: absent, or anything but two non-empty strings, is null (§5.3). */
+function carriedPaidFrom(value: unknown): PaidFrom | null {
+  if (!value || typeof value !== 'object') return null;
+  const { owner, itemId } = value as Record<string, unknown>;
+  return typeof owner === 'string' && typeof itemId === 'string' ? paidFromOf(owner, itemId) : null;
+}
+
+/**
+ * The local account a `paidFrom` names on its owner's phone (§5.3): the account `nw_item_map` maps the item to, while it
+ * is an item of a net-worth group of this very workspace and its currency is the line's — else null, and the money
+ * side goes on the owner's placeholder as any other member's does. With the account's primary card, if it has one.
+ */
+async function paidFromAccountHere(tx: Db, ctx: BookContext, paidFrom: PaidFrom, currency: string): Promise<{ accountId: string; cardId: string | null } | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_item_map'`)).length === 0) return null;
+  const [row] = await tx.values<[string]>(sql`
+    SELECT m.account_id FROM nw_item_map m
+    JOIN nw_group_books g ON g.group_book_id = m.group_book_id
+    JOIN accounts a ON a.id = m.account_id
+    WHERE m.item_id = ${paidFrom.itemId} AND g.book_id = ${ctx.bookId} AND a.currency = ${currency} AND a.kind IN ('asset', 'liability')
+      AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
+  if (!row) return null;
+  const [card] = await tx.values<[string]>(
+    sql`SELECT id FROM cards WHERE account_id = ${row[0]} AND archived_at IS NULL ORDER BY is_primary DESC, created_at, id LIMIT 1`,
+  );
+  return { accountId: row[0], cardId: card?.[0] ?? null };
 }
 
 /** A line's category on this device, or the book's Uncategorised when it is unknown or gone (rule 4). */
@@ -423,8 +453,17 @@ function rateFromPair(currency: string, base: string, amountMinor: number, amoun
  * number. The money side: on the payer's own device, while the purchase is still theirs, their own accounts, with a
  * changed total on the largest entry of each currency; anywhere else, one entry per currency on the payer's
  * placeholder.
+ *
+ * Joint net worth §5.3: the money side is the **account owner's** — `paidFrom?.owner ?? paidBy`. On the owner's phone a
+ * purchase paid from their item posts on the item's own account (and card), so its statement, cycle and points see it;
+ * everywhere else on the owner's placeholder. `cardId` is the card the row should now name: undefined keeps the head's.
  */
-async function postingLines(tx: Db, ctx: BookContext, head: string | null, money: PurchaseMoney): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number> }> {
+async function postingLines(
+  tx: Db,
+  ctx: BookContext,
+  head: string | null,
+  money: PurchaseMoney,
+): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined }> {
   const lines: PostingLine[] = [];
   const perCurrency = new Map<string, { amount: number; base: number }>();
   const ratesToBase: Record<string, number> = {};
@@ -446,8 +485,10 @@ async function postingLines(tx: Db, ctx: BookContext, head: string | null, money
     }
   }
 
+  const accountOwner = money.paidFrom?.owner ?? money.paidBy;
+  let cardId: string | null | undefined;
   const own =
-    money.paidBy === ctx.memberId && head
+    money.paidBy === ctx.memberId && accountOwner === ctx.memberId && head
       ? (
           await tx.values<[string, number, string, string | null, string | null]>(sql`
             SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id
@@ -463,7 +504,14 @@ async function postingLines(tx: Db, ctx: BookContext, head: string | null, money
     if (target === 0) continue;
     const mine = own.filter((entry) => entry.currency === currency);
     if (mine.length === 0) {
-      lines.push({ accountId: await placeholderAccountTx(tx, ctx, money.paidBy, currency), amountMinor: target, currency });
+      const item = money.paidFrom && accountOwner === ctx.memberId ? await paidFromAccountHere(tx, ctx, money.paidFrom, currency) : null;
+      if (item) {
+        lines.push({ accountId: item.accountId, amountMinor: target, currency });
+        cardId = item.cardId;
+      } else {
+        lines.push({ accountId: await placeholderAccountTx(tx, ctx, accountOwner, currency), amountMinor: target, currency });
+        if (cardId === undefined && own.length === 0) cardId = null;
+      }
       continue;
     }
     const diff = target - mine.reduce((s, entry) => s + entry.amountMinor, 0);
@@ -473,7 +521,7 @@ async function postingLines(tx: Db, ctx: BookContext, head: string | null, money
     }
     for (const entry of mine) if (entry.amountMinor !== 0) lines.push(entry);
   }
-  return { lines, ratesToBase };
+  return { lines, ratesToBase, cardId };
 }
 
 /**
@@ -481,8 +529,10 @@ async function postingLines(tx: Db, ctx: BookContext, head: string | null, money
  * `replaceTransactionTx` carries it exactly as when the payer edits it themselves; a `null` would clear it.
  */
 async function ledgerInput(tx: Db, ctx: BookContext, head: string | null, state: PurchaseFields, winners: Record<string, unknown>, author: string): Promise<PostTransactionInput> {
-  const { lines, ratesToBase } = await postingLines(tx, ctx, head, state.money);
+  const { lines, ratesToBase, cardId } = await postingLines(tx, ctx, head, state.money);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
+  // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
+  if (cardId !== undefined) input.cardId = cardId;
   if ('channel' in winners) input.channel = state.channel;
   if ('excluded' in winners) input.excludedFromReport = state.excluded === 1;
   if ('bill' in winners) {
@@ -528,16 +578,19 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   }
   const current = lineage ? await projectPurchase(tx, lineage.head!, ctx.memberId, lineage) : null;
   const state = { ...(current ?? {}), ...winners } as PurchaseFields;
+  state.money = { ...state.money, paidFrom: carriedPaidFrom(state.money.paidFrom) };
   const input = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member);
   if (!lineage) {
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: op.id });
     await tx.run(
-      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel})`,
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+          VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${state.money.paidFrom?.owner ?? null}, ${state.money.paidFrom?.itemId ?? null})`,
     );
   } else {
     const id = await replaceTransactionTx(tx, ctx.ws, lineage.head!, input);
     await tx.run(
-      sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel} WHERE lineage_id = ${op.id}`,
+      sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},
+          paid_from_owner = ${state.money.paidFrom?.owner ?? null}, paid_from_item = ${state.money.paidFrom?.itemId ?? null} WHERE lineage_id = ${op.id}`,
     );
   }
   await recordPurchaseClocks(tx, ctx, op.id, won);

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { Db, Tx } from '../database';
 import { AuthorityError, viewRoleOfDevice } from './authority';
-import { isRevivable, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
+import { isRevivable, lineageOfTransaction, localDeviceId, paidFromOf, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
 import { localTick } from './hlc';
 import { entityOf } from './shared-entities';
 import type { ChangeSet, DevicePublic, Op } from './types';
@@ -162,13 +162,16 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
   for (const [head] of heads) {
     const lineageId = await lineageOfTransaction(tx, head);
     if (!keep('purchase', lineageId)) continue;
-    const [known] = await tx.values<[string, string]>(sql`SELECT paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+    const [known] = await tx.values<[string, string, string | null, string | null]>(
+      sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+    );
     if (!known && !record) continue;
-    const purchase = (await projectPurchase(tx, head, book.memberId, known ? { paidBy: known[0], paidLabel: known[1] } : null))!;
+    const purchase = (await projectPurchase(tx, head, book.memberId, known ? { paidBy: known[0], paidLabel: known[1], paidFrom: paidFromOf(known[2], known[3]) } : null))!;
     if (!known) {
       purchase.money.paidBy = book.memberId;
       await tx.run(
-        sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${lineageId}, ${book.bookId}, ${head}, ${book.memberId}, ${purchase.money.paidLabel})`,
+        sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+            VALUES (${lineageId}, ${book.bookId}, ${head}, ${book.memberId}, ${purchase.money.paidLabel}, ${purchase.money.paidFrom?.owner ?? null}, ${purchase.money.paidFrom?.itemId ?? null})`,
       );
     }
     ops.push({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { ...purchase } });
@@ -268,10 +271,10 @@ export async function catchUpTx(tx: Tx, book: SharedBook, now?: number): Promise
   let hlc: string | undefined;
   const fresh = async () => (hlc ??= await localTick(tx, await localDeviceId(tx), now ?? Date.now()));
 
-  const lineages = await tx.values<[string, string, string, string]>(
-    sql`SELECT lineage_id, head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IS NOT NULL`,
+  const lineages = await tx.values<[string, string, string, string, string | null, string | null]>(
+    sql`SELECT lineage_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IS NOT NULL`,
   );
-  for (const [lineageId, head, paidBy, paidLabel] of lineages) {
+  for (const [lineageId, head, paidBy, paidLabel, fromOwner, fromItem] of lineages) {
     const posted = await postedHeadTx(tx, bookId, head);
     if (posted === head) continue;
     if (posted === null) {
@@ -279,8 +282,11 @@ export async function catchUpTx(tx: Tx, book: SharedBook, now?: number): Promise
       await setClockTx(tx, bookId, 'purchase', lineageId, 'void', await fresh());
       continue;
     }
-    const reads = (await projectPurchase(tx, posted, book.memberId, { paidBy, paidLabel }))!;
-    await tx.run(sql`UPDATE sync_lineage SET head_transaction_id = ${posted}, paid_by = ${reads.money.paidBy}, paid_label = ${reads.money.paidLabel} WHERE lineage_id = ${lineageId}`);
+    const reads = (await projectPurchase(tx, posted, book.memberId, { paidBy, paidLabel, paidFrom: paidFromOf(fromOwner, fromItem) }))!;
+    await tx.run(sql`
+      UPDATE sync_lineage SET head_transaction_id = ${posted}, paid_by = ${reads.money.paidBy}, paid_label = ${reads.money.paidLabel},
+        paid_from_owner = ${reads.money.paidFrom?.owner ?? null}, paid_from_item = ${reads.money.paidFrom?.itemId ?? null}
+      WHERE lineage_id = ${lineageId}`);
   }
 
   const keptRows = await tx.values<[string, string, string, string, string]>(sql`SELECT entity, id, field, hlc, value_json FROM sync_kept_clocks WHERE book_id = ${bookId}`);

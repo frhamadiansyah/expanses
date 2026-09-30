@@ -43,9 +43,9 @@ describe('when', () => {
 
 describe('a purchase in a shared book', () => {
   it('reads the payer’s label, and who paid when it was not you', () => {
-    expect(payerLine({ paidBy: 'd', paidLabel: 'Visa ···· 1467', payerName: 'Dewi', mine: false })).toBe('Visa ···· 1467 · paid by Dewi');
-    expect(payerLine({ paidBy: 'f', paidLabel: 'Current account', payerName: 'Fandri', mine: true })).toBe('Current account');
-    expect(payerLine({ paidBy: 'd', paidLabel: '', payerName: 'Dewi', mine: false })).toBe('Paid by Dewi');
+    expect(payerLine({ paidBy: 'd', paidLabel: 'Visa ···· 1467', payerName: 'Dewi', mine: false, paidFrom: null })).toBe('Visa ···· 1467 · paid by Dewi');
+    expect(payerLine({ paidBy: 'f', paidLabel: 'Current account', payerName: 'Fandri', mine: true, paidFrom: null })).toBe('Current account');
+    expect(payerLine({ paidBy: 'd', paidLabel: '', payerName: 'Dewi', mine: false, paidFrom: null })).toBe('Paid by Dewi');
   });
 });
 

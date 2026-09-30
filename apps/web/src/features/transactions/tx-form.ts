@@ -15,7 +15,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import type { AccountRow, PostTransactionInput, RecordTradeInput, SplitBillInput, TaggedTransferInput, TransactionView } from '@expanses/db';
+import type { AccountRow, PaidFrom, PostTransactionInput, RecordTradeInput, SplitBillInput, TaggedTransferInput, TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -69,6 +69,30 @@ export interface FormDraft {
   /** True while correcting a transaction rather than adding one: With is not offered on an edit (§15.6). */
   editing: boolean;
   purchase: PurchaseDraft; // buy-in-form.ts, unchanged
+  /**
+   * Joint net worth §7.1: the partner's shared item Paid with names (`moneyId` is then the partner's placeholder), null
+   * once one of this person's own accounts is picked, and undefined — "as the purchase already says" — until either.
+   */
+  paidFrom?: PaidFrom | null;
+}
+
+/** What the ledger is told about Paid with (§5.3): the choice when one was made in this form, else nothing. */
+export function paidFromHint(draft: Pick<FormDraft, 'mode' | 'paidFrom'>): { paidFrom?: PaidFrom | null } {
+  return draft.mode === 'expense' && draft.paidFrom !== undefined ? { paidFrom: draft.paidFrom } : {};
+}
+
+/**
+ * The partner's shared item this form pays with (§7.1), or null for this person's own accounts: the one picked here,
+ * else — until something is picked — the one the edited purchase was paid from, when this person paid it from an
+ * item that is not their own (`saved`, the purchase's payer as `purchasePayers` reads it).
+ */
+export function sharedPaymentOf(
+  draft: Pick<FormDraft, 'mode' | 'paidFrom'>,
+  saved: { paidBy: string; mine: boolean; paidFrom: PaidFrom | null } | null | undefined,
+): PaidFrom | null {
+  if (draft.mode !== 'expense') return null;
+  if (draft.paidFrom !== undefined) return draft.paidFrom;
+  return saved?.mine && saved.paidFrom && saved.paidFrom.owner !== saved.paidBy ? saved.paidFrom : null;
 }
 
 export function emptyForm(bookId: string, today: string = isoDate()): FormDraft {
@@ -691,6 +715,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       excludedFromReport: draft.excluded,
       eventId: draft.eventId || null,
       photoIds: draft.photoIds,
+      // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
+      ...paidFromHint(draft),
     },
   };
 }

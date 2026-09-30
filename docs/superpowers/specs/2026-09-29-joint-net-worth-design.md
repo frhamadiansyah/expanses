@@ -181,6 +181,15 @@ must be updated for such a purchase to land on her card, so the field ships with
 `paidFrom` holds only an opaque id, so a workspace member outside the group learns nothing new. `paidLabel` is built by
 the payer's device from the summary's `name`, as it is from a local account today.
 
+*Correction (task 7, code reality):* each device keeps a purchase's `paidFrom` beside `paid_by` in its `sync_lineage` row
+(migration 0058, `paid_from_owner`, `paid_from_item`), since a row posted on a placeholder cannot say by itself whether
+the placeholder's member paid or only lent the item. The payer's device learns it from the form through a sync-only hint
+on the ledger input (`PostTransactionInput.paidFrom`, like `syncAuthor`); an edit that does not pass it keeps what the
+lineage says. A purchase a member pays from their **own** shared item carries `paidFrom = { owner: self, itemId }` too
+(Task 9's ruling, so the partner's item page can find its Household lines), but only in the group's own workspace; an
+account that is not a `total` item carries null. On the owner's phone the money side lands on the mapped account only
+while it is in the line's currency, with the account's primary card; otherwise on the owner's placeholder.
+
 ### 5.4 Local tables (never synced)
 
 - `nw_share_settings(account_id PK, setting 'total' | 'hidden')` — owner scope, like the accounts it describes. Absent

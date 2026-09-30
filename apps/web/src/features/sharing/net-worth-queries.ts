@@ -1,4 +1,4 @@
-import { activeNetWorthGroup, getShareSetting, pendingHidden, reviewedFor, reviewItems } from '@expanses/db';
+import { activeNetWorthGroup, getShareSetting, paidWithItems, pendingHidden, reviewedFor, reviewItems } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useApp } from '../../app/context';
@@ -50,4 +50,11 @@ export function useReview() {
       };
     },
   });
+}
+
+/** The partner's shared items this workspace's Paid with can offer (§7.1): none outside the group's workspace. */
+export function usePaidWithItems(bookId: string) {
+  const { database } = useApp();
+  useRereadOnSync();
+  return useQuery({ queryKey: ['net-worth', 'paid-with', bookId], queryFn: () => paidWithItems(database, bookId), enabled: bookId !== '' });
 }
