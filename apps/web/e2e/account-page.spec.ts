@@ -34,10 +34,10 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
   await expect(page.getByRole('link', { name: 'Add a currency' })).toBeVisible();
 
-  // The ⋯ holds the settings and the code the account files under, with the code as its second line.
+  // The ⋯ holds the settings, the rename and the archive; the code it files under lives in the settings alone.
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toContainText('0102');
-  await expect(page.getByRole('menuitem', { name: 'Settings' })).toBeVisible();
+  for (const item of ['Settings', 'Edit', 'Archive']) await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   await page.getByRole('link', { name: 'See all' }).click();

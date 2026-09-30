@@ -1,4 +1,4 @@
-import { cashCodeForSubtype, CASH_ITEMS, hartaLabel, isoDate, lastNMonths, monthOf } from '@expanses/core';
+import { isoDate, lastNMonths, monthOf } from '@expanses/core';
 import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import {
@@ -9,7 +9,6 @@ import {
   ArrowUpFromLine,
   ArrowUpRight,
   ChevronRight,
-  FileText,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -48,9 +47,6 @@ import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { useHeldRates, useOpenings, useRecentTransactions } from './queries';
-
-/** The kinds of money account, so an account's own page can say what it is and which code it files under. */
-const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -98,15 +94,12 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const profileOf = (id: string | undefined) => (profiles.data ?? []).find((row) => row.accountId === id);
   // The bank is kept as the tax report's "institution"; an account with pockets keeps it on each pocket.
   const inst = (profileOf(account.id) ?? profileOf(pockets?.[0]?.id))?.coretaxFields.inst?.trim() || null;
-  const chosen = profileOf(account.id)?.coretaxCode;
-  const code = chosen ?? (CASH_SUBTYPES.has(account.subtype) ? cashCodeForSubtype(account.subtype) : null);
-  const codeLine = code ? `${code} · ${hartaLabel(code) ?? ''}`.replace(/ · $/, '') : 'Not set yet';
   const typeLabel = SUBTYPE_LABELS[account.subtype];
   const foreign = !pockets && account.currency !== ws.baseCurrency;
   const opened = openings.data?.[account.id];
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
-  const menu = usePageMenu(account, { parent, empty: minor === 0, codeLine, onError: setActionError });
+  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError });
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
@@ -182,11 +175,11 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 }
 
 /**
- * The page's ⋯, and nothing else in its corner: the settings the account has always had, the code it files under
- * with that code as its second line, the rename, and the way out.
+ * The page's ⋯, and nothing else in its corner: the settings the account has always had, the rename, and the way out.
  *
- * The gear used to sit beside the ⋯. Settings and the tax code are both things looked up now and then, never on
- * the way to spending, so they wait behind the one corner button with the edits rather than taking a second one.
+ * The gear used to sit beside the ⋯. Settings are looked up now and then, never on the way to spending, so they wait
+ * behind the one corner button with the edits rather than taking a second one. The code the account files under is
+ * one of those settings, and is shown and changed there only — it once had an item of its own here as well.
  *
  * Archiving a parent that still has pockets is refused by the database, and its answer — which pockets are left —
  * is shown where the ask was made, which is why it stays enabled. A pocket is refused here instead, while anything
@@ -194,7 +187,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
  */
 function usePageMenu(
   account: AccountRow,
-  o: { parent: AccountRow | undefined; empty: boolean; codeLine: string; onError: (error: unknown) => void },
+  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void },
 ): CornerAction[] {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -205,14 +198,6 @@ function usePageMenu(
       key: 'settings',
       label: 'Settings',
       glyph: <Settings size={18} aria-hidden />,
-      to: '/net-worth/assets/$accountId/settings',
-      params: { accountId: account.id },
-    },
-    {
-      key: 'tax',
-      label: 'Tax report code',
-      detail: o.codeLine,
-      glyph: <FileText size={18} aria-hidden />,
       to: '/net-worth/assets/$accountId/settings',
       params: { accountId: account.id },
     },

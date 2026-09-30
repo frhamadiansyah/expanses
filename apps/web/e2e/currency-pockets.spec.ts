@@ -41,10 +41,7 @@ test('an account with pockets is one row that adds them up, and opens to each po
   // A pocket is an ordinary account page: its code, the rate it opened at, and back to its account.
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByRole('main').getByText('16.250 IDR per 1 USD', { exact: true })).toBeVisible();
-  // Its kode harta: the ⋯ says it, and the settings' Tax report code box is where it is changed.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toContainText('0102');
-  await page.keyboard.press('Escape');
+  // Its kode harta lives in its settings.
   await openSettings(page);
   await expect(page.getByLabel('Tax report code')).toHaveValue('0102');
   // Back to the pocket's page, and from there to its account.

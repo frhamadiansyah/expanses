@@ -9,7 +9,8 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await page.getByRole('button', { name: 'More', exact: true }).tap();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toContainText('0102');
+  await expect(page.getByRole('menuitem', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByRole('link', { name: 'Spend', exact: true }).tap();
   await expect(addForm(page).getByRole('button', { name: 'Paid with' })).toContainText('Everyday');
