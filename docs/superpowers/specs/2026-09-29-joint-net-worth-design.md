@@ -176,6 +176,11 @@ the inputs, not rendered rows, so the reader's own settings (property basis, row
 `accountId` is the item's id, a foreign holding carries no `purchases` (each buy is a private line), and the row's
 `fields` (the details its table asks for, e.g. an account number) do travel: the joint return needs them.
 
+*Correction (final review, item 7):* a send builds the workspace's `coretaxInputsFor` once per tax year and slices it per
+item (it was once per item — a full-workspace aggregation each, too slow on a phone). A flush whose write touched only
+transactions all dated after that year's 31 December keeps each item's tax part as last sent; a write to an account
+itself (profile, valuation, new account) or dated in the year rebuilds it.
+
 ### 5.3 A purchase paid from someone else's item
 
 The purchase's `money` atom (S4.3) gains one field:

@@ -285,6 +285,7 @@ export class CaptureSession {
     if (!this.config.enabled) return; // capture off for this database: nothing is shared from it
     const shared = this.enabled ? (await this.sharedBooks()).length > 0 : (await this.tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`).catch(() => [])).length > 0;
     if (!shared) return;
+    const touchedFrom = await this.touchedFrom();
     const ids = await this.dirtyItemAccounts();
     if (ids.length === 0) return;
     if (!this.enabled) {
@@ -294,7 +295,23 @@ export class CaptureSession {
       await addPendingSummaryAccountsTx(this.tx, ids);
       return;
     }
-    await sendSummariesTx(this.tx, ids, localDate(this.config.now?.() ?? Date.now()));
+    await sendSummariesTx(this.tx, ids, localDate(this.config.now?.() ?? Date.now()), touchedFrom);
+  }
+
+  /**
+   * The earliest date this write touched, when only transactions were written (final review item 7): each posted or
+   * voided row's date — a replaced row's old date included, since its void is a touched row too. Undefined when an
+   * account itself changed (a profile, a valuation, a new account), which can change any year: the tax part is rebuilt.
+   */
+  private async touchedFrom(): Promise<string | undefined> {
+    if (this.dirtyAccounts.size > 0 || this.dirtyTransactions.size === 0) return undefined;
+    let earliest: string | undefined;
+    for (const transactionId of this.dirtyTransactions) {
+      const [row] = await this.tx.values<[string]>(sql`SELECT occurred_on FROM transactions WHERE id = ${transactionId}`);
+      if (!row) return undefined;
+      if (earliest === undefined || row[0] < earliest) earliest = row[0];
+    }
+    return earliest;
   }
 
   /** The asset and liability accounts among what this transaction touched (categories are never items). */

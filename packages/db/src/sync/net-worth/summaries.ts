@@ -1,4 +1,5 @@
 import {
+  type CoretaxInputs,
   type CoretaxRowPart,
   type ItemSummary,
   type ItemTax,
@@ -15,7 +16,7 @@ import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
 import { type ActiveNetWorthGroup, activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
-import { taxRowFor } from '../../repos/tax-inputs';
+import { coretaxInputsFor, rowPartOf } from '../../repos/tax-inputs';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 
@@ -121,6 +122,7 @@ export async function computeItemSummary(
   workspaceBookId: string,
   today: string,
   taxGroup: Pick<ActiveNetWorthGroup, 'groupBookId' | 'workspaceBookId' | 'mode'> | null = null,
+  taxSource: TaxSource = freshTaxSource(),
 ): Promise<ItemSummary> {
   const account = await accountOf(tx, ws.workspaceId, accountId);
   if (!account || (account.kind !== 'asset' && account.kind !== 'liability')) throw new Error(`summaries: ${accountId} is not an item`);
@@ -200,7 +202,43 @@ export async function computeItemSummary(
     transferMinor: split.transferMinor,
     transfers: split.transfers,
     monthEnds,
-    tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today) : null,
+    tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
+  };
+}
+
+/**
+ * Where an item's tax slice comes from (final review item 7): the workspace's whole `coretaxInputsFor` is built at most
+ * once per tax year for one send and sliced per item, instead of once per item. `reuse` gives the tax part last sent for
+ * an item when the write being flushed cannot have changed that year (every date it touched is after its 31 December),
+ * so a flush of an ordinary purchase of this year builds nothing at all.
+ */
+export interface TaxSource {
+  inputs(tx: Db, ws: WorkspaceContext, taxYear: number): Promise<CoretaxInputs>;
+  reuse(tx: Db, itemId: string, taxYear: number): Promise<ItemTax | undefined>;
+}
+
+/** A tax source for one send: inputs built once per year; the last-sent part reused only when `touchedFrom` is after the year. */
+export function freshTaxSource(touchedFrom?: string): TaxSource {
+  const built = new Map<number, Promise<CoretaxInputs>>();
+  return {
+    inputs(tx, ws, taxYear) {
+      let inputs = built.get(taxYear);
+      if (!inputs) {
+        inputs = coretaxInputsFor(readView(tx), ws, taxYear);
+        built.set(taxYear, inputs);
+      }
+      return inputs;
+    },
+    async reuse(tx, itemId, taxYear) {
+      if (touchedFrom === undefined || touchedFrom <= `${taxYear}-12-31`) return undefined;
+      const [row] = await tx.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${itemId} AND removed = 0`);
+      try {
+        const tax = row ? (JSON.parse(row[0]) as Pick<ItemSummary, 'tax'> | null)?.tax : undefined;
+        return tax && tax.taxYear === taxYear && tax.part ? tax : undefined;
+      } catch {
+        return undefined;
+      }
+    },
   };
 }
 
@@ -218,11 +256,14 @@ async function itemTaxOf(
   group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'workspaceBookId' | 'mode'>,
   workspaceBookId: string,
   today: string,
+  source: TaxSource,
 ): Promise<ItemTax> {
   if (group.mode !== 'joint' || group.workspaceBookId !== workspaceBookId) return null;
   const taxYear = Number(today.slice(0, 4)) - 1;
   const itemId = await itemIdOf(group.groupBookId, accountId);
-  const found = await taxRowFor(readView(tx), ws, accountId, taxYear);
+  const kept = await source.reuse(tx, itemId, taxYear);
+  if (kept) return kept;
+  const found = rowPartOf(await source.inputs(tx, ws, taxYear), accountId);
   const part: CoretaxRowPart = {
     cash: (found?.cash ?? []).map((row) => ({ ...row, accountId: itemId })),
     holdings: (found?.holdings ?? []).map(({ purchases: _purchases, ...row }) => ({ ...row, accountId: itemId })),
@@ -255,8 +296,11 @@ async function writeItemTx(tx: Db, groupBookId: string, itemId: string, owner: s
  * this member is in (§4): a new or changed summary for an item shared `total`; `removed = true` (summary blanked) for one this
  * member had shared that is now hidden, archived, deleted or no item at all; nothing for the rest. Inside the caller's
  * transaction, captured, so the ops leave with the next sync. Returns how many items it wrote.
+ *
+ * `touchedFrom`: the earliest date the write being flushed touched, when known (capture passes it); a write wholly after
+ * the tax year's 31 December keeps each item's tax part as last sent (final review item 7). Unknown = build it, once.
  */
-export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string): Promise<number> {
+export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string, touchedFrom?: string): Promise<number> {
   // One group per person (§4): the one active group this member is in, read by the one group-state reader (task 5).
   const group = await activeNetWorthGroup(tx);
   if (!group) return 0;
@@ -269,6 +313,7 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
   const ws = await workspaceOfBook(tx, workspaceBookId);
   if (!ws) return 0;
   let written = 0;
+  const taxSource = freshTaxSource(touchedFrom);
   const ids = new Set<string>();
   if (accountIds === 'all') {
     for (const [id] of await tx.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND kind IN ('asset', 'liability') ORDER BY id`)) ids.add(id);
@@ -283,7 +328,7 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
     if (shared) {
       // The tax row only after this person's Share of the active proposal (task 10 review round 1): a Change to one tax
       // ID must not send it on a mere refresh (`live`) before the review has said what it now carries.
-      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null);
+      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null, taxSource);
       const hash = summaryHash(summary);
       const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
       const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
