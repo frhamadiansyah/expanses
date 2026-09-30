@@ -278,12 +278,21 @@ export class SyncEngine {
           break;
         } catch (error) {
           if (!(error instanceof SyncTransportError && error.status === 409 && attempt === 0)) throw error;
-          pulls.push(await this.pull(bookId, seen));
+          const repulled = await this.pull(bookId, seen);
+          pulls.push(repulled);
           const now = await this.sharedRow(bookId);
-          if (now && now.state === 'active' && now.epoch === shared.epoch && (await groupLogWorkspaceOf(this.database.db, bookId)) !== null) {
-            // Joint net worth, final review item 5: the group log rotated past this device and the pull brought no key
-            // for it — it joined on an invite made before the rotation. It waits for a fresh invite (`needs_invite`),
-            // which a group member's device makes; the workspace's next sync claims it (the restored phone's path).
+          if (
+            now &&
+            now.state === 'active' &&
+            now.epoch === shared.epoch &&
+            !repulled.stopped &&
+            (await groupLogWorkspaceOf(this.database.db, bookId)) !== null &&
+            (await this.database.transaction((tx) => viewDevice(tx, bookId, this.deviceId))) === null
+          ) {
+            // Joint net worth, final review item 5: the group log rotated past this device before its introduction
+            // landed, and a pull to the end of the log brought no key for it — it joined on an invite made before the
+            // rotation. Not in the log's view, it is invited again by a group member's device: it waits for that fresh
+            // invite (`needs_invite`), which the workspace's next sync claims (the restored phone's path).
             await this.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
           }
           if (!now || now.state !== 'active' || now.epoch === shared.epoch) throw error;
