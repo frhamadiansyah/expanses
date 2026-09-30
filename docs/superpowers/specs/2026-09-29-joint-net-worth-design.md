@@ -344,6 +344,13 @@ owner paid can be "not yet on her phone": her own was on her phone before her su
 within a year on the sheet (a summary carries no schedule). With only received items missing a rate, the household's
 sheet is still drawn, those rows in their own currency and every total over them blank.
 
+*Correction (wave 4 integration, code reality):* "Lines you can see" reads Task 7's `sync_lineage.paid_from_item` and
+`paid_from_owner`: a purchase is listed when both name this item and its owner (paid by the partner or by the owner
+herself); one naming the item under another owner is left out. The page also lists the live `member_transfer`s of the
+period between the item and one of the viewer's own items (§7.2), as "To you: Mandiri Tabungan −5.000.000" / "From
+you: … +…", the viewer's side named by its local account name; a transfer between the owner and a third member is not
+listed. Transfers are never flagged "not yet on her phone" and the bar does not subtract them.
+
 ### 8.4 Tax report
 
 - **`joint`:** each member can open the joint report: their own rows plus each received `tax` row. Marked incomplete
