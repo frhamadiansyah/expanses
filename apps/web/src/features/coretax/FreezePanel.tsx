@@ -18,12 +18,15 @@ export function FreezePanel({
   status,
   rows,
   npwp,
+  warning = null,
 }: {
   taxYear: number;
   status: 'draft' | 'frozen' | 'filed';
   rows: CoretaxRow[];
   /** The sheet's first line is the taxpayer's NPWP, so a file cannot be built without one. */
   npwp: string | null;
+  /** With one tax ID, while someone's items are still missing: freezing now leaves them out of the copy. */
+  warning?: string | null;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -83,6 +86,11 @@ export function FreezePanel({
           <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
             Before freezing, make sure every holding has a price for 31 December {taxYear}, and that anything held in another currency has its KMK rate.
           </p>
+          {warning && (
+            <p data-testid="freeze-joint-warning" className="mb-[10px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
+              {warning}
+            </p>
+          )}
           <InsetGroup>
             <InsetRow title={`Freeze ${taxYear}`} chevron={false} disabled={busy} onClick={() => void run(() => freezeReport(database, ws, taxYear))} />
           </InsetGroup>

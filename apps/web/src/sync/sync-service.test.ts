@@ -14,6 +14,7 @@ import {
   postTransaction,
   requestSignerOf,
   sharingDetail,
+  SyncTransportError,
   type SyncTransport,
   type WorkspaceContext,
 } from '@expanses/db';
@@ -41,6 +42,9 @@ interface Phone {
   applied: ReturnType<typeof vi.fn>;
   transports: (device: DeviceKeys) => SyncTransport;
   keys: MemoryKeyStore & { made: ReturnType<typeof vi.fn> };
+  errors: ReturnType<typeof vi.fn>;
+  /** Relay books whose pulls fail (503) for this phone. */
+  failing: Set<string>;
 }
 
 async function phone(relay: MemoryTransport, name: string): Promise<Phone> {
@@ -58,9 +62,19 @@ async function phone(relay: MemoryTransport, name: string): Promise<Phone> {
     })(store.getOrCreateDevice.bind(store)),
   });
   const applied = vi.fn();
-  const transports = vi.fn((device: DeviceKeys): SyncTransport => relay.as(requestSignerOf(device)));
-  const service = new SyncService({ database, keyStore: keys, transportFor: transports, onApplied: applied, onError: () => {}, intervalMs: 60 * 60_000 });
-  return { database, ws, bank: bank.id, service, applied, transports, keys };
+  const failing = new Set<string>();
+  const transports = vi.fn((device: DeviceKeys): SyncTransport => {
+    const transport = relay.as(requestSignerOf(device));
+    const pull = transport.pull.bind(transport);
+    transport.pull = async (bookId, since) => {
+      if (failing.has(bookId)) throw new SyncTransportError(503, 'unavailable');
+      return pull(bookId, since);
+    };
+    return transport;
+  });
+  const errors = vi.fn();
+  const service = new SyncService({ database, keyStore: keys, transportFor: transports, onApplied: applied, onError: errors, intervalMs: 60 * 60_000 });
+  return { database, ws, bank: bank.id, service, applied, transports, keys, errors, failing };
 }
 
 /** An expense category of the book, the same one on every device (categories sync under the owner's ids). */
@@ -149,6 +163,45 @@ describe('SyncService', () => {
     expect(dewi.applied).toHaveBeenCalled();
     expect((await listSharedBooks(dewi.database))[0]).toMatchObject({ bookId, state: 'unshared', unsharedReason: 'removed' });
     expect(dewi.service.syncing()).toEqual([]);
+
+    fandri.service.stop();
+    dewi.service.stop();
+  });
+
+  it('a household sets up net worth through the service, and a group log that fails is reported without failing the workspace', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    const dewi = await phone(relay, 'Dewi');
+    await fandri.service.start();
+    await dewi.service.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    const invite = await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+    await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+    await fandri.service.syncNow(bookId);
+    const dewiMember = (await listSharedBooks(dewi.database))[0]!.memberId;
+
+    await fandri.service.proposeNetWorth(bookId, { mode: 'joint', members: [dewiMember] });
+    for (let i = 0; i < 2; i += 1) {
+      await dewi.service.syncNow(bookId);
+      await fandri.service.syncNow(bookId);
+    }
+    const asked = await dewi.service.netWorthGroup(bookId);
+    expect(asked?.waitingFor).toEqual([dewiMember]);
+    await dewi.service.answerNetWorth(bookId, asked!.pending!.proposalId, 'confirm');
+    await fandri.service.syncNow(bookId);
+    expect((await fandri.service.netWorthGroup(bookId))?.active?.mode).toBe('joint');
+
+    const [[groupRelay]] = (await fandri.database.db.values<[string]>(
+      sql`SELECT s.relay_book_id FROM shared_books s JOIN nw_group_books g ON g.group_book_id = s.book_id`,
+    )) as [[string]];
+    fandri.failing.add(groupRelay);
+    fandri.errors.mockClear();
+    await fandri.service.syncNow(bookId);
+    expect(fandri.service.status(bookId)).toMatchObject({ failing: false, groupFailing: true });
+    expect(fandri.errors).toHaveBeenCalledWith(expect.objectContaining({ status: 503 }));
+    fandri.failing.clear();
+    await fandri.service.syncNow(bookId);
+    expect(fandri.service.status(bookId).groupFailing).toBe(false);
 
     fandri.service.stop();
     dewi.service.stop();

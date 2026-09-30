@@ -3,7 +3,7 @@ import { afterEach, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
 import { configureCapture } from '../../src/sync/capture';
-import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './capture-harness';
+import { installCaptureTriggers, lastSealedSeq, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
 
 /*
  * The capture run's setup file (vitest.capture.config.ts, `npm run test:capture`; spec §6.4). The first workspace each
@@ -12,6 +12,8 @@ import { installCaptureTriggers, uncapturedWrites, watchPausedWrites } from './c
  */
 
 const watched = new Map<Database, string>();
+/** Per database, the last change-set the privacy check judged: each is judged once, after the test that sealed it. */
+const judgedSeq = new Map<Database, number>();
 
 async function shareFirstBook(database: Database, workspaceId: string): Promise<void> {
   if (watched.has(database)) return;
@@ -54,12 +56,23 @@ vi.mock('../../src/repos/workspaces', async (importOriginal) => {
 
 afterEach(async () => {
   const misses: string[] = [];
+  const leaks: string[] = [];
+  const failures: unknown[] = [];
   for (const [database, bookId] of watched) {
     try {
       misses.push(...(await uncapturedWrites(database, bookId)));
-    } catch {
-      watched.delete(database); // closed, or restored into a new connection: nothing left to watch
+      leaks.push(...(await privateLeaks(database, judgedSeq.get(database) ?? 0)));
+      judgedSeq.set(database, await lastSealedSeq(database));
+    } catch (error) {
+      // Closed, or restored into a new connection: nothing left to watch. Any other error is a check that failed, and
+      // fails this test (wave 3 merge: never swallowed); the database leaves the watch so it fails no later test.
+      watched.delete(database);
+      judgedSeq.delete(database);
+      if (!watchGone(error)) failures.push(error);
     }
   }
+  if (failures.length) throw failures[0];
   if (misses.length) throw new Error(`Writes to the shared book that capture missed (spec §6.4):\n  ${misses.join('\n  ')}`);
+  // Joint net worth §10 (task 6): nothing private leaves the phone, in any outbox.
+  if (leaks.length) throw new Error(`Private ids in an outbox (joint-net-worth §10):\n  ${leaks.join('\n  ')}`);
 });

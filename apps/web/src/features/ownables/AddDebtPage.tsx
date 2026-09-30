@@ -14,6 +14,7 @@ import { fieldsFor, handOverRows } from './catalogue-view';
 import { type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
 import type { EmbeddedForm } from './CashAccountForm';
+import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
 /**
  * Adding a debt, named the way you would say it: a mortgage, a leasing, a paylater, money borrowed from family.
@@ -49,6 +50,7 @@ export function AddDebtPage() {
  */
 function DebtItemForm({ item }: { item: string }) {
   const { database, ws } = useApp();
+  const household = useShareOnAdd();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -79,7 +81,7 @@ function DebtItemForm({ item }: { item: string }) {
       const plan = planNewDebt(draft, currency, today);
       if (plan.person) {
         // Money owed to a person is the ledger's, which opens the account and its profile itself.
-        await openDebtBalance(database, ws, {
+        const owed = await openDebtBalance(database, ws, {
           direction: plan.person.direction,
           personName: plan.person.personName,
           currency: plan.person.currency,
@@ -87,6 +89,7 @@ function DebtItemForm({ item }: { item: string }) {
           openedOn: plan.person.openedOn,
           coretaxCode: plan.person.coretaxCode,
         });
+        await household.save([owed.id]);
         await invalidate();
         await navigate({ to: '/net-worth/lend-borrow' });
         return;
@@ -114,6 +117,7 @@ function DebtItemForm({ item }: { item: string }) {
       if (plan.terms) await saveLoanTerms(database, ws, { accountId: account.id, ...plan.terms });
       // Which kind of loan it is, in the words of the item that was just chosen: what the Debts page folds by.
       await setLoanItem(database, ws, account.id, item);
+      await household.save([account.id]);
       await invalidate();
       await navigate({ to: '/net-worth/loans' });
     } catch (e) {
@@ -162,6 +166,7 @@ function DebtItemForm({ item }: { item: string }) {
         {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
       </InsetGroup>
+      {household.element}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add debt" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
@@ -205,6 +210,7 @@ export function NewCardForm({
   embedded?: EmbeddedForm;
 }) {
   const { database, ws } = useApp();
+  const household = useShareOnAdd();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -289,6 +295,7 @@ export function NewCardForm({
       if (entry) {
         await applyCatalogEntry(database, ws, { cardAccountId: account.id, entry, today, replaceManual: false, memberLevel: plan.memberLevel });
       }
+      await household.save([account.id]);
       await invalidate();
       if (onCreated) onCreated(account.id);
       else await navigate({ to: '/cards/$cardId', params: { cardId: account.id } });
@@ -375,6 +382,7 @@ export function NewCardForm({
         <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
         <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
       </InsetGroup>
+      {household.element}
       {!embedded && (
         <InsetGroup>
           {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}

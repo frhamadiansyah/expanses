@@ -1,5 +1,10 @@
 import { isoDate } from '@expanses/core';
 import {
+  householdPurchases,
+  itemTransfers,
+  listBooks,
+  receivedItems,
+  sharingDetail,
   assetValuesAt,
   netWorthSeries,
   periodFlows,
@@ -24,6 +29,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
+import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
+import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
 export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
@@ -170,4 +177,98 @@ export function useDueDeposits() {
 export function useUndoableByHand(accountId: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['deposit-by-hand', ws.workspaceId, accountId], queryFn: () => listUndoableByHand(database, ws, accountId) });
+}
+
+/**
+ * The active net-worth group as this workspace sees it, with what the other members share and their names
+ * (joint-net-worth §8.2): null when there is no group, or the group's Household is not in this workspace — the items
+ * this person shares are this workspace's accounts, so only here are the two sides one household.
+ *
+ * Keyed under `net-worth` and read through `useActiveNetWorthGroup`, so a sync run re-reads it: a partner's new
+ * summary arrives with a run, not with a local write.
+ */
+export function useSharedNetWorth() {
+  const { database, ws } = useApp();
+  const group = useActiveNetWorthGroup();
+  const active = group.data ?? null;
+  const read = useQuery({
+    queryKey: ['net-worth', 'received', ws.workspaceId, active?.groupBookId ?? null, active?.proposalId ?? null],
+    enabled: active !== null,
+    queryFn: async () => {
+      if (!active) return null;
+      const books = await listBooks(database, ws);
+      if (!books.some((book) => book.id === active.workspaceBookId)) return null;
+      const items: ReceivedItem[] = groupItems(await receivedItems(database, active.groupBookId), active.members);
+      const detail = await sharingDetail(database, active.workspaceBookId, null);
+      const names: Record<string, string> = {};
+      for (const member of detail?.members ?? []) names[member.memberId] = member.name;
+      return { group: active, items, names };
+    },
+  });
+  return {
+    ...read,
+    isPending: group.isPending || (active !== null && read.isPending),
+    error: group.error ?? (active !== null ? read.error : null),
+    data: active === null ? null : (read.data ?? null),
+  };
+}
+
+/** A member's name for a line of copy (pure, in joint-rows.ts so view-models share its fallback). */
+export { memberName } from './joint-rows';
+
+/**
+ * The household's balance sheet when the group files jointly (§8.2, D12): own rows read live, as Net worth always has,
+ * and the other's items converted with this device's rates on `date`. `status` says what the page may draw
+ * (`jointStatus`): the personal sheet only once the group is known not to file jointly — while the group or the
+ * household's inputs load it holds, and on an error it says so, never drawing the personal figure as the household's.
+ */
+export function useJointSheet(date?: string): {
+  status: JointStatus;
+  data: (JointRows & { members: string[]; names: Record<string, string>; me: string; received: ReceivedItem[]; ratesToBase: Record<string, number>; ownMissing: readonly string[] }) | null;
+  error: unknown;
+} {
+  const { ws } = useApp();
+  const resolveRates = useResolveRates();
+  const onDate = date ?? isoDate();
+  const shared = useSharedNetWorth();
+  const own = useSheet(onDate);
+  const joint = shared.data && shared.data.group.mode === 'joint' ? shared.data : null;
+  const currencies = [...new Set((joint?.items ?? []).map((item) => item.currency))].sort();
+  const rates = useQuery({
+    queryKey: ['net-worth', 'received-rates', ws.workspaceId, onDate, currencies.join(',')],
+    enabled: joint !== null,
+    queryFn: async () => (await resolveRates(currencies, onDate)).rates,
+  });
+  const status = jointStatus({
+    group: { pending: shared.isPending, error: shared.error, mode: shared.data?.group.mode ?? null },
+    inputs: { pending: !own.data || !rates.data, error: own.error ?? rates.error },
+  });
+  const error = shared.error ?? (joint ? (own.error ?? rates.error) : null);
+  if (status !== 'joint' || !joint || !own.data || !rates.data) return { status, data: null, error };
+  const rows = jointRows(own.data, joint.items, joint.group.me, rates.data, ws.baseCurrency, { date: onDate, members: joint.group.members });
+  return {
+    status,
+    data: { ...rows, members: joint.group.members, names: joint.names, me: joint.group.me, received: joint.items, ratesToBase: rates.data, ownMissing: own.data.missing },
+    error: null,
+  };
+}
+
+/** The Household purchases of an item's period, for its page's "Lines you can see" (§8.3). */
+export function useHouseholdPurchases(bookId: string | null, period: { start: string; end: string } | null) {
+  const { database } = useApp();
+  return useQuery({
+    queryKey: ['net-worth', 'household-purchases', bookId, period?.start, period?.end],
+    enabled: bookId !== null && period !== null,
+    queryFn: () => householdPurchases(database, bookId!, period!),
+  });
+}
+
+/** The live transfers of an item's period with it on either side, for its page's "Lines you can see" (§8.3, task 8). */
+export function useItemTransfers(groupBookId: string | null, itemId: string | null, period: { start: string; end: string } | null) {
+  const { database } = useApp();
+  return useQuery({
+    queryKey: ['net-worth', 'item-transfers', groupBookId, itemId, period?.start, period?.end],
+    enabled: groupBookId !== null && itemId !== null && period !== null,
+    queryFn: () => itemTransfers(database, groupBookId!, itemId!, period!),
+  });
 }

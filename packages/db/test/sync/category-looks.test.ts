@@ -4,7 +4,7 @@ import { categoryOf, Household, projectBook } from './household';
 
 /*
  * A category's look and place, changed on its own page, reach the other device of a shared book: the colour picked
- * for a top-level category (0059, its own entity, keyed like a need), and the icon and parent (fields of the category).
+ * for a top-level category (0060, its own entity, keyed like a need), and the icon and parent (fields of the category).
  */
 async function household() {
   const home = new Household();

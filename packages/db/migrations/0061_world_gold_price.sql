@@ -1,4 +1,4 @@
-/* 0060 — a gold holding's price can come from the world price (Frankfurter's XAU quote, brought down to the gram), and
+/* 0061 — a gold holding's price can come from the world price (Frankfurter's XAU quote, brought down to the gram), and
    each such holding says whether it follows that price or takes only what its owner types.
 
    A fetched price is stored where a typed one is, one row per holding per day, with `source` saying which it is — so
@@ -11,7 +11,10 @@
    older version. No row means the world price, which is what a gold holding follows unless told otherwise. No
    REFERENCES clause, as in 0048, 0054 and 0055, so a later rebuild of accounts never has to defer keys for it.
 
-   Numbered 0060 because 0056–0059 are taken; the runner is set-based, so it lands in any order beside them. */
+   Numbered 0061 because 0056–0060 are taken. It first shipped to dev builds as 0060; the runner drops a version
+   recorded under another name and runs this one again, so the rebuild copies prices across once more (unchanged) and
+   gold_price_choices is created only if it is not there already. */
+DROP TABLE IF EXISTS prices_new;
 CREATE TABLE prices_new (
   account_id TEXT NOT NULL REFERENCES accounts(id),
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -26,9 +29,9 @@ INSERT INTO prices_new (account_id, workspace_id, on_date, price_micro, source, 
 DROP TABLE prices;
 ALTER TABLE prices_new RENAME TO prices;
 
-CREATE TABLE gold_price_choices (
+CREATE TABLE IF NOT EXISTS gold_price_choices (
   account_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
   choice TEXT NOT NULL CHECK (choice IN ('world', 'typed'))
 );
-CREATE INDEX gold_price_choices_workspace ON gold_price_choices (workspace_id);
+CREATE INDEX IF NOT EXISTS gold_price_choices_workspace ON gold_price_choices (workspace_id);

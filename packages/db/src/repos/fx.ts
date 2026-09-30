@@ -1,6 +1,7 @@
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
+import { retryUnpostedTransfers } from '../sync/net-worth/transfers';
 
 /** 'kmk' is the Kurs Menteri Keuangan, entered by hand for the tax report and never fetched. */
 export type FxSource = 'frankfurter' | 'manual' | 'kmk';
@@ -30,6 +31,14 @@ export async function upsertRate(
       rate = excluded.rate, source = excluded.source, source_date = excluded.source_date, fetched_at = excluded.fetched_at, note = excluded.note
     WHERE excluded.source IN ('manual', 'kmk') OR fx_rates.source = 'frankfurter'
   `);
+  // Joint net worth §7.2 (task 8 review round 1): a transfer between partners left unposted for want of a rate posts now.
+  // The rate is already stored: a retry that fails is reported, never the save's failure (final review item 9); the
+  // group log's next sync tries the transfer again.
+  try {
+    await retryUnpostedTransfers(database);
+  } catch (error) {
+    console.warn('Saved the rate; a waiting transfer between partners could not be posted yet', error);
+  }
 }
 
 /** Exact date if stored, otherwise the latest earlier date flagged stale. */

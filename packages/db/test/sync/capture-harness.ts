@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
+import { viewMember } from '../../src/sync/authority';
 import { configureCapture, projectPurchase } from '../../src/sync/capture';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { ChangeSet, Op } from '../../src/sync/types';
@@ -139,11 +140,14 @@ interface SealedOp {
  * took in from another device (`recordApplied`), because what a field ends as is the latest hlc that carried it,
  * whoever wrote it (§7.3 rule 1).
  */
-async function outboxOps(database: Database): Promise<Map<string, SealedOp[]>> {
+async function outboxOps(database: Database, watchedBookId: string): Promise<Map<string, SealedOp[]>> {
   const rows = await database.db.values<[number, string, string | null, string | null]>(sql`SELECT seq, book_id, entry_json, change_json FROM temp.__sealed ORDER BY seq`);
   const out = new Map<string, SealedOp[]>();
   for (const [rowid, bookId, entryJson, changeJson] of rows) {
-    void bookId;
+    // Another shared book's outbox (a net-worth group log beside the workspace, joint-net-worth §4) accounts for none of
+    // the watched book's writes: its member and device rows share their keys with the workspace's. Apply's rows carry no
+    // book ('') and are kept.
+    if (bookId !== '' && bookId !== watchedBookId) continue;
     // The outbox keeps plaintext change-sets (sealed only at drain), and apply records the one it takes in.
     const changeSet = JSON.parse((changeJson ?? entryJson)!) as ChangeSet;
     for (const op of changeSet.ops) {
@@ -185,6 +189,17 @@ function deletedAfter(ops: readonly SealedOp[] | undefined, mark: number): boole
   return (ops ?? []).some(({ rowid, op }) => rowid > mark && op.op === 'delete');
 }
 
+/**
+ * Whether an error only says the watch is gone — the database was closed, or restored into a new connection that has
+ * none of the harness's temp tables — rather than that a check itself failed (wave 3 merge: only these may be ignored).
+ */
+export function watchGone(error: unknown): boolean {
+  for (let e: unknown = error; e instanceof Error; e = (e as Error & { cause?: unknown }).cause) {
+    if (/database connection is not open|no such table: (temp\.)?__(writes|sealed)\b/.test(e.message)) return true;
+  }
+  return false;
+}
+
 type Write = { seq: number; table: string; key: string; op: string; cols: string; old: string | null; mark: number };
 
 /**
@@ -210,11 +225,12 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     );
     writes = rows.map(([seq, table, key, op, cols, old, mark]) => ({ seq, table, key, op, cols, old, mark: Number(mark) }));
     await database.db.run(sql`DELETE FROM temp.__writes`);
-  } catch {
-    return [];
+  } catch (error) {
+    if (watchGone(error)) return [];
+    throw error;
   }
   if (writes.length === 0) return [];
-  const ops = await outboxOps(database);
+  const ops = await outboxOps(database, bookId);
   const purchase = SHARED_ENTITIES.find((e) => e.kind === 'purchase') as PurchaseEntity;
   const fieldsByTable = purchaseTables(purchase);
   const misses: string[] = [];
@@ -226,8 +242,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     const entity = SHARED_ENTITIES.find((e) => e.kind === 'row' && e.table === w.table) as RowEntity;
     const columns = syncedColumns(entity);
     const key = parseOpId(entity, w.key);
-    const match = sql.join(entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`), sql` AND `);
-    const [nowRow] = await database.db.values<[string]>(sql`SELECT ${sql.raw(jsonOf('NEW', columns).replace(/NEW\./g, ''))} FROM ${sql.raw(entity.table)} WHERE ${match}`);
+    // The row as it stands in the watched book: a key alone (a member id) may name a row of another shared book too.
+    const [nowRow] = await database.db.values<[string]>(
+      sql`SELECT ${sql.raw(jsonOf('NEW', columns).replace(/NEW\./g, 't.'))} FROM ${sql.raw(entity.table)} t WHERE ${sql.join(
+        entity.keyColumns.map((c) => sql`t.${sql.raw(c)} = ${key[c]}`),
+        sql` AND `,
+      )} AND ${entity.scope(bookId)}`,
+    );
     const before = w.old === null ? null : (JSON.parse(w.old) as Record<string, unknown>);
     const now = nowRow ? (JSON.parse(nowRow[0]) as Record<string, unknown>) : null;
     const entityOps = ops.get(`${entity.entity}\u0000${w.key}`);
@@ -256,6 +277,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       }
       if (carrier) {
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        // An own role edit the log refused (two owners stepping down at once, the last owner is never demoted): apply
+        // put the row back to the authority view's role, emitting nothing, as peers never took the edit in (apply.ts
+        // `reconcileMembersTx`). The log decided it, before the refused op: not a miss (wave 3 merge review round 1).
+        if (entity.entity === 'member' && field === 'role' && JSON.stringify(said) !== JSON.stringify(now[column])) {
+          const view = await viewMember(database.db, bookId, w.key);
+          if (view && view.role === now[column] && view.roleHlc < carrier.hlc) continue;
+        }
         if (JSON.stringify(said) !== JSON.stringify(now[column])) problems.push(`${column} is ${JSON.stringify(now[column])} but the outbox says ${JSON.stringify(said)}`);
       } else if (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column])) {
         problems.push(`${column} changed with no ${entity.entity} op`);
@@ -315,11 +343,13 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       continue;
     }
     // The head must read as the outbox's latest word on each field it carried since the first write here.
-    if (expected !== null) {
+    // A book whose sharing stopped (§8.6) has no member here to read the purchase as: its lineage was judged above, and
+    // the field-by-field reading is skipped (wave 3 merge: this used to throw, swallowed by the setup's catch).
+    const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
+    if (expected !== null && member) {
       const since = Math.min(...writes.filter((x) => x.key === w.key || x.key === expected).map((x) => x.mark));
-      const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
       // Read as the lineage knows it: a purchase another member paid carries the payer's label, not the placeholder's name.
-      const projected = (await projectPurchase(database.db, expected, member![0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
+      const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
         const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
@@ -330,4 +360,59 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     }
   }
   return misses;
+}
+
+/**
+ * Joint-net-worth §10's privacy check (task 6), over every change-set this device put in any outbox since the watch
+ * began (the workspace log's and a net-worth group log's alike): none may carry the id of one of this device's own
+ * asset or liability accounts (placeholders of other members excepted: they stand for someone else), nor the id of a
+ * transaction that never was a purchase of a shared book (a lineage's own id is how a purchase travels), nor a category
+ * filed only in books that are not shared (review round 1). A private
+ * line's amount and description are checked by the summaries test, where they are known.
+ */
+export async function privateLeaks(database: Database, afterSeq = 0): Promise<string[]> {
+  let rows: [string, string][];
+  try {
+    rows = await database.db.values<[string, string]>(
+      sql`SELECT book_id, entry_json FROM temp.__sealed WHERE seq > ${afterSeq} AND book_id <> '' AND entry_json IS NOT NULL ORDER BY seq`,
+    );
+  } catch (error) {
+    if (watchGone(error)) return [];
+    throw error;
+  }
+  if (rows.length === 0) return [];
+  const accountIds = (
+    await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE kind IN ('asset', 'liability') AND id NOT IN (SELECT account_id FROM book_member_accounts)`)
+  ).map(([id]) => id);
+  // A category filed only in books that are not shared here (a Business book of this person's own) is private too —
+  // except in a change-set of a book it is filed in: that book was shared when it was sealed, though it may have stopped
+  // sharing since (§8.6; wave 3 merge).
+  const categoryIds = (
+    await database.db.values<[string]>(sql`
+      SELECT DISTINCT bc.category_account_id FROM book_categories bc
+      WHERE bc.book_id NOT IN (SELECT book_id FROM shared_books)
+        AND bc.category_account_id NOT IN (SELECT category_account_id FROM book_categories WHERE book_id IN (SELECT book_id FROM shared_books))`)
+  ).map(([id]) => id);
+  const filedIn = new Set(
+    (await database.db.values<[string, string]>(sql`SELECT book_id, category_account_id FROM book_categories`)).map(([book, category]) => `${book}|${category}`),
+  );
+  const transactionIds = (await database.db.values<[string]>(sql`SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage)`)).map(([id]) => id);
+  const leaks: string[] = [];
+  for (const [bookId, entryJson] of rows) {
+    for (const id of accountIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries account ${id}`);
+    for (const id of transactionIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private transaction ${id}`);
+    for (const id of categoryIds) if (!filedIn.has(`${bookId}|${id}`) && entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries private category ${id}`);
+  }
+  return [...new Set(leaks)];
+}
+
+/** The last change-set `privateLeaks` has seen, so each is judged once (0 when the watch is gone). */
+export async function lastSealedSeq(database: Database): Promise<number> {
+  try {
+    const [row] = await database.db.values<[number]>(sql`SELECT coalesce(max(seq), 0) FROM temp.__sealed`);
+    return Number(row?.[0] ?? 0);
+  } catch (error) {
+    if (watchGone(error)) return 0;
+    throw error;
+  }
 }

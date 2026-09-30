@@ -157,6 +157,57 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
 }
 
 /**
+ * One asset's value at each of `dates` (joint net worth §5.2, task 6: a shared item's balance and month-ends), by the
+ * same rule `assetValuesAt` values it — its valuation mode, trades, prices (its security's when linked) and estimates —
+ * read once instead of once per date. `ledgerAt` is the account's posted ledger balance on a date. Null when the account
+ * is not an asset of this workspace.
+ */
+export async function assetValueSeries(
+  database: Database,
+  ws: WorkspaceContext,
+  accountId: string,
+  dates: readonly string[],
+  ledgerAt: (date: string) => number,
+): Promise<number[] | null> {
+  const [account] = await database.db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset')));
+  if (!account) return null;
+  const [profile] = await database.db
+    .select()
+    .from(assetProfiles)
+    .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+  const mode: ValuationMode = profile ? presetFor(profile.assetKind).valuationMode : account.valuationMode;
+  const trades = mode === 'market' ? await listTrades(database, ws, { accountId }) : [];
+  const securityId = (await listHoldingLinks(database, ws)).find((link) => link.accountId === accountId)?.securityId ?? null;
+  const accountPrices: PriceRow[] = securityId
+    ? (await allSecurityPrices(database, ws)).filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
+    : (await database.db.select().from(prices).where(and(eq(prices.accountId, accountId), eq(prices.workspaceId, ws.workspaceId)))).map((row) => ({
+        onDate: row.onDate,
+        priceMicro: row.priceMicro,
+      }));
+  const accountValuations: ValuationRow[] = (
+    await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId)))
+  ).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
+  return dates.map(
+    (date) =>
+      assetValueAt(
+        {
+          accountId,
+          mode,
+          currency: account.currency ?? ws.baseCurrency,
+          ledgerBalanceMinor: ledgerAt(date),
+          position: mode === 'market' ? positionAfter(trades, date) : undefined,
+          prices: accountPrices,
+          valuations: accountValuations,
+        },
+        date,
+      ).valueMinor,
+  );
+}
+
+/**
  * Assets, debts and the two netted, in the workspace currency — or null, with the missing rate named in `missing`,
  * when a figure needs a rate there is none for. Never a partial sum with the unconvertible part counted as 0.
  */

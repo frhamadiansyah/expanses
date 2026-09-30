@@ -5,6 +5,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices } from '../schema-assets';
 import { holdingLinks, securities, securityPrices } from '../schema-securities';
+import { markAccountDirtyTx } from '../sync/capture';
 import { createAccountTx } from './accounts';
 import { AssetError, saveAssetProfileTx } from './assets';
 import { type RecordTradeInput, type TradeResult, writeTradeTx } from './trades';
@@ -128,6 +129,7 @@ export async function linkHoldingTx(
   input: { accountId: string; securityId?: string | null; brokerAccountId?: string | null },
 ): Promise<void> {
   await requireTables(tx);
+  markAccountDirtyTx(tx, input.accountId); // joint net worth §9: priced from elsewhere now
   const [holding] = await tx
     .select({ id: accounts.id, kind: accounts.kind, subtype: accounts.subtype, currency: accounts.currency })
     .from(accounts)
@@ -239,6 +241,9 @@ export async function upsertSecurityPriceTx(tx: Db, ws: WorkspaceContext, input:
   await securityByIdTx(tx, ws, input.securityId);
   const row = { securityId: input.securityId, workspaceId: ws.workspaceId, onDate: input.onDate, priceMicro: input.priceMicro, source: 'manual' as const, createdAt: new Date().toISOString() };
   await tx.insert(securityPrices).values(row).onConflictDoUpdate({ target: [securityPrices.securityId, securityPrices.onDate], set: row });
+  // Joint net worth §9: every holding of the security is worth something else now.
+  const held = await tx.select({ accountId: holdingLinks.accountId }).from(holdingLinks).where(and(eq(holdingLinks.securityId, input.securityId), eq(holdingLinks.workspaceId, ws.workspaceId)));
+  for (const { accountId } of held) markAccountDirtyTx(tx, accountId);
 }
 
 /** One price for a security on a date; typing again replaces it. It values every holding of the security. */

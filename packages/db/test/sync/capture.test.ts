@@ -324,6 +324,8 @@ describe('capture: purchases', () => {
             originalAmountMinor: null,
             paidBy: 'member-me',
             paidLabel: 'BCA Tahapan',
+            // Joint net worth §5.3: not paid from a shared item (task 7).
+            paidFrom: null,
           },
         },
       },

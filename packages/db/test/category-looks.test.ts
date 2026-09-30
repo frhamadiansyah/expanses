@@ -45,9 +45,9 @@ const parentOf = async (t: TestDb, id: string) => (await listAccounts(t.database
 const refusal = (promise: Promise<unknown>, code: CategoryLookError['code']) =>
   expect(promise).rejects.toSatisfy((e: unknown) => e instanceof CategoryLookError && e.code === code && e.message.length > 0);
 
-describe('migration 0059', () => {
-  it('is version 59 and named category_colours', () => {
-    expect(MIGRATIONS.find((m) => m.version === 59)).toMatchObject({ name: 'category_colours' });
+describe('migration 0060', () => {
+  it('is version 60 and named category_colours', () => {
+    expect(MIGRATIONS.find((m) => m.version === 60)).toMatchObject({ name: 'category_colours' });
   });
 
   it('adds an empty table to a database stopped at 55, and refuses a colour that is not #rrggbb', async () => {

@@ -1,9 +1,10 @@
+import type { CoretaxInputs } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
 import { upsertRate } from './fx';
-import { coretaxInputsFor } from './tax-inputs';
+import { reportInputsFor } from './joint-tax';
 
 const BPS = 10_000;
 
@@ -25,7 +26,12 @@ export interface KmkRateRow {
  * something is denominated in it, and the owner should not be asked for rates they cannot use.
  */
 export async function foreignCurrenciesFor(database: Database, ws: WorkspaceContext, taxYear: number): Promise<string[]> {
-  const inputs = await coretaxInputsFor(database, ws, taxYear);
+  // With one tax ID, the partner's rows need their currencies' rates too (joint-net-worth §8.4).
+  return foreignCurrenciesOf((await reportInputsFor(database, ws, taxYear)).inputs, ws.baseCurrency);
+}
+
+/** The currencies other than `baseCurrency` a year's inputs hold, sorted: what needs a KMK rate. */
+export function foreignCurrenciesOf(inputs: CoretaxInputs, baseCurrency: string): string[] {
   const currencies = [
     ...inputs.cash.map((row) => row.currency),
     ...inputs.holdings.map((row) => row.currency),
@@ -33,7 +39,7 @@ export async function foreignCurrenciesFor(database: Database, ws: WorkspaceCont
     ...inputs.receivables.map((row) => row.currency),
     ...inputs.debts.map((row) => row.currency),
   ];
-  return [...new Set(currencies)].filter((currency) => currency !== ws.baseCurrency).sort();
+  return [...new Set(currencies)].filter((currency) => currency !== baseCurrency).sort();
 }
 
 /** The rates entered for a year, as the row builders want them: rate times ten thousand. */

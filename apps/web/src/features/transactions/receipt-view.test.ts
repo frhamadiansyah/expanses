@@ -258,7 +258,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
       currency: 'IDR',
       points: null,
       owed: [],
-      payer: { paidBy: 'm-dewi', paidLabel: 'Mandiri Visa ···· 9001', payerName: 'Dewi', mine: false },
+      payer: { paidBy: 'm-dewi', paidLabel: 'Mandiri Visa ···· 9001', payerName: 'Dewi', mine: false, paidFrom: null },
     });
     expect(said(lines)).toEqual([
       ['Paid with', 'Mandiri Visa ···· 9001'],
@@ -268,7 +268,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
   });
 
   it('says You on your own purchase, with the label your device gave it', () => {
-    const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], payer: { paidBy: 'm-me', paidLabel: 'BCA KrisFlyer ···· 1467', payerName: 'Fandri', mine: true } });
+    const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], payer: { paidBy: 'm-me', paidLabel: 'BCA KrisFlyer ···· 1467', payerName: 'Fandri', mine: true, paidFrom: null } });
     expect(said(lines).slice(0, 2)).toEqual([
       ['Paid with', 'BCA KrisFlyer ···· 1467'],
       ['Paid by', 'You'],

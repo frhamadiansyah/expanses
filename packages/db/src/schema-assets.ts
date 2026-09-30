@@ -61,7 +61,7 @@ export const prices = sqliteTable('prices', {
   createdAt: text('created_at').notNull(),
 });
 
-/** A gold holding's price source (0060): the world price, or only what the owner types. No row is the world price. */
+/** A gold holding's price source (0061): the world price, or only what the owner types. No row is the world price. */
 export const goldPriceChoices = sqliteTable('gold_price_choices', {
   accountId: text('account_id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),

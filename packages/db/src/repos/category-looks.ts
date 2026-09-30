@@ -46,7 +46,7 @@ export class CategoryLookError extends Error {
 }
 
 /**
- * Whether migration 0059 has run. Asked before every read and write of category_colours, so a database stopped at an
+ * Whether migration 0060 has run. Asked before every read and write of category_colours, so a database stopped at an
  * older version reads as "no colour picked" and refuses to save one, rather than failing on a missing table.
  */
 const colourTables = new WeakMap<Db, boolean>();

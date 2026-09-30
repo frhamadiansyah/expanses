@@ -2,9 +2,16 @@ import { CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, trad
 import {
   type AccountRow,
   type CardRow,
+  editMemberTransfer,
+  itemIdOf,
+  listAccounts,
+  memberTransfersOf,
   noteCategory,
+  paidFromAccount,
+  type PaidWithItem,
   type NoteSuggestion,
   postTransaction,
+  recordMemberTransfer,
   recordTaggedTransfer,
   replaceTransaction,
   saveMerchantMcc,
@@ -12,11 +19,12 @@ import {
   type TransactionView,
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
@@ -27,6 +35,8 @@ import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { assetKindTile } from '../ownables/catalogue-view';
+import { useActiveNetWorthGroup, usePaidWithItems } from '../sharing/net-worth-queries';
+import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
@@ -37,10 +47,11 @@ import { ChoiceSheet } from './ChoiceSheet';
 import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
-import { PaymentSheet, chosenPayment } from './PaymentSheet';
+import { partnerTitle, partnerTransferSections } from './member-transfer';
+import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -138,7 +149,7 @@ function CardBody({
   label,
   title,
   onBack,
-  accounts,
+  accounts: ownAccounts,
   photoIds,
 }: {
   initial?: TransactionView;
@@ -158,6 +169,17 @@ function CardBody({
   const resolveRates = useResolveRates();
   const openBook = useOpenBook();
   const bookId = ws.bookId ?? '';
+  // Joint net worth §7.1: the partner's placeholder a shared item was picked onto, which this device's list leaves out.
+  const [picked, setPicked] = useState<AccountRow[]>([]);
+  const accounts = useMemo(
+    () => (picked.length ? [...ownAccounts, ...picked.filter((p) => !ownAccounts.some((a) => a.id === p.id))] : ownAccounts),
+    [ownAccounts, picked],
+  );
+  // The partner's shared items Paid with offers, in the group's workspace only (D14), and what the edited purchase says.
+  const netWorthGroup = useActiveNetWorthGroup();
+  const paidWith = usePaidWithItems(bookId);
+  const bookShared = useIsBookShared();
+  const savedPayer = usePurchasePayers(initial ? [initial.id] : [], bookShared);
   const allCards = useCards().data ?? [];
   const goals = useGoals().data ?? [];
   const assetValues = useAssetValues();
@@ -216,11 +238,67 @@ function CardBody({
   const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId) && pairsWithTo(a));
   // A card is a way to pay, never somewhere money arrives or moves to.
   // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
+  // Joint net worth §7.1: the partner's shared item Paid with names now, if any; its placeholder is then no row of its own.
+  const sharedPaying = sharedPaymentOf(draft, initial ? savedPayer(initial.id) : null);
   const payable: PaymentOption[] = withoutPlaceholders(
     paymentOptions(money, draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : []),
     listedIds,
-    draft.moneyId,
+    sharedPaying ? '' : draft.moneyId,
   );
+  const sharedItem = sharedPaying ? (paidWith.data ?? []).find((item) => item.itemId === sharedPaying.itemId) : undefined;
+  // What Paid with reads while it names a partner's item: the item's name, and whose it is; an item no longer shared keeps the saved label.
+  const sharedShown = sharedPaying
+    ? {
+        value: sharedItem?.name ?? (initial ? (savedPayer(initial.id)?.paidLabel ?? '') : ''),
+        caption: sharedItem ? sharedTitle(sharedItem.ownerName) : 'Shared',
+      }
+    : null;
+  /** Picking a partner's item (§7.1): the money side goes on their placeholder here, which the item's owner's phone reads as the item. */
+  async function payWithShared(item: PaidWithItem) {
+    try {
+      const id = await paidFromAccount(database, bookId, item.owner, item.currency);
+      if (!accounts.some((a) => a.id === id)) {
+        const row = (await listAccounts(database, ws, { includeArchived: true, includePlaceholders: true })).find((a) => a.id === id);
+        if (row) setPicked((rows) => [...rows, row]);
+      }
+      set({ moneyId: id, cardId: '', paidFrom: { owner: item.owner, itemId: item.itemId } });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  /*
+   * Joint net worth §7.2: a transfer with a partner. To lists their shared items — and From, for money received from
+   * them — in the group's workspace only, and only those in the other side's currency. The transfer is recorded once in
+   * the group log; a side of one being corrected is corrected as the transfer (`editMemberTransfer`).
+   */
+  const workspaceName = openBook?.name ?? 'the household';
+  const partnerWhere = { formBookId: draft.bookId, groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId };
+  const partnerItem = draft.mode === 'transfer' && draft.partner ? (paidWith.data ?? []).find((i) => i.itemId === draft.partner!.itemId) : undefined;
+  const partnerShown = draft.mode === 'transfer' && draft.partner
+    ? { value: partnerItem?.name ?? '', caption: partnerTitle(partnerItem?.ownerName ?? null, workspaceName) }
+    : null;
+  const toPartners = draft.mode === 'transfer' && draft.partner?.side !== 'from' && !initial
+    ? partnerTransferSections(paidWith.data ?? [], partnerWhere, draft.moneyId ? byId.get(draft.moneyId)?.currency : null, workspaceName)
+    : [];
+  const fromPartners = draft.mode === 'transfer' && draft.partner?.side !== 'to' && !initial
+    ? partnerTransferSections(paidWith.data ?? [], partnerWhere, draft.toId ? byId.get(draft.toId)?.currency : null, workspaceName)
+    : [];
+  const partnerOf = (item: PaidWithItem, side: 'to' | 'from') => ({ side, owner: item.owner, itemId: item.itemId, currency: item.currency });
+  // The transfer a corrected row is one side of, when it is one: its from, to and currency never change.
+  const savedTransferQuery = useQuery({
+    queryKey: ['member-transfer', initial?.id ?? ''],
+    queryFn: async () => (initial ? ((await memberTransfersOf(database, [initial.id]))[initial.id] ?? null) : null),
+    enabled: !!initial,
+  });
+  // Corrected as the transfer only while it is the current group's; a side of an ended group is this phone's own row.
+  const savedTransfer =
+    savedTransferQuery.data && netWorthGroup.data && savedTransferQuery.data.groupBookId === netWorthGroup.data.groupBookId && !savedTransferQuery.data.transferVoid
+      ? savedTransferQuery.data
+      : null;
+  // Until both are read, an edit does not know which way it saves: From, To and Save wait (review round 1).
+  const transferUnknown = !!initial && (!savedTransferQuery.isFetched || netWorthGroup.isPending);
+  const accountsLocked = !!savedTransfer || transferUnknown;
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -239,6 +317,29 @@ function CardBody({
     setError(null);
     setBusy(true);
     try {
+      if (transferUnknown) return;
+      if (initial && savedTransfer && netWorthGroup.data) {
+        // A side of a transfer with a partner: its date, figure and note are the transfer's, and both phones follow.
+        const own = byId.get(draft.moneyId)?.currency ?? byId.get(draft.toId)?.currency ?? ws.baseCurrency;
+        await editMemberTransfer(database, netWorthGroup.data.workspaceBookId, savedTransfer.transferId, {
+          occurredOn: draft.occurredOn,
+          amountMinor: transferFigure(draft, own),
+          // The row's own words ("Transfer to Andi") are this phone's; only a note typed here becomes the transfer's.
+          ...(draft.description !== initial.description ? { description: draft.description.trim() || null } : {}),
+        });
+        await invalidate();
+        onDone();
+        return;
+      }
+      if (draft.mode === 'transfer' && draft.partner) {
+        const group = netWorthGroup.data;
+        if (!group) throw new Error('Your household no longer shares net worth');
+        const ownItemId = await itemIdOf(group.groupBookId, ownTransferAccountId(draft));
+        await recordMemberTransfer(database, bookId, memberTransferOf(draft, accounts, group.me, ownItemId));
+        await invalidate();
+        onDone();
+        return;
+      }
       const post = formToPost(draft, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
@@ -268,7 +369,7 @@ function CardBody({
       await invalidate();
       onDone();
     } catch (e) {
-      setError(e);
+      setError(sayPaidWithError(e, sharedShown?.value));
     } finally {
       setBusy(false);
     }
@@ -305,9 +406,10 @@ function CardBody({
   );
   // What the bar's ✓ answers: whether this would post as it stands — the same question Save asks, asked early.
   const ready = (() => {
-    if (busy || !setAside.ready) return false;
+    if (busy || !setAside.ready || transferUnknown) return false;
     try {
-      formToPost(draft, accounts);
+      if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
+      else formToPost(draft, accounts);
       return true;
     } catch {
       return false;
@@ -589,9 +691,20 @@ function CardBody({
               lead="value"
               icon={<RowGlyph>{payGlyph}</RowGlyph>}
               label={payLabel}
-              value={paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)}
-              caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel}
+              value={
+                partnerShown && draft.partner?.side === 'from'
+                  ? partnerShown.value
+                  : sharedShown ? sharedShown.value : paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)
+              }
+              caption={
+                partnerShown && draft.partner?.side === 'from'
+                  ? partnerShown.caption
+                  : sharedShown ? sharedShown.caption : paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel
+              }
               onClick={() => setSheet('money')}
+              // A side of a transfer with a partner keeps its accounts: only its date, figure and note change (§7.2).
+              disabled={accountsLocked}
+              chevron={!accountsLocked}
             />
 
             <AmountRow draft={draft} accounts={accounts} set={set} />
@@ -609,8 +722,10 @@ function CardBody({
                   </RowGlyph>
                 }
                 label="To"
-                value={toAccount?.name ?? ''}
-                caption="To"
+                value={partnerShown && draft.partner?.side === 'to' ? partnerShown.value : (toAccount?.name ?? '')}
+                caption={partnerShown && draft.partner?.side === 'to' ? partnerShown.caption : 'To'}
+                disabled={accountsLocked}
+                chevron={!accountsLocked}
                 onClick={() => setSheet('to')}
               />
             ) : (
@@ -806,8 +921,23 @@ function CardBody({
           title="To"
           options={paymentOptions(landing, [])}
           accounts={accounts}
-          chosenAccountId={draft.toId}
-          onPick={(option) => set({ toId: option.accountId })}
+          chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
+          // One's own account clears a partner's item on this side; a partner on the From side stays.
+          onPick={(option) => set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null })}
+          // Joint net worth §7.2: the partner's shared items in the From's currency, a section of their own under the
+          // money one holds — not accounts of this person's, so the money-you-hold rule above does not judge them.
+          shared={
+            toPartners.length > 0
+              ? {
+                  items: toPartners.flatMap((section) => section.items),
+                  formBookId: draft.bookId,
+                  groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId,
+                  chosenItemId: draft.partner?.side === 'to' ? draft.partner.itemId : null,
+                  onPick: (item) => set({ toId: '', partner: partnerOf(item, 'to') }),
+                  title: (ownerName) => partnerTitle(ownerName, workspaceName),
+                }
+              : undefined
+          }
           onClose={() => setSheet(null)}
           footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
           adding={
@@ -839,13 +969,41 @@ function CardBody({
           chosenAccountId={draft.moneyId}
           chosenCardId={draft.cardId}
           cards={draft.mode === 'expense'}
+          // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
           onPick={(option) => {
             const picked = byId.get(option.accountId);
             // A To that cannot pair with the new From is no longer an answer (the From list already keeps them apart;
             // this covers an old row opened with a pair made before the rule).
             const unpaired = draft.mode === 'transfer' && picked && toAccount && !canTransferBetween(picked, toAccount);
-            set({ moneyId: option.accountId, cardId: option.cardId ?? '', ...(unpaired ? { toId: '' } : {}) });
+            set({
+              moneyId: option.accountId,
+              cardId: option.cardId ?? '',
+              paidFrom: placeholders.has(option.accountId) ? undefined : null,
+              ...(draft.partner?.side === 'from' ? { partner: null } : {}),
+              ...(unpaired ? { toId: '' } : {}),
+            });
           }}
+          shared={
+            draft.mode === 'expense'
+              ? {
+                  items: paidWith.data ?? [],
+                  formBookId: draft.bookId,
+                  groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId,
+                  chosenItemId: sharedPaying?.itemId ?? null,
+                  onPick: (item) => void payWithShared(item),
+                }
+              : draft.mode === 'transfer' && fromPartners.length > 0
+                ? {
+                    // Money received from a partner (§7.2): their shared items in the To account's currency.
+                    items: fromPartners.flatMap((section) => section.items),
+                    formBookId: draft.bookId,
+                    groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId,
+                    chosenItemId: draft.partner?.side === 'from' ? draft.partner.itemId : null,
+                    onPick: (item) => set({ moneyId: '', cardId: '', partner: partnerOf(item, 'from') }),
+                    title: (ownerName) => partnerTitle(ownerName, workspaceName),
+                  }
+                : undefined
+          }
           onClose={() => setSheet(null)}
           // Only a new transaction: an edit changes what is there rather than making more. The kinds offered are the
           // ones this question can name, so the account made is always one the row can then hold.

@@ -50,6 +50,7 @@ import { BalanceCard } from './BalanceCard';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /**
  * `/accounts/$accountId` — one page for every money account.
@@ -201,6 +202,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           ) : null,
         ]}
       />
+      {/* Joint net worth (§8.1): what the household sees of it, under the facts. Nothing while this person is in no group. */}
+      <ShareWithHouseholdRow accountId={account.id} />
       {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
       {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
     </div>

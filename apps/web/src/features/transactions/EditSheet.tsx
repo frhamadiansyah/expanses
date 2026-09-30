@@ -1,5 +1,6 @@
 import { isoDate, type PaymentOption } from '@expanses/core';
-import { type AccountRow, type CardRow, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { type AccountRow, type CardRow, replaceTransaction, type TransactionView } from '@expanses/db';
+import { deleteTransaction } from './member-transfer';
 import { useNavigate } from '@tanstack/react-router';
 import { Ellipsis } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -142,7 +143,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
     setError(null);
     setBusy(true);
     try {
-      await voidTransaction(database, ws, tx.id);
+      await deleteTransaction(database, ws, tx.id);
       await invalidate();
       onClose();
     } catch (e) {

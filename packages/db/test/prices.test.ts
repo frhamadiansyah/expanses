@@ -105,16 +105,16 @@ describe('valuations', () => {
   });
 });
 
-describe('migration 0060', () => {
+describe('migration 0061', () => {
   it('keeps every price stored before it, and lets a fetched one in beside them', async () => {
     const { createDatabase, MIGRATIONS, migrate } = await import('../src/index');
     const { createNodeExecutor } = await import('../src/node');
     const older = createDatabase(createNodeExecutor());
-    await migrate(older, MIGRATIONS.filter((m) => m.version < 60));
+    await migrate(older, MIGRATIONS.filter((m) => m.version < 61));
     const ows = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
     const bar = await createAccount(older, ows, { name: 'Gold', kind: 'asset', subtype: 'investment', currency: 'IDR' });
     await upsertPrice(older, ows, { accountId: bar.id, onDate: '2026-09-11', priceMicro: 1_842_000_000_000 });
-    expect(await migrate(older)).toContain(60);
+    expect(await migrate(older)).toContain(61);
     expect(await listPrices(older, ows, bar.id)).toEqual([{ onDate: '2026-09-11', priceMicro: 1_842_000_000_000, source: 'manual' }]);
     await recordWorldPrice(older, ows, { accountId: bar.id, onDate: '2026-09-30', priceMicro: 2_399_717_191_745 });
     expect((await listPrices(older, ows, bar.id)).map((row) => row.source)).toEqual(['world', 'manual']);

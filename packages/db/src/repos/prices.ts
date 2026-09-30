@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { goldPriceChoices, prices, valuations } from '../schema-assets';
+import { markAccountDirtyTx } from '../sync/capture';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { listSecurityPrices, securityOfHolding, upsertSecurityPriceTx } from './securities';
 
@@ -24,6 +25,7 @@ export async function upsertPrice(database: Database, ws: WorkspaceContext, inpu
   };
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
     // A linked holding's price is its security's: one entry values every broker that holds it (spec §3.2).
     const securityId = await securityOfHolding(tx, ws, input.accountId);
     if (securityId) {
@@ -52,6 +54,7 @@ export async function recordWorldPrice(database: Database, ws: WorkspaceContext,
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
     if (await securityOfHolding(tx, ws, input.accountId)) return;
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value may have changed
     await tx
       .insert(prices)
       .values(row)
@@ -72,6 +75,7 @@ export async function goldPriceChoiceOf(database: Database, ws: WorkspaceContext
 export async function setGoldPriceChoice(database: Database, ws: WorkspaceContext, accountId: string, choice: GoldPriceChoice): Promise<void> {
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, accountId, 'Asset');
+    markAccountDirtyTx(tx, accountId); // joint net worth §9: the price it is valued at may change
     const row = { accountId, workspaceId: ws.workspaceId, choice };
     await tx.insert(goldPriceChoices).values(row).onConflictDoUpdate({ target: goldPriceChoices.accountId, set: { choice } });
   });
@@ -104,6 +108,7 @@ export async function recordValuation(
   const id = uuidv7();
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
     await tx.insert(valuations).values({
       id,
       workspaceId: ws.workspaceId,

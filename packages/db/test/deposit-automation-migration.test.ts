@@ -46,8 +46,8 @@ describe('migration 0054', () => {
     const before = await schemaOf(database);
     const termsBefore = await database.db.values(sql`SELECT account_id, matures_on, rate_bps FROM deposit_terms`);
 
-    // Up to 0059: 0060 rebuilds prices on purpose (to widen its source check), which is its own change, not 0054's.
-    expect(await migrate(database, MIGRATIONS.filter((m) => m.version < 60))).toContain(54);
+    // Up to 0060: 0061 rebuilds prices on purpose (to widen its source check), which is its own change, not 0054's.
+    expect(await migrate(database, MIGRATIONS.filter((m) => m.version < 61))).toContain(54);
 
     const after = await schemaOf(database);
     for (const [name, ddl] of before) expect(after.get(name)).toBe(ddl);

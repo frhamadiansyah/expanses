@@ -2,7 +2,9 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { makesMember, viewIsLastOwner, viewRoleOfDevice } from './authority';
+import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
+import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -159,6 +161,17 @@ export interface PurchaseMoney {
   originalAmountMinor: number | null;
   paidBy: string;
   paidLabel: string;
+  /**
+   * Joint net worth §5.3: whose shared item the money side is on — a group member's, the payer's own included — or null
+   * for an account that is not a shared item (as before). Absent on the wire reads as null.
+   */
+  paidFrom: PaidFrom | null;
+}
+
+/** A group member's shared item, by its opaque id (§5.1): never a local account id. */
+export interface PaidFrom {
+  owner: string;
+  itemId: string;
 }
 
 interface LineageRow {
@@ -167,7 +180,11 @@ interface LineageRow {
   head: string | null;
   paidBy: string;
   paidLabel: string;
+  paidFrom: PaidFrom | null;
 }
+
+/** What a lineage already says about its payer, which a projection keeps where the row alone cannot tell. */
+export type KnownPayer = Pick<LineageRow, 'paidBy' | 'paidLabel'> & { paidFrom?: PaidFrom | null };
 
 interface LineageTouch {
   lineageId: string;
@@ -190,6 +207,11 @@ export class CaptureSession {
   private unshared: ReadonlySet<string> = new Set();
   private readonly slots: Slot[] = [];
   private readonly lineages = new Map<string, LineageTouch>();
+  /** Joint net worth §5.3: the item the ledger was told a row's money side is on (`PostTransactionInput.paidFrom`). */
+  private readonly paidFromHints = new Map<string, PaidFrom | null>();
+  /** Joint net worth (§9): accounts, and transactions whose accounts, this transaction changed; their summaries are recomputed at flush. */
+  private readonly dirtyAccounts = new Set<string>();
+  private readonly dirtyTransactions = new Set<string>();
 
   constructor(
     private readonly tx: Tx,
@@ -201,6 +223,16 @@ export class CaptureSession {
 
   pause(): void {
     this.enabled = false;
+  }
+
+  /** Whether this transaction still captures (not paused). */
+  get capturing(): boolean {
+    return this.enabled;
+  }
+
+  /** Captures again after `pause` — only `withCaptureSuspended` does, around writes that belong to no shared book. */
+  resume(): void {
+    this.enabled = true;
   }
 
   close(): void {
@@ -230,6 +262,75 @@ export class CaptureSession {
     return this.enabled ? this.unshared : new Set();
   }
 
+  markAccountDirty(accountId: string): void {
+    this.dirtyAccounts.add(accountId);
+  }
+
+  markTransactionDirty(transactionId: string): void {
+    this.dirtyTransactions.add(transactionId);
+  }
+
+  /** The Paid with choice a posting carried (§7.1): read when its lineage is projected at flush. */
+  hintPaidFrom(transactionId: string, paidFrom: PaidFrom | null): void {
+    this.paidFromHints.set(transactionId, paidFrom);
+  }
+
+  /**
+   * Joint net worth (§9, task 6): the summary of every account this transaction touched — its entries, its profile, its
+   * value — is recomputed here, before COMMIT, and sent if it changed. Nothing when this device is in no active group
+   * (one lookup, and only for a transaction that touched an account while something is shared).
+   */
+  private async sendDirtySummaries(): Promise<void> {
+    if (this.dirtyAccounts.size === 0 && this.dirtyTransactions.size === 0) return;
+    if (!this.config.enabled) return; // capture off for this database: nothing is shared from it
+    const shared = this.enabled ? (await this.sharedBooks()).length > 0 : (await this.tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`).catch(() => [])).length > 0;
+    if (!shared) return;
+    const touchedFrom = await this.touchedFrom();
+    const ids = await this.dirtyItemAccounts();
+    if (ids.length === 0) return;
+    if (!this.enabled) {
+      // Apply (capture paused): a peer's edit of a line on one of this device's items. Sent after apply commits, by the
+      // group log's sync. Kept in the database, in apply's own transaction, so an app closed in between still sends them
+      // (task 11 e2e: a reload between the two lost a partner's purchase on this device's card).
+      await addPendingSummaryAccountsTx(this.tx, ids);
+      return;
+    }
+    await sendSummariesTx(this.tx, ids, localDate(this.config.now?.() ?? Date.now()), touchedFrom);
+  }
+
+  /**
+   * The earliest date this write touched, when only transactions were written (final review item 7): each posted or
+   * voided row's date — a replaced row's old date included, since its void is a touched row too. Undefined when an
+   * account itself changed (a profile, a valuation, a new account), which can change any year: the tax part is rebuilt.
+   */
+  private async touchedFrom(): Promise<string | undefined> {
+    if (this.dirtyAccounts.size > 0 || this.dirtyTransactions.size === 0) return undefined;
+    let earliest: string | undefined;
+    for (const transactionId of this.dirtyTransactions) {
+      const [row] = await this.tx.values<[string]>(sql`SELECT occurred_on FROM transactions WHERE id = ${transactionId}`);
+      if (!row) return undefined;
+      if (earliest === undefined || row[0] < earliest) earliest = row[0];
+    }
+    return earliest;
+  }
+
+  /** The asset and liability accounts among what this transaction touched (categories are never items). */
+  private async dirtyItemAccounts(): Promise<string[]> {
+    const ids = new Set(this.dirtyAccounts);
+    for (const transactionId of this.dirtyTransactions) {
+      for (const [accountId] of await this.tx.values<[string]>(sql`SELECT DISTINCT account_id FROM entries WHERE transaction_id = ${transactionId}`)) ids.add(accountId);
+    }
+    this.dirtyAccounts.clear();
+    this.dirtyTransactions.clear();
+    const out: string[] = [];
+    for (const id of ids) {
+      const [row] = await this.tx.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${id}`);
+      // A deleted account (no row) is kept: its item, if one was shared, goes out as removed.
+      if (!row || row[0] === 'asset' || row[0] === 'liability') out.push(id);
+    }
+    return out;
+  }
+
   reserveRowSlot(): { kind: 'rows'; ops: { bookId: string; op: Op }[] } {
     const slot = { kind: 'rows' as const, ops: [] as { bookId: string; op: Op }[] };
     this.slots.push(slot);
@@ -252,7 +353,9 @@ export class CaptureSession {
 
   /** Resolves the lineages, cuts the ops into change-sets, puts them in the outbox, and writes the clocks. */
   async flush(): Promise<void> {
-    if (!this.enabled || this.slots.length === 0) return;
+    await this.sendDirtySummaries();
+    if (!this.enabled) return;
+    if (this.slots.length === 0) return;
     const books = await this.sharedBooks();
     if (books.length === 0) return;
     const perBook = new Map<string, Op[]>();
@@ -287,9 +390,10 @@ export class CaptureSession {
       const book = books.find((b) => b.bookId === known.bookId);
       if (!book) return null;
       if (head && headBook === known.bookId) {
-        const after = (await projectPurchase(this.tx, head, book.memberId, known))!;
+        const after = (await projectPurchase(this.tx, head, book.memberId, known, this.paidFromHints.get(head)))!;
         await this.tx.run(
-          sql`UPDATE sync_lineage SET head_transaction_id = ${head}, paid_by = ${after.money.paidBy}, paid_label = ${after.money.paidLabel} WHERE lineage_id = ${lineageId}`,
+          sql`UPDATE sync_lineage SET head_transaction_id = ${head}, paid_by = ${after.money.paidBy}, paid_label = ${after.money.paidLabel},
+              paid_from_owner = ${after.money.paidFrom?.owner ?? null}, paid_from_item = ${after.money.paidFrom?.itemId ?? null} WHERE lineage_id = ${lineageId}`,
         );
         const fields = diffFields(touch.before as unknown as Record<string, unknown> | null, after as unknown as Record<string, unknown>);
         return Object.keys(fields).length ? { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields } } : null;
@@ -301,9 +405,10 @@ export class CaptureSession {
 
     const book = head && headBook ? books.find((b) => b.bookId === headBook) : undefined;
     if (!head || !book) return null;
-    const after = (await projectPurchase(this.tx, head, book.memberId, null))!;
+    const after = (await projectPurchase(this.tx, head, book.memberId, null, this.paidFromHints.get(head)))!;
     await this.tx.run(
-      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${lineageId}, ${book.bookId}, ${head}, ${after.money.paidBy}, ${after.money.paidLabel})`,
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+          VALUES (${lineageId}, ${book.bookId}, ${head}, ${after.money.paidBy}, ${after.money.paidLabel}, ${after.money.paidFrom?.owner ?? null}, ${after.money.paidFrom?.itemId ?? null})`,
     );
     return { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields: { ...after } } };
   }
@@ -353,6 +458,46 @@ function sessionOf(tx: Db): CaptureSession | undefined {
   return sessions.get(tx);
 }
 
+/**
+ * Joint net worth (§9, task 6): this account's balance, profile or value changed in this transaction, so its summary
+ * is recomputed at flush. For the writes that do not pass through a ledger door or `withCapture` on the account:
+ * a price, an estimate, card terms, a delete, a share setting.
+ */
+export function markAccountDirtyTx(tx: Db, accountId: string): void {
+  sessionOf(tx)?.markAccountDirty(accountId);
+}
+
+/** Where the accounts apply changed wait for their summaries to be sent: a local setting, never synced. */
+const PENDING_SUMMARIES_KEY = 'nw.pending_summaries';
+
+async function pendingSummaryAccountsTx(tx: Db): Promise<string[]> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${PENDING_SUMMARIES_KEY}`);
+  if (!row) return [];
+  try {
+    const ids = JSON.parse(row[0]) as unknown;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Adds accounts apply changed to those waiting for their summaries (joint net worth §9), in the caller's transaction. */
+export async function addPendingSummaryAccountsTx(tx: Db, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const all = [...new Set([...(await pendingSummaryAccountsTx(tx)), ...ids])];
+  await tx.run(sql`INSERT INTO settings (key, value) VALUES (${PENDING_SUMMARIES_KEY}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+}
+
+/**
+ * The accounts apply changed since the last call, emptied as they are handed over — in the caller's transaction, so a
+ * send that rolls back leaves them waiting for the next sync.
+ */
+export async function takePendingSummaryAccountsTx(tx: Db): Promise<string[]> {
+  const ids = await pendingSummaryAccountsTx(tx);
+  if (ids.length > 0) await tx.run(sql`DELETE FROM settings WHERE key = ${PENDING_SUMMARIES_KEY}`);
+  return ids;
+}
+
 /** Switches capture off for the rest of this db transaction. Apply calls it: applying never re-emits (spec §7.2). */
 export function pauseCapture(tx: Db): void {
   sessionOf(tx)?.pause();
@@ -375,6 +520,22 @@ export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applyin
   }
   await observer?.end(tx);
   return result;
+}
+
+/**
+ * Runs `fn` with capture off, then on again as it was (joint-net-worth §7.2, task 8): a transfer between partners' local
+ * posting belongs to no workspace book and must never be emitted, but the group-log row written beside it in the same
+ * transaction is. What `fn` posts still marks its accounts dirty, so their summaries go out at flush as for any write.
+ */
+export async function withCaptureSuspended<T>(tx: Db, fn: () => Promise<T>): Promise<T> {
+  const session = sessionOf(tx);
+  const was = session?.capturing ?? false;
+  session?.pause();
+  try {
+    return await fn();
+  } finally {
+    if (was) session?.resume();
+  }
 }
 
 /**
@@ -408,6 +569,8 @@ export interface CaptureTarget {
 export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly CaptureTarget[], fn: () => Promise<T>): Promise<T> {
   const session = sessionOf(tx);
   if (!session) return fn();
+  // An account is a `category` row (its name, its archive): its net-worth summary is recomputed at flush (§9).
+  for (const t of Array.isArray(target) ? (target as readonly CaptureTarget[]) : [target as CaptureTarget]) if (t.entity === 'category' && t.id !== undefined) session.markAccountDirty(t.id);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return fn();
@@ -449,6 +612,40 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (Number(owners?.[0] ?? 0) === 0) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
+  await refuseWrongLog(tx, before, after);
+  // Joint-net-worth spec §5.1 (task 1 re-review round 1 ruling): a writer-only row's local write is judged here,
+  // before anything commits or is emitted, against the pre-image — with the same predicate (`isWriter`,
+  // `frozenFieldChanged`) `decideRowWriter` judges a peer's entry by — so a bad local write never lands and its
+  // own device never has to catch it after the fact; the peer-side decision then skips a device's own entries
+  // entirely, since by the time it runs the live row already holds this write, not what a peer still has.
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const was = before.get(key);
+    const now = after.get(key);
+    const entity = (was ?? now)!.entity;
+    if (!entity.writer) {
+      // A write-once row (task 4 review round 1): judged by the same predicate its peers use.
+      // A new row is judged as written (review round 1, finding 5): only a row that was here can be gone.
+      const gone = !now || (was !== undefined && now.bookId !== was.bookId);
+      if (await writeOnceBroken(entity, was?.values ?? null, gone ? null : now!.values)) throw new AuthorityError('write-once row');
+      continue;
+    }
+    const bookId = (was ?? now)!.bookId;
+    const member = books.find((b) => b.bookId === bookId)?.memberId ?? null;
+    if (!was) {
+      // A new row: authorized by its own new fields.
+      if (!isWriter(entity, now!.values, parseOpId(entity, now!.id), member)) throw new AuthorityError('writer');
+      continue;
+    }
+    if (!now || now.bookId !== was.bookId) {
+      // A delete (or a row that left the book's scope): authorized by the pre-image's stored writer.
+      if (!isWriter(entity, was.values, parseOpId(entity, was.id), member)) throw new AuthorityError('writer');
+      continue;
+    }
+    // An edit: authorized by the pre-image (an already-good row cannot be taken over by rewriting who owns it),
+    // and its writer-bearing field(s) may never move, even by its own rightful writer.
+    if (!isWriter(entity, was.values, parseOpId(entity, was.id), member)) throw new AuthorityError('writer');
+    if (frozenFieldChanged(entity, was.values, now.values)) throw new AuthorityError('writer');
+  }
   for (const [key, was] of before) {
     const now = after.get(key);
     if (!now || now.bookId !== was.bookId) {
@@ -477,6 +674,33 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (!before.has(key)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
   }
   return result;
+}
+
+/** The joint-net-worth entities that live only in a net-worth group log (spec §4, §5.1). */
+const GROUP_LOG_ENTITIES: ReadonlySet<string> = new Set(['nw_proposal', 'nw_answer', 'nw_item', 'nw_pending', 'member_transfer']);
+
+/**
+ * Task 4 carry (task 6): the five group entities are written only into a group log (a book this device holds as one,
+ * `nw_group_books`), and the workspace's `net_worth_group` link never into one — a summary written into the workspace
+ * log would reach every workspace member (§4). Refused before anything is emitted, rolling the write back.
+ */
+async function refuseWrongLog(tx: Db, before: ReadonlyMap<string, RowState>, after: ReadonlyMap<string, RowState>): Promise<void> {
+  const verdicts = new Map<string, boolean>();
+  const isGroupLog = async (bookId: string) => {
+    if (!verdicts.has(bookId)) verdicts.set(bookId, (await groupLogWorkspaceOf(tx, bookId)) !== null);
+    return verdicts.get(bookId)!;
+  };
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const was = before.get(key);
+    const now = after.get(key);
+    if (was && now && was.bookId === now.bookId && JSON.stringify(was.values) === JSON.stringify(now.values)) continue;
+    for (const row of [was, now]) {
+      if (!row) continue;
+      const entity = row.entity.entity;
+      if (GROUP_LOG_ENTITIES.has(entity) && !(await isGroupLog(row.bookId))) throw new AuthorityError(`${entity} outside a net-worth group log`);
+      if (entity === 'net_worth_group' && (await isGroupLog(row.bookId))) throw new AuthorityError('net_worth_group inside a net-worth group log');
+    }
+  }
 }
 
 /** Whether a target's rows can lie in one of `bookIds`: not when it names another book, nor when its row is keyed by another book's id. */
@@ -632,11 +856,11 @@ export async function rowUpsertsTx(tx: Db, book: SharedBook, entityName: string)
 /* ---------------------------------------------------------------- purchases */
 
 async function lineageRowOf(tx: Db, lineageId: string): Promise<LineageRow | null> {
-  const rows = await tx.values<[string, string | null, string, string]>(
-    sql`SELECT book_id, head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+  const rows = await tx.values<[string, string | null, string, string, string | null, string | null]>(
+    sql`SELECT book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
   );
   const row = rows[0];
-  return row ? { lineageId, bookId: row[0], head: row[1], paidBy: row[2], paidLabel: row[3] } : null;
+  return row ? { lineageId, bookId: row[0], head: row[1], paidBy: row[2], paidLabel: row[3], paidFrom: paidFromOf(row[4], row[5]) } : null;
 }
 
 /**
@@ -654,6 +878,11 @@ export async function lineageOfTransaction(tx: Db, transactionId: string): Promi
     )
     SELECT id FROM chain ORDER BY depth DESC LIMIT 1`);
   return rows[0]?.[0] ?? transactionId;
+}
+
+/** A lineage's `paid_from_*` columns as the purchase's `paidFrom`: both or nothing. */
+export function paidFromOf(owner: string | null | undefined, itemId: string | null | undefined): PaidFrom | null {
+  return owner && itemId ? { owner, itemId } : null;
 }
 
 async function bookOfTransaction(tx: Db, transactionId: string): Promise<string | null> {
@@ -676,8 +905,15 @@ async function postedHeadOf(tx: Db, touch: LineageTouch): Promise<string | null>
  * What a posted row reads as, as a purchase (spec §4.3). `memberId` is this device's member in the row's book; the
  * payer is this member when the money side names one of this device's own accounts, else the member whose
  * placeholder account it names (keeping the label the lineage already carries).
+ *
+ * Joint net worth §5.3 (`paidFrom`): the money side of a purchase paid from a group member's shared item sits on that
+ * member's placeholder everywhere but on the owner's phone, where it is the item's own account. So a row on a
+ * placeholder reads as paid from the placeholder's member's item when the posting said so (`hint`, the Paid with
+ * choice) or the lineage already does (`known`), with the payer the lineage names; a row on the owner's own account
+ * reads as the lineage says while that account is still the item. Otherwise a row on this member's own account reads
+ * as paid by this member, from their own shared item when the account is one (Task 9 ruling), else from nothing.
  */
-export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: Pick<LineageRow, 'paidBy' | 'paidLabel'> | null): Promise<PurchaseFields | null> {
+export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: KnownPayer | null, hint?: PaidFrom | null): Promise<PurchaseFields | null> {
   const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null]>(
     sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id FROM transactions WHERE id = ${transactionId}`,
   );
@@ -704,17 +940,44 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
 
   let paidBy: string;
   let paidLabel: string;
+  let paidFrom: PaidFrom | null = null;
+  const knownFrom = known?.paidFrom ?? null;
   const own = moneySide.filter((m) => m.placeholderMember === null);
   if (own.length > 0) {
-    paidBy = memberId;
-    const [card] = cardId ? await tx.values<[string, string | null]>(sql`SELECT account_id, last4 FROM cards WHERE id = ${cardId}`) : [];
-    paidLabel = own.map((m) => (card && card[1] && card[0] === m.accountId ? `${m.name} ···· ${card[1]}` : m.name)).join(' + ');
+    const mapped = own.length === 1 ? await mappedItemTx(tx, own[0]!.accountId) : null;
+    if (known && knownFrom && knownFrom.owner === memberId && known.paidBy !== memberId && mapped?.itemId === knownFrom.itemId) {
+      // Another member paid from this member's item, and it still sits on that item here.
+      paidBy = known.paidBy;
+      paidLabel = known.paidLabel;
+      paidFrom = knownFrom;
+    } else {
+      paidBy = memberId;
+      const [card] = cardId ? await tx.values<[string, string | null]>(sql`SELECT account_id, last4 FROM cards WHERE id = ${cardId}`) : [];
+      paidLabel = own.map((m) => (card && card[1] && card[0] === m.accountId ? `${m.name} ···· ${card[1]}` : m.name)).join(' + ');
+      const item = mapped?.setting === 'total' ? await ownSharedItemTx(tx, transactionId, mapped) : null;
+      paidFrom = item ? { owner: memberId, itemId: item } : null;
+    }
   } else if (moneySide.length > 0) {
-    paidBy = moneySide[0]!.placeholderMember!;
-    paidLabel = known?.paidLabel ?? moneySide.map((m) => m.name).join(' + ');
+    const holder = moneySide[0]!.placeholderMember!;
+    if (hint && hint.owner === holder && hint.owner !== memberId) {
+      // This member paid from the holder's shared item (Paid with, §7.1): labelled as the item's summary names it. Only
+      // an item still shared in this workspace's active group may be named (task 7 review round 1).
+      await assertPayableTx(tx, transactionId, hint);
+      paidBy = memberId;
+      paidFrom = hint;
+      paidLabel = (await itemNameTx(tx, hint)) ?? moneySide.map((m) => m.name).join(' + ');
+    } else if (known && knownFrom && knownFrom.owner === holder && hint === undefined) {
+      paidBy = known.paidBy;
+      paidLabel = known.paidLabel;
+      paidFrom = knownFrom;
+    } else {
+      paidBy = holder;
+      paidLabel = known?.paidLabel ?? moneySide.map((m) => m.name).join(' + ');
+    }
   } else {
     paidBy = known?.paidBy ?? memberId;
     paidLabel = known?.paidLabel ?? '';
+    paidFrom = knownFrom;
   }
 
   return {
@@ -729,8 +992,61 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
       originalAmountMinor: originalAmountMinor === null ? null : Number(originalAmountMinor),
       paidBy,
       paidLabel,
+      paidFrom,
     },
   };
+}
+
+/**
+ * The item id of this member's own account when it is a shared item of the active group whose workspace the row is
+ * filed in (Task 9 ruling: a Household purchase paid from one's own shared item carries it, so the partner's item page
+ * can find it): an `nw_item_map` row and a `total` setting. Null for anything else, and outside that workspace, so no
+ * other workspace's log ever carries an item id.
+ */
+async function ownSharedItemTx(tx: Db, transactionId: string, mapped: { groupBookId: string; itemId: string }): Promise<string | null> {
+  const group = await activeNetWorthGroup(tx);
+  if (!group || group.groupBookId !== mapped.groupBookId) return null;
+  if ((await bookOfTransaction(tx, transactionId)) !== group.workspaceBookId) return null;
+  return mapped.itemId;
+}
+
+/** The item one of this device's own accounts is known by (`nw_item_map`), with its share setting; null when it never was one. */
+async function mappedItemTx(tx: Db, accountId: string): Promise<{ groupBookId: string; itemId: string; setting: string | null } | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_item_map'`)).length === 0) return null;
+  const [row] = await tx.values<[string, string, string | null]>(sql`
+    SELECT m.group_book_id, m.item_id, (SELECT s.setting FROM nw_share_settings s WHERE s.account_id = m.account_id)
+    FROM nw_item_map m WHERE m.account_id = ${accountId}`);
+  return row ? { groupBookId: row[0], itemId: row[1], setting: row[2] } : null;
+}
+
+/**
+ * Refuses a Paid with choice of another member's item unless this person's net-worth group is active, is the
+ * workspace the row is filed in, lists the item's owner, and the item is live in its log (not removed): what the form
+ * offers, checked again at the write, so a stale form cannot name an item that has stopped being shared.
+ */
+async function assertPayableTx(tx: Db, transactionId: string, item: PaidFrom): Promise<void> {
+  const group = await activeNetWorthGroup(tx);
+  const bookId = await bookOfTransaction(tx, transactionId);
+  const live =
+    group !== null &&
+    group.workspaceBookId === bookId &&
+    group.members.includes(item.owner) &&
+    (await tx.values(sql`SELECT 1 FROM nw_items WHERE book_id = ${group.groupBookId} AND item_id = ${item.itemId} AND owner = ${item.owner} AND removed = 0`)).length > 0;
+  if (live) return;
+  const [member] = bookId ? await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${item.owner}`) : [];
+  const whose = member?.[0] ? `${member[0]}’s item` : 'That item';
+  throw new NetWorthError('item-not-shared', `${whose} is no longer shared. Pick another way to pay.`);
+}
+
+/** A member's shared item's name, as its latest summary gives it; null when this device holds none. */
+async function itemNameTx(tx: Db, item: PaidFrom): Promise<string | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${item.itemId} AND owner = ${item.owner}`);
+  try {
+    const name = row ? (JSON.parse(row[0]) as { name?: unknown } | null)?.name : null;
+    return typeof name === 'string' && name ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -738,9 +1054,17 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
  * or a new one rooted at itself. Cheap when nothing is shared: a fresh post filed in no shared book returns after the
  * one lookup.
  */
-export async function capturePostedTx(tx: Db, transactionId: string, bookId: string | null, replacesTransactionId: string | null): Promise<void> {
+export async function capturePostedTx(
+  tx: Db,
+  transactionId: string,
+  bookId: string | null,
+  replacesTransactionId: string | null,
+  paidFrom?: PaidFrom | null,
+): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
+  session.markTransactionDirty(transactionId);
+  if (paidFrom !== undefined) session.hintPaidFrom(transactionId, paidFrom);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (readOnly.size > 0) {
@@ -763,6 +1087,7 @@ export async function capturePostedTx(tx: Db, transactionId: string, bookId: str
 export async function captureVoidingTx(tx: Db, transactionId: string): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
+  session.markTransactionDirty(transactionId);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return;

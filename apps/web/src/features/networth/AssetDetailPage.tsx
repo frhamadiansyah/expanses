@@ -33,6 +33,7 @@ import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, u
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /** The kinds of money account: their own page is the account page, whichever list they were opened from. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -410,6 +411,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ) : null,
         ]}
       />
+
+      {/* Joint net worth (§8.1): what the household sees of it, under the facts. Nothing while this person is in no group. */}
+      <ShareWithHouseholdRow accountId={accountId} />
 
       {forGoals.length > 0 && (
         <InsetGroup header="For goals">
