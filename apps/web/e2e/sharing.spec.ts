@@ -570,7 +570,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await fillAmount(page, transfer, '5000000');
   await transfer.getByRole('button', { name: /^To/ }).click();
   const to = page.getByRole('dialog', { name: 'To', exact: true });
-  await to.getByRole('region', { name: 'Dewi’s, shared with Home' }).getByRole('button', { name: 'Dewi Bank', exact: true }).click();
+  // To is the same sheet as From and Paid with: a partner's row is named with whose it is, as Paid with names it.
+  await to.getByRole('region', { name: 'Dewi’s, shared with Home' }).getByRole('button', { name: 'Dewi Bank, Dewi’s, shared with Home', exact: true }).click();
   await transfer.getByLabel('Note').fill('For the house');
   await shot(page, info, '18-transfer-to-partner');
   await saveButton(transfer).click();
