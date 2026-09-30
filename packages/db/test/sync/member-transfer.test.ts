@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { confirmReview, setShareSetting, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
+import { confirmReview, setShareSetting, upsertRate, memberTransferUnposted, netWorthAt, receivedItems, recordMemberTransfer, editMemberTransfer, voidMemberTransfer } from '../../src/index';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet, Op } from '../../src/sync/types';
@@ -268,5 +268,90 @@ describe('transfers between partners: who may land one on a real account (task 8
     expect(await balance(s.rina, s.rina.bank)).toBe(0);
     expect(await postingsOf(s.rina)).toEqual([]);
     expect(await memberTransferUnposted(s.rina.database, s.groupBookId)).toEqual([{ transferId: 'xfer-after-leaving', reason: 'author-not-member' }]);
+  });
+});
+
+describe('transfers between partners: review round 1 (task 8)', () => {
+  it('after Andi leaves, Rina can still delete her side (bank back to 0), a second delete does nothing, and an edit is refused', async () => {
+    const s = await threeInGroup();
+    const transferId = await recordMemberTransfer(s.rina.database, s.bookId, {
+      occurredOn: today,
+      amountMinor: 5 * JT,
+      currency: 'IDR',
+      from: { owner: s.rina.memberId, itemId: s.rinaItem },
+      to: { owner: s.andi.memberId, itemId: s.andiItem },
+      description: null,
+    });
+    await settle(s.home);
+    await s.andi.engine.leaveNetWorth(s.bookId);
+    await settle(s.home);
+    expect(await balance(s.rina, s.rina.bank)).toBe(-5 * JT);
+    await expect(editMemberTransfer(s.rina.database, s.bookId, transferId, { amountMinor: 4 * JT })).rejects.toMatchObject({ code: 'left-group' });
+    expect(await balance(s.rina, s.rina.bank)).toBe(-5 * JT);
+    await voidMemberTransfer(s.rina.database, s.bookId, transferId);
+    expect(await balance(s.rina, s.rina.bank)).toBe(0);
+    await voidMemberTransfer(s.rina.database, s.bookId, transferId);
+    expect(await balance(s.rina, s.rina.bank)).toBe(0);
+  });
+
+  it('a void from a party who has left still takes the other party’s posted side back', async () => {
+    const s = await threeInGroup();
+    const transferId = await recordMemberTransfer(s.rina.database, s.bookId, {
+      occurredOn: today,
+      amountMinor: 5 * JT,
+      currency: 'IDR',
+      from: { owner: s.rina.memberId, itemId: s.rinaItem },
+      to: { owner: s.andi.memberId, itemId: s.andiItem },
+      description: null,
+    });
+    await settle(s.home);
+    expect(await balance(s.andi, s.andi.bank)).toBe(5 * JT);
+    // Rina's `left` and her void reach Andi in one pull: she is no longer a member when the void applies.
+    await sendToGroup(s.rina, s.groupBookId, s.rina.memberId, { entity: 'nw_answer', id: `${s.proposalId}|${s.rina.memberId}`, op: 'upsert', fields: { answer: 'left' } });
+    await sendToGroup(s.rina, s.groupBookId, s.rina.memberId, { entity: 'member_transfer', id: transferId, op: 'upsert', fields: { void: 1 } }, Date.now() + 5);
+    await s.andi.engine.syncOnce(s.bookId);
+    expect(await balance(s.andi, s.andi.bank)).toBe(0);
+  });
+
+  it('re-applying the same transfer op leaves one posting, under the same transaction', async () => {
+    const s = await sharing();
+    await rinaToAndi(s);
+    await settle(s.home);
+    const before = await postingsOf(s.andi);
+    expect(before).toHaveLength(1);
+    await s.andi.database.db.run(sql`UPDATE sync_cursor SET applied_seq = 0 WHERE book_id = ${s.groupBookId}`);
+    await s.andi.engine.syncOnce(s.bookId);
+    expect(await postingsOf(s.andi)).toEqual(before);
+    expect(await balance(s.andi, s.andi.bank)).toBe(5 * JT);
+  });
+
+  it('a transfer in another currency posts at the rate each phone holds; one with none waits and posts once a rate arrives', async () => {
+    const s = await sharing();
+    await confirmReview(s.rina.database, s.rina.ws, { [s.rina.bank]: 'total', [s.rina.usd]: 'total' });
+    await confirmReview(s.andi.database, s.andi.ws, { [s.andi.bank]: 'total', [s.andi.usd]: 'total' });
+    await settle(s.home);
+    const transferId = await recordMemberTransfer(s.rina.database, s.bookId, {
+      occurredOn: today,
+      amountMinor: 100_00,
+      currency: 'USD',
+      from: { owner: s.rina.memberId, itemId: await itemIdOf(s.groupBookId, s.rina.usd) },
+      to: { owner: s.andi.memberId, itemId: await itemIdOf(s.groupBookId, s.andi.usd) },
+      description: null,
+    });
+    await settle(s.home);
+    // No rate on either phone: nothing posted, and why is kept.
+    expect(await memberTransferUnposted(s.rina.database, s.groupBookId)).toEqual([{ transferId, reason: 'no-rate' }]);
+    expect(await memberTransferUnposted(s.andi.database, s.groupBookId)).toEqual([{ transferId, reason: 'no-rate' }]);
+    // Andi's phone learns a rate some other way: its next group-log sync posts the side.
+    await s.andi.database.db.run(
+      sql`INSERT INTO fx_rates (from_currency, to_currency, on_date, rate, source, source_date, fetched_at) VALUES ('USD', 'IDR', ${today}, 16000, 'manual', ${today}, ${new Date().toISOString()})`,
+    );
+    await settle(s.home);
+    expect(await balance(s.andi, s.andi.usd)).toBe(100_00);
+    expect(await memberTransferUnposted(s.andi.database, s.groupBookId)).toEqual([]);
+    // Rina saves a rate: her side posts at once.
+    await upsertRate(s.rina.database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: today, rate: 16_000, source: 'manual', sourceDate: today });
+    expect(await balance(s.rina, s.rina.usd)).toBe(-100_00);
+    expect(await memberTransferUnposted(s.rina.database, s.groupBookId)).toEqual([]);
   });
 });

@@ -126,21 +126,29 @@ export async function recordMemberTransfer(database: Database, workspaceBookId: 
   return transferId;
 }
 
-/** The transfer as stored in the group log, or `not-found`; refused when void (void wins) or this member is no party. */
-async function editableTransfer(database: Database, workspaceBookId: string, transferId: string): Promise<{ groupBookId: string; me: string }> {
-  const { groupBookId, me } = await groupOf(database, workspaceBookId);
+/** The transfer as stored in the group log, refused when this member is no party; whether it is void, and its two owners. */
+async function editableTransfer(
+  database: Database,
+  workspaceBookId: string,
+  transferId: string,
+): Promise<{ groupBookId: string; me: string; members: string[]; parties: { void: boolean; owners: (string | null)[] } }> {
+  const { groupBookId, me, members } = await groupOf(database, workspaceBookId);
   const [row] = await database.db.values<[string, string, number]>(
     sql`SELECT from_json, to_json, void FROM member_transfers WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`,
   );
   if (!row) throw new NetWorthError('not-listed', 'That transfer is not in your net-worth group');
-  if (Number(row[2]) === 1) throw new NetWorthError('invalid', 'That transfer was deleted');
   if (ownerOf(row[0]) !== me && ownerOf(row[1]) !== me) throw new NetWorthError('not-listed', 'Only the two people in a transfer can change it');
-  return { groupBookId, me };
+  return { groupBookId, me, members, parties: { void: Number(row[2]) === 1, owners: [ownerOf(row[0]), ownerOf(row[1])] } };
 }
 
 /** Either party changes its date, amount or note (§7.2); both sides follow. From, to and currency never change. */
 export async function editMemberTransfer(database: Database, workspaceBookId: string, transferId: string, patch: MemberTransferPatch): Promise<void> {
-  const { groupBookId, me } = await editableTransfer(database, workspaceBookId, transferId);
+  const { groupBookId, me, parties, members } = await editableTransfer(database, workspaceBookId, transferId);
+  if (parties.void) throw new NetWorthError('invalid', 'That transfer was deleted');
+  // Review round 1: never write a row this phone's side would not follow — a party who has left makes it delete-only.
+  if (!parties.owners.every((owner) => owner !== null && members.includes(owner))) {
+    throw new NetWorthError('left-group', 'The other person no longer shares net worth with you. This transfer can only be deleted.');
+  }
   if (patch.occurredOn !== undefined) checkDate(patch.occurredOn);
   if (patch.amountMinor !== undefined) checkAmount(patch.amountMinor);
   const sets = [
@@ -159,11 +167,14 @@ export async function editMemberTransfer(database: Database, workspaceBookId: st
 
 /** Either party deletes it (§7.2): both sides are voided, and void wins for ever. */
 export async function voidMemberTransfer(database: Database, workspaceBookId: string, transferId: string): Promise<void> {
-  const { groupBookId, me } = await editableTransfer(database, workspaceBookId, transferId);
+  const { groupBookId, me, parties } = await editableTransfer(database, workspaceBookId, transferId);
   await database.transaction(async (tx) => {
-    await withCapture(tx, { entity: 'member_transfer', id: transferId, bookId: groupBookId }, async () => {
-      await tx.run(sql`UPDATE member_transfers SET void = 1 WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`);
-    });
+    // Deleting it again does nothing more than make sure this phone's side is void (review round 1).
+    if (!parties.void) {
+      await withCapture(tx, { entity: 'member_transfer', id: transferId, bookId: groupBookId }, async () => {
+        await tx.run(sql`UPDATE member_transfers SET void = 1 WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`);
+      });
+    }
     await postTransferSideTx(tx, groupBookId, transferId, me);
   });
 }
@@ -176,19 +187,53 @@ export async function memberTransferUnposted(database: Database, groupBookId: st
   return rows.map(([transferId, reason]) => ({ transferId, reason: reason as UnpostedReason }));
 }
 
+/** A local transaction that is this phone's side of a transfer between partners: the transfer, and whether each is void. */
+export interface MemberTransferPosting {
+  groupBookId: string;
+  transferId: string;
+  /** The transfer is void in the group log. */
+  transferVoid: boolean;
+  /** This phone's side is already void. */
+  sideVoid: boolean;
+}
+
 /** The transfer each of these local transactions posts, for the ones that are a transfer between partners' side here. */
-export async function memberTransfersOf(database: Database, transactionIds: readonly string[]): Promise<Record<string, { groupBookId: string; transferId: string }>> {
-  const out: Record<string, { groupBookId: string; transferId: string }> = {};
+export async function memberTransfersOf(database: Database, transactionIds: readonly string[]): Promise<Record<string, MemberTransferPosting>> {
+  const out: Record<string, MemberTransferPosting> = {};
   if (transactionIds.length === 0) return out;
-  try {
-    const rows = await database.db.values<[string, string, string]>(
-      sql`SELECT transaction_id, book_id, transfer_id FROM member_transfer_postings WHERE transaction_id IN (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})`,
-    );
-    for (const [transactionId, groupBookId, transferId] of rows) out[transactionId] = { groupBookId, transferId };
-  } catch {
-    // A database from before migration 0057 has no transfers between partners.
+  const rows = await database.db.values<[string, string, string, number | null, string]>(sql`
+    SELECT p.transaction_id, p.book_id, p.transfer_id, m.void, t.status FROM member_transfer_postings p
+    JOIN transactions t ON t.id = p.transaction_id
+    LEFT JOIN member_transfers m ON m.book_id = p.book_id AND m.transfer_id = p.transfer_id
+    WHERE p.transaction_id IN (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})`);
+  for (const [transactionId, groupBookId, transferId, voided, status] of rows) {
+    out[transactionId] = { groupBookId, transferId, transferVoid: Number(voided ?? 0) === 1, sideVoid: status === 'void' };
   }
   return out;
+}
+
+/**
+ * Tries again every transfer side this phone left unposted (review round 1): after each group-log sync, and after a rate
+ * is saved — a rate, a mapped item or the group may be here now. Each is judged by the author it was left for. Returns
+ * how many now post.
+ */
+export async function retryUnpostedTransfers(database: Database, groupBookId?: string): Promise<number> {
+  // A database stopped before migration 0059 (a rate saved while migrating) has nothing waiting.
+  if ((await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'member_transfer_unposted'`)).length === 0) return 0;
+  const rows = await database.db.values<[string, string, string | null]>(
+    groupBookId === undefined
+      ? sql`SELECT book_id, transfer_id, author FROM member_transfer_unposted ORDER BY book_id, transfer_id`
+      : sql`SELECT book_id, transfer_id, author FROM member_transfer_unposted WHERE book_id = ${groupBookId} ORDER BY transfer_id`,
+  );
+  let posted = 0;
+  for (const [book, transferId, author] of rows) {
+    const done = await database.transaction(async (tx) => {
+      await postTransferSideTx(tx, book, transferId, author);
+      return (await tx.values(sql`SELECT 1 FROM member_transfer_unposted WHERE book_id = ${book} AND transfer_id = ${transferId}`)).length === 0;
+    });
+    if (done) posted += 1;
+  }
+  return posted;
 }
 
 /** units of `base` per one unit of `currency` this device knows, on or before `on` — else its latest — or null. */
@@ -200,14 +245,14 @@ async function rateOf(tx: Tx, currency: string, base: string, on: string): Promi
   return rate > 0 && Number.isFinite(rate) ? rate : null;
 }
 
-async function setUnposted(tx: Tx, groupBookId: string, transferId: string, reason: UnpostedReason | null): Promise<void> {
+async function setUnposted(tx: Tx, groupBookId: string, transferId: string, reason: UnpostedReason | null, author: string | null = null): Promise<void> {
   if (reason === null) {
     await tx.run(sql`DELETE FROM member_transfer_unposted WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`);
     return;
   }
   await tx.run(sql`
-    INSERT INTO member_transfer_unposted (book_id, transfer_id, reason) VALUES (${groupBookId}, ${transferId}, ${reason})
-    ON CONFLICT (book_id, transfer_id) DO UPDATE SET reason = excluded.reason`);
+    INSERT INTO member_transfer_unposted (book_id, transfer_id, reason, author) VALUES (${groupBookId}, ${transferId}, ${reason}, ${author})
+    ON CONFLICT (book_id, transfer_id) DO UPDATE SET reason = excluded.reason, author = excluded.author`);
 }
 
 /**
@@ -226,7 +271,7 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
   const me = self[0];
   // Any other phone posts nothing, and has nothing to say about it.
   if (ownerOf(fromJson) !== me && ownerOf(toJson) !== me) return;
-  const unposted = (reason: UnpostedReason) => setUnposted(tx, groupBookId, transferId, reason);
+  const unposted = (reason: UnpostedReason) => setUnposted(tx, groupBookId, transferId, reason, author);
   const from = sideOf(fromJson);
   const to = sideOf(toJson);
   const amountMinor = Number(amount);
@@ -237,17 +282,21 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
     WHERE p.book_id = ${groupBookId} AND p.transfer_id = ${transferId}`);
   // Void wins for ever: a side voided here is never posted again.
   if (posted && posted[1] === 'void') return setUnposted(tx, groupBookId, transferId, null);
+  // Review round 1 (ruling): a void of this phone's own posted side always goes through, whoever sent it and whatever
+  // the group now is — voiding only undoes a movement, it never lands money anywhere.
+  if (Number(voided) === 1) {
+    if (posted) {
+      const { ws } = await bookContextTx(tx, groupBookId);
+      await withCaptureSuspended(tx, () => voidTransactionTx(tx, ws, posted[0], {}, author ?? undefined));
+    }
+    return setUnposted(tx, groupBookId, transferId, null);
+  }
 
   const group = await activeNetWorthGroup(tx);
   if (!group || group.groupBookId !== groupBookId) return unposted('group-inactive');
   if (author === null || !group.members.includes(author)) return unposted('author-not-member');
   if (!group.members.includes(from.owner) || !group.members.includes(to.owner)) return unposted('party-not-member');
   const ctx = await bookContextTx(tx, group.workspaceBookId);
-
-  if (Number(voided) === 1) {
-    if (posted) await withCaptureSuspended(tx, () => voidTransactionTx(tx, ctx.ws, posted[0], {}, author));
-    return setUnposted(tx, groupBookId, transferId, null);
-  }
 
   const side = from.owner === me ? 'from' : 'to';
   const mine = side === 'from' ? from : to;

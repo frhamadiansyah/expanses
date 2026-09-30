@@ -15,6 +15,7 @@ import { SyncTransportError } from '../types';
 import { uuidv5 } from '../uuidv5';
 import { admissibleMembers, groupStateOf, outsiderDevices, takeHeldTx } from '../../repos/net-worth-sharing';
 import { localDate, refreshSummariesTx, sendSummariesTx } from './summaries';
+import { retryUnpostedTransfers } from './transfers';
 import { meetsMinVersion } from './version';
 
 /*
@@ -524,6 +525,9 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
   if (!synced.ended) await followWorkspaceRemovals(host, bookId, groupBookId);
   if (!synced.ended && !synced.stopped) {
     const today = localDate(host.now());
+    // Task 8 review round 1: a transfer side left unposted (no rate, the item not mapped yet, …) is tried again; what it
+    // posts is sent with the summaries below.
+    const retried = await retryUnpostedTransfers(host.database, groupBookId);
     // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state; on every
     // sync, the items a peer's change touched here (apply sends nothing itself) and those whose period has ended.
     const pending = takePendingSummaryAccounts(host.database);
@@ -538,7 +542,7 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
       returnPendingSummaryAccounts(host.database, pending);
       throw error;
     }
-    if (sent > 0) synced = await host.syncOnce(groupBookId);
+    if (sent + retried > 0) synced = await host.syncOnce(groupBookId);
   }
   return synced;
 }

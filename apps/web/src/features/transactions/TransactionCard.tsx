@@ -299,11 +299,19 @@ function CardBody({
     : [];
   const partnerOf = (item: PaidWithItem, side: 'to' | 'from') => ({ side, owner: item.owner, itemId: item.itemId, currency: item.currency });
   // The transfer a corrected row is one side of, when it is one: its from, to and currency never change.
-  const savedTransfer = useQuery({
+  const savedTransferQuery = useQuery({
     queryKey: ['member-transfer', initial?.id ?? ''],
     queryFn: async () => (initial ? ((await memberTransfersOf(database, [initial.id]))[initial.id] ?? null) : null),
     enabled: !!initial,
-  }).data;
+  });
+  // Corrected as the transfer only while it is the current group's; a side of an ended group is this phone's own row.
+  const savedTransfer =
+    savedTransferQuery.data && netWorthGroup.data && savedTransferQuery.data.groupBookId === netWorthGroup.data.groupBookId && !savedTransferQuery.data.transferVoid
+      ? savedTransferQuery.data
+      : null;
+  // Until both are read, an edit does not know which way it saves: From, To and Save wait (review round 1).
+  const transferUnknown = !!initial && (!savedTransferQuery.isFetched || netWorthGroup.isPending);
+  const accountsLocked = !!savedTransfer || transferUnknown;
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -322,6 +330,7 @@ function CardBody({
     setError(null);
     setBusy(true);
     try {
+      if (transferUnknown) return;
       if (initial && savedTransfer && netWorthGroup.data) {
         // A side of a transfer with a partner: its date, figure and note are the transfer's, and both phones follow.
         const own = byId.get(draft.moneyId)?.currency ?? byId.get(draft.toId)?.currency ?? ws.baseCurrency;
@@ -416,7 +425,7 @@ function CardBody({
   );
   // What the bar's ✓ answers: whether this would post as it stands — the same question Save asks, asked early.
   const ready = (() => {
-    if (busy || !setAside.ready) return false;
+    if (busy || !setAside.ready || transferUnknown) return false;
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       else formToPost(draft, accounts);
@@ -713,8 +722,8 @@ function CardBody({
               }
               onClick={() => setSheet('money')}
               // A side of a transfer with a partner keeps its accounts: only its date, figure and note change (§7.2).
-              disabled={!!savedTransfer}
-              chevron={!savedTransfer}
+              disabled={accountsLocked}
+              chevron={!accountsLocked}
             />
 
             <AmountRow draft={draft} accounts={accounts} set={set} />
@@ -734,8 +743,8 @@ function CardBody({
                 label="To"
                 value={partnerShown && draft.partner?.side === 'to' ? partnerShown.value : (toAccount?.name ?? '')}
                 caption={partnerShown && draft.partner?.side === 'to' ? partnerShown.caption : 'To'}
-                disabled={!!savedTransfer}
-                chevron={!savedTransfer}
+                disabled={accountsLocked}
+                chevron={!accountsLocked}
                 onClick={() => setSheet('to')}
               />
             ) : (

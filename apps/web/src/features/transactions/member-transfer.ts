@@ -58,8 +58,11 @@ export const partnerItemOfChoice = (value: string): string | null => (value.star
 export async function deleteTransaction(database: Database, ws: WorkspaceContext, transactionId: string): Promise<void> {
   const transfer = (await memberTransfersOf(database, [transactionId]))[transactionId];
   if (transfer) {
+    // Already gone here: deleting it again does nothing.
+    if (transfer.sideVoid) return;
     const group = await activeNetWorthGroup(database);
-    if (group && group.groupBookId === transfer.groupBookId) return voidMemberTransfer(database, group.workspaceBookId, transfer.transferId);
+    if (!transfer.transferVoid && group && group.groupBookId === transfer.groupBookId) return voidMemberTransfer(database, group.workspaceBookId, transfer.transferId);
+    // The group has ended here, or the transfer is void but this side is still posted: this phone's side goes on its own.
   }
   return voidTransaction(database, ws, transactionId);
 }

@@ -289,6 +289,9 @@ in a local table, `member_transfer_unposted` (migration 0059; `group-inactive`, 
 here is never posted again. A side in another currency than the workspace's posts at the rate this phone holds for it
 (the transfer carries no base figure). A side's note, when the transfer has none, is "Transfer to Andi" / "Transfer from
 Rina" on that phone only. Correcting or deleting a side on either phone corrects or deletes the transfer.
+Review round 1: a void of a phone's own posted side always goes through (it only undoes a movement), whoever sent it
+and whatever the group now is; deleting again does nothing. An edit is refused once a party has left ("can only be
+deleted"). A side left unposted is tried again after each group-log sync and whenever a rate is saved.
 
 ## 8. Screens
 
