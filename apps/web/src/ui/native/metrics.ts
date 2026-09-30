@@ -53,15 +53,16 @@ export const ROW_ICON = 28;
 export const ROW_ICON_GAP = 10;
 
 /**
- * A tree's step: how far a line one level down starts, and the smaller circle it draws. A section's kinds sit under
- * its name rather than level with it, so the line after them that is level again reads as the next section.
+ * A tree: a line one level down starts under its parent's name rather than level with it, and draws the smaller
+ * circle, so the line after it that is level again reads as the next one. The first level steps past a full-size
+ * circle, every level after it past a nested one.
  */
-export const NEST_STEP = 34;
 export const NESTED_ICON = 24;
 
-/** The left padding of a line `depth` levels down a tree. */
+/** The left padding of a line `depth` levels down a tree: level with the name of the line above it. */
 export function nestedPad(depth: number): number {
-  return ROW_PAD_X + depth * NEST_STEP;
+  if (depth <= 0) return ROW_PAD_X;
+  return ROW_PAD_X + ROW_ICON + ROW_ICON_GAP + (depth - 1) * (NESTED_ICON + ROW_ICON_GAP);
 }
 
 /** The chevron's glyph box, and the gap before it. */

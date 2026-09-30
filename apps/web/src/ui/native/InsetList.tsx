@@ -3,7 +3,7 @@ import { Children, cloneElement, createContext, isValidElement, type ReactElemen
 import { cx } from '../index';
 import { SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
-import { GROUP_GAP, GROUP_RADIUS, NEST_STEP, NESTED_ICON, nestedPad, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
+import { GROUP_GAP, GROUP_RADIUS, NESTED_ICON, nestedPad, ROW_ICON, ROW_ICON_GAP, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
 
 /**
@@ -271,7 +271,7 @@ export function InsetRow({
     <span
       aria-hidden
       className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]"
-      style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset + depth * NEST_STEP, right: ROW_PAD_X }}
+      style={{ height: 0.5, left: destructive ? 0 : depth === 0 ? plan.separatorInset : nestedPad(depth) + (icon ? NESTED_ICON + ROW_ICON_GAP : 0), right: ROW_PAD_X }}
     />
   ) : null;
   const slides = !disabled && (onSwipeRight !== undefined || leftAction !== undefined);

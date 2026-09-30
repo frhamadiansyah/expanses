@@ -29,8 +29,13 @@ function KindIcon({ section, kind }: { section: string; kind: string }) {
   return <Glyph size={16} aria-hidden />;
 }
 
-function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string; money: Set<string> }) {
-  const icon = <KindIcon section={row.section} kind={row.kind.key} />;
+/**
+ * `nested`: drawn inside its kind's open drawer, one step in and with no circle — the drawer above already wears it, and
+ * the name then sits level with the kind's.
+ */
+function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean }) {
+  const icon = nested ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
+  const depth = nested ? 1 : 0;
   // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
   // ≈ on its figure only when a pocket is held in another currency.
   if (row.pockets !== null)
@@ -39,6 +44,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
         to="/accounts/$accountId"
         params={{ accountId: row.accountId }}
         icon={icon}
+        depth={depth}
         title={row.name}
         subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
@@ -55,6 +61,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
         to="/net-worth/lend-borrow"
         search={{ person: row.person }}
         icon={icon}
+        depth={depth}
         title={row.name}
         subtitle={rowSubtitle(row)}
         value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -72,6 +79,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
       to={to}
       params={{ accountId: row.accountId }}
       icon={icon}
+        depth={depth}
       title={row.name}
       subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -117,7 +125,7 @@ function Group({ group, baseCurrency, money }: { group: AssetGroup; baseCurrency
             testId={`type-drawer-${key}`}
             onToggle={() => drawers.toggle(key)}
           />,
-          ...(shown ? drawer.rows.map((row) => <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} />) : []),
+          ...(shown ? drawer.rows.map((row) => <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested />) : []),
         ];
       })}
       {/* The same holdings read by stock and by broker: its last row, under the group's own total. */}
