@@ -142,7 +142,7 @@ export function OwnablePicker({
         back={BACK_TO[flow]}
         onBack={() => (canGoBack ? back() : router.history.back())}
         field={
-          phone && showSearch ? (
+          phone && showSearch && !chosen ? (
             <SearchPill
               value={query}
               onChange={setQuery}
@@ -154,8 +154,9 @@ export function OwnablePicker({
             />
           ) : undefined
         }
+        // Search is for the list of kinds; once one is chosen the phone shows its form alone, with nothing to search.
         actions={
-          phone
+          phone && !chosen
             ? [{ key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) }]
             : []
         }
