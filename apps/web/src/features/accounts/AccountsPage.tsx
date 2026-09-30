@@ -12,7 +12,9 @@ import { useScheduledAsks } from '../loans/queries';
 import { DEBT_GROUP_LABELS, owedMinor } from '../networth/debt-rows';
 import { useAssetValues } from '../networth/queries';
 import { cx, Empty, Money } from '../../ui';
-import { type CornerAction, ActionLine, Drawer, Figure, groupedFigure, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
+import { type CornerAction, ActionLine, Drawer, Figure, groupedFigure, InsetGroup, InsetRow, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
+import { useSharedNetWorth } from '../networth/queries';
+import { sharedSections } from './shared-accounts';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { BalanceSpark } from './BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from './balance-series';
@@ -328,6 +330,12 @@ function SpendRow({ colour, label, value, currency, separator = false }: { colou
 
 export function AccountsPage() {
   const { database, ws } = useApp();
+  /*
+   * With separate tax IDs, the other members' shared items (joint-net-worth §8.2): listed under "Andi's, shared", to
+   * see and open, and counted in nothing on this page. With one tax ID they are the household's Net worth instead.
+   */
+  const shared = useSharedNetWorth().data;
+  const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items) : [];
   const accounts = useAccounts();
   const balances = useBalances();
   const everything = accounts.data ?? [];
@@ -555,6 +563,22 @@ export function AccountsPage() {
           />
         );
       })}
+      {sharedGroups.map((section) => (
+        <InsetGroup key={section.owner} wide header={section.title}>
+          {section.items.map((item) => (
+            <InsetRow
+              key={item.itemId}
+              title={item.name}
+              subtitle={item.kindLabel}
+              value={<Money minor={item.minor} currency={item.currency} />}
+              valueTone="ink"
+              to="/net-worth/shared/$itemId"
+              params={{ itemId: item.itemId }}
+              testId={`shared-item-${item.itemId}`}
+            />
+          ))}
+        </InsetGroup>
+      ))}
     </div>
   );
 }

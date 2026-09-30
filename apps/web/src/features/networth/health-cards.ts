@@ -106,3 +106,15 @@ export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLi
   if (missing.length > 0) return { totals: null, missing };
   return { totals: sheetTotals(balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? [])), missing: [] };
 }
+
+/**
+ * What the ratios are read from (joint-net-worth §8.2): the household's sheet when the group files jointly — this
+ * phone's rows and the other's shared items, its missing rates included — else this phone's own sheet, as always.
+ * Only the balance sheet is joint; the cash flows the ratios divide by stay this phone's own.
+ */
+export function ratioInputs<T extends { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] }>(
+  own: T | undefined,
+  joint: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | null,
+): { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined {
+  return joint ? { assets: joint.assets, liabilities: joint.liabilities, missing: joint.missing } : own;
+}

@@ -61,6 +61,7 @@ import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { JoinPage } from '../features/sharing/JoinPage';
+import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { Layout } from './Layout';
 
 export interface CardSearch {
@@ -292,6 +293,8 @@ const routeTree = rootRoute.addChildren([
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),
+  // Joint net worth (§8.3): an item of the other's, read-only — from the household's Net worth or Accounts' "…, shared".
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/shared/$itemId', component: SharedItemPage }),
 ]);
 
 export const router = createRouter({ routeTree });

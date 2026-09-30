@@ -165,3 +165,5 @@ export {
 // when it changes an account's value or profile outside the ledger doors (a share setting, say).
 export { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from './sync/net-worth/summaries';
 export { markAccountDirtyTx } from './sync/capture';
+// Joint net worth (spec §8.3, task 9): the Household purchases of a period, with the shared item each was paid from.
+export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';

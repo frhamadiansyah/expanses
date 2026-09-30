@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { ErrorBox } from '../../ui';
 import { PushedTitle, SCREEN } from '../../ui/native';
 import { HealthRatios } from './HealthRatios';
-import { periodRange, type RatioPeriod, ratioTotals } from './health-cards';
-import { useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
+import { periodRange, type RatioPeriod, ratioInputs, ratioTotals } from './health-cards';
+import { useJointSheet, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 
 /**
  * The ratios on a screen of their own, one tap from Net worth's top corner.
@@ -23,8 +23,10 @@ export function FinancialHealthPage() {
   const range = periodRange(period, today);
   const flows = usePeriodFlows({ from: range.from, to: range.to });
   const periodSheetInputs = useSheet(range.balanceDate);
+  // With one tax ID the ratios read the household's balance sheet on the same date (§8.2).
+  const joint = useJointSheet(range.balanceDate);
 
-  const periodTotals = ratioTotals(periodSheetInputs.data);
+  const periodTotals = ratioTotals(joint.isPending ? undefined : ratioInputs(periodSheetInputs.data, joint.data));
   const monthsWithData = flows.data?.months ?? 0;
   const monthsNote =
     monthsWithData === 0

@@ -1,6 +1,7 @@
 import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioTotals, withEmergencyLoading } from './health-cards';
+import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioInputs, ratioTotals, withEmergencyLoading } from './health-cards';
+import { jointRows, type ReceivedItem } from './joint-rows';
 
 const TODAY = '2026-09-12';
 
@@ -124,5 +125,46 @@ describe('ratioTotals', () => {
 
   it('are none, with the currency named, while a rate is missing — never totals that count that money as 0', () => {
     expect(ratioTotals({ assets, liabilities, missing: ['USD'] })).toEqual({ totals: null, missing: ['USD'] });
+  });
+});
+
+describe('ratioInputs (joint net worth §8.2: health ratios use the household total)', () => {
+  const own = {
+    assets: [{ accountId: 'bca', name: 'Rina BCA', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 50_000_000 }],
+    liabilities: [],
+    missing: [],
+  };
+  const andi: ReceivedItem = {
+    itemId: 'i-andi',
+    owner: 'm-andi',
+    kind: 'asset',
+    subtype: 'bank',
+    name: 'Andi Mandiri',
+    currency: 'IDR',
+    balanceMinor: 400_000_000,
+    asOf: '2026-09-12',
+    card: null,
+    period: { start: '2026-09-01', end: '2026-09-30' },
+    openingMinor: 400_000_000,
+    householdMinor: 0,
+    otherUseMinor: 0,
+    monthEnds: [],
+    tax: null,
+  };
+
+  it('reads the joint sheet in joint mode, so net worth and cash are the household’s', () => {
+    const joint = jointRows(own, [andi], 'm-rina', {}, 'IDR');
+    const { totals } = ratioTotals(ratioInputs(own, joint));
+    expect(totals?.netWorthMinor).toBe(450_000_000);
+    expect(totals?.liquidMinor).toBe(450_000_000);
+  });
+
+  it('reads this phone’s own sheet when the household does not file jointly', () => {
+    expect(ratioTotals(ratioInputs(own, null)).totals?.netWorthMinor).toBe(50_000_000);
+  });
+
+  it('a received item with no rate names its currency and gives no ratios', () => {
+    const joint = jointRows(own, [{ ...andi, currency: 'USD' }], 'm-rina', {}, 'IDR');
+    expect(ratioTotals(ratioInputs(own, joint))).toEqual({ totals: null, missing: ['USD'] });
   });
 });

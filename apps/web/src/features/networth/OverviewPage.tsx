@@ -1,4 +1,4 @@
-import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
+import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { BellRing, ChartColumn, ChartLine, Gauge, type LucideIcon } from 'lucide-react';
@@ -14,7 +14,9 @@ import { NetWorthChart } from './NetWorthChart';
 import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
-import { useNetWorthSeries, useSheet } from './queries';
+import { memberName, useJointSheet, useNetWorthSeries, useSheet } from './queries';
+import { jointSeries, ownerRing } from './joint-rows';
+import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
@@ -103,6 +105,7 @@ function SheetColumn({
   nested = false,
   open,
   onToggle,
+  ownerOf,
 }: {
   title: string;
   groups: SheetGroup[];
@@ -125,6 +128,8 @@ function SheetColumn({
   /** The drawers that are open, by `group:kind`. Shut to begin with. */
   open: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** Whose each row is, when the household files jointly (§8.2); absent on a personal sheet. */
+  ownerOf?: OwnerOf;
 }) {
   return (
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
@@ -155,7 +160,7 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf)}</div>] : []),
             ];
           })}
         </InsetGroup>
@@ -167,7 +172,7 @@ function SheetColumn({
             /* Marked by its own key, so a spec can say which section a row was drawn in. */
             <div key={group.key} data-testid={`sheet-section-${group.key}`}>
               <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <Money minor={group.totalMinor} currency={currency} />}>
-                {fold(group, kindOf, tileOf, open, onToggle, currency)}
+                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf)}
               </InsetGroup>
             </div>
           ),
@@ -185,13 +190,59 @@ function TileIcon({ tile: Glyph }: { tile: LucideIcon }) {
   return <Glyph size={16} aria-hidden />;
 }
 
-/** One account's line in the sheet: the drawing its kind wears, its name, and what it is worth or what it owes. */
-function sheetLine(row: SheetRow, currency: string, icon: ReactNode) {
-  return <InsetRow key={row.accountId} icon={icon} title={row.name} subtitle={row.note ?? undefined} value={<Money minor={row.amountMinor} currency={currency} />} valueTone="ink" chevron={false} />;
+/** Whose a row is on the household's sheet: the ring its circle wears, the name a screen reader hears, and whether it is the other's. */
+interface RowOwner {
+  ring: string | null;
+  name: string;
+  received: boolean;
+}
+type OwnerOf = (accountId: string) => RowOwner | null;
+
+/**
+ * One account's line in the sheet: the drawing its kind wears, its name, and what it is worth or what it owes.
+ *
+ * On the household's sheet (D12, D13) the owner is the ring round the circle and nothing else — the row stays one
+ * line, with no name and no date under it — and a screen reader hears whose it is. The other's item opens its own page.
+ */
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null) {
+  const shared = owner?.received === true;
+  return (
+    <InsetRow
+      key={row.accountId}
+      icon={icon}
+      iconRing={owner?.ring ?? undefined}
+      title={
+        owner && !shared ? (
+          /* A row that is not a link has no accessible name of its own, so whose it is is read out with its title. */
+          <>
+            {row.name}
+            <span className="sr-only">, {owner.name}'s</span>
+          </>
+        ) : (
+          row.name
+        )
+      }
+      subtitle={row.note ?? undefined}
+      value={<Money minor={row.amountMinor} currency={currency} />}
+      valueTone="ink"
+      chevron={shared ? undefined : false}
+      label={shared ? `${owner.name}'s ${row.name}, ${formatMinor(row.amountMinor, currency)}` : undefined}
+      testId={owner ? `sheet-row-${row.accountId}` : undefined}
+      {...(shared ? { to: '/net-worth/shared/$itemId' as const, params: { itemId: row.accountId } } : {})}
+    />
+  );
 }
 
 /** A group's rows, folded by kind: every section says which kinds it holds, even where it holds only one. */
-function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => RowKind, tileOf: Tile, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
+function fold(
+  group: SheetGroup,
+  kindOf: (groupKey: string, row: SheetRow) => RowKind,
+  tileOf: Tile,
+  open: ReadonlySet<string>,
+  onToggle: (key: string) => void,
+  currency: string,
+  ownerOf?: OwnerOf,
+) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
@@ -210,7 +261,7 @@ function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => Ro
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
       />,
-      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon)) : []),
+      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null)) : []),
     ];
   });
 }
@@ -241,17 +292,30 @@ export function OverviewPage() {
   const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
   const waiting = useAttention(today);
+  /*
+   * With one tax ID the page is the household's (§8.2, D12): the other's shared items join this phone's own rows in the
+   * same drawers, the figure and its line are the household's, and each row's ring says whose it is. Separate, or no
+   * group: null, and the page is personal exactly as it was.
+   */
+  const joint = useJointSheet().data;
 
-  const points = series.data ?? [];
+  const points = joint ? jointSeries(series.data ?? [], joint.received, joint.ratesToBase, ws.baseCurrency) : (series.data ?? []);
   // The range the line is drawn over, out of the same snapshots the figure is: what is drawn is what is summed.
   const shown = spanSlice(points, span);
   const from = shown[0];
   const to = shown[shown.length - 1];
   const covered = from && to ? rangeLabel(from.month, to.month) : undefined;
   // The hero is today's figure, so only today's missing rates hide it; an earlier month's hides that month's point.
-  const sheetMissing = sheetInputs.data?.missing ?? [];
+  const sheetMissing = joint ? joint.missing : (sheetInputs.data?.missing ?? []);
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
-  const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
+  const sheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
+  const owners = new Map((joint?.rows ?? []).map((row) => [row.accountId, row]));
+  const ownerOf: OwnerOf | undefined = joint
+    ? (accountId) => {
+        const row = owners.get(accountId);
+        return row ? { ring: ownerRing(joint.members, row.owner), name: memberName(joint.names, row.owner), received: row.received } : null;
+      }
+    : undefined;
 
   const waitingCount = waiting.items.length + waiting.warnings.length;
   /*
@@ -302,6 +366,8 @@ export function OverviewPage() {
    * read of anything.
    */
   const subtypes = new Map<string, AccountSubtype>((accounts.data ?? []).map((account) => [account.id, account.subtype]));
+  // The other's items are known by their itemId and say their own kind (§5.2), so they fold with the same kinds.
+  for (const row of joint?.rows ?? []) if (row.received) subtypes.set(row.accountId, row.subtype as AccountSubtype);
   /*
    * Which drawers are open, by `group:kind`, and shut to begin with: the point of folding a page of account names away
    * is that what you have reads as a handful of types, and a drawer that opens itself is that answer hidden again.
@@ -323,7 +389,7 @@ export function OverviewPage() {
    * said — what the money went on. A mortgage folds with the mortgages on this page and on the Debts list, not as a
    * plain "Loan" here and a home mortgage there.
    */
-  const debts = new Map((sheetInputs.data?.liabilities ?? []).map((row) => [row.accountId, row]));
+  const debts = new Map<string, { item?: string | null; icon?: SheetLiability['icon'] }>((joint?.liabilities ?? sheetInputs.data?.liabilities ?? []).map((row) => [row.accountId, row]));
   /*
    * What kind of thing a row is, which is what its drawer is called. An asset is read off the catalogue code it was
    * opened under and the kind of account it sits in; a debt off its own facts, which is where its kind is kept — so a
@@ -427,6 +493,26 @@ export function OverviewPage() {
             ) : (
               <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} change={rangeChange(shown)} caption={covered} />
             )}
+            {/*
+             * Whose the household's figure is (§8.2): a dot in each member's ring colour, their name and their part,
+             * in the group's order. A part with a rate missing is a dash, never a figure built from zeroes.
+             */}
+            {joint && (
+              <p data-testid="owner-legend" className="pt-[6px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+                {joint.members.map((member, index) => {
+                  const part = joint.byOwner[member];
+                  return (
+                    <span key={member} className="whitespace-nowrap">
+                      {index > 0 && <span aria-hidden> · </span>}
+                      <span aria-hidden style={{ color: ownerRing(joint.members, member) ?? undefined }}>
+                        ●
+                      </span>{' '}
+                      {memberName(joint.names, member)} <span className="tabular">{part === null || part === undefined ? '—' : shortMoney(part, ws.baseCurrency)}</span>
+                    </span>
+                  );
+                })}
+              </p>
+            )}
           </div>
         </div>
         {/*
@@ -522,6 +608,7 @@ export function OverviewPage() {
             nested
             open={openDrawers}
             onToggle={toggleDrawer}
+            ownerOf={ownerOf}
           />
           <SheetColumn
             title="Liabilities"
@@ -532,6 +619,7 @@ export function OverviewPage() {
             oneGroupOnly
             open={openDrawers}
             onToggle={toggleDrawer}
+            ownerOf={ownerOf}
           />
         </div>
         </>

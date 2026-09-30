@@ -291,6 +291,14 @@ other use"** line (`otherUseMinor`, "total only"), and for a card the limit bar 
 The details show Owner, Updated (`asOf`), and "not yet on Rina's phone" when purchases paid from it are in the log but
 newer than the summary (the bar then subtracts them).
 
+*Correction (task 9, code reality):* a summary carries only its owner's day (`asOf`), not a clock, so "newer than the
+summary" is read as a purchase paid from the item that is dated, or was recorded on this phone, after `asOf`; one
+recorded on the summary's own day counts as in it. Only the bar subtracts it (in the item's own currency); the balance
+shown is the summary's. With one tax ID the item's page is reached from Net worth; with separate IDs from Accounts'
+"Andi's, shared", which lists nothing in `joint` (the items are Net worth there). Health ratios read the joint balance
+sheet only; the cash flows they divide by stay the viewer's own. For an earlier balance date (a past calendar year) a
+received item reads the month-end it sent for that month, and 0 beyond the 24 it sends.
+
 ### 8.4 Tax report
 
 - **`joint`:** each member can open the joint report: their own rows plus each received `tax` row. Marked incomplete
