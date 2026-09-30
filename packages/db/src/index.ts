@@ -165,3 +165,5 @@ export {
 // when it changes an account's value or profile outside the ledger doors (a share setting, say).
 export { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from './sync/net-worth/summaries';
 export { markAccountDirtyTx } from './sync/capture';
+// Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
+export { type JointReport, reportInputsFor } from './repos/joint-tax';

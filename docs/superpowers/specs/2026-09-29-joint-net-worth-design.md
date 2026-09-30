@@ -163,6 +163,11 @@ Invariant (tested): `openingMinor + householdMinor + otherUseMinor = balanceMino
 
 `TaxRow` is the item's row of the harta or utang list as `coretaxInputsFor` builds it for the latest finished tax year
 (code, acquisition year, cost, value at 31 December), in the shape `@expanses/core` already renders.
+Correction (task 10, code reality): `tax` is `{ taxYear, part: CoretaxRowPart } | null`, where `part` is the item's slice
+of `CoretaxInputs` (`cash` / `holdings` / `estimated` / `receivables` / `debts`, empty when it files nothing that year) —
+the inputs, not rendered rows, so the reader's own settings (property basis, rows per year, KMK rates) apply. Each row's
+`accountId` is the item's id, a foreign holding carries no `purchases` (each buy is a private line), and the row's
+`fields` (the details its table asks for, e.g. an account number) do travel: the joint return needs them.
 
 ### 5.3 A purchase paid from someone else's item
 

@@ -168,7 +168,8 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
       otherUseMinor: 100_000_000,
       balanceMinor: 150_000_000,
       asOf: today,
-      tax: null,
+      // One tax ID (task 10): the card's slice of last year's report, which is empty — it owed nothing on 31 December.
+      tax: { taxYear: Number(today.slice(0, 4)) - 1, part: { cash: [], holdings: [], estimated: [], receivables: [], debts: [] } },
     });
     expect(item!.card).toMatchObject({ limitMinor: 500_000_000 });
     expect(item!.period).toEqual({ start: item!.card!.cycleStart, end: item!.card!.cycleEnd });

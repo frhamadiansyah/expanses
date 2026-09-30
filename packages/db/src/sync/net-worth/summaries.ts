@@ -1,5 +1,7 @@
 import {
+  type CoretaxRowPart,
   type ItemSummary,
+  type ItemTax,
   lastMonthEnds,
   type PeriodMovement,
   splitPeriod,
@@ -13,6 +15,7 @@ import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
 import { activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
+import { taxRowFor } from '../../repos/tax-inputs';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 
@@ -164,8 +167,31 @@ export async function computeItemSummary(tx: Db, ws: WorkspaceContext, accountId
     // Anything the ledger lines do not explain (a valued asset's new price) is other use, so the parts add up.
     otherUseMinor: split.otherUseMinor + (balanceMinor - split.closingMinor),
     monthEnds,
-    tax: null,
+    tax: await itemTaxOf(tx, ws, accountId, workspaceBookId, today),
   };
+}
+
+/**
+ * The item's `tax` (§5.2, §8.4; task 10): only while the one active group this person is in files with one tax ID and
+ * lives in this workspace, the item's slice of `coretaxInputsFor` for the latest finished tax year (today's year − 1).
+ * Each row is known by the item's id instead of the local account id, and a foreign holding's `purchases` (each buy, a
+ * private line's amount and date) stay behind: the report's note under that row is its owner's alone. An item that files
+ * nothing that year carries an empty slice, so it is never mistaken for one still waiting.
+ */
+async function itemTaxOf(tx: Db, ws: WorkspaceContext, accountId: string, workspaceBookId: string, today: string): Promise<ItemTax> {
+  const group = await activeNetWorthGroup(tx);
+  if (!group || group.mode !== 'joint' || group.workspaceBookId !== workspaceBookId) return null;
+  const taxYear = Number(today.slice(0, 4)) - 1;
+  const itemId = await itemIdOf(group.groupBookId, accountId);
+  const found = await taxRowFor(readView(tx), ws, accountId, taxYear);
+  const part: CoretaxRowPart = {
+    cash: (found?.cash ?? []).map((row) => ({ ...row, accountId: itemId })),
+    holdings: (found?.holdings ?? []).map(({ purchases: _purchases, ...row }) => ({ ...row, accountId: itemId })),
+    estimated: (found?.estimated ?? []).map((row) => ({ ...row, accountId: itemId })),
+    receivables: (found?.receivables ?? []).map((row) => ({ ...row, accountId: itemId })),
+    debts: (found?.debts ?? []).map((row) => ({ ...row, accountId: itemId })),
+  };
+  return { taxYear, part };
 }
 
 /** The workspace (its id and currency) a shared book lives in on this device. */

@@ -1,6 +1,7 @@
 import { coretaxRows, isoDate, utangRows } from '@expanses/core';
-import { businessInputsFor, coretaxInputsFor, foreignCurrenciesFor, incomeInputsFor, kmkRateRowsFor, kmkRatesFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
+import { businessInputsFor, foreignCurrenciesFor, incomeInputsFor, kmkRateRowsFor, kmkRatesFor, listReports, reportFor, reportInputsFor, rowDifferences, savedRows } from '@expanses/db';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useApp } from '../../app/context';
 
 export function useReports() {
@@ -33,11 +34,31 @@ export function useReportRows(taxYear: number) {
       const report = await reportFor(database, ws, taxYear);
       if (!report) return [];
       if (report.status !== 'draft') return savedRows(database, ws, taxYear);
-      const inputs = await coretaxInputsFor(database, ws, taxYear);
+      // With one tax ID, the partner's received rows are in the inputs too (joint-net-worth §8.4).
+      const { inputs } = await reportInputsFor(database, ws, taxYear);
       const settings = { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps: await kmkRatesFor(database, ws, taxYear) };
       return [...coretaxRows(taxYear, inputs, settings), ...utangRows(taxYear, inputs, settings)];
     },
   });
+}
+
+/**
+ * With one tax ID, whose report it is and what it still waits for (joint-net-worth §8.4); null otherwise. A partner's
+ * rows, a year-end and a pending count arrive with a sync run, so the report's live reads are re-read after each one.
+ */
+export function useJointReport(taxYear: number) {
+  const { database, ws, sync } = useApp();
+  const queryClient = useQueryClient();
+  useEffect(
+    () =>
+      sync.subscribe(() => {
+        void queryClient.invalidateQueries({ queryKey: ['tax-joint', ws.workspaceId] });
+        void queryClient.invalidateQueries({ queryKey: ['tax-rows', ws.workspaceId] });
+        void queryClient.invalidateQueries({ queryKey: ['tax-currencies', ws.workspaceId] });
+      }),
+    [sync, queryClient, ws.workspaceId],
+  );
+  return useQuery({ queryKey: ['tax-joint', ws.workspaceId, taxYear], queryFn: async () => (await reportInputsFor(database, ws, taxYear)).joint });
 }
 
 /** Last year's saved rows, which this year carries over from. */

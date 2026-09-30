@@ -3,7 +3,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
 import { upsertRate } from './fx';
-import { coretaxInputsFor } from './tax-inputs';
+import { reportInputsFor } from './joint-tax';
 
 const BPS = 10_000;
 
@@ -25,7 +25,8 @@ export interface KmkRateRow {
  * something is denominated in it, and the owner should not be asked for rates they cannot use.
  */
 export async function foreignCurrenciesFor(database: Database, ws: WorkspaceContext, taxYear: number): Promise<string[]> {
-  const inputs = await coretaxInputsFor(database, ws, taxYear);
+  // With one tax ID, the partner's rows need their currencies' rates too (joint-net-worth §8.4).
+  const { inputs } = await reportInputsFor(database, ws, taxYear);
   const currencies = [
     ...inputs.cash.map((row) => row.currency),
     ...inputs.holdings.map((row) => row.currency),

@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { taxYearReports, taxYearRows } from '../schema-tax';
 import { kmkRatesFor } from './kmk-rates';
-import { coretaxInputsFor } from './tax-inputs';
+import { reportInputsFor } from './joint-tax';
 
 export class TaxDbError extends Error {
   constructor(message: string) {
@@ -110,11 +110,18 @@ function settingsOf(report: TaxReportRow, kmkRateBps: Record<string, number>): R
   return { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps };
 }
 
-/** The rows the ledger says the year holds right now, harta then utang. */
-async function liveRows(database: Database, ws: WorkspaceContext, report: TaxReportRow): Promise<CoretaxRow[]> {
-  const inputs = await coretaxInputsFor(database, ws, report.taxYear);
+/**
+ * The rows the ledger says the year holds right now, harta then utang — with one tax ID, the partner's received rows
+ * too (joint-net-worth §8.4), and the keys of those, which are item ids and not this phone's accounts.
+ */
+async function liveReport(database: Database, ws: WorkspaceContext, report: TaxReportRow): Promise<{ rows: CoretaxRow[]; received: Set<string> }> {
+  const { inputs, joint } = await reportInputsFor(database, ws, report.taxYear);
   const settings = settingsOf(report, await kmkRatesFor(database, ws, report.taxYear));
-  return [...coretaxRows(report.taxYear, inputs, settings), ...utangRows(report.taxYear, inputs, settings)];
+  return { rows: [...coretaxRows(report.taxYear, inputs, settings), ...utangRows(report.taxYear, inputs, settings)], received: new Set(Object.keys(joint?.received ?? {})) };
+}
+
+async function liveRows(database: Database, ws: WorkspaceContext, report: TaxReportRow): Promise<CoretaxRow[]> {
+  return (await liveReport(database, ws, report)).rows;
 }
 
 async function reportRowTx(tx: Db, ws: WorkspaceContext, taxYear: number): Promise<TaxReportRow> {
@@ -131,12 +138,12 @@ async function reportRowTx(tx: Db, ws: WorkspaceContext, taxYear: number): Promi
  * to the ledger shows as a difference the owner can accept, rather than changing a return quietly.
  */
 export async function freezeReport(database: Database, ws: WorkspaceContext, taxYear: number): Promise<{ rows: number }> {
-  const rows = await (async () => {
+  const { rows, received } = await (async () => {
     const report = await reportFor(database, ws, taxYear);
     if (!report) throw new TaxDbError(`There is no ${taxYear} report to freeze`);
     if (report.status === 'filed') throw new TaxDbError(`The ${taxYear} report is filed, so it cannot be frozen again`);
     if (report.status === 'frozen') throw new TaxDbError(`The ${taxYear} report is already frozen`);
-    return liveRows(database, ws, report);
+    return liveReport(database, ws, report);
   })();
 
   return database.transaction(async (tx) => {
@@ -151,8 +158,9 @@ export async function freezeReport(database: Database, ws: WorkspaceContext, tax
           workspaceId: ws.workspaceId,
           section: row.section,
           code: row.code,
-          // The key carries the account, and the year too when rows are split.
-          accountId: row.key.split(':')[0] ?? null,
+          // The key carries the account, and the year too when rows are split. A partner's row (one tax ID) is keyed by
+          // its item id, which is no account on this phone.
+          accountId: received.has(row.key.split(':')[0] ?? '') ? null : (row.key.split(':')[0] ?? null),
           rowKey: row.key,
           name: row.name,
           acquiredYear: row.acquiredYear,

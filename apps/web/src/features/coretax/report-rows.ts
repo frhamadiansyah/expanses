@@ -1,4 +1,6 @@
 import { balanceSheet, type CarryStatus, CORETAX_SECTIONS, type CoretaxRow, type ReadinessIssue, reconciliation, type Reconciliation, type ReportSection, type SheetAsset, type SheetLiability } from '@expanses/core';
+import type { JointReport } from '@expanses/db';
+import { namesOf } from '../sharing/net-worth-state';
 
 export interface ScreenSection {
   section: ReportSection;
@@ -34,18 +36,24 @@ export interface ReadinessLink {
   to: ReadinessDestination;
   /** What the link says, which names the thing that needs attention. */
   label: string;
+  /** With one tax ID, a partner's row: who fixes it, on their own phone. Nothing on this one changes it. */
+  owner?: string;
 }
 
 /**
  * Each thing to put right, with where to go and do it. A row the owner typed into the report is
- * fixed on the report; everything else is fixed where it lives.
+ * fixed on the report; everything else is fixed where it lives — and a partner's row (one tax ID, `received` maps its
+ * key to the owner's name) on the partner's phone.
  */
-export function readinessLinks(issues: ReadinessIssue[], rows: CoretaxRow[]): ReadinessLink[] {
+export function readinessLinks(issues: ReadinessIssue[], rows: CoretaxRow[], received?: ReadonlyMap<string, string>): ReadinessLink[] {
   const rowByKey = new Map(rows.map((row) => [row.key, row]));
 
   return issues.map((issue) => {
     const row = issue.rowKey ? rowByKey.get(issue.rowKey) : undefined;
     let to: ReadinessDestination = '/tax-report';
+    // A year-split holding's key is `item:year`; the item is what was received.
+    const owner = row ? received?.get(row.key.split(':')[0] ?? '') : undefined;
+    if (owner) return { issue, to, label: `${row!.name}: ${issue.message}`, owner };
     if (row && row.source !== 'manual') {
       if (row.section === 'utang') to = row.code === '101' ? '/net-worth/loans' : '/net-worth/lend-borrow';
       else if (row.section === 'piutang') to = '/net-worth/lend-borrow';
@@ -75,10 +83,47 @@ export function reportCheck(
   harta: CoretaxRow[],
   utang: CoretaxRow[],
   inputs: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined,
-): { report: Pick<Reconciliation, 'hartaMinor' | 'utangMinor' | 'reportNetMinor'>; check: Reconciliation | null; missing: string[] } {
+  options: { joint?: boolean } = {},
+): { report: Pick<Reconciliation, 'hartaMinor' | 'utangMinor' | 'reportNetMinor'>; check: Reconciliation | null; missing: string[]; joint: boolean } {
   const missing = [...(inputs?.missing ?? [])];
   const sheet = balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? []);
   const full = reconciliation(harta, utang, sheet.netWorthMinor);
   const report = { hartaMinor: full.hartaMinor, utangMinor: full.utangMinor, reportNetMinor: full.reportNetMinor };
-  return missing.length > 0 ? { report, check: null, missing } : { report, check: full, missing: [] };
+  // One tax ID: the report holds both people's items and this phone's balance sheet only its own, so any gap is wrong.
+  if (options.joint) return { report, check: null, missing: [], joint: true };
+  return missing.length > 0 ? { report, check: null, missing, joint: false } : { report, check: full, missing: [], joint: false };
+}
+
+export interface JointReportView {
+  /** "Joint report · Rina and Andi". */
+  banner: string;
+  /** Nothing is waiting: every member has shared every item, and every item's year-end is here. */
+  complete: boolean;
+  /** What it is still waiting for, one line each. */
+  lines: string[];
+}
+
+const itemsWord = (count: number) => (count === 1 ? '1 item' : `${count} items`);
+
+/**
+ * The joint report's banner and what it still waits for (joint-net-worth §8.4, D8): each member with items not yet
+ * shared ("Rina hasn't added 1 item yet"), then each owner whose items' year-end has not reached this phone. Null for
+ * separate tax IDs or no group, where the report is unchanged.
+ */
+export function jointReportView(
+  joint: Pick<JointReport, 'members' | 'me' | 'waiting' | 'pending'> | null | undefined,
+  nameOf: (memberId: string) => string,
+): JointReportView | null {
+  if (!joint) return null;
+  const lines: string[] = [];
+  const others = joint.members.filter((member) => member !== joint.me);
+  for (const member of [...others, joint.me]) {
+    const count = joint.pending[member] ?? 0;
+    if (count <= 0) continue;
+    lines.push(member === joint.me ? `You haven't added ${itemsWord(count)} yet` : `${nameOf(member)} hasn't added ${itemsWord(count)} yet`);
+  }
+  const waitingBy = new Map<string, string[]>();
+  for (const item of joint.waiting) waitingBy.set(item.owner, [...(waitingBy.get(item.owner) ?? []), item.name]);
+  for (const [owner, names] of waitingBy) lines.push(`Waiting for ${nameOf(owner)}'s phone: ${names.join(', ')}`);
+  return { banner: `Joint report · ${namesOf(joint.members.map(nameOf))}`, complete: lines.length === 0, lines };
 }
