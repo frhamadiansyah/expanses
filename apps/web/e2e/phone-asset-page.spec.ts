@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEstimated, addPriced, openAsset, typePrice } from './asset-page';
+import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 
 test('by thumb: gold’s grid and purchases, and a laptop valued again from its sheet', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
@@ -8,7 +8,7 @@ test('by thumb: gold’s grid and purchases, and a laptop valued again from its 
   await typePrice(page, '2485000');
   await expect(page.getByTestId('asset-card').getByTestId('asset-grid')).toContainText('Your price');
   await expect(page.getByTestId('asset-card')).toContainText('30 days ago');
-  await expect(page.getByTestId('price-line')).toContainText('Typed · ');
+  await expect(await priceSaid(page, 'Your price')).toContainText('Typed · ');
   await expect(page.getByTestId('asset-history-row').first()).toContainText('+Rp 4.455.000');
 
   await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');

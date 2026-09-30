@@ -162,7 +162,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       ? months.map((month, index) => ({ on: monthEnd(month) < today ? monthEnd(month) : today, minor: history.data[index] ?? 0 }))
       : null;
 
-  const tiles: Tile[] = priced
+  // Where the price came from and the day it is for ("Typed · 24 Sep 2026"): behind the price figure's ⓘ rather than
+  // a line of its own, since it only matters when someone asks how current the figure is.
+  const saidPrice = priced ? priceLine({ latest: latestPrice, followsWorld: choice === 'world', failed: world.state === 'failed', today: isoDate() }) : '';
+  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Your price' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
+  const pricedTileList: Tile[] = priced
     ? pricedTiles({
         unitKind,
         unitsMicro,
@@ -170,10 +174,18 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         lotSize,
         currency,
         priceMicro: latestPrice?.priceMicro ?? null,
+        priceLabel,
         ...(gold && latestPrice?.source === 'world'
-          ? { priceLabel: 'World price', priceTag: { tag: 'not buyback', info: 'The world spot price. A dealer usually buys gold back a few percent below it.' } }
-          : { priceLabel: gold ? 'Your price' : unitKind ? PRICE_TILE[unitKind] : 'Price today' }),
+          ? { priceTag: { tag: 'not buyback', info: 'The world spot price. A dealer usually buys gold back a few percent below it.' } }
+          : {}),
       })
+    : [];
+  const tiles: Tile[] = priced
+    ? pricedTileList.map((tile) =>
+        tile.label === priceLabel
+          ? { ...tile, info: tile.info ? `${saidPrice}. ${tile.info}` : saidPrice }
+          : tile,
+      )
     : estimated
       ? estimatedTiles({
           costMinor: value.costMinor,
@@ -332,15 +344,25 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           </>
         }
       >
-        {tiles.length > 0 && <NumberGrid tiles={tiles} />}
+        {tiles.length > 0 && (
+          <NumberGrid
+            tiles={tiles}
+            refresh={
+              priced && latestPrice && choice === 'world'
+                ? { label: 'Fetch today’s world price', busy: world.state === 'fetching', run: world.retry }
+                : undefined
+            }
+          />
+        )}
       </BalanceCard>
 
       <ActionButtons actions={actions} />
 
-      {priced && (
+      {/* With a price, its source and day are behind the price figure's ⓘ; with none yet there is no figure to hang it on. */}
+      {priced && !latestPrice && (
         <div className="-mt-[6px] mb-[18px] flex items-center justify-between gap-2 px-[6px] md:max-w-2xl">
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="price-line">
-            {priceLine({ latest: latestPrice, followsWorld: choice === 'world', failed: world.state === 'failed', today: isoDate() })}
+            {saidPrice}
           </p>
           {/* Only a holding that follows the world price can fetch one; a typed-only holding has nothing to refresh. */}
           {choice === 'world' && (
@@ -479,7 +501,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
  * The labelled figures inside the card, two to a row: a small grey label, the figure under it. The one a word
  * qualifies ("not buyback") carries it under the figure, and its ⓘ opens what it means under the grid.
  */
-function NumberGrid({ tiles }: { tiles: Tile[] }) {
+function NumberGrid({ tiles, refresh }: { tiles: Tile[]; refresh?: { label: string; busy: boolean; run: () => void } }) {
   const [explained, setExplained] = useState<string | null>(null);
   const said = tiles.find((tile) => tile.label === explained)?.info;
   return (
@@ -507,7 +529,25 @@ function NumberGrid({ tiles }: { tiles: Tile[] }) {
           </div>
         ))}
       </dl>
-      {said && <p className="mt-2 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{said}</p>}
+      {said && (
+        <div className="mt-2 flex items-start justify-between gap-2">
+          <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="price-said">
+            {said}
+          </p>
+          {/* A holding that follows the world price can fetch today's again, from where its price is explained. */}
+          {refresh && (
+            <button
+              type="button"
+              aria-label={refresh.label}
+              disabled={refresh.busy}
+              onClick={refresh.run}
+              className="ph-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-tint)] disabled:opacity-40"
+            >
+              <RotateCw size={13} aria-hidden className={refresh.busy ? 'animate-spin' : undefined} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -42,3 +42,10 @@ export async function typePrice(page: Page, typed: string) {
   await page.getByRole('button', { name: 'Save price' }).click();
   await expect(page.getByRole('button', { name: 'Save price' })).toHaveCount(0);
 }
+
+/** Where the price came from and its day, behind the price figure's ⓘ ("Close today", "Your price", "World price"). */
+export async function priceSaid(page: Page, label: string) {
+  const about = page.getByTestId('asset-grid').getByRole('button', { name: `About ${label}` });
+  if ((await about.getAttribute('aria-expanded')) !== 'true') await about.click();
+  return page.getByTestId('price-said');
+}
