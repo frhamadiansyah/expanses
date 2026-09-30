@@ -69,6 +69,15 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 });
 
+test('Spend on an account with pockets opens paid with the pocket in the workspace’s own currency', async ({ page }) => {
+  await mockRates(page, { USD: 16_250 });
+  await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '300.00', rate: '16250' }, { currency: 'IDR', balance: '5000000' }] });
+  await openMoney(page, 'Valas Plus');
+  await page.getByRole('link', { name: 'Spend', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/new\?/);
+  await expect(addForm(page).getByRole('button', { name: 'Paid with' })).toContainText('Valas Plus · IDR');
+});
+
 test('Spend opens a new transaction already paid with the account', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
@@ -158,7 +167,11 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByTestId('pocket-USD')).toContainText('USD');
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).not.toContainText('US Dollar');
-  await expect(page.getByRole('link', { name: 'Move', exact: true })).toBeVisible();
+  // Four actions in one row; adding a currency is the Pockets list's last row, not an action.
+  for (const action of ['Spend', 'Receive', 'Transfer', 'Move']) await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: action, exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Add a currency' })).toHaveCount(0);
+  const rows = page.locator('section').filter({ has: page.getByTestId('pocket-USD') }).locator('a');
+  await expect(rows.last()).toHaveText(/Add a currency/);
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await page.getByTestId('pocket-USD').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);

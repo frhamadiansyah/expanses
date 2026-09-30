@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Repeat,
   Settings,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
@@ -165,14 +166,14 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
-        <ActionButtons actions={actionsFor(account, pockets)} />
+        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency)} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
       <SetAsidePanel accountId={account.id} />
 
       {pockets ? (
-        <PocketList pockets={pockets} held={held} />
+        <PocketList parentId={account.id} pockets={pockets} held={held} />
       ) : deposit ? (
         <MaturitySettings accountId={account.id} currency={account.currency!} />
       ) : null}
@@ -267,10 +268,11 @@ function usePageMenu(
  * up from a current account and withdrawn to one, so both open a transfer with the RDN on the side the words say —
  * the pairing rule keeps the other side to current accounts. A deposit's one action is its own (`DepositMoneyOut`).
  *
- * An account with pockets is not itself somewhere money is paid from — each pocket is — so it offers what only the
- * parent can do: move between its pockets, and add another. Spend and Receive live on each pocket's page.
+ * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Spend, Receive and
+ * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
+ * Adding another currency is the last row of its Pockets list.
  */
-function actionsFor(account: AccountRow, pockets: AccountRow[] | null): RoundAction[] {
+function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurrency: string): RoundAction[] {
   const id = account.id;
   const newTx = (key: string, label: string, glyph: RoundAction['glyph'], search: { mode: 'expense' | 'income' | 'transfer'; account?: string; to?: string }): RoundAction => ({
     key,
@@ -280,9 +282,18 @@ function actionsFor(account: AccountRow, pockets: AccountRow[] | null): RoundAct
     search,
   });
   if (pockets) {
+    // Spent, received and moved from a pocket: the one in the workspace's own currency, or the first — the form's
+    // Paid with, Received into and From still switch to any other.
+    const pocket = (pockets.find((p) => p.currency === baseCurrency) ?? pockets[0])?.id;
     return [
-      ...(pockets.length >= 2 ? [{ key: 'move', label: 'Move', glyph: <ArrowLeftRight size={20} aria-hidden />, to: '/accounts/$accountId/move' as const, params: { accountId: id } }] : []),
-      { key: 'pocket', label: 'Add a currency', glyph: <Plus size={20} aria-hidden />, to: '/accounts/$accountId/pocket', params: { accountId: id } },
+      ...(pocket
+        ? [
+            newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: pocket }),
+            newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: pocket }),
+            newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: pocket }),
+          ]
+        : []),
+      ...(pockets.length >= 2 ? [{ key: 'move', label: 'Move', glyph: <Repeat size={20} aria-hidden />, to: '/accounts/$accountId/move' as const, params: { accountId: id } }] : []),
     ];
   }
   if (account.subtype === 'fund') {
@@ -358,7 +369,7 @@ function ParentCard({ pockets, typeLabel, inst, held }: { pockets: AccountRow[];
  * Each pocket in its own currency, with what a foreign one comes to here, opening to the pocket's own page: its flag,
  * its code, and the amount. The currency's name is not repeated under the code the flag already says.
  */
-function PocketList({ pockets, held }: { pockets: AccountRow[]; held: Record<string, number> }) {
+function PocketList({ parentId, pockets, held }: { parentId: string; pockets: AccountRow[]; held: Record<string, number> }) {
   const { ws } = useApp();
   const balances = useBalances();
   return (
@@ -378,6 +389,14 @@ function PocketList({ pockets, held }: { pockets: AccountRow[]; held: Record<str
           />
         );
       })}
+      <InsetRow
+        key="add"
+        testId="pocket-add"
+        icon={<Plus size={16} aria-hidden />}
+        title="Add a currency"
+        to="/accounts/$accountId/pocket"
+        params={{ accountId: parentId }}
+      />
     </InsetGroup>
   );
 }
