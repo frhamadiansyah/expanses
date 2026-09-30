@@ -1,0 +1,46 @@
+# Joint net worth — rulings made during the build
+
+Every decision the controller took on the owner's behalf while building docs/superpowers/plans/2026-09-29-joint-net-worth.md, in the order made, each with what it costs if wrong. Owner decisions (2026-09-30) are marked.
+
+- Ruling: core tests live in `packages/core/test/net-worth-group.test.ts`, `net-worth-group.property.test.ts`, `net-worth-summary.test.ts`, `net-worth-summary.property.test.ts`, importing from `../src/net-worth/…` — the core vitest config only runs `test/**` — cost if wrong: none, tests would otherwise never run.
+- Ruling: db repo test for Task 5 is `packages/db/test/net-worth-sharing.test.ts` — flat test dir is the convention — cost if wrong: none.
+- Ruling: waves run implementers in parallel in separate worktrees (owner asked for parallel lanes; household sharing ran this way) — cost if wrong: merge conflicts, resolved by the controller at each wave merge.
+- Task 1: review 1 — Needs fixes (2 critical, 3 important); Ruling: writer judged by STORED row, writer fields immutable — spec §5.1 over brief's merged-row wording — cost if wrong: none, strictly safer. Ruling: engine re-announces own app_version on syncOnce — needed for existing households — cost: one extra op per upgrade.
+- Task 1: fix round 1/5 (5 addressed, 1 open + 2 new — own-entry writer decision reads live rows: takeover kept locally, false skip on own delete; commits 6ec2f72..fe786a3). Ruling: writer rule enforced at capture time locally, own entries skip writer decision — see task-1-findings-2.md — cost if wrong: local/peer divergence, pinned by shared predicate tests.
+- Ruling: deferred to Task 5 — group dissolution when <2 members (delete log + link; else GROUP_EXISTS forever), concurrent openGroupLog reconciliation, auto-admit a member's later devices — Task 5 derives membership — cost if wrong: Task 5 grows.
+- Ruling: deferred to Task 6 — restore rejoin of the group log (checkRestore/heldBefore) and a capture guard keeping nw_* entities out of workspace logs and net_worth_group out of group logs — Task 6 owns summaries, restore re-send and the privacy check — cost if wrong: Task 6 grows.
+- Ruling: migration 0057 amended in place is fine — never on main or in a TestFlight build (last build 0.2.0 (3) from 89ddce2) — cost if wrong: none.
+- Ruling: fold cheap minors into Task 6 fix round rather than defer — money-logic tests are a global constraint — cost: one longer fix round.
+- Ruling: synthetic left only for proposals created before departure AND proposeNetWorth refuses departed members (left-group) — D6 consent — cost if wrong: a returning member needs a fresh workspace invite path, acceptable.
+- Ruling: former members' close power accepted (disruption, no disclosure), spec §4 corrected, automatic re-open of a live group's closed link by a current member — cost if wrong: a modified client can keep closing, each time undone on next sync.
+- Ruling: review reappearing for accounts created outside patched add forms is accepted — an unreviewed item should prompt review — cost: an extra prompt.
+- Ruling: departed member's recorded confirm becomes left, never synthesized; createdHlc/mode/members frozen — consent D6 — cost if wrong: none.
+- Ruling: a change proposal needs every listed member AND every current active member to confirm (core deriveGroup changed) — D6 "every group member" — cost if wrong: a member can block removal of someone else by not answering; remedy = that member leaves or others leave and re-setup.
+- Ruling: close-then-rewrite by a former member with a modified client ACCEPTED as residual, stated in spec §4 — disruption only, no disclosure — cost if wrong: a household must set up again after such an attack.
+- Ruling: review mark keyed on the active proposal; after membership grows nothing is sent until this person's Share — spec §6 "review when a proposal becomes active" — cost if wrong: an extra review tap after each change.
+- Ruling: a Change can never add members; adding someone = stop sharing net worth and set up again (new log) — the group log's history is readable by any admitted device — cost if wrong: adding a third person takes a fresh setup.
+- Ruling: removals always send immediately, even while a review is pending — they only reduce disclosure — cost: none.
+- Ruling: admission unrestricted while the log holds no proposal is accepted — the log is empty then; the API always writes the proposal first — cost if wrong: an admitted device sees only later content, which the proposal rules gate anyway.
+- Ruling: a group member's modified client can hand keys to anyone — accepted, a member can leak what they see regardless — cost: none beyond that inherent trust.
+- Ruling: hold summary sends while any outsider device is active in the log AND sweep before drain — both, belt and braces — cost: summaries go out one sync later after an activation.
+- Ruling: keep Coretax fields in the joint-mode tax slice — the owner said a one-tax-ID return must list both partners' everything, and the fields go only to the partner via the E2E group log — cost if wrong: one-line strip; surface to owner at finish.
+- Ruling: in joint mode only balance-sheet ratios use the joint sheet; expense/income-denominator ratios stay personal — never overstate — cost: ratios page mixes bases by design; surface to owner (ties to open emergency-fund denominator decision).
+- Ruling: paidFrom lands on the real card only with an active group matching the map AND (unchanged paidFrom OR author (authority view) in group.members); else payer's placeholder — D14 consent — cost if wrong: a purchase after the group ends shows as the payer's, owner re-enters it.
+- OWNER DECISIONS (2026-09-30): (1) joint-mode tax details (e.g. account numbers) to partner — OK; (2) consecutive-summary differencing of private totals — OK; (3) health ratios: expense/income-denominator ratios stay personal in joint mode — OK.
+- Ruling: a void of this device's own side always applies, trusted or not — voiding only undoes money — cost: none.
+- Ruling: migrations 0057/0058/0059 edited in place are safe — none has run outside this branch's test databases (last TestFlight 0.2.0 (3) from main 89ddce2) — cost if wrong: a dev db needs reset.
+- Ruling: split member transfers out of the owner's summary as transferMinor (unreleased format) — viewer can't reliably subtract — cost: summary format grows one field.
+- Ruling: summary carries the transfer ids it counted (group-log ids, not local) so the remainder is exact — cost: summary grows a small list.
+- Ruling: an account's opening-balance entry belongs to openingMinor, never other use — it is not activity in the period — cost: none; fold into final fix wave.
+- Ruling: member replacing their ONLY phone after losing it drops out (group of two dissolves; set up again) — accepted residual for merge, surface to owner — cost: re-setup after a lost phone.
+
+## Deferred follow-ups (from the final review)
+
+- Task 6: minor (deferred, IMPORTANT for final review): capture-setup.ts afterEach try/catch silently drops privateLeaks errors — a broken query would disable the privacy check unnoticed.
+- Task 5: minor (deferred, consent — final review): an answer on an activated proposal can be changed confirm→decline by a modified client (no capture/peer rule), un-activating it; consider authority rule "after activation only `left`".
+- FINAL REVIEW — IMPORTANT (pre-existing, real): an invite made before a group-log key rotation strands its claimant permanently (joined, never receives). Hits multi-device members / third member leaving / restore during rotation, not the one-phone-each couple main path. Suggested: 409 + no current key after re-pull → needs_invite → auto-admit re-invites.
+- FINAL REVIEW — (pre-existing, now load-bearing): rotation after a removal not retried on relay failure; suggested hardening in sweepBeforeDrain (current epoch ≤ removal epoch of any removed device → rotate before drain).
+- FINAL REVIEW — Task 7 minors: after the group ends (log/map still present) an edit moves a recorded purchase off the owner's card (§7.1 "already recorded stay") — exempt the unchanged path from the active-group check; lineage stores a refused paidFrom (store the effective one or null).
+- FINAL REVIEW — Task 8 minors: failed retry makes a successful rate save reject (fx.ts upsertRate); repos/fx imports sync/net-worth/transfers (inverted dependency) and retries unfixable rows; TransactionCard treats a failed memberTransfersOf query as settled → local replace detaches the side; void branch throws if nw_group_books mapping gone while shared_books remains.
+- FINAL REVIEW — wave 4 minors: a transfer with the viewer re-dated out of the period can briefly appear as "Other transfers" (decide "with you" by counted ids without date filter); summaries.ts comment names migration 0057 for member_transfer_postings (0059); sharedItemView withYou=null default treats all as other.
+- Final: minor (deferred): shared item card caption shows full opening vs paid-down grey segment; book_members joined_at capture-run mismatch = harness artefact (record applying book with applied change-sets); 429 on group claim (sixth device) unhandled; stale claim occupies a device slot.
