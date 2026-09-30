@@ -238,10 +238,13 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
+  // Deep in a tree the circle is left off: the kind above already wears it, and three circles a line crowded the
+  // row. Its name then sits level with the kind's. A household's row keeps it, because its ring says whose it is.
+  const drawn = depth < 2 || owner?.ring ? icon : undefined;
   return (
     <InsetRow
       key={row.accountId}
-      icon={icon}
+      icon={drawn}
       iconRing={owner?.ring ?? undefined}
       title={
         owner && !shared ? (
