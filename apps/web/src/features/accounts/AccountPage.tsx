@@ -537,20 +537,7 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
   const recent = useRecentTransactions(accountIds);
   const rows = buildRows(recent.data ?? [], [], accounts.data ?? [], []);
   return (
-    <Panel
-      header="Recent"
-      trailing={
-        <Link
-          to="/transactions"
-          search={{ account: accountId }}
-          className="ph-focus inline-flex items-center gap-[2px] rounded text-[13px] font-medium tracking-normal text-[var(--ph-tint)] normal-case"
-        >
-          See all
-          <ChevronRight size={14} aria-hidden />
-        </Link>
-      }
-      testId="account-recent"
-    >
+    <Panel header="Recent" testId="account-recent">
       <ErrorBox error={recent.error} />
       {recent.isSuccess && rows.length === 0 ? (
         <p className="py-1 text-[15px] leading-[20px] text-[var(--ph-ink-3)]">No transactions yet.</p>
@@ -566,6 +553,17 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
               onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.id } })}
             />
           ))}
+          {/* The way to the rest is the box's last row, under the rows it continues, as iOS ends a short list. */}
+          <li>
+            <Link
+              to="/transactions"
+              search={{ account: accountId }}
+              className="ph-focus flex items-center justify-between py-[11px] text-[15px] leading-[20px] text-[var(--ph-tint)]"
+            >
+              See all
+              <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
+            </Link>
+          </li>
         </ul>
       )}
     </Panel>
