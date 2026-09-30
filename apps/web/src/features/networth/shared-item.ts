@@ -18,16 +18,21 @@ export interface PurchaseLine {
   /** What was spent, in `currency`; a refund is negative. */
   amountMinor: number;
   currency: string;
-  /** Which shared item its money side is on (`money.paidFrom.itemId`, Task 7); null = the payer's own account. */
+  /** Which shared item its money side is on (`money.paidFrom.itemId`, Task 7); null = an account that is not shared. */
   paidFromItemId: string | null;
+  /** Whose item that is (`money.paidFrom.owner`). */
+  paidFromOwner: string | null;
   /** The member who paid (the lineage's `paidBy`). */
   paidBy: string;
 }
 
-/** The Household lines of the item's period whose money side is on the item (§3 "Household lines"). */
-export function linesPaidFrom(purchases: readonly PurchaseLine[], item: Pick<ReceivedItem, 'itemId' | 'period'>): PurchaseLine[] {
+/**
+ * The Household lines of the item's period whose money side is on the item (§3 "Household lines"): paid by the partner
+ * or by the owner. A line naming the item under another owner is not the item's (a crafted op), so it is left out.
+ */
+export function linesPaidFrom(purchases: readonly PurchaseLine[], item: Pick<ReceivedItem, 'itemId' | 'owner' | 'period'>): PurchaseLine[] {
   return purchases
-    .filter((p) => p.paidFromItemId === item.itemId && p.occurredOn >= item.period.start && p.occurredOn <= item.period.end)
+    .filter((p) => p.paidFromItemId === item.itemId && p.paidFromOwner === item.owner && p.occurredOn >= item.period.start && p.occurredOn <= item.period.end)
     .sort((a, b) => (a.occurredOn === b.occurredOn ? a.lineageId.localeCompare(b.lineageId) : a.occurredOn < b.occurredOn ? -1 : 1));
 }
 

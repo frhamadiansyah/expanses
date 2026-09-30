@@ -33,6 +33,7 @@ const line = (over: Partial<PurchaseLine>): PurchaseLine => ({
   amountMinor: 300_000,
   currency: 'IDR',
   paidFromItemId: 'i-visa',
+  paidFromOwner: 'm-rina',
   paidBy: 'm-andi',
   ...over,
 });
@@ -46,6 +47,16 @@ describe('linesPaidFrom (spec §8.3 "Lines you can see")', () => {
       line({ lineageId: 'd', occurredOn: '2026-09-01' }), // before the cycle
     ];
     expect(linesPaidFrom(purchases, card).map((p) => p.lineageId)).toEqual(['a']);
+  });
+
+  it('lists the owner’s own purchase and the partner’s alike, and never one naming the item under another owner', () => {
+    const purchases = [
+      line({ lineageId: 'andi-paid', paidBy: 'm-andi' }),
+      line({ lineageId: 'rina-paid', paidBy: 'm-rina' }),
+      // A lineage that names Rina's item as someone else's (a crafted op) is not hers to show.
+      line({ lineageId: 'crafted', paidFromOwner: 'm-sari' }),
+    ];
+    expect(linesPaidFrom(purchases, card).map((p) => p.lineageId)).toEqual(['andi-paid', 'rina-paid']);
   });
 });
 

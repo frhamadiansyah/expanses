@@ -17,37 +17,32 @@ export interface HouseholdPurchase {
   /** What was spent on its categories, in `currency`; a refund is negative. */
   amountMinor: number;
   currency: string;
-  /** The shared item the money side is on (`money.paidFrom.itemId`); null = the payer's own account. */
+  /**
+   * The shared item the money side is on (`money.paidFrom.itemId`, kept on `sync_lineage.paid_from_item` by Task 7):
+   * the partner's item a member paid with, or the owner's own shared item; null = an account that is not shared.
+   */
   paidFromItemId: string | null;
+  /** Whose item that is (`money.paidFrom.owner`); null with `paidFromItemId`. */
+  paidFromOwner: string | null;
   /** The member who paid (`money.paidBy`): whose purchase it is, which decides whether the item's owner has it yet. */
   paidBy: string;
-}
-
-/**
- * Where a purchase's `paidFrom.itemId` is read from. `paidFrom` arrives with Task 7 (spec §5.3), built in parallel with
- * this read; until the merge wires it to where Task 7 keeps the field, no purchase names an item, so "Lines you can
- * see" is empty. The ONE place to wire: everything downstream filters on `paidFromItemId`.
- */
-async function paidFromItemIds(_database: Database, _lineageIds: readonly string[]): Promise<Map<string, string>> {
-  return new Map();
 }
 
 /** Every posted Household purchase of `bookId` dated within `period`, oldest first. */
 export async function householdPurchases(database: Database, bookId: string, period: { start: string; end: string }): Promise<HouseholdPurchase[]> {
   const [table] = await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_lineage'`);
   if (!table) return [];
-  const rows = await database.db.values<[string, string, string, string, string, number, string, string]>(sql`
+  const rows = await database.db.values<[string, string, string, string, string, number, string, string, string | null, string | null]>(sql`
     SELECT l.lineage_id, t.id, t.occurred_on, t.created_at, t.description,
            COALESCE((SELECT sum(e.amount_minor) FROM entries e JOIN accounts a ON a.id = e.account_id
                      WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income')), 0),
            COALESCE((SELECT e.currency FROM entries e JOIN accounts a ON a.id = e.account_id
                      WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') LIMIT 1), ''),
-           l.paid_by
+           l.paid_by, l.paid_from_item, l.paid_from_owner
     FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
     WHERE l.book_id = ${bookId} AND t.status = 'posted' AND t.occurred_on >= ${period.start} AND t.occurred_on <= ${period.end}
     ORDER BY t.occurred_on, l.lineage_id`);
-  const paidFrom = await paidFromItemIds(database, rows.map((row) => row[0]));
-  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency, paidBy]) => ({
+  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency, paidBy, item, owner]) => ({
     lineageId,
     transactionId,
     occurredOn,
@@ -55,7 +50,9 @@ export async function householdPurchases(database: Database, bookId: string, per
     description,
     amountMinor: Number(amountMinor),
     currency,
-    paidFromItemId: paidFrom.get(lineageId) ?? null,
+    // Both or neither: a half-written pair names no item.
+    paidFromItemId: item && owner ? item : null,
+    paidFromOwner: item && owner ? owner : null,
     paidBy,
   }));
 }
