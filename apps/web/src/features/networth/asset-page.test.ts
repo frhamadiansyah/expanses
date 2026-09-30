@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayLabel, estimatedTiles, gainPill, heroLine, percentOfFace, priceLine, pricedTiles, quantityLabel, tradeLine } from './asset-page';
+import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, percentOfFace, priceLine, pricedDaySeries, pricedTiles, quantityLabel, tradeLine } from './asset-page';
 
 const M = 1_000_000;
 const plain = (text: string | undefined) => text?.replace(/ /g, ' ');
@@ -43,7 +43,7 @@ describe('the line under the figure', () => {
     expect(heroLine({ ...base, kindLabel: 'Listed shares', mode: 'market', unitKind: 'shares', unitsMicro: 500 * M, lotSize: 100 })).toBe('Listed shares · 5 lots');
     expect(heroLine({ ...base, kindLabel: 'House', mode: 'snapshot', valuation: { basis: 'appraisal', asOf: '2026-09-30' } })).toBe('House · appraisal, 30 Sep 2026');
     expect(heroLine({ ...base, kindLabel: 'Laptop', mode: 'snapshot' })).toBe('Laptop · what was paid');
-    expect(plain(heroLine({ ...base, kindLabel: 'Government bond', mode: 'market', unitKind: 'face', unitsMicro: 10_000_000 * M }))).toBe('Government bond · face Rp 10.000.000');
+    expect(heroLine({ ...base, kindLabel: 'Government bond', mode: 'market', unitKind: 'face', unitsMicro: 10_000_000 * M })).toBe('Government bond');
   });
 });
 
@@ -114,5 +114,29 @@ describe('the price line', () => {
     // A holding that takes only typed prices never fetches, so it never offers to try again.
     expect(priceLine({ latest: { onDate: '2026-09-28', source: 'manual' }, followsWorld: false, failed: true, today })).toBe('Typed · 28 Sep 2026');
     expect(priceLine({ latest: null, followsWorld: false, failed: false, today })).toBe('No price yet, so it is valued at what was paid');
+  });
+});
+
+describe('a priced thing’s line', () => {
+  const buy = (occurredOn: string, grams: number, grossMinor: number) => ({ id: occurredOn, accountId: 'g', kind: 'buy' as const, occurredOn, unitsMicro: grams * M, grossMinor, feeMinor: 0, taxMinor: 0, createdAt: occurredOn });
+  it('values each day at what was held then and the latest price by then, at cost before any price', () => {
+    const series = pricedDaySeries([buy('2026-09-27', 10, 20_000_000), buy('2026-09-29', 10, 22_000_000)], [{ onDate: '2026-09-29', priceMicro: 2_400_000 * M }], {
+      accountId: 'g',
+      currency: 'IDR',
+      today: '2026-09-30',
+      days: 4,
+    });
+    expect(series).toEqual([
+      { on: '2026-09-26', minor: 0 },
+      { on: '2026-09-27', minor: 20_000_000 },
+      { on: '2026-09-28', minor: 20_000_000 },
+      { on: '2026-09-29', minor: 48_000_000 },
+      { on: '2026-09-30', minor: 48_000_000 },
+    ]);
+  });
+
+  it('reads a month on its last day', () => {
+    expect(monthEnd('2026-02')).toBe('2026-02-28');
+    expect(monthEnd('2026-09')).toBe('2026-09-30');
   });
 });

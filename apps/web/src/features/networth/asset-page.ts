@@ -1,4 +1,4 @@
-import { currencyInfo, formatMinor, formatPriceMicro, formatUnits, PRICE_SCALE, priceMicroFrom, type UnitKind, unitsValueMinor, type ValuationBasis } from '@expanses/core';
+import { assetValueAt, currencyInfo, formatMinor, formatPriceMicro, formatUnits, PRICE_SCALE, priceMicroFrom, type UnitKind, unitsValueMinor, positionAfter, type TradeRecord, type ValuationBasis } from '@expanses/core';
 
 /**
  * What an asset's own page says, worked out apart from the page: the gain beside the figure, the line under it, the
@@ -85,7 +85,8 @@ export function heroLine(o: {
     return o.valuation ? `${o.kindLabel} · ${BASIS_WORDS[o.valuation.basis]}, ${dayLabel(o.valuation.asOf)}` : `${o.kindLabel} · what was paid`;
   }
   if (o.mode !== 'market' || o.unitsMicro <= 0) return o.kindLabel;
-  if (o.unitKind === 'face') return `${o.kindLabel} · face ${formatMinor(faceMinor(o.unitsMicro, o.currency), o.currency)}`;
+  // A bond's face is the first of its four figures, so the line only says what it is.
+  if (o.unitKind === 'face') return o.kindLabel;
   return `${o.kindLabel} · ${quantityLabel(o.unitsMicro, o.unitKind, o.lotSize)}`;
 }
 
@@ -207,4 +208,37 @@ export function priceLine(o: {
   if (!o.latest) return o.followsWorld && o.failed ? 'No price yet · ↻ to try again' : 'No price yet, so it is valued at what was paid';
   const said = `${o.latest.source === 'world' ? 'World price (XAU)' : 'Typed'} · ${dayLabel(o.latest.onDate)}`;
   return o.followsWorld && o.failed && o.latest.onDate < o.today ? `${said} · ↻ to try again` : said;
+}
+
+/** The ISO day `days` before `iso`, in UTC so no timezone moves it. */
+const back = (iso: string, days: number) => {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+};
+
+/**
+ * A priced thing's value on each of the last `days` days and today, oldest first: what was held that day at the
+ * latest price saved on or before it — or at what it cost, before any price — exactly as the figure is worked out
+ * for today, so the line ends on it.
+ */
+export function pricedDaySeries(
+  trades: readonly TradeRecord[],
+  prices: readonly { onDate: string; priceMicro: number }[],
+  o: { accountId: string; currency: string; today: string; days: number },
+): { on: string; minor: number }[] {
+  const out: { on: string; minor: number }[] = [];
+  for (let step = o.days; step >= 0; step -= 1) {
+    const on = back(o.today, step);
+    const position = positionAfter([...trades], on);
+    const value = assetValueAt({ accountId: o.accountId, mode: 'market', currency: o.currency, ledgerBalanceMinor: 0, position, prices: [...prices] }, on);
+    out.push({ on, minor: value.valueMinor });
+  }
+  return out;
+}
+
+/** The last day of a YYYY-MM month: where a month's value is read. */
+export function monthEnd(month: string): string {
+  const [year, index] = month.split('-').map(Number);
+  return new Date(Date.UTC(year!, index!, 0)).toISOString().slice(0, 10);
 }

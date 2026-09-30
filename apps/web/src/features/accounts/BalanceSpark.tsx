@@ -18,6 +18,7 @@ export function BalanceSpark({
   crossing,
   readable = false,
   ends = ['30 days ago', 'today'],
+  throughZero = true,
   className,
 }: {
   /** Oldest day first, ending on today's balance. */
@@ -31,6 +32,11 @@ export function BalanceSpark({
   readable?: boolean;
   /** The words under the line's two ends: "30 days ago … today", or "12 months ago … today" for a line of months. */
   ends?: readonly [string, string];
+  /**
+   * Whether the range always includes nothing. Money does — a balance is read against zero — but a thing's value is
+   * never below it, and a line pinned to the top of a range from zero would say nothing of how it moved.
+   */
+  throughZero?: boolean;
   className?: string;
 }) {
   const width = 268;
@@ -38,8 +44,12 @@ export function BalanceSpark({
   /* Room under the plot for the crossing's date, and nothing above: the chart starts at its own top. */
   const paper = height + 16;
   const values = series.map((day) => day.minor);
-  const top = Math.max(0, ...values);
-  const bottom = Math.min(0, ...values);
+  const high = Math.max(...values);
+  const low = Math.min(...values);
+  // Off zero, a flat line sits in the middle rather than on an edge: a range of nothing is given one either side.
+  const pad = throughZero ? 0 : high === low ? Math.max(1, Math.abs(high) * 0.05) : (high - low) * 0.1;
+  const top = throughZero ? Math.max(0, high) : high + pad;
+  const bottom = throughZero ? Math.min(0, low) : low - pad;
   const span = top - bottom || 1;
   const x = (index: number) => (series.length <= 1 ? 0 : (index / (series.length - 1)) * width);
   const y = (minor: number) => ((top - minor) / span) * height;
@@ -68,7 +78,7 @@ export function BalanceSpark({
         {...(readable ? { ...svgProps, className: `overflow-visible ${svgProps.className}`, 'data-testid': 'balance-line' } : {})}
       >
         {/* Nothing, drawn as a reference rather than as the frame: the line is read against it, not from it. */}
-        <line x1="0" y1={y(0)} x2={width} y2={y(0)} stroke="var(--ph-hair)" strokeWidth="1" strokeDasharray="2 3" />
+        {throughZero && <line x1="0" y1={y(0)} x2={width} y2={y(0)} stroke="var(--ph-hair)" strokeWidth="1" strokeDasharray="2 3" />}
         {flat ? (
           <>
             <polyline fill="none" stroke={colour} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={series.map((_, index) => at(index)).join(' ')} />

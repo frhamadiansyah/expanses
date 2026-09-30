@@ -11,10 +11,8 @@ import {
   approxLine,
   type CornerAction,
   type GroupChild,
-  Hero,
   InsetGroup,
   InsetRow,
-  Panel,
   PushedTitle,
   ROW_PAD_X,
   ROW_PAD_Y,
@@ -23,19 +21,18 @@ import {
   SelectRow,
 } from '../../ui/native';
 import { AccountPage } from '../accounts/AccountPage';
-import { useHeldRates, useOpenings } from '../accounts/queries';
+import { BalanceCard } from '../accounts/BalanceCard';
+import type { DayBalance } from '../accounts/balance-series';
+import { LINE_DAYS, useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
-import { dayLabel, estimatedTiles, gainPill, heroLine, priceLine, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
+import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
-import { ValueChart } from './ValueChart';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
-
-const MONTH_LABEL = (month: string) => dayLabel(`${month}-01`).split(' ')[1]!;
 
 /** The kinds of money account: their own page is the account page, whichever list they were opened from. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -149,6 +146,17 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     currency,
     valuation: estimated && value.source === 'valuation' && latestValuation ? { basis: latestValuation.basis, asOf: latestValuation.asOf } : null,
   });
+
+  // The line under the figure: a priced thing day by day over the month, an estimated one month by month over the
+  // year — an estimate moves in steps, so a month is the finest it can say.
+  const today = isoDate();
+  const series: DayBalance[] | null = priced
+    ? trades.data && prices.data
+      ? pricedDaySeries(trades.data, prices.data, { accountId, currency, today, days: LINE_DAYS })
+      : null
+    : history.data
+      ? months.map((month, index) => ({ on: monthEnd(month) < today ? monthEnd(month) : today, minor: history.data[index] ?? 0 }))
+      : null;
 
   const tiles: Tile[] = priced
     ? pricedTiles({
@@ -291,38 +299,42 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       <PushedTitle title={value.name} back="Assets" backTo="/net-worth/assets" actions={menu} />
       <ErrorBox error={profile.error ?? error ?? stock.error} />
 
-      <Hero
+      {/*
+       * The account page's card, as the Accounts tab draws its Balance: what it is worth now, one grey line with the
+       * gain at its end, the line the figure is the end of, and its four figures under it.
+       */}
+      <BalanceCard
         label="Value now"
         minor={value.valueMinor}
         currency={currency}
-        plain
+        series={series}
+        ends={estimated ? ['12 months ago', 'today'] : ['30 days ago', 'today']}
+        throughZero={false}
+        testId="asset-card"
         caption={
           <>
-            {gain && (
-              <span
-                data-testid="asset-gain"
-                data-tone={gain.tone}
-                className={cx(
-                  'tabular mt-[4px] mb-[4px] inline-block rounded-full px-[9px] py-[3px] text-[12.5px] leading-[16px] font-semibold',
-                  gain.tone === 'gain'
-                    ? 'bg-[color-mix(in_srgb,var(--ph-tint)_14%,transparent)] text-[var(--ph-tint)]'
-                    : 'bg-[color-mix(in_srgb,var(--ph-alarm)_12%,transparent)] text-[var(--ph-alarm)]',
-                )}
-              >
-                {gain.text}
-              </span>
-            )}
-            <span className="block">{line}</span>
+            <span className="block">
+              {line}
+              {gain && (
+                <>
+                  {' · '}
+                  <span data-testid="asset-gain" data-tone={gain.tone} className={cx('tabular font-medium', gain.tone === 'gain' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-alarm)]')}>
+                    {gain.text}
+                  </span>
+                </>
+              )}
+            </span>
             {currency !== ws.baseCurrency && <span className="block">{approxLine(value.valueMinor, currency, ws.baseCurrency, held.data?.rates ?? {})}</span>}
           </>
         }
-      />
+      >
+        {tiles.length > 0 && <NumberGrid tiles={tiles} />}
+      </BalanceCard>
 
       <ActionButtons actions={actions} />
 
-      {tiles.length > 0 && <NumberGrid tiles={tiles} />}
       {priced && (
-        <div className="-mt-[12px] mb-[20px] flex items-center justify-between gap-2 px-[6px] md:max-w-2xl">
+        <div className="-mt-[6px] mb-[18px] flex items-center justify-between gap-2 px-[6px] md:max-w-2xl">
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="price-line">
             {priceLine({ latest: latestPrice, followsWorld: choice === 'world', failed: world.state === 'failed', today: isoDate() })}
           </p>
@@ -341,11 +353,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         </div>
       )}
 
-      {history.data && history.data.some((point) => point !== 0) && (
-        <Panel header="Last 12 months">
-          <ValueChart values={history.data} labels={months.map(MONTH_LABEL)} currency={currency} />
-        </Panel>
-      )}
 
       {lines.length > 0 && (
         <InsetGroup
@@ -459,41 +466,40 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   );
 }
 
-/** The labelled figures, two to a row: a small grey label, the figure under it. */
+/**
+ * The labelled figures inside the card, two to a row: a small grey label, the figure under it. The one a word
+ * qualifies ("not buyback") carries it under the figure, and its ⓘ opens what it means under the grid.
+ */
 function NumberGrid({ tiles }: { tiles: Tile[] }) {
   const [explained, setExplained] = useState<string | null>(null);
   const said = tiles.find((tile) => tile.label === explained)?.info;
   return (
-    <>
-    <dl
-      className="mb-[20px] grid w-full grid-cols-2 gap-px overflow-hidden rounded-[11px] bg-[var(--ph-hair)] md:max-w-2xl"
-      data-testid="asset-grid"
-    >
-      {tiles.map((tile, i) => (
-        // An odd last tile spans the row, so the grid never ends on a hole.
-        <div key={tile.label} className={cx('bg-[var(--ph-surface)] px-[13px] py-[9px]', i === tiles.length - 1 && tiles.length % 2 === 1 && 'col-span-2')}>
-          <dt className="flex items-center gap-[5px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
-            <span className="whitespace-nowrap">{tile.label}</span>
-            {tile.info && (
-              <button
-                type="button"
-                aria-label={`About ${tile.label}`}
-                aria-expanded={explained === tile.label}
-                onClick={() => setExplained((was) => (was === tile.label ? null : tile.label))}
-                className="ph-focus ph-tap flex h-[16px] w-[16px] items-center justify-center rounded-full"
-              >
-                <Info size={13} aria-hidden />
-              </button>
-            )}
-          </dt>
-          <dd className="tabular text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{tile.value}</dd>
-          {/* The word that qualifies the figure sits under it, where a half-width tile has the room. */}
-          {tile.tag && <dd className="mt-[3px] inline-block rounded-full bg-[var(--ph-fill)] px-[7px] text-[11px] leading-[16px] text-[var(--ph-ink-3)]">{tile.tag}</dd>}
-        </div>
-      ))}
-    </dl>
-    {said && <p className="-mt-[12px] mb-[20px] px-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)] md:max-w-2xl">{said}</p>}
-    </>
+    <div className="border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3" data-testid="asset-grid">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="min-w-0">
+            <dt className="flex items-center gap-[5px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
+              <span className="truncate">{tile.label}</span>
+              {tile.info && (
+                <button
+                  type="button"
+                  aria-label={`About ${tile.label}`}
+                  aria-expanded={explained === tile.label}
+                  onClick={() => setExplained((was) => (was === tile.label ? null : tile.label))}
+                  className="ph-focus ph-tap flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full"
+                >
+                  <Info size={13} aria-hidden />
+                </button>
+              )}
+            </dt>
+            <dd className="tabular truncate text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{tile.value}</dd>
+            {/* The word that qualifies the figure sits under it, where a half-width figure has the room. */}
+            {tile.tag && <dd className="mt-[3px] inline-block rounded-full bg-[var(--ph-fill)] px-[7px] text-[11px] leading-[16px] text-[var(--ph-ink-3)]">{tile.tag}</dd>}
+          </div>
+        ))}
+      </dl>
+      {said && <p className="mt-2 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{said}</p>}
+    </div>
   );
 }
 

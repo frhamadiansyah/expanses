@@ -36,6 +36,15 @@ test('gold reads as grams, what went in, the average and the price, and each pur
   expect(priceLine[1]).toMatch(DAY);
 
   await expect(page.getByText('Gold bullion · 20 g')).toBeVisible();
+  // One card: the figure, its line over the month, and the four figures inside it; no chart of its own.
+  const card = page.getByTestId('asset-card');
+  await expect(card).toContainText('30 days ago');
+  await expect(card.getByTestId('asset-grid')).toBeVisible();
+  await expect(page.getByText('Last 12 months')).toHaveCount(0);
+  const line = page.getByTestId('balance-line');
+  const box = (await line.boundingBox())!;
+  await line.click({ position: { x: box.width - 4, y: box.height / 2 } });
+  await expect(page.getByTestId('net-worth-reading')).toContainText('49.700.000');
   await expect(page.getByTestId('asset-gain')).toContainText('+Rp');
   await expect(page.getByTestId('asset-gain')).toHaveAttribute('data-tone', 'gain');
   const rows = page.getByTestId('asset-history-row');
@@ -72,7 +81,9 @@ test('a house takes a new value from a sheet that opens empty, and its history n
   await page.getByRole('button', { name: 'Save value' }).click();
 
   await expect(page.getByText('Rp 1.480.000.000').first()).toBeVisible();
-  await expect(page.getByText(/· appraisal, \d{1,2} \w{3} \d{4}$/)).toBeVisible();
+  await expect(page.getByText(/· appraisal, \d{1,2} \w{3} \d{4} · \+Rp\s330\.000\.000 · \+28,7%/)).toBeVisible();
+  // An estimate moves in steps: its line reads the year a month at a time.
+  await expect(page.getByTestId('asset-card')).toContainText('12 months ago');
   await expect(page.getByRole('heading', { name: 'Value history' })).toBeVisible();
   const rows = page.getByTestId('asset-history-row');
   await expect(rows.first()).toContainText('Appraisal');

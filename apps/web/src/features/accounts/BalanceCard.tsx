@@ -18,6 +18,7 @@ export function BalanceCard({
   caption,
   series,
   ends,
+  throughZero = true,
   testId,
   children,
 }: {
@@ -30,6 +31,8 @@ export function BalanceCard({
   /** Oldest first, ending on the figure. Null while it is read, or when it cannot be drawn (a rate missing). */
   series: readonly DayBalance[] | null;
   ends?: readonly [string, string];
+  /** Whether the line is read against nothing: money is, a thing's value is not. */
+  throughZero?: boolean;
   testId?: string;
   children?: ReactNode;
 }) {
@@ -47,7 +50,7 @@ export function BalanceCard({
       </div>
       {series && series.length > 1 && (
         <div className="border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">
-          <BalanceSpark series={series} currency={currency} crossing={crossing(series)} readable ends={ends} />
+          <BalanceSpark series={series} currency={currency} crossing={crossing(series)} readable ends={ends} throughZero={throughZero} />
         </div>
       )}
       {children}
