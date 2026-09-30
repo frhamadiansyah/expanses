@@ -83,12 +83,15 @@ export function NetWorthReview({
   return (
     <div data-testid="net-worth-review">
       <ErrorBox error={error} />
-      <InsetGroup wide>
-        <InsetRow
-          title="Review your items"
-          subtitle={mode === 'joint' ? `${JOINT_LINE} ${jointTaxLine(others)}` : 'Each item shows its balance and one total of other use. Turn off what you keep to yourself.'}
-          chevron={false}
-        />
+      {/*
+       * What sharing sends is said in the group's footer, which wraps: a row's subtitle is one truncated line, and the
+       * joint tax line — what goes to the partner with each item — must be read whole before Share (task 11 e2e).
+       */}
+      <InsetGroup
+        wide
+        footer={mode === 'joint' ? `${JOINT_LINE} ${jointTaxLine(others)}` : 'Each item shows its balance and one total of other use. Turn off what you keep to yourself.'}
+      >
+        <InsetRow title="Review your items" chevron={false} />
       </InsetGroup>
       {byKind(items).map((drawer) => (
         <InsetGroup key={drawer.key} wide header={drawer.label}>

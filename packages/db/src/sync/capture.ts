@@ -94,11 +94,6 @@ export interface CaptureConfig {
     /** The ops apply actually took in, when they are known only after it ran (authority refusals left out). */
     applied?(tx: Db, changeSet: ChangeSet): Promise<void>;
   };
-  /**
-   * Joint net worth (§9, task 6 review round 1): the accounts a transaction with capture paused (apply) changed. Their
-   * summaries cannot be sent from inside apply, so the engine sends them after it (`takePendingSummaryAccounts`).
-   */
-  pendingSummaries?: Set<string>;
 }
 
 export function defaultCaptureConfig(): CaptureConfig {
@@ -293,9 +288,10 @@ export class CaptureSession {
     const ids = await this.dirtyItemAccounts();
     if (ids.length === 0) return;
     if (!this.enabled) {
-      // Apply (capture paused): a peer's edit of a line on one of this device's items. Sent after apply commits.
-      const pending = (this.config.pendingSummaries ??= new Set());
-      for (const id of ids) pending.add(id);
+      // Apply (capture paused): a peer's edit of a line on one of this device's items. Sent after apply commits, by the
+      // group log's sync. Kept in the database, in apply's own transaction, so an app closed in between still sends them
+      // (task 11 e2e: a reload between the two lost a partner's purchase on this device's card).
+      await addPendingSummaryAccountsTx(this.tx, ids);
       return;
     }
     await sendSummariesTx(this.tx, ids, localDate(this.config.now?.() ?? Date.now()));
@@ -454,20 +450,35 @@ export function markAccountDirtyTx(tx: Db, accountId: string): void {
   sessionOf(tx)?.markAccountDirty(accountId);
 }
 
-/** The accounts apply changed since the last call (see `CaptureConfig.pendingSummaries`), emptied as they are handed over. */
-export function takePendingSummaryAccounts(database: Database): string[] {
-  const pending = captureConfigOf(database).pendingSummaries;
-  if (!pending || pending.size === 0) return [];
-  const ids = [...pending];
-  pending.clear();
-  return ids;
+/** Where the accounts apply changed wait for their summaries to be sent: a local setting, never synced. */
+const PENDING_SUMMARIES_KEY = 'nw.pending_summaries';
+
+async function pendingSummaryAccountsTx(tx: Db): Promise<string[]> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${PENDING_SUMMARIES_KEY}`);
+  if (!row) return [];
+  try {
+    const ids = JSON.parse(row[0]) as unknown;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
-/** Puts back accounts `takePendingSummaryAccounts` handed over whose send did not commit, for the next sync to retry. */
-export function returnPendingSummaryAccounts(database: Database, ids: readonly string[]): void {
+/** Adds accounts apply changed to those waiting for their summaries (joint net worth §9), in the caller's transaction. */
+export async function addPendingSummaryAccountsTx(tx: Db, ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
-  const pending = (captureConfigOf(database).pendingSummaries ??= new Set());
-  for (const id of ids) pending.add(id);
+  const all = [...new Set([...(await pendingSummaryAccountsTx(tx)), ...ids])];
+  await tx.run(sql`INSERT INTO settings (key, value) VALUES (${PENDING_SUMMARIES_KEY}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+}
+
+/**
+ * The accounts apply changed since the last call, emptied as they are handed over — in the caller's transaction, so a
+ * send that rolls back leaves them waiting for the next sync.
+ */
+export async function takePendingSummaryAccountsTx(tx: Db): Promise<string[]> {
+  const ids = await pendingSummaryAccountsTx(tx);
+  if (ids.length > 0) await tx.run(sql`DELETE FROM settings WHERE key = ${PENDING_SUMMARIES_KEY}`);
+  return ids;
 }
 
 /** Switches capture off for the rest of this db transaction. Apply calls it: applying never re-emits (spec §7.2). */

@@ -17,9 +17,10 @@ import {
   setShareSetting,
 } from '../../src/index';
 import { applyChangeSet } from '../../src/sync/apply';
+import { captureConfigOf } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf, receivedItems } from '../../src/sync/net-worth/summaries';
-import type { ChangeSet } from '../../src/sync/types';
+import { type ChangeSet, SyncTransportError } from '../../src/sync/types';
 import { categoryOf, headOf, Household, type Device } from './household';
 
 /*
@@ -165,6 +166,28 @@ describe('paid with the other’s item (task 7)', () => {
       (await d.database.db.values(sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineage}`))[0];
     expect(await lineageOn(s.rina)).toEqual([s.andi.memberId, 'Rina Card ···· 1234', s.rina.memberId, s.cardItem]);
     expect(await lineageOn(s.andi)).toEqual([s.andi.memberId, 'Rina Card ···· 1234', s.rina.memberId, s.cardItem]);
+  });
+
+  it('the card’s summary still goes out when Rina’s app is closed between applying Andi’s purchase and sending it (task 11 e2e)', async () => {
+    const s = await sharing();
+    const lineage = await andiPaysFromRinaCard(s);
+    await s.home.settle([s.andi]);
+    // Rina's phone applies the purchase, and the group log's part of that sync fails: nothing is sent yet.
+    const [[groupRelay]] = (await s.rina.database.db.values<[string]>(sql`SELECT relay_book_id FROM shared_books WHERE book_id = ${s.groupBookId}`)) as [[string]];
+    const pull = s.rina.transport.pull.bind(s.rina.transport);
+    s.rina.transport.pull = async (bookId, since) => {
+      if (bookId === groupRelay) throw new SyncTransportError(503, 'offline');
+      return pull(bookId, since);
+    };
+    const result = await s.rina.engine.syncOnce(s.bookId);
+    expect(result.groupError).toBeDefined();
+    expect(await moneySide(s.rina, (await headOf(s.rina.database, lineage))!)).toEqual([s.card]);
+    s.rina.transport.pull = pull;
+    // The app is closed and opened again: whatever it held in memory is gone.
+    (captureConfigOf(s.rina.database) as { pendingSummaries?: Set<string> }).pendingSummaries?.clear();
+    await settle(s.home);
+    const cardSummary = (await receivedItems(s.andi.database, s.groupBookId)).find((item) => item.itemId === s.cardItem);
+    expect(cardSummary).toMatchObject({ balanceMinor: 300_000_00, householdMinor: 300_000_00 });
   });
 
   it('an edit that keeps the payment keeps Rina’s card; one back to Andi’s own account moves Rina’s side to Andi’s placeholder', async () => {

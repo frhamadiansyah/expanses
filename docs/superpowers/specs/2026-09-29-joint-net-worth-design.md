@@ -416,6 +416,15 @@ not a whole number reads as 0.
     only private line shows its own amount, and two summaries sent one after the other show, by their difference, what
     was recorded in between. The line's description, id and account never leave the phone.
 
+  *Correction (task 11, found end to end):*
+  - **A partner's change applied here.** Apply cannot send from inside itself, so the items a partner's purchase,
+    edit or void touched on this phone wait until the group log's part of the sync. They wait in the database (a local
+    `settings` row written in apply's own transaction, taken in the send's transaction), not in memory: an app closed
+    between the two — a reload, a killed phone — no longer loses them, which had left the partner's view of the owner's
+    card at its old balance until the period ended.
+  - **The review's line.** What a joint review sends with each item (its row of the tax report) is shown in full under
+    the review's heading, not as a row subtitle that the screen cuts off.
+
 ## 10. Tests
 
 Money and merge logic test-first; property tests with `fast-check`.

@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { Database, Tx } from '../../database';
 import { clearAuthorityTx, CLOSED_LINK_PREFIX, GROUP_LINK_NS, groupLogWorkspaceOf, isClosedLink, OWN_LINK_PENDING_KEY, viewActiveDevices, viewDevice } from '../authority';
-import { captureConfigOf, rowUpsertsTx, returnPendingSummaryAccounts, takePendingSummaryAccounts, withCapture, writeChangeSetsTx } from '../capture';
+import { captureConfigOf, rowUpsertsTx, takePendingSummaryAccountsTx, withCapture, writeChangeSetsTx } from '../capture';
 import { fromUtf8, hkdf, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../crypto';
 import type { SyncOnceResult } from '../engine';
 import { encodeInviteCode, inviteAad, INVITE_TTL_MS, inviteKeyOf, newInviteSecret, openInviteJson, parseInviteCode, sealInviteJson, type InviteKey } from '../invite';
@@ -530,18 +530,12 @@ export async function syncGroupAfter(host: GroupLogHost, bookId: string, result:
     const retried = await retryUnpostedTransfers(host.database, groupBookId);
     // §9: a device that has just (re)joined sends every item it shares, now that it reads the group's state; on every
     // sync, the items a peer's change touched here (apply sends nothing itself) and those whose period has ended.
-    const pending = takePendingSummaryAccounts(host.database);
-    let sent: number;
-    try {
+    // Taken in the send's own transaction: rolled back, the accounts apply changed wait for the next sync (wave 3 merge).
+    const sent = await host.database.transaction(async (tx) => {
+      const pending = await takePendingSummaryAccountsTx(tx);
       // Round 4: a send held while an outsider was still in the log goes out whole once they are out.
-      sent = await host.database.transaction(async (tx) =>
-        joined || (await takeHeldTx(tx, groupBookId!)) ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today),
-      );
-    } catch (error) {
-      // Rolled back: the accounts apply changed wait for the next sync rather than being forgotten (wave 3 merge).
-      returnPendingSummaryAccounts(host.database, pending);
-      throw error;
-    }
+      return joined || (await takeHeldTx(tx, groupBookId!)) ? sendSummariesTx(tx, 'all', today) : refreshSummariesTx(tx, pending, today);
+    });
     if (sent + retried > 0) synced = await host.syncOnce(groupBookId);
   }
   return synced;
