@@ -101,6 +101,8 @@ export interface JointReportView {
   complete: boolean;
   /** What it is still waiting for, one line each. */
   lines: string[];
+  /** Said by the Freeze button while anything is missing: a frozen report keeps only what it held then. */
+  freezeWarning: string | null;
 }
 
 const itemsWord = (count: number) => (count === 1 ? '1 item' : `${count} items`);
@@ -112,9 +114,12 @@ const itemsWord = (count: number) => (count === 1 ? '1 item' : `${count} items`)
  */
 export function jointReportView(
   joint: Pick<JointReport, 'members' | 'me' | 'waiting' | 'pending'> | null | undefined,
-  nameOf: (memberId: string) => string,
+  nameOfMember: (memberId: string) => string | undefined,
 ): JointReportView | null {
   if (!joint) return null;
+  // Until every member's name is known, nothing: never "Joint report · Someone and Someone".
+  if (joint.members.some((member) => !nameOfMember(member))) return null;
+  const nameOf = (memberId: string) => nameOfMember(memberId) ?? 'Someone';
   const lines: string[] = [];
   const others = joint.members.filter((member) => member !== joint.me);
   for (const member of [...others, joint.me]) {
@@ -125,5 +130,14 @@ export function jointReportView(
   const waitingBy = new Map<string, string[]>();
   for (const item of joint.waiting) waitingBy.set(item.owner, [...(waitingBy.get(item.owner) ?? []), item.name]);
   for (const [owner, names] of waitingBy) lines.push(`Waiting for ${nameOf(owner)}'s phone: ${names.join(', ')}`);
-  return { banner: `Joint report · ${namesOf(joint.members.map(nameOf))}`, complete: lines.length === 0, lines };
+  const missingOthers = joint.members.filter((m) => m !== joint.me && ((joint.pending[m] ?? 0) > 0 || waitingBy.has(m)));
+  const missingMine = (joint.pending[joint.me] ?? 0) > 0;
+  const whose = namesOf(missingOthers.map(nameOf));
+  const freezeWarning =
+    missingOthers.length > 0
+      ? `${whose}'s items ${missingMine ? 'and some of yours are' : 'are'} still missing — freezing now leaves them out`
+      : missingMine
+        ? 'Some of your items are still missing — freezing now leaves them out'
+        : null;
+  return { banner: `Joint report · ${namesOf(joint.members.map(nameOf))}`, complete: lines.length === 0, lines, freezeWarning };
 }

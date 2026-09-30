@@ -168,7 +168,22 @@ describe('jointReportView', () => {
   });
 
   it('names whose report it is, and is complete when nothing is missing', () => {
-    expect(jointReportView(base, nameOf)).toEqual({ banner: 'Joint report · Rina and Andi', complete: true, lines: [] });
+    expect(jointReportView(base, nameOf)).toEqual({ banner: 'Joint report · Rina and Andi', complete: true, lines: [], freezeWarning: null });
+  });
+
+  it('waits for the members’ names rather than drawing “Someone and Someone”', () => {
+    expect(jointReportView({ ...base, pending: { rina: 1 } }, () => undefined)).toBeNull();
+    expect(jointReportView(base, (id) => (id === 'rina' ? 'Rina' : undefined))).toBeNull();
+  });
+
+  it('warns before a freeze that leaves someone’s items out', () => {
+    expect(jointReportView({ ...base, me: 'rina', waiting: [{ owner: 'andi', name: 'House in Bintaro' }] }, nameOf)!.freezeWarning).toBe(
+      "Andi's items are still missing — freezing now leaves them out",
+    );
+    expect(jointReportView({ ...base, pending: { andi: 1 } }, nameOf)!.freezeWarning).toBe('Some of your items are still missing — freezing now leaves them out');
+    expect(jointReportView({ ...base, pending: { andi: 1, rina: 2 } }, nameOf)!.freezeWarning).toBe(
+      "Rina's items and some of yours are still missing — freezing now leaves them out",
+    );
   });
 
   it('Rina has an item not yet shared: says so, and the report is not complete', () => {

@@ -5,7 +5,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
-import { JOINT_LINE, pendingPrompt } from './net-worth-state';
+import { JOINT_LINE, jointTaxLine, pendingPrompt } from './net-worth-state';
 
 /*
  * Review your items (joint-net-worth spec §8.1): shown once a group is active and some item has no setting yet, and
@@ -72,7 +72,7 @@ export function NetWorthReview({
     return (
       <div data-testid="net-worth-review">
         <ErrorBox error={error} />
-        <InsetGroup wide header="Review your items" footer={JOINT_LINE}>
+        <InsetGroup wide header="Review your items" footer={`${JOINT_LINE} ${jointTaxLine(others)}`}>
           <InsetRow title={pendingPrompt(names, others)} chevron={false} />
         </InsetGroup>
         {button}
@@ -86,7 +86,7 @@ export function NetWorthReview({
       <InsetGroup wide>
         <InsetRow
           title="Review your items"
-          subtitle={mode === 'joint' ? JOINT_LINE : 'Each item shows its balance and one total of other use. Turn off what you keep to yourself.'}
+          subtitle={mode === 'joint' ? `${JOINT_LINE} ${jointTaxLine(others)}` : 'Each item shows its balance and one total of other use. Turn off what you keep to yourself.'}
           chevron={false}
         />
       </InsetGroup>

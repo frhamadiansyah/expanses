@@ -1,10 +1,29 @@
-import { type CoretaxInputs, isoDate, type ItemSummary, jointCoretaxInputs } from '@expanses/core';
+import { type CoretaxInputs, coretaxRows, expenseLines, isoDate, type ItemSummary, jointCoretaxInputs, utangRows } from '@expanses/core';
 import fc from 'fast-check';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { confirmReview, coretaxInputsFor, createAccount, draftReport, freezeReport, reportInputsFor, rowDifferences, saveAssetProfile, savedRows, setShareSetting, taxRowFor } from '../../src/index';
-import { itemIdOf, receivedItems } from '../../src/sync/net-worth/summaries';
-import { Household, type Device } from './household';
+import {
+  activeNetWorthGroup,
+  addHolding,
+  confirmReview,
+  coretaxInputsFor,
+  createAccount,
+  createCardAccount,
+  draftReport,
+  freezeReport,
+  postTransaction,
+  recordLoan,
+  reportInputsFor,
+  rowDifferences,
+  saveAssetProfile,
+  saveCardTerms,
+  savedRows,
+  saveLoanTerms,
+  setShareSetting,
+  taxRowFor,
+} from '../../src/index';
+import { itemIdOf, receivedItems, refreshSummariesTx, sendSummariesTx } from '../../src/sync/net-worth/summaries';
+import { categoryOf, Household, type Device } from './household';
 
 /*
  * The joint tax report (joint-net-worth spec §5.2 `tax`, §8.4; task 10). With one tax ID, each item's summary carries its
@@ -157,6 +176,86 @@ describe('joint tax report', () => {
     expect(await rowDifferences(rina.database, rina.ws, YEAR)).toEqual([]);
   });
 
+  it('a Change to one tax ID sends no tax row before this person’s own Share of it, and the rows after it', async () => {
+    const { home, rina, andi, bookId, groupBookId } = await sharing('separate');
+    const change = await rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] });
+    await settle(home);
+    await andi.engine.answerNetWorth(bookId, change, 'confirm');
+    await settle(home);
+    expect((await activeNetWorthGroup(rina.database))?.mode).toBe('joint');
+
+    // A Household spend on Rina's bank: the live item refreshes (allowed before the Share), with no tax row.
+    const groceries = await categoryOf(rina.database, bookId, 'Groceries');
+    await postTransaction(rina.database, rina.ws, {
+      occurredOn: today,
+      description: 'Household groceries',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: rina.bank, amountMinor: 7_000_000, currency: 'IDR' }),
+    });
+    await settle(home);
+    const bankOnAndi = async () => (await receivedItems(andi.database, groupBookId)).find((item) => item.name === 'Rina Bank')!;
+    expect((await bankOnAndi()).householdMinor).toBe(-7_000_000);
+    for (const item of await receivedItems(andi.database, groupBookId)) expect(item.tax).toBeNull();
+
+    // Her Share of the Change: now each item carries its row.
+    await confirmReview(rina.database, rina.ws, {});
+    await settle(home);
+    const rinas = (await receivedItems(andi.database, groupBookId)).filter((item) => item.owner === rina.memberId);
+    expect(rinas.length).toBeGreaterThan(0);
+    for (const item of rinas) expect(item.tax?.taxYear).toBe(YEAR);
+  });
+
+  it('the new year’s tax row goes out in January, even on a card whose cycle runs over the new year', async () => {
+    const { rina, groupBookId } = await sharing('joint');
+    const card = await createCardAccount(rina.database, rina.ws, { name: 'Rina Card', subtype: 'credit_card', currency: 'IDR', last4: '1234' });
+    await saveCardTerms(rina.database, rina.ws, { accountId: card.id, statementDay: 25, dueDay: 10, creditLimitMinor: 500_000_000, annualFeeMinor: null });
+    await setShareSetting(rina.database, card.id, 'total');
+    const itemId = await itemIdOf(groupBookId, card.id);
+    const sent = async () => {
+      const [row] = await rina.database.db.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
+      return JSON.parse(row![0]) as ItemSummary;
+    };
+    // Sent on 28 December: the cycle 26 Dec – 25 Jan, and the row of the year before.
+    await rina.database.transaction((tx) => sendSummariesTx(tx, [card.id], `${YEAR}-12-28`));
+    expect((await sent()).tax?.taxYear).toBe(YEAR - 1);
+    // 5 January: the cycle has not ended, but the year has.
+    await rina.database.transaction((tx) => refreshSummariesTx(tx, [], `${YEAR + 1}-01-05`));
+    expect((await sent()).tax?.taxYear).toBe(YEAR);
+    expect((await sent()).monthEnds.some((m) => m.month === `${YEAR}-12`)).toBe(true);
+  });
+
+  it('a foreign holding, a loan and a receivable travel as their owner’s rows: price and years equal, purchases stay home, the lender travels', async () => {
+    const { home, rina, andi, groupBookId } = await sharing('joint');
+    const ibkr = await createAccount(andi.database, andi.ws, { name: 'Interactive Brokers', kind: 'asset', subtype: 'fund', currency: 'USD' });
+    const { accountId: aapl } = await addHolding(andi.database, andi.ws, {
+      security: { ticker: 'AAPL', name: 'AAPL name', market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share', source: 'owner' },
+      broker: { accountId: ibkr.id },
+      buy: { occurredOn: `${YEAR}-03-08`, unitsMicro: 10_000_000, grossMinor: 182_500, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 15_800 } },
+    });
+    const kpr = await createAccount(andi.database, andi.ws, { name: 'KPR Bintaro', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 700_000_000, openedOn: `${YEAR}-01-01` });
+    await saveLoanTerms(andi.database, andi.ws, { accountId: kpr.id, lenderName: 'Bank BTN', originalMinor: 700_000_000, firstPaymentOn: `${YEAR}-01-25`, tenorMonths: 180, method: 'annuity', paymentDay: 25, rateBps: 900 });
+    const lent = await recordLoan(andi.database, andi.ws, { person: { name: 'Budi', direction: 'lent', currency: 'IDR' }, occurredOn: `${YEAR}-05-01`, amountMinor: 9_000_000, moneyAccountId: andi.bank });
+    for (const id of [aapl, kpr.id, lent.debtAccountId]) await setShareSetting(andi.database, id, 'total');
+    await settle(home);
+
+    const own = await coretaxInputsFor(andi.database, andi.ws, YEAR);
+    const { inputs } = jointCoretaxInputs(EMPTY, await receivedItems(rina.database, groupBookId), YEAR);
+
+    const ownHolding = own.holdings.find((row) => row.accountId === aapl)!;
+    expect(ownHolding.purchases).toHaveLength(1);
+    const { purchases: _purchases, ...shared } = ownHolding;
+    const aaplItem = await itemIdOf(groupBookId, aapl);
+    expect(inputs.holdings).toContainEqual({ ...shared, accountId: aaplItem });
+    expect(inputs.holdings.find((row) => row.accountId === aaplItem)).not.toHaveProperty('purchases');
+
+    const ownKpr = own.debts.find((row) => row.accountId === kpr.id)!;
+    expect(ownKpr.note).toBe('Bank BTN');
+    expect(inputs.debts).toContainEqual({ ...ownKpr, accountId: await itemIdOf(groupBookId, kpr.id) });
+
+    const ownLent = own.receivables.find((row) => row.accountId === lent.debtAccountId)!;
+    expect(ownLent.fields).toMatchObject({ name: 'Budi' });
+    expect(inputs.receivables).toContainEqual({ ...ownLent, accountId: await itemIdOf(groupBookId, lent.debtAccountId) });
+  });
+
   it('the report reader reads each member’s pending count from the group log', async () => {
     const { rina, andi, groupBookId } = await sharing('joint');
     await andi.database.db.run(sql`INSERT INTO nw_pending (book_id, member_id, count) VALUES (${groupBookId}, ${rina.memberId}, 1)`);
@@ -194,8 +293,28 @@ describe('jointCoretaxInputs (property)', () => {
       { ...summary('c', 2025, true, 2025), tax: { taxYear: 2025, part: { cash: 'x' } } },
     ] as unknown as (ItemSummary & { itemId: string })[];
     const { inputs, waiting } = jointCoretaxInputs(EMPTY, bad, 2025);
-    expect(waiting.map((w) => w.name)).toEqual(['Item a', 'Item b']);
+    expect(waiting.map((w) => w.name)).toEqual(['Item a', 'Item b', 'Item c']);
     expect(every(inputs)).toEqual([]);
+  });
+
+  it('a malformed row in a received slice sends its whole item to waiting, and the rows still render', () => {
+    const good = summary('good', 2025, true, 2025);
+    const withRow = (itemId: string, part: Partial<Record<keyof CoretaxInputs, unknown[]>>) =>
+      ({ ...summary(itemId, 2025, true, 2025), tax: { taxYear: 2025, part: { ...EMPTY, ...part } } }) as unknown as ItemSummary & { itemId: string };
+    const bad = [
+      withRow('cash-nan', { cash: [{ accountId: 'cash-nan', name: 'x', code: '0102', balanceMinor: 'lots', currency: 'IDR', fields: {} }] }),
+      withRow('cash-nofields', { cash: [{ accountId: 'cash-nofields', name: 'x', code: '0102', balanceMinor: 1, currency: 'IDR' }] }),
+      withRow('holding-noyears', { holdings: [{ accountId: 'h', name: 'x', code: '0399', currency: 'USD', priceMicro: 1, byYear: null, fields: {} }] }),
+      withRow('holding-badbucket', { holdings: [{ accountId: 'h', name: 'x', code: '0399', currency: 'USD', priceMicro: 1, byYear: { '2024': { unitsMicro: 'a' } }, fields: {} }] }),
+      withRow('estimated-nocost', { estimated: [{ accountId: 'e', name: 'x', code: '0509', currency: 'IDR', valueMinor: 1, fields: {} }] }),
+      withRow('debt-badnote', { debts: [{ accountId: 'd', name: 'x', code: '101', balanceMinor: 1, currency: 'IDR', note: 5 }] }),
+      withRow('row-null', { receivables: [null] }),
+    ];
+    const { inputs, waiting } = jointCoretaxInputs(EMPTY, [good, ...bad], 2025);
+    expect(waiting.map((w) => w.name)).toEqual(bad.map((item) => item.name));
+    expect(inputs.cash.map((row) => row.accountId)).toEqual(['good']);
+    const settings = { propertyBasis: 'cost' as const, repeatRows: 'year' as const, kmkRateBps: {} };
+    expect(() => [...coretaxRows(2025, inputs, settings), ...utangRows(2025, inputs, settings)]).not.toThrow();
   });
 
   it('every received item is either in the report (once) or waiting, and the own rows stay as they were', () => {

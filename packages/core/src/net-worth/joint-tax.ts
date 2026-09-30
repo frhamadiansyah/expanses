@@ -23,14 +23,49 @@ export interface JointWaiting {
   name: string;
 }
 
-/** Whether a received item's summary holds its row for `taxYear` and its value on 31 December of it. */
-export function yearEndReached(item: Pick<ItemSummary, 'tax' | 'monthEnds'>, taxYear: number): boolean {
-  // A received summary is another phone's JSON: a malformed one waits rather than breaking the report.
-  if (item.tax?.taxYear !== taxYear || !item.tax.part || typeof item.tax.part !== 'object') return false;
-  return Array.isArray(item.monthEnds) && item.monthEnds.some((m) => m?.month === `${taxYear}-12`);
+/*
+ * A received slice is another phone's JSON. Each row is checked for what the row builders read, so a malformed one sends
+ * its item to `waiting` rather than throwing in `coretaxRows` or drawing NaN on a row of the return.
+ */
+type Row = Record<string, unknown>;
+const isObject = (v: unknown): v is Row => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isString = (v: unknown): v is string => typeof v === 'string';
+const isFields = (v: unknown) => isObject(v) && Object.values(v).every(isString);
+const isBase = (r: Row) => isString(r.accountId) && isString(r.name) && isString(r.code) && isString(r.currency);
+const isBucket = (v: unknown) => isObject(v) && isNumber(v.unitsMicro) && isNumber(v.costMinor);
+
+const ROW_CHECKS: Record<keyof CoretaxInputs, (r: Row) => boolean> = {
+  cash: (r) => isBase(r) && isNumber(r.balanceMinor) && isFields(r.fields),
+  receivables: (r) => isBase(r) && isNumber(r.balanceMinor) && isFields(r.fields),
+  holdings: (r) =>
+    isBase(r) &&
+    isNumber(r.priceMicro) &&
+    isFields(r.fields) &&
+    isObject(r.byYear) &&
+    Object.values(r.byYear).every(isBucket) &&
+    // A sent slice never carries purchases; a note built from one would be another phone's private lines.
+    r.purchases === undefined,
+  estimated: (r) => isBase(r) && isNumber(r.costMinor) && isNumber(r.valueMinor) && isFields(r.fields),
+  debts: (r) => isBase(r) && isNumber(r.balanceMinor) && (r.note === null || isString(r.note)),
+};
+
+const SECTIONS = Object.keys(ROW_CHECKS) as (keyof CoretaxInputs)[];
+
+/** Whether a received slice is well formed: every section an array (or absent) of rows the builders can read. */
+function wellFormed(part: unknown): part is CoretaxRowPart {
+  if (!isObject(part)) return false;
+  return SECTIONS.every((section) => {
+    const rows = part[section];
+    return rows === undefined || (Array.isArray(rows) && rows.every((row) => isObject(row) && ROW_CHECKS[section](row)));
+  });
 }
 
-const rowsOf = <T>(rows: T[] | undefined): T[] => (Array.isArray(rows) ? rows : []);
+/** Whether a received item's summary holds its row for `taxYear` and its value on 31 December of it. */
+export function yearEndReached(item: Pick<ItemSummary, 'tax' | 'monthEnds'>, taxYear: number): boolean {
+  if (!isObject(item.tax) || item.tax.taxYear !== taxYear || !wellFormed(item.tax.part)) return false;
+  return Array.isArray(item.monthEnds) && item.monthEnds.some((m) => isObject(m) && m.month === `${taxYear}-12`);
+}
 
 /**
  * This phone's own inputs plus every received item's slice for `taxYear`. An item with no slice for that year, or whose
@@ -56,11 +91,11 @@ export function jointCoretaxInputs(
       continue;
     }
     const part = item.tax!.part;
-    inputs.cash.push(...rowsOf(part.cash));
-    inputs.holdings.push(...rowsOf(part.holdings));
-    inputs.estimated.push(...rowsOf(part.estimated));
-    inputs.receivables.push(...rowsOf(part.receivables));
-    inputs.debts.push(...rowsOf(part.debts));
+    inputs.cash.push(...(part.cash ?? []));
+    inputs.holdings.push(...(part.holdings ?? []));
+    inputs.estimated.push(...(part.estimated ?? []));
+    inputs.receivables.push(...(part.receivables ?? []));
+    inputs.debts.push(...(part.debts ?? []));
   }
   return { inputs, waiting };
 }

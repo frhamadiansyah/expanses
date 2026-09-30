@@ -30,8 +30,10 @@ export function CoretaxPage() {
   const joint = useJointReport(taxYear).data ?? null;
   const sharedBooks = useSharedBooks();
   const members = sharedBooks.data?.find((book) => book.bookId === joint?.workspaceBookId)?.members ?? [];
-  const nameOf = (memberId: string) => members.find((member) => member.memberId === memberId)?.name ?? 'Someone';
-  const jointView = jointReportView(joint, nameOf);
+  const knownName = (memberId: string) => members.find((member) => member.memberId === memberId)?.name;
+  const nameOf = (memberId: string) => knownName(memberId) ?? 'Someone';
+  // Null until the names are read too: the banner never says "Someone and Someone".
+  const jointView = jointReportView(joint, knownName);
   const partners = joint ? joint.members.filter((member) => member !== joint.me).map(nameOf) : [];
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -53,7 +55,7 @@ export function CoretaxPage() {
   const warnings = links.filter((link) => link.issue.level === 'warning');
   // Against the balance sheet on 31 December — unless a currency held then has no rate, which is named instead.
   // With one tax ID the report holds both people's items and the balance sheet only this phone's, so none is made.
-  const { report: reportTotals, check, missing } = reportCheck(harta, utang, sheetInputs.data, { joint: joint !== null });
+  const { report: reportTotals, check, missing, joint: jointTotals } = reportCheck(harta, utang, sheetInputs.data, { joint: joint !== null });
 
   async function start(
     basis?: 'cost' | 'estimate' | 'njop' | 'appraisal',
@@ -147,7 +149,7 @@ export function CoretaxPage() {
                 Harta <Money minor={reportTotals.hartaMinor} currency={ws.baseCurrency} /> · Utang{' '}
                 <Money minor={reportTotals.utangMinor} currency={ws.baseCurrency} />. The report says{' '}
                 <Money minor={reportTotals.reportNetMinor} currency={ws.baseCurrency} />
-                {joint !== null ? (
+                {jointTotals ? (
                   <span data-testid="reconciliation-joint">. It holds both of your items, and your balance sheet only yours, so the two are not compared.</span>
                 ) : check === null ? (
                   <span data-testid="reconciliation-missing" className="text-[var(--ph-warn)]">
@@ -259,7 +261,7 @@ export function CoretaxPage() {
           <IncomeSection taxYear={taxYear} />
           <BusinessSection taxYear={taxYear} />
 
-          <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} npwp={report.data.npwp} />
+          <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} npwp={report.data.npwp} warning={jointView?.freezeWarning ?? null} />
 
           {sections.map((section) => (
             <SectionTable key={section.section} section={section} carry={carry} />

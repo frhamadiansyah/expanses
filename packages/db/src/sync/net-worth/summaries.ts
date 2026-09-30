@@ -14,7 +14,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { BALANCE_SUBTYPES } from '../../repos/accounts';
-import { activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
+import { type ActiveNetWorthGroup, activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
 import { taxRowFor } from '../../repos/tax-inputs';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
@@ -109,8 +109,18 @@ function readView(tx: Db): Database {
  *   else is other use, summed into one figure. A valued asset's value change beyond its ledger movements (a new price,
  *   a new estimate) is other use too, so `openingMinor + householdMinor + otherUseMinor = balanceMinor` always holds.
  * - `monthEnds`: the value at each of the last 24 month-ends (`lastMonthEnds`), for the chart and year-end.
+ * - `tax`: only when `taxGroup` is given — the active group, passed by the sender only once this person has Shared its
+ *   active proposal (allowance `all`) — and it files with one tax ID from this workspace (`itemTaxOf`). Else null.
  */
-export async function computeItemSummary(tx: Db, ws: WorkspaceContext, accountId: string, owner: string, workspaceBookId: string, today: string): Promise<ItemSummary> {
+export async function computeItemSummary(
+  tx: Db,
+  ws: WorkspaceContext,
+  accountId: string,
+  owner: string,
+  workspaceBookId: string,
+  today: string,
+  taxGroup: Pick<ActiveNetWorthGroup, 'groupBookId' | 'workspaceBookId' | 'mode'> | null = null,
+): Promise<ItemSummary> {
   const account = await accountOf(tx, ws.workspaceId, accountId);
   if (!account || (account.kind !== 'asset' && account.kind !== 'liability')) throw new Error(`summaries: ${accountId} is not an item`);
   const kind = account.kind;
@@ -167,20 +177,26 @@ export async function computeItemSummary(tx: Db, ws: WorkspaceContext, accountId
     // Anything the ledger lines do not explain (a valued asset's new price) is other use, so the parts add up.
     otherUseMinor: split.otherUseMinor + (balanceMinor - split.closingMinor),
     monthEnds,
-    tax: await itemTaxOf(tx, ws, accountId, workspaceBookId, today),
+    tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today) : null,
   };
 }
 
 /**
- * The item's `tax` (§5.2, §8.4; task 10): only while the one active group this person is in files with one tax ID and
- * lives in this workspace, the item's slice of `coretaxInputsFor` for the latest finished tax year (today's year − 1).
+ * The item's `tax` (§5.2, §8.4; task 10): only while the group (the one active group this person is in, already read by
+ * the sender, and already Shared) files with one tax ID and lives in this workspace, the item's slice of `coretaxInputsFor` for the latest finished tax year (today's year − 1).
  * Each row is known by the item's id instead of the local account id, and a foreign holding's `purchases` (each buy, a
  * private line's amount and date) stay behind: the report's note under that row is its owner's alone. An item that files
  * nothing that year carries an empty slice, so it is never mistaken for one still waiting.
  */
-async function itemTaxOf(tx: Db, ws: WorkspaceContext, accountId: string, workspaceBookId: string, today: string): Promise<ItemTax> {
-  const group = await activeNetWorthGroup(tx);
-  if (!group || group.mode !== 'joint' || group.workspaceBookId !== workspaceBookId) return null;
+async function itemTaxOf(
+  tx: Db,
+  ws: WorkspaceContext,
+  accountId: string,
+  group: Pick<ActiveNetWorthGroup, 'groupBookId' | 'workspaceBookId' | 'mode'>,
+  workspaceBookId: string,
+  today: string,
+): Promise<ItemTax> {
+  if (group.mode !== 'joint' || group.workspaceBookId !== workspaceBookId) return null;
   const taxYear = Number(today.slice(0, 4)) - 1;
   const itemId = await itemIdOf(group.groupBookId, accountId);
   const found = await taxRowFor(readView(tx), ws, accountId, taxYear);
@@ -242,7 +258,9 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
     const shared = (await isItem(tx, account)) && (await shareSettingOf(tx, accountId)) === 'total';
     if (shared && allowance === 'none') continue; // a shared item waits for the Share; removals below always go
     if (shared) {
-      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today);
+      // The tax row only after this person's Share of the active proposal (task 10 review round 1): a Change to one tax
+      // ID must not send it on a mere refresh (`live`) before the review has said what it now carries.
+      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null);
       const hash = summaryHash(summary);
       const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
       const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
@@ -289,7 +307,7 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
 /**
  * What the engine sends after a sync (task 6 review round 1): the items apply changed (a peer's edit or void of a
  * Household line on one of this device's accounts, `pending`), and every item whose summary is for a period that has
- * ended (§5.2: the period is today's cycle or month). The hash skip keeps an unchanged one from going out.
+ * ended (§5.2: the period is today's cycle or month) or was made in an earlier year (its tax row is last year's). The hash skip keeps an unchanged one from going out.
  */
 export async function refreshSummariesTx(tx: Db, pending: readonly string[], today: string): Promise<number> {
   const ids = new Set(pending);
@@ -305,8 +323,11 @@ export async function refreshSummariesTx(tx: Db, pending: readonly string[], tod
   }
   for (const [accountId, json] of own) {
     try {
-      const summary = JSON.parse(json) as Pick<ItemSummary, 'period'> | null;
+      const summary = JSON.parse(json) as Pick<ItemSummary, 'period' | 'asOf'> | null;
+      // A period that has ended, or a new year begun: a card's cycle can run over 1 January, and the new year's tax row
+      // and December month-end must not wait for the cycle to close (task 10 review round 1).
       if (!summary?.period || summary.period.end < today) ids.add(accountId);
+      else if (typeof summary.asOf !== 'string' || summary.asOf.slice(0, 4) !== today.slice(0, 4)) ids.add(accountId);
     } catch {
       ids.add(accountId);
     }

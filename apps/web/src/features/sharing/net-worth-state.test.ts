@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
+import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -142,5 +142,13 @@ describe('a Change (wave 3 round 2: never adds anyone)', () => {
   it('says the refusal in plain words', () => {
     const said = sayNetWorthError(new NetWorthError('adds-members', 'x')) as Error;
     expect(said.message).toBe(ADD_SOMEONE_LINE);
+  });
+});
+
+describe('jointTaxLine', () => {
+  it('says, on a joint review, that each item’s tax details go to the partner for the joint return', () => {
+    expect(jointTaxLine(['Andi'])).toBe(
+      'For the joint tax return, each item also goes to Andi with its row of your tax report: its code, its figures and the details its table asks for, such as an account number.',
+    );
   });
 });

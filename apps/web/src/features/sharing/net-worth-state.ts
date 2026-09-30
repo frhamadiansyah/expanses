@@ -92,6 +92,14 @@ export function canInvite(chosen: readonly string[], mode: FilingMode | null): b
   return mode === 'joint' ? chosen.length === 1 : chosen.length >= 1;
 }
 
+/**
+ * The joint review's line on what the tax report takes along (task 10 review round 1): with one tax ID each shared item
+ * carries its row of the owner's tax report to the partner, details and all, because the joint return needs them.
+ */
+export function jointTaxLine(others: readonly string[]): string {
+  return `For the joint tax return, each item also goes to ${namesOf(others) || 'the others'} with its row of your tax report: its code, its figures and the details its table asks for, such as an account number.`;
+}
+
 /** The D8 prompt after a switch to one tax ID: "Household now files with one tax ID. Share Business Mandiri with Andi?" */
 export function pendingPrompt(itemNames: readonly string[], others: readonly string[]): string {
   return `Household now files with one tax ID. Share ${namesOf(itemNames)} with ${namesOf(others)}?`;
