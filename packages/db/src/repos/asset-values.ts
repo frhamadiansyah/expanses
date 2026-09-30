@@ -20,7 +20,7 @@ import {
   type ValuationRow,
   sumToBase,
 } from '@expanses/core';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
@@ -111,7 +111,8 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   const tradesByAccount = new Map<string, typeof trades>();
   for (const trade of trades) tradesByAccount.set(trade.accountId, [...(tradesByAccount.get(trade.accountId) ?? []), trade]);
   const priceRows = await database.db.select().from(prices).where(eq(prices.workspaceId, ws.workspaceId));
-  const valuationRows = await database.db.select().from(valuations).where(eq(valuations.workspaceId, ws.workspaceId));
+  // In the order they were saved (rowid), so two saved in the same millisecond still keep it.
+  const valuationRows = await database.db.select().from(valuations).where(eq(valuations.workspaceId, ws.workspaceId)).orderBy(sql`rowid`);
   // A holding with a security is valued from the security's prices alone (spec §3.1); the rest from its own.
   const securityOf = new Map((await listHoldingLinks(database, ws)).filter((link) => link.securityId).map((link) => [link.accountId, link.securityId!]));
   const securityPriceRows = securityOf.size > 0 ? await allSecurityPrices(database, ws) : [];
@@ -127,7 +128,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     // Oldest saved first, so of two values for the same day the one saved last is the one that counts.
     const accountValuations: ValuationRow[] = valuationRows
       .filter((row) => row.accountId === account.id)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
     const value = assetValueAt(
       {
