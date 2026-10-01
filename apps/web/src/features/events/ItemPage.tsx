@@ -102,7 +102,7 @@ export function ItemPage() {
               header="The item"
               footer={
                 <>
-                  <b className="font-semibold">Name</b> is what the thing is. <b className="font-semibold">Note</b> is anything you want to remember about it.{' '}
+                  <b className="font-semibold">Name</b> is what the thing is. <b className="font-semibold">Note</b> is anything to remember about it.{' '}
                   <b className="font-semibold">Estimate</b> is how many × price each, so 6 check-ups × Rp500.000 reads as Rp3.000.000.
                 </>
               }
