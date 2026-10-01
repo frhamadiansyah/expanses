@@ -17,6 +17,10 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		95E1A0012FE9000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 95E1A0002FE9000000000000 /* PrivacyInfo.xcprivacy */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		CA5701012FE9A10100000001 /* CapturePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702012FE9A10100000001 /* CapturePlugin.swift */; };
+		CA5701022FE9A10100000002 /* TextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702022FE9A10100000002 /* TextRecognizer.swift */; };
+		CA5701032FE9A10100000003 /* HoldingArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702032FE9A10100000003 /* HoldingArea.swift */; };
+		CA5701042FE9A10100000004 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702042FE9A10100000004 /* MainViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +36,11 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		CA5702012FE9A10100000001 /* CapturePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePlugin.swift; sourceTree = "<group>"; };
+		CA5702022FE9A10100000002 /* TextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRecognizer.swift; sourceTree = "<group>"; };
+		CA5702032FE9A10100000003 /* HoldingArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldingArea.swift; sourceTree = "<group>"; };
+		CA5702042FE9A10100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		CA5702052FE9A10100000005 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,15 +78,28 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				CA5703012FE9A10100000001 /* Capture */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				95E1A0002FE9000000000000 /* PrivacyInfo.xcprivacy */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				CA5702052FE9A10100000005 /* App.entitlements */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		CA5703012FE9A10100000001 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				CA5702012FE9A10100000001 /* CapturePlugin.swift */,
+				CA5702022FE9A10100000002 /* TextRecognizer.swift */,
+				CA5702032FE9A10100000003 /* HoldingArea.swift */,
+				CA5702042FE9A10100000004 /* MainViewController.swift */,
+			);
+			path = Capture;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -116,6 +138,11 @@
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -164,6 +191,10 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				CA5701042FE9A10100000004 /* MainViewController.swift in Sources */,
+				CA5701012FE9A10100000001 /* CapturePlugin.swift in Sources */,
+				CA5701022FE9A10100000002 /* TextRecognizer.swift in Sources */,
+				CA5701032FE9A10100000003 /* HoldingArea.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,6 +336,7 @@
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = JPMPS53HUZ;
 				CURRENT_PROJECT_VERSION = 1;
@@ -328,6 +360,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = JPMPS53HUZ;
 				CURRENT_PROJECT_VERSION = 1;
