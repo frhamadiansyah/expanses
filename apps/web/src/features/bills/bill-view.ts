@@ -1,5 +1,6 @@
-import { billPill, type BillTone, minorToMajorString, monthName } from '@expanses/core';
+import { billPill, type BillTone, dayMonth, minorToMajorString, monthName } from '@expanses/core';
 import type { BookMoney, MonthlyBill } from '@expanses/db';
+import type { Tone } from '../../ui/native/row';
 import type { UnconvertedRow } from '../workspaces/Unconverted';
 
 export const isSettled = (bill: MonthlyBill) => bill.state === 'paid' || bill.state === 'skipped';
@@ -11,19 +12,36 @@ export const amountOf = (bill: MonthlyBill) => (bill.state === 'paid' ? (bill.pa
 export const variesWords = (n: number) => (n === 1 ? '1 amount varies' : `${n} amounts vary`);
 
 export interface BillSection {
-  key: 'overdue' | 'dueSoon' | 'later' | 'settled';
+  key: 'overdue' | 'dueSoon' | 'later';
   title: string;
   rows: MonthlyBill[];
 }
 
+/** The bills still to deal with, most urgent first. What is paid or skipped is folded away by `settledOf`. */
 export function sectionsOf(rows: readonly MonthlyBill[]): BillSection[] {
-  const settled = rows.filter(isSettled);
   return [
     { key: 'overdue' as const, title: 'Overdue', rows: rows.filter((b) => b.state === 'overdue') },
     { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter((b) => b.state === 'dueSoon') },
     { key: 'later' as const, title: 'Later', rows: rows.filter((b) => b.state === 'open' || b.state === 'upcoming') },
-    { key: 'settled' as const, title: `Paid and skipped · ${settled.length}`, rows: settled },
   ].filter((section) => section.rows.length > 0);
+}
+
+export interface SettledFold {
+  /** "Paid in October", or "Skipped in October", or "Paid and skipped in October" when it holds both. */
+  title: string;
+  count: number;
+  /** What the paid ones came to; a skip costs nothing. */
+  paidMinor: number;
+  rows: MonthlyBill[];
+}
+
+/** The month's paid and skipped bills, folded into one row; null while there are none. */
+export function settledOf(rows: readonly MonthlyBill[], today: string): SettledFold | null {
+  const settled = rows.filter(isSettled);
+  if (settled.length === 0) return null;
+  const paid = settled.filter((b) => b.state === 'paid');
+  const what = paid.length === settled.length ? 'Paid' : paid.length === 0 ? 'Skipped' : 'Paid and skipped';
+  return { title: `${what} in ${monthName(today.slice(0, 7), 'long')}`, count: settled.length, paidMinor: sum(paid), rows: settled };
 }
 
 const sum = (rows: readonly MonthlyBill[]) => rows.reduce((total, b) => total + amountOf(b), 0);
@@ -34,7 +52,8 @@ export interface BillSummary {
   totalMinor: number;
   approximate: boolean;
   variesText: string | null;
-  lines: { key: 'overdue' | 'dueSoon' | 'later'; label: string; minor: number; approximate: boolean }[];
+  /** What the total is made of, for the bar and its key: only the parts with money in them. */
+  parts: { key: 'overdue' | 'dueSoon' | 'later'; label: string; minor: number; approximate: boolean }[];
   allSettled: boolean;
 }
 
@@ -44,14 +63,14 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
   const groups = [
     { key: 'overdue' as const, label: 'Overdue', rows: open.filter((b) => b.state === 'overdue') },
     { key: 'dueSoon' as const, label: 'Due soon', rows: open.filter((b) => b.state === 'dueSoon') },
-    { key: 'later' as const, label: 'Later this month', rows: open.filter((b) => b.state === 'open' || b.state === 'upcoming') },
+    { key: 'later' as const, label: 'Later', rows: open.filter((b) => b.state === 'open' || b.state === 'upcoming') },
   ];
   return {
     monthLabel: monthName(today.slice(0, 7), 'long'),
     totalMinor: sum(open),
     approximate: varying > 0,
     variesText: varying > 0 ? variesWords(varying) : null,
-    lines: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
+    parts: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
     allSettled: open.length === 0,
   };
 }
@@ -112,6 +131,29 @@ export const PILL_CLASS: Record<BillTone, string> = {
 export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; className: string } {
   const pill = billPill({ state: bill.state, days: bill.days }, bill.window, bill.paidOn);
   return { text: pill.text, className: PILL_CLASS[pill.tone] };
+}
+
+/**
+ * The small line under a row's amount: how late, how soon, or the day it is due — the same states the pill names,
+ * in fewer words. Late in alarm, soon in warning, the rest quiet.
+ */
+export function statusOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; tone: Tone } {
+  const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  switch (bill.state) {
+    case 'overdue':
+      return { text: `${days(bill.days)} late`, tone: 'alarm' };
+    case 'dueSoon':
+      return { text: bill.days === 0 ? 'due today' : `in ${days(bill.days)}`, tone: 'warn' };
+    case 'open':
+      return { text: dayMonth(bill.window.payBy), tone: 'ink-3' };
+    case 'upcoming':
+      // A bill that comes out before it is due says when it comes out; one due the day it comes out, just the day.
+      return { text: bill.window.opensOn === bill.window.payBy ? dayMonth(bill.window.payBy) : `Opens ${dayMonth(bill.window.opensOn)}`, tone: 'ink-3' };
+    case 'paid':
+      return { text: bill.paidOn ? `Paid ${dayMonth(bill.paidOn)}` : 'Paid', tone: 'tint' };
+    case 'skipped':
+      return { text: 'Skipped', tone: 'ink-3' };
+  }
 }
 
 /**

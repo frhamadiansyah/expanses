@@ -5,9 +5,9 @@ import { Check, MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { isSettled, pillOf, sublineOf } from './bill-view';
+import { isSettled, statusOf, sublineOf } from './bill-view';
 import { SwipeRow } from '../../ui/SwipeRow';
-import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native';
+import { ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
 
 /** A line in the ⋯ menu, drawn as the kit's own overflow menu draws one. */
 const MENU_ITEM = 'ph-focus-inset block w-full px-[13px] py-[11px] text-left text-[15px] leading-[20px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -43,7 +43,7 @@ export function BillRow({
 }) {
   const settled = isSettled(bill);
   const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
-  const pill = pillOf(bill);
+  const status = statusOf(bill);
   const navigate = useNavigate();
   const seeBill = () => void navigate({ to: '/bills/$billId', params: { billId: bill.id } });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -117,7 +117,7 @@ export function BillRow({
               <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
               <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{sublineOf(bill, accountName, today)}</span>
             </span>
-            <span className="tabular flex shrink-0 flex-col items-end gap-[3px] text-[15px] leading-[20px] text-[var(--ph-ink)]">
+            <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
               {bill.state === 'paid' ? (
                 <Money minor={bill.paidMinor ?? 0} currency={currency} />
               ) : bill.amountMinor !== null ? (
@@ -129,7 +129,10 @@ export function BillRow({
               ) : (
                 <span className="text-[var(--ph-ink-3)]">Amount varies</span>
               )}
-              <span className={cx('rounded-full px-[7px] py-px text-[11px] leading-[15px] font-semibold', pill.className)}>{pill.text}</span>
+              {/* How late, how soon or which day, in a small line under the amount: late in alarm, soon in warning. */}
+              <span data-testid="bill-status" className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass(status.tone))}>
+                {status.text}
+              </span>
             </span>
             {!selecting && (
               <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden">

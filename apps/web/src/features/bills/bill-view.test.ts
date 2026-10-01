@@ -1,7 +1,7 @@
 import { billWindow, parseMajor } from '@expanses/core';
 import type { MonthlyBill } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { amountInput, owedNow, paidText, sectionsOf, skippedText, sublineOf, summaryOf } from './bill-view';
+import { amountInput, owedNow, paidText, sectionsOf, settledOf, skippedText, statusOf, sublineOf, summaryOf } from './bill-view';
 
 const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   id: over.name ?? 'x',
@@ -35,13 +35,37 @@ const rows = [
 ];
 
 describe('the Recurring list', () => {
-  it('groups by urgency and counts what is settled', () => {
+  it('groups what is still to pay by urgency', () => {
     expect(sectionsOf(rows).map((s) => [s.title, s.rows.map((r) => r.name)])).toEqual([
       ['Overdue', ['Biznet']],
       ['Due soon', ['Tuition']],
       ['Later', ['Telkomsel', 'PLN']],
-      ['Paid and skipped · 2', ['Rent', 'Gym']],
     ]);
+  });
+
+  it('folds what is paid and skipped into one row, counting what was paid', () => {
+    expect(settledOf(rows, '2026-09-08')).toEqual({
+      title: 'Paid and skipped in September',
+      count: 2,
+      paidMinor: 6_000_000,
+      rows: [rows[4], rows[5]],
+    });
+    expect(settledOf([rows[4]!], '2026-09-08')).toMatchObject({ title: 'Paid in September', count: 1 });
+    expect(settledOf([rows[5]!], '2026-09-08')).toMatchObject({ title: 'Skipped in September', paidMinor: 0 });
+    expect(settledOf(rows.slice(0, 4), '2026-09-08')).toBeNull();
+  });
+
+  it('says under each amount how late, how soon, or which day', () => {
+    expect(statusOf({ ...rows[0]!, days: 3 })).toEqual({ text: '3 days late', tone: 'alarm' });
+    expect(statusOf({ ...rows[0]!, days: 1 })).toEqual({ text: '1 day late', tone: 'alarm' });
+    expect(statusOf({ ...rows[1]!, days: 2 })).toEqual({ text: 'in 2 days', tone: 'warn' });
+    expect(statusOf({ ...rows[1]!, days: 0 })).toEqual({ text: 'due today', tone: 'warn' });
+    const later = billWindow('2026-09', 10, 20);
+    expect(statusOf({ ...rows[2]!, window: later })).toEqual({ text: '20 Sep', tone: 'ink-3' });
+    expect(statusOf({ ...rows[3]!, window: later })).toEqual({ text: 'Opens 10 Sep', tone: 'ink-3' });
+    expect(statusOf({ ...rows[3]!, window: billWindow('2026-09', 20, null) })).toEqual({ text: '20 Sep', tone: 'ink-3' });
+    expect(statusOf(rows[4]!)).toEqual({ text: 'Paid 1 Sep', tone: 'tint' });
+    expect(statusOf(rows[5]!)).toEqual({ text: 'Skipped', tone: 'ink-3' });
   });
 
   it('adds up what is still to pay, saying when estimates are in it', () => {
@@ -50,14 +74,14 @@ describe('the Recurring list', () => {
       totalMinor: 450_000 + 3_500_000 + 290_000 + 780_000,
       approximate: true,
       variesText: '2 amounts vary',
-      lines: [
+      parts: [
         { key: 'overdue', label: 'Overdue', minor: 450_000, approximate: false },
         { key: 'dueSoon', label: 'Due soon', minor: 3_500_000, approximate: false },
-        { key: 'later', label: 'Later this month', minor: 1_070_000, approximate: true },
+        { key: 'later', label: 'Later', minor: 1_070_000, approximate: true },
       ],
       allSettled: false,
     });
-    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, lines: [], allSettled: true });
+    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, parts: [], allSettled: true });
   });
 
   it('owed now is what is out and unpaid', () => {

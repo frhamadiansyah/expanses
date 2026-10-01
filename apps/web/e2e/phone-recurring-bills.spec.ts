@@ -49,7 +49,8 @@ test('swiping a bill right opens its payment, and recording it settles the month
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   // Not any status: the install hint and the backup banner are statuses too (see recurring-bills.spec.ts's `toast`).
   await expect(page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) })).toContainText('Paid Phone');
-  await expect(row(page, 'Phone')).toContainText('✓ Paid');
+  await expect(row(page, 'Phone')).toHaveCount(0);
+  await expect(page.getByTestId('bills-settled')).toContainText('Paid in');
 });
 
 test('swiping a bill left reveals Skip', async ({ page }) => {
@@ -60,9 +61,12 @@ test('swiping a bill left reveals Skip', async ({ page }) => {
   await expect(skip).toBeVisible();
   expect((await skip.boundingBox())!.height).toBeGreaterThanOrEqual(TAP);
   await skip.click();
-  await expect(row(page, 'Gym')).toContainText('Skipped');
+  await expect(row(page, 'Gym')).toHaveCount(0);
+  await page.getByTestId('bills-settled').click();
+  const settled = page.getByRole('dialog', { name: 'Skipped in ' + new Date().toLocaleString('en-GB', { month: 'long' }) });
+  await expect(settled.getByTestId('bill-row').filter({ hasText: 'Gym' })).toContainText('Skipped');
   // A settled row does not swipe open again.
-  await swipe(page, row(page, 'Gym'), -120);
+  await swipe(page, settled.getByTestId('bill-row').filter({ hasText: 'Gym' }), -120);
   await expect(page.getByRole('button', { name: 'Skip Gym' })).toHaveCount(0);
 });
 
