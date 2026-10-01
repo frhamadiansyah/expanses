@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
+import { addCap, budgetTab, openCapOf, openDrawer, openNewCap } from './budget';
 import { openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { expectNeed, markNeed, openCategory } from './categories';
@@ -52,14 +53,9 @@ async function addFromTemplate(page: Page, template: string, amount?: string) {
   await goalCard(page, template);
 }
 
-/** Caps a category in a unit, the amount typed a key at a time, and waits for the line to say it. */
-async function cap(page: Page, option: string, line: string, every: string, figure: string, currency = 'IDR') {
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: option });
-  await page.getByLabel('Every').selectOption(every);
-  const words: Record<string, string> = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' };
-  await type(page.getByLabel(`${words[every]} amount (${currency})`), figure);
-  await page.getByRole('button', { name: 'Set budget' }).click();
-  await expect(page.getByTestId(`line-${line}`).getByText(/^Cap/).first()).toBeVisible();
+/** Caps a category in a unit, the amount typed a key at a time, and waits for the sheet to close on it. */
+async function cap(page: Page, option: string, every: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly', figure: string) {
+  await addCap(page, { option, every, amount: figure, typed: true });
 }
 
 test('row 2 — Food and beverage lifestyle: essential counts groceries only', async ({ page }) => {
@@ -71,29 +67,35 @@ test('row 2 — Food and beverage lifestyle: essential counts groceries only', a
   await expect(emergencyCard(page)).toContainText('8,5 months');
 });
 
-test('row 7 — a weekly line overridden for one month keeps its note, and next month is the week again', async ({ page }) => {
+test('row 7 — a weekly line overridden for one month keeps its unit, and next month is the week again', async ({ page }) => {
   await page.goto('/budget');
-  await cap(page, '— Groceries', 'Groceries', 'weekly', '500000');
-  const line = page.getByTestId('line-Groceries');
-  await expect(line).toContainText('2.166.667');
+  await cap(page, '— Groceries', 'weekly', '500000');
+  await budgetTab(page, 'Plan');
+  await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
 
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: '— Groceries' });
-  await page.getByLabel('Just this month').check();
+  let sheet = await openCapOf(page, '— Groceries');
+  await sheet.getByLabel('Just this month').check();
   // An override is a month's figure: no Every, and the amount is monthly.
-  await expect(page.getByLabel('Every')).toHaveCount(0);
-  await type(page.getByLabel('Monthly amount (IDR)'), '3000000');
-  await page.getByRole('button', { name: 'Set budget' }).click();
-  await expect(line).toContainText('just this month');
-  await expect(line).toContainText('3.000.000');
-  await expect(line).toContainText('500.000 a week');
+  await expect(sheet.getByLabel('Every')).toHaveCount(0);
+  await type(sheet.getByLabel('Cap', { exact: true }), '3000000');
+  await sheet.getByRole('button', { name: 'Save budget' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByTestId('caps-total')).toContainText('3.000.000');
+
+  // The month's own figure, and the week it was planned in still behind it.
+  sheet = await openCapOf(page, '— Groceries');
+  await expect(sheet.getByLabel('Just this month')).toBeChecked();
+  await expect(sheet.getByLabel('Cap', { exact: true })).toHaveValue('3.000.000');
+  await sheet.getByLabel('Just this month').uncheck();
+  await expect(sheet.getByLabel('Cap', { exact: true })).toHaveValue('500.000');
+  await expect(sheet.getByLabel('Every')).toHaveValue('weekly');
+  await sheet.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Next month' }).click();
   await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
-  await expect(line).toContainText('2.166.667');
-  await expect(line).not.toContainText('just this month');
+  sheet = await openCapOf(page, '— Groceries');
+  await expect(sheet.getByLabel('Just this month')).not.toBeChecked();
 });
-
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   // A phone reaches the workspaces from Cashflow's ⋯.
   await page.goto('/transactions');
@@ -108,17 +110,20 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   await expect(sheet).toHaveCount(0);
 
   await page.goto('/budget');
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: '— Groceries' });
-  await page.getByLabel('Every').selectOption('weekly');
-  const amount = page.getByLabel('Weekly amount (USD)');
-  await type(amount, '10,00');
+  const capSheet = await openNewCap(page);
+  await capSheet.getByLabel('Category', { exact: true }).selectOption({ label: '— Groceries' });
+  await capSheet.getByLabel('Every').selectOption('weekly');
+  await type(capSheet.getByLabel('Cap', { exact: true }), '10,00');
   // 1.000 cents × 52 ÷ 12 = 4.333,3 → 4.333 cents.
-  await expect(page.locator('body')).toContainText('43,33');
-  await page.getByRole('button', { name: 'Set budget' }).click();
+  await expect(capSheet).toContainText('43,33');
+  await capSheet.getByRole('button', { name: 'Save budget' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('43,33');
-  await expect(page.getByTestId('line-Groceries')).toContainText('10,00 a week');
+  const again = await openCapOf(page, '— Groceries');
+  await expect(again.getByLabel('Cap', { exact: true })).toHaveValue('10,00');
+  await expect(again.getByLabel('Every')).toHaveValue('weekly');
 });
-
 test('row 11 — the sections hold: a holiday never lists under compulsory', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');
   await addFromTemplate(page, 'Emergency fund');

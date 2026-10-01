@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 // The wallet, the spending and the event are shared with the plan specs, which drive the same three screens.
 import { addEvent, addWallet, fillItem, planFor, spend } from './event-plan';
+import { addCap, budgetTab, monthSoFar } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -34,13 +35,12 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   await spend(page, 'Hampers', '4200000');
 
   await page.goto('/budget');
-  // The same form budget.spec.ts drives: the parent option is its plain name.
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Food and beverage' });
-  await page.getByLabel('Monthly amount (IDR)').fill('1000000');
-  await page.getByLabel('Just this month').uncheck();
-  await page.getByRole('button', { name: 'Set budget' }).click();
+  // The same sheet budget.spec.ts drives: the parent option is its plain name.
+  await addCap(page, { option: 'Food and beverage', amount: '1000000' });
+  await expect(page.getByTestId('line-Food and beverage')).toContainText('4.200.000');
+  await monthSoFar(page);
+  await expect(page.getByTestId('month-spent')).toContainText('4.200.000');
   const leftOverBefore = await page.getByTestId('left-over-actual').textContent();
-  await expect(page.getByTestId('spent-total')).toContainText('4.200.000');
 
   await addEvent(page, 'Lebaran');
   await planFor(page, 'Food and beverage', '1000000');
@@ -50,7 +50,10 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
 
   await page.goto('/budget');
   // Out of the caps, named on its own line, and what is left has not moved.
-  await expect(page.getByTestId('spent-total')).toContainText('Rp 0');
+  await expect(page.getByTestId('line-Food and beverage')).toContainText('left of 1.000.000');
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('event-line')).toContainText('4.200.000');
+  await monthSoFar(page);
+  await expect(page.getByTestId('month-spent')).toContainText('Rp 0');
   expect(await page.getByTestId('left-over-actual').textContent()).toBe(leftOverBefore);
 });

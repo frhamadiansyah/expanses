@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { openAccount, openTypes } from './accounts';
+import { addCap } from './budget';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
@@ -1344,10 +1345,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
 
   // …and out of the budget, which is a second reader of the same rows. 1.000.000 capped, 50.000 spent.
   await page.goto('/budget');
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Household' });
-  await page.getByLabel('Monthly amount (IDR)').fill('1000000');
-  await page.getByLabel('Just this month').uncheck();
-  await page.getByRole('button', { name: 'Set budget' }).click();
+  await addCap(page, { option: 'Household', amount: '1000000' });
   const line = page.getByTestId('line-Household');
   await expect(line).toContainText('50.000');
   await expect(line).not.toContainText('135.000');

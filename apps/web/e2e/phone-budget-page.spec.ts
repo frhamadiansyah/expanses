@@ -21,7 +21,7 @@ test('a budget row leads with what is left or over, then what was spent and its 
   await page.goto('/budget');
   await setBudget(page, 'Food and beverage', '300000');
   // Saved before leaving: the budget screen already shows the month past it.
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('Over by');
+  await expect(page.getByTestId('line-Food and beverage')).toContainText('over by');
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Against budget' }).click();
@@ -39,19 +39,22 @@ test('a budget row leads with what is left or over, then what was spent and its 
   await expect(transport).not.toContainText('%');
 });
 
-test('by thumb: Set budget takes the tap it is given, even as the page opens', async ({ page }) => {
+test('by thumb: the ✓ on the cap sheet takes the tap it is given, even as the page opens', async ({ page }) => {
   /*
-   * The row is drawn before the workspace's books are read, and the books decide the currency a typed figure is
-   * parsed in — so the page waits rather than guesses. It used to wait *silently*: the row looked pressable, the
-   * tap landed, and the guard inside the form dropped it with nothing on screen. It is a real `disabled` row now,
-   * which is what a tap waits for instead of vanishing into. So this tap is given to a page that may not be ready,
-   * and the refusal it must produce — "Choose a category", the form's own first check — is the proof it landed.
+   * The ✓ is drawn before the workspace's books are read, and the books decide the currency a typed figure is parsed
+   * in — so it is a real `disabled` button until then, which a tap waits for instead of vanishing into. The refusal it
+   * must produce — "Choose a category", the sheet's own first check — is the proof it landed.
    */
   await page.goto('/budget');
-  await page.getByRole('button', { name: 'Set budget' }).tap();
+  await page.getByRole('button', { name: 'More', exact: true }).tap();
+  await page.getByRole('menuitem', { name: 'Add a budget' }).tap();
+  await page.getByRole('button', { name: 'Save budget' }).tap();
   await expect(page.getByRole('alert')).toHaveText('Choose a category');
+  await page.getByRole('button', { name: 'Close' }).tap();
 
-  // The same for the income row above it, whose own empty case is worded rather than left to `parseMajor`.
-  await page.getByRole('button', { name: 'Set income' }).tap();
-  await expect(page.getByRole('alert')).toHaveText('The expected take-home is empty — type a figure');
+  // The same for the take-home, whose own empty case is worded rather than left to `parseMajor`.
+  await page.getByRole('radiogroup', { name: 'Budget view' }).getByRole('radio', { name: 'Plan' }).tap();
+  await page.getByTestId('income-line').tap();
+  await page.getByRole('button', { name: 'Save take-home' }).tap();
+  await expect(page.getByRole('alert')).toHaveText('The take-home is empty — type a figure');
 });

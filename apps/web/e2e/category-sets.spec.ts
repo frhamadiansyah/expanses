@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { openNewCap } from './budget';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
 // in Jakarta it names yesterday and any window built from it excludes what was just recorded.
@@ -179,8 +180,11 @@ test('a set stays out of the monthly categories, and its spending out of the mon
 
   // And the budget plans the month, not the event.
   await page.goto('/budget');
-  await expect(page.getByLabel('Category', { exact: true }).locator('option', { hasText: 'Diapering' })).toHaveCount(0);
-  await expect(page.getByTestId('line-Diapering')).toHaveCount(0);
+  await page.getByTestId('no-budget').click();
+  await expect(page.getByRole('dialog', { name: 'No budget' }).getByTestId('uncapped-Diapering')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const sheet = await openNewCap(page);
+  await expect(sheet.getByLabel('Category', { exact: true }).locator('option', { hasText: 'Diapering' })).toHaveCount(0);
 
   // Nor does the month's chart: an event's spending is read on the event, where its total was already shown above.
   await page.goto('/spending');

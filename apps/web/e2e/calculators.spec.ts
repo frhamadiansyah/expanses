@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { goalCard } from './set-aside';
+import { budgetTab } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -123,6 +124,7 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await expect(retirement.getByText('Worked out from your figures')).toBeVisible();
 
   await page.goto('/budget');
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('savings-Retirement fund')).toContainText('a month');
 });
 
