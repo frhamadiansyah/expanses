@@ -192,7 +192,7 @@ test('start fresh needs two presses, says what it deletes, and empties the devic
   const sheet = page.getByRole('dialog', { name: 'Start fresh' });
   await expect(sheet.getByText('It cannot be undone.')).toBeVisible();
   // The size and the copies are read off the device itself, so the list is what is really about to go.
-  await expect(sheet.getByRole('listitem').filter({ hasText: /Your data on this device — [\d.]+ MB/ })).toBeVisible();
+  await expect(sheet.getByRole('listitem').filter({ hasText: /Data on this device — [\d.]+ MB/ })).toBeVisible();
   await expect(sheet.getByRole('listitem').filter({ hasText: /A copy from .+ — [\d.]+ (KB|MB)/ })).toBeVisible();
 
   const confirm = sheet.getByRole('button', { name: 'Delete everything on this device', exact: true });
@@ -327,17 +327,17 @@ test('a long update says which step it is on, then offers a backup of the update
 
   await page.goto('/');
   // The card above the page is the proof the update finished, and it names the version it reached.
-  await expect(page.getByText(`Your data was updated to version ${LATEST_VERSION}`)).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(`Data was updated to version ${LATEST_VERSION}`)).toBeVisible({ timeout: 45_000 });
 
   const seen = await whatWasOnScreen(page);
-  const updating = seen.filter((text) => text.includes('Updating your data…'));
+  const updating = seen.filter((text) => text.includes('Updating the data…'));
   const context = `screens seen: ${seen.join(' | ')}`;
   expect(updating.length, context).toBeGreaterThan(0);
   // The total is the work there really is, and the step moves: a bar that never moved would pass neither.
   expect(updating.some((text) => text.includes(`of ${STEPS} ·`)), context).toBe(true);
   expect(new Set(updating).size, context).toBeGreaterThan(1);
   // The reassurance is only said because a copy really was taken: this file had data, so there was one.
-  expect(updating.some((text) => text.includes('Do not close the app. Your data was copied before we started.')), context).toBe(true);
+  expect(updating.some((text) => text.includes('Do not close the app. The data was copied before this started.')), context).toBe(true);
 
   // A backup is offered because the one the user holds is now older than their data.
   await expect(page.getByRole('button', { name: 'Download a backup' })).toBeEnabled();
@@ -362,10 +362,10 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Entered after the update', exact: true })).toBeVisible();
 
-  const reminder = page.getByText('You have not backed up yet.');
+  const reminder = page.getByText('Not backed up yet.');
   await expect(reminder).toHaveCount(0);
   await page.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(page.getByText(`Your data was updated to version ${LATEST_VERSION}`)).toHaveCount(0);
+  await expect(page.getByText(`Data was updated to version ${LATEST_VERSION}`)).toHaveCount(0);
   await expect(reminder).toBeVisible();
 });
 
@@ -388,10 +388,10 @@ test('an open with nothing to update shows no progress screen', async ({ page })
   // The list's own row is the proof: the corner's `+` is a glyph with a label, so "Add account" is not on screen
   // to look for any more.
   expect(seen.some((text) => text.includes('Nothing to do')), `screens seen: ${seen.join(' | ')}`).toBe(true);
-  expect(seen.filter((text) => text.includes('Updating your data…')), `screens seen: ${seen.join(' | ')}`).toEqual([]);
+  expect(seen.filter((text) => text.includes('Updating the data…')), `screens seen: ${seen.join(' | ')}`).toEqual([]);
   expect(seen.filter((text) => text.includes('Taking a copy first…'))).toEqual([]);
-  expect(seen.filter((text) => text.includes('Checking your data…'))).toEqual([]);
-  await expect(page.getByText(/Your data was updated to version/)).toHaveCount(0);
+  expect(seen.filter((text) => text.includes('Checking the data…'))).toEqual([]);
+  await expect(page.getByText(/Data was updated to version/)).toHaveCount(0);
 });
 
 /*
@@ -483,7 +483,7 @@ test('a database that goes wrong while the app is open swaps the app for the rec
    * The sentence that proves this came the mid-session way and not through the opener: the screen the user
    * was on is gone, their money is not. A screen reached by a failed open never says it.
    */
-  await expect(page.getByText(/what you have lost is the screen you were on, not your money/i)).toBeVisible();
+  await expect(page.getByText(/what is lost is the screen that was open, not the money/i)).toBeVisible();
   await expect(page.getByText(/still on this device and most of it is almost certainly fine/i)).toBeVisible();
 
   // Every route out is on it, and the technical text is under Details where it belongs, not above the fold.
@@ -544,7 +544,7 @@ test('a screen that crashes lets go of the engine, so the copy it offers can rea
 
   // Not a white page, and the words are about a screen rather than about their money.
   await expect(page.getByRole('heading', { name: 'That screen stopped before it could finish' })).toBeVisible();
-  await expect(page.getByText(/what you have lost is that screen, not your money/i)).toBeVisible();
+  await expect(page.getByText(/what is lost is that screen, not the money/i)).toBeVisible();
 
   // All four tools, because the engine has let go and every one of them can now succeed.
   await expect(page.getByRole('button', { name: EXPORT_BUTTON, exact: true })).toBeVisible();

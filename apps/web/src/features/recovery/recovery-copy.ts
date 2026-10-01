@@ -36,7 +36,7 @@ export interface RecoveryOptions {
  * before anything else is asked of them: nothing was deleted, the thing they lost is the screen, and the
  * app stopped on purpose rather than carrying on writing to a file that had stopped answering.
  */
-export const MID_SESSION_NOTE = 'Expanses stopped here rather than keep writing to it, so what you have lost is the screen you were on, not your money.';
+export const MID_SESSION_NOTE = 'Expanses stopped here rather than keep writing to it, so what is lost is the screen that was open, not the money.';
 
 /**
  * The same sentence for the other mid-session arrival: a screen that threw while it was drawing.
@@ -45,7 +45,7 @@ export const MID_SESSION_NOTE = 'Expanses stopped here rather than keep writing 
  * saying something about the data that is not true. What is true is smaller and worth saying plainly:
  * one screen stopped, the file was never touched, and the rest of the app is still here.
  */
-export const SCREEN_STOPPED_NOTE = 'One screen stopped before it could finish drawing, so what you have lost is that screen, not your money.';
+export const SCREEN_STOPPED_NOTE = 'One screen stopped before it could finish drawing, so what is lost is that screen, not the money.';
 
 const noteFor = (reason: RecoveryReason): string => (reason.kind === 'cannot-open' ? SCREEN_STOPPED_NOTE : MID_SESSION_NOTE);
 
@@ -54,7 +54,7 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
   return {
     headline: options.requested ? 'Recovery tools' : headline,
     body: options.requested
-      ? 'Nothing has gone wrong. This screen never opens your data, so you can take a copy of it, put back the last good copy, or start again from here even when opening is what breaks.'
+      ? 'Nothing has gone wrong. This screen never opens the data, so a copy can be taken, the last good copy put back, or things started again from here even when opening is what breaks.'
       : reason.midSession
         ? `${noteFor(reason)} ${body}`
         : body,
@@ -120,13 +120,13 @@ export function workingCopy(work: RecoveryWork): WorkingCopy {
       };
     case 'export':
       return {
-        title: 'Reading your data…',
-        body: 'Taking the file off this device so your browser can save it. Nothing on the device is being changed.',
+        title: 'Reading the data…',
+        body: 'Taking the file off this device so the browser can save it. Nothing on the device is being changed.',
       };
     case 'wipe':
       return {
         title: 'Removing everything on this device…',
-        body: 'The data and every copy Expanses keeps here are going. Backups you have already downloaded are files on your computer or phone, and are not touched.',
+        body: 'The data and every copy Expanses keeps here are going. Backups already downloaded are files on the computer or phone, and are not touched.',
       };
   }
 }
@@ -174,54 +174,54 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
       return reason.midSession
         ? {
             headline: 'That screen stopped before it could finish',
-            body: 'Your transactions, accounts and cards are on this device exactly as they were, and nothing has been changed. Try again — it usually comes straight back — and take a copy while you are here, so you have one whatever happens next.',
+            body: 'The transactions, accounts and cards are on this device exactly as they were, and nothing has been changed. Try again — it usually comes straight back — and take a copy while here, to have one whatever happens next.',
           }
         : {
-            headline: 'We could not open your data this time',
-            body: 'Your transactions, accounts and cards are still stored on this device. Something went wrong while opening them, which is usually temporary. Try again first — and take a copy while you are here, so you have one whatever happens next.',
+            headline: 'The data could not open this time',
+            body: 'The transactions, accounts and cards are still stored on this device. Something went wrong while opening them, which is usually temporary. Try again first — and take a copy while here, to have one whatever happens next.',
           };
     case 'unreadable':
       // Mid-session it did open — it stopped answering afterwards — so the headline has to say the true
       // thing rather than the near one. The body is the same either way: it is the same file, in the same
       // place, and the same three things are worth doing about it.
       return {
-        headline: reason.midSession ? 'Your data stopped answering' : 'Your data is on this device, but it would not open',
-        body: 'The file is where it should be; it just did not answer this time. Another tab, a browser update or a device that was busy can all do this. Try again, and take a copy first so you are holding one either way.',
+        headline: reason.midSession ? 'The data stopped answering' : 'The data is on this device, but it would not open',
+        body: 'The file is where it should be; it just did not answer this time. Another tab, a browser update or a device that was busy can all do this. Try again, and take a copy first to hold one either way.',
       };
     case 'corrupt':
       return {
-        headline: 'Part of your data would not read',
-        body: 'The file is still on this device and most of it is almost certainly fine. You can take a copy of it exactly as it is now, and put back the last good copy if there is one. Nothing is removed unless you ask for it.',
+        headline: 'Part of the data would not read',
+        body: 'The file is still on this device and most of it is almost certainly fine. A copy can be taken of it exactly as it is now, and the last good copy put back if there is one. Nothing is removed unless asked for.',
       };
     case 'newer-database':
       return {
         headline: 'This data was made by a newer version of Expanses',
-        body: 'Your data is safe and untouched. This copy of the app is older than the data on this device, so it will not open it rather than risk changing it. Update Expanses — or reopen it in the browser or device you last used — and it will open as usual.',
+        body: 'The data is safe and untouched. This copy of the app is older than the data on this device, so it will not open it rather than risk changing it. Update Expanses — or reopen it in the browser or device last used — and it will open as usual.',
       };
     case 'migration-failed':
       return reason.rolledBack
         ? {
-            headline: 'Your update was undone',
-            body: 'The update stopped part-way, so your data was put back exactly as it was before it started. Nothing was lost. Take a copy if you would like one, then try again — Expanses will open on your data as it was and leave that update alone.',
+            headline: 'The update was undone',
+            body: 'The update stopped part-way, so the data was put back exactly as it was before it started. Nothing was lost. Take a copy if wanted, then try again — Expanses will open on the data as it was and leave that update alone.',
           }
         : {
-            headline: 'The update to your data could not be finished',
-            body: 'Your data has not been left half-changed: the update stopped rather than carry on. You can take a copy, or put back the copy taken just before the update, and then try again.',
+            headline: 'The update to the data could not be finished',
+            body: 'The data has not been left half-changed: the update stopped rather than carry on. A copy can be taken, or the copy taken just before the update put back, and then try again.',
           };
     case 'verify-failed':
       return reason.rolledBack
         ? {
-            headline: 'Your update was undone',
-            body: 'We checked your data after the update, something did not add up, and the update was put back exactly as it was before. Nothing was lost. Take a copy if you would like one, then try again.',
+            headline: 'The update was undone',
+            body: 'We checked the data after the update, something did not add up, and the update was put back exactly as it was before. Nothing was lost. Take a copy if wanted, then try again.',
           }
         : {
             headline: 'Something did not add up after the update',
-            body: 'Your data is still on this device. The check we run after every update found something it did not expect, so the app stopped here instead of carrying on. Take a copy, then try again or put back the last good copy.',
+            body: 'The data is still on this device. The check run after every update found something it did not expect, so the app stopped here instead of carrying on. Take a copy, then try again or put back the last good copy.',
           };
     case 'locked':
       return {
         headline: 'Expanses is already open in another tab',
-        body: 'Only one tab can use your data at a time, so that two of them can never write over each other. Close the other Expanses tab or window, then try again here.',
+        body: 'Only one tab can use the data at a time, so that two of them can never write over each other. Close the other Expanses tab or window, then try again here.',
       };
   }
 }

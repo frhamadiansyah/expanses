@@ -106,7 +106,7 @@ export interface Safety {
 export { QUICK_CHECK_LIMIT_BYTES, quickCheckAffordable } from './size-guard';
 import { quickCheckAffordable } from './size-guard';
 
-const NOTHING_KEPT = 'This build keeps no copies of your data yet.';
+const NOTHING_KEPT = 'This build keeps no copies of the data yet.';
 
 /** A store that keeps nothing. Still the honest answer for a build or a test that keeps no copies. */
 export const NO_SNAPSHOTS: SnapshotStore = {
@@ -143,7 +143,7 @@ export const say = (error: unknown): string => (error instanceof Error ? error.m
 // Said the same way wherever the file itself is the problem: never "corrupt" without "still on this device".
 const corrupt = (detail: string): RecoveryReason => ({
   kind: 'corrupt',
-  headline: 'Your data is still on this device, but we could not read it this time.',
+  headline: 'The data is still on this device, but we could not read it this time.',
   detail,
   exportable: true,
 });
@@ -249,7 +249,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
      */
     const problems = await checkStructure(database);
     if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
-    return { ok: false, reason: { kind: 'unreadable', headline: 'We could not read your data this time.', detail: say(error), exportable: true } };
+    return { ok: false, reason: { kind: 'unreadable', headline: 'We could not read the data this time.', detail: say(error), exportable: true } };
   }
 
   const future = await futureVersions(database, migrations);
@@ -259,7 +259,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
       reason: {
         kind: 'newer-database',
         headline: 'This data was made by a newer version of Expanses.',
-        detail: `Your data: update ${Math.max(...future)} · This app: update ${Math.max(...migrations.map((m) => m.version))}`,
+        detail: `Data: update ${Math.max(...future)} · This app: update ${Math.max(...migrations.map((m) => m.version))}`,
         exportable: true,
       },
     };
@@ -370,7 +370,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         database,
         restore,
         kind: 'verify-failed',
-        headline: 'We checked your data after the update and something did not add up.',
+        headline: 'We checked the data after the update and something did not add up.',
         detail: problems.map((p) => `${p.kind}: ${p.detail}`).join('; '),
         // The whole run is blocked, not one step of it: which migration of the batch left the ledger wrong is
         // not knowable from a check made after all of them ran. `applied` is never empty inside this branch.
@@ -407,7 +407,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         database,
         restore,
         kind: 'verify-failed',
-        headline: 'We checked your data after the update and something did not add up.',
+        headline: 'We checked the data after the update and something did not add up.',
         detail: outstanding,
         version: applied[0]!,
         build,
@@ -439,6 +439,6 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
      * fact that explains it must not be missing from the Details a user copies into a bug report.
      */
     const detail = blocked === null ? say(error) : `${say(error)} — running at update ${blocked - 1}, with ${blocked} skipped after it failed once`;
-    return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening your data.', detail, exportable: true } };
+    return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening the data.', detail, exportable: true } };
   }
 }

@@ -16,7 +16,7 @@ describe('afterUpdate', () => {
   it('offers a backup after a real update, naming the version reached', () => {
     const note = afterUpdate({ applied: [46, 47], from: 45, blocked: null });
     expect(note).toMatchObject({ kind: 'updated', version: 47 });
-    expect(note?.headline).toBe('Your data was updated to version 47');
+    expect(note?.headline).toBe('Data was updated to version 47');
   });
 
   it('says an update was undone, and outranks whatever else the open applied', () => {

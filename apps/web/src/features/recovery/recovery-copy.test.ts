@@ -39,7 +39,7 @@ describe('recoveryCopy', () => {
   it('tells someone the app went out from under them what they have actually lost', () => {
     const copy = recoveryCopy(reason('corrupt', { midSession: true }), { hasSnapshot: true });
     expect(copy.body.startsWith(MID_SESSION_NOTE)).toBe(true);
-    expect(copy.body).toContain('not your money');
+    expect(copy.body).toContain('not the money');
     // Never alarming, never an instruction to delete anything, and every button still on offer.
     expect(copy.body).not.toMatch(/delete|reinstall|lost your data|corrupt/i);
     expect(copy.actions).toEqual(['export', 'restore', 'retry', 'start-fresh']);
@@ -52,22 +52,22 @@ describe('recoveryCopy', () => {
   });
 
   it('says the data stopped answering, rather than that it would not open, when it had already opened', () => {
-    expect(recoveryCopy(reason('unreadable'), { hasSnapshot: true }).headline).toBe('Your data is on this device, but it would not open');
-    expect(recoveryCopy(reason('unreadable', { midSession: true }), { hasSnapshot: true }).headline).toBe('Your data stopped answering');
+    expect(recoveryCopy(reason('unreadable'), { hasSnapshot: true }).headline).toBe('The data is on this device, but it would not open');
+    expect(recoveryCopy(reason('unreadable', { midSession: true }), { hasSnapshot: true }).headline).toBe('The data stopped answering');
   });
 
   it('says the update was undone when it was', () => {
     const copy = recoveryCopy(reason('verify-failed', { rolledBack: true }), { hasSnapshot: true });
-    expect(copy.headline).toBe('Your update was undone');
+    expect(copy.headline).toBe('The update was undone');
     expect(copy.body).toContain('Nothing was lost');
   });
 
   it('says the same of an update that threw part-way and was put back', () => {
     const copy = recoveryCopy(reason('migration-failed', { rolledBack: true }), { hasSnapshot: true });
-    expect(copy.headline).toBe('Your update was undone');
+    expect(copy.headline).toBe('The update was undone');
     expect(copy.body).toContain('exactly as it was');
     // Not rolled back is a different sentence: nothing may claim the data was put back when it was not.
-    expect(recoveryCopy(reason('migration-failed'), { hasSnapshot: true }).headline).toBe('The update to your data could not be finished');
+    expect(recoveryCopy(reason('migration-failed'), { hasSnapshot: true }).headline).toBe('The update to the data could not be finished');
   });
 
   it('does not offer a restore or a wipe when storage is not working at all', () => {

@@ -60,12 +60,12 @@ describe('the reason a mid-session failure is shown as', () => {
     for (const kind of ['corrupt', 'unreadable'] as const) {
       const copy = recoveryCopy(fatalReason(kind, 'database disk image is malformed'), { hasSnapshot: true });
       expect(copy.body.startsWith(MID_SESSION_NOTE)).toBe(true);
-      expect(copy.body).toContain('not your money');
+      expect(copy.body).toContain('not the money');
       // Never alarming, never an instruction to delete anything, and never the engine's own words up front.
       expect(copy.headline).not.toMatch(/malformed|SQLITE/);
       expect(copy.body).not.toMatch(/delete|reinstall|corrupt/i);
       expect(copy.actions).toEqual(['export', 'restore', 'retry', 'start-fresh']);
     }
-    expect(recoveryCopy(fatalReason('unreadable', 'disk I/O error'), { hasSnapshot: true }).headline).toBe('Your data stopped answering');
+    expect(recoveryCopy(fatalReason('unreadable', 'disk I/O error'), { hasSnapshot: true }).headline).toBe('The data stopped answering');
   });
 });

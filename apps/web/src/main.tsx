@@ -149,7 +149,7 @@ async function start() {
       <RecoveryScreen
         reason={{
           kind: 'cannot-open',
-          headline: 'We could not finish opening your data.',
+          headline: 'We could not finish opening the data.',
           detail: error instanceof Error ? error.message : String(error),
           exportable: true,
         }}

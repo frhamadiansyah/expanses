@@ -150,7 +150,7 @@ export function BackupPage() {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (!isSqliteFile(bytes)) throw new Error('That file is not an Expanses backup.');
-      if (!window.confirm(`Replace ALL data on this device with "${file.name}"?\n\nA safety copy of your current data downloads first.`)) return;
+      if (!window.confirm(`Replace ALL data on this device with "${file.name}"?\n\nA safety copy of the current data downloads first.`)) return;
       setBusy(true);
       const safetyName = `expanses-before-restore-${isoDate()}.sqlite3`;
       await exportBackup(safetyName);
@@ -173,7 +173,7 @@ export function BackupPage() {
     setDone(null);
     try {
       const when = formatWhen(copy.takenAt);
-      if (!window.confirm(`Replace ALL data on this device with the copy from ${when}?\n\nA safety copy of your current data downloads first.`)) return;
+      if (!window.confirm(`Replace ALL data on this device with the copy from ${when}?\n\nA safety copy of the current data downloads first.`)) return;
       setBusy(true);
       const bytes = await snapshots.read(copy.file);
       if (!isSqliteFile(bytes)) throw new Error('That copy is no longer readable on this device.');
@@ -246,7 +246,7 @@ export function BackupPage() {
         setPending(null);
         setError(
           new Error(
-            `This data was made by a newer version of Expanses. Nothing on this device was changed: that copy was written by update ${version}, and this app knows up to update ${LATEST_VERSION}. Update Expanses, then choose that file again — your data here stays exactly as it is until you do.`,
+            `This data was made by a newer version of Expanses. Nothing on this device was changed: that copy was written by update ${version}, and this app knows up to update ${LATEST_VERSION}. Update Expanses, then choose that file again — the data here stays exactly as it is until then.`,
           ),
         );
       }
@@ -260,13 +260,13 @@ export function BackupPage() {
 
       {/* The two sentences that are not an action: where the data lives, and what the file it makes is not. */}
       <p className="mb-[10px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-        Your data lives only in this browser on this device. Nothing is sent to a server. If browser data is cleared, or Safari removes it after a week unused, it is gone — back up regularly.
+        Data lives only in this browser on this device. Nothing is sent to a server. If browser data is cleared, or Safari removes it after a week unused, it is gone — back up regularly.
       </p>
       <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-alarm)]">
-        Backup files are <strong>not encrypted</strong>. Anyone with the file can read your finances. Store it somewhere private.
+        Backup files are <strong>not encrypted</strong>. Anyone with the file can read the finances in it. Store it somewhere private.
       </p>
 
-      <InsetGroup header="Your figures" footer="A backup made on any device or browser will do: it is the same file everywhere.">
+      <InsetGroup header="Figures" footer="A backup made on any device or browser will do: it is the same file everywhere.">
         <InsetRow
           title="Download backup"
           subtitle={last.data ? `Last downloaded ${daysSince(last.data) === 0 ? 'today' : `${daysSince(last.data)} days ago`}.` : 'No backup yet.'}
@@ -282,7 +282,7 @@ export function BackupPage() {
         />
       </InsetGroup>
 
-      <InsetGroup header="Your photos" footer="Photos live beside the database on this device. The backup file holds your figures; this zip holds the pictures.">
+      <InsetGroup header="Photos" footer="Photos live beside the database on this device. The backup file holds the figures; this zip holds the pictures.">
         {!!photoIndex.data?.length && (
           <InsetRow
             title={`Download photos (${photoIndex.data.length})`}
@@ -306,9 +306,9 @@ export function BackupPage() {
       {pending && (
         <>
           {/* Prose, so a `Panel`: `InsetGroup` places rows, and this is the sentence that has to be read first. */}
-          <Panel header="Before you replace your data">
+          <Panel header="Before replacing the data">
             <p className="text-[13px] leading-[17px] text-[var(--ph-warn)]">
-              Check that <strong>{pending.safetyName}</strong> is in your Downloads. It is your only copy of the data on this device right now. Continue only once it is there.
+              Check that <strong>{pending.safetyName}</strong> is in Downloads. It is the only copy of the data on this device right now. Continue only once it is there.
             </p>
           </Panel>
           {/* Its own group, and its own air from Cancel: a replace-everything a row away from a cancel is the wrong tap. */}
@@ -325,7 +325,7 @@ export function BackupPage() {
         header="Safety copies on this device"
         footer={
           <>
-            Expanses keeps a copy of your data before every update and once on each day you open it, so a bad update or the wrong restore can be undone. They sit in this app&apos;s own storage on this device, which means they are <strong>not a backup</strong>: anything that loses your data loses them with it. Only a file you have downloaded and kept somewhere else is a backup.
+            Expanses keeps a copy of the data before every update and once on each day the app is opened, so a bad update or the wrong restore can be undone. They sit in this app&apos;s own storage on this device, which means they are <strong>not a backup</strong>: anything that loses the data loses them with it. Only a file downloaded and kept somewhere else is a backup.
           </>
         }
       >
@@ -346,20 +346,20 @@ export function BackupPage() {
         ) : (
           <InsetRow
             title="No copies on this device yet"
-            subtitle="One is taken the first time you open Expanses each day, and before any update to your data."
+            subtitle="One is taken the first time Expanses opens each day, and before any update to the data."
             chevron={false}
           />
         )}
       </InsetGroup>
 
-      <Panel header="Backups and your iPhone">
+      <Panel header="Backups and iPhone">
         {/* Spec §8.2: until the device check has actually been run on a phone, nothing here may say a
             device backup covers this data. What is true today is said instead. */}
         <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-          Expanses runs in your browser today, so an iPhone backup does not carry your data with it: an iCloud or Finder backup does not include a website&apos;s storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
+          Expanses runs in the browser today, so an iPhone backup does not carry this data with it: an iCloud or Finder backup does not include a website&apos;s storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
         </p>
         <p className="mt-[10px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-          So keep downloading a backup of your own. A file you hold is the only copy that survives a lost phone, a deleted app, and a restore that goes wrong — and it opens on any device you install Expanses on.
+          So keep downloading a backup. A file kept elsewhere is the only copy that survives a lost phone, a deleted app, and a restore that goes wrong — and it opens on any device Expanses is installed on.
         </p>
       </Panel>
 
