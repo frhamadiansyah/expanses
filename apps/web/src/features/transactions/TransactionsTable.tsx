@@ -123,7 +123,7 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
         }
       />
       <p className="px-2.5 pb-1.5 text-xs text-slate-500">
-        {guessed ? 'Category guessed from the last time you bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
+        {guessed ? 'Category guessed from the last time this was bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
       </p>
     </div>
   );

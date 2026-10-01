@@ -233,7 +233,7 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
           }}
         />
 
-        <p className="px-1 text-[12px] leading-4 text-[var(--ph-ink-3)]">Photos stay on this device with the transaction and go into your backups. Tap one to see it full size.</p>
+        <p className="px-1 text-[12px] leading-4 text-[var(--ph-ink-3)]">Photos stay on this device with the transaction and go into backups. Tap one to see it full size.</p>
         <ErrorBox error={error} />
       </div>
 

@@ -121,7 +121,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   await form.getByLabel('Note').fill('Superindo');
 
   const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
-  await expect(sheet.getByText('Photos stay on this device with the transaction and go into your backups.')).toBeVisible();
+  await expect(sheet.getByText('Photos stay on this device with the transaction and go into backups.')).toBeVisible();
   await closeDetails(more, sheet);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);

@@ -590,7 +590,7 @@ export function withShares(draft: FormDraft, currency: string, totalMinor: numbe
 export function withShares(draft: FormDraft, currency: string, totalMinor: number, { lenient }: { lenient: boolean }): WithShares {
   const people = peopleOn(draft);
   if (people.length === 0) {
-    if (!lenient) throw new Error('Say who owes you');
+    if (!lenient) throw new Error('Say who owes for this');
     // Nobody named yet: the whole bill is still yours, which is what the card should say while it fills up.
     return { people, each: [], ownShareMinor: totalMinor };
   }

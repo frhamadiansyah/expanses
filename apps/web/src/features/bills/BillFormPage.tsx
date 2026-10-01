@@ -122,7 +122,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
               placeholder="150000"
               aria-describedby={amountHint}
               /* The sentence keeps its id, so the box still says out loud which line explains it. */
-              hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</span>}
+              hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. It will be asked for each time.</span>}
             />
             <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
               <option value="">Choose a category</option>

@@ -86,7 +86,7 @@ export function BillPage({ billId }: { billId: string }) {
 
   async function stop() {
     // Keeps every payment and skip on record; it just stops asking for the next one.
-    if (!window.confirm(`Stop ${bill.name}? Its payments stay in your history.`)) return;
+    if (!window.confirm(`Stop ${bill.name}? Its payments stay in the history.`)) return;
     setError(null);
     try {
       await deleteExpenseTemplate(database, ws, bill.id);

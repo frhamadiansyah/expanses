@@ -39,7 +39,7 @@ export function McSheet({
   const guessName = guess?.mcc ? mccName(guess.mcc) : null;
   const guessFrom =
     guess?.source === 'memory'
-      ? 'you taught this merchant'
+      ? 'taught here for this merchant'
       : guess?.source === 'bundled'
         ? 'typical for this merchant'
         : `from ${byId.get(guessCategory)?.name ?? 'the category'}`;
