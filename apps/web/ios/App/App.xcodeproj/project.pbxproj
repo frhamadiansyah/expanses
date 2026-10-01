@@ -21,6 +21,13 @@
 		CA5701022FE9A10100000002 /* TextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702022FE9A10100000002 /* TextRecognizer.swift */; };
 		CA5701032FE9A10100000003 /* HoldingArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702032FE9A10100000003 /* HoldingArea.swift */; };
 		CA5701042FE9A10100000004 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702042FE9A10100000004 /* MainViewController.swift */; };
+		CA5704012FE9A10100000001 /* LogNotificationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5705012FE9A10100000001 /* LogNotificationIntent.swift */; };
+		CA5704022FE9A10100000002 /* ScanScreenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5705022FE9A10100000002 /* ScanScreenIntent.swift */; };
+		CA5704032FE9A10100000003 /* CaptureShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5705032FE9A10100000003 /* CaptureShortcuts.swift */; };
+		CA5704042FE9A10100000004 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5705042FE9A10100000004 /* ShareViewController.swift */; };
+		CA5704052FE9A10100000005 /* HoldingArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702032FE9A10100000003 /* HoldingArea.swift */; };
+		CA5704062FE9A10100000006 /* TextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702022FE9A10100000002 /* TextRecognizer.swift */; };
+		CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA5705072FE9A10100000007 /* CaptureShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,7 +48,28 @@
 		CA5702032FE9A10100000003 /* HoldingArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldingArea.swift; sourceTree = "<group>"; };
 		CA5702042FE9A10100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		CA5702052FE9A10100000005 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		CA5705012FE9A10100000001 /* LogNotificationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogNotificationIntent.swift; sourceTree = "<group>"; };
+		CA5705022FE9A10100000002 /* ScanScreenIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScreenIntent.swift; sourceTree = "<group>"; };
+		CA5705032FE9A10100000003 /* CaptureShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureShortcuts.swift; sourceTree = "<group>"; };
+		CA5705042FE9A10100000004 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		CA5705052FE9A10100000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CA5705062FE9A10100000006 /* CaptureShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CaptureShare.entitlements; sourceTree = "<group>"; };
+		CA5705072FE9A10100000007 /* CaptureShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CaptureShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CA57070A2FE9A1010000000A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -49,6 +77,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CA5707032FE9A10100000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -60,6 +95,7 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				CA5706012FE9A10100000001 /* CaptureShare */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -68,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				CA5705072FE9A10100000007 /* CaptureShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -98,8 +135,21 @@
 				CA5702022FE9A10100000002 /* TextRecognizer.swift */,
 				CA5702032FE9A10100000003 /* HoldingArea.swift */,
 				CA5702042FE9A10100000004 /* MainViewController.swift */,
+				CA5705012FE9A10100000001 /* LogNotificationIntent.swift */,
+				CA5705022FE9A10100000002 /* ScanScreenIntent.swift */,
+				CA5705032FE9A10100000003 /* CaptureShortcuts.swift */,
 			);
 			path = Capture;
+			sourceTree = "<group>";
+		};
+		CA5706012FE9A10100000001 /* CaptureShare */ = {
+			isa = PBXGroup;
+			children = (
+				CA5705042FE9A10100000004 /* ShareViewController.swift */,
+				CA5705052FE9A10100000005 /* Info.plist */,
+				CA5705062FE9A10100000006 /* CaptureShare.entitlements */,
+			);
+			path = CaptureShare;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -112,10 +162,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				CA57070A2FE9A1010000000A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CA5707082FE9A10100000008 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -124,6 +176,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CA5707012FE9A10100000001 /* CaptureShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CA5707052FE9A10100000005 /* Build configuration list for PBXNativeTarget "CaptureShare" */;
+			buildPhases = (
+				CA5707022FE9A10100000002 /* Sources */,
+				CA5707032FE9A10100000003 /* Frameworks */,
+				CA5707042FE9A10100000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CaptureShare;
+			productName = CaptureShare;
+			productReference = CA5705072FE9A10100000007 /* CaptureShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -137,6 +206,15 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
+					};
+					CA5707012FE9A10100000001 = {
+						CreatedOnToolsVersion = 26.3;
 						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
 							com.apple.ApplicationGroups.iOS = {
@@ -163,6 +241,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				CA5707012FE9A10100000001 /* CaptureShare */,
 			);
 		};
 /* End PBXProject section */
@@ -182,6 +261,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CA5707042FE9A10100000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -195,6 +281,19 @@
 				CA5701012FE9A10100000001 /* CapturePlugin.swift in Sources */,
 				CA5701022FE9A10100000002 /* TextRecognizer.swift in Sources */,
 				CA5701032FE9A10100000003 /* HoldingArea.swift in Sources */,
+				CA5704012FE9A10100000001 /* LogNotificationIntent.swift in Sources */,
+				CA5704022FE9A10100000002 /* ScanScreenIntent.swift in Sources */,
+				CA5704032FE9A10100000003 /* CaptureShortcuts.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CA5707022FE9A10100000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA5704042FE9A10100000004 /* ShareViewController.swift in Sources */,
+				CA5704052FE9A10100000005 /* HoldingArea.swift in Sources */,
+				CA5704062FE9A10100000006 /* TextRecognizer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +317,24 @@
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
+
+/* Begin PBXTargetDependency section */
+		CA5707082FE9A10100000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CA5707012FE9A10100000001 /* CaptureShare */;
+			targetProxy = CA5707092FE9A10100000009 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		CA5707092FE9A10100000009 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CA5707012FE9A10100000001;
+			remoteInfo = CaptureShare;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
 		504EC3141FED79650016851F /* Debug */ = {
@@ -379,6 +496,58 @@
 			};
 			name = Release;
 		};
+		CA5707062FE9A10100000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CaptureShare/CaptureShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JPMPS53HUZ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CaptureShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cicis.app.CaptureShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		CA5707072FE9A10100000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CaptureShare/CaptureShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JPMPS53HUZ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CaptureShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cicis.app.CaptureShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -396,6 +565,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CA5707052FE9A10100000005 /* Build configuration list for PBXNativeTarget "CaptureShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CA5707062FE9A10100000006 /* Debug */,
+				CA5707072FE9A10100000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
