@@ -28,4 +28,9 @@ test('an emergency fund added after a holiday is listed under compulsory, and th
   await expect(page.getByTestId('goals-compulsory')).toContainText('Emergency fund');
   await expect(page.getByTestId('goals-compulsory')).not.toContainText('Holiday');
   await expect(page.getByTestId('goals-additional')).toContainText('Holiday');
+  // Nothing is earned in this household, so what the goals ask for each month falls short, and the card says so.
+  await expect(page.getByTestId('goals-short')).toContainText(/^Short Rp.[\d.]+ a month$/);
+  // The row opens the goal's own page.
+  await page.getByTestId('goal-row').filter({ hasText: 'Holiday' }).click();
+  await expect(page).toHaveURL(/\/goals\/[^/]+$/);
 });

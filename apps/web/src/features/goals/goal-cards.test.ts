@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardHistory, dayMonth, fundedWindow, GOAL_TEMPLATES, goalCard, historyDay, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, monthYear, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -270,5 +270,40 @@ describe('the return a goal opens with', () => {
     expect(prefilledReturnBps('holiday', '2030-09-21', '2026-09-21')).toBe(600);
     expect(prefilledReturnBps('retirement', '2027-09-21', '2026-09-21')).toBe(1000);
     expect(prefilledReturnBps('emergency', '2040-09-21', '2026-09-21')).toBe(200);
+  });
+});
+
+describe('goalsTotals', () => {
+  const card = (currentMinor: number, targetMinor: number, done = false) => ({ currentMinor, targetMinor, done });
+
+  it('adds what is saved and what is still to cost across the goals still running', () => {
+    expect(goalsTotals([card(30_000_000, 60_000_000), card(18_000_000, 260_000_000)])).toEqual({ savedMinor: 48_000_000, targetMinor: 320_000_000, percent: 15 });
+  });
+
+  it('leaves a done goal out of both sides', () => {
+    expect(goalsTotals([card(10_000_000, 40_000_000), card(5_000_000, 0, true)])).toEqual({ savedMinor: 10_000_000, targetMinor: 40_000_000, percent: 25 });
+  });
+
+  it('counts a funded goal’s surplus in the figure but never toward another goal’s share', () => {
+    const totals = goalsTotals([card(50_000_000, 10_000_000), card(0, 90_000_000)]);
+    expect(totals.savedMinor).toBe(50_000_000);
+    expect(totals.percent).toBe(10);
+  });
+
+  it('reads 0% with nothing to reach', () => {
+    expect(goalsTotals([]).percent).toBe(0);
+  });
+});
+
+describe('monthYear', () => {
+  it('writes the three-letter month and the year', () => {
+    expect(monthYear('2027-12-31')).toBe('Dec 2027');
+    expect(monthYear('2026-09-30')).toBe('Sep 2026');
+  });
+});
+
+describe('GOAL_KIND_MARKS', () => {
+  it('draws every kind', () => {
+    for (const kind of Object.keys(GOAL_KIND_LABELS)) expect(GOAL_KIND_MARKS[kind as keyof typeof GOAL_KIND_MARKS]).toBeDefined();
   });
 });

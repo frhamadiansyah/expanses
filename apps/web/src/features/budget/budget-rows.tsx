@@ -8,9 +8,9 @@ import { type GroupChild, InsetRow, ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../.
 import { categoryMark } from '../categories/CategoryIcon';
 import { bareFigure } from '../networth/debt-rows';
 
-/** A thin bar of what is used: the tint, or the warn colour once it is full and past. */
-export function UseBar({ share, height = 4, label }: { share: number; height?: number; label?: string }) {
-  const over = share > 1;
+/** A thin bar of what is used: the tint, or the warn colour once it is full and past (or when `warn` says so). */
+export function UseBar({ share, height = 4, label, warn = false }: { share: number; height?: number; label?: string; warn?: boolean }) {
+  const over = share > 1 || warn;
   return (
     <span
       role={label ? 'progressbar' : undefined}

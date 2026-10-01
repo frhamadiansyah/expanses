@@ -9,6 +9,7 @@ import {
   type StageState,
 } from '@expanses/core';
 import { GOAL_HISTORY_LENGTH, type GoalHistoryEntry, type GoalPlanRow } from '@expanses/db';
+import { CarFront, Gem, GraduationCap, House, type LucideIcon, MoonStar, Plane, ShieldCheck, Sunset, Target } from 'lucide-react';
 
 export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
   emergency: 'Emergency fund',
@@ -43,6 +44,7 @@ export interface StageLine {
 export interface GoalCard {
   goalId: string;
   name: string;
+  kind: GoalKind;
   kindLabel: string;
   /** When the goal finishes: the last stage still to pay. */
   dueLabel: string;
@@ -65,7 +67,35 @@ export interface GoalCard {
   shortLines: { accountName: string; shortMinor: number; currency: string }[];
 }
 
-const monthYear = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+/** Each kind's glyph and colour on the list, drawn in the kit's tinted circle. */
+export const GOAL_KIND_MARKS: Record<GoalKind, { Glyph: LucideIcon; colour: string }> = {
+  emergency: { Glyph: ShieldCheck, colour: '#ff9500' },
+  retirement: { Glyph: Sunset, colour: '#a2845e' },
+  hajj: { Glyph: MoonStar, colour: '#34c759' },
+  umrah: { Glyph: MoonStar, colour: '#34c759' },
+  education: { Glyph: GraduationCap, colour: '#007aff' },
+  home: { Glyph: House, colour: '#5856d6' },
+  wedding: { Glyph: Gem, colour: '#af52de' },
+  vehicle: { Glyph: CarFront, colour: '#30b0c7' },
+  holiday: { Glyph: Plane, colour: '#00a5a0' },
+  other: { Glyph: Target, colour: '#8e8e93' },
+};
+
+/** "Dec 2027": the three-letter month on every engine (en-GB writes "Sept" on some), then the year. */
+export const monthYear = (iso: string) => `${new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })} ${iso.slice(0, 4)}`;
+
+/**
+ * The list's card: what is saved for the goals still running, against what they still cost. A done goal is left
+ * out (its stages are paid, so nothing is owed on it). The share counts each goal up to its own target, so the
+ * surplus on a funded goal never fills another goal's gap; the figure is everything held.
+ */
+export function goalsTotals(cards: readonly Pick<GoalCard, 'currentMinor' | 'targetMinor' | 'done'>[]): { savedMinor: number; targetMinor: number; percent: number } {
+  const live = cards.filter((card) => !card.done);
+  const savedMinor = live.reduce((total, card) => total + card.currentMinor, 0);
+  const targetMinor = live.reduce((total, card) => total + card.targetMinor, 0);
+  const towardMinor = live.reduce((total, card) => total + Math.max(0, Math.min(card.currentMinor, card.targetMinor)), 0);
+  return { savedMinor, targetMinor, percent: targetMinor > 0 ? Math.floor((towardMinor / targetMinor) * 100) : 0 };
+}
 
 /** "3 Aug" — for dates inside the year a goal's card is read in. */
 export const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -123,6 +153,7 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
   return {
     goalId: plan.goalId,
     name: plan.goal.name,
+    kind: plan.goal.kind,
     kindLabel: GOAL_KIND_LABELS[plan.goal.kind],
     dueLabel: last ? monthYear(last.dueOn) : '—',
     currentMinor: plan.currentMinor,

@@ -61,9 +61,9 @@ test('a goal funded by a tagged gold buy shows progress and what it needs each m
   await buyGold(page, '5', '9000000', 'Hajj for two');
 
   await page.goto('/goals');
-  await expect(page.getByText('Antam gold bars').first()).toBeVisible();
-  // The row carries what is set aside; the month it needs is read on the goal's own page.
+  // The row carries what is set aside; what funds it and the month it needs are read on the goal's own page.
   const hajj = await goalCard(page, 'Hajj for two');
+  await expect(hajj.getByTestId('goal-link').filter({ hasText: 'Antam gold bars' })).toBeVisible();
   await expect(hajj.getByText(/9\.000\.000/).first()).toBeVisible();
   await expect(hajj.getByText('Needed a month')).toBeVisible();
 });

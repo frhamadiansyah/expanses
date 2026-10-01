@@ -6,6 +6,7 @@ import { cardSection } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addHoldingFlow } from './securities';
+import { goalCard } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -231,10 +232,9 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
 
   // The goal has the two grams against it — the whole point of tagging the buy. The figure beside them is a
   // valuation and moves with the price; what the tag decides is which goal the units belong to.
-  await page.goto('/goals');
-  // The line is a row of a group now, and a group's header sits above it: the holding's name, what it is tagged
-  // for and its figure are three parts of one row rather than one run of text, so the row is named and asked.
-  await expect(page.getByTestId('goal-asset').filter({ hasText: 'Antam gold bars' })).toContainText('tagged for Hajj fund');
+  // What funds a goal is read on the goal's own page, under Funded by: the list no longer repeats it.
+  const hajj = await goalCard(page, 'Hajj fund');
+  await expect(hajj.getByTestId('goal-link').filter({ hasText: 'Antam gold bars' })).toContainText('tagged');
 
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/accounts');
