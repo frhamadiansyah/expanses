@@ -85,6 +85,13 @@ export * as draftsSchema from './schema-drafts';
 export * as captureSchema from './schema-capture';
 export * from './repos/drafts';
 export * from './repos/entry';
+// Capture: where captures come from and what each source learned, the matcher that keeps one payment to one draft,
+// and the pipeline that turns what the phone handed over into the queue.
+export * from './capture/sources';
+export * from './capture/learn';
+export * from './capture/match';
+export * from './capture/ingest';
+export * from './capture/skipped';
 export * from './repos/statements';
 export * as cardsSchema from './schema-cards';
 export * from './repos/cards';

@@ -54,20 +54,39 @@ function minutesApart(one: string, other: string): number {
   return Math.abs(first - second) / 60_000;
 }
 
-/** Which way a draft's money went. A transfer touches two accounts, so it reads either way. */
-function goesThatWay(kind: string, direction: 'out' | 'in'): boolean {
-  return kind === 'transfer' || (kind === 'expense') === (direction === 'out');
+/** Which way a draft's money goes, read off its own columns. */
+type Side = 'out' | 'in' | 'both';
+
+/**
+ * The side of the money a draft is about.
+ *
+ * A transfer knows both of its accounts once it is a pair; a top-up draft knows only where the money landed, which is
+ * the side it arrived from. A row that knows neither side (a transfer nobody has answered for) could be either.
+ */
+function sideOf(row: { kind: string; accountId: string | null; toAccountId: string | null }): Side {
+  if (row.kind === 'expense') return 'out';
+  if (row.kind === 'income') return 'in';
+  if (row.accountId !== null && row.toAccountId !== null) return 'both';
+  if (row.accountId !== null) return 'out';
+  if (row.toAccountId !== null) return 'in';
+  return 'both';
+}
+
+/** The account a draft's money moved on its own side: the one it left, or the one it landed in. */
+function sideAccount(row: { kind: string; accountId: string | null; toAccountId: string | null }): string | null {
+  return sideOf(row) === 'out' ? row.accountId : row.toAccountId;
 }
 
 /**
  * Whether a draft is about the same account as the capture.
  *
- * Either side not knowing is a match: a notification that names no account is not a reason to ask the owner twice
- * about the same coffee. A transfer is about both of its accounts.
+ * A side that does not name an account is not a reason to ask the owner twice about the same coffee; a row that does
+ * name one has to recognise it.
  */
 function touches(row: { accountId: string | null; toAccountId: string | null }, capture: Candidate): boolean {
-  if (capture.accountId === null || row.accountId === null) return true;
-  return row.accountId === capture.accountId || row.toAccountId === capture.accountId;
+  if (capture.accountId === null) return true;
+  const known = [row.accountId, row.toAccountId].filter((id): id is string => id !== null);
+  return known.length === 0 || known.includes(capture.accountId);
 }
 
 /**
@@ -109,7 +128,8 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
   // Seen twice: the notification and the screenshot of it.
   for (const row of waiting) {
     if (Math.abs(row.amountMinor) !== amount) continue;
-    if (!goesThatWay(row.kind, capture.direction)) continue;
+    const side = sideOf(row);
+    if (side !== 'both' && side !== capture.direction) continue;
     if (!touches(row, capture)) continue;
     if (minutesApart(row.createdAt, capture.at) > SAME_PAYMENT_MINUTES) continue;
     return { kind: 'same-draft', draftId: row.id };
@@ -118,13 +138,16 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
   // One movement, seen from both sides: out of one of the owner's accounts and into another.
   if (capture.accountId !== null) {
     for (const row of waiting) {
-      if (row.kind === 'transfer') continue;
-      if (row.accountId === null || row.accountId === capture.accountId) continue;
+      const side = sideOf(row);
+      // The two sightings have to be of the two sides of the movement, and a pair already has both.
+      if (side === 'both' || side === capture.direction) continue;
+      const rowAccount = sideAccount(row);
+      if (rowAccount === null || rowAccount === capture.accountId) continue;
       if (Math.abs(row.amountMinor) !== amount) continue;
       // The two sightings have to be of opposite directions, or it is the same payment read twice.
       if (row.amountMinor >= 0 === capture.amountMinor >= 0) continue;
       if (minutesApart(row.createdAt, capture.at) > TRANSFER_MINUTES) continue;
-      if (!(await owns(row.accountId)) || !(await owns(capture.accountId))) continue;
+      if (!(await owns(rowAccount)) || !(await owns(capture.accountId))) continue;
       return { kind: 'transfer-pair', draftId: row.id };
     }
   }
@@ -144,7 +167,8 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
   for (const row of recorded) {
     if (row.transactionId === null) continue;
     if (Math.abs(row.amountMinor) !== amount) continue;
-    if (!goesThatWay(row.kind, capture.direction)) continue;
+    const side = sideOf(row);
+    if (side !== 'both' && side !== capture.direction) continue;
     if (!touches(row, capture)) continue;
     if (minutesApart(row.resolvedAt ?? row.createdAt, capture.at) > SAME_PAYMENT_MINUTES) continue;
     return { kind: 'recorded', transactionId: row.transactionId, draftId: row.id };
@@ -177,11 +201,13 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
 
 /** The row one capture becomes: the draft it would have been, plus its own capture id. */
 function rowOf(incoming: Incoming): NewDraft {
+  const captures = [...(incoming.captureIds ?? [])];
+  if (!captures.includes(incoming.captureId)) captures.push(incoming.captureId);
   return {
     ...incoming,
     // A capture whose reading said nothing about direction still says it with its sign: negative is money arriving.
     kind: incoming.kind ?? (incoming.amountMinor < 0 ? 'income' : 'expense'),
-    captureIds: [...(incoming.captureIds ?? []), incoming.captureId],
+    captureIds: captures,
   };
 }
 
@@ -252,7 +278,11 @@ export async function makeTransferPair(
   incoming: Incoming,
 ): Promise<void> {
   const row = await waitingDraft(tx, ws, existingDraftId);
-  if (row.accountId === null || incoming.accountId === null || row.accountId === incoming.accountId) {
+  const side = sideOf(row);
+  const rowAccount = side === 'out' ? row.accountId : row.toAccountId;
+  // A top-up draft names where the money landed, not where it left: its own side is the destination.
+  const incomingAccount = incoming.accountId ?? incoming.toAccountId ?? null;
+  if (side === 'both' || rowAccount === null || incomingAccount === null || rowAccount === incomingAccount) {
     throw new DraftError('NOT_A_PAIR', 'A transfer joins two different accounts of your own');
   }
   // The sign says which half arrived: positive is money out of the account it names.
@@ -267,8 +297,8 @@ export async function makeTransferPair(
     .set({
       ...toppedUp(row, incoming),
       kind: 'transfer',
-      accountId: arrivingIsOut ? incoming.accountId : row.accountId,
-      toAccountId: arrivingIsOut ? row.accountId : incoming.accountId,
+      accountId: arrivingIsOut ? incomingAccount : rowAccount,
+      toAccountId: arrivingIsOut ? rowAccount : incomingAccount,
       // The row keeps the draft convention: the figure is positive because it left the account it names.
       amountMinor,
       captureIds: JSON.stringify(captures),
@@ -297,7 +327,9 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
     const amountMinor = Math.abs(draft.amountMinor);
     const now = new Date().toISOString();
 
-    const [split] = await tx
+    // The capture that arrived last is the one its own row was kept for: found by the capture, not by guessing at
+    // which row was written first, because a batch drain writes rows in an order that is not the order they arrived.
+    const hiddenRows = await tx
       .select()
       .from(draftTransactions)
       .where(
@@ -306,8 +338,8 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
           eq(draftTransactions.mergedInto, draftId),
           eq(draftTransactions.status, 'pending'),
         ),
-      )
-      .orderBy(desc(draftTransactions.createdAt));
+      );
+    const split = hiddenRows.find((row) => captureIdsOf(row.captureIds).includes(last));
 
     // A merge from before this build left no row behind, so the capture's draft is written now, out of what the
     // survivor says. It is the same payment, so it is the same picture and the same reading.
