@@ -64,7 +64,10 @@ export function KeyboardStrip({
             aria-selected={false}
             aria-label={cell.label}
             // Down, not click: a click would take the focus off the field first and fold the keyboard away under the tap.
+            // iOS moves the focus on the mouse-down it makes up from a touch, not on the pointer-down, so both are held:
+            // with the field blurred, the strip left with it and the tap fell on nothing (Stockbit picked, "sto" kept).
             onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={cell.onPick}
             className={`ph-focus-inset flex min-h-[48px] flex-col items-center justify-center px-2 py-1 text-center active:bg-[var(--ph-fill)] ${scroll ? 'min-w-[56px] shrink-0' : 'min-w-0 flex-1'}`}
           >

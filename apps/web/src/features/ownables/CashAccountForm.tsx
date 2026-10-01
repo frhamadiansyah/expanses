@@ -71,7 +71,8 @@ function BankNameRow({
               onChange={(e) => onBank(e.target.value)}
               onFocus={() => setTyping(true)}
               onBlur={() => {
-                setTyping(false);
+                // A beat before the strip goes, so a tap on it that took the focus first still lands on its cell.
+                window.setTimeout(() => setTyping(false), STRIP_GRACE_MS);
                 onBank(bank.trim());
               }}
               autoComplete="off"
@@ -107,6 +108,9 @@ function BankNameRow({
   );
 }
 
+
+/** How long the names over the keyboard outlast the field's focus: long enough for the tap that took it to land. */
+const STRIP_GRACE_MS = 300;
 /**
  * A name typed on a row of its own, with the names it could be offered over the keyboard as it is typed — the banks
  * or the brokers of a rupiah workspace — the way the bank row offers them. Anything else typed is kept as typed.
@@ -140,7 +144,7 @@ function SuggestRow({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setTyping(true)}
         onBlur={() => {
-          setTyping(false);
+          window.setTimeout(() => setTyping(false), STRIP_GRACE_MS);
           onChange(value.trim());
         }}
         autoComplete="off"
