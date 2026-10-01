@@ -2,6 +2,7 @@ import { setActiveBook } from '@expanses/db';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
+import { watchCaptures } from '../capture/drain';
 import type { AppDb } from '../db/bootstrap';
 import { scheduleDailyCopy } from '../db/snapshots';
 import { listenForJoinLinks } from '../native/deep-link';
@@ -33,6 +34,15 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace, the code in
   // the fragment rather than the path.
   useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);
+  /*
+   * Captures wait in the phone's holding area while the app is closed — a shortcut or the share sheet cannot reach
+   * the database. Draining turns them into drafts when the app opens and every time it comes back to the front,
+   * which is exactly when a backlog arrives; a drain that found nothing touches no cache at all.
+   */
+  useEffect(
+    () => watchCaptures(app.database, app.ws, () => void queryClient.invalidateQueries()),
+    [app.database, app.ws, queryClient],
+  );
   // The day's safety copy, queued for the first idle moment after this screen has painted. It never
   // blocks a paint, and it is what stands behind "Restore the last good copy" on a device that has not
   // had an update in months.

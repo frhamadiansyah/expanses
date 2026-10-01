@@ -47,3 +47,11 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
 export const native = registerPlugin<CapturePluginApi>('Capture', {
   web: () => Promise.resolve(new CaptureWeb()),
 });
+
+/** The bytes behind a bridge answer, for a Blob or an OPFS write. */
+export function captureBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
