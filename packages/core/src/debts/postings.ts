@@ -157,7 +157,7 @@ export function forgivePostings(input: { balanceMinor: number; currency: string 
  */
 export function splitBillPostings(input: SplitBill, accounts: Pick<DebtAccounts, 'moneyAccountId'>): PostingLine[] {
   assertPositive(input.totalMinor, 'A bill');
-  assertNotNegative(input.ownShareMinor, 'Your share');
+  assertNotNegative(input.ownShareMinor, 'The share');
   for (const share of input.shares) assertPositive(share.amountMinor, "A friend's share");
   const shared = input.shares.reduce((total, share) => total + share.amountMinor, 0);
   const counted = input.ownShareMinor + shared;
