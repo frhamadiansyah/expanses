@@ -1,7 +1,7 @@
 import { expenseLines, incomeLines, type Reading, transferLines, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { draftTransactions } from '../schema-drafts';
 import { existingExternalRefs } from './imports';
 import { ledgerSourceOf, postTransactionTx, type TransactionSource } from './ledger';
@@ -98,9 +98,9 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
   categoryAccountId: row.categoryAccountId,
   cardId: row.cardId,
   sourceId: row.sourceId,
-  captureIds: parseIds(row.captureIds),
+  captureIds: captureIdsOf(row.captureIds),
   imageFile: row.imageFile,
-  reading: parseReading(row.readingJson),
+  reading: readingOf(row.readingJson),
   mergedInto: row.mergedInto,
   confidence: row.confidence,
   externalRef: row.externalRef,
@@ -108,7 +108,7 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
 });
 
 /** The captures a draft was read out of, as they were written. A row written by hand may carry none. */
-function parseIds(json: string | null): string[] {
+export function captureIdsOf(json: string | null): string[] {
   if (!json) return [];
   try {
     const parsed: unknown = JSON.parse(json);
@@ -119,7 +119,7 @@ function parseIds(json: string | null): string[] {
 }
 
 /** What the reader made of it. A draft typed by a person, or read before this column existed, carries none. */
-function parseReading(json: string | null): Reading | null {
+export function readingOf(json: string | null): Reading | null {
   if (!json) return null;
   try {
     return JSON.parse(json) as Reading;
@@ -168,6 +168,19 @@ function insertValues(ws: WorkspaceContext, draft: NewDraft, now: string) {
 export async function createDraft(database: Database, ws: WorkspaceContext, draft: NewDraft): Promise<string> {
   const values = insertValues(ws, draft, new Date().toISOString());
   await database.db.insert(draftTransactions).values(values);
+  return values.id;
+}
+
+/**
+ * Writes one draft row for a caller that is deciding what an arriving capture becomes, inside its own transaction.
+ *
+ * Asking "have I seen this payment already?" and writing the answer have to be one step: two captures of the same
+ * payment arriving together would otherwise both look like the first one and the second would be queued as a
+ * separate thing to do.
+ */
+export async function insertDraftRow(tx: Db, ws: WorkspaceContext, draft: NewDraft, now: string): Promise<string> {
+  const values = insertValues(ws, draft, now);
+  await tx.insert(draftTransactions).values(values);
   return values.id;
 }
 
@@ -227,7 +240,14 @@ export async function countPendingDrafts(database: Database, ws: WorkspaceContex
   const [row] = await database.db
     .select({ count: sql<number>`count(*)` })
     .from(draftTransactions)
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, 'pending')));
+    // A draft that was merged into another is not something to deal with: it is the row it was merged into.
+    .where(
+      and(
+        eq(draftTransactions.workspaceId, ws.workspaceId),
+        eq(draftTransactions.status, 'pending'),
+        isNull(draftTransactions.mergedInto),
+      ),
+    );
   return Number(row?.count ?? 0);
 }
 
