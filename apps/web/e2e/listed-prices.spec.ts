@@ -76,7 +76,7 @@ test('IDX’s daily file fills the shares held: a preview, one save, and the pag
 
   const preview = page.getByTestId('idx-preview');
   await expect(preview).toContainText('Closing prices for29 Sep 2026');
-  await expect(preview).toContainText('1 of your stocks found · 4 others skipped');
+  await expect(preview).toContainText('1 held stock found · 4 others skipped');
   await expect(page.getByRole('dialog')).toContainText('No price → 6.150');
   await page.getByRole('button', { name: 'Save 1 price' }).click();
   await expect(page.getByTestId('idx-preview')).toHaveCount(0);
