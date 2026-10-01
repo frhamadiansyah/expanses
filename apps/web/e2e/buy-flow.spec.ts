@@ -164,7 +164,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const buying = page.getByRole('dialog', { name: 'Add a transaction' });
   await buying.getByRole('radio', { name: 'Buy / sell' }).click();
-  await buying.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI' });
+  await buying.getByLabel('What was bought or sold').selectOption({ label: 'Investments › BBRI' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });

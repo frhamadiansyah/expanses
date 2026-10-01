@@ -13,8 +13,8 @@ export type MoneyInMode = 'withdraw' | 'top-up';
 
 /** What each one is called, and what its fee is called. */
 export const MONEY_IN = {
-  withdraw: { title: 'Cash withdrawal', fee: 'ATM fee', about: 'A transfer between your own accounts: not income, not spending. An ATM fee is spending.' },
-  'top-up': { title: 'Top up', fee: 'Top-up fee', about: 'Your own money moving in: not income. Receive is for money someone else sends you. A fee is spending.' },
+  withdraw: { title: 'Cash withdrawal', fee: 'ATM fee', about: 'A transfer between accounts held here: not income, not spending. An ATM fee is spending.' },
+  'top-up': { title: 'Top up', fee: 'Top-up fee', about: 'Money moving in from an account held here: not income. Receive is for money someone else sends. A fee is spending.' },
 } as const;
 
 /**

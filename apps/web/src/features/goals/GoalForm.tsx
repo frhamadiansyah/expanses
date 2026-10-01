@@ -208,7 +208,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-semibold">Payments</h3>
-            <span className="text-xs text-slate-500">Add a stage for each payment your scheme asks for.</span>
+            <span className="text-xs text-slate-500">Add a stage for each payment the scheme asks for.</span>
           </div>
           {stages.map((stage, index) => (
             <div key={index} className="grid gap-2 md:grid-cols-[1.4fr_1fr_1fr_auto]">
@@ -242,7 +242,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label={`Standing amount each month (${ws.baseCurrency})`} hint="A transfer you already make for this goal, outside monthly buys.">
+          <Field label={`Standing amount each month (${ws.baseCurrency})`} hint="A transfer already made for this goal, outside monthly buys.">
             <Input value={standing} onChange={(e) => setStanding(e.target.value)} inputMode="decimal" />
           </Field>
           <Field label="What that transfer is">

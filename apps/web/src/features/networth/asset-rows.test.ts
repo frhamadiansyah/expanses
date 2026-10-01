@@ -69,7 +69,7 @@ describe('groupAssets', () => {
     const rows = groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows);
     expect(rows.find((row) => row.accountId === 'bca')!.method).toBe('Ledger balance');
     expect(rows.find((row) => row.accountId === 'gold')!.method).toBe('Units × price');
-    expect(rows.find((row) => row.accountId === 'house')!.method).toBe('Your estimate');
+    expect(rows.find((row) => row.accountId === 'house')!.method).toBe('Estimate');
   });
 
   it('shows the Coretax code and table when the asset has a profile', () => {

@@ -29,11 +29,11 @@ test('gold reads as grams, what went in, the average and the price, and each pur
   await expect(grid).toContainText('Average buy');
   await expect(grid).toContainText('2.319.500/g');
   // A price typed by hand is the owner's own, not the world's.
-  await expect(grid).toContainText('Your price');
+  await expect(grid).toContainText('Typed price');
   await expect(grid).toContainText('2.485.000/g');
   // Where it came from and its day sit behind the price's ⓘ, not on a line of their own.
   await expect(page.getByTestId('price-line')).toHaveCount(0);
-  const priceLine = (await (await priceSaid(page, 'Your price')).innerText()).split(' · ');
+  const priceLine = (await (await priceSaid(page, 'Typed price')).innerText()).split(' · ');
   expect(priceLine[0]).toBe('Typed');
   expect(priceLine[1]).toMatch(DAY);
 
@@ -160,12 +160,12 @@ test('gold follows the world price: fetched as the page opens, said by name, and
 
   // A price typed for today is the day's price, and ↻ does not take it back.
   await typePrice(page, '2485000');
-  await expect(await priceSaid(page, 'Your price')).toHaveText(/^Typed · /);
-  await expect(grid).toContainText('Your price');
+  await expect(await priceSaid(page, 'Typed price')).toHaveText(/^Typed · /);
+  await expect(grid).toContainText('Typed price');
   await expect(page.getByText('Rp 49.700.000').first()).toBeVisible();
   // ↻ sits with the explanation, for a holding that follows the world price.
   await page.getByRole('button', { name: 'Fetch today’s world price' }).click();
-  await expect(await priceSaid(page, 'Your price')).toHaveText(/^Typed · /);
+  await expect(await priceSaid(page, 'Typed price')).toHaveText(/^Typed · /);
   await expect(page.getByText('Rp 49.700.000').first()).toBeVisible();
 });
 

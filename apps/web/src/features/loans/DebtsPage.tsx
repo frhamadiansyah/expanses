@@ -211,7 +211,7 @@ export function DebtsPage() {
 
       {nothing && (
         <Empty>
-          Nothing owed. Tap ＋ to add a loan, a card, or money you borrowed from someone; a loan already on{' '}
+          Nothing owed. Tap ＋ to add a loan, a card, or money borrowed from someone; a loan already on{' '}
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}

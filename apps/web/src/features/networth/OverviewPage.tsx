@@ -487,7 +487,7 @@ export function OverviewPage() {
         <LargeTitle title="Net worth" actions={actions} max={3} />
         <Panel wide>
           <Empty>
-            Start by adding your bank accounts and credit cards on the{' '}
+            Start by adding bank accounts and credit cards on the{' '}
             <Link to="/accounts" className="font-medium underline">
               Accounts
             </Link>{' '}
@@ -505,7 +505,7 @@ export function OverviewPage() {
 
       {nothingYet && (
         <Empty>
-          Nothing to show yet. Add your accounts on{' '}
+          Nothing to show yet. Add accounts on{' '}
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}

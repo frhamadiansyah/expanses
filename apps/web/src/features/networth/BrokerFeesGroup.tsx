@@ -60,7 +60,7 @@ function FeeRows({ accountId, fees }: { accountId: string; fees: BrokerFees }) {
           onChange={(e) => setSell(e.target.value)}
           onBlur={() => void save()}
           inputMode="decimal"
-          info="Includes IDX's 0,1% final tax on a sale (an ETF pays none, so it sells for 0,1% less). Check your broker's app; most charge 0,15% to buy and 0,25% to sell."
+          info="Includes IDX's 0,1% final tax on a sale (an ETF pays none, so it sells for 0,1% less). Check the broker's app; most charge 0,15% to buy and 0,25% to sell."
         />
         <TextRow
           label="Minimum fee per day"

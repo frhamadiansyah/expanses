@@ -193,7 +193,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const saidPrice = priced ? priceLine({ latest: latestPrice, fetches: fetcher !== null, failed: fetcher?.state === 'failed', today: isoDate() }) : '';
   // A close from Yahoo or IDX's file is the last session's, not today's.
   const outsideClose = latestPrice?.source === 'yahoo' || latestPrice?.source === 'idx';
-  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Your price' : outsideClose ? 'Last close' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
+  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Typed price' : outsideClose ? 'Last close' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
   const pricedTileList: Tile[] = priced
     ? pricedTiles({
         unitKind,

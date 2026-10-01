@@ -97,7 +97,7 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await expect(page.getByRole('link', { name: /Apartemen Taman Anggrek/ })).toBeVisible();
 
   await page.goto('/net-worth/assets/new');
-  await page.getByPlaceholder('Search everything you can own').fill('gold jewellery');
+  await page.getByPlaceholder('Search everything that can be owned').fill('gold jewellery');
   await page.getByRole('button', { name: 'Gold jewellery' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Kalung emas');
   await page.getByLabel('Bought on').fill('2025-01-01');
@@ -160,7 +160,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
 
 test('the asset picker never offers money, whatever is typed into its search', async ({ page }) => {
   await page.goto('/net-worth/assets/new');
-  const search = page.getByPlaceholder('Search everything you can own');
+  const search = page.getByPlaceholder('Search everything that can be owned');
   for (const query of ['bank', 'cash', 'deposit', 'account']) {
     await search.fill(query);
     await expect(page.getByRole('button', { name: 'Bank, cash or deposit' })).toHaveCount(0);

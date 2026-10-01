@@ -63,7 +63,7 @@ export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId
     <form ref={form} onSubmit={submit}>
       <InsetGroup
         header={account?.name ?? 'This loan'}
-        footer={terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what you still owe today.'}
+        footer={terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what is still owed today.'}
       >
         <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
         <TextRow
@@ -95,7 +95,7 @@ export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId
         />
         <SelectRow
           label="Rate kind"
-          hint="A floating rate changes; you record each change as it comes."
+          hint="A floating rate changes; each change is recorded as it comes."
           value={draft.rateKind}
           onChange={(e) => set({ rateKind: e.target.value as 'fixed' | 'floating' })}
         >
@@ -157,7 +157,7 @@ export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId
       </InsetGroup>
 
       <ErrorBox error={error} />
-      <InsetGroup footer="The schedule is worked out from what the ledger says you owe, so the payments you record are always the truth. Nothing here is stored as a projection.">
+      <InsetGroup footer="The schedule is worked out from what the ledger says is owed, so the payments recorded are always the truth. Nothing here is stored as a projection.">
         <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
         <InsetRow title="Cancel" chevron={false} onClick={onDone} />
       </InsetGroup>

@@ -520,7 +520,7 @@ export function LoanDetailPage() {
               valueTone: () => 'ink',
             }}
           />
-          <InsetGroup footer="Worked out from what you still owe today. The payments you record are the truth; these rows are only what the terms imply from here.">
+          <InsetGroup footer="Worked out from today's balance. The payments recorded are the truth; these rows are only what the terms imply from here.">
             <InsetRow title={showRows ? 'Show the next twelve' : 'Show every month'} chevron={false} onClick={() => setShowRows((shown) => !shown)} />
           </InsetGroup>
         </>

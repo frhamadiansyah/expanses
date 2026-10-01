@@ -117,7 +117,7 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
 
   await openWorking(page);
   await type(page.getByLabel('Months of outgoings'), '6');
-  await expect(page.getByText('Your own figure · the guide is 3')).toBeVisible();
+  await expect(page.getByText('Custom figure · the guide is 3')).toBeVisible();
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   // Six months of Rp 3 jt, lifestyle included.

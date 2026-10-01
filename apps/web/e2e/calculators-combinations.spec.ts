@@ -110,8 +110,8 @@ test('row 6 — money set aside before a level is added: the target rises, what 
 test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% return, and the page’s figure', async ({ page }) => {
   await page.goto('/calculators/retirement');
   await typeInto(page, 'Yearly spending in retirement (IDR)', '120000000');
-  await typeInto(page, 'Your age now', '35');
-  await typeInto(page, 'Age you retire', '55');
+  await typeInto(page, 'Age now', '35');
+  await typeInto(page, 'Retirement age', '55');
   const answer = page.getByTestId('answer-retirement');
   await expect(answer).toContainText('4.120.008.061');
   const youNeed = figure((await answer.locator('div > div').first().locator('p').nth(1).textContent()) ?? '');

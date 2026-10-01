@@ -153,7 +153,7 @@ export function LendBorrowPage() {
 
       {nothingYet && (
         <Empty>
-          Nothing lent or borrowed yet. Money you lend leaves your cash and waits under Receivables; money you borrow shows as a debt until you pay it back.
+          Nothing lent or borrowed yet. Money lent leaves cash and waits under Receivables; money borrowed shows as a debt until it is paid back.
         </Empty>
       )}
 
@@ -163,15 +163,15 @@ export function LendBorrowPage() {
             {/* The phone shows one list at a time, as the mockup draws it; the desktop keeps both side by side. */}
             <SegmentedControl segments={SIDES} value={shown} onChange={(key) => setSide(key as Side)} label="Lend & borrow" className="mb-[18px]" />
             {shown === 'owed' ? (
-              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
+              <Column title="Receivables" people={owedToYou} emptyText="Nothing owed to collect." currency={ws.baseCurrency} rates={rates} header={!phone} />
             ) : (
-              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
+              <Column title="Payables" people={youOwe} emptyText="Nothing owed." currency={ws.baseCurrency} rates={rates} header={!phone} />
             )}
           </>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} header={!phone} />
-            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} header={!phone} />
+            <Column title="Receivables" people={owedToYou} emptyText="Nothing owed to collect." currency={ws.baseCurrency} rates={rates} header={!phone} />
+            <Column title="Payables" people={youOwe} emptyText="Nothing owed." currency={ws.baseCurrency} rates={rates} header={!phone} />
           </div>
         ))}
 

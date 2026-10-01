@@ -78,7 +78,7 @@ export function transferLines(transfers: readonly TransferIn[], item: Pick<Recei
     .filter((t) => t.counterpart.owner === me && !t.void)
     .sort((a, b) => (a.occurredOn === b.occurredOn ? a.transferId.localeCompare(b.transferId) : a.occurredOn < b.occurredOn ? -1 : 1))
     .map((t) => {
-      const lead = t.direction === 'out' ? 'To you' : 'From you';
+      const lead = t.direction === 'out' ? 'To me' : 'From me';
       return {
         key: t.transferId,
         title: t.counterpartName ? `${lead}: ${t.counterpartName}` : lead,

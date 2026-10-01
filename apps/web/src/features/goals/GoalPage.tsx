@@ -156,7 +156,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           caption={
             <>
               of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
-              {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from your figures</span>}
+              {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from these figures</span>}
               <ShortNote card={card} stood={stood} />
             </>
           }

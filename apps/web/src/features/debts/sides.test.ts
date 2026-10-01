@@ -96,7 +96,7 @@ describe('a fee typed on a loan', () => {
   it('refuses a fee with no category, and a borrowing fee that takes everything that arrived', () => {
     expect(() => debtDraftToInput({ ...base, fee: '100.000' }, 'IDR', '2026-09-27')).toThrow(/category for the fee/);
     const borrowed = { ...debtDraftFor('borrowed', '2026-09-27', 'Dewi'), amount: '100.000', moneyId: 'bca', fee: '100.000', feeCategoryId: 'fees', subCategory: '109' };
-    expect(() => debtDraftToInput(borrowed, 'IDR', '2026-09-27')).toThrow(/all of what you borrowed/);
+    expect(() => debtDraftToInput(borrowed, 'IDR', '2026-09-27')).toThrow(/all of what was borrowed/);
   });
 });
 

@@ -17,7 +17,7 @@ describe('the emergency months box', () => {
     draft = typedMonths(draft, '9');
     draft = withAnswers(draft, { household: 'single' });
     expect(draft.months).toBe('9');
-    expect(monthsNote(draft)).toBe('Your own figure · the guide is 6');
+    expect(monthsNote(draft)).toBe('Custom figure · the guide is 6');
   });
 
   it('reads a working saved before the answers existed as the user’s own figure', () => {

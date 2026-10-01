@@ -80,7 +80,7 @@ export const emptyPurchaseDraft = (accountId: string, moneyId: string, today: st
  * receiving account's; when it differs from the holding's, what was charged goes on the input (`withCharged`).
  */
 export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, today: string, cashCurrency = currency): RecordTradeInput {
-  if (!draft.accountId) throw new Error('Choose what you bought or sold');
+  if (!draft.accountId) throw new Error('Choose what was bought or sold');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
   if (draft.mode === 'sell' && draft.moneyIsCard) throw new Error('Choose a bank or cash account for the proceeds');

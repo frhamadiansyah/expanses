@@ -79,7 +79,7 @@ export function PersonPage() {
   return (
     <div className={SCREEN}>
       <PushedTitle title={name} back="Lend & borrow" backTo="/net-worth/lend-borrow" backSearch={{ side }} actions={[add]} />
-      {people.isSuccess && rows.length === 0 && <Empty>Nothing is owed between you and {name} any more.</Empty>}
+      {people.isSuccess && rows.length === 0 && <Empty>Nothing is owed with {name} any more.</Empty>}
 
       {rows.length > 0 && (
         // The total alone under their name, as Wallet draws a payment: the list below says the rest.

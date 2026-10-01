@@ -38,7 +38,7 @@ export function RecordedByHand({ accountId, currency }: { accountId: string; cur
     <div data-testid="recorded-by-hand">
       <InsetGroup
         header="Recorded by hand"
-        footer="Undo puts it back as a proposal. Nothing is posted or deleted: what you recorded yourself stays in your transactions."
+        footer="Undo puts it back as a proposal. Nothing is posted or deleted: what was recorded by hand stays in the transactions."
       >
         {rows.map((event) => (
           <InsetRow

@@ -167,7 +167,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         {draft.kind !== 'income' && (
           <InputRow
             label="Units, shares or grams"
-            hint={position ? `You hold ${(position.unitsMicro / 1_000_000).toLocaleString('id-ID')}` : undefined}
+            hint={position ? `Held: ${(position.unitsMicro / 1_000_000).toLocaleString('id-ID')}` : undefined}
             value={draft.units}
             onChange={(e) => change({ units: e.target.value })}
             inputMode="decimal"
@@ -182,7 +182,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         )}
         <SelectRow
           label="Money account"
-          hint="Opening balance is for holdings you owned before using this app."
+          hint="Opening balance is for holdings owned before using this app."
           value={draft.cashAccountId}
           onChange={(e) => {
             change({ cashAccountId: e.target.value });

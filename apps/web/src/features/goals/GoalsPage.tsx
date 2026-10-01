@@ -13,7 +13,7 @@ import { useEarmarks, useGoalPlans } from './queries';
 
 /** The page's two sections, in funding order: what you save reaches the compulsory goals first. */
 const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
-  { key: 'compulsory', title: 'Compulsory', note: 'The emergency fund and retirement. What you save reaches these first.' },
+  { key: 'compulsory', title: 'Compulsory', note: 'The emergency fund and retirement. What is saved reaches these first.' },
   { key: 'additional', title: 'Additional', note: 'Everything else, from what is left.' },
 ];
 
@@ -80,7 +80,7 @@ export function GoalsPage() {
           footer={
             shortfall > 0 ? (
               <>
-                Goals ask for <Money minor={shortfall} currency={ws.baseCurrency} /> more than you save. In this order,{' '}
+                Goals ask for <Money minor={shortfall} currency={ws.baseCurrency} /> more than is saved. In this order,{' '}
                 {summary.data.fits.filter((fit) => fit.fits === 'full').length} fit, and the rest wait. Move a date, lower a target, or reorder them.
               </>
             ) : undefined
@@ -100,7 +100,7 @@ export function GoalsPage() {
             chevron={false}
           />
           <InsetRow
-            title="You save each month"
+            title="Saved each month"
             subtitle="Take-home pay − spending − loan principal"
             value={<Money minor={summary.data.capacityMonthlyMinor} currency={ws.baseCurrency} />}
             valueTone="ink"
@@ -140,7 +140,7 @@ export function GoalsPage() {
       })}
 
       {plans.some((plan) => plan.links.length > 0) && (
-        <InsetGroup header="What each asset is for" footer="Goals never change your net worth or the tax report; they only say what the money is for.">
+        <InsetGroup header="What each asset is for" footer="Goals never change net worth or the tax report; they only say what the money is for.">
           {plans.flatMap((plan) =>
             plan.links.map((link) => (
               <InsetRow

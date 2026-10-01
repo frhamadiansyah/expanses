@@ -54,7 +54,7 @@ export function SecurityPricePage() {
         <TextRow label="As of" type="date" value={onDate} max={isoDate()} onChange={(e) => setOnDate(e.target.value)} required />
       </InsetGroup>
       {stock && typed !== null && (
-        <InsetGroup header="This changes" footer={`One price values every broker that holds ${label}. A price in ${currency} is converted at the day’s rate; you never type a converted price.`}>
+        <InsetGroup header="This changes" footer={`One price values every broker that holds ${label}. A price in ${currency} is converted at the day’s rate; a converted price is never typed.`}>
           {priceChangeLines(stock.holdings, last?.priceMicro ?? null, typed).map((line) => (
             <InsetRow
               key={line.holding.accountId}

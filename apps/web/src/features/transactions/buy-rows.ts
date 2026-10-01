@@ -28,7 +28,7 @@ export interface BuyRowText {
 /** The holding row: what was bought or sold, and the reassurance that units are not spending. */
 export function holdingRowText(mode: BuyMode): BuyRowText {
   return {
-    label: 'What you bought or sold',
+    label: 'What was bought or sold',
     caption: mode === 'buy' ? 'Bought' : 'Sold',
     hint: 'Units are recorded, so this never counts as spending.',
   };

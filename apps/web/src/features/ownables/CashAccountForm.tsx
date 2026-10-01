@@ -384,8 +384,8 @@ export function CashAccountForm({
               {fund
                 ? ' It is called by its broker, one account per broker; a bank as its custodian goes on the yearly tax report.'
                 : asks.includes('bank')
-                  ? ' The bank goes on your yearly tax report; the name is what you call it here.'
-                  : ' Name is what you call yours.'}
+                  ? " The bank goes on the yearly tax report; the name is what it's called here."
+                  : " The name is what it's called here."}
               {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
               {locked && ' When it matures, take the money out with Withdraw on its page.'}
             </>

@@ -39,7 +39,7 @@ export function typedMonths(draft: EmergencyDraft, months: string): EmergencyDra
  */
 export function monthsNote(draft: EmergencyDraft): string | undefined {
   const guide = emergencyMonthsFor(draft.household, draft.income);
-  return draft.monthsTyped && Number(draft.months) !== guide ? `Your own figure · the guide is ${guide}` : undefined;
+  return draft.monthsTyped && Number(draft.months) !== guide ? `Custom figure · the guide is ${guide}` : undefined;
 }
 
 export function emergencyInputsOf(draft: EmergencyDraft): EmergencyInputs {

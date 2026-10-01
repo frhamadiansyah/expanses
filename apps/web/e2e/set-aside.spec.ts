@@ -145,7 +145,7 @@ test('an account that promised more than it holds says so on its page, and Net w
   await transferOutBorrowingFromUmrah(page);
 
   await openAccountPage(page, 'Jenius');
-  await expect(page.getByText('You have promised more than this account holds.', { exact: false })).toBeVisible();
+  await expect(page.getByText('More is promised than this account holds.', { exact: false })).toBeVisible();
   await expect(page.getByText(/Rp.37\.500\.000 is set aside but only Rp.21\.000\.000 is here/)).toBeVisible();
   // 21.000.000 held − 37.500.000 promised, signed and in alarm.
   const free = page.getByText(/^-Rp.16\.500\.000$/);
@@ -167,7 +167,7 @@ test('an account that promised more than it holds says so on its page, and Net w
   await expect(jeniusRows).toHaveAccessibleName(/^Jenius: Rp.37\.500\.000 set aside, Rp.21\.000\.000 here/);
   await jeniusRows.click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
-  await expect(page.getByText('You have promised more than this account holds.', { exact: false })).toBeVisible();
+  await expect(page.getByText('More is promised than this account holds.', { exact: false })).toBeVisible();
 
   // Already short, so a small expense asks nothing: the account's own state says it, not every transaction.
   const form = await openExpense(page, 'Jenius');

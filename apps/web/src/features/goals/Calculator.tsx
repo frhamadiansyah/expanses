@@ -44,9 +44,9 @@ function percentToBps(value: string, what: string): number {
 const percentOf = (bps: number) => String(bps / 100);
 
 const BLURBS: Record<CalculatorKind, string> = {
-  emergency: 'Months of what you spend, with loan principal added. The amount follows your spending, so it moves when your spending does.',
+  emergency: 'Months of spending, with loan principal added. The amount follows that spending, so it moves when spending does.',
   education: 'Each year at today’s prices; the goal raises each one to the year it is paid.',
-  retirement: 'What the pot must hold the day you stop, drawn down while it keeps earning.',
+  retirement: 'What the pot must hold the day saving stops, drawn down while it keeps earning.',
 };
 
 /** The goal's own base, said beside the switch: the ratio card on Net worth has a switch of its own, and the two can differ. */
@@ -176,7 +176,7 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
             <TextRow
               key="spend"
               label={`Yearly spending in retirement (${ws.baseCurrency})`}
-              hint="At today's prices. Inflation is applied for you."
+              hint="At today's prices. Inflation is applied automatically."
               value={annualSpend}
               onChange={(e) => setAnnualSpend(e.target.value)}
               inputMode="numeric"
@@ -202,7 +202,7 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
             <TextRow
               key="before"
               label="Return while saving (%)"
-              hint="What the money earns until you stop. Written as the goal's return."
+              hint="What the money earns until saving stops. Written as the goal's return."
               value={returnBefore}
               onChange={(e) => setReturnBefore(e.target.value)}
               inputMode="decimal"
@@ -211,7 +211,7 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
             <TextRow
               key="return"
               label="Return while retired (%)"
-              hint="What the pot earns while you are spending it."
+              hint="What the pot earns while it is being spent."
               value={returnInRetirement}
               onChange={(e) => setReturnInRetirement(e.target.value)}
               inputMode="decimal"

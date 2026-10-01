@@ -138,8 +138,8 @@ describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', 
       'm-andi',
     );
     expect(lines).toEqual([
-      { key: 't1', title: 'To you: Mandiri Tabungan', note: null, occurredOn: '2026-09-12', amountMinor: -5_000_000, currency: 'IDR' },
-      { key: 't2', title: 'From you: Mandiri Tabungan', note: 'Groceries back', occurredOn: '2026-09-15', amountMinor: 1_000_000, currency: 'IDR' },
+      { key: 't1', title: 'To me: Mandiri Tabungan', note: null, occurredOn: '2026-09-12', amountMinor: -5_000_000, currency: 'IDR' },
+      { key: 't2', title: 'From me: Mandiri Tabungan', note: 'Groceries back', occurredOn: '2026-09-15', amountMinor: 1_000_000, currency: 'IDR' },
     ]);
   });
 
@@ -169,9 +169,9 @@ describe('transferLines (spec §8.3 "Lines you can see", a transfer with you)', 
   });
 
   it('with no local name for your side it still says who, and sharedItemView carries the lines', () => {
-    expect(transferLines([transfer({ counterpartName: null })], bank, 'm-andi')[0]!.title).toBe('To you');
+    expect(transferLines([transfer({ counterpartName: null })], bank, 'm-andi')[0]!.title).toBe('To me');
     const view = sharedItemView({ ...bank, transferMinor: -5_000_000 }, [], 'Rina', { transfers: [transfer({})], me: 'm-andi' });
-    expect(view.transfers.map((t) => t.title)).toEqual(['To you: Mandiri Tabungan']);
+    expect(view.transfers.map((t) => t.title)).toEqual(['To me: Mandiri Tabungan']);
     expect(sharedItemView(bank, [], 'Rina').transfers).toEqual([]);
   });
 });

@@ -79,7 +79,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('radio', { name: 'Buy / sell' }).click();
-  await form.getByLabel('What you bought or sold').selectOption({ label: 'Investments › AAPL' });
+  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › AAPL' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
   await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });

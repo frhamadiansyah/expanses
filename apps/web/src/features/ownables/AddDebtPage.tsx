@@ -30,7 +30,7 @@ export function AddDebtPage() {
     <OwnablePicker
       flow="debt"
       title="New debt"
-      searchPlaceholder="Search everything you can owe"
+      searchPlaceholder="Search everything that can be owed"
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('debt')}
@@ -135,9 +135,9 @@ function DebtItemForm({ item }: { item: string }) {
         header={chosen.label}
         footer={
           <>
-            {chosen.sub}. The picker chose what kind of debt this is. Name is what you call yours.
-            {asks.includes('term') && ' Leave the months left empty if you do not know them: the debt still opens at what is owed, and its terms can be added on Debts.'}
-            {owedToAPerson && ' Money you owe a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
+            {chosen.sub}. The picker chose what kind of debt this is. The name is what it's called here.
+            {asks.includes('term') && ' Leave the months left empty if not known: the debt still opens at what is owed, and its terms can be added on Debts.'}
+            {owedToAPerson && ' Money owed to a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
           </>
         }
       >
@@ -317,7 +317,7 @@ export function NewCardForm({
             A card keeps its statement, bill, points and instalments.{' '}
             {entry
               ? `Its earn rules and the ${entry.bank} published annual fee are filled in from the catalogue, verified ${entry.verifiedOn}. Both can be corrected on the card's own page.`
-              : 'Not in the list is fine: name it yourself and set up what it earns on the card’s own page.'}
+              : 'Not in the list is fine: name it directly and set up what it earns on the card’s own page.'}
           </>
         }
       >
@@ -359,7 +359,7 @@ export function NewCardForm({
         )}
         {levels.length > 0 && (
           <SelectRow label={`${entry?.program.name} level`} value={memberLevel} onChange={(e) => setMemberLevel(e.target.value)}>
-            <option value="">Choose your level</option>
+            <option value="">Choose a level</option>
             {levels.map((level) => (
               <option key={level.key} value={level.key}>
                 {level.name} — {level.condition}

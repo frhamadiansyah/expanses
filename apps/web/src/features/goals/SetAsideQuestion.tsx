@@ -8,7 +8,7 @@ import { useGoalWholeness, useSetAsideChoiceOf, useSetAsideView } from './querie
 import { choiceOf, type Door, readyOf, type SetAsideAnswer } from './set-aside-question';
 
 const INTENT: Record<SetAsideIntent, { title: (to: string) => string; hint: (to: string) => string }> = {
-  borrow: { title: () => 'No — borrowing from it', hint: () => 'The fund shows a shortfall until you top it back up' },
+  borrow: { title: () => 'No — borrowing from it', hint: () => 'The fund shows a shortfall until it is topped back up' },
   spend: { title: () => 'Yes — this is what I saved for', hint: () => 'The goal counts as spent, not broken' },
   move: { title: (to) => `Move the promise to ${to}`, hint: (to) => `The goal keeps its money, now in ${to}` },
 };
@@ -26,7 +26,7 @@ function SetAsideQuestion({ check, currency, accountName, door, answer, onAnswer
     <>
       <InsetGroup
         header={`${formatMinor(check.overMinor, currency)} more than is free`}
-        footer={`${accountName} has ${formatMinor(check.freeMinor, currency)} free. The rest has to come out of something you set aside.`}
+        footer={`${accountName} has ${formatMinor(check.freeMinor, currency)} free. The rest has to come out of something set aside.`}
       >
         {check.goals.map((goal) => (
           <InsetRow

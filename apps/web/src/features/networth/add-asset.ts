@@ -140,7 +140,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
       if (!hasUnits && !hasCost) continue;
       if (!DATE.test(purchase.occurredOn)) throw new Error('Each purchase needs a date');
       if (purchase.occurredOn > today) throw new Error('A purchase cannot be dated after today');
-      if (!hasUnits || !hasCost) throw new Error('Each purchase needs both how much you bought and what it cost');
+      if (!hasUnits || !hasCost) throw new Error('Each purchase needs both how much was bought and what it cost');
       const unitsMicro = parseUnits(purchase.units);
       const grossMinor = parseMajor(purchase.cost, draft.currency);
       if (unitsMicro <= 0) throw new Error('A purchase needs more than zero units');
@@ -149,7 +149,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     }
     years = trades.map((trade) => Number(trade.occurredOn.slice(0, 4)));
   } else if (draft.cost.trim() !== '') {
-    if (!DATE.test(draft.purchasedOn)) throw new Error('Say when you bought it');
+    if (!DATE.test(draft.purchasedOn)) throw new Error('Say when it was bought');
     if (draft.purchasedOn > today) throw new Error('A purchase cannot be dated after today');
     openingBalanceMinor = parseMajor(draft.cost, draft.currency);
     if (openingBalanceMinor < 0) throw new Error('A cost cannot be negative');

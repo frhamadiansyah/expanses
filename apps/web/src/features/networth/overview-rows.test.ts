@@ -213,7 +213,7 @@ describe('attentionItems with debts', () => {
     const items = attentionItems([], [], [], [], [debtor()]);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ tone: 'warn', action: 'Chase', to: '/net-worth/lend-borrow' });
-    expect(items[0]!.text).toBe(`Andi owes you ${formatMinor(10_000_000, 'IDR')} · Due in 6 days`);
+    expect(items[0]!.text).toBe(`Owed by Andi ${formatMinor(10_000_000, 'IDR')} · Due in 6 days`);
   });
 
   it('says how late an overdue loan is', () => {
@@ -223,7 +223,7 @@ describe('attentionItems with debts', () => {
 
   it('turns it around for money you owe', () => {
     const items = attentionItems([], [], [], [], [debtor({ personName: 'Budi', direction: 'borrowed' })]);
-    expect(items[0]!.text).toContain('You owe Budi');
+    expect(items[0]!.text).toContain('Owed to Budi');
     expect(items[0]).toMatchObject({ action: 'Pay' });
   });
 
