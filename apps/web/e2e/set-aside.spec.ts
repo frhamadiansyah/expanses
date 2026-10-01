@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { editGoal, expectArchiveNote } from './goals';
 import { addGoal, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 test.beforeEach(({ page }) => {
@@ -97,12 +98,15 @@ test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ 
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   // Spent, not broken: the whole promise came out, its stage is paid, and nothing reads short.
-  await expect(umrah.getByRole('button', { name: /: Paid$/ })).toBeVisible();
+  // One payment, so no Stages group: its paid mark is behind the ⋯, offered back as Mark not paid.
+  await umrah.getByRole('button', { name: 'More', exact: true }).first().click();
+  await expect(umrah.getByRole('menuitem', { name: 'Mark not paid' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(umrah.getByText(/Nothing yet/)).toBeVisible();
   await expect(umrah.getByText(/short by/i)).toHaveCount(0);
-  // Done — and the archive group says what archiving now does.
+  // Done — and Archive's line says what archiving now does.
   await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
-  await expect(umrah.getByText('Keeps the history, stops it claiming money.')).toBeVisible();
+  await expectArchiveNote(umrah, true);
   const spent = umrah.getByTestId('goal-history').filter({ hasText: 'Spent' });
   await expect(spent).toContainText(/Umrah tickets/);
   await expect(spent).toContainText(/-Rp.7\.500\.000/);
@@ -112,7 +116,7 @@ test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ 
   await expect(ef.getByText(/30\.000\.000/).first()).toBeVisible();
   await expect(ef.getByText(/short by/i)).toHaveCount(0);
   await expect(ef.getByText('Done', { exact: true })).toHaveCount(0);
-  await expect(ef.getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
+  await expectArchiveNote(ef, false);
 });
 
 test('deleting the purchase gives the promise back', async ({ page }) => {
@@ -135,7 +139,7 @@ test('deleting the purchase gives the promise back', async ({ page }) => {
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   await expect(umrah.getByText('Done', { exact: true })).toHaveCount(0);
-  await expect(umrah.getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
+  await expectArchiveNote(umrah, false);
   // The promise came back whole: the figure, not only the missing label.
   await expect(umrah.getByText(/7\.500\.000/).first()).toBeVisible();
 });
@@ -191,7 +195,7 @@ test('the goal form says what is free for this goal, and how short a bigger figu
   await jeniusWithTwoGoals(page);
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
-  await umrah.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(umrah);
   // 5.000.000 free on Jenius plus Umrah's own 7.500.000 there, which the save replaces: 12.500.000.
   await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();
   const box = page.getByLabel('Jenius (IDR)');
@@ -253,7 +257,7 @@ test('the goal form\'s hint reads today\'s balance, as the question does: money 
 
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
-  await umrah.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(umrah);
   // 10.000.000 today; counting the 5.000.000 dated next month would say 15.000.000, a figure the question never uses.
   await expect(page.getByText(/^Rp.10\.000\.000 free for this goal$/)).toBeVisible();
   await expect(page.getByText(/15\.000\.000 free for this goal/)).toHaveCount(0);

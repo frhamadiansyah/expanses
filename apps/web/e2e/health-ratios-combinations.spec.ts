@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { addCap, budgetTab, openCapOf, openDrawer, openNewCap } from './budget';
-import { openGoalForm, openWorking } from './goals';
+import { editGoal, openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { countsAs, expectNeed, markNeed, openCategory } from './categories';
 
@@ -222,8 +222,10 @@ test('row 11 — the sections hold: a holiday never lists under compulsory', asy
   await expect(compulsory).toContainText('Emergency fund');
   await expect(compulsory).not.toContainText('Holiday');
   await expect(page.getByTestId('goals-additional')).toContainText('Holiday');
-  // The 15 jt is the goal's target, which a row does not carry: it is read under the figure on the goal's page.
-  await expect((await goalCard(page, 'Holiday')).getByText(/15\.000\.000/).first()).toBeVisible();
+  // The 15 jt is the goal's cost in today's money: the list and the card read it grown to its date, so it is read
+  // where it was typed, in the goal's own form.
+  await editGoal(await goalCard(page, 'Holiday'));
+  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15000000');
 });
 
 test('row 12 — a working reopens on the answers and base it was saved with', async ({ page }) => {

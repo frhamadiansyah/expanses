@@ -48,6 +48,10 @@ export interface GoalCard {
   kindLabel: string;
   /** When the goal finishes: the last stage still to pay. */
   dueLabel: string;
+  /** Months until that last stage, while one is still to pay; null for an emergency fund, which has no end. */
+  monthsLeft: number | null;
+  /** An emergency fund's measure in place of a date: "6 months of spending". Null for every other goal. */
+  coverLabel: string | null;
   currentMinor: number;
   targetMinor: number;
   progressPercent: number;
@@ -144,6 +148,16 @@ export function cardHistory(full: GoalHistoryEntry[], wasWhole: (key: string) =>
   return { lines: full.slice(0, GOAL_HISTORY_LENGTH), stood: fundedWindow(full, wasWhole) };
 }
 
+/** How many months of spending an emergency fund holds, when its target is set in months rather than typed. */
+function coverOf(plan: GoalPlanRow): string | null {
+  const months = plan.goal.stages.find((stage) => !stage.paidOn && stage.targetMonths !== null)?.targetMonths ?? null;
+  if (months === null) return null;
+  return months === 1 ? '1 month of spending' : `${months} months of spending`;
+}
+
+/** "27 months left", "1 month left". */
+export const monthsLeftLabel = (months: number) => (months === 1 ? '1 month left' : `${months} months left`);
+
 export function goalCard(plan: GoalPlanRow): GoalCard {
   const unpaid = plan.stages.filter((stage) => stage.state !== 'paid');
   const last = unpaid[unpaid.length - 1] ?? plan.stages[plan.stages.length - 1];
@@ -156,6 +170,8 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     kind: plan.goal.kind,
     kindLabel: GOAL_KIND_LABELS[plan.goal.kind],
     dueLabel: last ? monthYear(last.dueOn) : '—',
+    monthsLeft: plan.goal.kind === 'emergency' || done || unpaid.length === 0 ? null : unpaid[unpaid.length - 1]!.months,
+    coverLabel: plan.goal.kind === 'emergency' ? coverOf(plan) : null,
     currentMinor: plan.currentMinor,
     targetMinor: plan.totalTargetMinor,
     progressPercent: plan.totalTargetMinor > 0 ? Math.max(0, Math.min(100, (plan.currentMinor / plan.totalTargetMinor) * 100)) : 0,
@@ -178,6 +194,24 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     doneOn: done ? (paidDays.at(-1) ?? null) : null,
     shortLines: plan.links.filter((link) => link.shortMinor > 0).map((link) => ({ accountName: link.name, shortMinor: link.shortMinor, currency: link.currency })),
   };
+}
+
+/**
+ * How full each stage's bar is, in the stages' order: a paid or covered stage is full, a later one empty, and the one
+ * being saved for holds what is left once the covered stages ahead of it have taken their targets. An approximation
+ * — the plan carries money forward with its return — that never claims more than the goal holds.
+ */
+export function stageShares(card: Pick<GoalCard, 'currentMinor' | 'stageLines'>): number[] {
+  let left = card.currentMinor;
+  return card.stageLines.map((line) => {
+    if (line.state === 'paid') return 1;
+    if (line.state === 'later') return 0;
+    if (line.state === 'covered') {
+      left -= line.targetMinor;
+      return 1;
+    }
+    return line.targetMinor > 0 ? Math.max(0, Math.min(1, left / line.targetMinor)) : 0;
+  });
 }
 
 export interface GoalTemplate {

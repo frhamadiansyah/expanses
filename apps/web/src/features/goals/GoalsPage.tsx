@@ -9,6 +9,7 @@ import { type CornerAction, type GroupChild, InsetGroup, InsetRow, LargeTitle, P
 import { FigureRow, InfoButton, UseBar } from '../budget/budget-rows';
 import { bareFigure } from '../networth/debt-rows';
 import { GoalForm } from './GoalForm';
+import { InfoHeader } from './InfoHeader';
 import { type GoalCard, goalCard, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalsTotals } from './goal-cards';
 import { useEarmarks, useGoalPlans } from './queries';
 
@@ -17,20 +18,6 @@ const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
   { key: 'compulsory', title: 'Compulsory', note: 'The emergency fund and retirement. What is saved reaches these first.' },
   { key: 'additional', title: 'Additional', note: 'Everything else, from what is left.' },
 ];
-
-/** A section's plain header, with its note behind an ⓘ. */
-function SectionHeader({ title, note }: { title: string; note: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="px-[4px] pb-[6px]">
-      <div className="flex items-center gap-[6px]">
-        <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{title}</h2>
-        <InfoButton label={title} open={open} onToggle={() => setOpen((was) => !was)} />
-      </div>
-      {open && <p className="pt-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{note}</p>}
-    </div>
-  );
-}
 
 /** "Short Rp 500.000 a month", with why behind its ⓘ. */
 function ShortChip({ shortMinor, currency, why }: { shortMinor: number; currency: string; why: ReactNode }) {
@@ -196,7 +183,7 @@ export function GoalsPage() {
         if (inSection.length === 0) return null;
         return (
           <section key={section.key} data-testid={`goals-${section.key}`} className="w-full md:max-w-2xl">
-            <SectionHeader title={section.title} note={section.note} />
+            <InfoHeader title={section.title} info={section.note} />
             {/* One row a goal: the figure is read at a glance here, and the goal itself opens on its own page. */}
             <InsetGroup>
               {inSection.map(({ card }) => (

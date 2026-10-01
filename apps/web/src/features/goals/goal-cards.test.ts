@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, monthYear, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -305,5 +305,30 @@ describe('monthYear', () => {
 describe('GOAL_KIND_MARKS', () => {
   it('draws every kind', () => {
     for (const kind of Object.keys(GOAL_KIND_LABELS)) expect(GOAL_KIND_MARKS[kind as keyof typeof GOAL_KIND_MARKS]).toBeDefined();
+  });
+});
+
+describe('the goal page card', () => {
+  it('counts the months to the last stage still to pay', () => {
+    expect(goalCard(plan()).monthsLeft).toBe(105);
+    expect(monthsLeftLabel(27)).toBe('27 months left');
+    expect(monthsLeftLabel(1)).toBe('1 month left');
+  });
+
+  it('gives an emergency fund its months of spending in place of a date', () => {
+    const fund = goalCard(
+      plan({
+        goal: goal({ kind: 'emergency', stages: [{ id: 'ef', name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-09-12', paidOn: null, returnBps: null }] }),
+      }),
+    );
+    expect(fund.monthsLeft).toBeNull();
+    expect(fund.coverLabel).toBe('6 months of spending');
+    expect(goalCard(plan()).coverLabel).toBeNull();
+  });
+
+  it('fills covered stages, then the one being saved for with what is left, and leaves later ones empty', () => {
+    const lines = (states: string[], targets: number[]) =>
+      states.map((state, i) => ({ stageId: String(i), name: String(i), when: '', todayMinor: 0, targetMinor: targets[i]!, stateLabel: '', state: state as 'covered' }));
+    expect(stageShares({ currentMinor: 30_000_000, stageLines: lines(['paid', 'covered', 'saving', 'later'], [5, 20_000_000, 40_000_000, 10]) })).toEqual([1, 1, 0.25, 0]);
   });
 });
