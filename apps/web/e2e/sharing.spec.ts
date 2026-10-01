@@ -144,7 +144,7 @@ test('two people share a workspace: join, record on both, correct each other, re
   await page.getByRole('button', { name: /Share this workspace/ }).click();
   const shareForm = page.getByRole('form', { name: 'Share this workspace' });
   await expect(shareForm).toContainText('A replaced or restored phone needs a new invite.');
-  await shareForm.getByLabel('Your name').fill('Fandri');
+  await shareForm.getByLabel('Name').fill('Fandri');
   await shareForm.getByRole('button', { name: 'Share', exact: true }).click();
   const code = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
   expect(code).toMatch(/^([0-9A-Z]{4}-){12}[0-9A-Z]{4}$/);
@@ -169,7 +169,7 @@ test('two people share a workspace: join, record on both, correct each other, re
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(join.getByText('Fandri', { exact: true })).toBeVisible();
-  await join.getByLabel('Your name').fill('Dewi');
+  await join.getByLabel('Name').fill('Dewi');
   await shot(dewi, info, '2-join-preview');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
@@ -244,9 +244,9 @@ test('two people share a workspace: join, record on both, correct each other, re
 
   // Dewi's device is told it was removed (final review, I2), and keeps what it already holds, read-only.
   await openWorkspaceSettings(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('You were removed from this workspace', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('Removed from this workspace', { timeout: 1_000 }));
   await shot(dewi, info, '6-removed-status');
-  await expectReadOnly(dewi, phone, 'You were removed from this workspace');
+  await expectReadOnly(dewi, phone, 'Removed from this workspace');
 
   // And both still read the same Cashflow total.
   await cashflowTotal(page, 'Rp 110.000');
@@ -266,7 +266,7 @@ test('a workspace in another currency than yours cannot be shared, and says why'
   await expect(sheet).toHaveCount(0);
 
   await openWorkspaceSettings(page, 'Singapore');
-  await expect(page.getByText("This workspace keeps its money in SGD; this app keeps yours in IDR. Sharing across currencies isn't supported yet.")).toBeVisible();
+  await expect(page.getByText("This workspace keeps its money in SGD; this app's own accounts are kept in IDR. Sharing across currencies isn't supported yet.")).toBeVisible();
   await expect(page.getByRole('button', { name: /Share this workspace/ })).toBeDisabled();
   await shot(page, info, '7-currency-refusal');
 });
@@ -279,13 +279,13 @@ async function shareAndJoin(page: Page, dewi: Page) {
   await expect(page.getByText('Now called Home.')).toBeVisible();
   await page.getByRole('button', { name: /Share this workspace/ }).click();
   const form = page.getByRole('form', { name: 'Share this workspace' });
-  await form.getByLabel('Your name').fill('Fandri');
+  await form.getByLabel('Name').fill('Fandri');
   await form.getByRole('button', { name: 'Share', exact: true }).click();
   const code = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
   await dewi.goto(`/join#${code}`);
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await join.getByLabel('Your name').fill('Dewi');
+  await join.getByLabel('Name').fill('Dewi');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
 }
@@ -325,15 +325,15 @@ test('the last owner cannot leave; made an owner, the other can invite; then the
   await page.getByRole('button', { name: 'Make Dewi an owner' }).click();
   await expect(page.getByTestId('sharing-member').filter({ hasText: 'Dewi' })).toContainText('Owner');
   await openWorkspaceSettings(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-member').filter({ hasText: 'Dewi (you)' })).toContainText('Owner', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(dewi.getByTestId('sharing-member').filter({ hasText: 'Dewi (me)' })).toContainText('Owner', { timeout: 1_000 }));
   await dewi.getByRole('button', { name: 'Invite someone' }).click();
   await expect(dewi.getByTestId('invite-code')).toHaveText(/^([0-9A-Z]{4}-){12}[0-9A-Z]{4}$/, { timeout: 30_000 });
 
   // Now Fandri may leave: the book stays on Fandri's device, read-only.
   await openWorkspaceSettings(page, 'Home');
   await confirmDestructive(page, 'Leave this workspace', 'Leave this workspace?', 'Leave');
-  await expect(page.getByTestId('sharing-status')).toContainText('You left this workspace', { timeout: 30_000 });
-  await expectReadOnly(page, phone, 'You left this workspace');
+  await expect(page.getByTestId('sharing-status')).toContainText('Left this workspace', { timeout: 30_000 });
+  await expectReadOnly(page, phone, 'Left this workspace');
   await shot(page, info, '9-left-read-only');
 
   // Dewi sees Fandri gone.
@@ -387,12 +387,12 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   await openWorkspaceSettings(page, 'Home');
   await page.getByRole('button', { name: /Share this workspace/ }).click();
   const form = page.getByRole('form', { name: 'Share this workspace' });
-  await form.getByLabel('Your name').fill('Fandri');
+  await form.getByLabel('Name').fill('Fandri');
   await form.getByRole('button', { name: 'Share', exact: true }).click();
   const first = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
   const section = page.getByTestId('sharing-section');
   await expect(section.getByTestId('sharing-member')).toHaveCount(2);
-  await expect(section.getByTestId('sharing-member').filter({ hasText: 'Fandri (you)' })).toContainText('Owner');
+  await expect(section.getByTestId('sharing-member').filter({ hasText: 'Fandri (me)' })).toContainText('Owner');
   await expect(section.getByTestId('sharing-member').filter({ hasText: 'Dewi' })).toContainText('Member');
   // Dewi's copy rejoins as Dewi: an invite that links a device for her.
   await section.getByRole('button', { name: 'Link a device for Dewi' }).click();
@@ -407,7 +407,7 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   // Her copy moves onto the share made again: Join says so, and asks, before anything is claimed (recovery review, N1).
   const replace = dewi.getByRole('dialog', { name: 'Replace this workspace’s sharing?' });
-  await expect(replace).toContainText('This replaces the sharing of Home on this device with Fandri’s share. Your rows stay and are merged.');
+  await expect(replace).toContainText('This replaces the sharing of Home on this device with Fandri’s share. Existing rows stay and are merged.');
   await shot(dewi, info, '12a-replace-confirm');
   await replace.getByRole('button', { name: 'Replace and join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
@@ -617,7 +617,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
 
   // Dewi leaves: her Net worth is her own again, and nothing of Fandri's is listed.
   theirs = await netWorthSection(dewi);
-  await confirmDestructive(dewi, 'Stop sharing my net worth', 'Stop sharing your net worth?', 'Stop sharing');
+  await confirmDestructive(dewi, 'Stop sharing my net worth', 'Stop sharing net worth?', 'Stop sharing');
   await eventually(dewi, () => expect(theirs.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
   await netWorthReads(dewi, '10.000.000', null);
   await dewi.goto('/accounts');

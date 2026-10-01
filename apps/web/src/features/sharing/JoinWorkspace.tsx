@@ -102,7 +102,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
           if (code.trim()) void look(code);
         }}
       >
-        <InsetGroup wide header="Invite" footer="Paste the code or the link you were sent. Nothing is joined until you choose Join.">
+        <InsetGroup wide header="Invite" footer="Paste the code or the link sent. Nothing is joined until Join is chosen.">
           <TextRow
             label="Code"
             value={code}
@@ -123,14 +123,14 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
         <form aria-label="Join a workspace" onSubmit={(event) => void join(event)}>
           <InsetGroup
             wide
-            header="You are invited to"
+            header="Invited to"
             footer={
               refusal ? (
                 <span data-testid="currency-refusal" className="text-[var(--ph-warn)]">
                   {refusal}
                 </span>
               ) : (
-                (unusable ?? (preview.terms.sameMember ? `This device joins as ${preview.memberName ?? preview.inviterName}.` : 'You will see and record into it together.'))
+                (unusable ?? (preview.terms.sameMember ? `This device joins as ${preview.memberName ?? preview.inviterName}.` : 'Seen and recorded into together with the others.'))
               )
             }
           >
@@ -140,7 +140,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
           {refusal || unusable ? null : (
             <InsetGroup wide>
               {preview.terms.sameMember ? null : (
-                <TextRow label="Your name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
+                <TextRow label="Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
               )}
               <SubmitRow label={busy ? 'Joining…' : 'Join'} disabled={busy || (!preview.terms.sameMember && !name.trim())} />
             </InsetGroup>

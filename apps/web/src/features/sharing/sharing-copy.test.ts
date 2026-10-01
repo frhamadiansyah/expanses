@@ -51,7 +51,7 @@ describe('a purchase in a shared book', () => {
 
 describe('sharing across currencies', () => {
   it('is refused in §8.2’s own words', () => {
-    expect(currencyRefusal('IDR', 'SGD')).toBe("This workspace keeps its money in IDR; this app keeps yours in SGD. Sharing across currencies isn't supported yet.");
+    expect(currencyRefusal('IDR', 'SGD')).toBe("This workspace keeps its money in IDR; this app's own accounts are kept in SGD. Sharing across currencies isn't supported yet.");
   });
 });
 
@@ -116,9 +116,9 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
     expect(line({ state: 'needs_invite', askName: 'Dewi' })).toBe('Ask Dewi for a new invite to keep sharing');
     expect(line({ state: 'needs_invite', askName: null })).toBe('Ask an owner for a new invite to keep sharing');
     expect(line({ state: 'unshared', byMemberId: 'f', byName: 'Fandri', byYou: false, reason: 'stopped' })).toBe('No longer shared by Fandri');
-    expect(line({ state: 'unshared', byMemberId: 'd', byName: 'Dewi', byYou: true, reason: 'left' })).toBe('You left this workspace');
+    expect(line({ state: 'unshared', byMemberId: 'd', byName: 'Dewi', byYou: true, reason: 'left' })).toBe('Left this workspace');
     expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'stopped' })).toBe('No longer shared');
-    expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'removed' })).toBe('You were removed from this workspace');
+    expect(line({ state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'removed' })).toBe('Removed from this workspace');
     expect(line({ state: 'frozen', changes: 0, syncedAt: at(14) })).toBe('Frozen: no owner has a device here');
   });
 
@@ -131,25 +131,25 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
     expect(FROZEN_NOTE).toBe('Nobody can invite, remove a device or make an owner. Recording and syncing go on.');
     expect(READ_ONLY_NOTE).toBe('Kept here as it was, read-only: nothing can be added or changed.');
     expect(endedLine({ byName: 'Fandri', byYou: false })).toBe('No longer shared by Fandri');
-    expect(endedLine({ byName: null, byYou: false, removed: true })).toBe('You were removed from this workspace');
+    expect(endedLine({ byName: null, byYou: false, removed: true })).toBe('Removed from this workspace');
   });
 
   it('asks before leaving and before stopping, saying what stays', () => {
-    expect(leaveConfirm('Home')).toBe('You stop receiving Home, and the others stop seeing your new changes. What is here stays, read-only.');
-    expect(stopConfirm('Home')).toBe('Home stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being yours alone.');
+    expect(leaveConfirm('Home')).toBe('Stops receiving Home, and the others stop seeing new changes from here. What is here stays, read-only.');
+    expect(stopConfirm('Home')).toBe('Home stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being its own, unshared copy.');
   });
 
   it('asks before keeping a dead share as your own copy, saying nobody else is touched (final review, C1)', () => {
     expect(FORGET_ROW).toBe('Stop sharing on this device');
     expect(forgetConfirm('Home')).toBe(
-      'Home becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.',
+      'Home becomes its own workspace, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join the share again later, ask one of its owners for an invite that links this device to the same member again.',
     );
   });
 });
 
 describe('before a join moves this copy onto another share (recovery review, N1)', () => {
   it('names the workspace here and whose share takes its place, and that the rows stay', () => {
-    expect(replaceConfirm('Home', 'Fandri')).toBe('This replaces the sharing of Home on this device with Fandri’s share. Your rows stay and are merged.');
+    expect(replaceConfirm('Home', 'Fandri')).toBe('This replaces the sharing of Home on this device with Fandri’s share. Existing rows stay and are merged.');
   });
 });
 
@@ -157,7 +157,7 @@ describe('what a sharing edge refusal says (task 9b)', () => {
   const said = (error: unknown) => (sayError(error) as Error).message;
   it('words each of the engine’s refusals', () => {
     expect(said(new LastOwnerError('anything'))).toBe('Make someone else owner first.');
-    expect(said(new LeaveIncompleteError(new Error('x')))).toBe('You are no longer an owner, but leaving did not finish. Try again.');
+    expect(said(new LeaveIncompleteError(new Error('x')))).toBe('No longer an owner, but leaving did not finish. Try again.');
     expect(said(new FrozenBookError())).toBe('Nobody can do that: no owner has a device in this workspace any more.');
     expect(said(new BookReadOnlyError('b'))).toBe('This workspace is no longer shared and is kept read-only. Nothing in it can be changed.');
     expect(said(new NotOwnerError('Only an owner can stop sharing'))).toBe('Only an owner can stop sharing');

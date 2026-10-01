@@ -72,7 +72,7 @@ export function NetWorthReview({
     return (
       <div data-testid="net-worth-review">
         <ErrorBox error={error} />
-        <InsetGroup wide header="Review your items" footer={`${JOINT_LINE} ${jointTaxLine(others)}`}>
+        <InsetGroup wide header="Review items" footer={`${JOINT_LINE} ${jointTaxLine(others)}`}>
           <InsetRow title={pendingPrompt(names, others)} chevron={false} />
         </InsetGroup>
         {button}
@@ -89,9 +89,9 @@ export function NetWorthReview({
        */}
       <InsetGroup
         wide
-        footer={mode === 'joint' ? `${JOINT_LINE} ${jointTaxLine(others)}` : 'Each item shows its balance and one total of other use. Turn off what you keep to yourself.'}
+        footer={mode === 'joint' ? `${JOINT_LINE} ${jointTaxLine(others)}` : 'Each item shows its balance and one total of other use. Turn off what stays private.'}
       >
-        <InsetRow title="Review your items" chevron={false} />
+        <InsetRow title="Review items" chevron={false} />
       </InsetGroup>
       {byKind(items).map((drawer) => (
         <InsetGroup key={drawer.key} wide header={drawer.label}>
