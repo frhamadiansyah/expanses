@@ -25,7 +25,7 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await loadCsv(page);
 
   await page.getByRole('button', { name: /Send \d+ to review/ }).click();
-  await expect(page.getByText(/Nothing is recorded until you confirm it there/)).toBeVisible();
+  await expect(page.getByText(/Nothing is recorded until confirmed there/)).toBeVisible();
 
   // Not money yet: the list shows it, marked as not recorded, whichever month is open.
   await page.goto('/transactions');

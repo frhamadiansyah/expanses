@@ -49,8 +49,8 @@ export function InstallHint() {
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-[var(--ph-info-panel)] px-3 py-2 text-sm text-[var(--ph-info-ink)]" role="status">
       <span className="flex-1">
         {ios
-          ? 'Install Expanses: tap Share, then “Add to Home Screen”. Otherwise Safari may delete your data after 7 days without a visit.'
-          : 'Install Expanses as an app so the browser keeps your data.'}
+          ? 'Install Expanses: tap Share, then “Add to Home Screen”. Otherwise Safari may delete the data after 7 days without a visit.'
+          : 'Install Expanses as an app so the browser keeps the data.'}
       </span>
       {installEvent && (
         <Button
