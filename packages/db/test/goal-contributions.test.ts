@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   budgetSheetFor,
   createAccount,
@@ -18,6 +18,14 @@ import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
 const IN_MONTH = '2026-09-09';
+
+// A set-aside is stamped by the clock, and every month this file asks about is September: pin the day rather than
+// assume the suite runs in the month it reads.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${IN_MONTH}T09:00:00Z`));
+});
+afterEach(() => vi.useRealTimers());
 const g = (grams: number) => grams * 1_000_000;
 
 async function workspace() {

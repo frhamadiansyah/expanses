@@ -235,8 +235,8 @@ describe('fund accounts and digital wallets', () => {
   it('holds money, pays like cash, and counts as cash and equivalents', async () => {
     const { database, ws } = await setupDb();
     const groceries = (await listAccounts(database, ws)).find((a) => a.name === 'Groceries')!;
-    const gopay = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR', openingBalanceMinor: 500_000 });
-    const rdn = await createAccount(database, ws, { name: 'RDN Mandiri Sekuritas', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 8_000_000 });
+    const gopay = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR', openingBalanceMinor: 500_000, openedOn: '2026-09-01' });
+    const rdn = await createAccount(database, ws, { name: 'RDN Mandiri Sekuritas', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 8_000_000, openedOn: '2026-09-01' });
 
     await postTransaction(database, ws, {
       occurredOn: '2026-09-18',
