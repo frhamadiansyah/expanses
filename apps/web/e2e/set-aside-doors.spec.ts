@@ -207,7 +207,7 @@ async function addKpr(page: Page) {
   await retype(page, 'Payment day', '25');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // Saving is a round trip; the schedule appearing is the write landing. See `addKpr` in loans.spec.ts.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
   // A loan is a row inside its kind's drawer, and the list opens with its drawers shut — the row is not drawn at
@@ -226,7 +226,7 @@ async function retype(page: Page, label: string | RegExp, value: string) {
 test('a loan instalment of principal and interest asks about the whole of it', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await addKpr(page);
-  await page.getByRole('button', { name: 'Record payment' }).click();
+  await page.getByRole('button', { name: 'Pay', exact: true }).click();
   // 5.000.000 principal + 1.800.000 interest: 1.800.000 over. Principal alone would ask nothing.
   await retype(page, 'Principal (IDR)', '5000000');
   await retype(page, 'Interest (IDR)', '1800000');
@@ -243,10 +243,10 @@ test('a loan instalment of principal and interest asks about the whole of it', a
 test('an extra payment asks about the extra and the bank\'s penalty together', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await addKpr(page);
-  await page.getByRole('button', { name: 'Extra payment' }).click();
+  await page.getByRole('button', { name: 'Pay extra', exact: true }).click();
   // 6.000.000 + 800.000 penalty = 6.800.000 out of Jenius: 1.800.000 over (the extra alone is 1.000.000 over).
   await page.getByLabel(/How much/).pressSequentially('6000000');
-  await page.getByLabel(/Penalty the bank charges/).pressSequentially('800000');
+  await page.getByRole('textbox', { name: /Penalty the bank charges/ }).pressSequentially('800000');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save extra payment' });
   await expect(save).toBeDisabled();

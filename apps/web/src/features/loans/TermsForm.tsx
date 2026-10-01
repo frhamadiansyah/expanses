@@ -24,7 +24,20 @@ const METHOD_LABELS: Record<LoanMethod, string> = {
  * never went through the picker: without this row, a mortgage typed in as an account could never say that it is
  * one, and the Debts list would fold it under "Other loans" for good.
  */
-export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId: string; terms?: LoanTermsRow; itemId?: string; onDone: () => void }) {
+export function TermsForm({
+  accountId,
+  terms,
+  itemId = '',
+  onDone,
+  formId,
+}: {
+  accountId: string;
+  terms?: LoanTermsRow;
+  itemId?: string;
+  onDone: () => void;
+  /** Given when the form sits in a sheet whose ✓ submits it: the Save and Cancel rows at its foot are not drawn. */
+  formId?: string;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
@@ -60,15 +73,17 @@ export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId
   }
 
   return (
-    <form ref={form} onSubmit={submit}>
+    <form ref={form} id={formId} onSubmit={submit}>
       <InsetGroup
         header={account?.name ?? 'This loan'}
-        footer={terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what is still owed today.'}
+        // In the Edit terms sheet the sentence is an ⓘ on the amount instead: a sheet carries no footers.
+        footer={formId ? undefined : terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what is still owed today.'}
       >
         <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
         <TextRow
           label={`Amount borrowed (${currency})`}
           hint="The original amount, not what is left."
+          info={formId ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : undefined}
           value={draft.originalAmount}
           inputMode="decimal"
           onChange={(e) => set({ originalAmount: e.target.value })}
@@ -157,10 +172,12 @@ export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId
       </InsetGroup>
 
       <ErrorBox error={error} />
-      <InsetGroup footer="The schedule is worked out from what the ledger says is owed, so the payments recorded are always the truth. Nothing here is stored as a projection.">
-        <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
-        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
-      </InsetGroup>
+      {!formId && (
+        <InsetGroup footer="The schedule is worked out from what the ledger says is owed, so the payments recorded are always the truth. Nothing here is stored as a projection.">
+          <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+          <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+        </InsetGroup>
+      )}
     </form>
   );
 }

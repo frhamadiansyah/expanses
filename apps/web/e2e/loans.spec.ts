@@ -6,6 +6,12 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** This month's 25th, as the schedule writes it: the first row it works out for a loan paid on the 25th. */
+function nextTwentyFifth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-25`;
+}
+
 /** A debt's own line on Debts: its testid is the account's id, so a row is found by the words on it. */
 const debtRow = (page: Page, name: string) => page.getByTestId(/^debt-row-/).filter({ hasText: name });
 
@@ -32,7 +38,7 @@ async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   await page.getByRole('button', { name: 'Save terms' }).click();
   // Saving is a round trip, and every spec reloads the page afterwards; a page load while the write is in flight
   // takes the write with it. The schedule appearing is the write landing.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
   await openDrawers(page);
@@ -58,9 +64,14 @@ test('onboards a loan already running and reads its next twelve months', async (
   await expect(page.getByText('Still owed')).toBeVisible();
   await expect(page.getByText(/700\.000\.000/).first()).toBeVisible();
 
-  // Twelve rows to start with, headed by the next payment due from today.
-  await expect(page.getByRole('row')).toHaveCount(13);
-  await expect(page.getByText('2026-09-25').first()).toBeVisible();
+  // The schedule is a sheet of its own behind the Next payment group: twelve rows to start with, headed by the next
+  // payment due from today, and every month on asking.
+  await page.getByRole('button', { name: 'Schedule' }).click();
+  const schedule = page.getByRole('dialog', { name: 'Schedule' });
+  await expect(schedule.getByRole('row')).toHaveCount(13);
+  await expect(schedule.getByText(nextTwentyFifth()).first()).toBeVisible();
+  await schedule.getByRole('button', { name: 'Show every month' }).click();
+  await expect(schedule.getByRole('row')).not.toHaveCount(13);
 });
 
 test('a loan’s terms are corrected from the loan itself, and the schedule follows', async ({ page }) => {
@@ -70,10 +81,11 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
 
   await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
 
-  // The form opens with what is on file, so a tenor typed wrong is corrected rather than typed again.
-  await page.getByRole('button', { name: 'Edit terms' }).click();
+  // The form opens with what is on file, so a tenor typed wrong is corrected rather than typed again. It waits behind ⋯.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit terms' }).click();
   await expect(page.getByLabel('Lender')).toHaveValue('Bank BTN');
   await expect(page.getByLabel('Tenor in months')).toHaveValue('180');
   await expect(page.getByLabel('Rate a year (%)')).toHaveValue('9');
@@ -81,7 +93,7 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
   await page.getByRole('button', { name: 'Save terms' }).click();
 
   // The schedule is rebuilt from the new tenor, and the list says the shorter term.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
   await page.goto('/net-worth/loans');
   await openDrawers(page);
   await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN · 9% · 120 months');
@@ -110,11 +122,14 @@ test('records the payment the form filled in, and the balance falls', async ({ p
 
   await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
-  await page.getByRole('button', { name: 'Record payment' }).click();
+  await page.getByRole('button', { name: 'Pay', exact: true }).click();
   // The form fills itself in from the next scheduled row; saving it as it stands is the common case.
   await page.getByRole('button', { name: 'Save payment' }).click();
 
-  await expect(page.getByText(/697\.992\.615/).first()).toBeVisible();
+  // Less than the 700.000.000 it was, by the principal of the month's row (which month that is moves with today).
+  await expect(page.getByTestId('card-figure')).not.toContainText('700.000.000');
+  await expect(page.getByTestId('card-figure')).toContainText(/69\d\.\d{3}\.\d{3}/);
+  await expect(page.getByTestId('loan-payment')).toContainText('5.250.000 interest');
 
   // Interest is spending; the principal is not.
   await page.goto('/spending');
@@ -129,7 +144,7 @@ test('a rate change moves the payment without posting anything', async ({ page }
   await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Rate change' }).click();
-  await page.getByLabel('From').fill('2026-02-25');
+  await page.getByLabel('From', { exact: true }).fill('2026-02-25');
   await page.getByLabel('New rate a year (%)').fill('11');
   await page.getByRole('button', { name: 'Save rate change' }).click();
 
@@ -147,11 +162,11 @@ test('an extra payment says what it saves before it is written', async ({ page }
 
   await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
-  await page.getByRole('button', { name: 'Extra payment' }).click();
+  await page.getByRole('button', { name: 'Pay extra', exact: true }).click();
   await page.getByLabel(/How much/).fill('50000000');
 
-  await expect(page.getByTestId('what-if')).toContainText('months earlier');
-  await expect(page.getByTestId('what-if')).toContainText('of interest');
+  await expect(page.getByTestId('what-if-saved')).toContainText(/Interest saved\s*Rp/);
+  await expect(page.getByTestId('what-if-finish')).toContainText('sooner');
 
   await page.getByRole('button', { name: 'Save extra payment' }).click();
   await expect(page.getByText(/650\.000\.000/).first()).toBeVisible();
@@ -233,7 +248,7 @@ test('a loan in another currency is printed in its own currency, and the monthly
   await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
 
   // The balance in the loan's own currency — US$20.000,00, not "Rp 2.000.000", which is how 2.000.000 cents
   // would read — and beneath it the same in rupiah at the held rate, naming the rate it used.
@@ -269,21 +284,21 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
   await page.goto('/net-worth/loans');
   await openDrawers(page);
   await expect(debtRow(page, 'Dollar car loan')).toContainText('Car Finance');
 
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
-  await page.getByRole('button', { name: 'Extra payment' }).click();
+  await page.getByRole('button', { name: 'Pay extra', exact: true }).click();
   await page.getByLabel(/How much/).fill('500.00');
   /*
    * The bank's penalty, written the way a dollar figure is: twelve dollars fifty. The box used to be read with
    * `Number(x.replace(/\./g, ''))`, which is right for rupiah and answers this with `NaN` — so the fee the bank
    * charged went in as nothing and the NaN rode into the ledger beside it.
    */
-  await page.getByLabel(/Penalty the bank charges/).pressSequentially('12,50');
+  await page.getByRole('textbox', { name: /Penalty the bank charges/ }).pressSequentially('12,50');
   await page.getByRole('button', { name: 'Save extra payment' }).click();
 
   // The principal falls by the extra alone — a penalty is a fee, never part of the principal — and the fee, with the
