@@ -82,7 +82,16 @@ test('select mode puts a pay bar above the tab bar, and swipes rest while it is 
   await addWallet(page);
   await addBill(page, 'Phone', '150000');
   await addBill(page, 'Internet', '395000');
+  // The tick takes the icon's place: the name and the amount stay exactly where they were.
+  const name = row(page, 'Phone').getByText('Phone', { exact: true });
+  const amount = row(page, 'Phone').getByText(/150\.000/);
+  const before = { name: (await name.boundingBox())!, amount: (await amount.boundingBox())! };
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Select Phone' })).toBeVisible();
+  const after = { name: (await name.boundingBox())!, amount: (await amount.boundingBox())! };
+  expect(after.name.x).toBe(before.name.x);
+  expect(after.name.y).toBe(before.name.y);
+  expect(after.amount.x).toBe(before.amount.x);
   await swipe(page, row(page, 'Phone'), 140);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 

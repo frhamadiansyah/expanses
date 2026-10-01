@@ -100,19 +100,23 @@ export function BillRow({
             className="ph-focus-inset flex w-full items-center gap-[10px] text-left md:pr-12"
             style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
           >
-            {selecting && !settled ? (
+            {/* One 28 px slot: the category's circle, or in select mode the tick in its place, crossfading, so
+                nothing else on the row moves when selecting starts. */}
+            <span className="relative h-[28px] w-[28px] shrink-0">
+              <span aria-hidden={selecting && !settled} className={cx('absolute inset-0 transition-opacity duration-150', selecting && !settled ? 'opacity-0' : 'opacity-100')}>
+                <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
+              </span>
               <span
                 aria-hidden
                 className={cx(
-                  'flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full',
+                  'absolute inset-0 flex items-center justify-center rounded-full transition-opacity duration-150',
+                  selecting && !settled ? 'opacity-100' : 'opacity-0',
                   picked ? 'bg-[var(--ph-tint)] text-white' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
                 )}
               >
                 {picked && <Check size={16} strokeWidth={2.5} />}
               </span>
-            ) : (
-              <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="sm" />
-            )}
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
               <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{sublineOf(bill, accountName, today)}</span>
@@ -134,11 +138,10 @@ export function BillRow({
                 {status.text}
               </span>
             </span>
-            {!selecting && (
-              <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden">
-                {'›'}
-              </span>
-            )}
+            {/* Kept in the layout while selecting, only hidden, so the amount stays where it was. */}
+            <span aria-hidden className={cx('shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden', selecting && 'invisible')}>
+              {'›'}
+            </span>
           </button>
         )}
       </SwipeRow>
