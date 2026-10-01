@@ -17,7 +17,7 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
   if (!entry) {
     return (
       <InsetGroup header="Catalogue">
-        <TextLine>This card's catalogue entry is no longer bundled. Its rules stay as they are and you can edit them.</TextLine>
+        <TextLine>This card's catalogue entry is no longer bundled. Its rules stay as they are and can be edited.</TextLine>
       </InsetGroup>
     );
   }
@@ -42,7 +42,7 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
                 </a>
               </span>
             ))}
-            . {linked ? 'Catalogue updates apply automatically.' : 'You changed these terms, so catalogue updates wait for your review.'}
+            . {linked ? 'Catalogue updates apply automatically.' : 'These terms were changed, so catalogue updates wait for review.'}
           </>
         }
       >
@@ -89,7 +89,7 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
           <DestructiveRow
             label="Reset to catalogue"
             onClick={() =>
-              window.confirm(`Reset ${cp.card.name} to the catalogue terms? Rules, bonuses, and partners you added or changed are removed.`) &&
+              window.confirm(`Reset ${cp.card.name} to the catalogue terms? Rules, bonuses, and partners added or changed are removed.`) &&
               void run(() => resetToCatalog(database, ws, program.id, entry, today))
             }
           />
@@ -118,8 +118,8 @@ function CategoryChoice({ cp, today, run }: { cp: CardPoints; today: string; run
     <InsetGroup
       footer={
         runningName
-          ? `Running ${runningName}. You can change it ${choice.changeable} — purchases before today keep ${runningName}, and a cycle can hold both.`
-          : `Not picked yet. You can change it ${choice.changeable}.`
+          ? `Running ${runningName}. It can be changed ${choice.changeable} — purchases before today keep ${runningName}, and a cycle can hold both.`
+          : `Not picked yet. It can be changed ${choice.changeable}.`
       }
     >
       <SelectRow

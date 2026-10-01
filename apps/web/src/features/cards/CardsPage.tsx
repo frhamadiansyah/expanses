@@ -183,7 +183,7 @@ export function CardsPage() {
       )}
       {wallet.length > 0 && (
         <CardStack
-          label="Your cards"
+          label="Cards"
           cards={wallet}
           raised={raised?.key ?? null}
           onClose={close}

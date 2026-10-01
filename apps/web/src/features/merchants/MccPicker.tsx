@@ -33,7 +33,7 @@ export function MccPicker({
   const name = value.length === 4 ? mccName(value) : null;
   const digits = (typed: string) => onChange(typed.replace(/\D/g, '').slice(0, 4));
   // What the code turns out to be, under the field it was typed into: its name, or that the list has never heard of it.
-  const found = value.length === 4 ? (name ?? 'Not in the MCC list. Check the code on your bank app or statement.') : null;
+  const found = value.length === 4 ? (name ?? 'Not in the MCC list. Check the code on the bank app or statement.') : null;
 
   if (native) {
     return (

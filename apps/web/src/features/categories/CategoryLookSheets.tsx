@@ -109,7 +109,7 @@ export function ColourSheet({
       <ColourPicker value={picked} onPick={setPicked} />
       <p className="mt-2 flex items-center gap-2 px-4 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
         <span aria-hidden className="inline-block h-3 w-3 rounded-full" style={{ background: automatic }} />
-        Automatic is this colour. Subcategories are drawn in shades of the one you pick.
+        Automatic is this colour. Subcategories are drawn in shades of the one picked.
       </p>
     </Sheet>
   );

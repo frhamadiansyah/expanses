@@ -874,14 +874,14 @@ test('a bill split equally between three people leaves each of them owing their 
   const summary = sheet.getByTestId('with-summary');
   await expect(summary).toContainText('Bill');
   await expect(summary).toContainText('Rp 400.000');
-  await expect(summary).toContainText('They owe you');
+  await expect(summary).toContainText('Owed');
   await expect(summary).toContainText('Rp 300.000');
-  await expect(summary).toContainText('Your share');
+  await expect(summary).toContainText('My share');
   await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 100.000');
 
   // Shut, the row underneath reads back what was decided — the summary Task 14's edit sheet will show too.
   await sheet.getByRole('button', { name: 'Close' }).click();
-  await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · They owe you Rp 300.000');
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · Owed Rp 300.000');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -1234,7 +1234,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardSection(page, 'Points');
   const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
-  await expect(purchase).toContainText('MCC 5411 · yours');
+  await expect(purchase).toContainText('MCC 5411 · remembered');
 });
 
 /**
