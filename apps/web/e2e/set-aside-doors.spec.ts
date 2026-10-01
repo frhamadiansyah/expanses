@@ -123,7 +123,7 @@ test('paying a bill from Jenius asks, and Record waits for the answer', async ({
   await jeniusWithTwoGoals(page);
   await addBill(page, 'Rent', '6800000');
   await page.getByTestId('bill-row').filter({ hasText: 'Rent' }).click();
-  await page.getByRole('button', { name: /^Pay \w+ bill$/ }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay' }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay Rent' });
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();

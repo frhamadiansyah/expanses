@@ -1,16 +1,28 @@
-import { billSchedule, dayMonth, isoDate, monthName } from '@expanses/core';
-import { deleteExpenseTemplate, RecurringError, skipBill, undoBillPayments } from '@expanses/db';
+import { type BillWindow, dayMonth, isoDate, monthName, ordinal } from '@expanses/core';
+import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Pencil } from 'lucide-react';
+import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
-import { DestructiveRow, GROUP_RADIUS, type GroupChild, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { isSettled, pillOf } from './bill-view';
+import { pillOf } from './bill-view';
+import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { useBillDetail } from './queries';
+
+/** How many months the history shows before See all. */
+const HISTORY_SHOWN = 3;
+
+/** "Out 28 Sep · pay by 5 Oct 2026", or "Out and due 1 Oct 2026" when the two are one day. */
+export function windowLine(window: BillWindow): string {
+  const year = (date: string) => date.slice(0, 4);
+  if (window.opensOn === window.payBy) return `Out and due ${dayMonth(window.payBy)} ${year(window.payBy)}`;
+  const out = year(window.opensOn) === year(window.payBy) ? dayMonth(window.opensOn) : `${dayMonth(window.opensOn)} ${year(window.opensOn)}`;
+  return `Out ${out} · pay by ${dayMonth(window.payBy)} ${year(window.payBy)}`;
+}
 
 interface JustPaid {
   ids: string[];
@@ -37,6 +49,8 @@ export function BillPage({ billId }: { billId: string }) {
   const detail = useBillDetail(billId, today);
 
   const [paying, setPaying] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [allHistory, setAllHistory] = useState(false);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -74,10 +88,17 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
-  async function skip() {
+  // The month Pay and Skip act on: the oldest one still owed, else the next one ahead. A paused month comes last, so
+  // it is never the one picked — it can still be chosen in the pay sheet's For.
+  const actMonth = bill.payableMonths[0] ?? null;
+  const actName = actMonth ? monthName(actMonth, 'long') : '';
+  // Plain "Pay" while it pays the month the card shows; once that is settled, the button names the month it moves on to.
+  const payLabel = actMonth === bill.billMonth ? 'Pay' : `Pay ${actName}`;
+
+  async function act(run: () => Promise<void>) {
     setError(null);
     try {
-      await skipBill(database, ws, bill.id, bill.billMonth);
+      await run();
       await invalidate();
     } catch (e) {
       setError(e);
@@ -97,36 +118,58 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
-  const month = monthName(bill.billMonth, 'long');
+  const actions: RoundAction[] = [
+    ...(actMonth
+      ? [
+          { key: 'pay', label: payLabel, glyph: <Check size={20} aria-hidden />, run: () => setPaying(true) },
+          { key: 'skip', label: 'Skip', glyph: <SkipForward size={20} aria-hidden />, run: () => void act(() => skipBill(database, ws, bill.id, actMonth)) },
+        ]
+      : []),
+    bill.pausedUntil
+      ? { key: 'resume', label: 'Resume', glyph: <Play size={20} aria-hidden />, run: () => void act(() => resumeBill(database, ws, bill.id)) }
+      : { key: 'pause', label: 'Pause', glyph: <Pause size={20} aria-hidden />, run: () => setPausing(true) },
+    { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, to: '/bills/$billId/edit', params: { billId } },
+  ];
+
+  const category = accounts.find((a) => a.id === bill.categoryAccountId);
+  const shown = allHistory ? history : history.filter((row, index) => index < HISTORY_SHOWN || row.month === paidMonth?.month);
 
   return (
     <div className={SCREEN}>
-      <LargeTitle
+      <PushedTitle
         title={bill.name}
         back="Recurring"
         backTo="/bills"
-        actions={[{ key: 'edit', label: 'Edit bill', glyph: <Pencil size={18} aria-hidden />, to: '/bills/$billId/edit', params: { billId } }]}
+        actions={[{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu: [{ key: 'stop', label: 'Stop this bill', run: () => void stop() }] }]}
       />
 
       <ErrorBox error={error} />
 
-      <div data-testid="bill-hero" className="flex flex-col items-center md:max-w-2xl">
-        {/* The category's own mark, tinted in its family's colour — the hero's plain circle would lose the colour. */}
-        <span className="mb-[10px]">
-          <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="lg" />
-        </span>
-        <Hero
-          minor={bill.amountMinor}
-          currency={currency}
-          empty="Amount varies"
-          caption={
-            <>
-              <span className="block">{billSchedule(bill.dayOfMonth, bill.payByDay)}</span>
-              <span className={cx('mt-[6px] inline-block rounded-full px-[7px] py-px text-[11px] leading-[15px] font-semibold', pill.className)}>{pill.text}</span>
-            </>
-          }
-        />
-      </div>
+      {/* The month's bill: which month, what it comes to, when it is out and due, and where it stands. */}
+      <Panel testId="bill-hero" className="space-y-[6px]">
+        <div className="flex items-center gap-[10px]">
+          <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
+          <p className="flex-1 text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{monthName(bill.billMonth, 'long')} bill</p>
+          <span className={cx('rounded-full px-[8px] py-[2px] text-[12px] leading-[16px] font-semibold', pill.className)} data-testid="bill-status">
+            {pill.text}
+          </span>
+        </div>
+        {bill.amountMinor !== null ? (
+          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
+            <Money minor={bill.amountMinor} currency={currency} />
+          </p>
+        ) : (
+          <p className="text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink-3)]">
+            Amount varies
+            {bill.estimateMinor !== null && (
+              <span className="tabular ml-[8px] text-[13px] leading-[18px] font-normal tracking-normal">
+                last month <Money minor={bill.estimateMinor} currency={currency} />
+              </span>
+            )}
+          </p>
+        )}
+        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{windowLine(bill.window)}</p>
+      </Panel>
 
       {justPaid && paidMonth && (
         /* A confirmation with its own Undo beside it — a banner, not a row, so the two never share one tap target. */
@@ -146,49 +189,42 @@ export function BillPage({ billId }: { billId: string }) {
         </div>
       )}
 
-      {!isSettled(bill) && (
-        <InsetGroup>
-          <InsetRow title={<span className="text-[var(--ph-tint)]">Pay {month} bill</span>} label={`Pay ${month} bill`} onClick={() => setPaying(true)} chevron={false} />
-        </InsetGroup>
-      )}
+      <ActionButtons actions={actions} />
 
       <InsetGroup>
+        <ReadOnlyRow label="Repeats" value="Every month" />
+        <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />
+        <ReadOnlyRow label="Pay by" value={bill.payByDay === null ? 'The day it is out' : `The ${ordinal(bill.payByDay)}`} />
         <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
+        <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>
 
       <div data-testid="bill-history">
         <InsetGroup header="History">
-          {history.map((row) => (
-            <HistoryRow
-              key={row.month}
-              fresh={paidMonth?.month === row.month}
-              title={`${monthName(row.month, 'long')} bill`}
-              value={
-                row.state === 'paid' ? (
-                  <>
-                    <Money minor={row.paidMinor ?? 0} currency={currency} /> · paid {dayMonth(row.paidOn!)}
-                  </>
-                ) : row.state === 'skipped' ? (
-                  'Skipped'
-                ) : (
-                  pillOf({ ...row, paidOn: null }).text
-                )
-              }
-            />
-          ))}
+          {[
+            ...shown.map((row) => (
+              <HistoryRow
+                key={row.month}
+                fresh={paidMonth?.month === row.month}
+                title={`${monthName(row.month, 'long')} bill`}
+                value={
+                  row.state === 'paid' ? (
+                    <>
+                      <Money minor={row.paidMinor ?? 0} currency={currency} /> · paid {dayMonth(row.paidOn!)}
+                    </>
+                  ) : (
+                    pillOf({ ...row, paidOn: null }).text
+                  )
+                }
+              />
+            )),
+            ...(history.length > shown.length
+              ? [<InsetRow key="all" title={<span className="text-[var(--ph-tint)]">See all</span>} label="See all" chevron={false} onClick={() => setAllHistory(true)} />]
+              : []),
+          ]}
         </InsetGroup>
       </div>
-
-      {!isSettled(bill) && (
-        <InsetGroup>
-          <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Skip {month} bill</span>} label={`Skip ${month} bill`} onClick={() => void skip()} chevron={false} />
-        </InsetGroup>
-      )}
-
-      <InsetGroup>
-        <DestructiveRow label="Stop this bill" onClick={() => void stop()} />
-      </InsetGroup>
 
       {paying && (
         <PaySheet
@@ -202,6 +238,8 @@ export function BillPage({ billId }: { billId: string }) {
           onSkipped={() => setPaying(false)}
         />
       )}
+
+      {pausing && <PauseSheet bill={bill} onClose={() => setPausing(false)} onPaused={() => setPausing(false)} />}
     </div>
   );
 }
@@ -212,8 +250,9 @@ export function BillPage({ billId }: { billId: string }) {
  */
 function HistoryRow({ position, fresh, title, value }: GroupChild & { fresh: boolean; title: string; value: ReactNode }) {
   return (
-    <div data-new={fresh}>
-      <InsetRow position={position} title={title} value={value} valueTone="ink-2" className={cx(fresh && 'bg-[var(--ph-tint-panel)]')} />
+    // The wash sits on the wrapper: the row draws itself on a transparent ground, which would win over it.
+    <div data-new={fresh} className={cx(fresh && 'bg-[var(--ph-tint-panel)]')}>
+      <InsetRow position={position} title={title} value={value} valueTone="ink-2" />
     </div>
   );
 }
