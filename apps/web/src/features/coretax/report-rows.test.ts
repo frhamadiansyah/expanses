@@ -180,9 +180,9 @@ describe('jointReportView', () => {
     expect(jointReportView({ ...base, me: 'rina', waiting: [{ owner: 'andi', name: 'House in Bintaro' }] }, nameOf)!.freezeWarning).toBe(
       "Andi's items are still missing — freezing now leaves them out",
     );
-    expect(jointReportView({ ...base, pending: { andi: 1 } }, nameOf)!.freezeWarning).toBe('Some of your items are still missing — freezing now leaves them out');
+    expect(jointReportView({ ...base, pending: { andi: 1 } }, nameOf)!.freezeWarning).toBe("Andi's items are still missing — freezing now leaves them out");
     expect(jointReportView({ ...base, pending: { andi: 1, rina: 2 } }, nameOf)!.freezeWarning).toBe(
-      "Rina's items and some of yours are still missing — freezing now leaves them out",
+      "Rina and Andi's items are still missing — freezing now leaves them out",
     );
   });
 
@@ -194,7 +194,7 @@ describe('jointReportView', () => {
 
   it('counts items, and speaks to this phone’s own person as you', () => {
     const view = jointReportView({ ...base, pending: { andi: 2, rina: 3 } }, nameOf)!;
-    expect(view.lines).toEqual(["Rina hasn't added 3 items yet", "You haven't added 2 items yet"]);
+    expect(view.lines).toEqual(["Rina hasn't added 3 items yet", "Andi hasn't added 2 items yet"]);
   });
 
   it('an item whose year-end has not arrived: waiting for its owner’s phone, and not complete', () => {

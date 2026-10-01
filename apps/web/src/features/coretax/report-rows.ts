@@ -125,19 +125,15 @@ export function jointReportView(
   for (const member of [...others, joint.me]) {
     const count = joint.pending[member] ?? 0;
     if (count <= 0) continue;
-    lines.push(member === joint.me ? `You haven't added ${itemsWord(count)} yet` : `${nameOf(member)} hasn't added ${itemsWord(count)} yet`);
+    lines.push(`${nameOf(member)} hasn't added ${itemsWord(count)} yet`);
   }
   const waitingBy = new Map<string, string[]>();
   for (const item of joint.waiting) waitingBy.set(item.owner, [...(waitingBy.get(item.owner) ?? []), item.name]);
   for (const [owner, names] of waitingBy) lines.push(`Waiting for ${nameOf(owner)}'s phone: ${names.join(', ')}`);
   const missingOthers = joint.members.filter((m) => m !== joint.me && ((joint.pending[m] ?? 0) > 0 || waitingBy.has(m)));
   const missingMine = (joint.pending[joint.me] ?? 0) > 0;
-  const whose = namesOf(missingOthers.map(nameOf));
-  const freezeWarning =
-    missingOthers.length > 0
-      ? `${whose}'s items ${missingMine ? 'and some of yours are' : 'are'} still missing — freezing now leaves them out`
-      : missingMine
-        ? 'Some of your items are still missing — freezing now leaves them out'
-        : null;
+  const missingOwners = [...missingOthers, ...(missingMine ? [joint.me] : [])];
+  const whose = namesOf(missingOwners.map(nameOf));
+  const freezeWarning = missingOwners.length > 0 ? `${whose}'s items are still missing — freezing now leaves them out` : null;
   return { banner: `Joint report · ${namesOf(joint.members.map(nameOf))}`, complete: lines.length === 0, lines, freezeWarning };
 }
