@@ -512,8 +512,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Net worth shared · One tax ID', { timeout: 1_000 }));
 
   // Each reviews their items and shares them.
-  await reviewAndShare(dewi, info, '15-review-joint', 'For the joint tax return, each item also goes to Fandri with its row of your tax report');
-  await reviewAndShare(page, info, '15-review-joint', 'For the joint tax return, each item also goes to Dewi with its row of your tax report');
+  await reviewAndShare(dewi, info, '15-review-joint', 'For the joint tax return, each item also goes to Fandri with its row of the tax report');
+  await reviewAndShare(page, info, '15-review-joint', 'For the joint tax return, each item also goes to Dewi with its row of the tax report');
 
   // Both read the household's figure — 10 jt + 5 jt — and whose part is whose.
   await netWorthReads(page, '15.000.000', ['Fandri', '10 jt', 'Dewi', '5 jt']);
@@ -534,7 +534,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await eventually(dewi, async () => {
     await dewi.goto('/tax-report');
     await expect(dewi.locator('main')).toContainText('Joint report · Fandri and Dewi', { timeout: 2_000 });
-    await expect(dewi.locator('main')).toContainText('Every item of both of you is in it', { timeout: 2_000 });
+    await expect(dewi.locator('main')).toContainText('Every item of both members is in it', { timeout: 2_000 });
   });
   await shot(dewi, info, '16c-joint-tax-report');
 
