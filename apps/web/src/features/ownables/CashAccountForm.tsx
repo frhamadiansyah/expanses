@@ -1,4 +1,4 @@
-import { bankMatches, brokerMatches, cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { bankMatches, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -417,7 +417,12 @@ export function CashAccountForm({
         {fund ? null : asks.includes('bank') ? (
           <BankNameRow bank={bank} onBank={setBank} name={name} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} />
         ) : (
-          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
+          item === 'ewallet' ? (
+            // A wallet is called by its app, so the apps a rupiah workspace knows are offered over the keyboard as it is typed.
+            <SuggestRow label="Name" stripLabel="Wallets" value={name} onChange={setName} placeholder="Account name" offers={(typed) => (ws.baseCurrency === 'IDR' ? walletMatches(typed) : [])} />
+          ) : (
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
+          )
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}
