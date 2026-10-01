@@ -67,8 +67,12 @@ export {
   dayMonth,
   daysFrom,
   monthName,
+  monthYear,
   ordinal,
   payableBillMonths,
+  pausedMonths,
+  pausedUntil,
+  pauseStart,
 } from './bills/schedule';
 export { type Period, type PeriodKind, parsePeriod, periodLabel, stepPeriod, weekOf, weeksOfMonth } from './reports/view-period';
 export {

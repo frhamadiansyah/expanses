@@ -22,6 +22,8 @@ const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   paymentId: null,
   estimateMinor: 100,
   payableMonths: ['2026-09'],
+  pausedUntil: null,
+  pauseFrom: '2026-09',
   ...over,
 });
 
@@ -80,8 +82,18 @@ describe('the Recurring list', () => {
         { key: 'later', label: 'Later', minor: 1_070_000, approximate: true },
       ],
       allSettled: false,
+      allPaused: false,
     });
-    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, parts: [], allSettled: true });
+    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, parts: [], allSettled: true, allPaused: false });
+  });
+
+  it('leaves a paused bill out of what is still to pay, and says until when under its amount', () => {
+    const paused = bill({ name: 'Gym', state: 'paused', amountMinor: 350_000, pausedUntil: '2027-01' });
+    expect(summaryOf([...rows, paused], '2026-09-08').totalMinor).toBe(summaryOf(rows, '2026-09-08').totalMinor);
+    expect(owedNow([...rows, paused])).toEqual(owedNow(rows));
+    expect(sectionsOf([paused])).toEqual([]);
+    expect(summaryOf([paused], '2026-09-08')).toMatchObject({ totalMinor: 0, allSettled: true, allPaused: true });
+    expect(statusOf(paused)).toEqual({ text: 'until Jan 2027', tone: 'ink-3' });
   });
 
   it('owed now is what is out and unpaid', () => {

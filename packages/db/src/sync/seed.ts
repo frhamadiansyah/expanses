@@ -152,7 +152,7 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
   ops.push(...parentsFirst(await rows('category')), ...(await rows('category_need')), ...(await rows('category_colour')));
   ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
-  ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')));
+  ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')), ...(await rows('bill_pause')));
 
   // Every non-void purchase, oldest first. A void one never existed for the other member.
   const heads = await tx.values<[string]>(sql`

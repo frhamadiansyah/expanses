@@ -4,7 +4,7 @@ import { Bell, ChevronRight } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { Card, Money } from '../../ui';
 import { useAccounts } from '../../lib/queries';
-import { billsInReadCurrency, isSettled, owedNow } from '../bills/bill-view';
+import { billsInReadCurrency, isPaused, isSettled, owedNow } from '../bills/bill-view';
 import type { MonthlyBill } from '@expanses/db';
 import { useMonthlyBills } from '../bills/queries';
 import { useBookMoney } from '../workspaces/queries';
@@ -25,8 +25,13 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
   // as a sum of several currencies labelled as one.
   const money = useBookMoney();
   const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
-  const { rows: readRows } = billsInReadCurrency(rows, money.data, currencyOf);
-  if (rows.length === 0) return null;
+  // A paused bill comes out for nothing this month, so it is in neither side of "x of y paid".
+  const { rows: readRows } = billsInReadCurrency(
+    rows.filter((bill) => !isPaused(bill)),
+    money.data,
+    currencyOf,
+  );
+  if (readRows.length === 0) return null;
 
   const settled = readRows.filter(isSettled).length;
   const owed = owedNow(readRows);

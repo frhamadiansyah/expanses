@@ -8,6 +8,8 @@ import {
   clearIncomeOverride,
   createAccount,
   deleteExpenseTemplate,
+  pauseBill,
+  resumeBill,
   listAccounts,
   personalBook,
   postTransaction,
@@ -279,6 +281,19 @@ describe('capture: rows edited in place', () => {
     expect(later[2]).toMatchObject({ entity: 'bill', id, op: 'upsert' });
     expect(Object.keys((later[2] as { fields: object }).fields)).toEqual(['archivedAt']);
     expect(later).toHaveLength(3);
+  });
+
+  it('a bill’s paused months travel as a skip does, and a resume takes back the ones ahead', async () => {
+    const { database, ws, bca, groceries } = await sharedHousehold();
+    const id = await saveExpenseTemplate(database, ws, { name: 'Gym', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 350_000, dayOfMonth: 5, startsMonth: '2026-09' });
+    await clearOutbox(database);
+    await pauseBill(database, ws, id, '2026-12', '2026-10-01');
+    await resumeBill(database, ws, id, '2026-11-02');
+    expect(await outboxOps(database)).toEqual([
+      { entity: 'bill_pause', id: `${id}|2026-10`, op: 'upsert', fields: {} },
+      { entity: 'bill_pause', id: `${id}|2026-11`, op: 'upsert', fields: {} },
+      { entity: 'bill_pause', id: `${id}|2026-11`, op: 'delete' },
+    ]);
   });
 
   it('a rolled-back write leaves nothing in the outbox', async () => {

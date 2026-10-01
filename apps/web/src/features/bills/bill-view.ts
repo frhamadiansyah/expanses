@@ -1,9 +1,13 @@
-import { billPill, type BillTone, dayMonth, minorToMajorString, monthName } from '@expanses/core';
+import { billPill, type BillTone, dayMonth, minorToMajorString, monthName, monthYear } from '@expanses/core';
 import type { BookMoney, MonthlyBill } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
 import type { UnconvertedRow } from '../workspaces/Unconverted';
 
 export const isSettled = (bill: MonthlyBill) => bill.state === 'paid' || bill.state === 'skipped';
+/** A bill whose month is paused: nothing comes out, so it is neither owed nor counted. */
+export const isPaused = (bill: Pick<MonthlyBill, 'state'>) => bill.state === 'paused';
+/** A bill still to pay this month: not settled, not paused. */
+export const isToPay = (bill: MonthlyBill) => !isSettled(bill) && !isPaused(bill);
 const isOutAndUnpaid = (bill: MonthlyBill) => bill.state === 'overdue' || bill.state === 'dueSoon' || bill.state === 'open';
 
 /** What a row is worth in a total: what it came to once paid, else its amount, else the estimate. */
@@ -24,6 +28,11 @@ export function sectionsOf(rows: readonly MonthlyBill[]): BillSection[] {
     { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter((b) => b.state === 'dueSoon') },
     { key: 'later' as const, title: 'Later', rows: rows.filter((b) => b.state === 'open' || b.state === 'upcoming') },
   ].filter((section) => section.rows.length > 0);
+}
+
+/** The bills whose month is paused, for a group of their own under the ones to pay. */
+export function pausedOf(rows: readonly MonthlyBill[]): MonthlyBill[] {
+  return rows.filter(isPaused);
 }
 
 export interface SettledFold {
@@ -55,10 +64,12 @@ export interface BillSummary {
   /** What the total is made of, for the bar and its key: only the parts with money in them. */
   parts: { key: 'overdue' | 'dueSoon' | 'later'; label: string; minor: number; approximate: boolean }[];
   allSettled: boolean;
+  /** Nothing to pay because every bill is paused, which is not the same as all paid. */
+  allPaused: boolean;
 }
 
 export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSummary {
-  const open = rows.filter((b) => !isSettled(b));
+  const open = rows.filter(isToPay);
   const varying = open.filter((b) => b.amountMinor === null).length;
   const groups = [
     { key: 'overdue' as const, label: 'Overdue', rows: open.filter((b) => b.state === 'overdue') },
@@ -72,6 +83,7 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
     variesText: varying > 0 ? variesWords(varying) : null,
     parts: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
     allSettled: open.length === 0,
+    allPaused: open.length === 0 && rows.length > 0 && rows.every(isPaused),
   };
 }
 
@@ -137,7 +149,7 @@ export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'pa
  * The small line under a row's amount: how late, how soon, or the day it is due — the same states the pill names,
  * in fewer words. Late in alarm, soon in warning, the rest quiet.
  */
-export function statusOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; tone: Tone } {
+export function statusOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn' | 'pausedUntil'>): { text: string; tone: Tone } {
   const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
   switch (bill.state) {
     case 'overdue':
@@ -153,6 +165,8 @@ export function statusOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | '
       return { text: bill.paidOn ? `Paid ${dayMonth(bill.paidOn)}` : 'Paid', tone: 'tint' };
     case 'skipped':
       return { text: 'Skipped', tone: 'ink-3' };
+    case 'paused':
+      return { text: bill.pausedUntil ? `until ${monthYear(bill.pausedUntil)}` : 'Paused', tone: 'ink-3' };
   }
 }
 

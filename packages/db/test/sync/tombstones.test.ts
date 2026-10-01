@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clearCategoryNeed, inBook, removeBudget, saveBudget, saveCategoryNeed, saveExpenseTemplate, skipBill, unskipBill } from '../../src/index';
+import { clearCategoryNeed, inBook, monthlyBills, pauseBill, removeBudget, resumeBill, saveBudget, saveCategoryNeed, saveExpenseTemplate, skipBill, unskipBill } from '../../src/index';
 import { categoryOf, Household, projectBook } from './household';
 
 /*
@@ -30,6 +30,20 @@ describe('tombstones', () => {
     const view = await projectBook(dewi.database, bookId);
     expect(Object.keys(view.bill_skip!)).toEqual([`${bill}|2026-10`]);
     expect(view).toEqual(await projectBook(fandri.database, bookId));
+  });
+
+  it('a pause reaches the other device, and so does the resume', async () => {
+    const { home, fandri, dewi, bookId, groceries, ws } = await household();
+    const bill = await saveExpenseTemplate(fandri.database, ws(fandri), { name: 'Gym', categoryAccountId: groceries, moneyAccountId: fandri.bank, amountMinor: 350_000, dayOfMonth: 5, startsMonth: '2026-09' });
+    await home.settle();
+    await pauseBill(fandri.database, ws(fandri), bill, '2026-12', '2026-10-01');
+    await home.settle();
+    expect(Object.keys((await projectBook(dewi.database, bookId)).bill_pause!).sort()).toEqual([`${bill}|2026-10`, `${bill}|2026-11`]);
+    expect((await monthlyBills(dewi.database, ws(dewi), '2026-10-20')).find((b) => b.id === bill)).toMatchObject({ pausedUntil: '2026-12' });
+    await resumeBill(fandri.database, ws(fandri), bill, '2026-10-20');
+    await home.settle();
+    expect((await monthlyBills(dewi.database, ws(dewi), '2026-10-20')).find((b) => b.id === bill)).toMatchObject({ pausedUntil: null });
+    expect(await projectBook(dewi.database, bookId)).toEqual(await projectBook(fandri.database, bookId));
   });
 
   it('a need cleared on one device and set again on the other: the later wins everywhere, in either order', async () => {

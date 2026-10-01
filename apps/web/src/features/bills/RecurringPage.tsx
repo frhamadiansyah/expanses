@@ -9,7 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
-import { amountOf, billsInReadCurrency, type BillSummary, isSettled, paidText, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
+import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
@@ -25,6 +25,13 @@ const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overd
  * and the key under the bar naming each part's money. Once everything is dealt with it says so, and nothing more.
  */
 function StillToPay({ summary, currency }: { summary: BillSummary; currency: string }) {
+  if (summary.allPaused) {
+    return (
+      <Panel>
+        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">Nothing to pay in {summary.monthLabel}</p>
+      </Panel>
+    );
+  }
   if (summary.allSettled) {
     return (
       <Panel>
@@ -214,6 +221,16 @@ export function RecurringPage() {
         </section>
       ))}
 
+      {/* Paused bills come out for nothing this month: a group of their own, under the ones to pay. */}
+      {pausedOf(rows).length > 0 && (
+        <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }} data-testid="bills-paused">
+          <PanelHeader title="Paused" />
+          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+            {pausedOf(rows).map(billRow)}
+          </div>
+        </section>
+      )}
+
       {/* What is paid or skipped is done with: one row says how many and what they came to, and opens them. */}
       {settled && (
         <InsetGroup>
@@ -260,7 +277,7 @@ export function RecurringPage() {
 
       {payingSeveral && (
         <PaySeveralSheet
-          bills={rows.filter((b) => !isSettled(b))}
+          bills={rows.filter(isToPay)}
           picked={picked}
           today={today}
           onClose={closeSeveral}

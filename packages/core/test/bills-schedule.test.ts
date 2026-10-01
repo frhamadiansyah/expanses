@@ -7,7 +7,11 @@ import {
   currentBillMonth,
   dayMonth,
   monthName,
+  monthYear,
   payableBillMonths,
+  pausedMonths,
+  pausedUntil,
+  pauseStart,
 } from '../src/index';
 
 describe('billWindow', () => {
@@ -73,6 +77,46 @@ describe('which month a bill speaks for', () => {
     expect(payableBillMonths({ ...internet, today: '2026-09-08', settled: {} })).toEqual(['2026-08', '2026-09', '2026-10']);
     expect(payableBillMonths({ ...internet, today: '2026-09-08', settled: { '2026-08': 'paid', '2026-09': 'skipped' } })).toEqual(['2026-10']);
     expect(payableBillMonths({ ...internet, startsMonth: '2026-09', today: '2026-09-08', settled: {} })).toEqual(['2026-09', '2026-10']);
+  });
+});
+
+describe('a paused bill', () => {
+  const internet = { startsMonth: '2026-01', outDay: 5, payByDay: null };
+
+  it('covers the months up to the one it comes back in', () => {
+    expect(pausedMonths('2026-10', '2026-12')).toEqual(['2026-10', '2026-11']);
+    expect(pausedMonths('2026-11', '2027-02')).toEqual(['2026-11', '2026-12', '2027-01']);
+    expect(pausedMonths('2026-10', '2026-10')).toEqual([]);
+  });
+
+  it('starts this month, or the first month after it that is not already dealt with', () => {
+    expect(pauseStart('2026-10-01', {})).toBe('2026-10');
+    expect(pauseStart('2026-10-01', { '2026-10': 'paid' })).toBe('2026-11');
+    expect(pauseStart('2026-10-01', { '2026-10': 'paid', '2026-11': 'skipped' })).toBe('2026-12');
+    // Last month's bill is not swept into a pause.
+    expect(pauseStart('2026-10-01', { '2026-09': 'paused' })).toBe('2026-10');
+  });
+
+  it('comes back the month after its last paused month, and by itself once those months are past', () => {
+    expect(pausedUntil(['2026-10', '2026-11'], '2026-10-15')).toBe('2026-12');
+    expect(pausedUntil(['2026-10', '2026-11'], '2026-11-30')).toBe('2026-12');
+    expect(pausedUntil(['2026-10', '2026-11'], '2026-12-01')).toBeNull();
+    expect(pausedUntil([], '2026-10-01')).toBeNull();
+  });
+
+  it('is neither due nor late in a paused month, and says Paused', () => {
+    const window = billWindow('2026-09', 1, null);
+    expect(billStanding(window, '2026-10-20', 'paused')).toEqual({ state: 'paused', days: 0 });
+    expect(billPill({ state: 'paused', days: 0 }, window, null)).toEqual({ text: 'Paused', tone: 'grey' });
+  });
+
+  it('a paused last month does not hold the row back, and a paused month is still payable, last', () => {
+    expect(currentBillMonth({ ...internet, today: '2026-10-08', settled: { '2026-09': 'paused' } })).toBe('2026-10');
+    expect(payableBillMonths({ ...internet, today: '2026-10-08', settled: { '2026-09': 'paid', '2026-10': 'paused' } })).toEqual(['2026-11', '2026-10']);
+  });
+
+  it('names its month short, with the year', () => {
+    expect(monthYear('2027-01')).toBe('Jan 2027');
   });
 });
 

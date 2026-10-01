@@ -5,7 +5,7 @@ import { Check, MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { isSettled, statusOf, sublineOf } from './bill-view';
+import { isPaused, isSettled, statusOf, sublineOf } from './bill-view';
 import { SwipeRow } from '../../ui/SwipeRow';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
 
@@ -41,7 +41,8 @@ export function BillRow({
   /** A hairline above this row, inset to the text as the kit's are; the group's first row has none. */
   separator?: boolean;
 }) {
-  const settled = isSettled(bill);
+  // A paused month is as done with as a paid one here: nothing to swipe, nothing to tick. Its own page can still pay it.
+  const settled = isSettled(bill) || isPaused(bill);
   const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
   const status = statusOf(bill);
   const navigate = useNavigate();
