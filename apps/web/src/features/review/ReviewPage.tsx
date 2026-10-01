@@ -12,11 +12,12 @@ import {
   unmerge,
   voidTransaction,
 } from '@expanses/db';
-import { Check, X } from 'lucide-react';
+import { Check, Camera, X } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { captureBytes, native } from '../../capture/native';
+import { useScanReceipt } from '../../capture/use-scan';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { photos } from '../../photos/store';
@@ -53,6 +54,7 @@ export function ReviewPage() {
   const drafts = useDrafts();
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources().data ?? [];
+  const scan = useScanReceipt();
   // Confirming a draft records real spending, so the account it names has to be one that can pay.
   const money = moneyHolders(accounts).filter((a) => canPayWith(a));
   const [error, setError] = useState<unknown>(null);
@@ -183,8 +185,9 @@ export function ReviewPage() {
               ? `${list.length} waiting. Swipe right to record a row, left to discard it, or tap it to check it first.`
               : `${list.length} waiting. Nothing here has been recorded yet — check what was read, then confirm it.`
         }
+        actions={[{ key: 'scan', label: 'Scan a receipt', glyph: <Camera size={20} aria-hidden />, run: () => void scan.scan() }]}
       />
-      <ErrorBox error={error ?? drafts.error} />
+      <ErrorBox error={error ?? scan.error ?? drafts.error} />
 
       {drafts.isSuccess && list.length === 0 && <Empty>Nothing waiting. Captured spending appears here before it reaches your accounts.</Empty>}
 
