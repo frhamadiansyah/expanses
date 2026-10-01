@@ -27,6 +27,11 @@ if (import.meta.hot) {
   };
   window.addEventListener('error', mark);
   window.addEventListener('unhandledrejection', mark);
+  // The simulator has no console to read, so what breaks is printed by the dev server too.
+  const tell = (kind: string, message: string, stack?: string) =>
+    import.meta.hot?.send('cicis:client-error', { kind, message, stack: stack?.split('\n').slice(0, 8).join('\n'), url: window.location.pathname });
+  window.addEventListener('error', (event) => tell('error', String(event.message), event.error?.stack));
+  window.addEventListener('unhandledrejection', (event) => tell('rejection', String(event.reason?.message ?? event.reason), event.reason?.stack));
   import.meta.hot.on('vite:error', mark);
   // An edit this file cannot take in place — one whose update reaches here because no component took it — would
   // otherwise run this file again and start a second app on the same page, which tears the first one down to white.
@@ -47,6 +52,7 @@ if (import.meta.hot) {
     const report = console[level].bind(console);
     console[level] = (...args: unknown[]) => {
       if (args.some((arg) => typeof arg === 'string' && failed.test(arg))) mark();
+      if (level === 'error') tell('console', args.map((arg) => (arg instanceof Error ? `${arg.message}\n${arg.stack ?? ''}` : String(arg))).join(' ').slice(0, 2000));
       report(...args);
     };
   }
