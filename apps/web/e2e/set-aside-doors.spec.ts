@@ -477,7 +477,7 @@ test('confirming a draft that takes promised money asks in the same sheet', asyn
   const csv = ['Date,Description,Amount', '09/09/2026,LAPTOP STORE,-6800000'].join('\n');
   await page.locator('input[type="file"]').setInputFiles({ name: 'statement.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await page.getByRole('button', { name: /Send \d+ to review/ }).click();
-  await expect(page.getByText(/Nothing is recorded until you confirm it there/)).toBeVisible();
+  await expect(page.getByText(/Nothing is recorded until confirmed there/)).toBeVisible();
 
   await page.goto('/review');
   await page.getByLabel('Category for LAPTOP STORE').selectOption({ label: 'Groceries' });

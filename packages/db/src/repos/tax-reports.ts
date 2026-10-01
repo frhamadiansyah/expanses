@@ -56,7 +56,7 @@ const toRow = (row: typeof taxYearReports.$inferSelect): TaxReportRow => ({
 export async function draftReport(database: Database, ws: WorkspaceContext, input: SaveReportInput, today: string = isoDate()): Promise<string> {
   const thisYear = Number(today.slice(0, 4));
   if (!Number.isInteger(input.taxYear) || input.taxYear < 2000 || input.taxYear > thisYear) {
-    throw new TaxDbError(`${input.taxYear} is not a tax year you can report on yet`);
+    throw new TaxDbError(`${input.taxYear} is not a tax year that can be reported on yet`);
   }
 
   return database.transaction(async (tx) => {

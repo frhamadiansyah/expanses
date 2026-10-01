@@ -112,9 +112,9 @@ export function reconciliation(harta: CoretaxRow[], utang: CoretaxRow[], netWort
 
   const reasons: string[] = [];
   if (differenceMinor !== 0) {
-    reasons.push('The report values property on the basis you chose, which need not be what the balance sheet shows.');
+    reasons.push('The report values property on the basis chosen, which need not be what the balance sheet shows.');
     if (harta.some((row) => row.note?.startsWith('Reported at'))) reasons.push('Property and vehicles here follow the report basis, not their latest estimate.');
-    if (harta.some((row) => row.note?.includes('KMK'))) reasons.push('Something held in another currency is waiting for its KMK rate, so it counts as nothing until you enter one.');
+    if (harta.some((row) => row.note?.includes('KMK'))) reasons.push('Something held in another currency is waiting for its KMK rate, so it counts as nothing until one is entered.');
     reasons.push('Anything the form does not ask for is left out of the report but still counts towards net worth.');
   }
 

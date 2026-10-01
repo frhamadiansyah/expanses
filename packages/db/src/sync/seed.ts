@@ -73,7 +73,7 @@ export async function assertShareableTx(tx: Tx, bookId: string): Promise<void> {
   if (bookCurrency !== ownCurrency) {
     throw new SharingError(
       'CURRENCY',
-      `This workspace keeps its money in ${bookCurrency}; this app keeps yours in ${ownCurrency}. Sharing across currencies isn't supported yet.`,
+      `This workspace keeps its money in ${bookCurrency}; this app's own accounts are kept in ${ownCurrency}. Sharing across currencies isn't supported yet.`,
     );
   }
   if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0) {

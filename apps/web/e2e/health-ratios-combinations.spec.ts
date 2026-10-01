@@ -263,7 +263,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   await page.goto('/net-worth/health');
   const card = emergencyCard(page);
   await expect(card).toContainText('5,7 months');
-  await expect(card).toContainText('12 months · your household');
+  await expect(card).toContainText('12 months · this household');
   // Below 12 ÷ 1,2 = 10 months: act, where the flat guide of row 1 called the same 5,7 months on track.
   await expect(card).toContainText('Act now');
 });

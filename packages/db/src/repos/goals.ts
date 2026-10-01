@@ -107,7 +107,7 @@ export async function listGoals(database: Database, ws: WorkspaceContext, opts: 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function checkStages(stages: SaveGoalStageInput[]): void {
-  if (stages.length === 0) throw new GoalDbError('A goal needs at least one stage: what it costs and when you need it');
+  if (stages.length === 0) throw new GoalDbError('A goal needs at least one stage: what it costs and when it is needed');
   for (const stage of stages) {
     if (!stage.name.trim()) throw new GoalDbError('Every stage needs a name');
     if (!DATE.test(stage.dueOn)) throw new GoalDbError(`Stage "${stage.name}" needs a date`);

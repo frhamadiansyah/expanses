@@ -49,7 +49,7 @@ async function workspaceMember(host: GroupLogHost, workspaceBookId: string): Pro
 async function requireGroupLog(host: GroupLogHost, workspaceBookId: string): Promise<{ groupBookId: string; me: string }> {
   const me = await workspaceMember(host, workspaceBookId);
   const groupBookId = await groupLogOf(host, workspaceBookId);
-  if (!groupBookId) throw new NetWorthError('not-listed', "You're not in this workspace's net-worth group");
+  if (!groupBookId) throw new NetWorthError('not-listed', "Not in this workspace's net-worth group");
   return { groupBookId, me };
 }
 
@@ -90,9 +90,9 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
     }
     return true;
   });
-  if (!known) throw new NetWorthError('invalid', 'Everyone you choose must be in this workspace');
+  if (!known) throw new NetWorthError('invalid', 'Everyone chosen must be in this workspace');
   const other = await activeNetWorthGroup(host.database);
-  if (other && other.workspaceBookId !== workspaceBookId) throw new NetWorthError('other-group', 'You already share your net worth in another workspace');
+  if (other && other.workspaceBookId !== workspaceBookId) throw new NetWorthError('other-group', 'Net worth is already shared in another workspace');
   const ready = await workspaceDevicesReady(host, workspaceBookId);
   if (!ready.ready) throw new NetWorthError('not-ready', 'Every device must run the latest app first', ready.outdated);
 
@@ -100,7 +100,7 @@ export async function proposeNetWorth(host: GroupLogHost, workspaceBookId: strin
   // Review round 1, finding 1: someone who was in this group log and left it is never proposed back into it — their
   // devices were taken out for good, so they could never confirm.
   const departed = await departedMembers(host.database.db, groupBookId);
-  if (members.some((m) => departed.has(m))) throw new NetWorthError('left-group', 'Someone you chose has left this net-worth group and cannot be asked back into it');
+  if (members.some((m) => departed.has(m))) throw new NetWorthError('left-group', 'Someone chosen has left this net-worth group and cannot be asked back into it');
   // Wave 3 round 2: a Change never adds anyone. The log holds every summary ever sent and a new member is handed every
   // epoch key, so adding someone is a fresh setup: stop sharing net worth, and set it up again (a new log).
   const state = await groupStateOf(host.database.db, groupBookId);
@@ -142,7 +142,7 @@ async function listedProposal(host: GroupLogHost, groupBookId: string, proposalI
   await quietly(host.syncOnce(groupBookId));
   const found = await proposalOf(host.database.db, groupBookId, proposalId);
   const current = (await groupStateOf(host.database.db, groupBookId)).active?.members ?? [];
-  if (!found || !(found.proposal.members.includes(me) || current.includes(me))) throw new NetWorthError('not-listed', "You're not asked on that proposal");
+  if (!found || !(found.proposal.members.includes(me) || current.includes(me))) throw new NetWorthError('not-listed', "Not asked on that proposal");
   return found;
 }
 
@@ -150,7 +150,7 @@ async function listedProposal(host: GroupLogHost, groupBookId: string, proposalI
 export async function answerNetWorth(host: GroupLogHost, workspaceBookId: string, proposalId: string, answer: 'confirm' | 'decline'): Promise<void> {
   const { groupBookId, me } = await requireGroupLog(host, workspaceBookId);
   const { activated } = await listedProposal(host, groupBookId, proposalId, me);
-  if (answer === 'decline' && activated) throw new NetWorthError('activated', 'This is how your household shares now: to stop, stop sharing your net worth');
+  if (answer === 'decline' && activated) throw new NetWorthError('activated', 'This is how the household shares now: to stop, stop sharing net worth');
   await host.database.transaction((tx) => writeAnswerTx(tx, groupBookId, proposalId, me, answer));
   await quietly(host.syncOnce(groupBookId));
 }
@@ -163,7 +163,7 @@ export async function cancelNetWorth(host: GroupLogHost, workspaceBookId: string
   const { groupBookId, me } = await requireGroupLog(host, workspaceBookId);
   const { proposal, activated } = await listedProposal(host, groupBookId, proposalId, me);
   if (proposal.proposedBy !== me) throw new NetWorthError('not-proposer', 'Only who proposed it can cancel it');
-  if (activated) throw new NetWorthError('activated', 'This is how your household shares now: to stop, stop sharing your net worth');
+  if (activated) throw new NetWorthError('activated', 'This is how the household shares now: to stop, stop sharing net worth');
   await host.database.transaction((tx) =>
     withCapture(tx, { entity: 'nw_proposal', id: proposalId, bookId: groupBookId }, async () => {
       await tx.run(sql`UPDATE nw_proposals SET cancelled = 1 WHERE book_id = ${groupBookId} AND proposal_id = ${proposalId}`);

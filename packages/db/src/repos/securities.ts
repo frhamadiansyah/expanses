@@ -157,7 +157,7 @@ export async function linkHoldingTx(
     // The owner's ruling: a broker is its cash account, subtype `fund`. A pocket is its parent's money in one
     // currency, so the parent is the broker and the pocket never is.
     if (broker.kind !== 'asset' || broker.subtype !== 'fund') {
-      throw new AssetError('A broker is the cash account you keep there — choose a fund account');
+      throw new AssetError('A broker is the cash account kept there — choose a fund account');
     }
     if (broker.parentId) {
       const [parent] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, broker.parentId), eq(accounts.workspaceId, ws.workspaceId)));

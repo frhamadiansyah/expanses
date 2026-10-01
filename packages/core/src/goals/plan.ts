@@ -164,7 +164,7 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
   const risky = links.find((link) => link.risk === 'high');
   const riskWarning =
     unpaid.length > 0 && lastMonths <= RISK_HORIZON_MONTHS && risky
-      ? `${goal.name} is due in ${lastMonths} months but is held in ${risky.name}, which can fall in value before you need it.`
+      ? `${goal.name} is due in ${lastMonths} months but is held in ${risky.name}, which can fall in value before it is needed.`
       : null;
 
   return {

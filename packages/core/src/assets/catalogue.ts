@@ -67,9 +67,9 @@ const VALUED_BY_WORDS: Record<ValuedByWord, string> = {
   units: 'units × price',
   face: 'face value × price',
   grams: 'grams × gold price',
-  value: 'a value you type',
-  ledger: 'from what people owe you',
-  balance: 'the balance you hold',
+  value: 'a typed value',
+  ledger: 'from what is owed by people',
+  balance: 'the balance held',
 };
 
 const money = (
@@ -255,7 +255,7 @@ const IMMOVABLE_ITEMS: readonly OwnableItem[] = [
 /** §2.4 intangible and other — every row `subtype: 'investment'`. */
 const OTHER_ITEMS: readonly OwnableItem[] = [
   holding('gold', 'Gold bullion', '0701', { assetKind: 'gold', subtype: 'investment', planGroup: 'invest', valuedBy: 'grams', unitKind: 'grams', lotSize: null, priceLabel: 'Buyback price per gram' }),
-  holding('gold_jewellery', 'Gold jewellery', '0702', { assetKind: 'gold', subtype: 'investment', planGroup: 'invest', valuedBy: 'grams', unitKind: 'grams', lotSize: null, priceLabel: 'Buyback price per gram', orTyped: true }, 'grams (or a value you type)'),
+  holding('gold_jewellery', 'Gold jewellery', '0702', { assetKind: 'gold', subtype: 'investment', planGroup: 'invest', valuedBy: 'grams', unitKind: 'grams', lotSize: null, priceLabel: 'Buyback price per gram', orTyped: true }, 'grams (or a typed value)'),
   holding('non_gold_bullion', 'Non-gold bullion', '0703', { assetKind: 'other', subtype: 'investment', planGroup: 'invest', valuedBy: 'value', unitKind: null, lotSize: null, priceLabel: null }),
   holding('non_gold_jewellery', 'Non-gold jewellery', '0704', { assetKind: 'other', subtype: 'investment', planGroup: 'use', valuedBy: 'value', unitKind: null, lotSize: null, priceLabel: null }),
   holding('gemstone', 'Gemstones', '0705', { assetKind: 'other', subtype: 'investment', planGroup: 'use', valuedBy: 'value', unitKind: null, lotSize: null, priceLabel: null }),
@@ -282,7 +282,7 @@ const LEGACY_CASH_ASSET: OwnableItem = {
 
 /** §2.4 — the five families, in the order the screen lists them. */
 export const ASSET_FAMILIES: readonly OwnableFamilyRow[] = [
-  { id: 'receivable', label: 'Receivables', sub: 'money owed to you', section: 'piutang', hartaFamily: 'piutang', items: RECEIVABLE_ITEMS },
+  { id: 'receivable', label: 'Receivables', sub: 'money owed', section: 'piutang', hartaFamily: 'piutang', items: RECEIVABLE_ITEMS },
   { id: 'invest', label: 'Investments', sub: 'shares, bonds, funds, insurance', section: 'investasi', hartaFamily: 'investasi', items: INVEST_ITEMS },
   { id: 'movable', label: 'Movable property', sub: 'vehicles and machinery', section: 'bergerak', hartaFamily: 'bergerak', items: MOVABLE_ITEMS },
   { id: 'immovable', label: 'Immovable property', sub: 'land and buildings', section: 'tidak_bergerak', hartaFamily: 'tidak_bergerak', items: IMMOVABLE_ITEMS },
