@@ -313,6 +313,9 @@ export {
   flatToEffectiveBps,
   PAYOFF_TOLERANCE_MONTHS,
   payoffMismatchMonths,
+  type PayoffQuote,
+  payoffQuote,
+  type SettlementFee,
 } from './loans/effects';
 export { type CardInstallment, type InstallmentBilling, installmentSchedule, type InstallmentSplit, installmentSplit } from './loans/installments';
 export {
