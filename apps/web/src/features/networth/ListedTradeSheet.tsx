@@ -131,7 +131,7 @@ export function ListedTradeSheet({
     setPrice(priceText(from <= 0 ? 1 : stepIdxPrice(from, direction)));
   };
   const ticker = security.ticker ?? security.name;
-  const where = cashAccount ? `${cashAccount.name}${cashAccount.subtype === 'fund' ? ' RDN' : ''}` : 'the account';
+  const where = cashAccount ? cashAccount.name : 'the account';
   const minimumNote = charge?.minimumApplied && rates?.minDailyMinor ? ` · minimum fee ${formatMinor(rates.minDailyMinor, 'IDR')} applies` : '';
   const charged = charge ? charge.feeMinor + charge.taxMinor : 0;
 

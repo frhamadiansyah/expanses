@@ -83,7 +83,7 @@ export async function openAccount(page: Page, o: NewAccount) {
   // A fund account has no name of its own: it is called by its broker, and its bank is the RDN's.
   if (o.subtype === 'fund') {
     await page.getByLabel('Broker', { exact: true }).pressSequentially(o.name);
-    if (o.bank) await page.getByLabel('RDN bank', { exact: true }).pressSequentially(o.bank);
+    if (o.bank) await page.getByLabel('Custodian', { exact: true }).pressSequentially(o.bank);
   } else {
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
   }

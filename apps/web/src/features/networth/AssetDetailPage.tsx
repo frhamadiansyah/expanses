@@ -484,8 +484,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ) : null,
           // Every share and fund held, each with its price box and IDX's file to fill the shares.
           listedLike ? <InsetRow key="prices" title="Update prices" to="/net-worth/prices" /> : null,
-          // The broker's cash sits at a bank: buying takes it from there, and selling puts it back.
-          rdnBank ? <InsetRow key="cash" title="Cash through" value={`RDN at ${rdnBank}`} chevron={false} /> : null,
+          // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
+          rdnBank ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,

@@ -122,8 +122,11 @@ function SuggestRow({
   placeholder,
   offers,
   stripLabel,
+  info,
   position,
 }: GroupChild & {
+  /** What the row is, behind an ⓘ beside its label. */
+  info?: string;
   label: string;
   /** What the strip of offered names is called, for a screen reader: "Brokers", "Banks". */
   stripLabel: string;
@@ -139,6 +142,7 @@ function SuggestRow({
     <div className="relative">
       <TextRow
         label={label}
+        info={info}
         position={position}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -378,7 +382,7 @@ export function CashAccountForm({
             <>
               {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.
               {fund
-                ? ' It is called by its broker, one account per broker; the RDN bank goes on the yearly tax report.'
+                ? ' It is called by its broker, one account per broker; a bank as its custodian goes on the yearly tax report.'
                 : asks.includes('bank')
                   ? ' The bank goes on your yearly tax report; the name is what you call it here.'
                   : ' Name is what you call yours.'}
@@ -398,11 +402,18 @@ export function CashAccountForm({
             ))}
           </SelectRow>
         )}
-        {/* A fund account is one broker's RDN: called by its broker, with the bank the cash sits at. No name of its own. */}
+        {/* A fund account is one broker's cash: called by its broker, with whoever holds that cash. No name of its own. */}
         {fund && (
           <SuggestRow label="Broker" stripLabel="Brokers" value={name} onChange={setName} placeholder="Securities firm" offers={(typed) => (ws.baseCurrency === 'IDR' ? brokerMatches(typed) : [])} />
         )}
-        {fund && <SuggestRow label="RDN bank" stripLabel="Banks" value={bank} onChange={setBank} placeholder="Bank" offers={(typed) => (ws.baseCurrency === 'IDR' ? bankMatches(typed) : [])} />}
+        {fund && <SuggestRow
+            label="Custodian"
+            info="Whoever holds this account's cash: a bank in its name, or the broker itself (leave it empty then). In Indonesia, the RDN bank (Rekening Dana Nasabah)."
+            stripLabel="Banks"
+            value={bank}
+            onChange={setBank}
+            placeholder="Bank"
+            offers={(typed) => (ws.baseCurrency === 'IDR' ? bankMatches(typed) : [])} />}
         {fund ? null : asks.includes('bank') ? (
           <BankNameRow bank={bank} onBank={setBank} name={name} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} />
         ) : (

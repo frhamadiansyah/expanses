@@ -10,7 +10,7 @@ export async function openBroker(page: Page, broker: string, balance: string) {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: /^Fund account/ }).click();
   await page.getByLabel('Broker', { exact: true }).pressSequentially(broker);
-  await page.getByLabel('RDN bank', { exact: true }).pressSequentially('CIMB Niaga');
+  await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially(balance);
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
