@@ -1,4 +1,4 @@
-import { type GoalStatus, goalStatusOf } from '@expanses/core';
+import { type GoalStatus, goalStatusOf, retagFits, type TradeRecord } from '@expanses/core';
 
 /**
  * The arithmetic behind a goal page's Use, Take back, Move and Monthly: what each leaves set aside, and what the
@@ -101,4 +101,15 @@ export const STATUS_WORDS: Record<GoalStatus, string> = { funded: 'Funded', on_t
 export function purchaseShare(purchaseUnitsMicro: number, goalUnitsMicro: number, goalValueMinor: number): number {
   if (!(goalUnitsMicro > 0) || !(purchaseUnitsMicro > 0)) return 0;
   return Math.round((Math.min(purchaseUnitsMicro, goalUnitsMicro) / goalUnitsMicro) * goalValueMinor);
+}
+
+/**
+ * The purchases tagged to a goal that Move may offer: its buys, each only when moving it whole leaves the goal holding
+ * at least what it later sold from that holding. A buy whose units were sold under the goal stays where it is.
+ */
+export function movablePurchases<T extends TradeRecord & { status?: string }>(trades: readonly T[], goalId: string): T[] {
+  const active = trades.filter((trade) => trade.status === undefined || trade.status === 'active');
+  return active.filter(
+    (trade) => trade.kind === 'buy' && trade.goalId === goalId && retagFits(active.filter((other) => other.accountId === trade.accountId), trade.id),
+  );
 }

@@ -13,6 +13,7 @@ import {
   isoDate,
   monthOf,
   priceMicroFrom,
+  retagFits,
   type RankFit,
   roundHalfAwayFromZero,
   unitsValueMinor,
@@ -33,7 +34,7 @@ import { resolveRates } from './fx';
 import { type EmergencyInputs, listGoalCalculators } from './goal-calculators';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { type DrawRow, listDraws, setAsideViews } from './set-aside';
-import { listTrades } from './trades';
+import { activeTrades, listTrades } from './trades';
 import { listTradeTemplates } from './trade-templates';
 
 export interface GoalLinkRow extends GoalLink {
@@ -67,13 +68,18 @@ export interface GoalSummary {
 export async function retagTrade(database: Database, ws: WorkspaceContext, tradeId: string, goalId: string | null): Promise<void> {
   await database.transaction(async (tx) => {
     const [trade] = await tx
-      .select({ id: investmentTrades.id, goalId: investmentTrades.goalId })
+      .select({ id: investmentTrades.id, goalId: investmentTrades.goalId, accountId: investmentTrades.accountId })
       .from(investmentTrades)
       .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
     if (!trade) throw new GoalDbError('That trade was already changed or removed');
     if (goalId !== null) {
       const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
       if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    }
+    // A goal that sold units after this buy needs them: moving the buy away would leave it selling what it never held,
+    // and every goal's figures are read from these units.
+    if (!retagFits(await activeTrades(tx, ws, trade.accountId), tradeId, goalId)) {
+      throw new GoalDbError('Units from this purchase were already sold from its goal, so it cannot move');
     }
     await tx.update(investmentTrades).set({ goalId }).where(eq(investmentTrades.id, tradeId));
     await tx.insert(auditLog).values({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { leftForGoal, lowered, monthlyAfter, monthlyPrefill, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn } from './goal-actions';
+import { leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn } from './goal-actions';
 
 describe('lowering a set-aside (Use, Take back)', () => {
   it('takes what is asked and leaves the rest', () => {
@@ -91,5 +91,41 @@ describe('what a tagged purchase is worth to the goal', () => {
   it('is never more than everything the goal holds there, and nothing without units', () => {
     expect(purchaseShare(12_000_000, 10_000_000, 18_000_000)).toBe(18_000_000);
     expect(purchaseShare(5_000_000, 0, 18_000_000)).toBe(0);
+  });
+});
+
+describe('the purchases Move offers', () => {
+  const trade = (id: string, kind: 'buy' | 'sell', grams: number, goalId: string | null, extra: { accountId?: string; occurredOn?: string; status?: string } = {}) => ({
+    id,
+    accountId: extra.accountId ?? 'gold',
+    kind,
+    occurredOn: extra.occurredOn ?? '2026-03-09',
+    createdAt: `2026-01-01T00:00:0${id.length}Z`,
+    unitsMicro: grams * 1_000_000,
+    grossMinor: 0,
+    feeMinor: 0,
+    taxMinor: 0,
+    goalId,
+    status: extra.status ?? 'active',
+  });
+
+  it('offers the goal’s own buys and nothing else', () => {
+    const trades = [trade('a', 'buy', 5, 'umrah'), trade('b', 'buy', 2, 'holiday'), trade('c', 'buy', 1, null), trade('d', 'buy', 1, 'umrah', { status: 'replaced' })];
+    expect(movablePurchases(trades, 'umrah').map((row) => row.id)).toEqual(['a']);
+  });
+
+  it('leaves out a buy whose units were sold from the goal', () => {
+    const trades = [trade('a', 'buy', 10, 'umrah'), trade('s', 'sell', 3, 'umrah', { occurredOn: '2026-04-01' })];
+    expect(movablePurchases(trades, 'umrah')).toEqual([]);
+  });
+
+  it('still offers a buy the goal can spare, and reads each holding on its own', () => {
+    const trades = [
+      trade('a', 'buy', 10, 'umrah'),
+      trade('bb', 'buy', 2, 'umrah'),
+      trade('s', 'sell', 3, 'umrah', { occurredOn: '2026-04-01' }),
+      trade('x', 'buy', 1, 'umrah', { accountId: 'bbri' }),
+    ];
+    expect(movablePurchases(trades, 'umrah').map((row) => row.id)).toEqual(['bb', 'x']);
   });
 });
