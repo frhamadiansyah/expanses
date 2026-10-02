@@ -1,8 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 
-test.beforeEach(({ page }) => {
+test.beforeEach(async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
+  // The statement below is September's, and the list opens on the month the clock reads: the clock is that month's.
+  await page.clock.setSystemTime(new Date('2026-09-20T12:00:00'));
 });
 
 // A bank export lists spending as negative; positive would be money coming in, and the queue would
