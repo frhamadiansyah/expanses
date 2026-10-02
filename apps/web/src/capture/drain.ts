@@ -76,7 +76,9 @@ export async function drainCaptures(
     return nothing();
   }
   const result = await ingestCaptures(database, ws, captures, { today: on });
-  await bridge.ackCaptures({ ids: captures.map((capture) => capture.id) });
+  // Stored: what is left is housekeeping. An ack that fails is retried by the next drain (the queue takes each
+  // capture once), so it must not hide this drain's drafts from the screen.
+  await bridge.ackCaptures({ ids: captures.map((capture) => capture.id) }).catch(() => undefined);
   await tidyImages(database, bridge, result.discardedImages, on);
   return result;
 }
@@ -100,6 +102,13 @@ export async function scanReceipt(
 }
 
 /**
+ * One drain at a time, across the app: opening the app and becoming active fire together, and a workspace switch
+ * starts a new watcher while the old one may still be draining. Two drains of the one holding area would race each
+ * other's acknowledgements and picture clean-up.
+ */
+let running: Promise<void> | null = null;
+
+/**
  * Drains now, and on every return to the foreground. `onCaptured` is told when something came of it, so the app
  * can refresh the queue; a drain that found nothing — the common case — touches nothing. Returns the way to stop.
  */
@@ -110,9 +119,6 @@ export function watchCaptures(
   bridge: CaptureBridge = native,
 ): () => void {
   let stopped = false;
-  // One drain at a time: opening the app and becoming active fire together, and two drains of the same holding
-  // area would race each other's acknowledgements and picture clean-up.
-  let running: Promise<void> | null = null;
   const drainOnce = async () => {
     try {
       const result = await drainCaptures(database, ws, bridge);

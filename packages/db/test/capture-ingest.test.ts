@@ -226,6 +226,17 @@ describe('what is not worth a draft', () => {
     expect(skipped[0]!.capture.body).toContain('Cashback');
   });
 
+  it('skips an offer handed over twice (the app stopped before the phone let it go) once', async () => {
+    const { database, ws } = await workspace();
+    const offer = at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' });
+
+    await ingestCaptures(database, ws, [offer], { today: DAY });
+    const again = await ingestCaptures(database, ws, [offer], { today: DAY });
+
+    expect(again).toMatchObject({ drafts: 0, merged: 0, skipped: 0 });
+    expect(await listSkipped(database, ws, DAY)).toHaveLength(1);
+  });
+
   it('skips what arrived when only money going out is wanted', async () => {
     const { database, ws, bank } = await workspace();
     await answer(database, ws, at('09:00'), bank.id);

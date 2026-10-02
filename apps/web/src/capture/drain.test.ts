@@ -81,6 +81,20 @@ describe('emptying the phone into the queue', () => {
     }
   });
 
+  it('still reports what it stored when the phone fails to let the captures go', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([notification]);
+      phone.ackCaptures = async () => {
+        throw new Error('bridge gone');
+      };
+      // The drafts are written; the next drain hands the captures over again and the queue takes each one once.
+      expect(counts(await drainCaptures(database, ws, phone, '2026-09-30'))).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+    } finally {
+      close();
+    }
+  });
+
   it('keeps the captures on the phone when storing them fails', async () => {
     const executor = createNodeExecutor();
     const database = createDatabase(executor);

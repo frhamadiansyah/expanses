@@ -10,7 +10,7 @@
  * files in the package.
  */
 import { capturedDayOf, exponentOf, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
-import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
@@ -166,7 +166,14 @@ async function alreadyRead(tx: Db, ref: string): Promise<boolean> {
     .from(transactions)
     .where(eq(transactions.externalRef, ref))
     .limit(1);
-  return posted !== undefined;
+  if (posted) return true;
+  // A skipped capture is read too: the phone hands it over again if the app stopped before acknowledging it.
+  const [skipped] = await tx
+    .select({ id: captureSkipped.id })
+    .from(captureSkipped)
+    .where(sql`json_extract(${captureSkipped.captureJson}, '$.id') = ${ref.slice('capture:'.length)}`)
+    .limit(1);
+  return skipped !== undefined;
 }
 
 /** Keeps a capture that produced no draft where the owner can bring it back from. */
