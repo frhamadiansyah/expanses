@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAPTURE_GUIDES } from './guides';
+import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './guides';
 
 describe('the capture setup guides', () => {
   it('covers the three ways in, each with steps to follow', () => {
@@ -18,5 +18,13 @@ describe('the capture setup guides', () => {
     for (const name of named) {
       expect(copy).not.toMatch(new RegExp(`\\b${name}\\b`, 'i'));
     }
+  });
+
+  it('opens only an iCloud shared shortcut from the Add button', () => {
+    expect(isShortcutLink('https://www.icloud.com/shortcuts/0123456789abcdef0123456789abcdef')).toBe(true);
+    expect(isShortcutLink('https://www.icloud.com/shortcuts/0123456789abcdef')).toBe(false);
+    expect(isShortcutLink('http://www.icloud.com/shortcuts/0123456789abcdef0123456789abcdef')).toBe(false);
+    expect(isShortcutLink('https://example.com/shortcuts/0123456789abcdef0123456789abcdef')).toBe(false);
+    if (SCREEN_SCANNER_SHORTCUT_URL !== null) expect(isShortcutLink(SCREEN_SCANNER_SHORTCUT_URL)).toBe(true);
   });
 });

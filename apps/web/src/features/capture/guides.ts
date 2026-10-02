@@ -15,6 +15,25 @@ export interface CaptureGuide {
   steps: string[];
 }
 
+/**
+ * The ready-made Screen scanner shortcut, shared from iCloud: one tap on "Add Shortcut" instead of building it.
+ * Null until the owner's shared link is in; the button and its step appear only once it is.
+ */
+export const SCREEN_SCANNER_SHORTCUT_URL: string | null = null;
+
+/** Whether a link is an iCloud shared shortcut, the only kind the Add button may open. */
+export function isShortcutLink(url: string): boolean {
+  return /^https:\/\/www\.icloud\.com\/shortcuts\/[0-9a-f]{32}$/i.test(url);
+}
+
+const scannerSteps = (link: string | null): string[] => [
+  ...(link
+    ? ['Tap “Add Screen scanner” below, then “Add Shortcut”.', 'Or build it by hand: Shortcuts → New → Take Screenshot → Scan screen.']
+    : ['Build the shortcut: Shortcuts → New → Take Screenshot → Scan screen.']),
+  'Bind it to a gesture: Settings › Accessibility › Touch › Back Tap → double tap → the shortcut. With an Action Button: Settings › Action Button → Shortcut.',
+  'Back-tap on any payment screen: the draft appears in Review.',
+];
+
 export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
   {
     key: 'notifications',
@@ -34,12 +53,7 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
     key: 'screen-scanner',
     title: 'Screen scanner',
     blurb: 'A screenshot of a payment screen is read the moment it is taken.',
-    steps: [
-      'Add the Screen scanner shortcut: it takes a screenshot and runs “Scan screen” on it.',
-      'To build it by hand: Shortcuts → New → Take Screenshot → Scan screen.',
-      'Bind it to a gesture: Settings › Accessibility › Touch › Back Tap → double tap → the shortcut. With an Action Button: Settings › Action Button → Shortcut.',
-      'Back-tap on any payment screen: the draft appears in Review.',
-    ],
+    steps: scannerSteps(SCREEN_SCANNER_SHORTCUT_URL),
   },
   {
     key: 'receipt',
