@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findDateTime } from '../src/index';
+import { capturedDayOf, findDateTime } from '../src/index';
 
 describe('findDateTime', () => {
   it.each([
@@ -20,4 +20,22 @@ describe('findDateTime', () => {
     ['29 Feb 2028', '2028-02-29'],
     ['31 Okt 2026', '2026-10-31'],
   ])('%s', (text, iso) => expect(findDateTime(text)).toBe(iso));
+});
+
+describe('capturedDayOf', () => {
+  it('takes the day from the offset the capture was stamped with', () => {
+    // 06:30 in the morning at +07:00 is still the 30th there, whatever UTC says.
+    expect(capturedDayOf('2026-09-30T06:30:00+07:00')).toBe('2026-09-30');
+    expect(capturedDayOf('2026-09-30T23:30:00-05:00')).toBe('2026-09-30');
+    expect(capturedDayOf('2026-09-30T06:30:00.000+0700')).toBe('2026-09-30');
+  });
+
+  it('reads a UTC stamp as the day on this device', () => {
+    const iso = '2026-09-29T23:30:00Z';
+    const local = new Date(iso);
+    const expected = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
+    expect(capturedDayOf(iso)).toBe(expected);
+  });
+
+  it('leaves a bare date alone', () => expect(capturedDayOf('2026-09-30')).toBe('2026-09-30'));
 });

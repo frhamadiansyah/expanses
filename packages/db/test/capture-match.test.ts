@@ -2,6 +2,7 @@ import { expenseLines } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { findMatch, makeTransferPair, mergeInto, unmerge } from '../src/capture/match';
+import { insertDraftRow } from '../src/repos/drafts';
 import {
   captureDrafts,
   confirmDraft,
@@ -130,6 +131,39 @@ describe('what an arriving capture turns out to be', () => {
     });
 
     expect(match).toEqual({ kind: 'recorded', transactionId, draftId: draft.id });
+  });
+
+  it('keeps a second coffee bought after the first was recorded, however soon after the recording', async () => {
+    const { database, ws, bank, groceries, draft } = await workspace();
+    // The first coffee was captured two hours ago and recorded just now.
+    const firstId = await insertDraftRow(database.db, ws, draft({ categoryAccountId: groceries.id }), minutesFromNow(-120));
+    await confirmDraft(database, ws, firstId);
+
+    const match = await findMatch(database.db, ws, {
+      amountMinor: 38_000,
+      currency: 'IDR',
+      accountId: bank.id,
+      direction: 'out',
+      at: minutesFromNow(5),
+    });
+
+    expect(match).toEqual({ kind: 'none' });
+  });
+
+  it('does not call a capture of an unknown account already recorded', async () => {
+    const { database, ws, groceries, queued } = await workspace();
+    const first = await queued({ categoryAccountId: groceries.id });
+    await confirmDraft(database, ws, first.id);
+
+    const match = await findMatch(database.db, ws, {
+      amountMinor: 38_000,
+      currency: 'IDR',
+      accountId: null,
+      direction: 'out',
+      at: minutesFromNow(3),
+    });
+
+    expect(match).toEqual({ kind: 'none' });
   });
 
   it('offers to link a payment the owner had already typed in, and never merges it', async () => {
@@ -385,5 +419,82 @@ describe('one movement seen from both sides', () => {
     expect(await listDrafts(database, ws)).toHaveLength(1);
     // The second capture's own draft is what comes back if the pair is undone, so it is kept as it arrived.
     expect(hidden[0]).toMatchObject({ status: 'pending', accountId: wallet.id, captureIds: JSON.stringify(['c-in']) });
+  });
+
+  it('gives a top-up that arrived first back as a top-up, and the bank debit back as spending', async () => {
+    const { database, ws, bank, wallet, queued } = await workspace();
+    const topUp = await queued({
+      kind: 'transfer',
+      amountMinor: -200_000,
+      accountId: null,
+      toAccountId: wallet.id,
+      captureIds: ['c-in'],
+      reading: {
+        skipped: null,
+        amount: { value: { minor: 200_000, currency: 'IDR' }, confidence: 85, line: null },
+        occurredAt: null,
+        type: { value: 'topup', confidence: 85, line: null },
+        name: null,
+        accountHint: null,
+      },
+    });
+    await makeTransferPair(database.db, ws, topUp.id, {
+      source: 'notification',
+      occurredOn: '2026-09-29',
+      description: 'Transfer GoPay',
+      amountMinor: 200_000,
+      currency: 'IDR',
+      kind: 'expense',
+      accountId: bank.id,
+      captureId: 'c-out',
+    });
+
+    const splitId = await unmerge(database, ws, topUp.id);
+
+    const rows = await listDrafts(database, ws);
+    expect(rows.find((row) => row.id === topUp.id)).toMatchObject({
+      kind: 'transfer',
+      accountId: null,
+      toAccountId: wallet.id,
+      amountMinor: -200_000,
+      captureIds: ['c-in'],
+    });
+    expect(rows.find((row) => row.id === splitId)).toMatchObject({
+      kind: 'expense',
+      accountId: bank.id,
+      toAccountId: null,
+      amountMinor: 200_000,
+      captureIds: ['c-out'],
+    });
+  });
+
+  it('splits a pair with a third sighting into its two sides, keeping the sighting with its own side', async () => {
+    const { database, ws, bank, wallet, queued } = await workspace();
+    const out = await queued({ amountMinor: 200_000, captureIds: ['c-out'] });
+    await mergeInto(database.db, ws, out.id, {
+      source: 'screen',
+      occurredOn: '2026-09-29',
+      description: 'Transfer',
+      amountMinor: 200_000,
+      currency: 'IDR',
+      accountId: bank.id,
+      captureId: 'c-shot',
+    });
+    await makeTransferPair(database.db, ws, out.id, {
+      source: 'notification',
+      occurredOn: '2026-09-29',
+      description: 'Top up GoPay',
+      amountMinor: -200_000,
+      currency: 'IDR',
+      accountId: wallet.id,
+      captureId: 'c-in',
+    });
+
+    const splitId = await unmerge(database, ws, out.id);
+
+    const rows = await listDrafts(database, ws);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.id === out.id)).toMatchObject({ kind: 'expense', accountId: bank.id, amountMinor: 200_000, captureIds: ['c-out', 'c-shot'] });
+    expect(rows.find((row) => row.id === splitId)).toMatchObject({ kind: 'income', accountId: wallet.id, amountMinor: -200_000, captureIds: ['c-in'] });
   });
 });

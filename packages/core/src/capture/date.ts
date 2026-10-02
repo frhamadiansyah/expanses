@@ -121,3 +121,18 @@ export function findDateTime(text: string): string | null {
   candidates.sort((a, b) => a.at - b.at);
   return candidates[0]!.iso;
 }
+
+/**
+ * The day a capture happened on, where the owner was.
+ *
+ * The phone stamps a capture with its own offset (`2026-09-30T06:30:00+07:00`), and the day is the one written there:
+ * cutting the string is right, and turning it into UTC first is what filed every capture before seven in the morning
+ * on the day before. A stamp written in UTC (`…Z`) carries no local day of its own, so it is read as the day on this
+ * device, which is where it was captured.
+ */
+export function capturedDayOf(iso: string): string {
+  if (!/Z$/i.test(iso)) return iso.slice(0, 10);
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso.slice(0, 10);
+  return `${pad(at.getFullYear(), 4)}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}

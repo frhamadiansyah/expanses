@@ -9,7 +9,8 @@
  * Nothing here reads a screen or the network, and nothing here writes a transaction: a match decides what to show and
  * how many rows to show it in, and the ledger is still only reached by confirming a draft.
  */
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { capturedDayOf } from '@expanses/core';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -32,8 +33,12 @@ export interface Candidate {
   at: string;
 }
 
-/** A capture on its way into the queue: the draft it would become, and the capture it was read from. */
-export type Incoming = NewDraft & { captureId: string };
+/**
+ * A capture on its way into the queue: the draft it would become, the capture it was read from, and when the phone
+ * noticed it — which is what its own row is stamped with, so a later question about time asks about the capture and
+ * not about when it was filed.
+ */
+export type Incoming = NewDraft & { captureId: string; capturedAt?: string };
 
 export type MatchResult =
   /** The same payment as this draft, which is waiting: keep its captures together instead of asking twice. */
@@ -72,9 +77,15 @@ function sideOf(row: { kind: string; accountId: string | null; toAccountId: stri
   return 'both';
 }
 
-/** The account a draft's money moved on its own side: the one it left, or the one it landed in. */
+/**
+ * The account a draft's money moved on its own side: the one it left, or the one it landed in.
+ *
+ * Money received names its account in `accountId`, like spending does; only a top-up — a transfer that knows where
+ * it landed and not where it came from — names it in `toAccountId`.
+ */
 function sideAccount(row: { kind: string; accountId: string | null; toAccountId: string | null }): string | null {
-  return sideOf(row) === 'out' ? row.accountId : row.toAccountId;
+  if (row.kind === 'transfer') return sideOf(row) === 'out' ? row.accountId : row.toAccountId;
+  return row.accountId;
 }
 
 /**
@@ -152,26 +163,39 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
     }
   }
 
-  // Already recorded from a capture: a second copy of a payment that has been dealt with is not a new thing to do.
-  const recorded = await tx
-    .select()
-    .from(draftTransactions)
-    .where(
-      and(
-        eq(draftTransactions.workspaceId, ws.workspaceId),
-        eq(draftTransactions.status, 'confirmed'),
-        eq(draftTransactions.currency, capture.currency),
-      ),
-    )
-    .orderBy(desc(draftTransactions.resolvedAt));
-  for (const row of recorded) {
-    if (row.transactionId === null) continue;
-    if (Math.abs(row.amountMinor) !== amount) continue;
-    const side = sideOf(row);
-    if (side !== 'both' && side !== capture.direction) continue;
-    if (!touches(row, capture)) continue;
-    if (minutesApart(row.resolvedAt ?? row.createdAt, capture.at) > SAME_PAYMENT_MINUTES) continue;
-    return { kind: 'recorded', transactionId: row.transactionId, draftId: row.id };
+  /* Already recorded from a capture: a second copy of a payment that has been dealt with is not a new thing to do.
+     It is dropped without a trace, so the rule is strict: the account has to be known and the same, and the capture
+     has to be close to when that payment was *captured* — not to when the owner got round to recording it, or the
+     second coffee bought just after the first was recorded would vanish. */
+  if (capture.accountId !== null) {
+    const recorded = await tx
+      .select()
+      .from(draftTransactions)
+      .where(
+        and(
+          eq(draftTransactions.workspaceId, ws.workspaceId),
+          eq(draftTransactions.status, 'confirmed'),
+          eq(draftTransactions.currency, capture.currency),
+          isNull(draftTransactions.mergedInto),
+          isNotNull(draftTransactions.captureIds),
+        ),
+      )
+      .orderBy(desc(draftTransactions.resolvedAt));
+    for (const row of recorded) {
+      if (row.transactionId === null) continue;
+      if (Math.abs(row.amountMinor) !== amount) continue;
+      const side = sideOf(row);
+      if (side !== 'both' && side !== capture.direction) continue;
+      if (row.accountId !== capture.accountId && row.toAccountId !== capture.accountId) continue;
+      // Every sighting it was made of: its own row, and the rows of the captures folded into it.
+      const sightings = await tx
+        .select({ createdAt: draftTransactions.createdAt })
+        .from(draftTransactions)
+        .where(eq(draftTransactions.mergedInto, row.id));
+      const times = [row.createdAt, ...sightings.map((sighting) => sighting.createdAt)];
+      if (!times.some((time) => minutesApart(time, capture.at) <= SAME_PAYMENT_MINUTES)) continue;
+      return { kind: 'recorded', transactionId: row.transactionId, draftId: row.id };
+    }
   }
 
   // Already typed in: the same figure, out of the same account, on the same day. Offered, never merged.
@@ -185,7 +209,8 @@ export async function findMatch(tx: Db, ws: WorkspaceContext, capture: Candidate
           eq(transactions.workspaceId, ws.workspaceId),
           eq(transactions.status, 'posted'),
           eq(transactions.source, 'manual'),
-          eq(transactions.occurredOn, capture.at.slice(0, 10)),
+          // The day where the owner was, as the capture was stamped: not the UTC day.
+          eq(transactions.occurredOn, capturedDayOf(capture.at)),
           eq(entries.accountId, capture.accountId),
           eq(entries.amountMinor, capture.direction === 'out' ? -amount : amount),
           // One a capture already posted is a record, not a guess about the owner's typing.
@@ -262,7 +287,7 @@ export async function mergeInto(tx: Db, ws: WorkspaceContext, targetDraftId: str
     .update(draftTransactions)
     .set({ ...toppedUp(row, incoming), captureIds: JSON.stringify(captures) })
     .where(eq(draftTransactions.id, targetDraftId));
-  await insertDraftRow(tx, ws, { ...rowOf(incoming), mergedInto: targetDraftId }, now);
+  await insertDraftRow(tx, ws, { ...rowOf(incoming), mergedInto: targetDraftId }, incoming.capturedAt ?? now);
 }
 
 /**
@@ -279,7 +304,7 @@ export async function makeTransferPair(
 ): Promise<void> {
   const row = await waitingDraft(tx, ws, existingDraftId);
   const side = sideOf(row);
-  const rowAccount = side === 'out' ? row.accountId : row.toAccountId;
+  const rowAccount = sideAccount(row);
   // A top-up draft names where the money landed, not where it left: its own side is the destination.
   const incomingAccount = incoming.accountId ?? incoming.toAccountId ?? null;
   if (side === 'both' || rowAccount === null || incomingAccount === null || rowAccount === incomingAccount) {
@@ -304,15 +329,25 @@ export async function makeTransferPair(
       captureIds: JSON.stringify(captures),
     })
     .where(eq(draftTransactions.id, existingDraftId));
-  await insertDraftRow(tx, ws, { ...rowOf(incoming), mergedInto: existingDraftId }, now);
+  await insertDraftRow(tx, ws, { ...rowOf(incoming), mergedInto: existingDraftId }, incoming.capturedAt ?? now);
+}
+
+/** Which way a reading said the money went: a payment out, or anything that arrived. */
+function directionOfReading(json: string | null): 'out' | 'in' | null {
+  const type = readingOf(json)?.type?.value;
+  if (type === undefined) return null;
+  return type === 'spent' ? 'out' : 'in';
 }
 
 /**
- * Splits the capture that arrived last back into a draft of its own, undoing a merge.
+ * Undoes a merge.
  *
- * The queue shows the movement rather than the sightings, so what comes back is the half that arrived last, with
- * its own capture id and its own picture. A pair goes back to being an expense and money received, which is what
- * the two captures were before they were recognised as one movement.
+ * A payment seen twice gives back the capture that arrived last, with its own capture id and its own picture.
+ *
+ * A transfer made of two sides gives back the two sides, each as its own capture read it — whichever arrived first.
+ * The other side's row comes back exactly as it was kept (a top-up is a top-up again, money received is money
+ * received), and the row the owner was looking at goes back to what its own reading said, keeping any sighting of
+ * its own side folded in.
  */
 export async function unmerge(database: Database, ws: WorkspaceContext, draftId: string): Promise<string> {
   return database.transaction(async (tx) => {
@@ -323,12 +358,9 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
     if (!draft) throw new DraftError('NOT_FOUND', 'That draft is not in this workspace');
     const captures = captureIdsOf(draft.captureIds);
     if (captures.length < 2) throw new DraftError('NOT_MERGED', 'That draft was read from one capture, so there is nothing to split');
-    const last = captures.at(-1)!;
     const amountMinor = Math.abs(draft.amountMinor);
     const now = new Date().toISOString();
 
-    // The capture that arrived last is the one its own row was kept for: found by the capture, not by guessing at
-    // which row was written first, because a batch drain writes rows in an order that is not the order they arrived.
     const hiddenRows = await tx
       .select()
       .from(draftTransactions)
@@ -338,7 +370,17 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
           eq(draftTransactions.mergedInto, draftId),
           eq(draftTransactions.status, 'pending'),
         ),
-      );
+      )
+      .orderBy(draftTransactions.createdAt);
+
+    if (draft.kind === 'transfer' && draft.accountId !== null && draft.toAccountId !== null && hiddenRows.length > 0) {
+      const split = await splitPair(tx, draft, hiddenRows, amountMinor);
+      if (split) return split;
+    }
+
+    const last = captures.at(-1)!;
+    // The capture that arrived last is the one its own row was kept for: found by the capture, not by guessing at
+    // which row was written first, because a batch drain writes rows in an order that is not the order they arrived.
     const split = hiddenRows.find((row) => captureIdsOf(row.captureIds).includes(last));
 
     // A merge from before this build left no row behind, so the capture's draft is written now, out of what the
@@ -373,7 +415,7 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
         .update(draftTransactions)
         .set({
           mergedInto: null,
-          // The half that arrives last is the other side of the pair, whatever it was holding on to.
+          // A pair with no row of its own for the other side: the half that arrives last is taken as that side.
           ...(draft.kind === 'transfer'
             ? { kind: 'income' as const, accountId: draft.toAccountId, toAccountId: null, amountMinor: -amountMinor }
             : {}),
@@ -384,11 +426,61 @@ export async function unmerge(database: Database, ws: WorkspaceContext, draftId:
       .update(draftTransactions)
       .set({
         // One capture fewer: the row still holds the sighting it was made from.
-        captureIds: JSON.stringify(captures.slice(0, -1)),
+        captureIds: JSON.stringify(captures.filter((id) => id !== last)),
         // The pair is a pair no longer: what is left is money out, and it has to be told what it bought again.
         ...(draft.kind === 'transfer' ? { kind: 'expense' as const, toAccountId: null, amountMinor } : {}),
       })
       .where(eq(draftTransactions.id, draftId));
     return splitId;
   });
+}
+
+type DraftRecord = typeof draftTransactions.$inferSelect;
+
+/**
+ * Splits a transfer back into its two sides, or returns null when the rows kept do not say which side is which.
+ *
+ * Which side the row the owner was looking at is on is read from the rows folded into it first: when every one of them
+ * is on one side, the survivor was the other — that holds whatever order the two arrived in. Only when they disagree
+ * (a sighting of the survivor's own side was folded in as well) does its own reading decide.
+ */
+async function splitPair(tx: Db, draft: DraftRecord, hiddenRows: readonly DraftRecord[], amountMinor: number): Promise<string | null> {
+  const sides = new Set(hiddenRows.map((row) => sideOf(row)).filter((side): side is 'out' | 'in' => side !== 'both'));
+  const read = directionOfReading(draft.readingJson);
+  const own: 'out' | 'in' | null = sides.size === 1 ? (sides.has('out') ? 'in' : 'out') : read;
+  if (own === null) return null;
+  const other = hiddenRows.filter((row) => sideOf(row) !== own && sideOf(row) !== 'both');
+  if (other.length === 0) return null;
+
+  const [lead, ...rest] = other;
+  const otherCaptures = other.flatMap((row) => captureIdsOf(row.captureIds));
+  await tx
+    .update(draftTransactions)
+    .set({ mergedInto: null, captureIds: JSON.stringify(otherCaptures) })
+    .where(eq(draftTransactions.id, lead!.id));
+  if (rest.length > 0) {
+    await tx
+      .update(draftTransactions)
+      .set({ mergedInto: lead!.id })
+      .where(inArray(draftTransactions.id, rest.map((row) => row.id)));
+  }
+
+  // The survivor goes back to what its own capture said. Its reading is trusted only when it is about this side: a
+  // row that never had a reading of its own may be carrying the other side's.
+  const account = own === 'out' ? draft.accountId : draft.toAccountId;
+  const type = read === own ? readingOf(draft.readingJson)?.type?.value : undefined;
+  const restored =
+    own === 'out'
+      ? { kind: 'expense' as const, accountId: account, toAccountId: null, amountMinor }
+      : type === 'topup'
+        ? { kind: 'transfer' as const, accountId: null, toAccountId: account, amountMinor: -amountMinor }
+        : { kind: 'income' as const, accountId: account, toAccountId: null, amountMinor: -amountMinor };
+  await tx
+    .update(draftTransactions)
+    .set({
+      ...restored,
+      captureIds: JSON.stringify(captureIdsOf(draft.captureIds).filter((id) => !otherCaptures.includes(id))),
+    })
+    .where(eq(draftTransactions.id, draft.id));
+  return lead!.id;
 }
