@@ -9,6 +9,7 @@ import {
   existingExternalRefs,
   listAccounts,
   listDrafts,
+  listTransactions,
   type NewDraft,
   purgeExpiredPayloads,
   reopenDraft,
@@ -74,6 +75,19 @@ describe('working through the queue', () => {
     expect(confirmed).toMatchObject({ status: 'confirmed', transactionId });
     // Posted with the capture's own reference, which is what stops it being imported twice.
     expect(await existingExternalRefs(database, ws, ['bca:2026-09-09:250000:1'])).toEqual(new Set(['bca:2026-09-09:250000:1']));
+  });
+
+  it('carries what the extra rows of the Add form say onto the transaction it posts', async () => {
+    const { database, ws, draft } = await workspace();
+    await captureDrafts(database, ws, [draft()]);
+    const [pending] = await listDrafts(database, ws);
+
+    const { transactionId } = await confirmDraft(database, ws, pending!.id, {
+      extras: { channel: 'online', excludedFromReport: true, mcc: '5411' },
+    });
+
+    const [posted] = await listTransactions(database, ws, { id: transactionId });
+    expect(posted).toMatchObject({ channel: 'online', excluded: true, mcc: '5411' });
   });
 
   it('refuses to post a draft that does not say where it goes', async () => {

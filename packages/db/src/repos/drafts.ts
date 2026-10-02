@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { draftTransactions } from '../schema-drafts';
 import { existingExternalRefs } from './imports';
-import { ledgerSourceOf, postTransactionTx, type TransactionSource } from './ledger';
+import { ledgerSourceOf, type PostTransactionInput, postTransactionTx, type TransactionSource } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class DraftError extends Error {
@@ -285,6 +285,11 @@ export async function confirmDraft(
     setAside?: SetAsideChoice | null;
     /** Keep the capture's picture with the transaction. The caller copies the bytes; this only says which file. */
     keepPhoto?: boolean;
+    /**
+     * What the Add form's extra rows say, when the draft was finished on it: the posting carries them as a
+     * transaction added by hand would. The figure, accounts and category are the draft's own, written first.
+     */
+    extras?: Pick<PostTransactionInput, 'eventId' | 'channel' | 'excludedFromReport' | 'mcc' | 'photoIds'>;
   } = {},
 ): Promise<{ transactionId: string; keptImage: string | null }> {
   const [draft] = await database.db
@@ -320,6 +325,7 @@ export async function confirmDraft(
       externalRef: draft.externalRef,
       cardId: draft.cardId,
       lines,
+      ...opts.extras,
       setAside: opts.setAside ?? null,
     });
     const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);
