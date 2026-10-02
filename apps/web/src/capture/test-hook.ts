@@ -1,4 +1,4 @@
-import type { RawCapture } from '@expanses/core';
+import { isoDate, type RawCapture } from '@expanses/core';
 import { type Database, ingestCaptures, type WorkspaceContext } from '@expanses/db';
 
 /**
@@ -22,9 +22,7 @@ export function installCaptureTestHook(opts: {
   if (import.meta.env.VITE_E2E !== '1') return;
   window.__captureInject = async (captures, images = {}) => {
     Object.assign((window.__captureImages ??= {}), images);
-    const result = await ingestCaptures(opts.database, opts.ws, captures, {
-      today: new Date().toISOString().slice(0, 10),
-    });
+    const result = await ingestCaptures(opts.database, opts.ws, captures, { today: isoDate() });
     opts.onCaptured();
     return result;
   };

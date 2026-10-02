@@ -45,6 +45,16 @@ struct RawCapture: Codable {
     }
 }
 
+/// When a capture happened, written with the phone's own offset (`2026-09-30T06:30:00+07:00`), so the day it carries
+/// is the owner's day: a coffee at 06:30 in Jakarta is the 30th, not the 29th it would read as in UTC.
+enum CaptureClock {
+    static func stamp(_ date: Date = Date()) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = .current
+        return formatter.string(from: date)
+    }
+}
+
 enum HoldingAreaError: Error {
     case noContainer
 }
@@ -52,8 +62,9 @@ enum HoldingAreaError: Error {
 /// The App Group holding area, and the app's private copies of what it drains.
 ///
 /// The intents and the share extension run where the app's database is not reachable, so each writes one capture
-/// into the shared container — image first, JSON last, each a whole file — and the app empties it on the next
-/// drain. Pictures move into the app's own storage on the way out; the shared container keeps nothing.
+/// into the shared container — image first, JSON last, each a whole file. The app reads it on the next drain and
+/// clears what it has stored once its write has committed (`ack`); pictures are copied into the app's own storage
+/// as they are read, and the shared container keeps nothing that has been acknowledged.
 enum HoldingArea {
     static let appGroup = "group.com.cicis.app"
 
@@ -97,12 +108,22 @@ enum HoldingArea {
         try json.write(to: folder.appendingPathComponent("\(capture.id).json"), options: .atomic)
     }
 
-    /// Takes everything waiting out of the shared area.
+    /// Reads everything waiting in the shared area, and leaves it there.
+    ///
+    /// Nothing is deleted here: the web layer has not stored anything yet, and a drain that dies before its write
+    /// commits (an error, the app killed mid-way) must find the same captures next time. The app says it has them with
+    /// `ack(ids:)`; until then a capture is read again on every drain, which is harmless because the queue takes a
+    /// capture id once.
+    ///
+    /// Where a picture lives, the one rule: a capture's `imageFile` (`captures/<id>.jpg`) always names a path inside
+    /// the app's own storage (`privateImageURL`), and `readCaptureImage` reads only there. So the picture is *copied*
+    /// there on every drain, before the web layer sees the capture; the shared copy stays until the ack. Before and
+    /// after the ack the same name opens the same picture.
     ///
     /// A file that cannot be read is moved aside (`captures/broken`) rather than deleted: it is evidence of a writer
-    /// that got something wrong, and `holdingAreaStatus` reports it. A capture whose picture cannot be moved loses
+    /// that got something wrong, and `holdingAreaStatus` reports it. A capture whose picture cannot be copied loses
     /// the reference rather than keeping one that will not resolve.
-    static func drain() throws -> (captures: [RawCapture], broken: Int) {
+    static func drain() throws -> [RawCapture] {
         let folder = try groupCaptures()
         let brokenFolder = folder.appendingPathComponent("broken", isDirectory: true)
         let manager = FileManager.default
@@ -111,35 +132,57 @@ enum HoldingArea {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         var captures: [RawCapture] = []
-        var broken = 0
         for file in files {
             guard let data = try? Data(contentsOf: file),
                   var capture = try? JSONDecoder().decode(RawCapture.self, from: data) else {
-                broken += 1
                 try? manager.createDirectory(at: brokenFolder, withIntermediateDirectories: true)
                 try? manager.moveItem(at: file, to: brokenFolder.appendingPathComponent(file.lastPathComponent))
                 continue
             }
             if let imageFile = capture.imageFile {
                 let source = folder.appendingPathComponent((imageFile as NSString).lastPathComponent)
-                if manager.fileExists(atPath: source.path) {
-                    do {
-                        let destination = try privateImageURL(imageFile)
+                do {
+                    let destination = try privateImageURL(imageFile)
+                    if manager.fileExists(atPath: source.path) {
                         try manager.createDirectory(
                             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
                         try? manager.removeItem(at: destination)
-                        try manager.moveItem(at: source, to: destination)
-                    } catch {
+                        try manager.copyItem(at: source, to: destination)
+                    } else if !manager.fileExists(atPath: destination.path) {
                         capture.imageFile = nil
                     }
-                } else {
+                } catch {
                     capture.imageFile = nil
                 }
             }
-            try? manager.removeItem(at: file)
             captures.append(capture)
         }
-        return (captures, broken)
+        return captures
+    }
+
+    /// The app has stored these captures: their JSON and the shared copy of their picture go. The app's own copy
+    /// of the picture stays where `drain` put it; whether it is kept is the queue's decision, and the web layer
+    /// deletes the ones nothing keeps with `deleteCaptureImage`.
+    static func ack(ids: [String]) throws {
+        let folder = try groupCaptures()
+        let manager = FileManager.default
+        for id in ids where isPlainName(id) {
+            let file = folder.appendingPathComponent("\(id).json")
+            if let data = try? Data(contentsOf: file),
+               let capture = try? JSONDecoder().decode(RawCapture.self, from: data),
+               let imageFile = capture.imageFile {
+                let name = (imageFile as NSString).lastPathComponent
+                if isPlainName(name) {
+                    try? manager.removeItem(at: folder.appendingPathComponent(name))
+                }
+            }
+            try? manager.removeItem(at: file)
+        }
+    }
+
+    /// A name that stays inside its folder: no separators, no `..`.
+    static func isPlainName(_ name: String) -> Bool {
+        !name.isEmpty && !name.contains("/") && !name.contains("\\") && name != "." && name != ".."
     }
 
     /// How much is still waiting, and how much of it could not be opened.

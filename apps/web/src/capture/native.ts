@@ -10,8 +10,13 @@ import type { RawCapture } from '@expanses/core';
 import { registerPlugin, WebPlugin } from '@capacitor/core';
 
 export interface CapturePluginApi {
-  /** Reads the holding area, handing back every capture found there, and empties it. */
+  /**
+   * Reads the holding area, handing back every capture found there, and leaves them there. Each capture's picture is
+   * already readable through `readCaptureImage` by its `imageFile` name, and stays so after the ack.
+   */
   drainCaptures(): Promise<{ captures: RawCapture[] }>;
+  /** The queue has committed these captures: the holding area drops them (the app keeps its copy of each picture). */
+  ackCaptures(opts: { ids: string[] }): Promise<void>;
   /** The camera, for a paper receipt; null when it was closed without one. */
   scanReceipt(): Promise<{ capture: RawCapture | null }>;
   /** The bytes of a capture's picture, base64 with its mime type. */
@@ -25,6 +30,10 @@ export interface CapturePluginApi {
 class CaptureWeb extends WebPlugin implements CapturePluginApi {
   async drainCaptures(): Promise<{ captures: RawCapture[] }> {
     return { captures: [] };
+  }
+
+  async ackCaptures(): Promise<void> {
+    // Nothing was handed over, so there is nothing to let go of.
   }
 
   async scanReceipt(): Promise<{ capture: RawCapture | null }> {

@@ -20,8 +20,13 @@ final class ShareViewController: UIViewController {
             return
         }
         provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, _ in
-            guard let self, let data, let picture = UIImage(data: data), let cgImage = picture.cgImage else {
+            guard let self, let data, let shared = UIImage(data: data) else {
                 self?.finish()
+                return
+            }
+            let picture = TextRecognizer.upright(shared)
+            guard let cgImage = picture.cgImage else {
+                self.finish()
                 return
             }
             Task {
@@ -30,7 +35,7 @@ final class ShareViewController: UIViewController {
                 let capture = RawCapture(
                     id: id,
                     kind: "shared-image",
-                    capturedAt: ISO8601DateFormatter().string(from: Date()),
+                    capturedAt: CaptureClock.stamp(),
                     lines: lines,
                     imageFile: "captures/\(id).jpg"
                 )

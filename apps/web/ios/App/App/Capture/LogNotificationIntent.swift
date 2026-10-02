@@ -28,7 +28,7 @@ struct LogNotificationIntent: AppIntent {
         let capture = RawCapture(
             id: UUID().uuidString,
             kind: "notification",
-            capturedAt: ISO8601DateFormatter().string(from: date ?? Date()),
+            capturedAt: CaptureClock.stamp(date ?? Date()),
             app: named?.isEmpty == false ? named : nil,
             title: title,
             body: body,

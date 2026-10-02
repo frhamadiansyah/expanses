@@ -12,6 +12,7 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "Capture"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "drainCaptures", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ackCaptures", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scanReceipt", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readCaptureImage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteCaptureImage", returnType: CAPPluginReturnPromise),
@@ -20,14 +21,27 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var receiptCall: CAPPluginCall?
 
-    /// Everything the shortcuts and the share sheet left behind, in the order it arrived.
+    /// Everything the shortcuts and the share sheet left behind, in the order it arrived. Nothing is removed: the
+    /// web layer calls `ackCaptures` once it has stored them.
     @objc func drainCaptures(_ call: CAPPluginCall) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let drained = try HoldingArea.drain()
-                call.resolve(with: DrainedCaptures(captures: drained.captures))
+                call.resolve(with: DrainedCaptures(captures: try HoldingArea.drain()))
             } catch {
                 call.reject("The holding area could not be read", nil, error)
+            }
+        }
+    }
+
+    /// The web layer has committed these captures: the holding area lets them go.
+    @objc func ackCaptures(_ call: CAPPluginCall) {
+        let ids = (call.getArray("ids") ?? []).compactMap { $0 as? String }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try HoldingArea.ack(ids: ids)
+                call.resolve()
+            } catch {
+                call.reject("The holding area could not be cleared", nil, error)
             }
         }
     }
@@ -52,6 +66,10 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func deleteCaptureImage(_ call: CAPPluginCall) {
         guard let file = call.getString("file") else {
             call.reject("A file name is required")
+            return
+        }
+        guard file.split(separator: "/").allSatisfy({ HoldingArea.isPlainName(String($0)) }) else {
+            call.reject("Not a capture picture")
             return
         }
         if let url = try? HoldingArea.privateImageURL(file) {
@@ -95,7 +113,9 @@ extension CapturePlugin: UIImagePickerControllerDelegate, UINavigationController
         picker.dismiss(animated: true)
         guard let call = receiptCall else { return }
         receiptCall = nil
-        guard let image = info[.originalImage] as? UIImage, let cgImage = image.cgImage else {
+        // Upright once, here: the text is read, its boxes measured and the JPEG saved from these same pixels.
+        guard let photo = info[.originalImage] as? UIImage, case let image = TextRecognizer.upright(photo),
+              let cgImage = image.cgImage else {
             call.reject("That picture could not be read")
             return
         }
@@ -112,7 +132,7 @@ extension CapturePlugin: UIImagePickerControllerDelegate, UINavigationController
                 let capture = RawCapture(
                     id: id,
                     kind: "photo",
-                    capturedAt: ISO8601DateFormatter().string(from: Date()),
+                    capturedAt: CaptureClock.stamp(),
                     lines: lines,
                     imageFile: imageFile
                 )

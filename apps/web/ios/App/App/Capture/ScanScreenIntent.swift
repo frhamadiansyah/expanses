@@ -13,7 +13,11 @@ struct ScanScreenIntent: AppIntent {
     var image: IntentFile
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let picture = UIImage(data: image.data), let cgImage = picture.cgImage else {
+        guard let shared = UIImage(data: image.data) else {
+            throw CaptureIntentError.unreadableImage
+        }
+        let picture = TextRecognizer.upright(shared)
+        guard let cgImage = picture.cgImage else {
             throw CaptureIntentError.unreadableImage
         }
         let id = UUID().uuidString
@@ -21,7 +25,7 @@ struct ScanScreenIntent: AppIntent {
         let capture = RawCapture(
             id: id,
             kind: "screen",
-            capturedAt: ISO8601DateFormatter().string(from: Date()),
+            capturedAt: CaptureClock.stamp(),
             lines: lines,
             imageFile: "captures/\(id).jpg"
         )
