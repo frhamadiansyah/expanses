@@ -42,3 +42,30 @@ export function listenForJoinLinks(open: (code: string) => void): () => void {
     void handle.then((h) => h.remove());
   };
 }
+
+/** Whether a link is `cicis://review`, the address the share sheet opens the app with once a picture is stored. */
+export function isReviewLink(url: string): boolean {
+  return /^cicis:\/\/review\/?$/i.test(url.trim());
+}
+
+/**
+ * In the shell, opens Review for every `cicis://review` link — the share sheet's way of taking the owner to the
+ * draft it has just left. The drain runs as the app becomes active, so the draft is there to see. Returns the way to
+ * stop listening. Does nothing in a browser.
+ */
+export function listenForReviewLinks(open: () => void): () => void {
+  if (!isNative()) return () => {};
+  let stopped = false;
+  const handle = Shell.addListener('appUrlOpen', ({ url }) => {
+    if (isReviewLink(url)) open();
+  });
+  void Shell.getLaunchUrl()
+    .then((launch) => {
+      if (launch?.url && isReviewLink(launch.url) && !stopped) open();
+    })
+    .catch(() => undefined);
+  return () => {
+    stopped = true;
+    void handle.then((h) => h.remove());
+  };
+}

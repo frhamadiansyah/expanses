@@ -46,7 +46,7 @@ const row = (page: Page, what: string) => page.getByTestId('draft-row').filter({
 /** Not any status: the install hint and the backup banner are statuses too. */
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 
-test('the queue is rows, and a tap opens the sheet that records one', async ({ page }) => {
+test('the queue is rows, and a tap opens the Add form that records one', async ({ page }) => {
   await addAccount(page);
   await capture(page, 'BCA Tahapan (IDR)', CSV);
 
@@ -55,19 +55,22 @@ test('the queue is rows, and a tap opens the sheet that records one', async ({ p
   await expect(page.getByRole('table')).toHaveCount(0);
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
   const superindo = row(page, 'SUPERINDO KEBAYORAN');
-  await expect(superindo).toContainText('9 Sep · BCA Tahapan · Miscellaneous');
+  await expect(superindo).toContainText('9 Sep');
   await expect(superindo).toContainText('250.000');
 
-  // A tap opens the sheet: what was read, read-only, and the two answers to give.
+  // A tap opens the Add transaction form, filled in from what was read: the day, the figure, the account, the guess.
   await superindo.click();
-  const sheet = page.getByRole('dialog', { name: 'SUPERINDO KEBAYORAN' });
-  await expect(sheet.getByText('9 Sep 2026')).toBeVisible();
-  await expect(sheet).toContainText('250.000');
-  await sheet.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await sheet.getByRole('button', { name: 'Record', exact: true }).click();
+  const form = page.getByRole('form', { name: 'Review SUPERINDO KEBAYORAN' });
+  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible();
+  await expect(form.getByLabel('Date')).toHaveValue('2026-09-09');
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('250.000');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
 
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(toast(page)).toContainText('Recorded SUPERINDO KEBAYORAN');
   await page.goto('/transactions');
   await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
 });
@@ -107,21 +110,28 @@ test('a swipe left discards, and the toast brings it back', async ({ page }) => 
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 });
 
-test('a swipe on a capture with no category opens the sheet rather than recording it', async ({ page }) => {
+test('a swipe on a capture with no category opens the form rather than recording it', async ({ page }) => {
   await addCard(page);
   await capture(page, 'BCA Visa (IDR)', CARD_CSV);
 
   await page.goto('/review');
   const refund = row(page, 'REFUND UNIQLO');
-  await expect(refund).toContainText('no category yet');
+  await expect(refund).toContainText('899.000');
 
-  // No gesture may answer a question: the sheet opens on the row, and Record stays refused until it is answered.
+  // No gesture may answer a question: the form opens on the row, and Record stays refused until it is answered.
   await swipe(page, refund, 'right');
-  const sheet = page.getByRole('dialog', { name: 'REFUND UNIQLO' });
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Record', exact: true })).toBeDisabled();
-  await expect(sheet).toContainText('Recording needs both');
+  const form = page.getByRole('form', { name: 'Review REFUND UNIQLO' });
+  await expect(form).toBeVisible();
+  // Money in is read as income, on the Income tab, with no category yet.
+  await expect(form.getByRole('radio', { name: 'Income' })).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Record', exact: true })).toBeDisabled();
+  // Back records nothing: the draft is still waiting.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await sheet.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+
+  // Discard at the form's foot takes it out of the queue, and the toast brings it back.
+  await refund.click();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await expect(toast(page)).toContainText('Discarded REFUND UNIQLO');
 });

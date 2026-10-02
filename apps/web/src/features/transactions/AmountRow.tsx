@@ -145,10 +145,13 @@ export function AmountRow({
   draft,
   accounts,
   set,
+  unsure = false,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
   set: (patch: Partial<FormDraft>) => void;
+  /** The figure was read off a capture without certainty: marked on the warning panel, with "check" beside it. */
+  unsure?: boolean;
 }) {
   const phone = usePhone();
   const { ws } = useApp();
@@ -248,7 +251,7 @@ export function AmountRow({
           {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
-          <span className={cx(codeGroup, fields.charged ? 'shrink' : 'flex-1')}>
+          <span className={cx(codeGroup, fields.charged ? 'shrink' : 'flex-1', unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
             {named && (
               <span aria-hidden className={codeClass}>
                 {fields.amount.currency}
@@ -284,6 +287,7 @@ export function AmountRow({
               </span>
             </>
           )}
+          {unsure && <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-warn)]">check</span>}
           {draft.amount !== '' && (
             <button
               type="button"

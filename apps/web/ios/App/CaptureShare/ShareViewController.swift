@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 /// The share sheet's door: one image comes in, is read on the phone, and waits in the App Group.
 ///
 /// There is nothing to compose and nothing to confirm — sharing the image was already the owner's decision — so
-/// the picture is read and stored as soon as the sheet opens, and the sheet closes itself. The app does not have
-/// to be running; the capture is drained the next time it is.
+/// the picture is read and stored as soon as the sheet opens. Once it is stored the app is opened on Review
+/// (`cicis://review`), where the drain that runs on opening turns it into the draft the owner came to check.
 final class ShareViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -39,15 +39,30 @@ final class ShareViewController: UIViewController {
                     lines: lines,
                     imageFile: "captures/\(id).jpg"
                 )
-                try? HoldingArea.write(capture: capture, imageData: picture.jpegData(compressionQuality: 0.9) ?? data)
-                self.finish()
+                let stored = (try? HoldingArea.write(capture: capture, imageData: picture.jpegData(compressionQuality: 0.9) ?? data)) != nil
+                self.finish(openingApp: stored)
             }
         }
     }
 
-    private func finish() {
+    private func finish(openingApp: Bool = false) {
         DispatchQueue.main.async {
+            if openingApp { self.openReview() }
             self.extensionContext?.completeRequest(returningItems: nil)
+        }
+    }
+
+    /// An extension has no `UIApplication.shared`; the application is found up the responder chain instead, the
+    /// way share extensions hand the owner over to their app.
+    private func openReview() {
+        guard let url = URL(string: "cicis://review") else { return }
+        var responder: UIResponder? = self
+        while let next = responder {
+            if let application = next as? UIApplication {
+                application.open(url, options: [:], completionHandler: nil)
+                return
+            }
+            responder = next.next
         }
     }
 }

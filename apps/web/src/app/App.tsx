@@ -6,7 +6,7 @@ import { watchCaptures } from '../capture/drain';
 import { installCaptureTestHook } from '../capture/test-hook';
 import type { AppDb } from '../db/bootstrap';
 import { scheduleDailyCopy } from '../db/snapshots';
-import { listenForJoinLinks } from '../native/deep-link';
+import { listenForJoinLinks, listenForReviewLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
 import { router } from './router';
@@ -35,6 +35,7 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace, the code in
   // the fragment rather than the path.
   useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);
+  useEffect(() => listenForReviewLinks(() => void router.navigate({ to: '/review' })), []);
   /*
    * Captures wait in the phone's holding area while the app is closed — a shortcut or the share sheet cannot reach
    * the database. Draining turns them into drafts when the app opens and every time it comes back to the front,

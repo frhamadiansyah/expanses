@@ -6,7 +6,7 @@ import { useAccounts } from '../../lib/queries';
 import { Button, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SegmentedControl } from '../../ui/native';
 import { useCaptureSources } from '../review/queries';
-import { CAPTURE_GUIDES } from './guides';
+import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './guides';
 
 /**
  * Settings → Capture: how to make capture happen, what it is allowed to keep, and what it has learned.
@@ -81,6 +81,12 @@ export function CaptureSettingsPage() {
       {open === 'receipt' && (
         <Button className="w-full" disabled={scan.busy} onClick={() => void scan.scan()}>
           {scan.busy ? 'Reading the receipt…' : 'Scan a receipt now'}
+        </Button>
+      )}
+
+      {open === 'screen-scanner' && SCREEN_SCANNER_SHORTCUT_URL && isShortcutLink(SCREEN_SCANNER_SHORTCUT_URL) && (
+        <Button className="w-full" onClick={() => window.open(SCREEN_SCANNER_SHORTCUT_URL!, '_system')}>
+          Add Screen scanner
         </Button>
       )}
 

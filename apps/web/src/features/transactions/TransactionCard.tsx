@@ -9,6 +9,7 @@ import {
   noteCategory,
   paidFromAccount,
   type PaidWithItem,
+  type SetAsideChoice,
   type NoteSuggestion,
   postTransaction,
   recordMemberTransfer,
@@ -20,7 +21,7 @@ import {
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
@@ -44,14 +45,14 @@ import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } f
 import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
-import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -78,6 +79,9 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { 
   );
 }
 
+/** What a draft cannot carry to the ledger: `confirmDraft` posts one category, paid by one account. */
+const DRAFT_OMITS: readonly ExtraRow[] = ['split', 'with'];
+
 /** The ‹ › steppers are 28px drawn; their target reaches the 44pt floor around them. */
 const TAP_REACH = { '--ph-tap-y': '8px', '--ph-tap-x': '4px' } as CSSProperties;
 
@@ -97,6 +101,35 @@ export function stepDay(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00`);
   date.setDate(date.getDate() + days);
   return isoDate(date);
+}
+
+/**
+ * What a caller finishing something already half-read hands the card — Review, opening a captured draft. The card
+ * stays an add: the fields start from `prefill` instead of empty, and Save is the caller's (`onSubmit`) because a
+ * draft is confirmed rather than posted. A capture is recorded as an expense, income or a transfer only, so the
+ * card offers nothing a draft cannot carry: no Buy / sell tab, no workspace switch, no split, no With, no partner's
+ * items.
+ */
+export interface CardFinish {
+  /** The form's fields, spread over an empty form. */
+  prefill: Partial<FormDraft>;
+  /** Saves the form in the caller's own way; a throw is shown on the card, as a failed save is. */
+  onSubmit: (draft: FormDraft, setAside: SetAsideChoice | null) => Promise<void>;
+  /** A condition of the caller's on top of the card's own, for when the ✓ lights. */
+  canSubmit?: (draft: FormDraft) => boolean;
+  /** The ✓'s name. */
+  saveLabel?: string;
+  /** Drawn above the card's tabs: what the form was filled from. */
+  header?: ReactNode;
+  /** Drawn under Add more details. */
+  footer?: ReactNode;
+  /**
+   * A money row that asks rather than offers, drawn on the warning panel while it is empty: an account only the
+   * owner can name. `side` is which row asks; picking there is also `onAnswer`.
+   */
+  accountAsk?: { side: 'money' | 'to'; label: string; note: string; onAnswer: (accountId: string) => void };
+  /** The figure was read without certainty: the amount is marked for checking. */
+  amountUnsure?: boolean;
 }
 
 /**
@@ -128,6 +161,8 @@ export function TransactionCard(props: {
   /** On a screen of its own: the bar's name and its way back. The card draws the bar, because Save lives in it. */
   title?: string;
   onBack?: () => void;
+  /** Opened on something already half-read, saved by the caller: see `CardFinish`. */
+  finish?: CardFinish;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial);
@@ -158,6 +193,7 @@ function CardBody({
   label,
   title,
   onBack,
+  finish,
   accounts: ownAccounts,
   photoIds,
 }: {
@@ -172,6 +208,7 @@ function CardBody({
   label?: string;
   title?: string;
   onBack?: () => void;
+  finish?: CardFinish;
   accounts: AccountRow[];
   photoIds: string[];
 }) {
@@ -201,7 +238,9 @@ function CardBody({
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
   const [draft, setDraft] = useState<FormDraft>(() =>
-    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts) },
+    initial
+      ? formFromTransaction(initial, accounts, bookId, photoIds)
+      : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
   );
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
@@ -329,6 +368,12 @@ function CardBody({
     setBusy(true);
     try {
       if (transferUnknown) return;
+      if (finish) {
+        await finish.onSubmit(draft, setAside.choice);
+        await invalidate();
+        onDone();
+        return;
+      }
       if (initial && savedTransfer && netWorthGroup.data) {
         // A side of a transfer with a partner: its date, figure and note are the transfer's, and both phones follow.
         const own = byId.get(draft.moneyId)?.currency ?? byId.get(draft.toId)?.currency ?? ws.baseCurrency;
@@ -421,7 +466,7 @@ function CardBody({
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       else formToPost(draft, accounts);
-      return true;
+      return finish?.canSubmit?.(draft) ?? true;
     } catch {
       return false;
     }
@@ -445,13 +490,40 @@ function CardBody({
   /* The holding wears the drawing the Assets page gives its kind, as a transfer's accounts do in their own list. */
   const HoldingGlyph = assetKindTile('invest', byId.get(purchase.accountId)?.subtype ?? '');
 
+  /*
+   * The row that asks rather than offers, while it is still empty: which account a capture's source is. It stands on
+   * the warning panel, because it is the one question only the owner can answer, and says under it what answering it
+   * does. Picking there is an ordinary pick, and also the answer (`accountAsk.onAnswer`).
+   */
+  const ask = finish?.accountAsk;
+  const asking = ask && (ask.side === 'money' ? !draft.moneyId : !draft.toId) ? ask.side : null;
+  const askRow = (glyph: ReactNode, open: () => void) => (
+    <button
+      type="button"
+      onClick={open}
+      aria-label={ask!.label}
+      className="ph-focus-inset flex w-full items-center gap-[10px] bg-[var(--ph-warn-panel)] pl-[10px] text-left"
+    >
+      <RowLead>
+        <RowGlyph>{glyph}</RowGlyph>
+      </RowLead>
+      <span className={ROW_BODY}>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[15px] leading-5 font-semibold text-[var(--ph-ink)]">{ask!.label}</span>
+          <span className="text-[12.5px] leading-4 text-[var(--ph-warn-ink)]">{ask!.note}</span>
+        </span>
+        <Chevron />
+      </span>
+    </button>
+  );
+
   /** Which glyph leads the paying row: a card, a bank for what came in, the account money leaves. */
   const payGlyph = draft.mode === 'income' ? <Landmark size={15} /> : draft.mode === 'transfer' ? <ArrowUpRight size={15} /> : <CreditCard size={15} />;
   const modes = [
     { key: 'expense', label: 'Expense' },
     { key: 'income', label: 'Income' },
     { key: 'transfer', label: 'Transfer' },
-    ...(choices.buys.length > 0 ? [{ key: 'trade', label: 'Buy / sell' }] : []),
+    ...(choices.buys.length > 0 && !finish ? [{ key: 'trade', label: 'Buy / sell' }] : []),
   ];
   const chooseMode = (value: FormMode) => {
     if (value === draft.mode) return;
@@ -564,6 +636,7 @@ function CardBody({
 
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
+      {finish?.header}
       {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
         {!fixedMode && (
@@ -687,7 +760,8 @@ function CardBody({
               files by the categories a transaction touches, and a transfer touches none — so a row offering to file
               it would be offering something the save cannot honour.
             */}
-            {draft.mode !== 'transfer' && (
+            {/* A draft belongs to the workspace it was captured in: switching here would leave it behind. */}
+            {draft.mode !== 'transfer' && !finish && (
               <FormRow
                 lead="value"
                 icon={
@@ -703,6 +777,9 @@ function CardBody({
                 onClick={() => setSheet('workspace')}
               />
             )}
+            {asking === 'money' ? (
+              askRow(payGlyph, () => setSheet('money'))
+            ) : (
             <FormRow
               lead="value"
               icon={<RowGlyph>{payGlyph}</RowGlyph>}
@@ -722,14 +799,18 @@ function CardBody({
               disabled={accountsLocked}
               chevron={!accountsLocked}
             />
+            )}
 
-            <AmountRow draft={draft} accounts={accounts} set={set} />
+            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} />
 
             {draft.mode === 'transfer' ? (
               /*
                 The hint is the To row's own second line rather than the group's: it is about where this money may
                 land, and a fund bought by transfer is the one mistake this row exists to head off.
               */
+              asking === 'to' ? (
+                askRow(<ArrowDownLeft size={15} />, () => setSheet('to'))
+              ) : (
               <FormRow
                 lead="value"
                 icon={
@@ -744,6 +825,7 @@ function CardBody({
                 chevron={!accountsLocked}
                 onClick={() => setSheet('to')}
               />
+              )
             ) : (
               draft.splits.length === 0 && (
                 <FormRow
@@ -864,7 +946,7 @@ function CardBody({
       {/* The same component, with the same props, that the edit sheet opens: one implementation of §4's rows. */}
       {detailsOpen && (
         <section aria-label="More details">
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={finish ? DRAFT_OMITS : undefined} />
         </section>
       )}
       {/*
@@ -881,6 +963,8 @@ function CardBody({
       >
         {detailsToggleLabel(detailsOpen)}
       </button>
+
+      {finish?.footer}
 
       {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}
       {setAside.node}
@@ -929,7 +1013,7 @@ function CardBody({
           title={title}
           back="Back"
           onBack={onBack}
-          actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
+          actions={[{ key: 'save', label: finish?.saveLabel ?? 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
         />
       )}
       {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
@@ -943,11 +1027,14 @@ function CardBody({
           accounts={accounts}
           chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
           // One's own account clears a partner's item on this side; a partner on the From side stays.
-          onPick={(option) => set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null })}
+          onPick={(option) => {
+            set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null });
+            if (asking === 'to') finish?.accountAsk?.onAnswer(option.accountId);
+          }}
           // Joint net worth §7.2: the partner's shared items in the From's currency, a section of their own under the
           // money one holds — not accounts of this person's, so the money-you-hold rule above does not judge them.
           shared={
-            toPartners.length > 0
+            toPartners.length > 0 && !finish
               ? {
                   items: toPartners.flatMap((section) => section.items),
                   formBookId: draft.bookId,
@@ -1002,9 +1089,12 @@ function CardBody({
               ...(draft.partner?.side === 'from' ? { partner: null } : {}),
               ...(unpaired ? { toId: '' } : {}),
             });
+            if (asking === 'money') finish?.accountAsk?.onAnswer(option.accountId);
           }}
           shared={
-            draft.mode === 'expense'
+            finish
+              ? undefined
+              : draft.mode === 'expense'
               ? {
                   items: paidWith.data ?? [],
                   formBookId: draft.bookId,

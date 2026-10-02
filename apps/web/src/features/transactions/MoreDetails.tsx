@@ -13,7 +13,7 @@ import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { WithSheet, withSummary } from './WithSheet';
-import { extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
+import { type ExtraRow, extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
 
 /** B3's lead glyph for an extra: a Lucide glyph where the mockup draws an emoji. */
 // The circle every row of the add form leads with, so the extras line up with the card above them.
@@ -44,17 +44,20 @@ export function MoreDetails({
   onChange,
   accounts,
   missingRate,
+  omit = [],
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
   accounts: readonly AccountRow[];
   missingRate: MissingRate | null;
+  /** Rows the caller cannot carry to the ledger — a captured draft has one category and one payer. */
+  omit?: readonly ExtraRow[];
 }) {
   const { ws } = useApp();
   const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
   const set = (patch: Partial<FormDraft>) => onChange({ ...draft, ...patch });
   const sharedBook = useIsBookShared();
-  const rows = extraRows(draft, accounts, { missingRate, sharedBook });
+  const rows = extraRows(draft, accounts, { missingRate, sharedBook }).filter((row) => !omit.includes(row));
   const events = useEvents().data ?? [];
   const eventName = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? '') : '';
   // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so
