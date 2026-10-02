@@ -60,7 +60,7 @@ describe('learning where a field was', () => {
     await ingestCaptures(database, ws, [{ ...screen('52.000'), id: 'shot-next' }], { today: '2026-09-30' });
     const drafts = await listDrafts(database, ws);
     const next = drafts.find((candidate) => candidate.captureIds.includes('shot-next'))!;
-    expect(next).toMatchObject({ amountMinor: 5_200_000, confidence: 95, sourceId });
+    expect(next).toMatchObject({ amountMinor: 52_000, confidence: 95, sourceId });
   });
 
   it('takes a corrected figure the way the owner types it', async () => {

@@ -11,7 +11,7 @@ const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   rawPayload: null,
   occurredOn: '2026-09-30',
   description: 'KOPI KENANGAN',
-  amountMinor: 3_800_000,
+  amountMinor: 38_000,
   currency: 'IDR',
   accountId: 'bank',
   toAccountId: null,
@@ -44,7 +44,7 @@ const line = (text: string, y: number, height = 0.03): CaptureLine => ({ text, b
 
 const reading: Reading & { lines: CaptureLine[] } = {
   skipped: null,
-  amount: { value: { minor: 3_800_000, currency: 'IDR' }, confidence: 95, line: 2 },
+  amount: { value: { minor: 38_000, currency: 'IDR' }, confidence: 95, line: 2 },
   occurredAt: null,
   type: { value: 'spent', confidence: 80, line: null },
   name: { value: 'TOKO KOPI', confidence: 90, line: 3 },
@@ -93,15 +93,15 @@ describe('the row a capture sits on', () => {
 
 describe('amounts the owner types', () => {
   it('writes an amount the way it can be typed back', () => {
-    expect(majorText(3_800_000, 'IDR')).toBe('38000');
+    expect(majorText(38_000, 'IDR')).toBe('38000');
     expect(majorText(1_250, 'USD')).toBe('12.5');
-    expect(majorText(-3_800_000, 'IDR')).toBe('38000');
+    expect(majorText(-38_000, 'IDR')).toBe('38000');
   });
 
   it('reads a typed amount with the reader’s own rules', () => {
-    expect(minorFromTyped('38.000', 'IDR')).toBe(3_800_000);
-    expect(minorFromTyped('Rp 38.000', 'IDR')).toBe(3_800_000);
-    expect(minorFromTyped('38000', 'IDR')).toBe(3_800_000);
+    expect(minorFromTyped('38.000', 'IDR')).toBe(38_000);
+    expect(minorFromTyped('Rp 38.000', 'IDR')).toBe(38_000);
+    expect(minorFromTyped('38000', 'IDR')).toBe(38_000);
     expect(minorFromTyped('12.50', 'USD')).toBe(1_250);
     expect(minorFromTyped('', 'IDR')).toBeNull();
     expect(minorFromTyped('what?', 'IDR')).toBeNull();
@@ -119,7 +119,7 @@ describe('the boxes over a picture', () => {
   it('draws nothing when there are no lines to point at', () => {
     const noLines: Reading = {
       skipped: null,
-      amount: { value: { minor: 3_800_000, currency: 'IDR' }, confidence: 95, line: 2 },
+      amount: { value: { minor: 38_000, currency: 'IDR' }, confidence: 95, line: 2 },
       occurredAt: null,
       type: { value: 'spent', confidence: 80, line: null },
       name: { value: 'TOKO KOPI', confidence: 90, line: 3 },

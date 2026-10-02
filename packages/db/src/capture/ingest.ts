@@ -9,7 +9,7 @@
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
+import { exponentOf, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
 import { and, eq, inArray, isNotNull, isNull, lt, lte, ne } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -119,8 +119,10 @@ export async function planDraft(
   const workspace = await workspaceFor(tx, ws, source);
   const account = await accountFor(tx, source);
   const type = reading.type.value;
-  const amountMinor = reading.amount?.value.minor ?? 0;
   const currency = reading.amount?.value.currency ?? account?.currency ?? workspace.baseCurrency;
+  // A figure that wore no currency was read in whole units; the account (or the workspace) says how to scale it.
+  const read = reading.amount?.value ?? null;
+  const amountMinor = read === null ? 0 : read.currency === null ? read.minor * 10 ** exponentOf(currency) : read.minor;
   const printed = reading.occurredAt?.value ?? null;
 
   return {

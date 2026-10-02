@@ -488,7 +488,7 @@ export {
 } from './net-worth/group';
 export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
-export { CURRENCY_EXPONENT, findAmounts, type FoundAmount } from './capture/amount';
+export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
 export { findDateTime } from './capture/date';
 export { fingerprintOf, sameSource } from './capture/fingerprint';
 export { accountHintOf, readCapture } from './capture/read';

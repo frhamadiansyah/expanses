@@ -1,28 +1,17 @@
+import { currencyInfo, isSupportedCurrency } from '../money/currencies';
 import type { WordList } from './types';
 
 /**
- * How many minor units a major unit is, by currency.
+ * How many minor units a major unit is: the app's own currency table (IDR is 0 there by product decision), and two
+ * for a currency the app does not keep.
  *
- * The app keeps money as integer minor units, and IDR — which nobody writes with decimals — is kept with two of them
- * like every other money figure in the ledger, so `Rp38.000` is 3 800 000 here. Currencies not named are two.
+ * A figure that wears no currency — `50rb`, `1,2jt` — is kept in whole units (0): it cannot be scaled until the
+ * account it lands on says what it is, and the ingest does that (`exponentOf(currency)` once it is known).
  */
-export const CURRENCY_EXPONENT: Record<string, number> = {
-  IDR: 2,
-  USD: 2,
-  SGD: 2,
-  MYR: 2,
-  EUR: 2,
-  GBP: 2,
-  THB: 2,
-  CNY: 2,
-  HKD: 2,
-  TWD: 2,
-  PHP: 2,
-  AUD: 2,
-  KWD: 3,
-  JPY: 0,
-  KRW: 0,
-};
+export function exponentOf(currency: string | null): number {
+  if (currency === null) return 0;
+  return isSupportedCurrency(currency) ? currencyInfo(currency).exponent : 2;
+}
 
 /** One money figure found in a text: what it comes to, what it says it is, and where it was. */
 export interface FoundAmount {
@@ -144,8 +133,7 @@ function numberAt(text: string, from: number, words: WordList): NumberAt | null 
 
 /** Major units to the integer minor units the app stores. */
 function toMinor(major: number, currency: string | null): number {
-  const exponent = currency === null ? 2 : (CURRENCY_EXPONENT[currency] ?? 2);
-  return Math.round(major * 10 ** exponent);
+  return Math.round(major * 10 ** exponentOf(currency));
 }
 
 /**

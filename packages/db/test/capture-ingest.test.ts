@@ -83,7 +83,7 @@ describe('a capture becomes a draft', () => {
     expect(draft).toMatchObject({
       kind: 'expense',
       source: 'notification',
-      amountMinor: 3_800_000,
+      amountMinor: 38_000,
       currency: 'IDR',
       accountId: bank.id,
       toAccountId: null,
@@ -102,6 +102,28 @@ describe('a capture becomes a draft', () => {
     expect(draft!.rawPayload).toContain('Merchant: TOKO KOPI');
   });
 
+  it('scales a figure that wore no currency by the account it lands on', async () => {
+    const { database, ws, bank } = await workspace();
+    const usd = await createAccount(database, ws, { name: 'Travel card', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    await answer(database, ws, at('09:00'), bank.id);
+    await answer(database, ws, at('09:00', { app: 'com.example.card', title: 'Card' }), usd.id);
+
+    await ingestCaptures(
+      database,
+      ws,
+      [
+        at('09:30', { body: 'Bayar 50rb berhasil. Merchant: TOKO KOPI' }),
+        at('09:40', { app: 'com.example.card', title: 'Card', body: 'Bayar 1,2jt berhasil. Merchant: HOTEL' }),
+      ],
+      { today: DAY },
+    );
+
+    // Rupiah keeps no minor digits and dollars keep two: "50rb" is 50 000 rupiah, "1,2jt" is 1 200 000 dollars.
+    const drafts = await draftsOf(database, ws);
+    expect(drafts.find((d) => d.description === 'TOKO KOPI')).toMatchObject({ amountMinor: 50_000, currency: 'IDR' });
+    expect(drafts.find((d) => d.description === 'HOTEL')).toMatchObject({ amountMinor: 120_000_000, currency: 'USD' });
+  });
+
   it('files money arriving as money received, on the same account', async () => {
     const { database, ws, bank } = await workspace();
     await answer(database, ws, at('09:00', { body: 'Uang masuk Rp150.000 dari ANDI' }), bank.id);
@@ -110,7 +132,7 @@ describe('a capture becomes a draft', () => {
 
     expect((await draftsOf(database, ws))[0]).toMatchObject({
       kind: 'income',
-      amountMinor: -15_000_000,
+      amountMinor: -150_000,
       accountId: bank.id,
       description: 'ANDI',
     });
@@ -129,7 +151,7 @@ describe('a capture becomes a draft', () => {
 
     const [draft] = await draftsOf(database, ws);
     // The money landed in the wallet: what is missing is where it came from, so the draft asks for that.
-    expect(draft).toMatchObject({ kind: 'transfer', accountId: null, toAccountId: wallet.id, amountMinor: -20_000_000 });
+    expect(draft).toMatchObject({ kind: 'transfer', accountId: null, toAccountId: wallet.id, amountMinor: -200_000 });
   });
 
   it('asks which account a source it has never seen belongs to', async () => {
@@ -228,7 +250,7 @@ describe('what is not worth a draft', () => {
     // Bringing it back is the owner saying "this one too": the scope does not get to refuse it twice.
     expect((await draftsOf(database, ws)).find((draft) => draft.id === draftId)).toMatchObject({
       kind: 'income',
-      amountMinor: -15_000_000,
+      amountMinor: -150_000,
       accountId: bank.id,
     });
     expect(await listSkipped(database, ws, DAY)).toEqual([]);
@@ -261,7 +283,7 @@ describe('a backlog arriving at once', () => {
     expect(await countPendingDrafts(database, ws)).toBe(18);
     const drafts = await draftsOf(database, ws);
     const transfer = drafts.find((draft) => draft.kind === 'transfer' && draft.toAccountId === wallet.id)!;
-    expect(transfer).toMatchObject({ accountId: bank.id, amountMinor: 20_000_000, captureIds: ['note-topup', 'note-pull'] });
+    expect(transfer).toMatchObject({ accountId: bank.id, amountMinor: 200_000, captureIds: ['note-topup', 'note-pull'] });
     const coffee = drafts.find((draft) => draft.captureIds.includes('note-coffee'))!;
     expect(coffee).toMatchObject({ captureIds: ['note-coffee', 'shot-coffee'], imageFile: 'captures/38.000.png' });
   });

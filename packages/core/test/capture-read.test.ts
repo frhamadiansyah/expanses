@@ -32,7 +32,7 @@ describe('readCapture', () => {
   it('never reads the balance as the amount', () => {
     const reading = readCapture(notification('Pembayaran Rp38.000 ke KOPI KENANGAN berhasil. Saldo Rp1.212.000'), WORDS, null);
     expect(reading.skipped).toBeNull();
-    expect(reading.amount?.value).toEqual({ minor: 3_800_000, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 38_000, currency: 'IDR' });
     expect(reading.type.value).toBe('spent');
     expect(reading.name?.value).toBe('KOPI KENANGAN');
   });
@@ -47,14 +47,14 @@ describe('readCapture', () => {
   it('reads money received, and who sent it', () => {
     const reading = readCapture(notification('Dana masuk Rp 5.000.000 dari PT MAJU JAYA'), WORDS, null);
     expect(reading.skipped).toBeNull();
-    expect(reading.amount?.value).toEqual({ minor: 500_000_000, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 5_000_000, currency: 'IDR' });
     expect(reading.type.value).toBe('received');
     expect(reading.name?.value).toBe('PT MAJU JAYA');
   });
 
   it('reads a top-up as a top-up', () => {
     const reading = readCapture(notification('Top up saldo Rp200.000 berhasil'), WORDS, null);
-    expect(reading.amount?.value).toEqual({ minor: 20_000_000, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 200_000, currency: 'IDR' });
     expect(reading.type.value).toBe('topup');
   });
 
@@ -65,7 +65,7 @@ describe('readCapture', () => {
       null,
     );
     expect(reading.skipped).toBeNull();
-    expect(reading.amount?.value).toEqual({ minor: 3_800_000, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 38_000, currency: 'IDR' });
     expect(reading.amount?.line).toBe(4);
     expect(reading.name?.value).toBe('Kopi Kenangan');
     expect(reading.type.value).toBe('spent');
@@ -81,12 +81,12 @@ describe('readCapture', () => {
   it('looks where the source learned to look before reading the page itself', () => {
     const lines = image(['Transaksi Berhasil', 'Nilai Kirim', 'Rp38.000', 'Biaya layanan', 'Rp250.000']);
     const reading = readCapture(lines, WORDS, { amount: { label: 'Nilai Kirim', region: null } });
-    expect(reading.amount?.value).toEqual({ minor: 3_800_000, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 38_000, currency: 'IDR' });
     expect(reading.amount?.confidence).toBe(95);
 
     // The same page with nothing learned about it: the biggest figure that is not a balance is what is read.
     const general = readCapture(lines, WORDS, null);
-    expect(general.amount?.value).toEqual({ minor: 25_000_000, currency: 'IDR' });
+    expect(general.amount?.value).toEqual({ minor: 250_000, currency: 'IDR' });
   });
 
   it('reads the masked digits of an account, however the mask is written', () => {

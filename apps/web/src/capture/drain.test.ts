@@ -36,7 +36,7 @@ describe('emptying the phone into the queue', () => {
       const result = await drainCaptures(database, ws, bridge([notification]), '2026-09-30');
 
       expect(result).toEqual({ drafts: 1, merged: 0, skipped: 0 });
-      expect((await listDrafts(database, ws))[0]).toMatchObject({ description: 'TOKO KOPI', amountMinor: 3_800_000 });
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ description: 'TOKO KOPI', amountMinor: 38_000 });
     } finally {
       close();
     }
@@ -62,7 +62,7 @@ describe('a receipt photographed in the app', () => {
       const result = await scanReceipt(database, ws, bridge([], { ...notification, id: 'photo-1', kind: 'photo' }), '2026-09-30');
 
       expect(result).toEqual({ drafts: 1, merged: 0, skipped: 0 });
-      expect((await listDrafts(database, ws))[0]).toMatchObject({ source: 'photo', amountMinor: 3_800_000 });
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ source: 'photo', amountMinor: 38_000 });
     } finally {
       close();
     }

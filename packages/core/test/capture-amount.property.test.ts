@@ -8,12 +8,12 @@ const grouped = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 const run = { numRuns: 300, seed: 20260930 } as const;
 
 describe('findAmounts, over every figure it can be handed', () => {
-  it('reads a printed rupiah figure as itself, in minor units, with or without the cents a person writes', () => {
+  it('reads a printed rupiah figure as itself, in whole rupiah (IDR keeps no minor digits), with or without the cents a person writes', () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 10_000_000_000 }), fc.boolean(), (rupiah, cents) => {
         const text = `Rp${grouped(String(rupiah))}${cents ? ',00' : ''}`;
         const [found] = findAmounts(text, WORDS);
-        expect(found?.minor).toBe(rupiah * 100);
+        expect(found?.minor).toBe(rupiah);
         expect(found?.currency).toBe('IDR');
       }),
       run,

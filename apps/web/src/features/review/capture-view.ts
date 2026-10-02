@@ -7,7 +7,7 @@
  * knows — which account it is. The screen draws those three facts and nothing else; what the reader made of the
  * text is the sheet's subject.
  */
-import { CURRENCY_EXPONENT, findAmounts, type CaptureLine, type Reading, WORDS } from '@expanses/core';
+import { exponentOf, findAmounts, type CaptureLine, type Reading, WORDS } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
 
 /** One thing a capture still has to be told before it can be recorded. */
@@ -67,7 +67,7 @@ const READER_MARKS: Record<string, string> = { IDR: 'Rp', USD: '$', SGD: 'S$', M
 
 /** The editable form of an amount: '38000' for Rp38.000, '12.5' for $12.50. */
 export function majorText(minor: number, currency: string): string {
-  const exponent = CURRENCY_EXPONENT[currency] ?? 2;
+  const exponent = exponentOf(currency);
   return String(Number((Math.abs(minor) / 10 ** exponent).toFixed(exponent)));
 }
 
