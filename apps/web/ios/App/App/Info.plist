@@ -46,6 +46,20 @@
 	     HTTPS provide, which is the exemption this key claims. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- iCloud backup: the container shows in iCloud Drive as a "cicis" folder, which is where the owner can see the
+	     copies. The folder appears only after a build with a higher CFBundleVersion is installed. -->
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.cicis.app</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>cicis</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>None</string>
+		</dict>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

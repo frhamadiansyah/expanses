@@ -5,6 +5,7 @@ import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { MovePage } from '../features/accounts/MovePage';
 import { AccountPage } from '../features/accounts/AccountPage';
 import { BackupPage } from '../features/backup/BackupPage';
+import { ICloudRestorePage } from '../features/backup/icloud/ICloudRestorePage';
 import { CoverPage } from '../features/events/CoverPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
 import { EventsPage } from '../features/events/EventsPage';
@@ -289,6 +290,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
   // Household sharing: where a `cicis://join/<code>` link lands, in the shell and on the web alike (spec §11). The code is
   // the fragment, `/join#<code>`: half of it is the invite's secret, and a fragment is never sent to a server.

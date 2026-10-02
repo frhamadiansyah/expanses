@@ -1,5 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext } from 'react';
+import { Info } from 'lucide-react';
+import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
 import { cx } from '../index';
 import { SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
@@ -48,16 +49,33 @@ export interface GroupChild {
  * The uppercase is a drawing, applied by CSS, so what a screen reader announces is the sentence that was
  * written rather than a string of shouted letters.
  */
-function GroupHeader({ title, progress, trailing }: { title: string; progress?: HeaderProgress; trailing?: ReactNode }) {
+function GroupHeader({ title, progress, trailing, info }: { title: string; progress?: HeaderProgress; trailing?: ReactNode; info?: ReactNode }) {
   const header = groupHeader(title, progress);
+  const [explained, setExplained] = useState(false);
   return (
-    <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]">
-      <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{header.label}</h2>
+    <div className="px-[4px] pb-[6px]">
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="flex items-center gap-[6px]">
+        <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{header.label}</h2>
+        {info && (
+          <button
+            type="button"
+            aria-label={`About ${title}`}
+            aria-expanded={explained}
+            onClick={() => setExplained((was) => !was)}
+            className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+          >
+            <Info size={16} aria-hidden />
+          </button>
+        )}
+      </span>
       {(header.trailing ?? trailing) && (
         <span className="tabular shrink-0 text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
           {header.trailing ?? trailing}
         </span>
       )}
+    </div>
+    {info && explained && <div className="pt-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</div>}
     </div>
   );
 }
@@ -96,11 +114,14 @@ export function InsetGroup({
   progress,
   trailing,
   footer,
+  info,
   wide = false,
   className,
   children,
 }: {
   header?: string;
+  /** What the group is for, behind an ⓘ beside the header and shown under it only when asked — instead of a footer. */
+  info?: ReactNode;
   progress?: HeaderProgress;
   trailing?: ReactNode;
   /** The sentence under a group. It belongs to the group, not to one row. */
@@ -114,7 +135,7 @@ export function InsetGroup({
   const full = useWide(wide);
   return (
     <section className={cx('w-full', full ? '' : 'md:max-w-2xl', className)} style={{ marginBottom: GROUP_GAP }}>
-      {header && <GroupHeader title={header} progress={progress} trailing={trailing} />}
+      {header && <GroupHeader title={header} progress={progress} trailing={trailing} info={info} />}
       <div className="overflow-hidden bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
         {items.map((child, index) => cloneElement(child, { position: positions[index] }))}
       </div>
