@@ -156,7 +156,7 @@ export function estimatedTiles(o: { costMinor: number; boughtOn: string | null; 
   const tiles: (Tile | null)[] = [
     o.costMinor > 0 ? { label: 'Bought for', value: formatMinor(o.costMinor, o.currency) } : null,
     o.boughtOn ? { label: 'Bought on', value: dayLabel(o.boughtOn) } : null,
-    o.loan ? { label: 'Yours', value: formatMinor(o.loan.valueMinor - o.loan.owedMinor, o.currency) } : null,
+    o.loan ? { label: 'Equity', value: formatMinor(o.loan.valueMinor - o.loan.owedMinor, o.currency) } : null,
     o.loan ? { label: 'Loan left', value: formatMinor(o.loan.owedMinor, o.currency) } : null,
   ];
   return tiles.filter((tile): tile is Tile => tile !== null);

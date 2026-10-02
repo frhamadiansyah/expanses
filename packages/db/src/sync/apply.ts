@@ -213,12 +213,13 @@ const PARENTS: Record<string, { table: string; from: 'field' | 'key'; name: stri
   bill: { table: 'accounts', from: 'field', name: 'categoryAccountId' },
   bill_window: { table: 'expense_templates', from: 'key', name: 'template_id' },
   bill_skip: { table: 'expense_templates', from: 'key', name: 'template_id' },
+  bill_pause: { table: 'expense_templates', from: 'key', name: 'template_id' },
 };
 
 function keyWhere(entity: RowEntity, key: Record<string, string>, ctx: BookContext): SQL {
   const parts = entity.keyColumns.map((column) => sql`${sql.raw(column)} = ${key[column]}`);
   if (entity.localOnInsert.includes('book_id') && !entity.keyColumns.includes('book_id')) parts.push(sql`book_id = ${ctx.bookId}`);
-  if (entity.table === 'bill_skips') parts.push(sql`workspace_id = ${ctx.ws.workspaceId}`);
+  if (entity.table === 'bill_skips' || entity.table === 'bill_pauses') parts.push(sql`workspace_id = ${ctx.ws.workspaceId}`);
   return sql.join(parts, sql` AND `);
 }
 

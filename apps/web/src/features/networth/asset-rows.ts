@@ -220,7 +220,9 @@ export const staleRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((g
 
 /** What the row says under its name: how it is valued, its tax code, and whether it needs attention. */
 export function rowSubtitle(row: AssetRow): string {
-  return [row.method, row.coretax, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
+  // Only what asks for attention. How a figure is worked out and the Indonesian tax code belong to the asset's own
+  // page and the tax report, not to every row of a list read in any country.
+  return [row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
     .filter(Boolean)
     .join(' · ');
 }

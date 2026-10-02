@@ -28,6 +28,9 @@ import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { ListedTradeSheet } from './ListedTradeSheet';
+import { FundTradeSheet } from './FundTradeSheet';
+import { GoldTradeSheet } from './GoldTradeSheet';
+import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
@@ -60,6 +63,8 @@ type Sheet =
   | { kind: 'source' }
   | { kind: 'listed-source' }
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
+  | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
+  | { kind: 'gold-trade'; trade: 'buy' | 'sell' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string };
 
@@ -188,7 +193,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const saidPrice = priced ? priceLine({ latest: latestPrice, fetches: fetcher !== null, failed: fetcher?.state === 'failed', today: isoDate() }) : '';
   // A close from Yahoo or IDX's file is the last session's, not today's.
   const outsideClose = latestPrice?.source === 'yahoo' || latestPrice?.source === 'idx';
-  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Your price' : outsideClose ? 'Last close' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
+  const priceLabel = gold && latestPrice?.source === 'world' ? 'World price' : gold ? 'Typed price' : outsideClose ? 'Last close' : unitKind ? PRICE_TILE[unitKind] : 'Price today';
   const pricedTileList: Tile[] = priced
     ? pricedTiles({
         unitKind,
@@ -223,7 +228,20 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const trade = (title: string, initial: Partial<TradeDraft>) => () => setSheet({ kind: 'trade', title, initial, editing: null });
   // A share listed on IDX buys and sells in its own sheet: price on IDX's tick, whole lots, the broker's fee.
   const idxShare = listedSecurity && isIdxListing(listedSecurity) ? listedSecurity : null;
-  const buyOrSell = (kind: 'buy' | 'sell', title: string) => (idxShare ? () => setSheet({ kind: 'listed-trade', trade: kind }) : trade(title, { kind }));
+  // A mutual fund counted in units buys and sells by amount in its own sheet: the units come from the NAV.
+  const fundHolding = priced && kind === 'fund' && unitKind === 'units' && !idxShare;
+  // Gold counted in grams buys and sells by weight and the receipt's total, with the brand's bar sizes to hand.
+  const goldHolding = priced && unitKind === 'grams' && !idxShare;
+  const buyOrSell = (kind: 'buy' | 'sell', title: string) =>
+    idxShare
+      ? () => setSheet({ kind: 'listed-trade', trade: kind })
+      : fundHolding
+        ? () => setSheet({ kind: 'fund-trade', trade: kind })
+        : goldHolding
+          ? () => setSheet({ kind: 'gold-trade', trade: kind })
+          : trade(title, { kind });
+  // The kind's own drawing, as the Assets list draws it, for the short sheets' holding line.
+  const KindGlyph = ASSET_TILES[assetItemOfCode(value.coretaxCode)?.id ?? kind ?? ''] ?? ASSET_TILES.fund!;
   const actions: RoundAction[] = priced
     ? [
         { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
@@ -466,8 +484,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ) : null,
           // Every share and fund held, each with its price box and IDX's file to fill the shares.
           listedLike ? <InsetRow key="prices" title="Update prices" to="/net-worth/prices" /> : null,
-          // The broker's cash sits at a bank: buying takes it from there, and selling puts it back.
-          rdnBank ? <InsetRow key="cash" title="Cash through" value={`RDN at ${rdnBank}`} chevron={false} /> : null,
+          // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
+          rdnBank ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,
@@ -548,6 +566,29 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           lastPrice={latestPrice}
           position={position}
           brokerAccountId={brokerId}
+          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'fund-trade' && fundHolding && (
+        <FundTradeSheet
+          kind={sheet.trade}
+          holding={holding}
+          icon={<KindGlyph size={16} aria-hidden />}
+          lastPrice={latestPrice}
+          position={position}
+          defaultCashId={brokerId}
+          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'gold-trade' && goldHolding && (
+        <GoldTradeSheet
+          kind={sheet.trade}
+          holding={holding}
+          icon={<KindGlyph size={16} aria-hidden />}
+          lastPrice={latestPrice}
+          position={position}
           onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
         />

@@ -44,7 +44,7 @@ type Flow = { step: 'explain' } | { step: 'preparing'; done: number; total: numb
 
 /** What the person being invited will and will not see, and the one thing about devices worth knowing up front. */
 const EXPLAINER = [
-  'Whoever you invite sees this workspace as you do — its purchases, categories, budgets and bills — and can add and change any of them. They never see your accounts, cards or balances, or your other workspaces: a purchase you paid for shows them only the name of what you paid with.',
+  'Whoever is invited sees this workspace just as it looks here — its purchases, categories, budgets and bills — and can add and change any of them. They never see accounts, cards or balances outside it, or any other workspace: a purchase paid from elsewhere shows only the name of what paid for it.',
   'Everything is encrypted on this device before it leaves; the relay that passes it along cannot read it.',
   'An invite is for one device. A replaced or restored phone needs a new invite.',
 ];
@@ -83,7 +83,7 @@ export function SharingSection({ book }: { book: BookRow }) {
 
   if (flow?.step === 'preparing') {
     return (
-      <InsetGroup wide header="Sharing" footer="Your history goes up first, so whoever joins sees all of it. Keep this open until it is done.">
+      <InsetGroup wide header="Sharing" footer="History goes up first, so whoever joins sees all of it. Keep this open until it is done.">
         <InsetRow testId="share-progress" icon={<RefreshCw size={15} aria-hidden />} title={flow.total > 0 ? preparing(flow.done, flow.total) : 'Preparing…'} chevron={false} />
       </InsetGroup>
     );
@@ -94,7 +94,7 @@ export function SharingSection({ book }: { book: BookRow }) {
       <form onSubmit={(event) => void share(event)} aria-label="Share this workspace">
         <ErrorBox error={error} />
         <InsetGroup wide header="Share this workspace" footer={EXPLAINER.map((line) => <span key={line} className="mb-[6px] block">{line}</span>)}>
-          <TextRow label="Your name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
+          <TextRow label="Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
           <SubmitRow label="Share" disabled={!name.trim()} />
         </InsetGroup>
         <InsetGroup wide>
@@ -108,7 +108,7 @@ export function SharingSection({ book }: { book: BookRow }) {
   const shareError = error ? <ErrorBox error={error} /> : null;
   if (!detail.data) {
     return (
-      <InsetGroup wide header="Sharing" footer={refusal ?? 'Record into this workspace together with someone else, each from your own phone.'}>
+      <InsetGroup wide header="Sharing" footer={refusal ?? 'Record into this workspace together with someone else, each from a phone of their own.'}>
         <InsetRow
           icon={<Users size={15} aria-hidden />}
           title="Share this workspace"
@@ -204,7 +204,7 @@ function Shared({
       key={`m:${member.memberId}`}
       testId="sharing-member"
       icon={<User size={15} aria-hidden />}
-      title={member.me ? `${member.name} (you)` : member.name}
+      title={member.me ? `${member.name} (me)` : member.name}
       value={member.role === 'owner' ? 'Owner' : 'Member'}
       chevron={false}
     />,
@@ -306,8 +306,8 @@ function Shared({
             invite.kind === 'device'
               ? invite.forName
                 ? `On ${invite.forName}’s new device, choose Join a workspace and enter this code. It joins as ${invite.forName}.`
-                : 'On your other device, choose Join a workspace and enter this code. It joins as you.'
-              : 'Send this to the person you are sharing with. On their phone they choose Join a workspace and enter the code, or open the link.'
+                : 'On the other device, choose Join a workspace and enter this code. It joins as the same member.'
+              : 'Send this to the person being invited. On their phone they choose Join a workspace and enter the code, or open the link.'
           }
         />
       ) : null}
@@ -351,7 +351,7 @@ function Shared({
 
       {/* Keep as my own copy (C1): the way out of a share that is dead here. Local only, confirmed. */}
       {forgettable ? (
-        <InsetGroup wide footer="Keeps everything here as a workspace of your own. Nobody else's copy is touched.">
+        <InsetGroup wide footer="Keeps everything here as its own workspace. Nobody else's copy is touched.">
           <DestructiveRow label={FORGET_ROW} onClick={() => setConfirming({ kind: 'forget' })} />
         </InsetGroup>
       ) : null}
@@ -363,7 +363,7 @@ function Shared({
       ) : null}
       {confirming?.kind === 'forget' ? (
         <Sheet
-          title="Keep as your own copy?"
+          title="Keep as its own copy?"
           onClose={() => setConfirming(null)}
           confirm={{
             label: 'Keep as my own copy',
@@ -460,10 +460,10 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
           groupFailing
             ? 'Net worth could not sync just now. It tries again on its own.'
             : pending?.kind === 'asked'
-              ? 'Choose differently declines this and lets you propose your own.'
+              ? 'Choose differently declines this and reopens the setup to propose something else.'
               : row.active
                 ? `Shared with ${others.join(', ') || 'nobody yet'}.${row.active.mode === 'joint' ? ` ${JOINT_LINE}` : ''}`
-                : 'See what your household owns and owes together. Each person chooses what of theirs to share.'
+                : 'See what the household owns and owes together. Each person chooses what of theirs to share.'
         }
       >
         {row.active ? <InsetRow testId="net-worth-status" icon={<Landmark size={15} aria-hidden />} title={row.active.line} chevron={false} /> : null}
@@ -509,7 +509,7 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
 
       {leaving ? (
         <Sheet
-          title="Stop sharing your net worth?"
+          title="Stop sharing net worth?"
           onClose={() => setLeaving(false)}
           confirm={{
             label: 'Stop sharing',
@@ -520,7 +520,7 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
             },
           }}
         >
-          <p className="text-[15px] leading-[20px]">Your items leave the others' phones. This workspace stays shared as it is.</p>
+          <p className="text-[15px] leading-[20px]">These items leave the others' phones. This workspace stays shared as it is.</p>
         </Sheet>
       ) : null}
     </div>

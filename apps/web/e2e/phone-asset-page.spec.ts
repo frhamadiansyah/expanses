@@ -6,9 +6,9 @@ test('by thumb: gold’s grid and purchases, and a laptop valued again from its 
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20395000']]);
   await openAsset(page, 'Antam gold bars');
   await typePrice(page, '2485000');
-  await expect(page.getByTestId('asset-card').getByTestId('asset-grid')).toContainText('Your price');
+  await expect(page.getByTestId('asset-card').getByTestId('asset-grid')).toContainText('Typed price');
   await expect(page.getByTestId('asset-card')).toContainText('30 days ago');
-  await expect(await priceSaid(page, 'Your price')).toContainText('Typed · ');
+  await expect(await priceSaid(page, 'Typed price')).toContainText('Typed · ');
   await expect(page.getByTestId('asset-history-row').first()).toContainText('+Rp 4.455.000');
 
   await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');

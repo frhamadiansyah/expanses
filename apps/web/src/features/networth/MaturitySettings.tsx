@@ -87,7 +87,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
       key="roll"
       label="Roll over"
       value={rollOver}
-      info="On the day it matures the choice is proposed; nothing posts until you confirm. Ask me on the day proposes nothing."
+      info="On the day it matures the choice is proposed; nothing posts until confirmed. Ask me on the day proposes nothing."
       onChange={(e) => {
         const picked = e.target.value as DepositAutomationRow['atMaturity'] | 'off';
         if (picked === 'off') {

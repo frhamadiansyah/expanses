@@ -748,7 +748,7 @@ export async function leaveGroupLog(host: GroupLogHost, workspaceBookId: string)
  */
 export async function removeFromGroupLog(host: GroupLogHost, workspaceBookId: string, memberId: string): Promise<void> {
   const { groupBookId, shared } = await requireGroup(host, workspaceBookId);
-  if (memberId === shared.memberId) throw new SharingError('NOT_LEFT', 'To leave the net-worth group yourself, leave it from this device');
+  if (memberId === shared.memberId) throw new SharingError('NOT_LEFT', 'To leave the net-worth group, leave it from this device');
   const synced = await host.syncOnce(groupBookId);
   if (synced.ended) throw new SharingError('NOT_FOUND', "This device is not in this workspace's net-worth group");
   const database = host.database;

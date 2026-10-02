@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { goalCard } from './set-aside';
+import { budgetTab } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -14,8 +15,8 @@ async function type(page: Page, label: string, text: string) {
 
 async function retirementFigures(page: Page) {
   await type(page, 'Yearly spending in retirement (IDR)', '120000000');
-  await type(page, 'Your age now', '35');
-  await type(page, 'Age you retire', '55');
+  await type(page, 'Age now', '35');
+  await type(page, 'Retirement age', '55');
 }
 
 test('the catalogue says what each calculator answers, and opens its own page', async ({ page }) => {
@@ -27,7 +28,7 @@ test('the catalogue says what each calculator answers, and opens its own page', 
   await page.getByRole('link', { name: /Retirement fund/ }).click();
   await expect(page).toHaveURL(/\/calculators\/retirement$/);
   await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
-  await expect(page.getByText('What the pot must hold the day you stop, drawn down while it earns.')).toBeVisible();
+  await expect(page.getByText('What the pot must hold the day saving stops, drawn down while it earns.')).toBeVisible();
 
   // The way back names the list rather than "Back". Scoped by its own label: the sidebar has a Calculators link too.
   await page.getByLabel('Calculators', { exact: true }).click();
@@ -120,9 +121,10 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await page.goto('/goals');
   const retirement = await goalCard(page, 'Retirement fund');
   await expect(retirement.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
-  await expect(retirement.getByText('Worked out from your figures')).toBeVisible();
+  await expect(retirement.getByText('Worked out from these figures')).toBeVisible();
 
   await page.goto('/budget');
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('savings-Retirement fund')).toContainText('a month');
 });
 
@@ -136,7 +138,7 @@ test('says what the levels will cost when the time comes, and saves them as a go
 
   // Four years at today's 100 juta, each inflated once to its own year, is far more than 400 juta.
   const answer = page.getByTestId('answer-education');
-  await expect(answer).toContainText('You need');
+  await expect(answer).toContainText('Needed');
   const need = Number((await answer.locator('div > div').first().innerText()).replace(/\D/g, ''));
   expect(need).toBeGreaterThan(400_000_000);
 

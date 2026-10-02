@@ -544,7 +544,7 @@ export function EventDetailPage() {
         <div data-testid="event-suggestions">
           <InsetGroup
             header={`Was this part of ${event.name}?`}
-            footer="Inside the dates, in a category it draws on, not yet tagged. Tagged spending leaves your monthly caps and is shown on the budget as its own line, because you meant to spend it."
+            footer="Inside the dates, in a category it draws on, not yet tagged. Tagged spending leaves the monthly caps and is shown on the budget as its own line, because it was meant to be spent."
           >
             {(suggestions.data ?? []).map((candidate) => (
               /* The row is the Yes: a row never holds a button of its own, and what it does is what it is named. */

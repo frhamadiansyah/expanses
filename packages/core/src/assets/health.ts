@@ -163,8 +163,8 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
   // With no months of its own the card is as it was (§3.3): graded at 3, its mark at the guide's 6.
   const emergencyMark = ownMonths ?? 6;
   const graded = ownMonths
-    ? `Graded against the ${emergencyTarget} months your emergency fund asks for.`
-    : 'The guide asks 3–6 months, more with dependants or irregular income; set an emergency fund to grade against your own.';
+    ? `Graded against the ${emergencyTarget} months the emergency fund asks for.`
+    : 'The guide asks 3–6 months, more with dependants or irregular income; set an emergency fund to grade against it directly.';
   const debtBenchmark = (settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS) / 100;
   const hasIncome = hasPeriod && income > 0;
   const hasNetWorth = totals.netWorthMinor > 0;
@@ -201,7 +201,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       emergencyMark,
       Math.max(9, emergencyMark * 1.5),
       false,
-      ownMonths ? `${emergencyTarget} months · your household` : '3–6 months',
+      ownMonths ? `${emergencyTarget} months · this household` : '3–6 months',
       base === 'essential'
         ? `Cash & equivalents ÷ monthly essential spending plus loan principal. Lifestyle categories are left out; loan interest is already inside spending. ${graded}`
         : `Cash & equivalents ÷ monthly spending plus loan principal. Loan interest is already inside spending. ${graded}`,
@@ -217,7 +217,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       40,
       false,
       atLeast(10),
-      'What you put into savings and investments ÷ take-home pay. The guide asks 10%, and 20% is strong. Employer pension contributions are not counted yet.',
+      'What goes into savings and investments ÷ take-home pay. The guide asks 10%, and 20% is strong. Employer pension contributions are not counted yet.',
     ),
     ratio(
       'surplus',
@@ -283,7 +283,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       100,
       true,
       atMost(50),
-      'Everything you owe ÷ everything you own. The guide asks under 50%.',
+      'Everything owed ÷ everything owned. The guide asks under 50%.',
     ),
     ratio(
       'solvency',
@@ -296,7 +296,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       100,
       false,
       atLeast(50),
-      'Net worth ÷ everything you own. Above 50% means you own more than you owe.',
+      'Net worth ÷ everything owned. Above 50% means more is owned than owed.',
     ),
     ratio(
       'investments_to_net_worth',
@@ -309,7 +309,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       100,
       false,
       atLeast(50),
-      'Invested assets, with your home left out, ÷ net worth. The guide asks 50% or more, which rises in importance as retirement nears.',
+      'Invested assets, with the home left out, ÷ net worth. The guide asks 50% or more, which rises in importance as retirement nears.',
     ),
   ];
 }

@@ -84,7 +84,7 @@ describe('joining (§8.2)', () => {
     const refused = await sgd.engine.joinBook(code, { ws: sgd.ws, memberName: 'Sgd', deviceName: 'phone' }).catch((e: unknown) => e);
     expect(refused).toBeInstanceOf(SharingError);
     expect((refused as SharingError).code).toBe('CURRENCY');
-    expect((refused as SharingError).message).toBe("This workspace keeps its money in IDR; this app keeps yours in SGD. Sharing across currencies isn't supported yet.");
+    expect((refused as SharingError).message).toBe("This workspace keeps its money in IDR; this app's own accounts are kept in SGD. Sharing across currencies isn't supported yet.");
     await expect(sgd.transport.previewInvite(inviteId)).resolves.toMatchObject({ claimed: false });
     expect(home.relay.peek(home.relayBookId)!.devices.has(sgd.deviceId)).toBe(false);
     for (const table of ['shared_books', 'book_epoch_keys', 'sync_outbox']) expect(await count(sgd, table)).toBe(0);

@@ -59,7 +59,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
     try {
       const percent = normaPercent.trim() === '' ? null : Math.round(Number(normaPercent) * 100);
       if (scheme === 'nppn' && (percent === null || !Number.isFinite(percent))) {
-        throw new Error('Norma needs the percentage for your KLU');
+        throw new Error('Norma needs the percentage for the KLU entered');
       }
       await saveIncomeSource(database, ws, {
         id: editingId ?? undefined,
@@ -97,7 +97,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
 
       {nothingYet && !open && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-          No business set up yet. Point one at the wallet you run it through and every sale you record there becomes its turnover.
+          No business set up yet. Point one at the wallet it runs through and every sale recorded there becomes its turnover.
         </p>
       )}
 
@@ -215,7 +215,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
           <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
             Turnover <Money minor={nppn.grossMinor} currency={ws.baseCurrency} />
             {nppn.normaRateBps !== null && ` · norma ${(nppn.normaRateBps / 100).toLocaleString('id-ID')}%`}
-            {' · added to your taxable income and taxed progressively, so no tax is worked out here'}
+            {' · added to taxable income and taxed progressively, so no tax is worked out here'}
           </p>
 
           <InsetGroup>
@@ -240,7 +240,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
             </SelectRow>
             <SelectRow
               label="Business wallet"
-              hint="Sales you record in this account are its turnover. Keep it apart from the family wallet."
+              hint="Sales recorded in this account are its turnover. Keep it apart from the family wallet."
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
             >
@@ -254,7 +254,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
             {scheme === 'nppn' && (
               <TextRow
                 label="Norma percentage"
-                hint="From the KLU table for your trade and city. It differs by trade, so nothing is preset."
+                hint="From the KLU table for the trade and city. It differs by trade, so nothing is preset."
                 value={normaPercent}
                 onChange={(e) => setNormaPercent(e.target.value)}
                 inputMode="decimal"
@@ -262,11 +262,11 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
               />
             )}
             {scheme === 'nppn' && (
-              <TextRow label="KLU code" hint="Optional, for your own reference." value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="73100" />
+              <TextRow label="KLU code" hint="Optional, for reference." value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="73100" />
             )}
             {scheme === 'umkm_final' && (
               <SwitchRow
-                label="The first slice of the year's turnover is not taxed. Turn this off once that no longer applies to you."
+                label="The first slice of the year's turnover is not taxed. Turn this off once that no longer applies."
                 checked={thresholdApplies}
                 onChange={setThresholdApplies}
               />
@@ -284,8 +284,8 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
       )}
 
       <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        The only figures the app works out itself. Everywhere else it adds up what you recorded from a slip, but nobody withholds UMKM for
-        you and no slip carries a norma percentage. Check both against what you actually paid.
+        The only figures the app works out itself. Everywhere else it adds up what was recorded from a slip, but nobody withholds UMKM and
+        no slip carries a norma percentage. Check both against what was actually paid.
       </p>
     </Panel>
   );

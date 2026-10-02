@@ -32,7 +32,23 @@ function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   };
 }
 
-export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow; startKind?: GoalKind; earmarks: EarmarkRow[]; onDone: () => void }) {
+/**
+ * A goal's fields. With `part="set-aside"` (a saved goal's Set aside) it shows only the money set aside from each
+ * account, and saving changes only that: the goal itself is not written again.
+ */
+export function GoalForm({
+  goal,
+  startKind,
+  earmarks,
+  onDone,
+  part = 'all',
+}: {
+  goal?: GoalRow;
+  startKind?: GoalKind;
+  earmarks: EarmarkRow[];
+  onDone: () => void;
+  part?: 'all' | 'set-aside';
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts();
@@ -128,23 +144,27 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
     setError(null);
     setBusy(true);
     try {
-      const goalId = await saveGoal(database, ws, {
-        id: goal?.id,
-        name,
-        kind,
-        growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
-        returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
-        standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, ws.baseCurrency),
-        standingNote: standingNote.trim() || null,
-        stages: stages.map((stage) => ({
-          id: stage.id,
-          name: stage.name,
-          targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, ws.baseCurrency),
-          targetMonths: stage.usesMonths ? Number(stage.months) : null,
-          dueOn: stage.dueOn,
-          paidOn: stage.paidOn,
-        })),
-      });
+      // Set aside alone leaves the goal as it is: only the boxes below are saved.
+      const goalId =
+        part === 'set-aside' && goal
+          ? goal.id
+          : await saveGoal(database, ws, {
+            id: goal?.id,
+            name,
+            kind,
+            growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
+            returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
+            standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, ws.baseCurrency),
+            standingNote: standingNote.trim() || null,
+            stages: stages.map((stage) => ({
+              id: stage.id,
+              name: stage.name,
+              targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, ws.baseCurrency),
+              targetMonths: stage.usesMonths ? Number(stage.months) : null,
+              dueOn: stage.dueOn,
+              paidOn: stage.paidOn,
+            })),
+          });
       for (const account of savingsAccounts) {
         const typed = setAsideText(account).trim();
         if (typed === '' || Number(typed.replace(/[^\d]/g, '')) === 0) await removeEarmark(database, ws, goalId, account.id);
@@ -162,6 +182,33 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   // One page: the working replaces the fields while it is open, and Cancel hands them back with their edits.
   if (working && goal) {
     return <Calculator goal={goal} onDone={onDone} onCancel={() => setWorking(false)} />;
+  }
+
+  const setAsideFields = (
+    <div className="grid gap-3 md:grid-cols-2">
+      {savingsAccounts.map((account) => (
+        <Field key={account.id} label={`${account.name} (${currencyOf(account)})`} hint={hintFor(account)}>
+          <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
+        </Field>
+      ))}
+    </div>
+  );
+
+  if (part === 'set-aside' && goal) {
+    return (
+      <form onSubmit={submit} className="space-y-4">
+        {savingsAccounts.length > 0 ? setAsideFields : <p className="text-sm text-[var(--ph-ink-3)]">No savings, cash or deposit account to set money aside in.</p>}
+        <ErrorBox error={error} />
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy || savingsAccounts.length === 0}>
+            Save
+          </Button>
+          <Button type="button" variant="secondary" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
   }
 
   return (
@@ -208,7 +255,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-semibold">Payments</h3>
-            <span className="text-xs text-slate-500">Add a stage for each payment your scheme asks for.</span>
+            <span className="text-xs text-slate-500">Add a stage for each payment the scheme asks for.</span>
           </div>
           {stages.map((stage, index) => (
             <div key={index} className="grid gap-2 md:grid-cols-[1.4fr_1fr_1fr_auto]">
@@ -242,7 +289,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label={`Standing amount each month (${ws.baseCurrency})`} hint="A transfer you already make for this goal, outside monthly buys.">
+          <Field label={`Standing amount each month (${ws.baseCurrency})`} hint="A transfer already made for this goal, outside monthly buys.">
             <Input value={standing} onChange={(e) => setStanding(e.target.value)} inputMode="decimal" />
           </Field>
           <Field label="What that transfer is">
@@ -254,13 +301,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Money set aside</h3>
             <p className="text-xs text-slate-500">From savings, cash or a deposit. Holdings are tagged on each purchase instead.</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {savingsAccounts.map((account) => (
-                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`} hint={hintFor(account)}>
-                  <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
-                </Field>
-              ))}
-            </div>
+            {setAsideFields}
           </div>
         )}
 

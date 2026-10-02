@@ -8,6 +8,7 @@ import {
   loanFor,
   nativeBalances,
   nextPaymentDue,
+  payOffLoan,
   periodFlows,
   recordExtraPayment,
   recordLoanPayment,
@@ -101,6 +102,44 @@ describe('recording a payment', () => {
     expect(flows.debtPaymentsMinor).toBe(7_099_866);
     // Principal builds equity, so it is money put away; the interest is spending.
     expect(flows.putAwayMinor).toBe(1_849_866);
+  });
+});
+
+describe('paying a loan off', () => {
+  it('clears what is owed, books the fee as a fee, and takes both from the account', async () => {
+    await pay(1_849_866, 5_250_000);
+
+    const result = await payOffLoan(database, ws, { accountId: kpr.id, occurredOn: '2026-02-10', moneyAccountId: bca.id, feeMinor: 6_981_501 });
+
+    expect(result).toMatchObject({ principalMinor: 698_150_134, feeMinor: 6_981_501 });
+    expect(Math.abs(await owed())).toBe(0);
+    expect(await balanceOf(categories['miscellaneous.fees_charges']!)).toBe(6_981_501);
+    expect(await balanceOf(bca.id)).toBe(100_000_000 - 7_099_866 - 698_150_134 - 6_981_501);
+    await expect(loanFor(database, ws, kpr.id)).resolves.toMatchObject({ status: 'paid_off', statusOn: '2026-02-10' });
+    await expect(nextPaymentDue(database, ws, kpr.id, '2026-02-10')).resolves.toBeUndefined();
+  });
+
+  it('pays off with no fee, and books none', async () => {
+    await payOffLoan(database, ws, { accountId: kpr.id, occurredOn: '2026-02-10', moneyAccountId: bca.id });
+
+    expect(Math.abs(await owed())).toBe(0);
+    expect(await balanceOf(categories['miscellaneous.fees_charges']!)).toBe(0);
+    await expect(loanFor(database, ws, kpr.id)).resolves.toMatchObject({ status: 'paid_off' });
+  });
+
+  it('refuses a loan with nothing left, and writes nothing', async () => {
+    await payOffLoan(database, ws, { accountId: kpr.id, occurredOn: '2026-02-10', moneyAccountId: bca.id });
+    const before = await balanceOf(bca.id);
+
+    await expect(payOffLoan(database, ws, { accountId: kpr.id, occurredOn: '2026-02-11', moneyAccountId: bca.id, feeMinor: 1_000 })).rejects.toThrow(/nothing left/);
+    expect(await balanceOf(bca.id)).toBe(before);
+  });
+
+  it('marks the loan paid off when an extra payment covers everything left', async () => {
+    const result = await recordExtraPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-02-10', moneyAccountId: bca.id, amountMinor: 700_000_000, keep: 'tenor' });
+
+    expect(result).toMatchObject({ balanceMinor: 0, newPaymentMinor: null });
+    await expect(loanFor(database, ws, kpr.id)).resolves.toMatchObject({ status: 'paid_off', statusOn: '2026-02-10' });
   });
 });
 

@@ -219,7 +219,7 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
   const memberLevel = draft.memberLevel.trim();
   // The same condition `applyCatalogEntry` enforces, asked before the account exists rather than after.
   if (levels.length > 0 && !levels.some((level) => level.key === memberLevel)) {
-    throw new Error(`This card earns by ${entry?.program.name} level. Choose the level you are on before adding it.`);
+    throw new Error(`This card earns by ${entry?.program.name} level. Choose the level before adding it.`);
   }
 
   // The catalogue knows which currency the card is issued in; a card typed by hand is told it.

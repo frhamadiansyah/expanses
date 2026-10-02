@@ -176,7 +176,7 @@ export function DebtForm({
           autoComplete="off"
           hint={
             offered.length > 0 ? (
-              <span className="flex flex-wrap gap-[6px]" aria-label="People already on your list">
+              <span className="flex flex-wrap gap-[6px]" aria-label="People already on the list">
                 {offered.map((name) => (
                   <button
                     key={name}

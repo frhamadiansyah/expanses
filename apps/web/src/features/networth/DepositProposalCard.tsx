@@ -130,7 +130,7 @@ function ProposalBody({ proposal: p, onClosed }: { proposal: DepositProposal; on
         {rows}
       </InsetGroup>
       <ErrorBox error={error} />
-      <InsetGroup footer="Recorded it myself marks this done and posts nothing: use it when it is already in your transactions.">
+      <InsetGroup footer="Recorded it myself marks this done and posts nothing: use it when it is already in the transactions.">
         {[
           <InsetRow key="edit" title={editing ? 'Done editing' : 'Edit figures'} chevron={false} onClick={() => setEditing((open) => !open)} />,
           <InsetRow key="byhand" title="Recorded it myself" chevron={false} disabled={busy} onClick={() => void settle(true)} />,

@@ -13,7 +13,7 @@ export const PLAN_GROUP_ORDER: PlanGroup[] = ['liquid', 'invest', 'owed', 'use']
 export const METHOD_LABELS: Record<ValuationMode, string> = {
   derived: 'Ledger balance',
   market: 'Units × price',
-  snapshot: 'Your estimate',
+  snapshot: 'Estimate',
 };
 
 export const ASSET_KIND_LABELS: Record<AssetKind, string> = {

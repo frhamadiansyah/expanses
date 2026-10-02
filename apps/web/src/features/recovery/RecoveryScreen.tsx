@@ -100,10 +100,10 @@ export function RecoveryScreen({
 
   const onExport = async () => {
     const found = bytes ?? (await salvageBytes());
-    if (!found) throw new Error('We could not find the data file on this device. Try again, or reopen Expanses in the browser you last used.');
+    if (!found) throw new Error('We could not find the data file on this device. Try again, or reopen Expanses in the browser last used.');
     setBytes(found);
     const to = await saveBytes(found, `expanses-recovery-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
-    setNote(`Saved. ${savedWhere(to)} It is all of your data.`);
+    setNote(`Saved. ${savedWhere(to)} It is all of the data.`);
   };
 
   return (
@@ -111,7 +111,7 @@ export function RecoveryScreen({
       <div className="py-6">
         <h1 className="text-xl font-semibold text-balance text-slate-900">{copy.headline}</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-600">{copy.body}</p>
-        {bytes && <p className="mt-2 text-sm text-slate-500">Your data on this device: {formatBytes(bytes.length)}.</p>}
+        {bytes && <p className="mt-2 text-sm text-slate-500">Data on this device: {formatBytes(bytes.length)}.</p>}
       </div>
 
       {/* Stacked and 44px tall: on a phone this is the one screen where a missed tap costs the most. */}

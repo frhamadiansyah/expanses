@@ -1,15 +1,19 @@
-import { isoDate } from '@expanses/core';
+import { formatMinor, isoDate } from '@expanses/core';
 import { archiveGoal, type GoalHistoryEntry, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, Pencil } from 'lucide-react';
+import { Archive, Check, MoreHorizontal, Pencil, PiggyBank, Tag, Undo2 } from 'lucide-react';
 import { useState } from 'react';
+import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
+import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, ProgressBar, SCREEN } from '../../ui/native';
+import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
+import { UseBar } from '../budget/budget-rows';
 import { FundingRow } from './funding';
 import { GoalForm } from './GoalForm';
-import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
+import { InfoHeader } from './InfoHeader';
 import { useDraws, useEarmarks, useGoalCalculators, useGoalHistory, useGoalPlans } from './queries';
 
 export function GoalRoute() {
@@ -59,20 +63,34 @@ function ShortNote({ card, stood }: { card: GoalCard; stood: ReturnType<typeof f
   );
 }
 
-/** The status the plan reached, beside the goal's own name, keeping the tone the card decided. */
-function StatusPill({ card }: { card: GoalCard }) {
-  return <span className={card.statusTone === 'good' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-warn)]'}>{card.statusLabel}</span>;
+/** How many history lines show before "See all". */
+const HISTORY_SHOWN = 3;
+
+/** The one status chip under the bar: good for On track, Funded and Done; warn for Behind, with what is short a month. */
+function StatusChip({ card, currency }: { card: GoalCard; currency: string }) {
+  const warn = card.statusTone === 'warn';
+  return (
+    <span
+      data-testid="goal-status"
+      className={
+        'inline-flex min-h-[26px] items-center rounded-full px-[10px] text-[13px] leading-[18px] font-medium ' +
+        (warn ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]')
+      }
+    >
+      {warn && card.differenceMinor < 0 ? `${card.statusLabel} · ${formatMinor(-card.differenceMinor, currency)} a month short` : card.statusLabel}
+    </span>
+  );
 }
 
 /**
  * A goal on its own: the figure, its stages, what funds it and what has happened to it — everything the list
- * had no room for. The list is where goals are read as a set; this is where one is read on its own, so a long
- * page of figures is no longer the place every goal shares.
+ * had no room for. The list is where goals are read as a set; this is where one is read on its own.
  */
 export function GoalPage({ goalId }: { goalId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
+  const goBack = useBack('/goals');
   const today = isoDate();
   const summary = useGoalPlans(today);
   const earmarks = useEarmarks();
@@ -81,7 +99,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const wholeBorrows = new Set((useDraws().data ?? []).filter((draw) => draw.intent === 'borrow' && draw.wasWhole).map((draw) => draw.id));
   const calculators = useGoalCalculators();
   const [editing, setEditing] = useState(false);
-  const [calculating, setCalculating] = useState(false);
+  const [settingAside, setSettingAside] = useState(false);
+  const [allHistory, setAllHistory] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const plans = summary.data?.plans ?? [];
@@ -89,10 +108,14 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   async function archive(name: string) {
     if (!window.confirm(`Archive "${name}"? Its tagged purchases keep their history.`)) return;
-    await archiveGoal(database, ws, goalId);
-    await invalidate();
-    // The list is where an archived goal stops being: staying here would read a page for nothing.
-    await navigate({ to: '/goals' });
+    try {
+      await archiveGoal(database, ws, goalId);
+      await invalidate();
+      // The list is where an archived goal stops being: staying here would read a page for nothing.
+      await navigate({ to: '/goals' });
+    } catch (e) {
+      setError(e);
+    }
   }
 
   async function togglePaid(stageId: string, paid: boolean) {
@@ -112,7 +135,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
     // Archived, or a link kept from before it was: the way out is the list, not a dead end.
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Goal not here" back="Goals" backTo="/goals" />
+        <PushedTitle title="Goal not here" back="Goals" backTo="/goals" />
         <InsetGroup footer="It may have been archived. Its tagged purchases keep their history.">
           <InsetRow title="Back to Goals" to="/goals" />
         </InsetGroup>
@@ -121,73 +144,110 @@ export function GoalPage({ goalId }: { goalId: string }) {
   }
 
   const card = goalCard(plan);
+  const currency = ws.baseCurrency;
+  const warn = card.statusTone === 'warn';
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
-  const { lines: historyLines, stood } = cardHistory(history[card.goalId] ?? [], (key) => wholeBorrows.has(key));
+  const full = history[card.goalId] ?? [];
+  const { stood } = cardHistory(full, (key) => wholeBorrows.has(key));
+  const historyLines = allHistory ? full : full.slice(0, HISTORY_SHOWN);
+  // A goal of one payment has no Stages group, so its paid mark waits behind the ⋯.
+  const only = card.stageLines.length === 1 ? card.stageLines[0]! : null;
 
-  // The page's two corners: edit — the fields, and the working behind the amount inside them — and archive.
-  const actions: CornerAction[] = [
+  const menu: CornerAction[] = [
     { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, run: () => setEditing(true) },
-    { key: 'archive', label: 'Archive', glyph: <Archive size={18} aria-hidden />, run: () => void archive(card.name) },
+    ...(only
+      ? [
+          only.state === 'paid'
+            ? { key: 'unpaid', label: 'Mark not paid', glyph: <Undo2 size={18} aria-hidden />, run: () => void togglePaid(only.stageId, true) }
+            : { key: 'paid', label: 'Mark paid', glyph: <Check size={18} aria-hidden />, run: () => void togglePaid(only.stageId, false) },
+        ]
+      : []),
+    {
+      key: 'archive',
+      label: 'Archive',
+      glyph: <Archive size={18} aria-hidden />,
+      // What archiving a finished goal does, said where archiving is.
+      detail: card.done ? 'Keeps the history, stops it claiming money.' : undefined,
+      run: () => void archive(card.name),
+    },
   ];
+  const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
+
+  // Set aside opens the form's set-aside part; tagging happens on a buy, which Buy & sell records and retags.
+  const round: RoundAction[] = [
+    { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
+    { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, to: '/net-worth/trades' },
+  ];
+
+  const shares = stageShares(card);
+  const due = card.kind === 'emergency' ? null : card.targetMinor > 0 || !card.done ? card.dueLabel : null;
+  const right = card.coverLabel ?? (card.monthsLeft !== null ? monthsLeftLabel(card.monthsLeft) : null);
 
   return (
     <div className={SCREEN} data-testid="goal-page">
-      <LargeTitle
-        title={card.name}
-        back="Goals"
-        backTo="/goals"
-        oneLine
-        actions={actions}
-        subtitle={
-          <>
-            <StatusPill card={card} /> · {card.kindLabel} · by {card.dueLabel}
-          </>
-        }
-      />
+      <PushedTitle title={card.name} back="Goals" onBack={goBack} actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
       {editing && <GoalForm goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setEditing(false)} />}
+      {settingAside && (
+        <Sheet title="Set aside" onClose={() => setSettingAside(false)}>
+          <GoalForm part="set-aside" goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />
+        </Sheet>
+      )}
 
-      {/* The kind and the date are in the line under the title: the panel repeats none of it. */}
-      <Panel wide>
-        <Hero
-          minor={card.currentMinor}
-          currency={ws.baseCurrency}
-          caption={
-            <>
-              of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
-              {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from your figures</span>}
-              <ShortNote card={card} stood={stood} />
-            </>
-          }
-        />
-        {/*
-         * The bar is drawn from a clamped figure rather than through `Hero`'s own `progress`: the kit
-         * turns a bar alarm-red once its target is passed, which is what a budget means by it and the
-         * opposite of what a goal does. Saving more than you set out to is not a warning.
-         */}
-        <ProgressBar
-          className="mx-auto max-w-[320px]"
-          currentMinor={Math.min(card.currentMinor, card.targetMinor)}
-          targetMinor={card.targetMinor}
-          label={`${card.name} progress`}
-        />
+      <Panel wide className="space-y-3" testId="goal-card">
+        <div>
+          <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Saved</p>
+          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="goal-saved">
+            {formatMinor(card.currentMinor, currency)}
+          </p>
+        </div>
+        {/* Clamped: saving more than was set out is not a warning, so the bar is full and in the tint, never past. */}
+        <UseBar share={card.done ? 1 : Math.min(1, card.progressPercent / 100)} height={6} warn={warn} label={`${card.name} progress`} />
+        <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+          <span data-testid="goal-target">
+            {card.targetMinor > 0 && (
+              <>
+                of <Money minor={card.targetMinor} currency={currency} />
+              </>
+            )}
+            {card.targetMinor > 0 && due && ' · '}
+            {due}
+          </span>
+          {right && <span className="shrink-0">{right}</span>}
+        </div>
+        <div>
+          <StatusChip card={card} currency={currency} />
+        </div>
+        {(derived.has(card.goalId) || card.shortLines.length > 0) && (
+          <p className="text-[13px] leading-[18px]">
+            {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from these figures</span>}
+            <ShortNote card={card} stood={stood} />
+          </p>
+        )}
       </Panel>
 
-      {card.stageLines.length > 0 && (
+      <ActionButtons actions={round} />
+
+      {card.stageLines.length > 1 && (
         <InsetGroup wide header="Stages">
-          {card.stageLines.map((line) => (
-            /* The small underlined button inside the line is gone: the line itself is what marks it paid. */
+          {card.stageLines.map((line, index) => (
+            /* The line itself is what marks a stage paid. */
             <InsetRow
               key={line.stageId}
-              title={`${line.when} ${line.name}`}
+              title={`${line.when} · ${line.name}`}
               subtitle={
-                <>
-                  <Money minor={line.todayMinor} currency={ws.baseCurrency} /> today, <Money minor={line.targetMinor} currency={ws.baseCurrency} /> then
-                </>
+                <span className="mt-[4px] block">
+                  <UseBar share={shares[index]!} />
+                </span>
               }
-              value={line.stateLabel}
-              valueTone="tint"
+              value={
+                <span className="block text-right">
+                  <Money minor={line.targetMinor} currency={currency} />
+                  <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{formatMinor(line.todayMinor, currency)} today</span>
+                </span>
+              }
+              valueTone="ink"
               chevron={false}
               label={`${line.name}: ${line.stateLabel}`}
               onClick={() => togglePaid(line.stageId, line.state === 'paid')}
@@ -196,72 +256,68 @@ export function GoalPage({ goalId }: { goalId: string }) {
         </InsetGroup>
       )}
 
-      <InsetGroup wide>
-        <InsetRow
-          title="Needed a month"
-          value={<Money minor={card.neededMonthlyMinor} currency={ws.baseCurrency} />}
-          valueTone="ink"
-          chevron={false}
-        />
-        <InsetRow
-          title="Set up a month"
-          value={<Money minor={card.plannedMonthlyMinor} currency={ws.baseCurrency} />}
-          valueTone="ink"
-          chevron={false}
-        />
+      <InsetGroup wide header="Each month">
+        <InsetRow title="Needed a month" value={<Money minor={card.neededMonthlyMinor} currency={currency} />} valueTone="ink" chevron={false} />
+        <InsetRow title="Set up a month" value={<Money minor={card.plannedMonthlyMinor} currency={currency} />} valueTone="ink" chevron={false} />
         <InsetRow
           title={card.differenceMinor < 0 ? 'Short by' : 'Room'}
-          value={<Money minor={Math.abs(card.differenceMinor)} currency={ws.baseCurrency} tone="none" />}
-          valueTone={card.differenceMinor < 0 ? 'alarm' : 'ink'}
+          value={<Money minor={Math.abs(card.differenceMinor)} currency={currency} tone="none" />}
+          valueTone={card.differenceMinor < 0 ? 'warn' : 'ink'}
           chevron={false}
         />
       </InsetGroup>
 
-      {plan.links.length === 0 ? (
-        <InsetGroup wide header="Funded by">
-          <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
-        </InsetGroup>
-      ) : (
-        <InsetGroup
-          wide
-          header="Funded by"
-          footer={
+      <section className="w-full">
+        <InfoHeader
+          title="Funded by"
+          info={
             plan.goal.standingNote ? (
               <>
-                {plan.goal.standingNote}, <Money minor={plan.goal.standingMonthlyMinor} currency={ws.baseCurrency} />
+                {plan.goal.standingNote}, <Money minor={plan.goal.standingMonthlyMinor} currency={currency} />
               </>
             ) : undefined
           }
-        >
-          {plan.links.map((link) => (
-            <FundingRow key={`${link.accountId}-${link.kind}`} link={link} />
-          ))}
+        />
+        <InsetGroup wide>
+          {plan.links.length === 0 ? (
+            <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
+          ) : (
+            plan.links.map((link) => <FundingRow key={`${link.accountId}-${link.kind}`} link={link} />)
+          )}
         </InsetGroup>
-      )}
+      </section>
 
       {card.riskWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{card.riskWarning}</p>}
       {/* The short part of the old warning is said under the figure and on the Funded-by row; only the no-rate sentence is left. */}
       {plan.unconvertedWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{plan.unconvertedWarning}</p>}
 
-      {historyLines.length > 0 && (
+      {full.length > 0 && (
         <InsetGroup wide header="History">
-          {historyLines.map((entry) => (
-            <InsetRow
-              key={entry.key}
-              testId="goal-history"
-              title={HISTORY_TITLES[entry.kind]}
-              subtitle={entry.text ? `${historyDay(entry.occurredOn, today)} · ${entry.text}` : historyDay(entry.occurredOn, today)}
-              value={entry.amountMinor === null ? undefined : <Money minor={entry.amountMinor} currency={entry.currency} />}
-              valueTone="ink"
-              chevron={false}
-            />
-          ))}
+          {[
+            ...historyLines.map((entry) => (
+              <InsetRow
+                key={entry.key}
+                testId="goal-history"
+                title={HISTORY_TITLES[entry.kind]}
+                subtitle={entry.text ? `${historyDay(entry.occurredOn, today)} · ${entry.text}` : historyDay(entry.occurredOn, today)}
+                value={entry.amountMinor === null ? undefined : <Money minor={entry.amountMinor} currency={entry.currency} />}
+                valueTone="ink"
+                chevron={false}
+              />
+            )),
+            ...(full.length > HISTORY_SHOWN
+              ? [
+                  <InsetRow
+                    key="see-all"
+                    title={<span className="font-normal text-[var(--ph-tint)]">{allHistory ? 'Show fewer' : 'See all'}</span>}
+                    label={allHistory ? 'Show fewer' : 'See all'}
+                    chevron={false}
+                    onClick={() => setAllHistory((was) => !was)}
+                  />,
+                ]
+              : []),
+          ]}
         </InsetGroup>
-      )}
-
-      {/* Edit and Archive are the page's corners now; what archiving keeps is said as a fact, under the history. */}
-      {card.done && (
-        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Keeps the history, stops it claiming money.</p>
       )}
     </div>
   );

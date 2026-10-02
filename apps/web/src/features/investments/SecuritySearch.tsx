@@ -32,9 +32,9 @@ export function SecuritySearch({ query, onQuery, held, heldUnits, onPick, onName
         <Input aria-label="Ticker or name" placeholder="Ticker or name" value={query} onChange={(e) => onQuery(e.target.value)} autoFocus />
       </div>
       {mine.length > 0 && (
-        <InsetGroup header="You hold">
+        <InsetGroup header="Held">
           {mine.map((s) => (
-            <InsetRow key={s.id} title={s.ticker ?? s.name} subtitle={[s.name, s.market, s.currency, heldUnits[s.id] ? `you hold ${formatUnits(heldUnits[s.id]!)}` : null].filter(Boolean).join(' · ')} onClick={() => onPick({ kind: 'held', security: s })} />
+            <InsetRow key={s.id} title={s.ticker ?? s.name} subtitle={[s.name, s.market, s.currency, heldUnits[s.id] ? `held ${formatUnits(heldUnits[s.id]!)}` : null].filter(Boolean).join(' · ')} onClick={() => onPick({ kind: 'held', security: s })} />
           ))}
         </InsetGroup>
       )}
@@ -49,7 +49,7 @@ export function SecuritySearch({ query, onQuery, held, heldUnits, onPick, onName
           )}
         </InsetGroup>
       )}
-      {failed && <p className="px-[4px] text-[12.5px] text-[var(--ph-warn)]">The ticker list could not be read. Name it yourself instead.</p>}
+      {failed && <p className="px-[4px] text-[12.5px] text-[var(--ph-warn)]">The ticker list could not be read. Name it directly instead.</p>}
       <InsetGroup header="Not listed?">
         <InsetRow title="Name it myself" subtitle="Unlisted shares, a private fund, anything else" onClick={onNameIt} />
       </InsetGroup>

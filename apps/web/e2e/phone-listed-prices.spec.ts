@@ -38,7 +38,7 @@ test('phone: IDX’s daily file, chosen from Update prices, previews and saves t
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Choose the downloaded file' }).click();
   await (await chooser).setFiles(IDX_FILE);
-  await expect(page.getByTestId('idx-preview')).toContainText('1 of your stocks found · 4 others skipped');
+  await expect(page.getByTestId('idx-preview')).toContainText('1 held stock found · 4 others skipped');
   await page.getByRole('button', { name: 'Save 1 price' }).click();
   await expect(page.getByTestId('idx-preview')).toHaveCount(0);
   await openAsset(page, 'BBCA');

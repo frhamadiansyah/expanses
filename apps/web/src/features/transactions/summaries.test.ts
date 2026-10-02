@@ -63,20 +63,20 @@ describe('what the With row says', () => {
 
   it('counts one person as a person, and says what they owe to the cent', () => {
     // Half of US$100.03 floored is US$50,01, and the odd cent stays with you: rounded it would be 50,02.
-    expect(withSummary({ ...usd, withEqually: true, with: [person('Andi')] }, accounts, 'USD')).toBe('1 person · They owe you US$50,01');
+    expect(withSummary({ ...usd, withEqually: true, with: [person('Andi')] }, accounts, 'USD')).toBe('1 person · Owed US$50,01');
   });
 
   it('counts several, and totals what all of them owe', () => {
     const three = { ...usd, withEqually: true, with: [person('Andi'), person('Budi'), person('Citra')] };
     // floor(10003/4) = 2500 each, so the three of them owe US$75,00 and the odd 3 cents are yours.
-    expect(withSummary(three, accounts, 'USD')).toBe('3 people · They owe you US$75,00');
+    expect(withSummary(three, accounts, 'USD')).toBe('3 people · Owed US$75,00');
   });
 
   it('divides what the account was charged, not what was typed at it', () => {
     // US$100 charged to the rupiah account as Rp 1.600.000: the bill is the figure that posts. Halved off the
     // typed figure instead, Andi would owe Rp 50 — and the row would read as an arithmetic mistake.
     const foreign = { ...usd, moneyId: 'acct-bank', amount: '100', chargedAmount: '1600000', withEqually: true, with: [person('Andi')] };
-    expect(withSummary(foreign, accounts, 'IDR')).toBe('1 person · They owe you Rp 800.000');
+    expect(withSummary(foreign, accounts, 'IDR')).toBe('1 person · Owed Rp 800.000');
   });
 
   it('reads the bill in the paying account’s own currency, whatever was typed', () => {
@@ -84,7 +84,7 @@ describe('what the With row says', () => {
     // the figure carries IDR's own symbol and exponent rather than the one the sheet was last read in.
     // (`\u00a0`, because `formatMinor` writes the symbol and the figure with a non-breaking space between.)
     const rupiah = { ...usd, moneyId: 'acct-bank', currency: 'IDR', amount: '100003', withEqually: true, with: [person('Andi')] };
-    expect(withSummary(rupiah, accounts, 'IDR')).toBe('1 person · They owe you Rp\u00a050.001');
+    expect(withSummary(rupiah, accounts, 'IDR')).toBe('1 person · Owed Rp\u00a050.001');
   });
 });
 

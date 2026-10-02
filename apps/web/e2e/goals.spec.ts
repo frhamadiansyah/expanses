@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset } from './add-asset';
-import { openGoalForm, openWorking, workingSettled } from './goals';
+import { editGoal, openGoalForm, openWorking, workingSettled } from './goals';
 import { openDrawers } from './drawers';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
@@ -61,9 +61,9 @@ test('a goal funded by a tagged gold buy shows progress and what it needs each m
   await buyGold(page, '5', '9000000', 'Hajj for two');
 
   await page.goto('/goals');
-  await expect(page.getByText('Antam gold bars').first()).toBeVisible();
-  // The row carries what is set aside; the month it needs is read on the goal's own page.
+  // The row carries what is set aside; what funds it and the month it needs are read on the goal's own page.
   const hajj = await goalCard(page, 'Hajj for two');
+  await expect(hajj.getByTestId('goal-link').filter({ hasText: 'Antam gold bars' })).toBeVisible();
   await expect(hajj.getByText(/9\.000\.000/).first()).toBeVisible();
   await expect(hajj.getByText('Needed a month')).toBeVisible();
 });
@@ -171,7 +171,7 @@ test('only a new goal’s first payment moves its return: not a later payment, n
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(goalRow(page, 'Holiday')).toBeVisible();
 
-  await (await goalCard(page, 'Holiday')).getByRole('button', { name: 'Edit' }).click();
+  await editGoal(await goalCard(page, 'Holiday'));
   await expect(expectedReturn).toHaveValue('4');
   await page.getByLabel('Needed by').first().fill(yearsAhead(4));
   await expect(expectedReturn).toHaveValue('4');
@@ -194,14 +194,14 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await expect(page.getByText('Worked out from these figures')).toBeVisible();
 
   await openWorking(page);
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await expect(page.getByText('Worked out from these figures')).toBeVisible();
   await workingSettled(page);
-  await retirement.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(retirement);
   await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('9');
 });
 
@@ -227,7 +227,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await page.getByLabel('Return while retired (%)').fill('8');
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
-  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await expect(page.getByText('Worked out from these figures')).toBeVisible();
   // The working reopens as it was saved.
   await openWorking(page);
   await expect(page.getByLabel('Yearly spending in retirement (IDR)')).toHaveValue('120000000');
@@ -252,14 +252,14 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
   await page.getByLabel('Inflation a year (%)').fill('5');
   await page.getByLabel('Return while retired (%)').fill('8');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await expect(page.getByText('Worked out from these figures')).toBeVisible();
 
   await workingSettled(page);
-  await retirement.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(retirement);
   await page.getByLabel(/Cost in today's money/).first().fill('3000000000');
   await page.getByRole('button', { name: 'Save goal' }).click();
 
-  await expect(page.getByText('Worked out from your figures')).toHaveCount(0);
+  await expect(page.getByText('Worked out from these figures')).toHaveCount(0);
 });
 
 /**
@@ -276,7 +276,7 @@ test('money set aside on a foreign account is typed, saved and read back in that
   await addGoal(page, 'education', 'University for Aisyah', '350000000', '2038-07-31');
 
   const goal = await goalCard(page, 'University for Aisyah');
-  await goal.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(goal);
   // The box says USD, so an amount with cents is what belongs in it.
   const box = page.getByLabel('Wise USD (USD)');
   await box.fill('100,03');
@@ -292,6 +292,6 @@ test('money set aside on a foreign account is typed, saved and read back in that
   await expect(fundedBy).toContainText('US$100,03');
 
   // And the form opens on the figure it stored, in the same currency it asked for.
-  await goal.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(goal);
   await expect(page.getByLabel('Wise USD (USD)')).toHaveValue('100.03');
 });

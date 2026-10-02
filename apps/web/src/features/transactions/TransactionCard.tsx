@@ -344,7 +344,7 @@ function CardBody({
       }
       if (draft.mode === 'transfer' && draft.partner) {
         const group = netWorthGroup.data;
-        if (!group) throw new Error('Your household no longer shares net worth');
+        if (!group) throw new Error('The household no longer shares net worth');
         const ownItemId = await itemIdOf(group.groupBookId, ownTransferAccountId(draft));
         await recordMemberTransfer(database, bookId, memberTransferOf(draft, accounts, group.me, ownItemId));
         await invalidate();

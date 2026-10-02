@@ -14,7 +14,7 @@ import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 type Run = (fn: () => Promise<unknown>) => Promise<boolean>;
 
-const SOURCE_LABELS = { typed: 'typed', memory: 'yours', bundled: 'typical', category: 'category guess' } as const;
+const SOURCE_LABELS = { typed: 'typed', memory: 'remembered', bundled: 'typical', category: 'category guess' } as const;
 const sameTenths = (a: number, b: number) => Math.round(a * 10) === Math.round(b * 10);
 
 /**

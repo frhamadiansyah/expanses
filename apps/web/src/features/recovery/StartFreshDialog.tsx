@@ -63,7 +63,7 @@ export function StartFreshDialog({
       <div className="space-y-3 text-sm text-slate-700">
         <p>This removes everything Expanses keeps on this device and opens an empty app. It cannot be undone.</p>
         <ul className="list-disc space-y-1 rounded-xl bg-slate-50 py-3 pr-3 pl-8 text-slate-700">
-          <li>Your data on this device{sizeOnDevice !== null && <span className="text-slate-500"> — {formatBytes(sizeOnDevice)}</span>}</li>
+          <li>Data on this device{sizeOnDevice !== null && <span className="text-slate-500"> — {formatBytes(sizeOnDevice)}</span>}</li>
           {snapshots.length === 0 ? (
             <li>No kept copies on this device</li>
           ) : (
@@ -74,7 +74,7 @@ export function StartFreshDialog({
             ))
           )}
         </ul>
-        <p>Backups you have already downloaded are files on your computer or phone. They are not touched.</p>
+        <p>Backups already downloaded are files on the computer or phone. They are not touched.</p>
 
         <Button variant="secondary" onClick={downloadFirst} disabled={disabledWhileBusy('download-backup', busy)} className="min-h-11 w-full">
           {exported ? 'Backup downloaded' : 'Download a backup first'}

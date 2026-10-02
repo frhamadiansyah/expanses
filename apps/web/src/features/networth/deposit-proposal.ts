@@ -104,7 +104,7 @@ export function cardFigures(p: DepositProposal, draft: ProposalDraft): CardFigur
 }
 
 export function outcomeLine(p: DepositProposal, payoutName: string | null, termMonths: TermMonths = p.settings.termMonths): string {
-  const to = payoutName ?? 'the account you choose';
+  const to = payoutName ?? 'the account chosen';
   if (p.event.kind === 'monthly') return p.settings.atMaturity === 'principal_interest' ? 'Stays in the deposit' : `To ${to}`;
   if (p.settings.atMaturity === 'close') return `Everything to ${to} · the deposit closes`;
   const term = `Roll over ${termLabel(termMonths)}`;

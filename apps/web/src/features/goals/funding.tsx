@@ -31,7 +31,7 @@ export function LinkAmount({ link }: { link: GoalLinkRow }) {
   );
 }
 
-/** What funds a goal, as one row of its group. Named so the group can hand it its place and a test can name it. */
+/** What funds a goal, as one row of its group, opening that account or holding. Named so the group can hand it its place and a test can name it. */
 export function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow }) {
   return (
     <div data-testid="goal-link">
@@ -51,7 +51,9 @@ export function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow 
         }
         value={<LinkAmount link={link} />}
         valueTone="ink"
-        chevron={false}
+        // The account or holding's own page: a money account's page is reached through the same address.
+        to="/net-worth/assets/$accountId"
+        params={{ accountId: link.accountId }}
       />
     </div>
   );

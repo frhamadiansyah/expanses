@@ -18,8 +18,8 @@ export function AddAssetPage() {
     <OwnablePicker
       flow="asset"
       title="New asset"
-      searchPlaceholder="Search everything you can own"
-      moreHint={(family) => `Anything here is recorded as a thing you give a value to, and files under ${family.toLowerCase()} in the tax report.`}
+      searchPlaceholder="Search everything that can be owned"
+      moreHint={(family) => `Anything here is recorded as a thing given a value, and files under ${family.toLowerCase()} in the tax report.`}
       chosen={chosen}
       // Listed shares start from a ticker (spec §7.5); everything else opens the form here, as before.
       onChoose={(id) => (id === 'stock' ? void navigate({ to: '/net-worth/investments/new' }) : setChosen(id))}

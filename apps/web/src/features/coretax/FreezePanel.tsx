@@ -80,8 +80,8 @@ export function FreezePanel({
       {status === 'draft' && (
         <>
           <p className="mb-[10px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-            While this is a draft it follows your ledger, so it changes whenever you record something dated in {taxYear}. Freeze it when the figures are the ones you mean to file: the
-            rows are copied, and anything you change afterwards shows up here instead of moving quietly.
+            While this is a draft it follows the ledger, so it changes whenever something dated in {taxYear} is recorded. Freeze it when the figures are the ones meant for filing: the
+            rows are copied, and anything changed afterwards shows up here instead of moving quietly.
           </p>
           <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
             Before freezing, make sure every holding has a price for 31 December {taxYear}, and that anything held in another currency has its KMK rate.
@@ -100,10 +100,10 @@ export function FreezePanel({
       {status === 'frozen' && (
         <>
           <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-            Frozen. The rows below are the copy; your ledger can move without touching them.
+            Frozen. The rows below are the copy; the ledger can move without touching them.
           </p>
           {differenceRows.length === 0 && (
-            <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing has changed in the ledger since you froze it.</p>
+            <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing has changed in the ledger since it was frozen.</p>
           )}
           {differenceRows.length > 0 && (
             <InsetGroup header="The ledger has moved since">
@@ -142,8 +142,8 @@ export function FreezePanel({
 
       {rows.length > 0 && (
         <InsetGroup
-          header="Take the tables with you"
-          footer="The converter file carries DJP's own columns for that table: paste it into the Excel converter and export the XML Coretax reads. The CSV is the same rows laid out for reading. Both hold your NPWP, NIK and account numbers, and are written straight to this device."
+          header="Take the tables along"
+          footer="The converter file carries DJP's own columns for that table: paste it into the Excel converter and export the XML Coretax reads. The CSV is the same rows laid out for reading. Both hold the NPWP, NIK and account numbers, and are written straight to this device."
         >
           {hartaSections.flatMap((section) => [
             <InsetRow
@@ -178,7 +178,7 @@ export function FreezePanel({
 
       {!npwp && rows.length > 0 && (
         <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-alarm)]">
-          The converter sheet starts with your NPWP, so add it to the report before building a file.
+          The converter sheet starts with the NPWP, so add it to the report before building a file.
         </p>
       )}
       {rows.length > 0 && (

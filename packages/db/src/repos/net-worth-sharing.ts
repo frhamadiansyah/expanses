@@ -208,7 +208,7 @@ export async function carryShareSettingTx(tx: Tx, fromAccountId: string, toAccou
   }
 }
 
-const JOINT_FORBIDS_HIDDEN = 'Your household files with one tax ID, so every item is in the joint report.';
+const JOINT_FORBIDS_HIDDEN = 'The household files with one tax ID, so every item is in the joint report.';
 
 /** Sets one item's setting. `hidden` is refused while the active group files jointly (D7). */
 export async function setShareSetting(database: Database, accountId: string, setting: ShareSetting): Promise<void> {

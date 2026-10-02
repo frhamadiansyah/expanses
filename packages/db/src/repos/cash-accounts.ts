@@ -96,7 +96,7 @@ async function fundingSourceTx(tx: Db, ws: WorkspaceContext, id: string, currenc
   // Both dates and both figures read off the same statement only when both sides are one currency; a cross-currency
   // move needs a rate the bank used, which no form here can invent (the transfer form asks for the received amount).
   if (row.currency !== currency) throw new AccountError(`${row.name} holds ${row.currency}; a ${currency} balance cannot come out of it`);
-  if (!(SPENDABLE_SUBTYPES as readonly string[]).includes(row.subtype)) throw new AccountError(`${row.name} cannot move money; pick an account you can spend from`);
+  if (!(SPENDABLE_SUBTYPES as readonly string[]).includes(row.subtype)) throw new AccountError(`${row.name} cannot move money; pick an account that can be spent from`);
   return { id: row.id, name: row.name };
 }
 
@@ -112,5 +112,5 @@ async function refuseSecondBrokerTx(tx: Db, ws: WorkspaceContext, broker: string
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'fund'), isNull(accounts.archivedAt)));
   const same = open.find((row) => row.name.trim().toLowerCase() === want);
-  if (same) throw new AccountError(`${same.name} already has a fund account. A broker keeps one RDN for you; add to that one.`);
+  if (same) throw new AccountError(`${same.name} already has a fund account. A broker keeps one RDN; add to that one.`);
 }

@@ -397,13 +397,65 @@ export async function recordLoanPayment(
 
     const balanceMinor = owed - input.principalMinor;
     const status = balanceMinor <= 0 ? ('paid_off' as const) : ('open' as const);
-    if (status === 'paid_off') {
-      await tx
-        .update(loanTerms)
-        .set({ status, statusOn: input.occurredOn })
-        .where(and(eq(loanTerms.accountId, input.accountId), eq(loanTerms.workspaceId, ws.workspaceId)));
-    }
+    if (status === 'paid_off') await markPaidOffTx(tx, ws, input.accountId, input.occurredOn);
     return { transactionId, balanceMinor, status };
+  });
+}
+
+/** A loan with nothing left owing is paid off, from the day of the payment that cleared it. */
+async function markPaidOffTx(tx: Db, ws: WorkspaceContext, accountId: string, onDate: string): Promise<void> {
+  await tx
+    .update(loanTerms)
+    .set({ status: 'paid_off', statusOn: onDate })
+    .where(and(eq(loanTerms.accountId, accountId), eq(loanTerms.workspaceId, ws.workspaceId)));
+}
+
+export interface PayOffLoanInput {
+  accountId: string;
+  occurredOn: string;
+  moneyAccountId: string;
+  /** What the bank charges for settling early, booked as a fee and never as principal. */
+  feeMinor?: number;
+  ratesToBase?: Record<string, number>;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
+}
+
+/**
+ * Settles a loan in full: everything the ledger says is owed comes off it, the bank's early-settlement fee is a fee,
+ * and the money account pays both. The loan is then paid off, as a last instalment that clears it would leave it.
+ *
+ * Only the principal is settled: interest accrued since the last instalment is not worked out by the schedule, so a
+ * bank's figure that includes it is recorded with the difference typed as the fee.
+ */
+export async function payOffLoan(
+  database: Database,
+  ws: WorkspaceContext,
+  input: PayOffLoanInput,
+): Promise<{ transactionId: string; principalMinor: number; feeMinor: number }> {
+  const feeMinor = input.feeMinor ?? 0;
+  if (!(feeMinor >= 0)) throw new LoanDbError('A fee cannot be negative');
+
+  return database.transaction(async (tx) => {
+    const { currency } = await loanAccountTx(tx, ws, input.accountId);
+    const name = await accountNameTx(tx, ws, input.accountId);
+    const owed = await owedOnTx(tx, ws, input.accountId);
+    if (!(owed > 0)) throw new LoanDbError(`${name} has nothing left to pay off`);
+    const keys = await categoryIdsByKeyTx(tx, ws);
+
+    const lines: PostingLine[] = [line(input.accountId, owed, currency)];
+    if (feeMinor > 0) lines.push(line(keys['miscellaneous.fees_charges']!, feeMinor, currency));
+    lines.push(line(input.moneyAccountId, -(owed + feeMinor), currency));
+
+    const transactionId = await postTransactionTx(tx, ws, {
+      occurredOn: input.occurredOn,
+      description: `Paid off: ${name}`,
+      lines,
+      ratesToBase: input.ratesToBase,
+      setAside: input.setAside,
+    });
+    await markPaidOffTx(tx, ws, input.accountId, input.occurredOn);
+    return { transactionId, principalMinor: owed, feeMinor };
   });
 }
 
@@ -429,6 +481,7 @@ export async function addRatePeriod(database: Database, ws: WorkspaceContext, in
 /**
  * Extra principal, on top of the instalments. Keeping the payment finishes the loan sooner and
  * writes no period; keeping the tenor writes one carrying the lower payment the bank will now ask for.
+ * An extra of everything left marks the loan paid off.
  */
 export async function recordExtraPayment(
   database: Database,
@@ -459,6 +512,12 @@ export async function recordExtraPayment(
       ratesToBase: input.ratesToBase,
       setAside: input.setAside,
     });
+
+    // An extra that covers everything left clears the loan, as a last instalment does: there is no payment to lower.
+    if (owed - input.amountMinor <= 0) {
+      await markPaidOffTx(tx, ws, input.accountId, input.occurredOn);
+      return { transactionId, balanceMinor: 0, newPaymentMinor: null };
+    }
 
     let newPaymentMinor: number | null = null;
     if (input.keep === 'tenor') {

@@ -82,7 +82,7 @@ function PriceRows({ stock, securityId, latest }: { stock: StockRow; securityId:
       {stock.unitsMicro > 0 && <ReadOnlyRow label="Avg price" value={formatPriceMicro(priceMicroFrom(stock.costMinor, stock.unitsMicro), stock.currency)} />}
       <InsetRow
         title="Price today"
-        subtitle={latest ? `Set by you · ${dayLabel(latest.onDate)}` : 'Not set yet'}
+        subtitle={latest ? `Typed in · ${dayLabel(latest.onDate)}` : 'Not set yet'}
         value={latest ? formatPriceMicro(latest.priceMicro, stock.currency) : undefined}
         valueTone={stock.stale ? 'warn' : 'ink'}
         to="/net-worth/investments/security/$securityId/price"

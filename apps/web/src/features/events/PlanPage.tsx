@@ -184,14 +184,14 @@ export function PlanPage() {
        */}
       {ready.isSuccess && !ready.data && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          This copy of your data is from before a plan was a list of things to buy, so nothing can be added to it yet. Open it once on a version that has
+          This copy of the data is from before a plan was a list of things to buy, so nothing can be added to it yet. Open it once on a version that has
           finished updating, and the plan will be here.
         </p>
       )}
 
       {data && data.itemCount === 0 ? (
         <>
-          <Empty>Nothing planned yet. Add the things you mean to buy and roughly what they cost.</Empty>
+          <Empty>Nothing planned yet. Add what is planned to buy and roughly what it costs.</Empty>
           <InsetGroup>
             <InsetRow title="Add the first item" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
           </InsetGroup>

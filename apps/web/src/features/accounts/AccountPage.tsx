@@ -182,7 +182,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
               <span className="block">
                 {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
                     is the flag in the corner, so the line names only where the money is and what kind of account. */}
-                {account.subtype === 'fund' && inst ? `RDN at ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
+                {account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
               </span>
               {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
             </>

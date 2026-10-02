@@ -18,9 +18,9 @@ export async function todayFigures(page: Page): Promise<number[]> {
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
-/** The goal card's "of Rp …": the plan's total, each stage inflated to its own date. */
+/** The goal card's "of Rp … · Dec 2027": the plan's total, each stage inflated to its own date. */
 export async function planTotal(page: Page): Promise<number> {
-  const text = await page.locator('p').filter({ hasText: /^of Rp/ }).first().textContent();
+  const text = await page.getByTestId('goal-target').first().textContent();
   return figure(/of Rp\s?([\d.]+)/.exec(text ?? '')![1]!);
 }
 
@@ -82,7 +82,7 @@ async function typeLife(page: Page, label: string, text: string) {
 /** Row 8: life cover with resources above needs says so, with the surplus, and never a negative cover. */
 export async function row8(page: Page) {
   await page.goto('/calculators/life-cover');
-  await typeLife(page, 'Yearly amount your family needs (IDR)', '120000000');
+  await typeLife(page, 'Yearly amount the family needs (IDR)', '120000000');
   await typeLife(page, 'Debts to clear (IDR)', '300000000');
   await typeLife(page, 'Education still to fund (IDR)', '150000000');
   await typeLife(page, 'Final expenses (IDR)', '25000000');

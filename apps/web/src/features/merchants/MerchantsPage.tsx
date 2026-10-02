@@ -23,7 +23,7 @@ import { type BundledRow, bundledRows } from './merchant-rows';
 
 const describeMcc = (mcc: string | null) => (mcc === null ? 'Ignored: the typical MCC is not used' : `${mcc} ${mccName(mcc) ?? ''}`.trim());
 const purchasesText = (count: number) => `${count} purchase${count === 1 ? '' : 's'}`;
-const statusWord = (row: BundledRow) => (row.status === 'typical' ? 'Typical' : row.status === 'yours' ? `Yours: ${row.yourMcc}` : 'Ignored');
+const statusWord = (row: BundledRow) => (row.status === 'typical' ? 'Typical' : row.status === 'yours' ? `Custom: ${row.yourMcc}` : 'Ignored');
 
 interface MemoryRow extends MerchantMccRow {
   matches: number;
@@ -211,12 +211,12 @@ export function MerchantsPage() {
       </form>
 
       {memory.isSuccess && mine.length === 0 ? (
-        <InsetGroup header="Your merchants">
+        <InsetGroup header="Custom merchants">
           <InsetRow title="No merchants yet" subtitle="Teach one above, or from a purchase's card details." />
         </InsetGroup>
       ) : (
         <RecordTable
-          header="Your merchants"
+          header="Custom merchants"
           records={mine}
           columns={mineColumns}
           /* Tapping a merchant opens it in the form above, which is where "Change it" lives on a phone. */

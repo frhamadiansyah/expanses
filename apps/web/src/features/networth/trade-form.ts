@@ -64,7 +64,7 @@ const amount = (text: string, currency: string, label: string): number => {
 
 /** Turns what was typed into a trade to record, with messages meant for the screen. */
 export function draftToInput(draft: TradeDraft, currency: string, today: string): RecordTradeInput {
-  if (!draft.accountId) throw new Error('Choose what you bought or sold');
+  if (!draft.accountId) throw new Error('Choose what was bought or sold');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A trade cannot be dated after today');
 

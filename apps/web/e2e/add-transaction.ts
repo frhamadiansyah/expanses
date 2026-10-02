@@ -137,7 +137,7 @@ export async function addPurchase(
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('radio', { name: 'Buy / sell' }).click();
-  await form.getByLabel('What you bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
+  await form.getByLabel('What was bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
   // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.

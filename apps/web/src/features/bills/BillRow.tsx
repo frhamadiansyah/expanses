@@ -5,9 +5,9 @@ import { Check, MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { isSettled, pillOf, sublineOf } from './bill-view';
+import { isPaused, isSettled, statusOf, sublineOf } from './bill-view';
 import { SwipeRow } from '../../ui/SwipeRow';
-import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native';
+import { ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
 
 /** A line in the ⋯ menu, drawn as the kit's own overflow menu draws one. */
 const MENU_ITEM = 'ph-focus-inset block w-full px-[13px] py-[11px] text-left text-[15px] leading-[20px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -41,9 +41,10 @@ export function BillRow({
   /** A hairline above this row, inset to the text as the kit's are; the group's first row has none. */
   separator?: boolean;
 }) {
-  const settled = isSettled(bill);
+  // A paused month is as done with as a paid one here: nothing to swipe, nothing to tick. Its own page can still pay it.
+  const settled = isSettled(bill) || isPaused(bill);
   const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
-  const pill = pillOf(bill);
+  const status = statusOf(bill);
   const navigate = useNavigate();
   const seeBill = () => void navigate({ to: '/bills/$billId', params: { billId: bill.id } });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -100,24 +101,28 @@ export function BillRow({
             className="ph-focus-inset flex w-full items-center gap-[10px] text-left md:pr-12"
             style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
           >
-            {selecting && !settled ? (
+            {/* One 28 px slot: the category's circle, or in select mode the tick in its place, crossfading, so
+                nothing else on the row moves when selecting starts. */}
+            <span className="relative h-[28px] w-[28px] shrink-0">
+              <span aria-hidden={selecting && !settled} className={cx('absolute inset-0 transition-opacity duration-150', selecting && !settled ? 'opacity-0' : 'opacity-100')}>
+                <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
+              </span>
               <span
                 aria-hidden
                 className={cx(
-                  'flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full',
+                  'absolute inset-0 flex items-center justify-center rounded-full transition-opacity duration-150',
+                  selecting && !settled ? 'opacity-100' : 'opacity-0',
                   picked ? 'bg-[var(--ph-tint)] text-white' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
                 )}
               >
                 {picked && <Check size={16} strokeWidth={2.5} />}
               </span>
-            ) : (
-              <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="sm" />
-            )}
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
               <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{sublineOf(bill, accountName, today)}</span>
             </span>
-            <span className="tabular flex shrink-0 flex-col items-end gap-[3px] text-[15px] leading-[20px] text-[var(--ph-ink)]">
+            <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
               {bill.state === 'paid' ? (
                 <Money minor={bill.paidMinor ?? 0} currency={currency} />
               ) : bill.amountMinor !== null ? (
@@ -129,13 +134,15 @@ export function BillRow({
               ) : (
                 <span className="text-[var(--ph-ink-3)]">Amount varies</span>
               )}
-              <span className={cx('rounded-full px-[7px] py-px text-[11px] leading-[15px] font-semibold', pill.className)}>{pill.text}</span>
-            </span>
-            {!selecting && (
-              <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden">
-                {'›'}
+              {/* How late, how soon or which day, in a small line under the amount: late in alarm, soon in warning. */}
+              <span data-testid="bill-status" className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass(status.tone))}>
+                {status.text}
               </span>
-            )}
+            </span>
+            {/* Kept in the layout while selecting, only hidden, so the amount stays where it was. */}
+            <span aria-hidden className={cx('shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden', selecting && 'invisible')}>
+              {'›'}
+            </span>
           </button>
         )}
       </SwipeRow>

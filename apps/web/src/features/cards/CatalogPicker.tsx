@@ -15,7 +15,7 @@ export function CatalogPicker({
   onApply,
   applyHint,
   debit = false,
-  header = 'Find your card',
+  header = 'Find a card',
 }: {
   today: string;
   selectedId: string | null;
@@ -82,7 +82,7 @@ export function CatalogPicker({
                       </a>
                     </span>
                   ))}
-                  . Estimates only; your statement is the final word.
+                  . Estimates only; the statement is the final word.
                 </>
               }
             >
@@ -97,9 +97,9 @@ export function CatalogPicker({
               )}
             </InsetGroup>
             {levels.length > 0 && (
-              <InsetGroup footer="This card earns by your standing with the bank, so the rate and the transfer ratio follow it.">
-                <SelectRow label={`Your ${selected.program.name} level`} id="member-level" value={memberLevel ?? ''} onChange={(e) => setMemberLevel(e.target.value || null)}>
-                  <option value="">Choose your level</option>
+              <InsetGroup footer="This card earns by standing with the bank, so the rate and the transfer ratio follow it.">
+                <SelectRow label={`${selected.program.name} level`} id="member-level" value={memberLevel ?? ''} onChange={(e) => setMemberLevel(e.target.value || null)}>
+                  <option value="">Choose a level</option>
                   {levels.map((level) => (
                     <option key={level.key} value={level.key}>
                       {level.name} — {level.condition}
@@ -109,8 +109,8 @@ export function CatalogPicker({
               </InsetGroup>
             )}
             {choice && (
-              <InsetGroup footer={`Pick the one you are running now — you can change it ${choice.changeable}. Purchases keep the category that was running on the day they happened.`}>
-                <SelectRow label={`Your ${choice.name}`} id="category-choice" value={categoryOption ?? ''} onChange={(e) => setCategoryOption(e.target.value || null)}>
+              <InsetGroup footer={`Pick the one running now — it can be changed ${choice.changeable}. Purchases keep the category that was running on the day they happened.`}>
+                <SelectRow label={choice.name} id="category-choice" value={categoryOption ?? ''} onChange={(e) => setCategoryOption(e.target.value || null)}>
                   <option value="">Choose later</option>
                   {choice.options.map((option) => (
                     <option key={option.key} value={option.key}>

@@ -95,7 +95,7 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
-  await expect(page.getByText('The bank’s rate cost you')).toBeVisible();
+  await expect(page.getByText('The bank’s rate cost extra')).toBeVisible();
   await expect(page.getByTestId('spread')).toContainText('35.160');
   await page.getByRole('button', { name: 'Move it' }).click();
 

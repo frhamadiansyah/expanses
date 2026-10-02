@@ -91,7 +91,7 @@ export function TemplateList({
       </div>
 
       {templates.length === 0 && !adding && (
-        <p className="text-sm text-slate-500">None yet. A monthly buy reminds you on its day and fills the form in; a monthly move just parks money at the broker until you buy.</p>
+        <p className="text-sm text-slate-500">None yet. A monthly buy reminds on its day and fills the form in; a monthly move just parks money at the broker until it is bought.</p>
       )}
 
       <div className="divide-y divide-slate-100 text-sm">
@@ -122,7 +122,7 @@ export function TemplateList({
       {adding && (
         <form onSubmit={add} className="space-y-3">
           <div className="grid gap-3 md:grid-cols-4">
-            <Field label="Every month" hint="A move parks money; you confirm the units when you buy.">
+            <Field label="Every month" hint="A move parks money; the units are confirmed when bought.">
               <Select value={kind} onChange={(e) => setKind(e.target.value as 'buy' | 'move')}>
                 <option value="buy">Buy a holding</option>
                 <option value="move">Move money to invest later</option>

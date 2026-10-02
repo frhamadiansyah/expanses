@@ -120,7 +120,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
     <form ref={form} onSubmit={submit}>
       <InsetGroup
-        header={itemId === undefined ? 'What you are adding' : item.label}
+        header={itemId === undefined ? 'What is being added' : item.label}
         footer={itemId === undefined ? 'This sets how the value is worked out and which tax-report table it belongs to.' : item.sub}
       >
         {/* The picker route has already chosen; the Assets page asks here, as it always has. */}
@@ -158,7 +158,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
             aria-label="Opening rate"
             hint={
               ratePreview(draft.openingRate, draft.currency, ws.baseCurrency) ??
-              `What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`
+              `What one ${draft.currency} was worth when this was acquired. The ledger needs it to hold one running total; the tax report uses the KMK rate instead.`
             }
             value={draft.openingRate}
             onChange={(e) => change({ openingRate: e.target.value })}
@@ -182,7 +182,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
             <InsetGroup
               key={index}
               header={index === 0 ? 'Already own some?' : `Purchase ${index + 1}`}
-              footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so your bank balances do not move.' : undefined}
+              footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so bank balances do not move.' : undefined}
             >
               <TextRow
                 label="Bought on"
@@ -251,7 +251,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
       )}
 
       {needsEstimate(draft.itemId, draft.typedInstead) && (
-        <InsetGroup header="What it is worth now" footer="Leave empty to use what you paid until you estimate it.">
+        <InsetGroup header="What it is worth now" footer="Leave empty to use what was paid until estimated.">
           <TextRow
             label={`What it is worth now (${draft.currency})`}
             value={draft.estimate}
@@ -271,12 +271,12 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
 
       {owed ? (
         <p className="px-[4px] pb-[18px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Money owed to you is kept under Lend &amp; borrow; its balance is what the report uses.
+          Owed money is kept under Lend &amp; borrow; its balance is what the report uses.
         </p>
       ) : (
         <InsetGroup
           header={`For the tax report: ${CORETAX_SECTIONS[section].label}`}
-          footer="Fill these in once and every yearly report reuses them. You can leave them for later."
+          footer="Fill these in once and every yearly report reuses them. They can be left for later."
         >
           {CORETAX_SECTIONS[section].fields.map((field) => (
             <TextRow

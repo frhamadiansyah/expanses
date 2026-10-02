@@ -6,7 +6,7 @@ import { QUICK_CHECK_LIMIT_BYTES } from '../src/db/size-guard';
 // breaking a real database is fiddly enough that the two projects must break it exactly the same way.
 
 /** What the recovery screen says when a file would not read: the `corrupt` kind's words, from `recovery-copy.ts`. */
-export const CORRUPT_HEADLINE = 'Part of your data would not read';
+export const CORRUPT_HEADLINE = 'Part of the data would not read';
 
 /** The one place the export button is named, so a copy change moves one line. */
 export const EXPORT_BUTTON = 'Download a copy of my data';

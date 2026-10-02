@@ -81,7 +81,7 @@ describe('the numbers grid', () => {
     expect(house.map((t) => [t.label, plain(t.value)])).toEqual([
       ['Bought for', 'Rp 1.150.000.000'],
       ['Bought on', '12 Mar 2019'],
-      ['Yours', 'Rp 980.000.000'],
+      ['Equity', 'Rp 980.000.000'],
       ['Loan left', 'Rp 500.000.000'],
     ]);
   });

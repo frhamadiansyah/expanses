@@ -112,7 +112,7 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
   // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.
-  await expect(page.getByRole('region', { name: 'Your cards' }).locator('[data-place="raised"]')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]')).toBeVisible();
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 
   await page.goto('/net-worth/loans');
@@ -173,7 +173,7 @@ test('a loan with no terms says so, and its terms are written from the loan itse
   await page.getByLabel('Tenor in months').pressSequentially('180');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is there at once, on the page the terms were written on.
-  await expect(page.getByText('Where this loan stands')).toBeVisible();
+  await expect(page.getByTestId('loan-card')).toBeVisible();
 
   await page.goto('/net-worth/loans');
   await openDrawers(page);
@@ -223,7 +223,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await openDrawers(page);
   await debtRow(page, 'Kredit HP').click();
   // A payment of everything that is left clears it: the ledger marks the loan paid off.
-  await page.getByRole('button', { name: 'Record payment' }).click();
+  await page.getByRole('button', { name: 'Pay', exact: true }).click();
   await page.getByLabel('Principal (IDR)').fill('');
   await page.getByLabel('Principal (IDR)').pressSequentially('3000000');
   await page.getByRole('button', { name: 'Save payment' }).click();

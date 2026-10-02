@@ -50,12 +50,12 @@ export const FROZEN_NOTE = 'Nobody can invite, remove a device or make an owner.
 export const READ_ONLY_NOTE = 'Kept here as it was, read-only: nothing can be added or changed.';
 
 /** The status line once an owner removed this device (§8.4, final review I2). */
-export const REMOVED_LINE = 'You were removed from this workspace';
+export const REMOVED_LINE = 'Removed from this workspace';
 
 /** An ended share, in the switcher and on the status line: who stopped it, that you left, or that this device was removed. */
 export function endedLine(ended: { byName: string | null; byYou: boolean; removed?: boolean }): string {
   if (ended.removed) return REMOVED_LINE;
-  if (ended.byYou) return 'You left this workspace';
+  if (ended.byYou) return 'Left this workspace';
   return ended.byName ? `No longer shared by ${ended.byName}` : 'No longer shared';
 }
 
@@ -84,12 +84,12 @@ export function statusLineOf(status: BookSyncStatus, live: { failing: boolean; n
 
 /** Before Leave: what leaving does, and what stays. */
 export function leaveConfirm(bookName: string): string {
-  return `You stop receiving ${bookName}, and the others stop seeing your new changes. What is here stays, read-only.`;
+  return `Stops receiving ${bookName}, and the others stop seeing new changes from here. What is here stays, read-only.`;
 }
 
 /** Before Stop sharing: what stopping does to everyone. */
 export function stopConfirm(bookName: string): string {
-  return `${bookName} stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being yours alone.`;
+  return `${bookName} stops syncing for everyone. Each person keeps what they have, read-only on their devices; here it goes back to being its own, unshared copy.`;
 }
 
 /** The row that ends a dead share on this device alone (final review, C1). */
@@ -100,7 +100,7 @@ export const FORGET_ROW = 'Stop sharing on this device';
  * N3): an owner's invite that links this device as you rejoins the share, and what you recorded meanwhile goes with it.
  */
 export function forgetConfirm(bookName: string): string {
-  return `${bookName} becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.`;
+  return `${bookName} becomes its own workspace, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join the share again later, ask one of its owners for an invite that links this device to the same member again.`;
 }
 
 /**
@@ -108,7 +108,7 @@ export function forgetConfirm(bookName: string): string {
  * again by one of its owners. `bookName` is the workspace's name here; `inviterName` is who sent the invite.
  */
 export function replaceConfirm(bookName: string, inviterName: string): string {
-  return `This replaces the sharing of ${bookName} on this device with ${inviterName}’s share. Your rows stay and are merged.`;
+  return `This replaces the sharing of ${bookName} on this device with ${inviterName}’s share. Existing rows stay and are merged.`;
 }
 
 /** Under a device: "synced just now", "synced 2 min ago", "synced 3 h ago", "synced Tue". */
@@ -132,7 +132,7 @@ export function payerLine(payer: PurchasePayer): string {
 
 /** The currency refusal, word for word as §8.2 says it: the book's currency first, then this app's. */
 export function currencyRefusal(bookCurrency: string, ownCurrency: string): string {
-  return `This workspace keeps its money in ${bookCurrency}; this app keeps yours in ${ownCurrency}. Sharing across currencies isn't supported yet.`;
+  return `This workspace keeps its money in ${bookCurrency}; this app's own accounts are kept in ${ownCurrency}. Sharing across currencies isn't supported yet.`;
 }
 
 /** What this device is called in the members list, from what the browser or the shell says it is. */
@@ -161,7 +161,7 @@ const UNREACHABLE = "Couldn't reach the sharing service. Check the connection an
  */
 export function sayError(error: unknown): unknown {
   if (error instanceof LastOwnerError) return new Error('Make someone else owner first.');
-  if (error instanceof LeaveIncompleteError) return new Error('You are no longer an owner, but leaving did not finish. Try again.');
+  if (error instanceof LeaveIncompleteError) return new Error('No longer an owner, but leaving did not finish. Try again.');
   if (error instanceof FrozenBookError) return new Error('Nobody can do that: no owner has a device in this workspace any more.');
   if (error instanceof BookReadOnlyError) return new Error('This workspace is no longer shared and is kept read-only. Nothing in it can be changed.');
   if (error instanceof SharingError) return error;

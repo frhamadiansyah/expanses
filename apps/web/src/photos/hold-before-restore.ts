@@ -15,7 +15,7 @@ import { photos, type PhotoStore } from './store';
  * it is a decision a person makes, not one a warning in a console makes for them.
  */
 export const PHOTOS_NOT_HELD_QUESTION =
-  'Your photos could not be protected from the clean-up that runs after a restore. Restoring now can delete the photos on this device for good — they have no second copy anywhere. Restore anyway?';
+  'The photos could not be protected from the clean-up that runs after a restore. Restoring now can delete the photos on this device for good — they have no second copy anywhere. Restore anyway?';
 
 /** What is said when the answer is no, or when there is nobody to ask. */
 export const PHOTOS_NOT_HELD_REFUSAL = 'Nothing was restored: the photos on this device could not be protected from the clean-up a restore is followed by.';

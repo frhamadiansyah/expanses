@@ -40,7 +40,7 @@ export type PaidWithItem = ItemSummary & { itemId: string; ownerName: string | n
 export async function paidFromAccount(database: Database, bookId: string, owner: string, currency: string): Promise<string> {
   return database.transaction(async (tx) => {
     const ctx = await bookContextTx(tx, bookId);
-    if (owner === ctx.memberId) throw new Error('Your own items are paid with from your own accounts');
+    if (owner === ctx.memberId) throw new Error("This device's own items are paid from its own accounts");
     return placeholderAccountTx(tx, ctx, owner, currency);
   });
 }

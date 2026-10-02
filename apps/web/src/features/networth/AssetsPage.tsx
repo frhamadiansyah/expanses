@@ -175,7 +175,7 @@ export function AssetsPage() {
     <div className={SCREEN}>
       <PushedTitle title="Assets" back="Net worth" backTo="/net-worth" actions={actions} />
       {/* A rate that is missing is named where the figure would be, because there is no box to put a figure in. */}
-      {total.totalMinor === null && <Empty>No {total.missing.join(', ')} rate yet, so your assets cannot be added up. Each figure below is exact.</Empty>}
+      {total.totalMinor === null && <Empty>No {total.missing.join(', ')} rate yet, so these assets cannot be added up. Each figure below is exact.</Empty>}
       <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error} />
 
       {/*

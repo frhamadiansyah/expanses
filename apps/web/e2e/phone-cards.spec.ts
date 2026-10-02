@@ -37,7 +37,7 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/cards');
-  await page.getByRole('region', { name: 'Your cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -63,7 +63,7 @@ test('the stack overlaps real cards of one width, each band carrying its own poi
   for (const name of NAMES) await addEarningCard(page, name);
 
   await page.goto('/cards');
-  const wall = page.getByRole('region', { name: 'Your cards' });
+  const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(3);
   const boxes = await Promise.all([0, 1, 2].map(async (at) => (await cards.nth(at).boundingBox())!));
@@ -112,7 +112,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   for (const name of NAMES) await addEarningCard(page, name);
 
   await page.goto('/cards');
-  const wall = page.getByRole('region', { name: 'Your cards' });
+  const wall = page.getByRole('region', { name: 'Cards' });
   const order = async () => wall.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('aria-label')));
   await expect(wall.getByRole('link')).toHaveCount(3);
   const before = await order();
@@ -207,7 +207,7 @@ test.describe('in the dark', () => {
     for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
     await page.goto('/cards');
-    const wall = page.getByRole('region', { name: 'Your cards' });
+    const wall = page.getByRole('region', { name: 'Cards' });
     // A card with no catalogue design is a dark bank colour, so it prints in white — in the dark as in the light.
     const front = wall.getByRole('img');
     await expect(front).toBeVisible();

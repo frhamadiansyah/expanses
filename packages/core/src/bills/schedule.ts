@@ -3,8 +3,9 @@ import { addMonths, monthOf, monthRange } from '../reports/periods';
 /** How many days before its pay-by day a bill turns amber. */
 export const BILL_DUE_SOON_DAYS = 3;
 
-export type BillStateKind = 'upcoming' | 'open' | 'dueSoon' | 'overdue' | 'paid' | 'skipped';
-export type BillSettlement = 'paid' | 'skipped' | null;
+export type BillStateKind = 'upcoming' | 'open' | 'dueSoon' | 'overdue' | 'paid' | 'skipped' | 'paused';
+/** How a month was dealt with. A paused month was set aside ahead of time: no bill comes out for it. */
+export type BillSettlement = 'paid' | 'skipped' | 'paused' | null;
 export type BillTone = 'grey' | 'blue' | 'amber' | 'red' | 'green';
 
 /** One month's bill: the day it comes out and the day it must be paid by. */
@@ -27,8 +28,8 @@ export interface BillMonthsInput {
   startsMonth: string;
   outDay: number;
   payByDay: number | null;
-  /** Months already dealt with. */
-  settled: Readonly<Record<string, 'paid' | 'skipped'>>;
+  /** Months already dealt with, or paused. */
+  settled: Readonly<Record<string, 'paid' | 'skipped' | 'paused'>>;
 }
 
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -62,6 +63,7 @@ export function billWindow(month: string, outDay: number, payByDay: number | nul
 export function billStanding(window: BillWindow, today: string, settled: BillSettlement): BillStanding {
   if (settled === 'paid') return { state: 'paid', days: 0 };
   if (settled === 'skipped') return { state: 'skipped', days: 0 };
+  if (settled === 'paused') return { state: 'paused', days: 0 };
   if (today < window.opensOn) return { state: 'upcoming', days: daysFrom(today, window.opensOn) };
   const left = daysFrom(today, window.payBy);
   if (left < 0) return { state: 'overdue', days: -left };
@@ -79,10 +81,47 @@ export function currentBillMonth({ today, startsMonth, settled }: BillMonthsInpu
   return previous >= startsMonth && !settled[previous] ? previous : month;
 }
 
-/** Months a payment can be recorded for, oldest first; the first is the default. */
+/**
+ * Months a payment can be recorded for, oldest first; the first is the default. A paused month can still be paid on
+ * purpose, so it is offered too — after every month that is owed, so it is never the one picked for a payment.
+ */
 export function payableBillMonths({ today, startsMonth, settled }: BillMonthsInput): string[] {
   const month = monthOf(today);
-  return [addMonths(month, -1), month, addMonths(month, 1)].filter((m) => m >= startsMonth && !settled[m]);
+  const open = [addMonths(month, -1), month, addMonths(month, 1)].filter((m) => m >= startsMonth && settled[m] !== 'paid' && settled[m] !== 'skipped');
+  return [...open.filter((m) => settled[m] !== 'paused'), ...open.filter((m) => settled[m] === 'paused')];
+}
+
+/** The months a pause covers: from its first month up to, not including, the month the bill comes back. */
+export function pausedMonths(from: string, until: string): string[] {
+  const months: string[] = [];
+  for (let month = from; month < until; month = addMonths(month, 1)) months.push(month);
+  return months;
+}
+
+/**
+ * The first month a pause starting today would cover: this month, unless it is already paid or skipped, in which
+ * case the next month that is not. Last month's bill, if still owed, stays owed: a pause looks ahead.
+ */
+export function pauseStart(today: string, settled: Readonly<Record<string, 'paid' | 'skipped' | 'paused'>>): string {
+  let month = monthOf(today);
+  while (settled[month] === 'paid' || settled[month] === 'skipped') month = addMonths(month, 1);
+  return month;
+}
+
+/**
+ * The month a paused bill comes back: the month after the last paused month from this one on. Null when nothing from
+ * this month on is paused, so a pause ends by itself once its months are past — nothing has to clear it.
+ */
+export function pausedUntil(paused: Iterable<string>, today: string): string | null {
+  const month = monthOf(today);
+  let last: string | null = null;
+  for (const m of paused) if (m >= month && (last === null || m > last)) last = m;
+  return last === null ? null : addMonths(last, 1);
+}
+
+/** "Jan 2027": the short way a month is named under an amount. */
+export function monthYear(month: string): string {
+  return `${monthName(month, 'short')} ${month.slice(0, 4)}`;
 }
 
 export function monthName(month: string, width: 'long' | 'short'): string {
@@ -123,5 +162,7 @@ export function billPill(standing: BillStanding, window: BillWindow, paidOn: str
       return { text: paidOn ? `✓ Paid ${dayMonth(paidOn)}` : '✓ Paid', tone: 'green' };
     case 'skipped':
       return { text: 'Skipped', tone: 'grey' };
+    case 'paused':
+      return { text: 'Paused', tone: 'grey' };
   }
 }

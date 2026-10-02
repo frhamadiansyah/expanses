@@ -64,8 +64,8 @@ export function daysSince(iso: string, now: Date = new Date()): number {
  * device, so they are not a backup, and saying so here would be the one comforting lie in the app.
  */
 export function bannerWords(urgency: BackupReminder, days: number | null): string {
-  const how = days === null ? 'You have not backed up yet.' : `No backup in ${days} days.`;
-  return `${how} ${urgency === 'overdue' ? 'Your only copy is on this device.' : 'Your data exists only on this device.'}`;
+  const how = days === null ? 'Not backed up yet.' : `No backup in ${days} days.`;
+  return `${how} ${urgency === 'overdue' ? 'The only copy is on this device.' : 'Data exists only on this device.'}`;
 }
 
 /** A "Not now": the level that was put off, and the date it is put off until. */

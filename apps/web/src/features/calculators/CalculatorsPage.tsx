@@ -16,8 +16,8 @@ import { CATALOGUE } from './catalogue';
 export function CalculatorsPage() {
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Calculators" subtitle="Work out what something costs and what it takes a month. Nothing is saved unless you ask." />
-      <InsetGroup footer="Each one works it out only. Nothing reaches your books unless you press the save row on its own page.">
+      <LargeTitle title="Calculators" subtitle="Work out what something costs and what it takes a month. Nothing is saved unless asked for." />
+      <InsetGroup footer="Each one works it out only. Nothing reaches the books unless the save row on its own page is pressed.">
         {CATALOGUE.map((entry) => (
           <InsetRow key={entry.to} to={entry.to} icon={<entry.icon size={16} aria-hidden />} title={entry.label} subtitle={entry.blurb} />
         ))}

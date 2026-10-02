@@ -84,7 +84,7 @@ export function AfterUpdateCard() {
         </Button>
       </div>
       {done && (
-        <p className="mt-2 text-xs">Backup downloaded. Keep it somewhere private — it is all of your data.</p>
+        <p className="mt-2 text-xs">Backup downloaded. Keep it somewhere private — it is all of the data.</p>
       )}
       <div className="mt-2">
         <ErrorBox error={error} />
@@ -93,7 +93,7 @@ export function AfterUpdateCard() {
         <summary className="cursor-pointer py-1">Details</summary>
         {/* Which step of a run of updates was at fault is not knowable once they have all been put back, so
             this names the point the app stops at rather than a culprit it would be guessing. */}
-        <p className="mt-1">{undone ? `Updates from ${note.version} onwards are being skipped until you ask us to try again.` : `Your data is at update ${note.version}.`}</p>
+        <p className="mt-1">{undone ? `Updates from ${note.version} onwards are being skipped until tried again.` : `Data is at update ${note.version}.`}</p>
       </details>
     </div>
   );

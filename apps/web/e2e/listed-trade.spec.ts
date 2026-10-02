@@ -23,7 +23,7 @@ test('Buy BBCA: a price stepped on IDX’s tick, two lots, the broker’s fee, a
   const total = page.getByTestId('trade-total');
   await expect(total).toContainText('Total · 200 shares');
   await expect(total).toContainText('Rp 1.236.853');
-  await expect(total).toContainText('Rp 1.235.000 + fee Rp 1.853 (0,15%) · from Stockbit Sekuritas RDN');
+  await expect(total).toContainText('Rp 1.235.000 + fee Rp 1.853 (0,15%) · from Stockbit Sekuritas');
   // A price between IDX's steps is refused until it is on one.
   await sheet.getByLabel('Price', { exact: true }).fill('6.160');
   await expect(sheet).toContainText('IDX prices move in steps of 25 at this price');
@@ -43,13 +43,13 @@ test('Sell BBCA: what reaches the RDN after the fee, the gain on the lots sold, 
   await sheet.getByLabel('Lots', { exact: true }).fill('5');
   // 500 at 6.150 is 3.075.000; 0,25% is 7.687,5, a whole 7.688 with the 0,1% tax in it; 500 cost 4.375.000.
   const total = page.getByTestId('trade-total');
-  await expect(total).toContainText('You receive · 500 shares of 1.000 held');
+  await expect(total).toContainText('Selling · 500 shares of 1.000 held');
   await expect(total).toContainText('Rp 3.067.312');
-  await expect(total).toContainText('Rp 3.075.000 − fee Rp 7.688 (0,25%, tax included) · into Stockbit Sekuritas RDN');
+  await expect(total).toContainText('Rp 3.075.000 − fee Rp 7.688 (0,25%, tax included) · into Stockbit Sekuritas');
   await expect(page.getByTestId('trade-gain')).toContainText('Gain on these 500: −Rp 1.304.613 (bought at avg 8.750)');
 
   await sheet.getByLabel('Lots', { exact: true }).fill('11');
-  await expect(sheet).toContainText('You hold 10 lots; you cannot sell more than that');
+  await expect(sheet).toContainText('Held: 10 lots; cannot sell more than that');
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
   await sheet.getByLabel('Lots', { exact: true }).fill('10');
   await expect(sheet.getByRole('button', { name: 'More lots' })).toBeDisabled();
@@ -65,7 +65,7 @@ test('Mandiri Sekuritas’ Rp 5.000 minimum a day is charged on a small buy, and
   // 0,18% of 615.000 is 1.107, under the day's minimum.
   const total = page.getByTestId('trade-total');
   await expect(total).toContainText('Rp 620.000');
-  await expect(total).toContainText('fee Rp 5.000 (0,18%) · from Mandiri Sekuritas RDN · minimum fee Rp 5.000 applies');
+  await expect(total).toContainText('fee Rp 5.000 (0,18%) · from Mandiri Sekuritas · minimum fee Rp 5.000 applies');
 });
 
 test('a broker’s fees are set on its cash account, and the Buy sheet works from them', async ({ page }) => {

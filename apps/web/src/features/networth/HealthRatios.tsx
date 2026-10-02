@@ -173,7 +173,7 @@ export function HealthRatios({
       />
       <InsetGroup
         header="How the ratios are worked out"
-        footer="Take-home pay is what actually landed in your accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet. Loan principal counts toward the emergency fund either way; the interest is already spending."
+        footer="Take-home pay is what actually landed in these accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet. Loan principal counts toward the emergency fund either way; the interest is already spending."
       >
         <SelectRow
           label="Debt servicing guide"

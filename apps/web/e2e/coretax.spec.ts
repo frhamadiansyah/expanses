@@ -114,7 +114,7 @@ test('freezing keeps the figures when a trade is backdated into the year afterwa
   await startReport(page);
 
   await page.getByRole('button', { name: `Freeze ${YEAR}` }).click();
-  await expect(page.getByText('Frozen. The rows below are the copy; your ledger can move without touching them.')).toBeVisible();
+  await expect(page.getByText('Frozen. The rows below are the copy; the ledger can move without touching them.')).toBeVisible();
 
   // A purchase dated back into the frozen year.
   await page.goto('/net-worth/trades');
@@ -141,7 +141,7 @@ test('explains the gap between the report and the balance sheet', async ({ page 
   await startReport(page);
 
   await expect(page.getByText(/The report says/)).toBeVisible();
-  await expect(page.getByText(/your balance sheet on 31 December/)).toBeVisible();
+  await expect(page.getByText(/the balance sheet on 31 December/)).toBeVisible();
 });
 
 test('says the report stays on this device', async ({ page }) => {
@@ -176,13 +176,13 @@ test('will not build a converter file until the report carries an NPWP', async (
   await startReport(page);
 
   await expect(page.getByRole('button', { name: 'Converter file (.tsv)' }).first()).toBeDisabled();
-  await expect(page.getByText(/The converter sheet starts with your NPWP/)).toBeVisible();
+  await expect(page.getByText(/The converter sheet starts with the NPWP/)).toBeVisible();
 
   await page.getByLabel('NPWP').fill('0011223344556677');
   await page.getByRole('button', { name: 'Save taxpayer details' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
-  await expect(page.getByText(/The converter sheet starts with your NPWP/)).toHaveCount(0);
+  await expect(page.getByText(/The converter sheet starts with the NPWP/)).toHaveCount(0);
 });
 
 test('downloads the converter file once the sheet has everything it needs', async ({ page }) => {
@@ -218,13 +218,13 @@ test('the report is not compared with a balance sheet that lacks a rate: the cur
   await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD', balance: '1000', rate: '16250' });
   await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
   await startReport(page);
-  await expect(page.getByText(/your balance sheet on 31 December/)).toBeVisible();
+  await expect(page.getByText(/the balance sheet on 31 December/)).toBeVisible();
 
   // No USD rate anywhere on the device: the balance sheet would count the $1.000 as 0.
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
   await expect(page.getByTestId('reconciliation-missing')).toContainText(`No USD rate yet for 31 December ${YEAR}`);
-  await expect(page.getByText(/your balance sheet on 31 December \d{4} says/)).toHaveCount(0);
+  await expect(page.getByText(/the balance sheet on 31 December \d{4} says/)).toHaveCount(0);
   await expect(page.getByText(/The gap is/)).toHaveCount(0);
 });

@@ -2,13 +2,14 @@ import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { cx, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN, type Tone, toneClass } from '../../ui/native';
+import { Sheet } from '../../app/Sheet';
+import { ErrorBox, Money } from '../../ui';
+import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
-import { amountOf, billsInReadCurrency, isSettled, paidText, sectionsOf, skippedText, summaryOf } from './bill-view';
+import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
@@ -16,8 +17,66 @@ import { useBookMoney } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 
-const LINE_TONE: Record<'overdue' | 'dueSoon' | 'later', Tone> = { overdue: 'alarm', dueSoon: 'warn', later: 'ink-3' };
-const SECTION_TONE: Record<string, Tone> = { overdue: 'alarm', dueSoon: 'warn' };
+/** The bar's three parts in the kit's own tones: late in alarm, soon in warning, the rest a quiet grey. */
+const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overdue: 'var(--ph-alarm)', dueSoon: 'var(--ph-warn)', later: 'var(--ph-ink-3)' };
+
+/**
+ * The month's figure, in the box it is made of: what is still to pay, a bar dividing it into late, soon and later,
+ * and the key under the bar naming each part's money. Once everything is dealt with it says so, and nothing more.
+ */
+function StillToPay({ summary, currency }: { summary: BillSummary; currency: string }) {
+  if (summary.allPaused) {
+    return (
+      <Panel>
+        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">Nothing to pay in {summary.monthLabel}</p>
+      </Panel>
+    );
+  }
+  if (summary.allSettled) {
+    return (
+      <Panel>
+        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-tint)]">
+          All paid for {summary.monthLabel} <span aria-hidden>✓</span>
+        </p>
+      </Panel>
+    );
+  }
+  const total = summary.parts.reduce((sum, part) => sum + part.minor, 0);
+  return (
+    <Panel className="space-y-3">
+      <div>
+        <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Still to pay in {summary.monthLabel}</p>
+        <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="bills-total">
+          {/* The estimate sign is a caveat, not part of the figure: it wears the quiet ink. */}
+          {summary.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+          <Money minor={summary.totalMinor} currency={currency} />
+        </p>
+      </div>
+      {total > 0 && (
+        <>
+          <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 6 }}>
+            {summary.parts.map((part) => (
+              <span key={part.key} className="block h-full" style={{ width: `${(part.minor / total) * 100}%`, background: PART_COLOUR[part.key] }} />
+            ))}
+          </span>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="bills-legend">
+            {summary.parts.map((part) => (
+              <li key={part.key} className="flex items-center gap-[6px]">
+                <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PART_COLOUR[part.key] }} />
+                {part.label}{' '}
+                <span className="tabular text-[var(--ph-ink-2)]">
+                  {part.approximate && '~'}
+                  <Money minor={part.minor} currency={currency} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {summary.variesText && <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{summary.variesText}</p>}
+    </Panel>
+  );
+}
 
 /**
  * The month's bills, most urgent first: what is still to pay, what is late, and what is done. A row pays or skips with a
@@ -36,12 +95,14 @@ export function RecurringPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [payingSeveral, setPayingSeveral] = useState(false);
+  const [showSettled, setShowSettled] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const clearToast = useCallback(() => setToast(null), []);
   // Stable, so the sheet does not re-run its open effect (and take focus back) whenever the list refreshes.
   const closeSheet = useCallback(() => setPaying(null), []);
   const closeSeveral = useCallback(() => setPayingSeveral(false), []);
+  const closeSettled = useCallback(() => setShowSettled(false), []);
 
   const toggle = (bill: MonthlyBill) =>
     setPicked((current) => {
@@ -97,6 +158,30 @@ export function RecurringPage() {
   }
 
   const summary = summaryOf(readRows, today);
+  // The rows in their own money, the figure in the money the workspace reads in.
+  const settled = settledOf(rows, today);
+  const settledMinor = settledOf(readRows, today)?.paidMinor ?? 0;
+  // An undo can empty the fold under its open sheet; it stays shut rather than springing open at the next payment.
+  const noneSettled = settled === null;
+  useEffect(() => {
+    if (noneSettled) setShowSettled(false);
+  }, [noneSettled]);
+
+  const billRow = (bill: MonthlyBill, index: number) => (
+    <BillRow
+      key={bill.id}
+      bill={bill}
+      accounts={accounts}
+      today={today}
+      currency={currencyOf(bill)}
+      onPay={pay}
+      onSkip={(b) => void skip(b)}
+      selecting={selecting}
+      picked={picked.has(bill.id)}
+      onToggle={toggle}
+      separator={index > 0}
+    />
+  );
 
   const title = selecting ? `${picked.size} selected` : 'Recurring';
   // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
@@ -114,7 +199,7 @@ export function RecurringPage() {
       <ErrorBox error={error ?? bills.error} />
 
       {bills.isSuccess && rows.length === 0 && (
-        <InsetGroup footer="No bills set up. The phone, the water, the gas — whatever comes round.">
+        <InsetGroup>
           <InsetRow title={<span className="text-[var(--ph-tint)]">New bill</span>} label="New bill" to="/bills/new" />
         </InsetGroup>
       )}
@@ -122,69 +207,53 @@ export function RecurringPage() {
       {rows.length > 0 && (
         <div data-testid="bills-summary" className="md:max-w-2xl">
           <Unconverted missing={unconverted} currency={readCurrency} />
-          {/* The month's figure is the point of the page, so it is the hero; what it is made of is the group below. */}
-          <Hero
-            className="pt-[6px]"
-            minor={summary.totalMinor}
-            currency={readCurrency}
-            approximate={summary.approximate}
-            caption={
-              <>
-                Still to pay in {summary.monthLabel}
-                {summary.variesText && <> · {summary.variesText}</>}
-              </>
-            }
-          />
-          {(summary.lines.length > 0 || summary.allSettled) && (
-            <InsetGroup>
-              {[
-                ...summary.lines.map((line) => (
-                  <InsetRow
-                    key={line.key}
-                    title={<span className={toneClass(LINE_TONE[line.key])}>{line.label}</span>}
-                    label={line.label}
-                    value={
-                      <>
-                        {line.approximate && '~'}
-                        <Money minor={line.minor} currency={readCurrency} />
-                      </>
-                    }
-                    valueTone="ink"
-                  />
-                )),
-                ...(summary.allSettled
-                  ? [<InsetRow key="settled" title={<span className="text-[var(--ph-tint)]">All paid for {summary.monthLabel}</span>} value={<span aria-hidden>✓</span>} valueTone="tint" />]
-                  : []),
-              ]}
-            </InsetGroup>
-          )}
+          <StillToPay summary={summary} currency={readCurrency} />
         </div>
       )}
 
       {sectionsOf(rows).map((section) => (
-        /* A header in the section's own tone — overdue in alarm, due soon in warning — outside and above its group. */
         <section key={section.key} className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
-          <PanelHeader title={<span className={toneClass(SECTION_TONE[section.key] ?? 'ink-3')}>{section.title}</span>} />
+          <PanelHeader title={section.title} />
           {/* The group's surface without its clipping: a row's ⋯ menu may hang below it. */}
-          <div className={cx('bg-[var(--ph-surface)]', section.key === 'settled' && 'opacity-60')} style={{ borderRadius: GROUP_RADIUS }}>
-          {section.rows.map((bill, index) => (
-            <BillRow
-              key={bill.id}
-              bill={bill}
-              accounts={accounts}
-              today={today}
-              currency={currencyOf(bill)}
-              onPay={pay}
-              onSkip={(b) => void skip(b)}
-              selecting={selecting}
-              picked={picked.has(bill.id)}
-              onToggle={toggle}
-              separator={index > 0}
-            />
-          ))}
+          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+            {section.rows.map(billRow)}
           </div>
         </section>
       ))}
+
+      {/* Paused bills come out for nothing this month: a group of their own, under the ones to pay. */}
+      {pausedOf(rows).length > 0 && (
+        <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }} data-testid="bills-paused">
+          <PanelHeader title="Paused" />
+          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+            {pausedOf(rows).map(billRow)}
+          </div>
+        </section>
+      )}
+
+      {/* What is paid or skipped is done with: one row says how many and what they came to, and opens them. */}
+      {settled && (
+        <InsetGroup>
+          <InsetRow
+            testId="bills-settled"
+            title={settled.title}
+            value={
+              <>
+                {settled.count} · <Money minor={settledMinor} currency={readCurrency} />
+              </>
+            }
+            onClick={() => setShowSettled(true)}
+          />
+        </InsetGroup>
+      )}
+
+      {showSettled && settled && (
+        <Sheet grouped tall title={settled.title} onClose={closeSettled}>
+          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+            {settled.rows.map(billRow)}
+          </div>
+        </Sheet>
+      )}
 
       {selecting && picked.size > 0 && (() => {
         const chosen = readRows.filter((b) => picked.has(b.id));
@@ -208,7 +277,7 @@ export function RecurringPage() {
 
       {payingSeveral && (
         <PaySeveralSheet
-          bills={rows.filter((b) => !isSettled(b))}
+          bills={rows.filter(isToPay)}
           picked={picked}
           today={today}
           onClose={closeSeveral}

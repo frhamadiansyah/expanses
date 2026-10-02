@@ -79,7 +79,7 @@ describe('what each Buy / sell row says', () => {
     expect(holdingFace('')).toBe('');
     expect(holdingRowText('buy').caption).toBe('Bought');
     expect(holdingRowText('sell').caption).toBe('Sold');
-    expect(holdingRowText('buy').label).toBe('What you bought or sold');
+    expect(holdingRowText('buy').label).toBe('What was bought or sold');
     expect(holdingRowText('buy').hint).toBe('Units are recorded, so this never counts as spending.');
   });
 });

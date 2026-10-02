@@ -55,7 +55,7 @@ describe('the Share net worth row (§6, §8.1)', () => {
   it('a change that leaves a current member out asks them too (review round 2, D6)', () => {
     const active = { proposalId: 'p0', mode: 'separate' as const, members: ['r', 'a', 's'] };
     const row = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['a'] }), members);
-    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group without you: separate tax IDs.' });
+    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group that leaves this member out: separate tax IDs.' });
     const answered = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['s'] }), members);
     expect(answered.pending).toEqual({ kind: 'waiting', proposalId: 'p2', line: 'Waiting for Sari', cancellable: false });
   });
@@ -148,7 +148,7 @@ describe('a Change (wave 3 round 2: never adds anyone)', () => {
 describe('jointTaxLine', () => {
   it('says, on a joint review, that each item’s tax details go to the partner for the joint return', () => {
     expect(jointTaxLine(['Andi'])).toBe(
-      'For the joint tax return, each item also goes to Andi with its row of your tax report: its code, its figures and the details its table asks for, such as an account number.',
+      'For the joint tax return, each item also goes to Andi with its row of the tax report: its code, its figures and the details its table asks for, such as an account number.',
     );
   });
 });

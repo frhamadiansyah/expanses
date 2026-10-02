@@ -477,7 +477,7 @@ export function AccountsPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
-      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
+      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money to spend, or money owed.</Empty>}
       {/*
        * Balance, and the two numbers it is made of, as one block: a ring, the figure, and the rows that are the
        * ring's legend — the shape iOS draws a metric in, where the figure answers "how much" and the ring answers "of

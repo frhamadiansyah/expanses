@@ -79,6 +79,8 @@ test('a recorded row is corrected cell by cell and saved on its own', async ({ p
 });
 
 test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) => {
+  // The pasted days are September's, and the table shows the month the clock reads: the clock is that month's.
+  await page.clock.setSystemTime(new Date('2026-09-20T12:00:00'));
   await setUp(page);
   const sheet = ['1/9\tGrab to office\t32.000\tBCA Tahapan\t', '2/9\tStarbucks\t58.000\tBCA\t'].join('\n');
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, text) => {

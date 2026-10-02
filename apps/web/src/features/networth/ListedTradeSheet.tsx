@@ -131,7 +131,7 @@ export function ListedTradeSheet({
     setPrice(priceText(from <= 0 ? 1 : stepIdxPrice(from, direction)));
   };
   const ticker = security.ticker ?? security.name;
-  const where = cashAccount ? `${cashAccount.name}${cashAccount.subtype === 'fund' ? ' RDN' : ''}` : 'the account';
+  const where = cashAccount ? cashAccount.name : 'the account';
   const minimumNote = charge?.minimumApplied && rates?.minDailyMinor ? ` · minimum fee ${formatMinor(rates.minDailyMinor, 'IDR')} applies` : '';
   const charged = charge ? charge.feeMinor + charge.taxMinor : 0;
 
@@ -160,7 +160,7 @@ export function ListedTradeSheet({
           !onTick && price.trim() !== ''
             ? `IDX prices move in steps of ${rupiah ? idxTickSize(Math.floor(rupiah)) : 1} at this price`
             : kind === 'sell'
-              ? `You hold ${heldLots} ${heldLots === 1 ? 'lot' : 'lots'}${tooMany ? '; you cannot sell more than that' : ''}`
+              ? `Held: ${heldLots} ${heldLots === 1 ? 'lot' : 'lots'}${tooMany ? '; cannot sell more than that' : ''}`
               : undefined
         }
       >
@@ -200,7 +200,7 @@ export function ListedTradeSheet({
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
             {kind === 'buy'
               ? `Total · ${formatUnits(shares * 1_000_000)} shares`
-              : `You receive · ${formatUnits(shares * 1_000_000)} shares of ${formatUnits(position?.unitsMicro ?? 0)} held`}
+              : `Selling · ${formatUnits(shares * 1_000_000)} shares of ${formatUnits(position?.unitsMicro ?? 0)} held`}
           </p>
           <p className={cx('tabular text-[22px] leading-[28px] font-bold', kind === 'buy' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
             {formatMinor(charge.totalMinor, 'IDR')}

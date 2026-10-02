@@ -17,7 +17,7 @@ export async function openNewAsset(page: Page, pick: string) {
    * is only there once it has been asked for. A wide screen draws it as the first thing on the page, and asking for it
    * there would be a click on nothing.
    */
-  const search = page.getByPlaceholder('Search everything you can own');
+  const search = page.getByPlaceholder('Search everything that can be owned');
   if ((await search.count()) === 0) await page.getByRole('button', { name: 'Search' }).click();
   // The picker matches word prefixes and drops punctuation when it splits a label into words, so a pick that
   // carries brackets is typed without them — the click still names the entry's own label, punctuation and all.

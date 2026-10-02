@@ -21,9 +21,9 @@ export interface OpeningCopy {
 export function openingCopy(stage: OpenStage): OpeningCopy {
   switch (stage.stage) {
     case 'opening':
-      return { title: 'Opening your data…', body: 'Starting the database on this device. Nothing leaves it.', percent: null };
+      return { title: 'Opening the data…', body: 'Starting the database on this device. Nothing leaves it.', percent: null };
     case 'snapshotting':
-      return { title: 'Taking a copy first…', body: 'Keeping the last good copy of your data before anything changes.', percent: null };
+      return { title: 'Taking a copy first…', body: 'Keeping the last good copy of the data before anything changes.', percent: null };
     case 'migrating': {
       /*
        * `migrate` reports the count *finished*, and reports it before it picks the next one up — so the
@@ -33,15 +33,15 @@ export function openingCopy(stage: OpenStage): OpeningCopy {
       const total = Math.max(stage.total, 0);
       const step = total > 0 ? Math.min(stage.done + 1, total) : 0;
       const where = total > 0 ? `Step ${step} of ${total} · ${stage.name} · ` : `${stage.name} · `;
-      const kept = stage.copied ? ' Your data was copied before we started.' : '';
+      const kept = stage.copied ? ' The data was copied before this started.' : '';
       return {
-        title: 'Updating your data…',
+        title: 'Updating the data…',
         body: `${where}Do not close the app.${kept}`,
         percent: total > 0 ? Math.round((Math.min(stage.done, total) / total) * 100) : null,
       };
     }
     case 'checking':
-      return { title: 'Checking your data…', body: 'Making sure everything adds up before you see it.', percent: null };
+      return { title: 'Checking the data…', body: 'Making sure everything adds up before it is shown.', percent: null };
   }
 }
 

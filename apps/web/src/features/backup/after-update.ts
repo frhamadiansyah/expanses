@@ -31,13 +31,13 @@ export function afterUpdate(update: UpdateOutcome | undefined): AfterUpdateNote 
   if (update.blocked !== null && update.from < update.blocked) {
     return {
       kind: 'undone',
-      headline: 'Your update was undone',
+      headline: 'The update was undone',
       /*
        * What the app knows here is that an update did not come out right and was put back — not which of
        * the checks said so, and not, after a run of several, which migration was at fault. The words stay
        * inside that: no claim about the culprit, and no claim about which check failed.
        */
-      body: 'An update to your data did not come out the way we expect, so we put it back exactly as it was before it started. Nothing was lost, and Expanses is running on your data as it was. We will not try that update again until you ask.',
+      body: 'An update to the data did not come out the way we expect, so we put it back exactly as it was before it started. Nothing was lost, and Expanses is running on the data as it was. We will not try that update again until asked.',
       version: update.blocked,
     };
   }
@@ -45,8 +45,8 @@ export function afterUpdate(update: UpdateOutcome | undefined): AfterUpdateNote 
     const version = Math.max(...update.applied);
     return {
       kind: 'updated',
-      headline: `Your data was updated to version ${version}`,
-      body: 'A copy was taken before the update and it was checked afterwards. A backup you keep yourself is still the only one off this device — download one now?',
+      headline: `Data was updated to version ${version}`,
+      body: 'A copy was taken before the update and it was checked afterwards. A backup kept off this device is still the only one — download one now?',
       version,
     };
   }

@@ -38,10 +38,10 @@ export function RecommendPage() {
 
   const mccSources = useQuery({ queryKey: ['mcc-sources', ws.workspaceId], queryFn: () => mccSourcesFor(database.db, ws) });
   const resolved = mccSources.data && categoryId ? resolveMcc(merchant, categoryId, { typed: null, ...mccSources.data }) : null;
-  const resolvedFrom = resolved?.source === 'memory' ? 'you taught this merchant' : resolved?.source === 'bundled' ? 'typical for this merchant' : 'from the category';
+  const resolvedFrom = resolved?.source === 'memory' ? 'taught here for this merchant' : resolved?.source === 'bundled' ? 'typical for this merchant' : 'from the category';
   const merchantHint = resolved?.mcc
     ? `Compared as MCC ${resolved.mcc}${mccName(resolved.mcc) ? ` ${mccName(resolved.mcc)}` : ''} (${resolvedFrom}).`
-    : 'Optional. Matches merchant keywords and merchant categories in your rules.';
+    : 'Optional. Matches merchant keywords and merchant categories in these rules.';
 
   /**
    * The event is optional because the row that compares is a `type="button"` inside a real `<form>`: the form is
@@ -82,7 +82,7 @@ export function RecommendPage() {
       <LargeTitle title="Which card should I use?" />
 
       <form onSubmit={compare}>
-        <InsetGroup header="What you are buying">
+        <InsetGroup header="What is being bought">
           <TextRow
             label={`Amount (${ws.baseCurrency})`}
             hint={spentIn ? `The ${ws.baseCurrency} amount billed after conversion.` : undefined}
@@ -170,7 +170,7 @@ export function RecommendPage() {
               <InsetRow title="Worth at its best redemption" value={<Money minor={r.valueMinor} currency={r.valueCurrency} />} chevron={false} />
             )}
             {target.kind === 'value' && r.effectiveRateBps !== null && (
-              <InsetRow title="Back on what you spend" value={`${(r.effectiveRateBps / 100).toFixed(2)}% back`} chevron={false} />
+              <InsetRow title="Back on spending" value={`${(r.effectiveRateBps / 100).toFixed(2)}% back`} chevron={false} />
             )}
             {r.capHeadroom.map((h) => (
               <InsetRow key={h.ruleId} title={h.ruleName} subtitle="Left this cycle" value={formatMinor(h.remainingMinor, ws.baseCurrency)} chevron={false} />

@@ -163,15 +163,11 @@ function SheetColumn({
           {groups.flatMap((group, index) => {
             const key = `section:${group.key}`;
             const shown = open.has(key);
-            const held = group.rows.length;
             return [
               <Drawer
                 key={key}
                 icon={<TileIcon tile={tileOf(group.key, null)} />}
                 label={group.label}
-                /* What is inside, counted — the accounts the section is made of. Which *kinds* they are is what
-                   opening it says, so that is not repeated in the count. */
-                under={`${held} ${held === 1 ? 'account' : 'accounts'}`}
                 figure={<SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}
                 open={shown}
                 /* A hairline above every section but the box's first: with the section headers inside the box, the
@@ -296,9 +292,9 @@ function fold(
       <Drawer
         key={key}
         icon={icon}
+        /* One line: the name and its total. A count of accounts under it was one more line to read past on a
+           summary; opening the drawer shows them. */
         label={drawer.label}
-        /* A count, because the drawer is what says how many accounts a kind is made of. */
-        under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'account' : 'accounts'}`}
         figure={<SheetFigure minor={figureOf(drawer.totalMinor, drawer.rows.map((row) => row.accountId), unrated)} currency={currency} />}
         open={shown}
         separator={index > 0}
@@ -491,7 +487,7 @@ export function OverviewPage() {
         <LargeTitle title="Net worth" actions={actions} max={3} />
         <Panel wide>
           <Empty>
-            Start by adding your bank accounts and credit cards on the{' '}
+            Start by adding bank accounts and credit cards on the{' '}
             <Link to="/accounts" className="font-medium underline">
               Accounts
             </Link>{' '}
@@ -509,7 +505,7 @@ export function OverviewPage() {
 
       {nothingYet && (
         <Empty>
-          Nothing to show yet. Add your accounts on{' '}
+          Nothing to show yet. Add accounts on{' '}
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}

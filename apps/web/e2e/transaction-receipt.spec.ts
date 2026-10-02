@@ -225,7 +225,7 @@ test('a split bill says which figure is the share and which is the bill', async 
   await openReceipt(page, 'Dinner at Plataran');
   const hero = page.getByTestId('receipt-hero');
   await expect(hero).toContainText('100.000');
-  await expect(hero).toContainText('Your share');
+  await expect(hero).toContainText('My share');
   await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('400.000');
 });
 

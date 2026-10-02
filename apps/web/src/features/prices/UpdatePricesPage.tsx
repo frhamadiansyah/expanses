@@ -1,16 +1,17 @@
 import { formatPriceMicro, formatUnits, isoDate, parsePriceMicro } from '@expanses/core';
 import { recordListedCloses, upsertPrice, upsertSecurityPrice } from '@expanses/db';
-import { Check, Download } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Check, Download, Info } from 'lucide-react';
+import { type ReactNode, useRef, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
+import { type CornerAction, type GroupChild, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN, TextRow } from '../../ui/native';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { dayLabel, percentLabel } from '../networth/asset-page';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { IDX_SUMMARY_PAGE, readIdxFile } from './idx-file';
+import { catchesIdxInApp, catchIdxSummary } from './idx-native';
 import { type BoardRow, type IdxPreview, idxPreview, priceBoard } from './price-board';
 import { SOURCE_LABELS } from './price-sources';
 import { useLatestOwnPrices, useLatestSecurityPrices } from './queries';
@@ -23,9 +24,49 @@ const lastLine = (row: BoardRow) =>
   row.latest ? `Last ${formatPriceMicro(row.latest.priceMicro, row.currency)} · ${dayLabel(row.latest.onDate)} · ${SOURCE_LABELS[row.latest.source]}` : 'No price yet';
 
 /**
+ * A row that does something, with an ⓘ beside its title that shows what it does under the row only when asked —
+ * InsetRow's look, which cannot hold a second button inside its own.
+ */
+function ActionRow({ title, info, onClick, position }: GroupChild & { title: string; info?: ReactNode; onClick: () => void }) {
+  const [explained, setExplained] = useState(false);
+  return (
+    <div className="relative">
+      {position?.separator && (
+        <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />
+      )}
+      <div className="flex items-center gap-2" style={{ minHeight: rowHeight(false), padding: `0 ${ROW_PAD_X}px` }}>
+        <button
+          type="button"
+          onClick={onClick}
+          className="ph-focus-inset min-w-0 flex-1 text-left text-[15px] leading-[20px] font-medium text-[var(--ph-tint)]"
+          style={{ padding: `${ROW_PAD_Y}px 0` }}
+        >
+          {title}
+        </button>
+        {info && (
+          <button
+            type="button"
+            // Not "About <title>": a search for the row's own name would find this button as well.
+            aria-label="How this works"
+            aria-expanded={explained}
+            onClick={() => setExplained((was) => !was)}
+            className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+          >
+            <Info size={16} aria-hidden />
+          </button>
+        )}
+      </div>
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
+    </div>
+  );
+}
+
+/**
  * `/net-worth/prices` — every listed share and fund held, one price box each: the routine of bringing prices up to
  * date in one place. What is typed is saved as today's price (✓). The shares IDX lists can all be filled at once from
- * IDX's daily Ringkasan Saham file, which the owner downloads from IDX's site and the app reads on the device.
+ * IDX's daily Ringkasan Saham file, read on the device. In the iOS app IDX's own page opens in a sheet and the
+ * file its Unduh button downloads comes straight to the preview; on the web and the desktop the owner downloads it
+ * from IDX's site and chooses it.
  */
 export function UpdatePricesPage() {
   const { database, ws } = useApp();
@@ -44,6 +85,7 @@ export function UpdatePricesPage() {
   const [choosing, setChoosing] = useState(false);
   const [preview, setPreview] = useState<IdxPreview | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  const inApp = catchesIdxInApp();
 
   const board =
     values.data && profiles.data && links.data && securities.data && latestBySecurity.data && latestOwn.data
@@ -92,6 +134,19 @@ export function UpdatePricesPage() {
     }
   }
 
+  /** IDX's page in the native sheet; what Unduh downloads goes straight to the preview. Cancel says nothing. */
+  async function getFromIdx() {
+    setChoosing(false);
+    if (!board) return;
+    setError(null);
+    try {
+      const summary = await catchIdxSummary();
+      if (summary) setPreview(idxPreview(summary, board.stocks));
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   const actions: CornerAction[] = [
     { key: 'save', label: 'Save prices', glyph: <Check size={20} aria-hidden />, disabled: busy || entries.length === 0, run: () => void save() },
   ];
@@ -133,7 +188,7 @@ export function UpdatePricesPage() {
         onChange={(e) => void read(e.target.files?.[0])}
       />
 
-      {board && rows.length === 0 && <Empty>No shares or funds held. Their prices are updated here once you have some.</Empty>}
+      {board && rows.length === 0 && <Empty>No shares or funds held. Their prices are updated here once there are some.</Empty>}
       {board && board.stocks.length > 0 && <InsetGroup header="Stocks">{board.stocks.map(priceBox)}</InsetGroup>}
       {board && board.others.length > 0 && (
         <InsetGroup header={board.stocks.length > 0 ? 'Not in the IDX file' : 'Shares and funds'} footer="A price typed here is saved as today’s.">
@@ -143,10 +198,24 @@ export function UpdatePricesPage() {
 
       {choosing && (
         <Sheet grouped title="Import IDX daily file" onClose={() => setChoosing(false)}>
-          <InsetGroup footer="Download Ringkasan Saham on IDX’s website, then choose the downloaded file. It is read on this device.">
-            <InsetRow title="Open IDX website" onClick={() => void window.open(IDX_SUMMARY_PAGE, '_blank', 'noopener')} />
-            <InsetRow title="Choose the downloaded file" onClick={() => file.current?.click()} />
-          </InsetGroup>
+          {inApp ? (
+            <InsetGroup>
+              <ActionRow
+                title="Get closing prices from IDX"
+                info="IDX’s own page opens inside the app; tap Unduh and the file comes straight here. Nothing is fetched in the background."
+                onClick={() => void getFromIdx()}
+              />
+            </InsetGroup>
+          ) : (
+            <InsetGroup>
+              <ActionRow
+                title="Open IDX website"
+                info="Download Ringkasan Saham on IDX’s website, then choose the downloaded file. It is read on this device."
+                onClick={() => void window.open(IDX_SUMMARY_PAGE, '_blank', 'noopener')}
+              />
+              <ActionRow title="Choose the downloaded file" onClick={() => file.current?.click()} />
+            </InsetGroup>
+          )}
         </Sheet>
       )}
       {preview && <PreviewSheet preview={preview} onClose={() => setPreview(null)} />}
@@ -190,7 +259,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
         <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Closing prices for</p>
         <p className="text-[20px] leading-[26px] font-semibold text-[var(--ph-ink)]">{day}</p>
         <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          {preview.rows.length} of your stocks found · {preview.skipped} others skipped
+          {preview.rows.length} held {preview.rows.length === 1 ? 'stock' : 'stocks'} found · {preview.skipped} others skipped
         </p>
       </div>
       {preview.rows.length > 0 ? (
@@ -203,7 +272,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
                 title={row.ticker}
                 subtitle={
                   row.keptMicro !== null
-                    ? `Kept: you typed ${formatUnits(row.keptMicro)} for this day`
+                    ? `Kept: ${formatUnits(row.keptMicro)} was typed for this day`
                     : `${row.oldMicro === null ? 'No price' : formatUnits(row.oldMicro)} → ${formatUnits(row.newMicro)}`
                 }
                 value={row.keptMicro !== null ? 'Kept' : row.oldMicro === null ? undefined : change === 0 ? '0,0%' : percentLabel(change, row.oldMicro)}
@@ -214,7 +283,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
           })}
         </InsetGroup>
       ) : (
-        <Empty>None of the shares you hold are in this file.</Empty>
+        <Empty>None of the shares held are in this file.</Empty>
       )}
       <ErrorBox error={error} />
       {saving.length > 0 && (
@@ -227,7 +296,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
           Save {saving.length} {saving.length === 1 ? 'price' : 'prices'}
         </button>
       )}
-      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Saved as “IDX closing price · {day}”. A price you typed for that day is kept.</p>
+      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Saved as “IDX closing price · {day}”. A price typed for that day is kept.</p>
     </Sheet>
   );
 }

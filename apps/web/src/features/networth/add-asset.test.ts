@@ -129,7 +129,7 @@ describe('planNewAsset', () => {
 
   it('says what is missing, in plain words', () => {
     expect(() => planNewAsset(goldDraft({ name: '  ' }), TODAY)).toThrow('Give this asset a name');
-    expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2026-03-09', units: '5', cost: '' }] }), TODAY)).toThrow(/how much you bought and what it cost/);
+    expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2026-03-09', units: '5', cost: '' }] }), TODAY)).toThrow(/how much was bought and what it cost/);
     expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2027-01-01', units: '5', cost: '1.000' }] }), TODAY)).toThrow(/after today/);
     expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2026-03-09', units: '0', cost: '1.000' }] }), TODAY)).toThrow(/more than zero units/);
   });

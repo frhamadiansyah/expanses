@@ -16,7 +16,7 @@ const KIND_LABELS: Record<IncomeRow['kind'], string> = {
 
 /** Each block matches a part of the return, which is the whole point of grouping them this way. */
 const BANDS: { key: IncomeTreatment | 'unset'; title: string; why: string }[] = [
-  { key: 'final', title: 'Final tax', why: 'reported, but not added to your taxable income' },
+  { key: 'final', title: 'Final tax', why: 'reported, but not added to taxable income' },
   { key: 'not_object', title: 'Tidak termasuk objek pajak', why: 'reinvested dividends — reported, no tax' },
   { key: 'ordinary', title: 'Ordinary income', why: 'added together and taxed progressively' },
   { key: 'unset', title: 'Not set', why: 'the app will not guess which box these belong in' },
@@ -31,7 +31,7 @@ export function IncomeSection({ taxYear }: { taxYear: number }) {
   const anyForeign = rows.some((row) => row.foreign);
 
   return (
-    <Panel header="Income and final tax" footer={`What your holdings paid in ${taxYear}, and what was withheld. Each band matches a part of the return.`} pad={false}>
+    <Panel header="Income and final tax" footer={`What these holdings paid in ${taxYear}, and what was withheld. Each band matches a part of the return.`} pad={false}>
       {BANDS.map((band) => {
         const inBand = rows.filter((row) => (row.treatment ?? 'unset') === band.key);
         if (inBand.length === 0) return null;
@@ -89,12 +89,12 @@ export function IncomeSection({ taxYear }: { taxYear: number }) {
           <b>Laporan Realisasi Investasi.</b>{' '}
           <Money minor={reinvested.reduce((total, row) => total + row.grossMinor, 0)} currency={ws.baseCurrency} /> of reinvested dividends this
           year. The exemption holds only if that report reaches DJP as well as the SPT — this app names it and totals it, and cannot send it. The
-          instruments are in your Harta list, which is the other half of what the rules ask for.
+          instruments are in the Harta list, which is the other half of what the rules ask for.
         </p>
       )}
 
       <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        These are the figures you recorded, added up — nothing here is calculated and no rate is applied. Check them against your bukti potong
+        These are the figures recorded, added up — nothing here is calculated and no rate is applied. Check them against the bukti potong
         before filing.
         {anyForeign && ' A holding abroad shows its own currency and is never added into a rupiah total.'}
       </p>

@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
-import { openGoalForm, openWorking } from './goals';
+import { editGoal, openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
@@ -83,7 +83,7 @@ test('row 5 — a paid stage keeps its mark when a level is added, and the targe
 test('row 6 — money set aside before a level is added: the target rises, what is held does not move', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addEducationGoal(page);
-  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await editGoal(page);
   await typeInto(page, 'BCA Tahapan (IDR)', '10000000');
   await page.getByRole('button', { name: 'Save goal' }).click();
   const held = page.getByTestId('goal-link').filter({ hasText: 'BCA Tahapan' }).first();
@@ -110,8 +110,8 @@ test('row 6 — money set aside before a level is added: the target rises, what 
 test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% return, and the page’s figure', async ({ page }) => {
   await page.goto('/calculators/retirement');
   await typeInto(page, 'Yearly spending in retirement (IDR)', '120000000');
-  await typeInto(page, 'Your age now', '35');
-  await typeInto(page, 'Age you retire', '55');
+  await typeInto(page, 'Age now', '35');
+  await typeInto(page, 'Retirement age', '55');
   const answer = page.getByTestId('answer-retirement');
   await expect(answer).toContainText('4.120.008.061');
   const youNeed = figure((await answer.locator('div > div').first().locator('p').nth(1).textContent()) ?? '');
@@ -125,7 +125,7 @@ test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% retu
   await expect(retirement.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
   // The goal inflates its today's-money pot once, to the day you stop: the page's own figure.
   expect(await planTotal(page)).toBe(youNeed);
-  await retirement.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(retirement);
   await expect(page.getByLabel('Cost growth a year (%)')).toHaveValue('3.5');
   await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('10');
 });

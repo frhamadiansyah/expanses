@@ -10,7 +10,7 @@ test('a month without a backup is one press from fixed, and can be put off witho
   await page.goto('/transactions');
   const banner = overdueBanner(page, 31);
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText('Your only copy is on this device.');
+  await expect(banner).toContainText('The only copy is on this device.');
 
   // Always dismissible...
   await banner.getByRole('button', { name: 'Not now' }).click();
@@ -72,11 +72,11 @@ test('the backup screen lists the copies the app keeps, and restores one', async
 
 test('the iPhone paragraph promises only what has been checked', async ({ page }) => {
   await page.goto('/backup');
-  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Backups and your iPhone' }) });
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Backups and iPhone' }) });
   // Spec §8.2: no claim that a device backup covers this data until that has been checked on a device.
-  await expect(section).toContainText('an iPhone backup does not carry your data with it');
+  await expect(section).toContainText('an iPhone backup does not carry this data with it');
   await expect(section).not.toContainText('back up with the rest of the phone');
   await expect(section).not.toContainText("sits in the app's own container");
   // And the one thing that is true today is still said plainly.
-  await expect(section).toContainText('keep downloading a backup of your own');
+  await expect(section).toContainText('keep downloading a backup');
 });
