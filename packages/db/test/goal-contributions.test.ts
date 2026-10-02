@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   budgetSheetFor,
   createAccount,
@@ -41,6 +41,15 @@ async function goldAccount(database: Database, ws: WorkspaceContext) {
 }
 
 describe('what a set-aside records', () => {
+  // The figures below are September's, and what is written is dated by the clock: the clock is that month's.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('writes a dated contribution for what actually moved', async () => {
     const { database, ws, pot, goalId } = await workspace();
 

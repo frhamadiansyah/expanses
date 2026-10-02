@@ -1,6 +1,6 @@
 import { expenseLines, transferLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AccountError,
   archiveAccount,
@@ -232,6 +232,15 @@ describe('category keys on new workspaces', () => {
 });
 
 describe('fund accounts and digital wallets', () => {
+  // The figures below are September's, and what is written is dated by the clock: the clock is that month's.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('holds money, pays like cash, and counts as cash and equivalents', async () => {
     const { database, ws } = await setupDb();
     const groceries = (await listAccounts(database, ws)).find((a) => a.name === 'Groceries')!;

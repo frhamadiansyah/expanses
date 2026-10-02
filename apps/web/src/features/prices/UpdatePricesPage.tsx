@@ -263,7 +263,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
         </p>
       </div>
       {preview.rows.length > 0 ? (
-        <InsetGroup>
+        <InsetGroup header="Held stocks" info={`Saved as “IDX closing price · ${day}”. A price typed for that day is kept.`}>
           {preview.rows.map((row) => {
             const change = row.oldMicro && row.keptMicro === null ? row.newMicro - row.oldMicro : 0;
             return (
@@ -296,7 +296,6 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
           Save {saving.length} {saving.length === 1 ? 'price' : 'prices'}
         </button>
       )}
-      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Saved as “IDX closing price · {day}”. A price typed for that day is kept.</p>
     </Sheet>
   );
 }

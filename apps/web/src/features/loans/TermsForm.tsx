@@ -76,8 +76,8 @@ export function TermsForm({
     <form ref={form} id={formId} onSubmit={submit}>
       <InsetGroup
         header={account?.name ?? 'This loan'}
-        // In the Edit terms sheet the sentence is an ⓘ on the amount instead: a sheet carries no footers.
-        footer={formId ? undefined : terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what is still owed today.'}
+        // In the Edit terms sheet the sentence is an ⓘ on the amount instead; on the page it waits behind the group's ⓘ.
+        info={formId ? undefined : terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what is still owed today.'}
       >
         <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
         <TextRow
@@ -119,7 +119,10 @@ export function TermsForm({
         </SelectRow>
       </InsetGroup>
 
-      <InsetGroup header="The schedule">
+      <InsetGroup
+        header="The schedule"
+        info="The schedule is worked out from what the ledger says is owed, so the payments recorded are always the truth. Nothing here is stored as a projection."
+      >
         <TextRow label="First payment on" type="date" value={draft.firstPaymentOn} onChange={(e) => set({ firstPaymentOn: e.target.value })} required />
         <TextRow
           label="Tenor in months"
@@ -173,7 +176,7 @@ export function TermsForm({
 
       <ErrorBox error={error} />
       {!formId && (
-        <InsetGroup footer="The schedule is worked out from what the ledger says is owed, so the payments recorded are always the truth. Nothing here is stored as a projection.">
+        <InsetGroup>
           <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
           <InsetRow title="Cancel" chevron={false} onClick={onDone} />
         </InsetGroup>
