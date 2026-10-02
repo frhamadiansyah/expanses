@@ -92,7 +92,9 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
   await page.getByLabel('Tenor in months').fill('120');
   await page.getByRole('button', { name: 'Save terms' }).click();
 
-  // The schedule is rebuilt from the new tenor, and the list says the shorter term.
+  // The schedule is rebuilt from the new tenor, and the list says the shorter term. The card stays on screen under
+  // the sheet, so it says nothing about the save; the sheet closing is the write landing.
+  await expect(page.getByRole('dialog', { name: 'Edit terms' })).toHaveCount(0);
   await expect(page.getByTestId('loan-card')).toBeVisible();
   await page.goto('/net-worth/loans');
   await openDrawers(page);
