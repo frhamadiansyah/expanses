@@ -82,6 +82,11 @@ export interface WordList {
   /** Money put in from a card or a bank: "top up", "isi saldo". */
   topup: string[];
   refund: string[];
+  /**
+   * Phrases that hold a direction word and are not a direction: "terima kasih" is thanks, not money received, and a
+   * "credit card" is how a payment was made, not money credited. They are blanked out before direction is read.
+   */
+  notDirection: string[];
   /** An offer rather than a movement: "cashback", "voucher". */
   promo: string[];
   /** The balance words: a figure on such a line is never the amount. */

@@ -15,6 +15,7 @@ export function mergeWords(...lists: readonly WordList[]): WordList {
     received: [],
     topup: [],
     refund: [],
+    notDirection: [],
     promo: [],
     balance: [],
     amountLabels: [],

@@ -240,6 +240,52 @@ export const CORPUS: readonly CorpusCase[] = [
     name: 'KEDAI KOPI',
   }),
 
+  // ── Words that look like a direction or an offer, inside an ordinary payment ──────────────────────────────────
+  note('a payment that says thank you', 'Pembayaran Rp38.000 ke KOPI KENANGAN berhasil. Terima kasih', {
+    skipped: null,
+    amount: { minor: 38_000, currency: 'IDR' },
+    type: 'spent',
+    name: 'KOPI KENANGAN',
+  }),
+  note('a purchase on a credit card, in Indonesian', 'Transaksi Kartu Kredit Rp500.000 di TOKO ELEKTRONIK', {
+    skipped: null,
+    amount: { minor: 500_000, currency: 'IDR' },
+    type: 'spent',
+    name: 'TOKO ELEKTRONIK',
+  }),
+  note('a credit card charge, in English', 'Your credit card ending 1234 was charged $45.00 at GREENGROCER', {
+    skipped: null,
+    amount: { minor: 4_500, currency: 'USD' },
+    type: 'spent',
+    name: 'GREENGROCER',
+  }),
+  note('a payment that earned cashback', 'Pembayaran Rp38.000 ke KOPI KENANGAN berhasil. Kamu dapat cashback Rp3.800', {
+    skipped: null,
+    amount: { minor: 38_000, currency: 'IDR' },
+    type: 'spent',
+    name: 'KOPI KENANGAN',
+  }),
+  note('a payment that earned points', 'Payment of $12.50 to BLUE BOTTLE COFFEE successful. +50 points', {
+    skipped: null,
+    amount: { minor: 1_250, currency: 'USD' },
+    type: 'spent',
+    name: 'BLUE BOTTLE COFFEE',
+  }),
+  note('a payment that earned poin', 'Pembayaran Rp45.500 ke WARUNG KOPI berhasil. +50 poin', {
+    skipped: null,
+    amount: { minor: 45_500, currency: 'IDR' },
+    type: 'spent',
+    name: 'WARUNG KOPI',
+  }),
+  note('cashback arriving is still an offer', 'Cashback Rp5.000 masuk! Pakai voucher di transaksi berikutnya', {
+    skipped: 'promo',
+    amount: null,
+  }),
+  note('an offer that names a spend is still an offer', 'Promo diskon 50% untuk pembayaran minimal Rp100.000', {
+    skipped: 'promo',
+    amount: null,
+  }),
+
   // ── Screens and receipts, read off an image ────────────────────────────────────────────────────────────────────
   shot(
     'transfer success screen',
@@ -292,4 +338,9 @@ export const CORPUS: readonly CorpusCase[] = [
     occurredAt: '2026-10-04',
     line: 2,
   }),
+  shot(
+    'a receipt with a discount line and a thank-you',
+    ['TOKO SEJAHTERA', 'Kopi Susu 2x   Rp40.000', 'DISKON   -Rp5.000', 'TOTAL   Rp35.000', 'TERIMA KASIH'],
+    { skipped: null, amount: { minor: 35_000, currency: 'IDR' }, type: 'spent', name: null, line: 3 },
+  ),
 ];

@@ -6,6 +6,7 @@ export const EN: WordList = {
   received: ['received', 'credited', 'credit', 'incoming', 'deposit'],
   topup: ['top up', 'top-up', 'topup', 'reload'],
   refund: ['refund', 'refunded'],
+  notDirection: ['credit card', 'credit-card'],
   promo: ['discount', 'cashback', 'voucher', 'promo', 'reward', 'coupon', 'points'],
   balance: ['balance', 'available balance', 'remaining'],
   amountLabels: ['total', 'amount', 'grand total', 'total paid'],

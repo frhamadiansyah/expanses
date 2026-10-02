@@ -6,6 +6,7 @@ export const ID: WordList = {
   received: ['masuk', 'diterima', 'dana masuk', 'terima', 'kredit', 'transfer dari', 'refund'],
   topup: ['top up', 'topup', 'isi saldo', 'isi ulang'],
   refund: ['refund', 'pengembalian dana'],
+  notDirection: ['terima kasih', 'kartu kredit'],
   promo: ['diskon', 'cashback', 'voucher', 'promo', 'reward', 'kupon', 'poin'],
   balance: ['saldo', 'sisa saldo'],
   amountLabels: ['total', 'total bayar', 'jumlah', 'nominal', 'total pembayaran'],

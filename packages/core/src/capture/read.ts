@@ -68,6 +68,51 @@ function holds(text: string, list: readonly string[]): string | null {
 
 const hasWord = (text: string, list: readonly string[]) => holds(text, list) !== null;
 
+/** Where the first of these words stands on its own in the text, or null. */
+function firstWordAt(text: string, list: readonly string[]): number | null {
+  const haystack = folded(text);
+  const free = (char: string | undefined) => char === undefined || !/[a-z0-9]/.test(char);
+  let first: number | null = null;
+  for (const word of list) {
+    let from = haystack.indexOf(word);
+    while (from >= 0) {
+      if (free(haystack[from - 1]) && free(haystack[from + word.length])) {
+        if (first === null || from < first) first = from;
+        break;
+      }
+      from = haystack.indexOf(word, from + 1);
+    }
+  }
+  return first;
+}
+
+/**
+ * The text with every phrase that only looks like a direction blanked out, keeping every other character where it was.
+ *
+ * "Pembayaran Rp38.000 berhasil. Terima kasih" thanks the owner; it does not say money arrived.
+ */
+function directionText(text: string, words: WordList): string {
+  let out = text;
+  for (const phrase of words.notDirection) {
+    const haystack = folded(out);
+    const free = (char: string | undefined) => char === undefined || !/[a-z0-9]/.test(char);
+    let from = haystack.indexOf(phrase);
+    while (from >= 0) {
+      if (free(haystack[from - 1]) && free(haystack[from + phrase.length])) {
+        out = out.slice(0, from) + ' '.repeat(phrase.length) + out.slice(from + phrase.length);
+      }
+      from = haystack.indexOf(phrase, from + phrase.length);
+    }
+  }
+  return out;
+}
+
+/** Whether a piece of the capture names a way the money went. */
+const namesDirection = (text: string, words: WordList) => {
+  const plain = directionText(text, words);
+  return hasWord(plain, words.spent) || hasWord(plain, words.received) || hasWord(plain, words.topup) || hasWord(plain, words.refund);
+};
+
 /** The mask a capture prints before the digits of an account it does not want to spell out. */
 const ACCOUNT_HINT = /(?:[·•*x]{2,}|[·•*x]{1,3}\s)[ \u00a0]*(\d{3,6})\b/i;
 
@@ -137,8 +182,7 @@ function amountFromTemplate(units: readonly Unit[], figures: readonly Figure[], 
 
 /** A direction word before this figure, inside its own piece of the capture. */
 function directedIn(unit: Unit, figure: Figure, words: WordList): boolean {
-  const head = unit.text.slice(0, figure.start);
-  return hasWord(head, words.spent) || hasWord(head, words.received) || hasWord(head, words.topup) || hasWord(head, words.refund);
+  return namesDirection(unit.text.slice(0, figure.start), words);
 }
 
 /**
@@ -189,18 +233,45 @@ function amountOf(units: readonly Unit[], figures: readonly Figure[], words: Wor
   return field(largest, 50);
 }
 
-/** Which way the money went: the direction the capture names, or nothing read. */
+/** The first place in the capture one of these words stands: which piece, and where inside it. */
+function firstPlace(units: readonly Unit[], list: readonly string[], words: WordList): { unit: number; at: number } | null {
+  for (let index = 0; index < units.length; index += 1) {
+    const at = firstWordAt(directionText(units[index]!.text, words), list);
+    if (at !== null) return { unit: index, at };
+  }
+  return null;
+}
+
+/**
+ * Which way the money went: the direction the capture names, or nothing read.
+ *
+ * A refund or a top-up is named as one and wins outright. Between money out and money in, the word said first is the
+ * one the capture is about: "Pembayaran Rp38.000 berhasil diterima" is a payment, "Dana masuk … transfer ke rekening
+ * Anda" is money arriving. Phrases that only look like a direction — thanks, a credit card — are not read at all.
+ */
 function typeOf(units: readonly Unit[], words: WordList, skipped: boolean): Field<MoveType> {
   if (skipped) return { value: 'spent', confidence: 0, line: null };
   for (const [list, value] of [
     [words.refund, 'refund'],
     [words.topup, 'topup'],
-    [words.received, 'received'],
-    [words.spent, 'spent'],
   ] as const) {
-    const at = units.findIndex((unit) => hasWord(unit.text, list));
-    if (at >= 0) return { value, confidence: 85, line: units[at]!.line };
+    const place = firstPlace(units, list, words);
+    if (place) return { value, confidence: 85, line: units[place.unit]!.line };
   }
+  const received = firstPlace(units, words.received, words);
+  const spent = firstPlace(units, words.spent, words);
+  const first =
+    received && spent
+      ? received.unit < spent.unit || (received.unit === spent.unit && received.at < spent.at)
+        ? ('received' as const)
+        : ('spent' as const)
+      : received
+        ? ('received' as const)
+        : spent
+          ? ('spent' as const)
+          : null;
+  if (first === 'received') return { value: 'received', confidence: 85, line: units[received!.unit]!.line };
+  if (first === 'spent') return { value: 'spent', confidence: 85, line: units[spent!.unit]!.line };
   return { value: 'spent', confidence: 40, line: null };
 }
 
@@ -236,6 +307,7 @@ const WORDS_FOR_CUT: WordList = {
   received: [],
   topup: [],
   refund: [],
+  notDirection: [],
   promo: [],
   balance: [],
   amountLabels: [],
@@ -356,6 +428,22 @@ function dateOf(units: readonly Unit[], capture: RawCapture, template: Template)
   return null;
 }
 
+/**
+ * The capture with its offers set aside, or null when the offer is all it is.
+ *
+ * A payment confirmation often carries an offer as well — "Pembayaran Rp38.000 berhasil. Kamu dapat cashback Rp3.800",
+ * "+50 poin", a receipt's DISKON line — and that is still a payment. So a piece holding a promo word is left out, and
+ * the capture is an offer only when what is left holds no figure, or names no movement and labels no total: "Cashback
+ * Rp5.000 masuk!" is about the cashback, and every piece of it says so.
+ */
+function withoutOffers(units: readonly Unit[], words: WordList): Unit[] | null {
+  const rest = units.filter((unit) => !hasWord(unit.text, words.promo));
+  if (rest.length === units.length) return [...units];
+  const hasFigure = rest.some((unit) => findAmounts(unit.text, words).length > 0);
+  const saysWhat = rest.some((unit) => namesDirection(unit.text, words) || hasWord(unit.text, words.amountLabels));
+  return hasFigure && saysWhat ? rest : null;
+}
+
 const SKIPPED = (skipped: 'promo' | 'unreadable', accountHint: string | null): Reading => ({
   skipped,
   amount: null,
@@ -371,13 +459,22 @@ const SKIPPED = (skipped: 'promo' | 'unreadable', accountHint: string | null): R
  * The order is the order the spec sets: an offer is skipped before anything is read, then the amount, then everything
  * else — so a capture that is skipped never contributes a figure, however many it prints.
  */
-export function readCapture(capture: RawCapture, words: WordList, template: Template | null): Reading {
-  const units = unitsOf(capture);
-  const text = units.map((unit) => unit.text).join('\n');
+export function readCapture(
+  capture: RawCapture,
+  words: WordList,
+  template: Template | null,
+  opts: {
+    /** False reads an offer for its money anyway: the owner bringing back a skipped capture has overruled the filter. */
+    skipPromos?: boolean;
+  } = {},
+): Reading {
+  const all = unitsOf(capture);
+  const text = all.map((unit) => unit.text).join('\n');
   const hint = accountHintOf(text);
 
-  if (units.length === 0) return SKIPPED('unreadable', hint);
-  if (units.some((unit) => hasWord(unit.text, words.promo))) return SKIPPED('promo', hint);
+  if (all.length === 0) return SKIPPED('unreadable', hint);
+  const units = opts.skipPromos === false ? all : withoutOffers(all, words);
+  if (units === null) return SKIPPED('promo', hint);
 
   const learned = template ?? null;
   const figures = figuresOf(units, words);

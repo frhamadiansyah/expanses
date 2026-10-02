@@ -44,6 +44,12 @@ describe('readCapture', () => {
     expect(reading.name).toBeNull();
   });
 
+  it('reads an offer for its money when the owner brings it back', () => {
+    const reading = readCapture(notification('Cashback Rp5.000 masuk! Pakai voucher'), WORDS, null, { skipPromos: false });
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 5_000, currency: 'IDR' });
+  });
+
   it('reads money received, and who sent it', () => {
     const reading = readCapture(notification('Dana masuk Rp 5.000.000 dari PT MAJU JAYA'), WORDS, null);
     expect(reading.skipped).toBeNull();
