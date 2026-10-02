@@ -10,7 +10,7 @@ import { FigureRow, InfoButton, UseBar } from '../budget/budget-rows';
 import { bareFigure } from '../networth/debt-rows';
 import { GoalForm } from './GoalForm';
 import { InfoHeader } from './InfoHeader';
-import { type GoalCard, goalCard, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalsTotals } from './goal-cards';
+import { type GoalCard, goalCard, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalsTotals, onTrackLine } from './goal-cards';
 import { useEarmarks, useGoalPlans } from './queries';
 
 /** The page's two sections, in funding order: what is saved reaches the compulsory goals first. */
@@ -141,13 +141,9 @@ export function GoalsPage() {
                 {formatMinor(totals.savedMinor, currency)}
               </p>
             </div>
-            <UseBar share={totals.percent / 100} height={6} label="Saved of the targets" />
-            <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-              <span data-testid="goals-target">
-                of <Money minor={totals.targetMinor} currency={currency} />
-              </span>
-              <span className="tabular shrink-0">{totals.percent}%</span>
-            </div>
+            <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="goals-on-track">
+              {onTrackLine(totals)}
+            </p>
             {shortfall > 0 && (
               <ShortChip
                 shortMinor={shortfall}

@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, onTrackLine, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -274,24 +274,28 @@ describe('the return a goal opens with', () => {
 });
 
 describe('goalsTotals', () => {
-  const card = (currentMinor: number, targetMinor: number, done = false) => ({ currentMinor, targetMinor, done });
+  type Label = 'Done' | 'Funded' | 'On track' | 'Behind';
+  const card = (currentMinor: number, statusLabel: Label = 'On track', done = false) => ({ currentMinor, statusLabel, done });
 
-  it('adds what is saved and what is still to cost across the goals still running', () => {
-    expect(goalsTotals([card(30_000_000, 60_000_000), card(18_000_000, 260_000_000)])).toEqual({ savedMinor: 48_000_000, targetMinor: 320_000_000, percent: 15 });
+  it('adds what is saved across the goals still running', () => {
+    expect(goalsTotals([card(30_000_000), card(18_000_000, 'Behind')]).savedMinor).toBe(48_000_000);
   });
 
-  it('leaves a done goal out of both sides', () => {
-    expect(goalsTotals([card(10_000_000, 40_000_000), card(5_000_000, 0, true)])).toEqual({ savedMinor: 10_000_000, targetMinor: 40_000_000, percent: 25 });
+  it('leaves a done goal out of the figure', () => {
+    expect(goalsTotals([card(10_000_000), card(5_000_000, 'Done', true)]).savedMinor).toBe(10_000_000);
   });
 
-  it('counts a funded goal’s surplus in the figure but never toward another goal’s share', () => {
-    const totals = goalsTotals([card(50_000_000, 10_000_000), card(0, 90_000_000)]);
-    expect(totals.savedMinor).toBe(50_000_000);
-    expect(totals.percent).toBe(10);
+  it('counts on track and funded goals, done ones included, out of every goal', () => {
+    expect(goalsTotals([card(0, 'On track'), card(0, 'Behind'), card(0, 'Funded'), card(0, 'Done', true), card(0, 'Behind')])).toMatchObject({ onTrack: 3, count: 5 });
   });
 
-  it('reads 0% with nothing to reach', () => {
-    expect(goalsTotals([]).percent).toBe(0);
+  it('reads nought of nought with no goals', () => {
+    expect(goalsTotals([])).toEqual({ savedMinor: 0, onTrack: 0, count: 0 });
+  });
+
+  it('says it as a line', () => {
+    expect(onTrackLine({ onTrack: 1, count: 3 })).toBe('1 of 3 goals on track');
+    expect(onTrackLine({ onTrack: 1, count: 1 })).toBe('1 of 1 goal on track');
   });
 });
 

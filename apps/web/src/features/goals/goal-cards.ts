@@ -89,17 +89,18 @@ export const GOAL_KIND_MARKS: Record<GoalKind, { Glyph: LucideIcon; colour: stri
 export const monthYear = (iso: string) => `${new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })} ${iso.slice(0, 4)}`;
 
 /**
- * The list's card: what is saved for the goals still running, against what they still cost. A done goal is left
- * out (its stages are paid, so nothing is owed on it). The share counts each goal up to its own target, so the
- * surplus on a funded goal never fills another goal's gap; the figure is everything held.
+ * The list's card: what is saved for the goals still running, and how many of the goals are on track. A done goal is
+ * left out of the figure (its stages are paid, so nothing is owed on it) but counts as on track: it is funded. The
+ * figure is everything held, a funded goal's surplus included.
  */
-export function goalsTotals(cards: readonly Pick<GoalCard, 'currentMinor' | 'targetMinor' | 'done'>[]): { savedMinor: number; targetMinor: number; percent: number } {
-  const live = cards.filter((card) => !card.done);
-  const savedMinor = live.reduce((total, card) => total + card.currentMinor, 0);
-  const targetMinor = live.reduce((total, card) => total + card.targetMinor, 0);
-  const towardMinor = live.reduce((total, card) => total + Math.max(0, Math.min(card.currentMinor, card.targetMinor)), 0);
-  return { savedMinor, targetMinor, percent: targetMinor > 0 ? Math.floor((towardMinor / targetMinor) * 100) : 0 };
+export function goalsTotals(cards: readonly Pick<GoalCard, 'currentMinor' | 'done' | 'statusLabel'>[]): { savedMinor: number; onTrack: number; count: number } {
+  const savedMinor = cards.filter((card) => !card.done).reduce((total, card) => total + card.currentMinor, 0);
+  const onTrack = cards.filter((card) => card.statusLabel !== 'Behind').length;
+  return { savedMinor, onTrack, count: cards.length };
 }
+
+/** "1 of 3 goals on track"; one goal reads "1 of 1 goal on track". */
+export const onTrackLine = ({ onTrack, count }: { onTrack: number; count: number }) => `${onTrack} of ${count} ${count === 1 ? 'goal' : 'goals'} on track`;
 
 /** "3 Aug" — for dates inside the year a goal's card is read in. */
 export const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
