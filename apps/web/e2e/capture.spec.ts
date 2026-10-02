@@ -92,14 +92,20 @@ test('a payment out and a top-up in are one transfer, and recording it moves bot
   await expectBalance(page, 'Everyday bank', '49.800.000');
   await expectBalance(page, 'Pay wallet', '1.200.000');
 
-  // Seen again — the same movement the owner has just dealt with — is not a second thing to do: the queue stays as
-  // it was, rather than nagging about a transfer that is already in the ledger.
+  // Seen again minutes after it was captured — the same movement the owner has just dealt with — is not a second
+  // thing to do: the queue stays as it was, rather than nagging about a transfer that is already in the ledger.
   await page.goto('/review');
   await inject(page, [
-    notice({ id: 'note-out-again', app: 'com.example.bank', title: 'Bank', body: 'Pembayaran Rp200.000 berhasil. Merchant: PAY WALLET', capturedAt: '2026-09-30T12:00:00+07:00' }),
+    notice({ id: 'note-out-again', app: 'com.example.bank', title: 'Bank', body: 'Pembayaran Rp200.000 berhasil. Merchant: PAY WALLET', capturedAt: '2026-09-30T09:43:00+07:00' }),
   ]);
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
   await expect(page.getByTestId('skipped-row')).toHaveCount(0);
+
+  // The same figure paid again hours later is a new payment, however soon after the first was recorded: it waits.
+  await inject(page, [
+    notice({ id: 'note-out-later', app: 'com.example.bank', title: 'Bank', body: 'Pembayaran Rp200.000 berhasil. Merchant: PAY WALLET', capturedAt: '2026-09-30T12:05:00+07:00' }),
+  ]);
+  await expect(page.getByTestId('draft-row')).toHaveCount(3);
 });
 
 test('an offer is skipped rather than queued, and can be brought back', async ({ page }) => {
@@ -113,7 +119,9 @@ test('an offer is skipped rather than queued, and can be brought back', async ({
   await expect(skipped).toContainText('Looked like an offer');
   await skipped.click();
 
-  // Bringing it back overrules the filter for this one capture: it becomes the draft it would have been.
+  // Bringing it back overrules the filter for this one capture: it becomes the draft it would have been, at the
+  // figure it printed.
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(page.getByTestId('draft-row')).toContainText('10.000');
   await expect(page.getByText('Skipped (1)')).toHaveCount(0);
 });
