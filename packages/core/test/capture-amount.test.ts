@@ -16,4 +16,9 @@ describe('findAmounts', () => {
 
   it('finds both figures in order', () =>
     expect(one('Bayar Rp38.000, saldo Rp1.212.000').map((a) => a.minor)).toEqual([38_000, 1_212_000]));
+
+  it('does not read a currency mark out of the end of a word', () => {
+    expect(one('Kode confirm 123456')).toEqual([]);
+    expect(one('Ref pidr 5000 tusd 20')).toEqual([]);
+  });
 });

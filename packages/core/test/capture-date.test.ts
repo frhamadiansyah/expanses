@@ -14,5 +14,10 @@ describe('findDateTime', () => {
     ['Transaksi berhasil pada 03 Agu 2026 pukul 14:05', '2026-08-03T14:05'],
     ['no date here', null],
     ['Saldo Rp1.212.000', null],
+    ['30 Feb 2026', null],
+    ['31/04/2026', null],
+    ['29 Feb 2026', null],
+    ['29 Feb 2028', '2028-02-29'],
+    ['31 Okt 2026', '2026-10-31'],
   ])('%s', (text, iso) => expect(findDateTime(text)).toBe(iso));
 });

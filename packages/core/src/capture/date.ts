@@ -36,8 +36,9 @@ function monthOf(token: string): number | null {
 function valid(year: number, month: number, day: number): boolean {
   if (year < 1900 || year > 2999) return false;
   if (month < 1 || month > 12) return false;
-  if (day < 1 || day > 31) return false;
-  return true;
+  // A day the month does not have is a misread, not a date: 30 February is no day to file money on.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day >= 1 && day <= daysInMonth;
 }
 
 function timeOf(hourText: string | undefined, minuteText: string | undefined, meridiem: string | undefined): string | null {

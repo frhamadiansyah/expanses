@@ -88,9 +88,12 @@ export function parseNumber(raw: string): number | null {
 function markAt(text: string, i: number): { code: string; length: number } | null {
   for (const [mark, code] of CURRENCY_MARKS) {
     if (text.slice(i, i + mark.length).toLowerCase() !== mark.toLowerCase()) continue;
-    // A letter mark must not be the front of a longer word: "IDR" is money, "IDRX" is not.
+    // A letter mark must be a word of its own: "IDR" is money, "IDRX" is not, and the "rm" ending "confirm" is not
+    // ringgit.
     const after = text[i + mark.length];
+    const before = i > 0 ? text[i - 1] : undefined;
     if (/[A-Za-z]/.test(mark) && after !== undefined && /[A-Za-z]/.test(after)) continue;
+    if (/^[A-Za-z]/.test(mark) && before !== undefined && /[A-Za-z]/.test(before)) continue;
     return { code, length: mark.length };
   }
   return null;
