@@ -24,7 +24,7 @@ export function RowGlyph({ children, tone = 'fill' }: { children: ReactNode; ton
 }
 
 /** The chevron, as the kit draws it: a glyph on the text's baseline, in the chevron token. */
-function Chevron({ faint = false }: { faint?: boolean }) {
+export function Chevron({ faint = false }: { faint?: boolean }) {
   return (
     <span aria-hidden className={cx('shrink-0 text-[17px] leading-none', faint ? 'text-[var(--ph-hair)]' : 'text-[var(--ph-chevron)]')}>
       {'›'}

@@ -8,6 +8,7 @@ import {
   editDraft,
   learnFromCorrection,
   reopenDraft,
+  type SetAsideChoice,
   setSourceAccount,
   unmerge,
   voidTransaction,
@@ -30,6 +31,8 @@ import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
 import { answerPatch, captureRowView, type ReadingWithLines } from './capture-view';
 import { CaptureViewer } from './CaptureViewer';
 import { DraftSheet } from './DraftSheet';
+import { corrections, draftPatch } from './draft-form';
+import type { FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
 
@@ -152,6 +155,34 @@ export function ReviewPage() {
     if (draft.imageFile) await native.deleteCaptureImage({ file: draft.imageFile }).catch(() => undefined);
   }
 
+  /**
+   * Records a draft finished on the Add form. The form is written back onto the draft first — `confirmDraft` reads
+   * the row — and each field the owner corrected against what was read is shown to the source, so the next capture
+   * from it is read right. The set-aside question was the form's own, asked the way Add asks it. Throws, so the form
+   * shows what went wrong where Save was pressed.
+   */
+  async function recordForm(draft: DraftRow, form: FormDraft, opts: { setAside: SetAsideChoice | null; keepPhoto: boolean }) {
+    setError(null);
+    const patch = draftPatch(form, draft);
+    for (const { field, value } of corrections(form, draft)) {
+      await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
+    }
+    await editDraft(database, ws, draft.id, patch);
+    const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, {
+      setAside: opts.setAside,
+      keepPhoto: opts.keepPhoto,
+      extras: {
+        eventId: form.eventId || null,
+        channel: form.channel || null,
+        excludedFromReport: form.excluded,
+        mcc: form.mcc.trim() || null,
+        photoIds: form.photoIds,
+      },
+    });
+    await settlePicture(draft, transactionId, keptImage);
+    resolved({ ...draft, description: patch.description }, 'recorded', transactionId);
+  }
+
   /** Says a draft is not something to record. It stays, so the same capture is not offered again. */
   async function discard(draft: DraftRow, undoable = false) {
     await run(draft.id, async () => {
@@ -167,12 +198,96 @@ export function ReviewPage() {
    * a question of its own, and no gesture may answer it: the sheet opens on the row instead.
    */
   function swipeRecord(draft: DraftRow) {
-    if (captureRowView(draft, sourceOf(draft)).needs.length > 0) setEditing(draft.id);
+    // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
+    const uncategorised = draft.kind !== 'transfer' && !draft.categoryAccountId;
+    if (uncategorised || captureRowView(draft, sourceOf(draft)).needs.length > 0) setEditing(draft.id);
     else void record(draft, { undoable: true });
   }
 
   const list = drafts.data ?? [];
   const editingDraft = list.find((draft) => draft.id === editing) ?? null;
+
+  /*
+   * The phone's way into one draft is the Add transaction screen itself, filled in from what was read: it stands in
+   * the list's place, ‹ goes back to the list, and the sheets it opens (the picture, the set-aside question) and the
+   * toast it leaves are the page's own.
+   */
+  const overlays = (
+    <>
+      {viewing && (
+        <CaptureViewer
+          draft={viewing.draft}
+          reading={(viewing.draft.reading as ReadingWithLines | null) ?? null}
+          focus={viewing.focus}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
+      {asking && (
+        <SetAsideSheet
+          door={asking.door}
+          onSave={async (choice) => {
+            const { transactionId, keptImage } = await confirmDraft(database, ws, asking.id, {
+              setAside: choice,
+              keepPhoto: asking.keepPhoto,
+            });
+            const draft = list.find((row) => row.id === asking.id);
+            if (draft) await settlePicture(draft, transactionId, keptImage);
+            await invalidate();
+            if (asking.undoable && draft) resolved(draft, 'recorded', transactionId);
+          }}
+          onClose={() => setAsking(null)}
+        />
+      )}
+
+      {toast && (
+        <UndoToast
+          text={toast.text}
+          onUndo={() =>
+            void run('undo', async () => {
+              const takeBack = toast.undo;
+              setToast(null);
+              await takeBack();
+            })
+          }
+          onDone={() => setToast(null)}
+        />
+      )}
+    </>
+  );
+
+  if (editingDraft) {
+    return (
+      <div className={SCREEN}>
+        <ErrorBox error={error} />
+        <DraftSheet
+          // A different draft is a different form: nothing typed for one may carry over to the next.
+          key={editingDraft.id}
+          draft={editingDraft}
+          source={sourceOf(editingDraft)}
+          onAnswerSource={(accountId) =>
+            void run(editingDraft.id, async () => {
+              const source = sourceOf(editingDraft);
+              if (source) await setSourceAccount(database, source.id, accountId, ws.workspaceId);
+              // A top-up's source is the wallet it landed in: the answer is the destination, not where it came from.
+              await editDraft(database, ws, editingDraft.id, answerPatch(editingDraft, accountId));
+            })
+          }
+          onUnmerge={() =>
+            void run(editingDraft.id, async () => {
+              await unmerge(database, ws, editingDraft.id);
+              setEditing(null);
+            })
+          }
+          onView={() => setViewing({ draft: editingDraft, focus: null })}
+          onRecord={(form, opts) => recordForm(editingDraft, form, opts)}
+          onDiscard={() => void discard(editingDraft, true)}
+          onClose={() => setEditing(null)}
+        />
+        {overlays}
+      </div>
+    );
+  }
 
   return (
     <div className={SCREEN}>
@@ -339,75 +454,7 @@ export function ReviewPage() {
 
       <SkippedList />
 
-      {editingDraft && (
-        <DraftSheet
-          draft={editingDraft}
-          source={sourceOf(editingDraft)}
-          accounts={accounts}
-          money={money}
-          busy={busy !== null}
-          onEdit={(patch) => void run(editingDraft.id, () => editDraft(database, ws, editingDraft.id, patch))}
-          onAnswerSource={(accountId) =>
-            void run(editingDraft.id, async () => {
-              const source = sourceOf(editingDraft);
-              if (source) await setSourceAccount(database, source.id, accountId, ws.workspaceId);
-              // A top-up's source is the wallet it landed in: the answer is the destination, not where it came from.
-              await editDraft(database, ws, editingDraft.id, answerPatch(editingDraft, accountId));
-            })
-          }
-          onCorrect={(field, value) => void learnFromCorrection(database, editingDraft.id, field, value).catch(() => undefined)}
-          onUnmerge={() =>
-            void run(editingDraft.id, async () => {
-              await unmerge(database, ws, editingDraft.id);
-              setEditing(null);
-            })
-          }
-          onView={(focus) => setViewing({ draft: editingDraft, focus })}
-          onRecord={({ keepPhoto }) => void record(editingDraft, { undoable: true, keepPhoto })}
-          onDiscard={() => void discard(editingDraft, true)}
-          onClose={() => setEditing(null)}
-        />
-      )}
-
-      {viewing && (
-        <CaptureViewer
-          draft={viewing.draft}
-          reading={(viewing.draft.reading as ReadingWithLines | null) ?? null}
-          focus={viewing.focus}
-          onClose={() => setViewing(null)}
-        />
-      )}
-
-      {asking && (
-        <SetAsideSheet
-          door={asking.door}
-          onSave={async (choice) => {
-            const { transactionId, keptImage } = await confirmDraft(database, ws, asking.id, {
-              setAside: choice,
-              keepPhoto: asking.keepPhoto,
-            });
-            const draft = list.find((row) => row.id === asking.id);
-            if (draft) await settlePicture(draft, transactionId, keptImage);
-            await invalidate();
-            if (asking.undoable && draft) resolved(draft, 'recorded', transactionId);
-          }}
-          onClose={() => setAsking(null)}
-        />
-      )}
-
-      {toast && (
-        <UndoToast
-          text={toast.text}
-          onUndo={() =>
-            void run('undo', async () => {
-              const takeBack = toast.undo;
-              setToast(null);
-              await takeBack();
-            })
-          }
-          onDone={() => setToast(null)}
-        />
-      )}
+      {overlays}
     </div>
   );
 }

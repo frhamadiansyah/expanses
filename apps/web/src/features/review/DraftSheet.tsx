@@ -1,38 +1,32 @@
-import { dayMonth, formatMinor } from '@expanses/core';
-import type { AccountRow, CaptureSource, DraftRow } from '@expanses/db';
-import { useState } from 'react';
-import { Sheet } from '../../app/Sheet';
-import { Button } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
-import { CategoryOptions } from '../cards/options';
-import { asksForSourceAccount, majorText, minorFromTyped, sourceSide } from './capture-view';
+import type { CaptureSource, DraftRow, SetAsideChoice } from '@expanses/db';
+import { Camera } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { captureBytes, native } from '../../capture/native';
+import { Chevron, FormRows, RowGlyph, SwitchRow } from '../transactions/FormRow';
+import { TransactionCard } from '../transactions/TransactionCard';
+import type { FormDraft } from '../transactions/tx-form';
+import { asksForSourceAccount, captureRowView, SURE, sourceSide } from './capture-view';
+import { canRecord, formFromDraft } from './draft-form';
 
-type Patch = Partial<
-  Pick<DraftRow, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId'>
->;
+const KIND_WORDS: Partial<Record<DraftRow['source'], string>> = { notification: 'Notification', screen: 'Screenshot', photo: 'Photo' };
 
 /**
- * One draft on the phone: what it was read as, and everything recording it needs.
+ * One draft, reviewed on the Add transaction screen itself.
  *
- * A captured draft is not just an amount waiting for a category any more: it can be money in, or money moved
- * between two of the owner's own accounts, and it may still be missing the account only the owner knows. So the
- * sheet shows what was read — editable, because a wrong figure is corrected here, and correcting it is what
- * teaches the source its layout — and asks only the questions that are still open: an account for a source that
- * has never been answered for, a destination for a transfer, a category for spending or income.
+ * A captured draft used to open in a sheet of its own — its own order, its own words, a plain number for the amount
+ * and a date box — so finishing a capture was a second form to learn. It now opens on the very card that adds a
+ * transaction, filled in from what was read: the same tabs, the same Paid with, Amount, Category, Note and ‹ day ›,
+ * and ✓ in the corner records it. What is particular to a capture stands around that card: the picture it came
+ * from above (one tap from the full-screen view, with Keep photo under it), the one question only the owner can
+ * answer on the account row itself, and Discard at the foot.
  *
- * The picture stays one tap away (`onView`), the merge can be undone when two sightings were folded too eagerly,
- * and "Keep photo" chooses whether the picture comes along to the ledger. A notification has no picture; it shows
- * its words instead.
+ * The draft is the caller's to write: `onRecord` gets the form as it stands, and the caller writes it back onto the
+ * draft and confirms it, teaching the source from whatever was corrected on the way.
  */
 export function DraftSheet({
   draft,
   source,
-  accounts,
-  money,
-  busy,
-  onEdit,
   onAnswerSource,
-  onCorrect,
   onUnmerge,
   onView,
   onRecord,
@@ -42,196 +36,162 @@ export function DraftSheet({
   draft: DraftRow;
   /** The source this capture was recognised as, when there is one — what "remembered for" names. */
   source: CaptureSource | null;
-  /** Every account, for the category picker: a category is an account too. */
-  accounts: readonly AccountRow[];
-  /** What can pay: money accounts that are not locked deposits, the same list the table's select offers. */
-  money: readonly AccountRow[];
-  busy: boolean;
-  onEdit: (patch: Patch) => void;
   /** The answer to "Which account is this?": remembered for the source, and applied to this draft. */
   onAnswerSource: (accountId: string) => void;
-  /** A corrected field: written down on the draft, and shown to the source so the next capture reads it right. */
-  onCorrect: (field: 'amount' | 'name' | 'date', value: string) => void;
   /** Splits the last folded-in capture back out into a draft of its own. */
   onUnmerge: () => void;
-  /** Opens the full-screen picture at a field's box, or at the picture as a whole. */
-  onView: (focus: 'amount' | 'name' | 'date' | null) => void;
-  onRecord: (opts: { keepPhoto: boolean }) => void;
+  /** Opens the full-screen picture, or a notification's own words. */
+  onView: () => void;
+  /** Writes the form back onto the draft and confirms it. A throw is shown on the card. */
+  onRecord: (form: FormDraft, opts: { setAside: SetAsideChoice | null; keepPhoto: boolean }) => Promise<void>;
   onDiscard: () => void;
   onClose: () => void;
 }) {
-  const [amount, setAmount] = useState(() => majorText(draft.amountMinor, draft.currency));
-  const [description, setDescription] = useState(draft.description);
+  // The form is filled once, from the draft as it opened: later writes to the row (an answered source) are the
+  // form's own choices already, and refilling it would throw away what has been typed since.
+  const [prefill] = useState(() => formFromDraft(draft));
+  // A photographed receipt is kept with the purchase unless the owner says no; a screenshot is not kept unless asked.
   const [keepPhoto, setKeepPhoto] = useState(draft.source === 'photo');
-  const unsure = draft.confidence !== null && draft.confidence < 70;
-  // A top-up's source is the wallet it landed in, so for one the question is about where the money went.
-  const askingForAccount = asksForSourceAccount(draft, source);
-  const answersTo = sourceSide(draft) === 'toAccountId';
-
-  const complete =
-    draft.kind === 'transfer'
-      ? Boolean(draft.accountId && draft.toAccountId && draft.accountId !== draft.toAccountId)
-      : Boolean(draft.accountId && draft.categoryAccountId);
-
-  /** Writes a corrected amount down: the same sign it had, read back by the reader's own rules. */
-  function commitAmount() {
-    const minor = minorFromTyped(amount, draft.currency);
-    if (minor === null) {
-      setAmount(majorText(draft.amountMinor, draft.currency));
-      return;
-    }
-    if (minor === Math.abs(draft.amountMinor)) return;
-    const sign = draft.amountMinor < 0 ? -1 : 1;
-    onCorrect('amount', amount);
-    onEdit({ amountMinor: sign * minor });
-  }
-
-  function commitDescription() {
-    const name = description.trim();
-    if (name === '' || name === draft.description) {
-      setDescription(draft.description);
-      return;
-    }
-    onCorrect('name', name);
-    onEdit({ description: name });
-  }
-
-  const accountLabel = draft.kind === 'transfer' ? 'From' : draft.kind === 'income' ? 'Into' : 'Paid with';
-
-  /** "Which account is this?", standing on the side of the draft its source speaks for. */
-  const question = (value: string | null) => (
-    <SelectRow
-      label="Which account is this?"
-      value={value ?? ''}
-      onChange={(event) => {
-        if (event.target.value) onAnswerSource(event.target.value);
-      }}
-    >
-      <option value="">Choose…</option>
-      {money.map((account) => (
-        <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-      ))}
-    </SelectRow>
-  );
-  const categoryKind = draft.amountMinor >= 0 ? 'expense' : 'income';
+  const ask = asksForSourceAccount(draft, source);
+  // Opened from partway down the queue: the form starts at its top, as a screen of its own does.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   return (
-    <Sheet title={draft.description} onClose={onClose} grouped>
-      <InsetGroup header="What was read">
-        {(draft.imageFile || draft.rawPayload) && (
-          <InsetRow
-            title={draft.imageFile ? 'The picture' : 'What it said'}
-            subtitle={draft.imageFile ? 'Tap to see the boxes around everything read' : draft.rawPayload?.split('\n')[0]}
-            chevron
-            onClick={() => onView(null)}
-          />
-        )}
-        <TextRow
-          label={`Amount (${draft.currency})`}
-          inputMode="decimal"
-          value={amount}
-          hint={unsure ? 'The reader was not sure of this figure — check it against the picture.' : undefined}
-          onChange={(event) => setAmount(event.target.value)}
-          onBlur={commitAmount}
-        />
-        <TextRow label="Merchant" value={description} onChange={(event) => setDescription(event.target.value)} onBlur={commitDescription} />
-        <TextRow
-          label="Date"
-          type="date"
-          value={draft.occurredOn}
-          onChange={(event) => onEdit({ occurredOn: event.target.value })}
-          onBlur={() => onCorrect('date', draft.occurredOn)}
-        />
-      </InsetGroup>
-
-      <InsetGroup
-        header="Where it goes"
-        footer={
-          complete
-            ? undefined
-            : draft.kind === 'transfer'
-              ? 'Recording needs both accounts: where the money left, and where it landed.'
-              : 'Recording needs both: the account it was paid from, and the category it belongs to.'
-        }
-      >
-        {askingForAccount && !answersTo ? (
-          question(draft.accountId)
-        ) : (
-          <SelectRow label={accountLabel} value={draft.accountId ?? ''} onChange={(event) => onEdit({ accountId: event.target.value })}>
-            <option value="">Choose…</option>
-            {money.map((account) => (
-              <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-            ))}
-          </SelectRow>
-        )}
-        {draft.kind === 'transfer' ? (
-          askingForAccount && answersTo ? (
-            question(draft.toAccountId)
-          ) : (
-            <SelectRow label="To" value={draft.toAccountId ?? ''} onChange={(event) => onEdit({ toAccountId: event.target.value })}>
-              <option value="">Choose…</option>
-              {money
-                .filter((account) => account.id !== draft.accountId)
-                .map((account) => (
-                  <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-                ))}
-            </SelectRow>
-          )
-        ) : (
-          <SelectRow
-            label="Category"
-            value={draft.categoryAccountId ?? ''}
-            onChange={(event) => onEdit({ categoryAccountId: event.target.value })}
+    <TransactionCard
+      full
+      title="Review"
+      label={`Review ${draft.description}`}
+      onBack={onClose}
+      onDone={onClose}
+      finish={{
+        prefill,
+        saveLabel: 'Record',
+        canSubmit: (form) => canRecord(form, draft),
+        onSubmit: (form, setAside) => onRecord(form, { setAside, keepPhoto }),
+        amountUnsure: draft.confidence !== null && draft.confidence < SURE,
+        accountAsk:
+          ask && source
+            ? {
+                // A top-up's source is the wallet it landed in, so for one the question is about where the money went.
+                side: sourceSide(draft) === 'toAccountId' ? 'to' : 'money',
+                label: 'Which account is this?',
+                note: `Remembered for every capture from ${source.label}`,
+                onAnswer: onAnswerSource,
+              }
+            : undefined,
+        header: <CaptureStrip draft={draft} source={source} keepPhoto={keepPhoto} onKeepPhoto={setKeepPhoto} onView={onView} onUnmerge={onUnmerge} />,
+        footer: (
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="ph-focus min-h-11 w-full rounded-full text-[15px] font-semibold text-[var(--ph-alarm)] active:bg-[var(--ph-fill)]"
           >
-            {/* Confirming a draft records real spending, so it may only name the open workspace's categories. */}
-            <CategoryOptions accounts={accounts} kind={categoryKind} parentSuffix="(general)" />
-          </SelectRow>
-        )}
-      </InsetGroup>
+            Discard
+          </button>
+        ),
+      }}
+    />
+  );
+}
 
-      {askingForAccount && source && (
-        <p className="px-1 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Answered once: every capture from {source.label} is filed there from now on.
-        </p>
-      )}
+/**
+ * Where the draft came from, above the form: the picture (or a notification's words), how it arrived and from
+ * which app, and whether more than one sighting was folded into it. The whole strip opens the full-screen view;
+ * Unmerge sits above that, a button of its own.
+ */
+function CaptureStrip({
+  draft,
+  source,
+  keepPhoto,
+  onKeepPhoto,
+  onView,
+  onUnmerge,
+}: {
+  draft: DraftRow;
+  source: CaptureSource | null;
+  keepPhoto: boolean;
+  onKeepPhoto: (keep: boolean) => void;
+  onView: () => void;
+  onUnmerge: () => void;
+}) {
+  const view = captureRowView(draft, source);
+  const kind = KIND_WORDS[draft.source];
+  // Only a capture has a strip: a statement row has no picture and no words of its own to show.
+  if (!view.icon || !kind) return null;
+  const where = source?.label ?? 'Captured on this phone';
+  const said = draft.imageFile ? null : (draft.rawPayload?.split('\n').find((line) => line.trim() !== '') ?? null);
+  const viewable = Boolean(draft.imageFile || draft.rawPayload);
 
-      {draft.imageFile && (
-        <InsetGroup header="The picture">
-          <SwitchRow
-            label="Keep photo"
-            checked={keepPhoto}
-            onChange={setKeepPhoto}
-            hint={
-              draft.source === 'photo'
-                ? 'A photographed receipt is kept with the purchase unless you say no.'
-                : 'A screenshot is not kept unless you ask.'
-            }
-          />
-        </InsetGroup>
-      )}
-
-      {draft.captureIds.length > 1 && (
-        <InsetGroup header="Seen in">
-          <InsetRow
-            title={`${draft.captureIds.length} captures`}
-            subtitle="The same payment, seen more than once"
-            value={<span className="text-[13px] font-semibold text-[var(--ph-tint)]">Unmerge</span>}
-            onClick={onUnmerge}
-          />
-        </InsetGroup>
-      )}
-
-      <div className="flex items-stretch gap-2">
-        <Button variant="success" className="flex-1" disabled={busy || !complete} onClick={() => onRecord({ keepPhoto })}>
-          Record
-        </Button>
-        <Button variant="danger" className="flex-1" disabled={busy} onClick={onDiscard}>
-          Discard
-        </Button>
+  return (
+    <FormRows>
+      <div className="relative flex items-center gap-3 py-[10px] pr-[13px] pl-[10px]">
+        {draft.imageFile && <Thumbnail file={draft.imageFile} />}
+        <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+          {/* The stretched button: the strip's whole area is its target, and Unmerge is raised above it. */}
+          <button
+            type="button"
+            onClick={onView}
+            disabled={!viewable}
+            aria-label={`See what was read from ${draft.description}`}
+            className="ph-focus-inset truncate text-left text-[15px] leading-5 font-semibold text-[var(--ph-ink)] after:absolute after:inset-0 after:content-['']"
+          >
+            <span aria-hidden>{view.icon} </span>
+            {kind} · {where}
+          </button>
+          {said && <span className="line-clamp-2 text-[12.5px] leading-4 text-[var(--ph-ink-2)]">{said}</span>}
+          {view.merged ? (
+            <span className="text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
+              {view.merged} ·{' '}
+              <button type="button" onClick={onUnmerge} className="ph-focus relative z-10 font-semibold text-[var(--ph-tint)]">
+                Unmerge
+              </button>
+            </span>
+          ) : (
+            viewable && <span className="text-[12.5px] leading-4 text-[var(--ph-ink-3)]">Tap to see what was read</span>
+          )}
+        </span>
+        {viewable && <Chevron />}
       </div>
-      <p className="text-center text-[12.5px] text-[var(--ph-ink-3)]">
-        {formatMinor(Math.abs(draft.amountMinor), draft.currency)} · {dayMonth(draft.occurredOn)}
-      </p>
-    </Sheet>
+      {draft.imageFile && (
+        <SwitchRow
+          icon={
+            <RowGlyph>
+              <Camera size={15} />
+            </RowGlyph>
+          }
+          label="Keep photo"
+          checked={keepPhoto}
+          onChange={onKeepPhoto}
+        />
+      )}
+    </FormRows>
+  );
+}
+
+/** The capture's picture, small: read from the phone's own capture folder, as the full-screen view reads it. */
+function Thumbnail({ file }: { file: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let url: string | null = null;
+    void native
+      .readCaptureImage({ file })
+      .then(({ base64, mime }) => {
+        url = URL.createObjectURL(new Blob([captureBytes(base64)], { type: mime }));
+        if (cancelled) URL.revokeObjectURL(url);
+        else setSrc(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file]);
+  return (
+    <span aria-hidden className="h-[74px] w-[54px] shrink-0 overflow-hidden rounded-[8px] bg-[var(--ph-fill)] shadow-[inset_0_0_0_0.5px_var(--ph-hair)]">
+      {src && <img src={src} alt="" className="h-full w-full object-cover object-top" />}
+    </span>
   );
 }
