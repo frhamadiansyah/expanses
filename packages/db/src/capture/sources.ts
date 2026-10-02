@@ -90,10 +90,12 @@ function labelOf(capture: RawCapture): string {
 export async function sourceFor(tx: Db, capture: RawCapture, count = true): Promise<CaptureSource> {
   const wanted = keyOf(capture);
   const sameKind = await tx.select().from(captureSources).where(eq(captureSources.keyKind, wanted.keyKind));
+  /* The very same key is the same source. That is also what keeps a picture with no words at its top to one source:
+     an empty fingerprint is like no other fingerprint, but it is like every other empty one, and making a new source
+     for each of them would fill the Capture sources list with strangers. */
   const found =
-    wanted.keyKind === 'app'
-      ? sameKind.find((row) => row.key === wanted.key)
-      : sameKind.find((row) => sameSource(wordsOf(row.key), wordsOf(wanted.key)));
+    sameKind.find((row) => row.key === wanted.key) ??
+    (wanted.keyKind === 'fingerprint' ? sameKind.find((row) => sameSource(wordsOf(row.key), wordsOf(wanted.key))) : undefined);
 
   const now = new Date().toISOString();
   if (found) {

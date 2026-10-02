@@ -132,3 +132,20 @@ describe('where captures come from', () => {
     expect((await listSources(database))[0]).toMatchObject({ accountId: null, capturedCount: 1 });
   });
 });
+
+describe('a picture with nothing written at the top', () => {
+  it('is one source however many of them arrive, not a new source each time', async () => {
+    const { database, ws } = await workspace();
+    // A receipt photographed from below the header: the top band holds no words, so the fingerprint is empty.
+    const blank = (figure: string): RawCapture => ({
+      ...screen(figure),
+      id: `blank-${figure}`,
+      kind: 'photo',
+      lines: [line(`TOTAL Rp${figure}`, 0.5, 0.04)],
+    });
+
+    await ingestCaptures(database, ws, [blank('10.000'), blank('20.000'), blank('30.000')], { today: '2026-09-30' });
+
+    expect(await listSources(database)).toHaveLength(1);
+  });
+});
