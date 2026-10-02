@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   budgetSheetFor,
   committedByCategory,
@@ -60,7 +60,12 @@ const spend = (
   });
 
 describe('the budget sheet of a workspace that reads in its own currency', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('reads its month, its goals and what it left out in that currency', async () => {
+    // The set-aside is stamped by the clock, and this sheet reads September: pin the day inside that month.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-30T09:00:00Z'));
     const { database, ws, book, card, meals } = await sgdWorkspace();
     // A dollar card: no USD→SGD rate exists at all, so what it paid for cannot be counted.
     const amex = await createAccount(database, ws, { name: 'Amex USD', kind: 'liability', subtype: 'credit_card', currency: 'USD' });

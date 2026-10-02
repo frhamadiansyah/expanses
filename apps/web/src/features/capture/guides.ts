@@ -1,0 +1,54 @@
+/**
+ * How capture gets its three kinds of input, as the steps to follow on the phone.
+ *
+ * They are data rather than markup so they can be checked: the country-neutral rule says no bank, wallet or
+ * merchant is named anywhere in capture, and a settings guide is exactly where a name would sneak in. Each step
+ * is one thing to do, in order — a guide is read with the phone in the other hand.
+ */
+
+export interface CaptureGuide {
+  key: 'notifications' | 'screen-scanner' | 'receipt';
+  title: string;
+  blurb: string;
+  /** What the guide needs that a browser does not have, when there is something to say. */
+  note?: string;
+  steps: string[];
+}
+
+export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
+  {
+    key: 'notifications',
+    title: 'Notifications',
+    blurb: 'A payment notification becomes a draft the moment it arrives, without opening anything.',
+    note: 'Needs iOS 17 or later, where a personal automation can save without asking.',
+    steps: [
+      'Open Shortcuts.',
+      'Automation → New → When I receive a notification.',
+      'Choose the app the notifications come from. Only the apps chosen here are ever read.',
+      'Turn off “Ask Before Running”, so the capture is saved without a tap.',
+      'Add the action “Log notification” (search for the app) and map the notification’s Title, Body, App and Date into it.',
+      'Pay once with that app to try it: the draft appears in Review.',
+    ],
+  },
+  {
+    key: 'screen-scanner',
+    title: 'Screen scanner',
+    blurb: 'A screenshot of a payment screen is read the moment it is taken.',
+    steps: [
+      'Add the Screen scanner shortcut: it takes a screenshot and runs “Scan screen” on it.',
+      'To build it by hand: Shortcuts → New → Take Screenshot → Scan screen.',
+      'Bind it to a gesture: Settings › Accessibility › Touch › Back Tap → double tap → the shortcut. With an Action Button: Settings › Action Button → Shortcut.',
+      'Back-tap on any payment screen: the draft appears in Review.',
+    ],
+  },
+  {
+    key: 'receipt',
+    title: 'Scan a receipt',
+    blurb: 'Photograph a paper receipt and keep it with the purchase.',
+    steps: [
+      'From the add-transaction button (+), choose “Scan a receipt”.',
+      'Photograph the receipt: flat, in the light, with the total inside the frame.',
+      'Check the draft: the total is read, and “Keep photo” is already on for a photographed receipt.',
+    ],
+  },
+];

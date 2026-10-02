@@ -42,7 +42,7 @@ describe('a draft typed into the table', () => {
     await editDraft(database, ws, id, { cardId: spouse, categoryAccountId: key('household.groceries') });
     expect((await listDrafts(database, ws))[0]).toMatchObject({ id, cardId: spouse });
 
-    const transactionId = await confirmDraft(database, ws, id);
+    const { transactionId } = await confirmDraft(database, ws, id);
     const [posted] = await listTransactions(database, ws, { accountId: bonvoy.id });
     expect(posted).toMatchObject({ id: transactionId, cardId: spouse });
   });

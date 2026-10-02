@@ -18,6 +18,8 @@ import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
 import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
+import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
+import { SourcePage } from '../features/capture/SourcePage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
@@ -295,6 +297,10 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/join', component: JoinPage }),
   // Linked from nowhere: the owner reaches it by its address, to switch on what the app cannot sell yet.
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
+  // Capture: how to set the phone up, what it keeps, and what each source has learned. The row that reaches it is
+  // iPhone-only (`isNative()`); the addresses themselves work everywhere, so the same pages can be shown on a desktop.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),

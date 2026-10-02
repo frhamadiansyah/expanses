@@ -67,7 +67,7 @@ describe('working through the queue', () => {
     await captureDrafts(database, ws, [draft()]);
     const [pending] = await listDrafts(database, ws);
 
-    const transactionId = await confirmDraft(database, ws, pending!.id);
+    const { transactionId } = await confirmDraft(database, ws, pending!.id);
 
     expect(await listDrafts(database, ws)).toEqual([]);
     const [confirmed] = await listDrafts(database, ws, 'confirmed');
@@ -85,7 +85,7 @@ describe('working through the queue', () => {
 
     // Correcting what was read is the point of the queue.
     await editDraft(database, ws, pending!.id, { categoryAccountId: (await workspaceGroceries(database, ws)).id });
-    await expect(confirmDraft(database, ws, pending!.id)).resolves.toEqual(expect.any(String));
+    await expect(confirmDraft(database, ws, pending!.id)).resolves.toMatchObject({ transactionId: expect.any(String), keptImage: null });
   });
 
   it('keeps a dismissed draft, so the same capture is not offered again', async () => {
@@ -107,7 +107,7 @@ describe('working through the queue', () => {
     // it posted is the ledger's to void, not this function's.
     await captureDrafts(database, ws, [draft()]);
     const [recorded] = await listDrafts(database, ws);
-    const transactionId = await confirmDraft(database, ws, recorded!.id);
+    const { transactionId } = await confirmDraft(database, ws, recorded!.id);
     expect((await listDrafts(database, ws, 'confirmed'))[0]).toMatchObject({ transactionId });
 
     await reopenDraft(database, ws, recorded!.id);

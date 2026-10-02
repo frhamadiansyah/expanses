@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
+import { isNative } from '../../lib/pwa';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
@@ -217,6 +218,15 @@ export function SettingsPage() {
       <InsetGroup header="Money" footer="Net worth, balances, statements and the tax report are read in this currency.">
         <ReadOnlyRow label={workspaceName} value={ws.baseCurrency} />
       </InsetGroup>
+
+      {isNative() && (
+        <InsetGroup
+          header="Capture"
+          footer="Read payment notifications, screenshots and receipts into the To-review inbox — on this phone only."
+        >
+          <InsetRow title="Set up capture" to="/settings/capture" />
+        </InsetGroup>
+      )}
 
       <InsetGroup header="Workspaces">
         {books.isSuccess && books.data.length === 0 ? (

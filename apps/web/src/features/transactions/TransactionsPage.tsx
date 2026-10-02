@@ -27,6 +27,7 @@ import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
+import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
@@ -186,6 +187,8 @@ export function TransactionsPage() {
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   // Money out or money in: the chart shows one at a time, and the categories under it follow.
   const [kind, setKind] = useState<'expense' | 'income'>('expense');
+  // Photographing a receipt is one more way in to the queue; it lands on Review, where the draft it made waits.
+  const scan = useScanReceipt();
   function chooseGrouping(next: 'date' | 'category') {
     setGrouping(next);
     try {
@@ -871,6 +874,11 @@ export function TransactionsPage() {
               Add transaction
             </Button>
           )}
+          {!readOnly && (
+            <Button disabled={scan.busy} onClick={() => void scan.scan()}>
+              {scan.busy ? 'Reading the receipt…' : 'Scan a receipt'}
+            </Button>
+          )}
         </div>
       )}
       {phone && showFilters && (
@@ -1041,7 +1049,7 @@ export function TransactionsPage() {
         />
       )}
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
-      <ErrorBox error={error ?? list.error ?? drafts.error} />
+      <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
       {view === 'table' ? (
         <>
         {!inCategory && chartShown && <Recurring today={today} />}

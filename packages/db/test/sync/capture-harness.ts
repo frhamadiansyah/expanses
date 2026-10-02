@@ -124,7 +124,12 @@ export async function installCaptureTriggers(database: Database, bookId: string)
     `CREATE TEMP TABLE IF NOT EXISTS __sealed (seq INTEGER PRIMARY KEY, book_id TEXT NOT NULL, entry_json TEXT, change_json TEXT);`,
     `CREATE TEMP TRIGGER IF NOT EXISTS __capture_sealed AFTER INSERT ON main.sync_outbox BEGIN INSERT INTO __sealed (book_id, entry_json) VALUES (NEW.book_id, NEW.entry_json); END;`,
   ];
-  for (const entity of SHARED_ENTITIES) ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId));
+  // A test that stops its database at an older version (a migration test) has no table yet for a later entity.
+  const tables = new Set((await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(([name]) => name));
+  for (const entity of SHARED_ENTITIES) {
+    if (entity.kind === 'row' && !tables.has(entity.table)) continue;
+    ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId));
+  }
   await database.execScript(ddl.join('\n'));
 }
 

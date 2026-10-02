@@ -63,7 +63,7 @@ const doors: [string, () => Promise<string>][] = [
   }],
   ['confirming a draft', async () => {
     const draft = await createDraft(database, ws, { source: 'manual', occurredOn: DAY, description: 'Laptop', amountMinor: 6_800_000, currency: 'IDR', accountId: jenius.id, categoryAccountId: electronics.id });
-    return confirmDraft(database, ws, draft, { setAside: borrow() });
+    return (await confirmDraft(database, ws, draft, { setAside: borrow() })).transactionId;
   }],
   ['a buy with no goal', async () => {
     const gold = await createAccount(database, ws, { name: 'Antam', kind: 'asset', subtype: 'investment', currency: 'IDR' });

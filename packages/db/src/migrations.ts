@@ -62,6 +62,7 @@ import worldGoldPrice from '../migrations/0061_world_gold_price.sql?raw';
 import listedSharePrices from '../migrations/0062_listed_share_prices.sql?raw';
 import brokerFees from '../migrations/0063_broker_fees.sql?raw';
 import billPauses from '../migrations/0064_bill_pauses.sql?raw';
+import transactionCapture from '../migrations/0065_transaction_capture.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -134,6 +135,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 62, name: 'listed_share_prices', sql: listedSharePrices },
   { version: 63, name: 'broker_fees', sql: brokerFees },
   { version: 64, name: 'bill_pauses', sql: billPauses },
+  { version: 65, name: 'transaction_capture', sql: transactionCapture },
 ];
 
 /** The highest version this build of the app knows how to produce. */
