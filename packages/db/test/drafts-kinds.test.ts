@@ -80,6 +80,38 @@ describe('the kind a draft is', () => {
     });
   });
 
+  it('calls a version 61 draft of money in what it is, so it still adds to the account', async () => {
+    executor = createNodeExecutor();
+    const older = createDatabase(executor);
+    await migrate(
+      older,
+      MIGRATIONS.filter((m) => m.version <= 61),
+    );
+    const ws = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    // A CSV credit row (salary) is queued negative: money into the account.
+    await older.db.run(sql`INSERT INTO draft_transactions
+      (id, workspace_id, source, status, occurred_on, description, amount_minor, currency, created_at)
+      VALUES ('d-in', ${ws.workspaceId}, 'csv', 'pending', '2026-09-09', 'GAJI', -5000000, 'IDR', '2026-09-09T00:00:00.000Z')`);
+
+    await migrate(older);
+
+    const [row] = await listDrafts(older, ws);
+    expect(row).toMatchObject({ id: 'd-in', kind: 'income', amountMinor: -5_000_000 });
+  });
+
+  it('takes a negative draft that names no kind as money in, and adds it to the account', async () => {
+    const { database, ws, bank, otherIncome, balanceOf, draft } = await workspace();
+    // What CSV "Send to Review" queues for a credit row: negative, no kind.
+    const { kind: _kind, ...credit } = draft({ source: 'csv', description: 'GAJI', amountMinor: -5_000_000, categoryAccountId: otherIncome.id });
+    await captureDrafts(database, ws, [credit]);
+    const [pending] = await listDrafts(database, ws);
+    expect(pending!.kind).toBe('income');
+
+    await confirmDraft(database, ws, pending!.id);
+
+    expect(await balanceOf(bank.id)).toBe(5_000_000);
+  });
+
   it('posts an income draft as money received', async () => {
     const { database, ws, bank, otherIncome, balanceOf, draft } = await workspace();
     await captureDrafts(database, ws, [draft({ description: 'GAJI', amountMinor: 5_000_000, categoryAccountId: otherIncome.id })]);

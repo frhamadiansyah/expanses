@@ -4,8 +4,9 @@
    that. "Dana masuk Rp5.000.000" is money arriving, "Transfer Rp250.000 ke Jenius" is your own money moving, and
    neither has a spending category. So a draft carries a kind, and the confirmation posts the lines that kind means.
 
-   SQLite cannot widen a CHECK constraint in place, so draft_transactions is rebuilt: the rows are copied with kind
-   'expense' — every draft that existed before this migration was one — and the two indexes 0030 and 0037 created are
+   SQLite cannot widen a CHECK constraint in place, so draft_transactions is rebuilt: the rows are copied with the kind
+   their sign always meant — negative is money into the account (a CSV credit: salary, a refund), so 'income', and
+   anything else 'expense' — and the two indexes 0030 and 0037 created are
    recreated exactly.
 
    A capture also remembers where it came from: the source it was recognised as (source_id → capture_sources), the
@@ -84,7 +85,7 @@ INSERT INTO draft_transactions_new
    currency, account_id, to_account_id, category_account_id, card_id, source_id, capture_ids, image_file,
    reading_json, merged_into, confidence, external_ref, transaction_id, created_at, resolved_at)
 SELECT
-  id, workspace_id, source, 'expense', status, raw_payload, raw_purge_after, occurred_on, description, amount_minor,
+  id, workspace_id, source, CASE WHEN amount_minor < 0 THEN 'income' ELSE 'expense' END, status, raw_payload, raw_purge_after, occurred_on, description, amount_minor,
   currency, account_id, NULL, category_account_id, card_id, NULL, NULL, NULL,
   NULL, NULL, confidence, external_ref, transaction_id, created_at, resolved_at
 FROM draft_transactions;

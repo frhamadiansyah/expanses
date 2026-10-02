@@ -58,7 +58,7 @@ export interface NewDraft {
   description: string;
   amountMinor: number;
   currency: string;
-  /** Defaults to an expense: every draft that existed before capture was one. */
+  /** Defaults by the sign: money in (negative) is income, money out an expense, as an imported row always meant. */
   kind?: DraftKind;
   accountId?: string | null;
   toAccountId?: string | null;
@@ -134,7 +134,8 @@ function insertValues(ws: WorkspaceContext, draft: NewDraft, now: string) {
     id: uuidv7(),
     workspaceId: ws.workspaceId,
     source: draft.source,
-    kind: draft.kind ?? 'expense',
+    // A row that names no kind says what it is by its sign: negative is money in (the import convention).
+    kind: draft.kind ?? (draft.amountMinor < 0 ? 'income' : 'expense'),
     status: 'pending' as const,
     rawPayload: draft.rawPayload ?? null,
     rawPurgeAfter: null,
