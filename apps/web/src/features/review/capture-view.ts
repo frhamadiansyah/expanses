@@ -49,6 +49,27 @@ export function captureRowView(draft: DraftRow, source: CaptureSource | null): C
   };
 }
 
+/**
+ * Which of a draft's accounts its source speaks for.
+ *
+ * A notification about a payment comes from the account the money left (or, for money received, the one it landed
+ * in) — both are the draft's `accountId`. A top-up is told by the wallet it landed in, which is a transfer's
+ * destination: the source's account is where the money went, and where it came from is a separate question.
+ */
+export function sourceSide(draft: DraftRow): 'accountId' | 'toAccountId' {
+  return draft.kind === 'transfer' && draft.reading?.type?.value === 'topup' ? 'toAccountId' : 'accountId';
+}
+
+/** Whether the sheet asks "Which account is this?": a source nobody has answered for, on a draft missing that side. */
+export function asksForSourceAccount(draft: DraftRow, source: CaptureSource | null): boolean {
+  return Boolean(source && source.accountId === null && draft[sourceSide(draft)] === null);
+}
+
+/** What answering "Which account is this?" writes on the draft: the account, on the side its source speaks for. */
+export function answerPatch(draft: DraftRow, accountId: string): { accountId: string } | { toAccountId: string } {
+  return sourceSide(draft) === 'toAccountId' ? { toAccountId: accountId } : { accountId };
+}
+
 /** The reading as a draft keeps it: the values, and the lines they were read from. */
 export type ReadingWithLines = Reading & { lines?: CaptureLine[] };
 

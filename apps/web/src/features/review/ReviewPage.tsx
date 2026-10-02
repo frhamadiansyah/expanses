@@ -27,7 +27,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryOptions } from '../cards/options';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
-import { captureRowView, type ReadingWithLines } from './capture-view';
+import { answerPatch, captureRowView, type ReadingWithLines } from './capture-view';
 import { CaptureViewer } from './CaptureViewer';
 import { DraftSheet } from './DraftSheet';
 import { useCaptureSources, useDrafts } from './queries';
@@ -269,7 +269,8 @@ export function ReviewPage() {
                   onChange={(e) => void run(draft.id, () => editDraft(database, ws, draft.id, { accountId: e.target.value }))}
                   className="py-1"
                 >
-                  <option value="">Choose…</option>
+                  {/* A transfer's paying side is where the money left: its destination stands in the next column. */}
+                  <option value="">{draft.kind === 'transfer' ? 'From…' : 'Choose…'}</option>
                   {money.map((account) => (
                     <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
                   ))}
@@ -350,7 +351,8 @@ export function ReviewPage() {
             void run(editingDraft.id, async () => {
               const source = sourceOf(editingDraft);
               if (source) await setSourceAccount(database, source.id, accountId, ws.workspaceId);
-              await editDraft(database, ws, editingDraft.id, { accountId });
+              // A top-up's source is the wallet it landed in: the answer is the destination, not where it came from.
+              await editDraft(database, ws, editingDraft.id, answerPatch(editingDraft, accountId));
             })
           }
           onCorrect={(field, value) => void learnFromCorrection(database, editingDraft.id, field, value).catch(() => undefined)}

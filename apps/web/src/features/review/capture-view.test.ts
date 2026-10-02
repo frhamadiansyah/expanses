@@ -1,7 +1,7 @@
 import type { CaptureLine, Reading } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { captureRowView, fieldBoxes, majorText, minorFromTyped } from './capture-view';
+import { answerPatch, asksForSourceAccount, captureRowView, fieldBoxes, majorText, minorFromTyped } from './capture-view';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -127,5 +127,38 @@ describe('the boxes over a picture', () => {
     };
     expect(fieldBoxes(noLines)).toEqual([]);
     expect(fieldBoxes(null)).toEqual([]);
+  });
+});
+
+describe('the answer to "Which account is this?"', () => {
+  const topUpReading: Reading = {
+    skipped: null,
+    amount: { value: { minor: 200_000, currency: 'IDR' }, confidence: 85, line: null },
+    occurredAt: null,
+    type: { value: 'topup', confidence: 85, line: null },
+    name: null,
+    accountHint: null,
+  };
+
+  it('is where the money left, for a payment', () => {
+    const payment = draft({ accountId: null });
+    expect(asksForSourceAccount(payment, source({ accountId: null }))).toBe(true);
+    expect(answerPatch(payment, 'bank')).toEqual({ accountId: 'bank' });
+  });
+
+  it('is where the money landed, for a top-up: the wallet that told us', () => {
+    const topUp = draft({ kind: 'transfer', accountId: null, toAccountId: null, amountMinor: -200_000, reading: topUpReading });
+    expect(asksForSourceAccount(topUp, source({ accountId: null }))).toBe(true);
+    expect(answerPatch(topUp, 'wallet')).toEqual({ toAccountId: 'wallet' });
+  });
+
+  it('is not asked of a top-up once it knows where it landed', () => {
+    const topUp = draft({ kind: 'transfer', accountId: null, toAccountId: 'wallet', amountMinor: -200_000, reading: topUpReading });
+    expect(asksForSourceAccount(topUp, source({ accountId: null }))).toBe(false);
+  });
+
+  it('is not asked of a source that has answered', () => {
+    expect(asksForSourceAccount(draft({ accountId: null }), source())).toBe(false);
+    expect(asksForSourceAccount(draft({ accountId: null }), null)).toBe(false);
   });
 });

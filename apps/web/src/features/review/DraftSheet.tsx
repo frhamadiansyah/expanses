@@ -5,7 +5,7 @@ import { Sheet } from '../../app/Sheet';
 import { Button } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
-import { majorText, minorFromTyped } from './capture-view';
+import { asksForSourceAccount, majorText, minorFromTyped, sourceSide } from './capture-view';
 
 type Patch = Partial<
   Pick<DraftRow, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId'>
@@ -64,7 +64,9 @@ export function DraftSheet({
   const [description, setDescription] = useState(draft.description);
   const [keepPhoto, setKeepPhoto] = useState(draft.source === 'photo');
   const unsure = draft.confidence !== null && draft.confidence < 70;
-  const askingForAccount = Boolean(source && source.accountId === null && draft.accountId === null);
+  // A top-up's source is the wallet it landed in, so for one the question is about where the money went.
+  const askingForAccount = asksForSourceAccount(draft, source);
+  const answersTo = sourceSide(draft) === 'toAccountId';
 
   const complete =
     draft.kind === 'transfer'
@@ -95,6 +97,22 @@ export function DraftSheet({
   }
 
   const accountLabel = draft.kind === 'transfer' ? 'From' : draft.kind === 'income' ? 'Into' : 'Paid with';
+
+  /** "Which account is this?", standing on the side of the draft its source speaks for. */
+  const question = (value: string | null) => (
+    <SelectRow
+      label="Which account is this?"
+      value={value ?? ''}
+      onChange={(event) => {
+        if (event.target.value) onAnswerSource(event.target.value);
+      }}
+    >
+      <option value="">Choose…</option>
+      {money.map((account) => (
+        <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+      ))}
+    </SelectRow>
+  );
   const categoryKind = draft.amountMinor >= 0 ? 'expense' : 'income';
 
   return (
@@ -136,19 +154,8 @@ export function DraftSheet({
               : 'Recording needs both: the account it was paid from, and the category it belongs to.'
         }
       >
-        {askingForAccount ? (
-          <SelectRow
-            label="Which account is this?"
-            value={draft.accountId ?? ''}
-            onChange={(event) => {
-              if (event.target.value) onAnswerSource(event.target.value);
-            }}
-          >
-            <option value="">Choose…</option>
-            {money.map((account) => (
-              <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-            ))}
-          </SelectRow>
+        {askingForAccount && !answersTo ? (
+          question(draft.accountId)
         ) : (
           <SelectRow label={accountLabel} value={draft.accountId ?? ''} onChange={(event) => onEdit({ accountId: event.target.value })}>
             <option value="">Choose…</option>
@@ -158,14 +165,18 @@ export function DraftSheet({
           </SelectRow>
         )}
         {draft.kind === 'transfer' ? (
-          <SelectRow label="To" value={draft.toAccountId ?? ''} onChange={(event) => onEdit({ toAccountId: event.target.value })}>
-            <option value="">Choose…</option>
-            {money
-              .filter((account) => account.id !== draft.accountId)
-              .map((account) => (
-                <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-              ))}
-          </SelectRow>
+          askingForAccount && answersTo ? (
+            question(draft.toAccountId)
+          ) : (
+            <SelectRow label="To" value={draft.toAccountId ?? ''} onChange={(event) => onEdit({ toAccountId: event.target.value })}>
+              <option value="">Choose…</option>
+              {money
+                .filter((account) => account.id !== draft.accountId)
+                .map((account) => (
+                  <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+                ))}
+            </SelectRow>
+          )
         ) : (
           <SelectRow
             label="Category"
