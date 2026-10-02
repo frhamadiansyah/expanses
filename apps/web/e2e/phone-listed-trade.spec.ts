@@ -26,7 +26,7 @@ test('phone: a sell of more lots than are held is refused, and a broker’s fees
   await bbcaAt(page, 'Mandiri Sekuritas');
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Lots', { exact: true }).fill('11');
-  await expect(page.getByRole('dialog')).toContainText('you cannot sell more than that');
+  await expect(page.getByRole('dialog')).toContainText('cannot sell more than that');
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
 
   await openBrokerSettings(page, 'Mandiri Sekuritas');
