@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, onTrackLine, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, longDay, onTrackLine, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -334,5 +334,12 @@ describe('the goal page card', () => {
     const lines = (states: string[], targets: number[]) =>
       states.map((state, i) => ({ stageId: String(i), name: String(i), when: '', todayMinor: 0, targetMinor: targets[i]!, stateLabel: '', state: state as 'covered' }));
     expect(stageShares({ currentMinor: 30_000_000, stageLines: lines(['paid', 'covered', 'saving', 'later'], [5, 20_000_000, 40_000_000, 10]) })).toEqual([1, 1, 0.25, 0]);
+  });
+});
+
+describe('longDay', () => {
+  it('writes the day, the three-letter month and the year', () => {
+    expect(longDay('2026-09-02')).toBe('2 Sep 2026');
+    expect(longDay('2026-03-12')).toBe('12 Mar 2026');
   });
 });

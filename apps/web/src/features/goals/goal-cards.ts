@@ -88,6 +88,9 @@ export const GOAL_KIND_MARKS: Record<GoalKind, { Glyph: LucideIcon; colour: stri
 /** "Dec 2027": the three-letter month on every engine (en-GB writes "Sept" on some), then the year. */
 export const monthYear = (iso: string) => `${new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })} ${iso.slice(0, 4)}`;
 
+/** "2 Sep 2026": the day, then `monthYear`'s three-letter month, never en-GB's "Sept". */
+export const longDay = (iso: string) => `${Number(iso.slice(8, 10))} ${monthYear(iso)}`;
+
 /**
  * The list's card: what is saved for the goals still running, and how many of the goals are on track. A done goal is
  * left out of the figure (its stages are paid, so nothing is owed on it) but counts as on track: it is funded. The

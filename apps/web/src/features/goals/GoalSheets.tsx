@@ -5,16 +5,15 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { ratesForSave } from '../../lib/rates';
+import { ratePreview, ratesForSave } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { useHeldRates } from '../accounts/queries';
 import { CategoryOptions } from '../cards/options';
 import { useAssetProfiles, useTrades } from '../networth/queries';
-import { type GoalEarmark, leftForGoal, lowered, monthlyAfter, monthlyPrefill, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn, STATUS_WORDS } from './goal-actions';
-import { dayMonth } from './goal-cards';
+import { type GoalEarmark, leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn, STATUS_WORDS } from './goal-actions';
+import { longDay } from './goal-cards';
 
-/** "12 Mar 2026". */
-const longDay = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}`;
 
 /** A typed figure in a currency, or null while it is not one yet. */
 function parsed(text: string, currency: string): number | null {
@@ -84,13 +83,20 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
   const [fromId, setFromId] = useState(setAsides[0]?.accountId ?? payable[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState('');
   const [occurredOn, setOccurredOn] = useState(today);
+  const [rateText, setRateText] = useState('');
+  const [needsRate, setNeedsRate] = useState<string | null>(null);
   const saving = useSave(onClose);
 
   const from = accounts.find((account) => account.id === fromId);
   const currency = from?.currency ?? ws.baseCurrency;
+  // The rate row, as the loan page draws it: only for money in another currency, and only while the day has no rate
+  // stored, or a save found none to fetch.
+  const foreign = currency !== ws.baseCurrency;
+  const heldRates = useHeldRates(foreign ? [currency] : [], occurredOn);
+  const askingRate = foreign && (needsRate === currency || (heldRates.data?.missing ?? []).includes(currency));
   const typed = parsed(amount, currency);
-  const held = setAsideOn(earmarks, goalId, fromId);
-  const { takenMinor } = lowered(held, typed);
+  const promised = setAsideOn(earmarks, goalId, fromId);
+  const { takenMinor } = lowered(promised, typed);
   const left = leftForGoal(setAsides, fromId, takenMinor);
 
   const save = () =>
@@ -98,14 +104,14 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
       if (!from) throw new Error('Choose an account');
       if (!(typed !== null && typed > 0)) throw new Error('Enter an amount');
       if (!categoryId) throw new Error('Choose a category');
-      const ratesToBase = await ratesForSave({ database, ws, currency, occurredOn, amountMinor: typed, typed: '', resolveRates, onMissing: () => undefined });
+      const ratesToBase = await ratesForSave({ database, ws, currency, occurredOn, amountMinor: typed, typed: askingRate ? rateText : '', resolveRates, onMissing: setNeedsRate });
       await postTransaction(database, ws, {
         occurredOn,
         description: description.trim() || plan.goal.name,
         lines: expenseLines({ categoryAccountId: categoryId, paymentAccountId: from.id, amountMinor: typed, currency }),
         ratesToBase,
         // Only an account holding money for the goal has a set-aside to lower; any other pays as ordinary money.
-        setAside: held > 0 ? { accountId: from.id, goalId, intent: 'spend', overMinor: typed, stageId: null } : null,
+        setAside: promised > 0 ? { accountId: from.id, goalId, intent: 'spend', overMinor: typed, stageId: null } : null,
       });
     });
 
@@ -131,6 +137,16 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
           <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
         </SelectRow>
         <TextRow label="Date" type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
+        {askingRate && (
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(rateText, currency, ws.baseCurrency) ?? `No ${currency} rate is stored for this day. Leave empty to fetch it.`}
+            value={rateText}
+            onChange={(e) => setRateText(e.target.value)}
+            inputMode="decimal"
+            placeholder="Rate"
+          />
+        )}
       </InsetGroup>
       <InsetGroup>
         <ReadOnlyRow label="Left for the goal" value={figures(left, ws.baseCurrency)} />
@@ -246,9 +262,7 @@ export function MoveSheet({ plan, others, earmarks, onClose }: { plan: GoalPlanR
         baseRate,
       };
     }),
-    ...trades
-      .filter((trade) => trade.goalId === plan.goalId && trade.kind === 'buy' && trade.status === 'active')
-      .map((trade): MoveSource => {
+    ...movablePurchases(trades, plan.goalId).map((trade): MoveSource => {
         const link = plan.links.find((item) => item.kind === 'tagged' && item.accountId === trade.accountId);
         return {
           key: `purchase-${trade.id}`,
@@ -316,5 +330,5 @@ export function MoveSheet({ plan, others, earmarks, onClose }: { plan: GoalPlanR
 /** Whether the goal has a tagged purchase to move, read the way the Move sheet reads it. */
 export function useHasTaggedPurchase(goalId: string): boolean {
   const trades = useTrades().data ?? [];
-  return trades.some((trade) => trade.goalId === goalId && trade.kind === 'buy' && trade.status === 'active');
+  return movablePurchases(trades, goalId).length > 0;
 }

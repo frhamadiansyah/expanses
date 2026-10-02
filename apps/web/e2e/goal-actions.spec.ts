@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { goalMenu } from './goals';
 import { addGoal, addMoneyAccount, goalCard, setAside } from './set-aside';
 
@@ -77,4 +78,27 @@ test('Monthly opens on what the goal needs and sets it up', async ({ page }) => 
 
   await page.goto('/goals');
   await expect(page.getByTestId('goals-on-track')).toHaveText('1 of 1 goal on track');
+});
+
+test('Use from a dollar account asks for the rate when the day has none, and saves with it', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await openAccount(page, { subtype: 'savings', name: 'Wise USD', currency: 'USD', balance: '500', rate: '16000' });
+  await addGoal(page, 'Umrah 2027', '30000000');
+  await setAside(page, 'Umrah 2027', 'Wise USD (USD)', '200');
+  const goal = await goalCard(page, 'Umrah 2027');
+
+  await goal.getByRole('button', { name: 'Use', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Use for Umrah 2027' });
+  await sheet.getByLabel('Amount', { exact: true }).fill('50');
+  await sheet.getByLabel('What for', { exact: true }).fill('Visa fee');
+  await sheet.getByLabel('Category', { exact: true }).selectOption({ index: 1 });
+  // A day with no stored rate, and none to fetch.
+  await sheet.getByLabel('Date', { exact: true }).fill('2025-06-02');
+  const rate = sheet.getByLabel('Rate: IDR per 1 USD');
+  await expect(rate).toBeVisible();
+  await rate.fill('16250');
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await expect(page.getByTestId('goal-page').getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first()).toContainText('US$150');
 });
