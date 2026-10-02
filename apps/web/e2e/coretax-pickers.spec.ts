@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { openTypes, openSettings } from './accounts';
 import { openDeposit } from './deposit-maturity';
-import { openDrawers } from './drawers';
+import { openAssets, openDrawers } from './drawers';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -84,6 +84,14 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   ).toContainText('120.000.000');
 });
 
+/** An asset's tax code is no longer on its list row: it is on the asset's own settings, under the tax report. */
+async function expectCode(page: Page, name: RegExp, code: string) {
+  await openAssets(page);
+  await page.getByRole('link', { name }).click();
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText(code);
+}
+
 test('a family, then the thing: an apartment and gold jewellery file under their own codes', async ({ page }) => {
   await page.goto('/net-worth/assets/new');
   await page.getByRole('button', { name: 'Immovable property' }).click();
@@ -107,11 +115,9 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kalung emas/ })).toBeVisible();
 
-  // Never a code while choosing; both codes afterwards, each in its own table.
-  await page.goto('/net-worth/assets');
-  await openDrawers(page);
-  await expect(page.getByText('0503 · Harta Tidak Bergerak')).toBeVisible();
-  await expect(page.getByText('0702 · Harta Lainnya')).toBeVisible();
+  // Never a code while choosing; both codes afterwards, each in its own table, on each asset's settings.
+  await expectCode(page, /Apartemen Taman Anggrek/, '0503 · ');
+  await expectCode(page, /Kalung emas/, '0702 · ');
 });
 
 test('something else reaches a code the five families do not list', async ({ page }) => {
@@ -125,9 +131,7 @@ test('something else reaches a code the five families do not list', async ({ pag
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kapal nelayan/ })).toBeVisible();
-  await page.goto('/net-worth/assets');
-  await openDrawers(page);
-  await expect(page.getByText('0409 · Harta Bergerak')).toBeVisible();
+  await expectCode(page, /Kapal nelayan/, '0409 · ');
 });
 
 test('a mortgage, a wallet and a deposit reach the tax report under the right kode', async ({ page }) => {

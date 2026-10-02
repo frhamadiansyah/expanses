@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openSettings } from './accounts';
 import { openDrawers } from './drawers';
 
 /**
@@ -37,7 +38,9 @@ test('a phone finds a thing by typing, without knowing its family', async ({ pag
   await page.getByLabel('Bought on').fill('2024-08-08');
   await page.getByLabel('What it cost (IDR)').fill('15000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
-  // The list folds its rows into a drawer per kind, so the row is one tap away.
+  // The list folds its rows into a drawer per kind, so the row is one tap away; its code is on its settings.
   await openDrawers(page);
-  await expect(page.getByText('0601 · Harta Lainnya')).toBeVisible();
+  await page.getByRole('link', { name: /Paten alat panen/ }).click();
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0601 · ');
 });
