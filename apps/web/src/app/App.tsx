@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { watchCaptures } from '../capture/drain';
+import { installCaptureTestHook } from '../capture/test-hook';
 import type { AppDb } from '../db/bootstrap';
 import { scheduleDailyCopy } from '../db/snapshots';
 import { listenForJoinLinks } from '../native/deep-link';
@@ -49,6 +50,10 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   useEffect(() => {
     if (app.safety) scheduleDailyCopy(app.safety);
   }, [app.safety]);
+  // E2E builds only: a journey's way to hand the queue the captures a phone would have drained. A no-op otherwise.
+  useEffect(() => {
+    installCaptureTestHook({ database: app.database, ws: app.ws, onCaptured: () => void queryClient.invalidateQueries() });
+  }, [app, queryClient]);
   const value = useMemo<AppState>(
     () => ({
       ...app,

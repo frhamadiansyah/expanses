@@ -31,7 +31,10 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
     throw new Error('Not available here');
   }
 
-  async readCaptureImage(): Promise<{ base64: string; mime: string }> {
+  async readCaptureImage({ file }: { file: string }): Promise<{ base64: string; mime: string }> {
+    // The e2e build's injected pictures stand in for the phone's private capture folder.
+    const injected = import.meta.env.VITE_E2E === '1' ? window.__captureImages?.[file] : undefined;
+    if (injected) return injected;
     throw new Error('Not available here');
   }
 

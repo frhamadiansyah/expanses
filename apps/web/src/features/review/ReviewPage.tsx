@@ -236,12 +236,22 @@ export function ReviewPage() {
             {
               key: 'description',
               heading: 'Description',
-              cell: (draft) => (
-                <span className={cx('block', busy === draft.id && 'opacity-50')}>
-                  {draft.description}
-                  {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-[12.5px] text-[var(--ph-warn)]">unsure</span>}
-                </span>
-              ),
+              cell: (draft) => {
+                const view = captureRowView(draft, sourceOf(draft));
+                return (
+                  <span className={cx('block', busy === draft.id && 'opacity-50')}>
+                    {view.icon && <span aria-hidden>{view.icon} </span>}
+                    {draft.description}
+                    {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-[12.5px] text-[var(--ph-warn)]">unsure</span>}
+                    {/* Where it came from and how many sightings are folded in: the phone row's subtitle, as a line. */}
+                    {view.icon && (
+                      <span className="block text-[12.5px] text-[var(--ph-ink-2)]">
+                        {draft.kind === 'transfer' ? `Transfer · ${view.subtitle}` : view.subtitle}
+                      </span>
+                    )}
+                  </span>
+                );
+              },
             },
             {
               key: 'amount',
@@ -269,17 +279,31 @@ export function ReviewPage() {
             {
               key: 'category',
               heading: 'Category',
-              cell: (draft) => (
-                <Select
-                  aria-label={`Category for ${draft.description}`}
-                  value={draft.categoryAccountId ?? ''}
-                  onChange={(e) => void run(draft.id, () => editDraft(database, ws, draft.id, { categoryAccountId: e.target.value }))}
-                  className="py-1"
-                >
-                  {/* Confirming a draft records real spending, so it may only name the open workspace's categories. */}
-                  <CategoryOptions accounts={accounts} kind={draft.amountMinor >= 0 ? 'expense' : 'income'} parentSuffix="(general)" />
-                </Select>
-              ),
+              cell: (draft) =>
+                /* A transfer between the owner's own accounts is no spending: where it went stands where a category would. */
+                draft.kind === 'transfer' ? (
+                  <Select
+                    aria-label={`To account for ${draft.description}`}
+                    value={draft.toAccountId ?? ''}
+                    onChange={(e) => void run(draft.id, () => editDraft(database, ws, draft.id, { toAccountId: e.target.value }))}
+                    className="py-1"
+                  >
+                    <option value="">To…</option>
+                    {money.map((account) => (
+                      <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Select
+                    aria-label={`Category for ${draft.description}`}
+                    value={draft.categoryAccountId ?? ''}
+                    onChange={(e) => void run(draft.id, () => editDraft(database, ws, draft.id, { categoryAccountId: e.target.value }))}
+                    className="py-1"
+                  >
+                    {/* Confirming a draft records real spending, so it may only name the open workspace's categories. */}
+                    <CategoryOptions accounts={accounts} kind={draft.amountMinor >= 0 ? 'expense' : 'income'} parentSuffix="(general)" />
+                  </Select>
+                ),
             },
             {
               key: 'actions',

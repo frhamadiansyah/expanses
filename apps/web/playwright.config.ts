@@ -21,7 +21,8 @@ export default defineConfig({
       url: ORIGIN,
       reuseExistingServer: false,
       timeout: 180_000,
-      env: { VITE_RELAY_URL: RELAY_URL },
+      // The build alone gets VITE_E2E: the test hook exists in what a journey loads and in nothing else.
+      env: { VITE_RELAY_URL: RELAY_URL, VITE_E2E: '1' },
     },
     {
       // The relay's allowed origins are this run's, passed as a var rather than written into wrangler.toml.
