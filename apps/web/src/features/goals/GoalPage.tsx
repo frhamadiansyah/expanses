@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { archiveGoal, type GoalHistoryEntry, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, Check, MoreHorizontal, Pencil, PiggyBank, Tag, Undo2 } from 'lucide-react';
+import { Archive, ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -12,6 +12,8 @@ import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTi
 import { UseBar } from '../budget/budget-rows';
 import { FundingRow } from './funding';
 import { GoalForm } from './GoalForm';
+import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
+import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
 import { InfoHeader } from './InfoHeader';
 import { useDraws, useEarmarks, useGoalCalculators, useGoalHistory, useGoalPlans } from './queries';
@@ -100,6 +102,9 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const calculators = useGoalCalculators();
   const [editing, setEditing] = useState(false);
   const [settingAside, setSettingAside] = useState(false);
+  // The one sheet open from the round actions or the ⋯, if any.
+  const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
+  const hasPurchase = useHasTaggedPurchase(goalId);
   const [allHistory, setAllHistory] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -153,8 +158,14 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // A goal of one payment has no Stages group, so its paid mark waits behind the ⋯.
   const only = card.stageLines.length === 1 ? card.stageLines[0]! : null;
 
+  const held = setAsideOf(earmarks.data ?? [], goalId).length > 0;
+  const others = plans.filter((row) => row.goalId !== goalId);
   const menu: CornerAction[] = [
     { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, run: () => setEditing(true) },
+    ...(held ? [{ key: 'take-back', label: 'Take back', glyph: <HandCoins size={18} aria-hidden />, run: () => setOpen('take-back') }] : []),
+    ...(others.length > 0 && (held || hasPurchase)
+      ? [{ key: 'move', label: 'Move to another goal', glyph: <ArrowRightLeft size={18} aria-hidden />, run: () => setOpen('move') }]
+      : []),
     ...(only
       ? [
           only.state === 'paid'
@@ -173,10 +184,13 @@ export function GoalPage({ goalId }: { goalId: string }) {
   ];
   const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
 
-  // Set aside opens the form's set-aside part; tagging happens on a buy, which Buy & sell records and retags.
+  // Set aside opens the form's set-aside part; tagging happens on a buy, which Buy & sell records and retags. Use is
+  // there only while something is set aside to use.
   const round: RoundAction[] = [
     { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
     { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, to: '/net-worth/trades' },
+    ...(held ? [{ key: 'use', label: 'Use', glyph: <ShoppingBag size={20} aria-hidden />, run: () => setOpen('use') }] : []),
+    { key: 'monthly', label: 'Monthly', glyph: <CalendarClock size={20} aria-hidden />, run: () => setOpen('monthly') },
   ];
 
   const shares = stageShares(card);
@@ -194,6 +208,11 @@ export function GoalPage({ goalId }: { goalId: string }) {
           <GoalForm part="set-aside" goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />
         </Sheet>
       )}
+
+      {open === 'use' && <UseSheet plan={plan} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
+      {open === 'monthly' && <MonthlySheet plan={plan} onClose={() => setOpen(null)} />}
+      {open === 'take-back' && <TakeBackSheet plan={plan} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
+      {open === 'move' && <MoveSheet plan={plan} others={others} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
 
       <Panel wide className="space-y-3" testId="goal-card">
         <div>
