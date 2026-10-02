@@ -9,15 +9,15 @@
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { exponentOf, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
-import { and, eq, inArray, isNotNull, isNull, lt, lte, ne } from 'drizzle-orm';
+import { capturedDayOf, exponentOf, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
+import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
 import { accounts, transactions, workspaces } from '../schema';
 import { captureSettings, captureSkipped } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
-import { readingWithLines } from './learn';
+import { readingWithLines, storedReadingOf } from './learn';
 import { findMatch, makeTransferPair, mergeInto } from './match';
 import { type CaptureSource, sourceFor } from './sources';
 
@@ -130,7 +130,8 @@ export async function planDraft(
     draft: {
       source: capture.kind === 'notification' ? 'notification' : capture.kind === 'screen' ? 'screen' : 'photo',
       kind: type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income',
-      occurredOn: printed?.slice(0, 10) || capture.capturedAt.slice(0, 10) || opts.today,
+      // The day where the owner was, from the offset the capture was stamped with — never the UTC day.
+      occurredOn: printed?.slice(0, 10) || capturedDayOf(capture.capturedAt) || opts.today,
       // A picture that read no name still says what it is on its first line.
       description:
         reading.name?.value?.trim() || capture.title?.trim() || capture.lines[0]?.text.trim() || 'Captured payment',
@@ -193,6 +194,39 @@ export interface IngestResult {
   merged: number;
   /** Captures that were an offer, or arrived while only money going out was wanted. */
   skipped: number;
+  /**
+   * The picture files of captures in this batch that nothing keeps — dropped as already recorded, or already read
+   * under another file — so the caller can delete the bytes. A file a draft or a skipped capture still points at is
+   * never listed: a skipped capture keeps its picture for the week it can be brought back.
+   */
+  discardedImages: string[];
+}
+
+/** Of these picture files, the ones no draft and no skipped capture points at any more. */
+async function unreferenced(tx: Db, files: readonly string[]): Promise<string[]> {
+  const wanted = [...new Set(files)];
+  if (wanted.length === 0) return [];
+  const drafts = await tx
+    .select({ imageFile: draftTransactions.imageFile })
+    .from(draftTransactions)
+    .where(inArray(draftTransactions.imageFile, wanted));
+  const held = new Set(drafts.flatMap((row) => (row.imageFile ? [row.imageFile] : [])));
+  const skipped = await tx.select({ captureJson: captureSkipped.captureJson }).from(captureSkipped);
+  for (const row of skipped) {
+    const file = imageOfCaptureJson(row.captureJson);
+    if (file) held.add(file);
+  }
+  return wanted.filter((file) => !held.has(file));
+}
+
+/** The picture a kept capture points at, if it kept one. */
+function imageOfCaptureJson(json: string): string | null {
+  try {
+    const parsed = JSON.parse(json) as { imageFile?: unknown };
+    return typeof parsed.imageFile === 'string' && parsed.imageFile !== '' ? parsed.imageFile : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -211,28 +245,36 @@ export async function ingestCaptures(
 ): Promise<IngestResult> {
   const scope = await getCaptureScope(database);
   const ordered = [...captures].sort((one, other) => (one.capturedAt < other.capturedAt ? -1 : one.capturedAt > other.capturedAt ? 1 : 0));
-  const result: IngestResult = { drafts: 0, merged: 0, skipped: 0 };
+  const result: IngestResult = { drafts: 0, merged: 0, skipped: 0, discardedImages: [] };
 
   await database.transaction(async (tx) => {
+    /** Pictures of captures that made no row of their own; checked against what still points at them at the end. */
+    const dropped: string[] = [];
     for (const capture of ordered) {
-      if (await alreadyRead(tx, `capture:${capture.id}`)) continue;
+      if (await alreadyRead(tx, `capture:${capture.id}`)) {
+        if (capture.imageFile) dropped.push(capture.imageFile);
+        continue;
+      }
 
       const source = await sourceFor(tx, capture);
+      // Everything about this capture happens in the workspace its source files into: where its draft goes is where
+      // its duplicates are looked for, and where a skipped copy is kept.
+      const home = await workspaceFor(tx, ws, source);
       const reading = readCapture(capture, WORDS, source.template);
       if (reading.skipped === 'promo') {
-        await skip(tx, ws, 'promo', capture, reading);
+        await skip(tx, home, 'promo', capture, reading);
         result.skipped += 1;
         continue;
       }
       if (scope === 'expenses-only' && reading.type.value !== 'spent') {
-        await skip(tx, ws, 'expenses-only', capture, reading);
+        await skip(tx, home, 'expenses-only', capture, reading);
         result.skipped += 1;
         continue;
       }
 
       const plan = await planDraft(tx, ws, capture, source, reading, opts);
       const knows = await accountFor(tx, source);
-      const match = await findMatch(tx, ws, {
+      const match = await findMatch(tx, plan.workspace, {
         amountMinor: plan.draft.amountMinor,
         currency: plan.draft.currency,
         accountId: knows?.id ?? null,
@@ -240,18 +282,20 @@ export async function ingestCaptures(
         at: capture.capturedAt,
       });
 
+      const incoming = { ...plan.draft, captureId: capture.id, capturedAt: capture.capturedAt };
       if (match.kind === 'same-draft') {
-        await mergeInto(tx, ws, match.draftId, { ...plan.draft, captureId: capture.id });
+        await mergeInto(tx, plan.workspace, match.draftId, incoming);
         result.merged += 1;
         continue;
       }
       if (match.kind === 'transfer-pair') {
-        await makeTransferPair(tx, ws, match.draftId, { ...plan.draft, captureId: capture.id });
+        await makeTransferPair(tx, plan.workspace, match.draftId, incoming);
         result.merged += 1;
         continue;
       }
       // Already recorded from a capture: there is nothing left to ask, and the second sighting is not a new row.
       if (match.kind === 'recorded') {
+        if (capture.imageFile) dropped.push(capture.imageFile);
         result.merged += 1;
         continue;
       }
@@ -259,40 +303,101 @@ export async function ingestCaptures(
       await insertDraftRow(tx, plan.workspace, plan.draft, capture.capturedAt);
       result.drafts += 1;
     }
+    result.discardedImages = await unreferenced(tx, dropped);
   });
 
   return result;
 }
 
 /**
- * Sweeps what is no longer worth keeping.
+ * Sweeps what is no longer worth keeping, and hands back the picture files nothing points at any more.
  *
  * A capture that was skipped is kept a week, because "Expenses only" and a promo filter are the owner's settings and
- * they change their mind; after that it is a liability. The pictures of drafts that have been dealt with are handed
- * back rather than deleted, because the bytes are the web layer's own photo storage, and this only knows their names.
+ * they change their mind; after that it goes, picture and all. A draft that has been dealt with keeps what it was
+ * read from for the same week — long enough for Undo to bring it back whole — and then lets go of its picture, the
+ * lines read off it and the capture's own words, in every row of it, the sightings folded into it included. What the
+ * draft says (the amount, the name, what it became) stays.
+ *
+ * The bytes are the web layer's own storage, so this only knows their names: each name is handed back once, and only
+ * when no other row still points at it.
  */
 export async function purgeCaptures(database: Database, today: string): Promise<{ skipped: number; images: string[] }> {
   const cutoff = `${addDays(today, -SKIPPED_RETENTION_DAYS)}T00:00:00.000Z`;
   const imageCutoff = `${addDays(today, -IMAGE_RETENTION_DAYS)}T00:00:00.000Z`;
   return database.transaction(async (tx) => {
+    const released: string[] = [];
     const stale = await tx
-      .select({ id: captureSkipped.id })
+      .select({ id: captureSkipped.id, captureJson: captureSkipped.captureJson })
       .from(captureSkipped)
       .where(lt(captureSkipped.skippedAt, cutoff));
     if (stale.length > 0) {
       await tx.delete(captureSkipped).where(inArray(captureSkipped.id, stale.map((row) => row.id)));
+      for (const row of stale) {
+        const file = imageOfCaptureJson(row.captureJson);
+        if (file) released.push(file);
+      }
     }
+
     const done = await tx
-      .select({ imageFile: draftTransactions.imageFile })
+      .select()
       .from(draftTransactions)
       .where(
         and(
           ne(draftTransactions.status, 'pending'),
-          isNotNull(draftTransactions.imageFile),
           isNotNull(draftTransactions.resolvedAt),
           lte(draftTransactions.resolvedAt, imageCutoff),
+          or(
+            isNotNull(draftTransactions.imageFile),
+            like(draftTransactions.readingJson, '%"lines"%'),
+            and(isNotNull(draftTransactions.rawPayload), inArray(draftTransactions.source, CAPTURED_SOURCES)),
+          ),
         ),
       );
-    return { skipped: stale.length, images: done.flatMap((row) => (row.imageFile ? [row.imageFile] : [])) };
+    for (const row of done) {
+      if (row.imageFile) released.push(row.imageFile);
+      const reading = storedReadingOf(row.readingJson);
+      let readingJson = row.readingJson;
+      if (reading && reading.lines) {
+        const { lines: _lines, ...rest } = reading;
+        readingJson = JSON.stringify(rest);
+      }
+      await tx
+        .update(draftTransactions)
+        .set({
+          imageFile: null,
+          readingJson,
+          // What a phone captured is deleted with the resolution; an imported statement keeps its own longer date.
+          ...((CAPTURED_SOURCES as readonly string[]).includes(row.source) ? { rawPayload: null } : {}),
+        })
+        .where(eq(draftTransactions.id, row.id));
+    }
+    return { skipped: stale.length, images: await unreferenced(tx, released) };
   });
+}
+
+/** The draft sources a phone captures on: what they were read from is the owner's alone, and is kept only a week. */
+const CAPTURED_SOURCES = ['notification', 'screen', 'photo'] as const;
+
+/**
+ * Everything capture leaves behind, swept in one call: skipped captures and resolved drafts' pictures, lines and words
+ * after their week, and every draft's verbatim payload past its keeping date, in every workspace on this device.
+ *
+ * Returns the picture files no row points at any more, for the caller to delete.
+ */
+export async function purgeCaptureLeftovers(
+  database: Database,
+  today: string,
+): Promise<{ images: string[]; skipped: number; payloads: number }> {
+  const swept = await purgeCaptures(database, today);
+  const expired = await database.db
+    .select({ id: draftTransactions.id })
+    .from(draftTransactions)
+    .where(and(isNotNull(draftTransactions.rawPayload), isNotNull(draftTransactions.rawPurgeAfter), lte(draftTransactions.rawPurgeAfter, today)));
+  if (expired.length > 0) {
+    await database.db
+      .update(draftTransactions)
+      .set({ rawPayload: null })
+      .where(inArray(draftTransactions.id, expired.map((row) => row.id)));
+  }
+  return { images: swept.images, skipped: swept.skipped, payloads: expired.length };
 }

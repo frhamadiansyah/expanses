@@ -322,10 +322,16 @@ export async function confirmDraft(
       lines,
       setAside: opts.setAside ?? null,
     });
+    const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);
     await tx
       .update(draftTransactions)
-      .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) })
+      .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: purgeAfter })
       .where(eq(draftTransactions.id, id));
+    // The sightings folded into it are dealt with too, so what they were read from is swept with it.
+    await tx
+      .update(draftTransactions)
+      .set({ status: 'confirmed', resolvedAt: now, rawPurgeAfter: purgeAfter })
+      .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
     return { transactionId, keptImage };
   });
 }
@@ -333,10 +339,20 @@ export async function confirmDraft(
 /** Says a draft is not something to record. It stays, so the same capture is not offered again. */
 export async function dismissDraft(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   const now = new Date().toISOString();
-  await database.db
-    .update(draftTransactions)
-    .set({ status: 'dismissed', resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) })
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+  const resolution = { status: 'dismissed' as const, resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) };
+  await database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: draftTransactions.id })
+      .from(draftTransactions)
+      .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+    if (!row) return;
+    await tx.update(draftTransactions).set(resolution).where(eq(draftTransactions.id, id));
+    // The sightings folded into it go with it.
+    await tx
+      .update(draftTransactions)
+      .set(resolution)
+      .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
+  });
 }
 
 /**
@@ -347,17 +363,27 @@ export async function dismissDraft(database: Database, ws: WorkspaceContext, id:
  * again. The keeping date goes with the resolution, so a reopened draft's payload is not purged under it.
  */
 export async function reopenDraft(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db
-    .update(draftTransactions)
-    .set({ status: 'pending', transactionId: null, resolvedAt: null, rawPurgeAfter: null })
-    .where(
-      and(
-        eq(draftTransactions.workspaceId, ws.workspaceId),
-        eq(draftTransactions.id, id),
-        // Only what was resolved: a pending draft has nothing to take back, and this must not touch its dates.
-        ne(draftTransactions.status, 'pending'),
-      ),
-    );
+  await database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: draftTransactions.id })
+      .from(draftTransactions)
+      .where(
+        and(
+          eq(draftTransactions.workspaceId, ws.workspaceId),
+          eq(draftTransactions.id, id),
+          // Only what was resolved: a pending draft has nothing to take back, and this must not touch its dates.
+          ne(draftTransactions.status, 'pending'),
+        ),
+      );
+    if (!row) return;
+    const reopened = { status: 'pending' as const, transactionId: null, resolvedAt: null, rawPurgeAfter: null };
+    await tx.update(draftTransactions).set(reopened).where(eq(draftTransactions.id, id));
+    // The sightings folded into it come back with it, still folded in.
+    await tx
+      .update(draftTransactions)
+      .set(reopened)
+      .where(and(eq(draftTransactions.mergedInto, id), ne(draftTransactions.status, 'pending')));
+  });
 }
 
 /**

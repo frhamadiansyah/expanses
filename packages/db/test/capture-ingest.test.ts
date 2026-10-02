@@ -1,12 +1,16 @@
 import type { CaptureLine, RawCapture } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { getCaptureScope, ingestCaptures, purgeCaptures, setCaptureScope } from '../src/capture/ingest';
+import { getCaptureScope, ingestCaptures, purgeCaptureLeftovers, purgeCaptures, setCaptureScope } from '../src/capture/ingest';
 import { bringBack, listSkipped } from '../src/capture/skipped';
 import { listSources, setSourceAccount, sourceFor } from '../src/capture/sources';
 import {
   archiveAccount,
+  confirmDraft,
   type Database,
   dismissDraft,
+  editDraft,
+  listAccounts,
+  reopenDraft,
   listDrafts,
   countPendingDrafts,
   createAccount,
@@ -14,6 +18,7 @@ import {
   type WorkspaceContext,
 } from '../src/index';
 import { captureSkipped } from '../src/schema-capture';
+import { eq } from 'drizzle-orm';
 import { draftTransactions } from '../src/schema-drafts';
 import { setupDb, type TestDb } from './helpers';
 
@@ -78,7 +83,7 @@ describe('a capture becomes a draft', () => {
 
     const result = await ingestCaptures(database, ws, [at('09:30')], { today: DAY });
 
-    expect(result).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+    expect(result).toEqual({ drafts: 1, merged: 0, skipped: 0, discardedImages: [] });
     const [draft] = await draftsOf(database, ws);
     expect(draft).toMatchObject({
       kind: 'expense',
@@ -213,7 +218,7 @@ describe('what is not worth a draft', () => {
 
     const result = await ingestCaptures(database, ws, [at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' })], { today: DAY });
 
-    expect(result).toEqual({ drafts: 0, merged: 0, skipped: 1 });
+    expect(result).toEqual({ drafts: 0, merged: 0, skipped: 1, discardedImages: [] });
     expect(await draftsOf(database, ws)).toEqual([]);
     const skipped = await listSkipped(database, ws, DAY);
     expect(skipped).toHaveLength(1);
@@ -232,7 +237,7 @@ describe('what is not worth a draft', () => {
 
     const result = await ingestCaptures(database, ws, [received, spent], { today: DAY });
 
-    expect(result).toEqual({ drafts: 1, merged: 0, skipped: 1 });
+    expect(result).toEqual({ drafts: 1, merged: 0, skipped: 1, discardedImages: [] });
     expect(await draftsOf(database, ws)).toHaveLength(1);
     expect((await listSkipped(database, ws, DAY))[0]).toMatchObject({ reason: 'expenses-only' });
     expect(await getCaptureScope(database)).toBe('expenses-only');
@@ -279,7 +284,7 @@ describe('a backlog arriving at once', () => {
     // Handed over in the order they were found, which is not the order they arrived in.
     const result = await ingestCaptures(database, ws, [...backlog].reverse(), { today: DAY });
 
-    expect(result).toEqual({ drafts: 18, merged: 2, skipped: 0 });
+    expect(result).toEqual({ drafts: 18, merged: 2, skipped: 0, discardedImages: [] });
     expect(await countPendingDrafts(database, ws)).toBe(18);
     const drafts = await draftsOf(database, ws);
     const transfer = drafts.find((draft) => draft.kind === 'transfer' && draft.toAccountId === wallet.id)!;
@@ -296,7 +301,7 @@ describe('a backlog arriving at once', () => {
     const again = await ingestCaptures(database, ws, [at('09:30')], { today: DAY });
 
     // The same file drained twice is the same payment, and a capture already read is not a second thing to do.
-    expect(again).toEqual({ drafts: 0, merged: 0, skipped: 0 });
+    expect(again).toEqual({ drafts: 0, merged: 0, skipped: 0, discardedImages: [] });
     expect(await countPendingDrafts(database, ws)).toBe(1);
     expect((await listSkipped(database, ws, DAY)).length).toBe(0);
   });
@@ -322,5 +327,166 @@ describe('cleaning up', () => {
     await ingestCaptures(database, ws, [at('11:30', { body: 'Cashback voucher Rp10.000 untuk kamu', id: 'note-promo2' })], { today: DAY });
     expect(await purgeCaptures(database, daysFrom(-1))).toEqual({ skipped: 0, images: [] });
     expect(await listSkipped(database, ws, DAY)).toHaveLength(1);
+  });
+});
+
+describe('the source’s own workspace', () => {
+  it('merges a second sighting inside the workspace the draft was filed in', async () => {
+    const { database, ws } = await workspace();
+    const other = await createWorkspace(database, { name: 'Household', type: 'personal', baseCurrency: 'IDR' });
+    const theirs = await createAccount(database, other, { name: 'Shared bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const source = await sourceFor(database.db, shot('38.000'));
+    await setSourceAccount(database, source.id, theirs.id, other.workspaceId);
+
+    await ingestCaptures(database, ws, [{ ...shot('52.000'), id: 'shot-a' }], { today: DAY });
+    const second = await ingestCaptures(
+      database,
+      ws,
+      [{ ...shot('52.000'), id: 'shot-b', capturedAt: '2026-09-30T10:05:00+07:00', imageFile: 'captures/b.png' }],
+      { today: DAY },
+    );
+
+    expect(second.merged).toBe(1);
+    const theirDrafts = await draftsOf(database, other);
+    expect(theirDrafts).toHaveLength(1);
+    expect(theirDrafts[0]!.captureIds).toEqual(['shot-a', 'shot-b']);
+    expect(await draftsOf(database, ws)).toEqual([]);
+  });
+
+  it('keeps a skipped capture in the source’s own workspace', async () => {
+    const { database, ws } = await workspace();
+    const other = await createWorkspace(database, { name: 'Household', type: 'personal', baseCurrency: 'IDR' });
+    const theirs = await createAccount(database, other, { name: 'Shared bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    await answer(database, other, at('09:00'), theirs.id);
+
+    await ingestCaptures(database, ws, [at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' })], { today: DAY });
+
+    expect(await listSkipped(database, other, DAY)).toHaveLength(1);
+    expect(await listSkipped(database, ws, DAY)).toEqual([]);
+  });
+});
+
+describe('the day a capture is filed on', () => {
+  it('is the day where the owner was, even before seven in the morning', async () => {
+    const { database, ws, bank } = await workspace();
+    await answer(database, ws, at('09:00'), bank.id);
+
+    await ingestCaptures(database, ws, [at('06:30')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ occurredOn: '2026-09-30' });
+  });
+});
+
+describe('an offer that was really a payment', () => {
+  it('comes back from the Skipped list with its amount', async () => {
+    const { database, ws, bank } = await workspace();
+    await answer(database, ws, at('09:00'), bank.id);
+    await ingestCaptures(database, ws, [at('09:30', { body: 'Cashback Rp5.000 masuk! Pakai voucher' })], { today: DAY });
+    const [skipped] = await listSkipped(database, ws, DAY);
+    expect(skipped).toMatchObject({ reason: 'promo' });
+
+    const draftId = await bringBack(database, ws, skipped!.id);
+
+    const draft = (await draftsOf(database, ws)).find((row) => row.id === draftId)!;
+    expect(Math.abs(draft.amountMinor)).toBe(5_000);
+  });
+});
+
+describe('pictures nothing keeps', () => {
+  it('hands back the picture of a capture dropped as already recorded', async () => {
+    const { database, ws, bank } = await workspace();
+    const groceries = (await listAccounts(database, ws)).find((account) => account.systemKey === 'household.groceries')!;
+    await answer(database, ws, at('09:00'), bank.id);
+    await answer(database, ws, shot('38.000'), bank.id);
+    await ingestCaptures(database, ws, [at('10:00')], { today: DAY });
+    const [first] = await draftsOf(database, ws);
+    await editDraft(database, ws, first!.id, { categoryAccountId: groceries.id });
+    await confirmDraft(database, ws, first!.id);
+
+    const result = await ingestCaptures(database, ws, [{ ...shot('38.000'), id: 'shot-late', capturedAt: '2026-09-30T10:03:00+07:00' }], { today: DAY });
+
+    expect(result).toEqual({ drafts: 0, merged: 1, skipped: 0, discardedImages: ['captures/38.000.png'] });
+  });
+
+  it('keeps the picture of a capture drained twice, which its draft still shows', async () => {
+    const { database, ws } = await workspace();
+    await ingestCaptures(database, ws, [shot('38.000')], { today: DAY });
+
+    const again = await ingestCaptures(database, ws, [shot('38.000')], { today: DAY });
+
+    expect(again.discardedImages).toEqual([]);
+  });
+});
+
+describe('a merged draft, dealt with', () => {
+  async function mergedPair() {
+    const { database, ws, bank } = await workspace();
+    const groceries = (await listAccounts(database, ws)).find((account) => account.systemKey === 'household.groceries')!;
+    await answer(database, ws, at('09:00'), bank.id);
+    await ingestCaptures(
+      database,
+      ws,
+      [at('10:00', { id: 'note-coffee' }), { ...shot('38.000'), id: 'shot-coffee', imageFile: 'captures/coffee.png' }],
+      { today: DAY },
+    );
+    const [visible] = await draftsOf(database, ws);
+    await editDraft(database, ws, visible!.id, { categoryAccountId: groceries.id });
+    const hidden = () => database.db.select().from(draftTransactions).where(eq(draftTransactions.mergedInto, visible!.id));
+    return { database, ws, visible: visible!, hidden };
+  }
+
+  it('takes the folded-in sightings with it when it is recorded, and brings them back on Undo', async () => {
+    const { database, ws, visible, hidden } = await mergedPair();
+    expect(await hidden()).toHaveLength(1);
+
+    await confirmDraft(database, ws, visible.id);
+    expect((await hidden())[0]).toMatchObject({ status: 'confirmed' });
+    expect((await hidden())[0]!.rawPurgeAfter).not.toBeNull();
+
+    await reopenDraft(database, ws, visible.id);
+    expect((await hidden())[0]).toMatchObject({ status: 'pending', rawPurgeAfter: null });
+  });
+
+  it('takes them with it when it is discarded', async () => {
+    const { database, ws, visible, hidden } = await mergedPair();
+
+    await dismissDraft(database, ws, visible.id);
+
+    expect((await hidden())[0]).toMatchObject({ status: 'dismissed' });
+  });
+
+  it('lets go of every picture, line and word a week after, once', async () => {
+    const { database, ws, visible, hidden } = await mergedPair();
+    await confirmDraft(database, ws, visible.id);
+
+    expect((await purgeCaptureLeftovers(database, daysFrom(1))).images).toEqual([]);
+    const swept = await purgeCaptureLeftovers(database, daysFrom(8));
+
+    expect(swept.images).toEqual(['captures/coffee.png']);
+    const rows = await database.db.select().from(draftTransactions);
+    for (const row of rows) {
+      expect(row.imageFile).toBeNull();
+      expect(row.rawPayload).toBeNull();
+      expect(row.readingJson ?? '').not.toContain('"lines"');
+    }
+    expect((await hidden())[0]!.readingJson).not.toBeNull();
+    expect((await purgeCaptureLeftovers(database, daysFrom(8))).images).toEqual([]);
+  });
+
+  it('keeps the picture of a draft still waiting, and of a capture skipped this week', async () => {
+    const { database, ws } = await workspace();
+    await ingestCaptures(database, ws, [shot('38.000')], { today: DAY });
+    await ingestCaptures(
+      database,
+      ws,
+      [{ ...shot('10.000'), id: 'shot-promo', lines: [line('Promo', 0.02), line('Cashback Rp10.000', 0.5)], imageFile: 'captures/promo.png' }],
+      { today: DAY },
+    );
+    expect(await listSkipped(database, ws, DAY)).toHaveLength(1);
+
+    expect((await purgeCaptureLeftovers(database, daysFrom(3))).images).toEqual([]);
+    // A week on the skipped capture goes, and its picture with it; the waiting draft keeps its own.
+    expect((await purgeCaptureLeftovers(database, daysFrom(8))).images).toEqual(['captures/promo.png']);
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ imageFile: 'captures/38.000.png' });
   });
 });

@@ -5,7 +5,7 @@
  * arrived while only money going out was wanted. Neither is a decision to throw the capture away — a promo can turn
  * out to have been a payment, and a setting can change — so a skipped capture is kept, readable, for a week.
  */
-import { readCapture, type RawCapture, type Reading, WORDS } from '@expanses/core';
+import { capturedDayOf, readCapture, type RawCapture, type Reading, WORDS } from '@expanses/core';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -91,8 +91,9 @@ export async function bringBack(database: Database, ws: WorkspaceContext, skippe
 
     // Not counted again: this capture has already been counted against its source.
     const source = await sourceFor(tx, capture, false);
-    const reading = readCapture(capture, WORDS, source.template);
-    const plan = await planDraft(tx, ws, capture, source, reading, { today: capture.capturedAt.slice(0, 10) });
+    // Read for its money even if it is an offer: bringing it back is the owner saying it was a payment after all.
+    const reading = readCapture(capture, WORDS, source.template, { skipPromos: false });
+    const plan = await planDraft(tx, ws, capture, source, reading, { today: capturedDayOf(capture.capturedAt) });
     const id = await insertDraftRow(tx, plan.workspace, plan.draft, capture.capturedAt);
     await tx.delete(captureSkipped).where(eq(captureSkipped.id, skippedId));
     return id;
