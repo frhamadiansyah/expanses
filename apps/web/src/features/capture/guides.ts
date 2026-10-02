@@ -17,9 +17,10 @@ export interface CaptureGuide {
 
 /**
  * The ready-made Screen scanner shortcut, shared from iCloud: one tap on "Add Shortcut" instead of building it.
- * Null until the owner's shared link is in; the button and its step appear only once it is.
+ * Shared from the owner's phone (two actions: Take Screenshot → Scan screen, Show When Run off). The button and its
+ * step appear only while this is a valid iCloud shortcut link.
  */
-export const SCREEN_SCANNER_SHORTCUT_URL: string | null = null;
+export const SCREEN_SCANNER_SHORTCUT_URL: string | null = 'https://www.icloud.com/shortcuts/47b31df6ffff48c680affd71b3971cef';
 
 /** Whether a link is an iCloud shared shortcut, the only kind the Add button may open. */
 export function isShortcutLink(url: string): boolean {
