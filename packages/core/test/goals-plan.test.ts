@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitByRank, type Goal, type GoalLink, type GoalStage, goalPlan, futureValueMinor, monthlyNeededMinor } from '../src/index';
+import { fitByRank, type Goal, type GoalLink, type GoalStage, goalPlan, goalStatusOf, futureValueMinor, monthlyNeededMinor } from '../src/index';
 
 const TODAY = '2026-09-12';
 
@@ -294,5 +294,19 @@ describe('a stage with a return of its own', () => {
     // a month, not the 963.861 the goal's 8% would ask for if `??` had been `||`.
     const stage = { id: 's1', name: 'Preschool', targetMinor: 12_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null, returnBps: 0 };
     expect(goalPlan({ ...base, stages: [stage] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(1_000_000);
+  });
+});
+
+describe('goalStatusOf', () => {
+  it('is funded when nothing more is needed, whatever is set up', () => {
+    expect(goalStatusOf(0, 0)).toBe('funded');
+    expect(goalStatusOf(0, 500_000)).toBe('funded');
+  });
+
+  it('is on track from 98% of what is needed, and behind below it', () => {
+    expect(goalStatusOf(1_000_000, 1_000_000)).toBe('on_track');
+    expect(goalStatusOf(1_000_000, 980_000)).toBe('on_track');
+    expect(goalStatusOf(1_000_000, 979_999)).toBe('behind');
+    expect(goalStatusOf(1_000_000, 0)).toBe('behind');
   });
 });

@@ -260,6 +260,7 @@ export {
   type GoalLink,
   type GoalPlan,
   goalPlan,
+  goalStatusOf,
   type GoalStage,
   type GoalStatus,
   monthlyNeededMinor,

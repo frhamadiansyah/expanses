@@ -13,6 +13,7 @@ import {
   listGoals,
   migrate,
   MIGRATIONS,
+  moveSetAside,
   removeEarmark,
   reorderGoals,
   saveAssetProfile,
@@ -20,6 +21,7 @@ import {
   saveGoal,
   saveGoalTx,
   setStagePaid,
+  setStandingMonthly,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
@@ -239,6 +241,58 @@ describe('set-aside amounts', () => {
     await removeEarmark(database, ws, id, bca.id);
 
     await expect(listEarmarks(database, ws)).resolves.toEqual([]);
+  });
+});
+
+describe('moving a set-aside to another goal', () => {
+  it('lowers one goal and raises the other on the same account', async () => {
+    const from = await saveGoal(database, ws, hajj());
+    const to = await saveGoal(database, ws, { ...hajj(), name: 'Holiday', kind: 'holiday' });
+    await saveEarmark(database, ws, { goalId: from, accountId: bca.id, amountMinor: 20_000_000 });
+    await saveEarmark(database, ws, { goalId: to, accountId: bca.id, amountMinor: 1_000_000 });
+
+    await moveSetAside(database, ws, { fromGoalId: from, toGoalId: to, accountId: bca.id, amountMinor: 5_000_000 });
+
+    const earmarks = await listEarmarks(database, ws);
+    expect(earmarks.find((row) => row.goalId === from)?.amountMinor).toBe(15_000_000);
+    expect(earmarks.find((row) => row.goalId === to)?.amountMinor).toBe(6_000_000);
+  });
+
+  it('moves all of it, leaving nothing behind, and starts a set-aside the other goal did not have', async () => {
+    const from = await saveGoal(database, ws, hajj());
+    const to = await saveGoal(database, ws, { ...hajj(), name: 'Holiday', kind: 'holiday' });
+    await saveEarmark(database, ws, { goalId: from, accountId: bca.id, amountMinor: 20_000_000 });
+
+    await moveSetAside(database, ws, { fromGoalId: from, toGoalId: to, accountId: bca.id, amountMinor: 20_000_000 });
+
+    await expect(listEarmarks(database, ws)).resolves.toEqual([{ goalId: to, accountId: bca.id, amountMinor: 20_000_000 }]);
+  });
+
+  it('refuses more than is set aside, and changes nothing', async () => {
+    const from = await saveGoal(database, ws, hajj());
+    const to = await saveGoal(database, ws, { ...hajj(), name: 'Holiday', kind: 'holiday' });
+    await saveEarmark(database, ws, { goalId: from, accountId: bca.id, amountMinor: 20_000_000 });
+
+    await expect(moveSetAside(database, ws, { fromGoalId: from, toGoalId: to, accountId: bca.id, amountMinor: 20_000_001 })).rejects.toThrow(/more than/);
+    await expect(listEarmarks(database, ws)).resolves.toEqual([{ goalId: from, accountId: bca.id, amountMinor: 20_000_000 }]);
+  });
+});
+
+describe('a goal’s monthly amount on its own', () => {
+  it('changes only the standing amount, keeping the stages and the note', async () => {
+    const id = await saveGoal(database, ws, { ...hajj(), standingMonthlyMinor: 100_000, standingNote: 'Standing transfer' });
+
+    await setStandingMonthly(database, ws, id, 2_500_000);
+
+    const goal = (await listGoals(database, ws)).find((row) => row.id === id)!;
+    expect(goal.standingMonthlyMinor).toBe(2_500_000);
+    expect(goal.standingNote).toBe('Standing transfer');
+    expect(goal.stages).toHaveLength(2);
+  });
+
+  it('refuses a figure below nought', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    await expect(setStandingMonthly(database, ws, id, -1)).rejects.toThrow();
   });
 });
 

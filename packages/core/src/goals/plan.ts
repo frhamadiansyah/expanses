@@ -93,6 +93,12 @@ const ON_TRACK_SHARE = 0.98;
 
 const DAYS_PER_MONTH = 30.44;
 
+/** Funded when nothing more is needed a month, on track when what is set up covers it, behind otherwise. */
+export function goalStatusOf(neededMonthlyMinor: number, plannedMonthlyMinor: number): GoalStatus {
+  if (neededMonthlyMinor === 0) return 'funded';
+  return plannedMonthlyMinor >= neededMonthlyMinor * ON_TRACK_SHARE ? 'on_track' : 'behind';
+}
+
 export function monthsUntil(from: string, to: string): number {
   const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
   return Math.max(1, Math.round(days / DAYS_PER_MONTH));
@@ -158,7 +164,7 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
 
   const needed = requiredMonthlyMinor ?? 0;
   const planned = plannedMonthlyMinor + goal.standingMonthlyMinor;
-  const status: GoalStatus = needed === 0 ? 'funded' : planned >= needed * ON_TRACK_SHARE ? 'on_track' : 'behind';
+  const status = goalStatusOf(needed, planned);
   const unpaid = stages.filter((stage) => stage.state !== 'paid');
   const lastMonths = unpaid.length > 0 ? unpaid[unpaid.length - 1]!.months : 0;
   const risky = links.find((link) => link.risk === 'high');
