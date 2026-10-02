@@ -82,6 +82,15 @@ describe('a zero-rate loan', () => {
     expect(rows[0]!.paymentMinor).toBe(2_000_000);
     expect(rows.at(-1)!.balanceMinor).toBe(0);
   });
+
+  it('asks for the payment the lender set, not the balance shared over the months left', () => {
+    // 24.000 over 48 months at 500 a month; nine months in, the ledger still holds 20.000 (payments not yet
+    // recorded). Sharing it over the 39 months left would ask for 512,82 — the lender still asks 500.
+    const car: LoanTerms = { originalMinor: 2_400_000, firstPaymentOn: '2026-01-25', tenorMonths: 48, method: 'zero', paymentDay: 25 };
+    const ask = loanSchedule(2_000_000, car, [{ ...fixed(0, '2026-01-25'), paymentMinor: 50_000 }], '2026-10-02');
+    expect(ask[0]!.paymentMinor).toBe(50_000);
+    expect(ask.at(-1)!.balanceMinor).toBe(0);
+  });
 });
 
 describe('rate periods', () => {
