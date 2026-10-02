@@ -22,7 +22,7 @@ export function SetAsidePanel({ accountId }: { accountId: string }) {
         footer={
           view.state === 'short' ? (
             <span className="text-[var(--ph-warn)]">
-              You have promised more than this account holds. {formatMinor(view.setAsideMinor, currency)} is set aside but only{' '}
+              More is promised than this account holds. {formatMinor(view.setAsideMinor, currency)} is set aside but only{' '}
               {formatMinor(Math.max(0, view.balanceMinor), currency)} is here. Move money back, or lower what is set aside.
             </span>
           ) : undefined

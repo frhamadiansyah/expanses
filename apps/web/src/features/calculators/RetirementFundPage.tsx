@@ -43,8 +43,8 @@ export function RetirementFundPage() {
           onChange={setRetirementBox('annualSpend')}
           inputMode="numeric"
         />
-        <TextRow label="Your age now" hint={retirementHint('ageNow')} value={retirement.ageNow} onChange={setRetirementBox('ageNow')} inputMode="numeric" />
-        <TextRow label="Age you retire" hint={retirementHint('retireAge')} value={retirement.retireAge} onChange={setRetirementBox('retireAge')} inputMode="numeric" />
+        <TextRow label="Age now" hint={retirementHint('ageNow')} value={retirement.ageNow} onChange={setRetirementBox('ageNow')} inputMode="numeric" />
+        <TextRow label="Retirement age" hint={retirementHint('retireAge')} value={retirement.retireAge} onChange={setRetirementBox('retireAge')} inputMode="numeric" />
         <TextRow
           label="Years in retirement"
           hint={retirementHint('yearsInRetirement')}
@@ -55,21 +55,21 @@ export function RetirementFundPage() {
         <TextRow label="Inflation a year (%)" hint={retirementHint('inflation')} value={retirement.inflation} onChange={setRetirementBox('inflation')} inputMode="decimal" />
         <TextRow
           label="Return while saving (%)"
-          hint={retirementHint('returnBefore', 'What the money earns until you stop. The monthly figure is saved at this.')}
+          hint={retirementHint('returnBefore', 'What the money earns until saving stops. The monthly figure is saved at this.')}
           value={retirement.returnBefore}
           onChange={setRetirementBox('returnBefore')}
           inputMode="decimal"
         />
         <TextRow
           label="Return while retired (%)"
-          hint={retirementHint('returnInRetirement', 'What the pot earns while you are spending it.')}
+          hint={retirementHint('returnInRetirement', 'What the pot earns while it is being spent.')}
           value={retirement.returnInRetirement}
           onChange={setRetirementBox('returnInRetirement')}
           inputMode="decimal"
         />
         <TextRow
           label={`Already put aside (${ws.baseCurrency})`}
-          hint={retirementHint('alreadySaved', 'What you hold for this today; it keeps earning until you stop.')}
+          hint={retirementHint('alreadySaved', 'What is held for this today; it keeps earning until saving stops.')}
           value={retirement.alreadySaved}
           onChange={setRetirementBox('alreadySaved')}
           inputMode="numeric"

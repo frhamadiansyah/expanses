@@ -52,8 +52,8 @@ describe('what a receipt says', () => {
       ['Paid with', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Points earned', '1.200 KrisFlyer miles'],
-      ['Andi, Putri and Chika owe you', 'Rp 300.000'],
-      ['Your share', 'Rp 100.000'],
+      ['Owed by Andi, Putri and Chika', 'Rp 300.000'],
+      ['My share', 'Rp 100.000'],
     ]);
     expect(lines.find((line) => line.label === 'Points earned')!.tone).toBe('points');
   });
@@ -108,7 +108,7 @@ describe('the figures a receipt has to get right', () => {
         { personName: 'Putri', totalMinor: 125_000 },
       ],
     });
-    expect(valueOf(lines, 'Andi and Putri owe you')).toBe('Rp 300.000');
+    expect(valueOf(lines, 'Owed by Andi and Putri')).toBe('Rp 300.000');
   });
 
   it('says one person owes, not owe', () => {
@@ -120,7 +120,7 @@ describe('the figures a receipt has to get right', () => {
       points: null,
       owed: [{ personName: 'Andi', totalMinor: 300_000 }],
     });
-    expect(lines.map((line) => line.label)).toContain('Andi owes you');
+    expect(lines.map((line) => line.label)).toContain('Owed by Andi');
   });
 
   it('takes the total from what the card was charged, not from the share that was kept', () => {
@@ -271,7 +271,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
     const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], payer: { paidBy: 'm-me', paidLabel: 'BCA KrisFlyer ···· 1467', payerName: 'Fandri', mine: true, paidFrom: null } });
     expect(said(lines).slice(0, 2)).toEqual([
       ['Paid with', 'BCA KrisFlyer ···· 1467'],
-      ['Paid by', 'You'],
+      ['Paid by', 'Me'],
     ]);
   });
 });
@@ -279,7 +279,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
 describe('the word between a share and a bill', () => {
   it('says which figure the big one is, when the bill and the share of it differ', () => {
     // Exactly what `ReceiptPage` passes: `classify(tx).amountMinor`, the expense side of the split.
-    expect(heroCaption(dinner(), 100_000)).toBe('Your share');
+    expect(heroCaption(dinner(), 100_000)).toBe('My share');
   });
 
   it('says nothing on an ordinary purchase, where there is only one figure to read', () => {

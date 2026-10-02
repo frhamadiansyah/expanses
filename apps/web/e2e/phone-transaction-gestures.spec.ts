@@ -10,9 +10,25 @@ async function record(page: Page, description: string, category: string, amount:
   await addTransaction(page, { description, paidWith: 'BCA Tahapan', category, amount });
 }
 
+/**
+ * Where the row sits once the page has stopped moving. The list's rows land before the banners and the chart above
+ * them do, and those push the rows down: a gesture aimed at a box read a moment too early lands on the row beside it.
+ */
+async function settledBox(page: Page, row: Locator) {
+  let box = (await row.boundingBox())!;
+  await expect(async () => {
+    await page.waitForTimeout(150);
+    const again = (await row.boundingBox())!;
+    const still = again.x === box.x && again.y === box.y && again.height === box.height;
+    box = again;
+    expect(still).toBe(true);
+  }).toPass({ timeout: 5_000 });
+  return box;
+}
+
 /** Pointer down, a drag to the left, up — the gesture, not a click. */
 async function swipeLeft(page: Page, row: Locator) {
-  const box = (await row.boundingBox())!;
+  const box = await settledBox(page, row);
   const y = box.y + box.height / 2;
   const from = box.x + box.width - 12;
   await page.mouse.move(from, y);
@@ -270,6 +286,8 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
 test('the rate typed into the edit sheet is the rate the edit sheet saves', async ({ page }) => {
   // No rate server: what this device has stored is all there is, which is what puts the row on screen at all.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  // Mid-month, so the day three back is in the month the list shows: on the 1st to the 3rd it was the month before.
+  await page.clock.setSystemTime(new Date('2026-09-15T12:00:00'));
   const today = await todayIn(page);
   // A day with no CNY→IDR rate stored for it — `findRate` only ever looks at dates on or before the one asked
   // for, and the account below stores its rate under today.
@@ -377,7 +395,10 @@ test('a row scrolled to the foot of the screen is clear of the tab bar, and stil
   expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 200)).toBe(true);
 
   const target = row(page, 'Superindo');
+  // The page settles first: a banner or the chart landing above the list after the scroll moves the row back down.
+  await settledBox(page, target);
   await target.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+  await settledBox(page, target);
 
   // Scrolled to, and clear: the row's foot is above the bar's head, so the press lands on the row.
   const geometry = await target.evaluate((el) => {

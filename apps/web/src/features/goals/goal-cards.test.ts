@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardHistory, dayMonth, fundedWindow, GOAL_TEMPLATES, goalCard, historyDay, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, GOAL_KIND_LABELS, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalCard, goalsTotals, historyDay, longDay, onTrackLine, monthsLeftLabel, monthYear, prefilledReturnBps, roomFor, setAsideHint, stageShares, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -270,5 +270,76 @@ describe('the return a goal opens with', () => {
     expect(prefilledReturnBps('holiday', '2030-09-21', '2026-09-21')).toBe(600);
     expect(prefilledReturnBps('retirement', '2027-09-21', '2026-09-21')).toBe(1000);
     expect(prefilledReturnBps('emergency', '2040-09-21', '2026-09-21')).toBe(200);
+  });
+});
+
+describe('goalsTotals', () => {
+  type Label = 'Done' | 'Funded' | 'On track' | 'Behind';
+  const card = (currentMinor: number, statusLabel: Label = 'On track', done = false) => ({ currentMinor, statusLabel, done });
+
+  it('adds what is saved across the goals still running', () => {
+    expect(goalsTotals([card(30_000_000), card(18_000_000, 'Behind')]).savedMinor).toBe(48_000_000);
+  });
+
+  it('leaves a done goal out of the figure', () => {
+    expect(goalsTotals([card(10_000_000), card(5_000_000, 'Done', true)]).savedMinor).toBe(10_000_000);
+  });
+
+  it('counts on track and funded goals, done ones included, out of every goal', () => {
+    expect(goalsTotals([card(0, 'On track'), card(0, 'Behind'), card(0, 'Funded'), card(0, 'Done', true), card(0, 'Behind')])).toMatchObject({ onTrack: 3, count: 5 });
+  });
+
+  it('reads nought of nought with no goals', () => {
+    expect(goalsTotals([])).toEqual({ savedMinor: 0, onTrack: 0, count: 0 });
+  });
+
+  it('says it as a line', () => {
+    expect(onTrackLine({ onTrack: 1, count: 3 })).toBe('1 of 3 goals on track');
+    expect(onTrackLine({ onTrack: 1, count: 1 })).toBe('1 of 1 goal on track');
+  });
+});
+
+describe('monthYear', () => {
+  it('writes the three-letter month and the year', () => {
+    expect(monthYear('2027-12-31')).toBe('Dec 2027');
+    expect(monthYear('2026-09-30')).toBe('Sep 2026');
+  });
+});
+
+describe('GOAL_KIND_MARKS', () => {
+  it('draws every kind', () => {
+    for (const kind of Object.keys(GOAL_KIND_LABELS)) expect(GOAL_KIND_MARKS[kind as keyof typeof GOAL_KIND_MARKS]).toBeDefined();
+  });
+});
+
+describe('the goal page card', () => {
+  it('counts the months to the last stage still to pay', () => {
+    expect(goalCard(plan()).monthsLeft).toBe(105);
+    expect(monthsLeftLabel(27)).toBe('27 months left');
+    expect(monthsLeftLabel(1)).toBe('1 month left');
+  });
+
+  it('gives an emergency fund its months of spending in place of a date', () => {
+    const fund = goalCard(
+      plan({
+        goal: goal({ kind: 'emergency', stages: [{ id: 'ef', name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-09-12', paidOn: null, returnBps: null }] }),
+      }),
+    );
+    expect(fund.monthsLeft).toBeNull();
+    expect(fund.coverLabel).toBe('6 months of spending');
+    expect(goalCard(plan()).coverLabel).toBeNull();
+  });
+
+  it('fills covered stages, then the one being saved for with what is left, and leaves later ones empty', () => {
+    const lines = (states: string[], targets: number[]) =>
+      states.map((state, i) => ({ stageId: String(i), name: String(i), when: '', todayMinor: 0, targetMinor: targets[i]!, stateLabel: '', state: state as 'covered' }));
+    expect(stageShares({ currentMinor: 30_000_000, stageLines: lines(['paid', 'covered', 'saving', 'later'], [5, 20_000_000, 40_000_000, 10]) })).toEqual([1, 1, 0.25, 0]);
+  });
+});
+
+describe('longDay', () => {
+  it('writes the day, the three-letter month and the year', () => {
+    expect(longDay('2026-09-02')).toBe('2 Sep 2026');
+    expect(longDay('2026-03-12')).toBe('12 Mar 2026');
   });
 });

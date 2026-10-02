@@ -69,7 +69,7 @@ describe('groupAssets', () => {
     const rows = groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows);
     expect(rows.find((row) => row.accountId === 'bca')!.method).toBe('Ledger balance');
     expect(rows.find((row) => row.accountId === 'gold')!.method).toBe('Units × price');
-    expect(rows.find((row) => row.accountId === 'house')!.method).toBe('Your estimate');
+    expect(rows.find((row) => row.accountId === 'house')!.method).toBe('Estimate');
   });
 
   it('shows the Coretax code and table when the asset has a profile', () => {
@@ -141,7 +141,7 @@ describe('a deposit with something due', () => {
     const due = groupAssets(values, profiles, { ...idrOnly, due: new Set(['bca']) }).flatMap((group) => group.rows);
     const bca = due.find((row) => row.accountId === 'bca')!;
     expect(bca.due).toBe(true);
-    expect(rowSubtitle(bca)).toBe('Ledger balance · 0102 · Kas dan Setara Kas · Due');
+    expect(rowSubtitle(bca)).toBe('Due');
     expect(rowSubtitle(due.find((row) => row.accountId === 'gold')!)).not.toContain('Due');
     expect(due.find((row) => row.accountId === 'gold')!.due).toBe(false);
     // Without the set, as every other caller passes it: nobody is due.
@@ -150,8 +150,10 @@ describe('a deposit with something due', () => {
 
   it('keeps the other markers where they were', () => {
     const rows = groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows);
-    expect(rowSubtitle(rows.find((row) => row.accountId === 'tlkm')!)).toBe('Units × price · Sold');
+    expect(rowSubtitle(rows.find((row) => row.accountId === 'tlkm')!)).toBe('Sold');
     const stale = groupAssets(values.map((row) => (row.accountId === 'gold' ? { ...row, stale: true } : row)), profiles, idrOnly).flatMap((group) => group.rows);
-    expect(rowSubtitle(stale.find((row) => row.accountId === 'gold')!)).toBe('Units × price · 0701 · Harta Lainnya · Update price');
+    expect(rowSubtitle(stale.find((row) => row.accountId === 'gold')!)).toBe('Update price');
+    // No valuation method and no tax code on a list row.
+    expect(rowSubtitle(rows.find((row) => row.accountId === 'bca')!)).toBe('');
   });
 });

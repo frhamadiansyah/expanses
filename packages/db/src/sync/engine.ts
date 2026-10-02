@@ -92,7 +92,7 @@ export class FrozenBookError extends SharingError {
  */
 export class LeaveIncompleteError extends SharingError {
   constructor(readonly cause: unknown) {
-    super('LEAVE_INCOMPLETE', "You're no longer an owner, but leaving didn't finish: try again");
+    super('LEAVE_INCOMPLETE', "No longer an owner, but leaving didn't finish: try again");
     this.name = 'LeaveIncompleteError';
   }
 }
@@ -552,7 +552,7 @@ export class SyncEngine {
           kind: 'refused',
           error: new SharingError(
             'STILL_SHARED',
-            'This workspace is still shared on this device. To move it to this invite’s share, stop sharing it here first: leave it, stop sharing it if you are its owner, or keep it as your own copy.',
+            'This workspace is still shared on this device. To move it to this invite’s share, stop sharing it here first: leave it, stop sharing it if this device is its owner, or keep it as its own copy.',
           ),
         };
       }
@@ -589,7 +589,7 @@ export class SyncEngine {
     if (preview.baseCurrency !== input.ws.baseCurrency) {
       throw new SharingError(
         'CURRENCY',
-        `This workspace keeps its money in ${preview.baseCurrency}; this app keeps yours in ${input.ws.baseCurrency}. Sharing across currencies isn't supported yet.`,
+        `This workspace keeps its money in ${preview.baseCurrency}; this app's own accounts are kept in ${input.ws.baseCurrency}. Sharing across currencies isn't supported yet.`,
       );
     }
     // Everything that can refuse locally is checked before the claim, which spends the invite (I4). A local failure
@@ -601,7 +601,7 @@ export class SyncEngine {
     const existing = copy.kind === 'rejoin' ? copy : undefined;
     const rejoin = existing !== undefined;
     if (rejoin && !(terms.sameMember && terms.memberId === existing.memberId)) {
-      throw new SharingError('INVITE_MISMATCH', 'This invite is for someone else; ask for an invite to rejoin as yourself');
+      throw new SharingError('INVITE_MISMATCH', 'This invite is for someone else; ask for an invite that rejoins the same member');
     }
 
     const { inviteId, secret } = parseCode(code);
@@ -794,7 +794,7 @@ export class SyncEngine {
     if (await this.selfIsOwner(bookId)) {
       // Fix round 1: only another owner who still has a device in counts; leaving past one with none freezes the book.
       if ((await this.database.transaction((tx) => viewOtherActiveOwners(tx, bookId, shared.memberId))) === 0) {
-        throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+        throw new LastOwnerError("This is the last owner in this workspace: make someone else an owner before leaving");
       }
       // An owner steps down before leaving, so nobody is sent to ask a departed owner (§8.7) and the view keeps no
       // owner without a device. It must reach the log before the removal: after it, this device's entries count for nothing.
@@ -809,7 +809,7 @@ export class SyncEngine {
       const stillOk = await this.database.transaction(
         async (tx) => (await viewMember(tx, bookId, shared.memberId))?.role === 'member' && (await viewOtherActiveOwners(tx, bookId, shared.memberId)) > 0,
       );
-      if (!stillOk) throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+      if (!stillOk) throw new LastOwnerError("This is the last owner in this workspace: make someone else an owner before leaving");
       try {
         await this.leaveNow(bookId, true);
       } catch (error) {

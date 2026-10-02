@@ -112,14 +112,14 @@ test('folds each side of the balance sheet by kind, shut to begin with', async (
    */
   const section = page.getByTestId('type-drawer-section-liquid');
   await expect(section).toContainText('Cash & equivalents');
-  await expect(section).toContainText('3 accounts');
+  // One line a drawer: its name and total, no count of accounts under it.
+  await expect(section).not.toContainText('accounts');
   await expect(section).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
 
   await section.click();
   const drawer = page.getByTestId('type-drawer-liquid:bank');
   await expect(drawer).toContainText('Current account');
-  await expect(drawer).toContainText('2 accounts');
   await expect(drawer).toContainText('70.000.000');
   await expect(drawer).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
@@ -130,7 +130,7 @@ test('folds each side of the balance sheet by kind, shut to begin with', async (
   await expect(page.getByText('Jenius')).toBeVisible();
 
   // A saving account is a kind of its own, so it sits behind its own drawer rather than under the bank.
-  await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('1 account');
+  await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('Saving account');
 });
 
 /**
@@ -185,7 +185,6 @@ test('reads the assets in the catalogue’s families', async ({ page }) => {
   await page.getByTestId('type-drawer-section-other').click();
   const gold = page.getByTestId('type-drawer-other:gold');
   await expect(gold).toContainText('Gold bullion');
-  await expect(gold).toContainText('1 account');
   await expect(page.getByTestId('sheet-section-invest').getByText('Antam gold bars')).toHaveCount(0);
   await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toHaveCount(0);
 
@@ -435,4 +434,14 @@ test('a currency with no rate stops net worth, the balance sheet and the ratios,
   await page.goto('/net-worth/health');
   await expect(page.getByTestId('ratios-missing')).toContainText('No USD rate yet, so the ratios cannot be worked out.');
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toHaveCount(0);
+});
+
+test('the Assets and Liabilities totals open their own pages', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await page.goto('/net-worth');
+  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Assets', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await page.goto('/net-worth');
+  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Liabilities', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/loans$/);
 });

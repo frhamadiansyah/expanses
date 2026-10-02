@@ -659,11 +659,11 @@ test('data from before the plan says so, instead of losing what is typed into it
   await page.goto('/events');
   await page.getByTestId('event-row').click();
   await page.getByTestId('open-plan').click();
-  await expect(page.getByText(/This copy of your data is from before a plan was a list of things to buy/)).toBeVisible();
+  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to buy/)).toBeVisible();
 
   // And the form says the same thing again with its Save turned off, rather than taking an item it cannot keep.
   await page.getByRole('link', { name: 'Add the first item' }).click();
-  await expect(page.getByText(/This copy of your data is from before a plan was a list of things to buy/)).toBeVisible();
+  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to buy/)).toBeVisible();
   await page.getByLabel('What', { exact: true }).fill('Crib');
   await page.getByLabel('Price each').fill('7500000');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();

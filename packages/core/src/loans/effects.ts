@@ -4,8 +4,11 @@ import { annuityPaymentMinor, type LoanTerms, loanSchedule, type RatePeriod, typ
 export interface ExtraPayment {
   amountMinor: number;
   onDate: string;
-  /** Once, or the same amount every month from that date. */
-  repeat: 'once' | 'monthly';
+  /**
+   * Once, on the first instalment on or after `onDate`; the same amount on that instalment and every twelfth one
+   * after it; or on every instalment from it.
+   */
+  repeat: 'once' | 'yearly' | 'monthly';
   /** Keep paying the same and finish sooner, or pay less over the same tenor. */
   keep: 'payment' | 'tenor';
   /** What the bank charges for paying early, as a share of the amount. */
@@ -46,7 +49,21 @@ export function extraPaymentEffect(
     return { interestSavedMinor: 0, monthsEarlier: 0, newPaymentMinor: null, payoffMonth: monthOfRow(asIs), penaltyMinor: 0 };
   }
 
-  if (extra.keep === 'tenor') {
+  // The instalments the extra lands on: the first on or after its date, then every twelfth or every one after it.
+  const first = asIs.findIndex((row) => row.onDate >= extra.onDate);
+  const lands = (index: number): boolean => {
+    if (first < 0 || index < first) return false;
+    if (extra.repeat === 'monthly') return true;
+    if (extra.repeat === 'yearly') return (index - first) % MONTHS_IN_YEAR === 0;
+    return index === first;
+  };
+  // The rate a row was built at: its interest over the balance it was charged on.
+  const rateOf = (row: ScheduleRow): number => {
+    const chargedOn = row.balanceMinor + row.principalMinor;
+    return chargedOn > 0 ? row.interestMinor / chargedOn : 0;
+  };
+
+  if (extra.keep === 'tenor' && extra.repeat === 'once') {
     // The same number of months, against a smaller balance: the payment falls instead.
     const left = Math.max(0, balanceMinor - extra.amountMinor);
     const rateBps = periods.find((period) => period.fromOn <= extra.onDate)?.rateBps ?? periods[0]?.rateBps ?? 0;
@@ -60,16 +77,45 @@ export function extraPaymentEffect(
     };
   }
 
+  if (extra.keep === 'tenor') {
+    // A repeating extra over the same months: each one comes off the balance, and the payment is worked out again
+    // over the months still left. The figure reported is the payment after the first extra.
+    const lowered: ScheduleRow[] = [];
+    let balance = balanceMinor;
+    let payment = asIs[0]!.paymentMinor;
+    let newPaymentMinor: number | null = null;
+    for (const [index, row] of asIs.entries()) {
+      if (balance <= 0) break;
+      const rate = rateOf(row);
+      if (lands(index)) {
+        balance = Math.max(0, balance - extra.amountMinor);
+        payment = annuityPaymentMinor(balance, Math.round(rate * MONTHS_IN_YEAR * BPS), asIs.length - index);
+        newPaymentMinor ??= payment;
+        if (balance <= 0) break;
+      }
+      const interest = roundHalfAwayFromZero(balance * rate);
+      let principal = Math.max(0, payment - interest);
+      if (principal > balance || index === asIs.length - 1) principal = balance;
+      balance -= principal;
+      lowered.push({ onDate: row.onDate, paymentMinor: principal + interest, principalMinor: principal, interestMinor: interest, balanceMinor: balance });
+    }
+    return {
+      interestSavedMinor: interestOf(asIs) - interestOf(lowered),
+      monthsEarlier: asIs.length - lowered.length,
+      newPaymentMinor,
+      payoffMonth: monthOfRow(lowered.length > 0 ? lowered : asIs),
+      penaltyMinor,
+    };
+  }
+
   // Keeping the payment: walk the same schedule, dropping the extra onto the balance as it falls due.
   const kept = asIs[0]!.paymentMinor;
   const shortened: ScheduleRow[] = [];
   let balance = balanceMinor;
-  for (const row of asIs) {
+  for (const [index, row] of asIs.entries()) {
     if (balance <= 0) break;
-    const applies = extra.repeat === 'monthly' ? row.onDate >= extra.onDate : row.onDate === extra.onDate;
-    // The rate this row was built at: its interest over the balance it was charged on.
-    const chargedOn = row.balanceMinor + row.principalMinor;
-    const rate = chargedOn > 0 ? row.interestMinor / chargedOn : 0;
+    const applies = lands(index);
+    const rate = rateOf(row);
     const interest = roundHalfAwayFromZero(balance * rate);
     let principal = Math.max(0, kept - interest) + (applies ? extra.amountMinor : 0);
     if (principal > balance) principal = balance;
@@ -84,6 +130,27 @@ export function extraPaymentEffect(
     payoffMonth: monthOfRow(shortened),
     penaltyMinor,
   };
+}
+
+/** An early-settlement fee as the bank states it: a sum, or a share of what is owed. */
+export type SettlementFee = { kind: 'amount'; amountMinor: number } | { kind: 'percent'; bps: number };
+
+export interface PayoffQuote {
+  /** The principal the ledger holds today. Interest since the last instalment is not worked out. */
+  owedMinor: number;
+  feeMinor: number;
+  totalMinor: number;
+}
+
+/**
+ * What paying a loan off today comes to: what is owed, the bank's fee for settling early, and the two together. A fee
+ * given as a share is a share of what is owed, rounded to the nearest unit; a fee below nothing is none.
+ */
+export function payoffQuote(owedMinor: number, fee: SettlementFee | null): PayoffQuote {
+  const owed = Math.max(0, owedMinor);
+  const raw = !fee ? 0 : fee.kind === 'amount' ? fee.amountMinor : roundHalfAwayFromZero((owed * fee.bps) / BPS);
+  const feeMinor = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+  return { owedMinor: owed, feeMinor, totalMinor: owed + feeMinor };
 }
 
 /**

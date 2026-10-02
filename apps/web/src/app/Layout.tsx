@@ -15,6 +15,7 @@ import { useApp } from './context';
 import { AccountSheet } from './AccountSheet';
 import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
+import { useYahooClosesAtStart } from '../features/prices/yahoo';
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
@@ -81,6 +82,8 @@ export function Layout() {
     if (!database) return;
     void sweepPhotosAtStart(database).catch((error: unknown) => console.warn('Photos were not swept', error));
   }, [database]);
+  // The day's closes for the shares that follow Yahoo Finance, once a day each, behind whatever is on screen.
+  useYahooClosesAtStart();
 
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);

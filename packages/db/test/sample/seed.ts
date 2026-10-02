@@ -598,7 +598,7 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
 
   // ---- Waiting to be recorded ----
   /*
-   * A draft carries the kind it will post as and the capture it was read out of, and both are columns 0062 added. On
+   * A draft carries the kind it will post as and the capture it was read out of, and both are columns 0065 added. On
    * an older schema there is nowhere to put them — the repositories are this build's, and they write every column — so
    * the queue is left out there, as the other things a schema cannot hold yet are.
    */

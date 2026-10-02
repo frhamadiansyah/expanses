@@ -75,3 +75,22 @@ export function goalUnitsFor(trades: TradeRecord[], upTo?: string): Record<strin
   for (const trade of trades) byAccount.set(trade.accountId, [...(byAccount.get(trade.accountId) ?? []), trade]);
   return Object.fromEntries([...byAccount].map(([accountId, list]) => [accountId, goalUnitsOf(list, upTo)]));
 }
+
+/** Stands for "some other goal" when a retag is tried out: a goal gaining units can never oversell. */
+const ELSEWHERE = '\u0000elsewhere';
+
+/**
+ * Whether a buy can be retagged without leaving any goal holding fewer units than it later sells. `trades` are the
+ * holding's own; `goalId` is the new tag (null for none), or left out to ask about a move to any other goal — only the
+ * goal the buy leaves can fall short, so one answer covers them all.
+ */
+export function retagFits(trades: readonly TradeRecord[], tradeId: string, goalId?: string | null): boolean {
+  const to = goalId === undefined ? ELSEWHERE : goalId;
+  try {
+    goalUnitsOf(trades.map((trade) => (trade.id === tradeId ? { ...trade, goalId: to } : trade)));
+    return true;
+  } catch (e) {
+    if (e instanceof GoalError) return false;
+    throw e;
+  }
+}

@@ -121,7 +121,7 @@ export function MoreDetails({
               onChange={(e) => set({ manualRate: e.target.value })}
             />
           </FormRows>
-          <RowHint>{ratePreview(draft.manualRate, missingRate.from, missingRate.to) ?? `Type the rate your bank used for ${missingRate.onDate}.`}</RowHint>
+          <RowHint>{ratePreview(draft.manualRate, missingRate.from, missingRate.to) ?? `Type the rate the bank used for ${missingRate.onDate}.`}</RowHint>
         </div>
       )}
 

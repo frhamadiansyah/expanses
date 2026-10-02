@@ -59,9 +59,9 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
   const box = (key: keyof LifeCoverDraft) => (event: { target: { value: string } }) => setCover((draft) => ({ ...draft, [key]: event.target.value }));
   return (
     <>
-      <InsetGroup footer="Capital needs analysis: what your family would need, minus what is already there. CFP Board lists it first among the methods; the Insurance Information Institute recommends it and rejects income multiples for assuming no inflation. No figure here is rounded, and no lowest-of-several is taken.">
+      <InsetGroup footer="Capital needs analysis: what the family would need, minus what is already there. CFP Board lists it first among the methods; the Insurance Information Institute recommends it and rejects income multiples for assuming no inflation. No figure here is rounded, and no lowest-of-several is taken.">
         <TextRow
-          label={`Yearly amount your family needs (${ws.baseCurrency})`}
+          label={`Yearly amount the family needs (${ws.baseCurrency})`}
           hint={hint('annualNeed', "At today's prices.")}
           value={cover.annualNeed}
           onChange={box('annualNeed')}
@@ -78,14 +78,14 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
         />
         <TextRow
           label={`Debts to clear (${ws.baseCurrency})`}
-          hint={hint('debts', 'From your balance sheet.')}
+          hint={hint('debts', 'From the balance sheet.')}
           value={shown(cover.debts, prefill.debtsMinor)}
           onChange={box('debts')}
           inputMode="numeric"
         />
         <TextRow
           label={`Education still to fund (${ws.baseCurrency})`}
-          hint={hint('education', "From your education goals, at today's prices.")}
+          hint={hint('education', "From the education goals, at today's prices.")}
           value={shown(cover.education, prefill.educationMinor)}
           onChange={box('education')}
           inputMode="numeric"
@@ -93,14 +93,14 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
         <TextRow label={`Final expenses (${ws.baseCurrency})`} hint={hint('finalExpenses')} value={cover.finalExpenses} onChange={box('finalExpenses')} inputMode="numeric" />
         <TextRow
           label={`Liquid assets (${ws.baseCurrency})`}
-          hint={hint('liquidAssets', 'From your balance sheet.')}
+          hint={hint('liquidAssets', 'From the balance sheet.')}
           value={shown(cover.liquidAssets, prefill.liquidAssetsMinor)}
           onChange={box('liquidAssets')}
           inputMode="numeric"
         />
         <TextRow
           label={`Cover already in force (${ws.baseCurrency})`}
-          hint={hint('inForce', 'Policies you hold, employer group cover included.')}
+          hint={hint('inForce', 'Policies held, employer group cover included.')}
           value={cover.inForce}
           onChange={box('inForce')}
           inputMode="numeric"
@@ -122,7 +122,7 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
       ) : (
         <Waiting />
       )}
-      <InsetGroup footer="Kept on this device for this workspace. A box you have not typed in keeps following your balance sheet and goals.">
+      <InsetGroup footer="Kept on this device for this workspace. A box not typed in keeps following the balance sheet and goals.">
         <InsetRow title="Keep these figures" chevron={false} onClick={() => void keep(cover)} />
       </InsetGroup>
     </>

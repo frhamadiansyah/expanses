@@ -11,14 +11,14 @@ export type FilingMode = 'joint' | 'separate';
 export const MODE_LABEL: Record<FilingMode, string> = { joint: 'One tax ID', separate: 'Separate' };
 
 /** What the setup asks, and each answer's words. */
-export const FILING_QUESTION = 'How does your household file tax?';
+export const FILING_QUESTION = 'How does the household file tax?';
 export const FILING_CHOICES: Record<FilingMode, string> = {
   joint: 'One tax ID for both of us',
   separate: 'Each of us has our own tax ID',
 };
 
 /** The line under a joint review and a joint item's setting (§8.1). */
-export const JOINT_LINE = 'Your household files with one tax ID, so every item is in the joint report.';
+export const JOINT_LINE = 'The household files with one tax ID, so every item is in the joint report.';
 
 export type PendingRow =
   /** This member proposed (or already confirmed) and waits for the others; the proposer may cancel. */
@@ -57,7 +57,7 @@ export function netWorthRowOf(group: NetWorthGroupView | null | undefined, membe
       // A change that leaves a current member out asks them too (D6, task 5 review round 2).
       const line = listed
         ? `${nameOf(p.proposedBy)} set up household net worth: ${modeWords(p.mode)}.`
-        : `${nameOf(p.proposedBy)} proposes a group without you: ${modeWords(p.mode)}.`;
+        : `${nameOf(p.proposedBy)} proposes a group that leaves this member out: ${modeWords(p.mode)}.`;
       pending = { kind: 'asked', proposalId: p.proposalId, mode: p.mode, line };
     } else if (listed || group.active?.members.includes(group.me)) {
       pending = { kind: 'waiting', proposalId: p.proposalId, line: `Waiting for ${namesOf(group.waitingFor.map(nameOf))}`, cancellable: p.proposedBy === group.me };
@@ -97,7 +97,7 @@ export function canInvite(chosen: readonly string[], mode: FilingMode | null): b
  * carries its row of the owner's tax report to the partner, details and all, because the joint return needs them.
  */
 export function jointTaxLine(others: readonly string[]): string {
-  return `For the joint tax return, each item also goes to ${namesOf(others) || 'the others'} with its row of your tax report: its code, its figures and the details its table asks for, such as an account number.`;
+  return `For the joint tax return, each item also goes to ${namesOf(others) || 'the others'} with its row of the tax report: its code, its figures and the details its table asks for, such as an account number.`;
 }
 
 /** The D8 prompt after a switch to one tax ID: "Household now files with one tax ID. Share Business Mandiri with Andi?" */

@@ -94,8 +94,8 @@ export const bankRateText = (rate: number | null, from: string, to: string, loca
 export function spreadLine(cost: ExchangeCost | null, baseCurrency: string): { title: string; figure: string } | null {
   if (!cost) return null;
   if (cost.costMinor === 0) return { title: 'The bank’s rate matched the day’s rate', figure: formatMinor(0, baseCurrency) };
-  if (cost.costMinor > 0) return { title: 'The bank’s rate cost you', figure: formatMinor(cost.costMinor, baseCurrency) };
-  return { title: 'The bank’s rate gained you', figure: formatMinor(-cost.costMinor, baseCurrency) };
+  if (cost.costMinor > 0) return { title: 'The bank’s rate cost extra', figure: formatMinor(cost.costMinor, baseCurrency) };
+  return { title: 'The bank’s rate gained extra', figure: formatMinor(-cost.costMinor, baseCurrency) };
 }
 
 /** "1 pocket", "3 pockets". */

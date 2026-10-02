@@ -288,7 +288,7 @@ export function CoverPage() {
 
         <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
           Shares start at each item’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
-          planned”. The receipt itself is never split — your statement and points are untouched.
+          planned”. The receipt itself is never split — the statement and points are untouched.
         </p>
       </div>
     </div>

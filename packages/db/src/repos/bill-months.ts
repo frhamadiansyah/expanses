@@ -17,6 +17,17 @@ export async function billTablesExist(db: Db): Promise<boolean> {
   return exists;
 }
 
+const pauseTables = new WeakMap<Db, boolean>();
+
+/** Whether migration 0064 has run: without it no bill is ever paused, and pausing is refused. */
+export async function billPausesExist(db: Db): Promise<boolean> {
+  if (pauseTables.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_pauses'`);
+  const exists = rows.length > 0;
+  if (exists) pauseTables.set(db, true);
+  return exists;
+}
+
 export const BILL_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**

@@ -58,7 +58,7 @@ export function ChannelSheet({
         ))}
       </ul>
       <p className="mt-[10px] px-1 text-[12px] leading-4 text-[var(--ph-ink-3)]">
-        Some cards earn or spend points only online, or only offline. Optional: leave it blank and nothing is chosen for you. Tap the chosen one again to
+        Some cards earn or spend points only online, or only offline. Optional: leave it blank and nothing is chosen. Tap the chosen one again to
         clear it.
       </p>
     </Sheet>

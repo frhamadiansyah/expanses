@@ -67,8 +67,12 @@ export {
   dayMonth,
   daysFrom,
   monthName,
+  monthYear,
   ordinal,
   payableBillMonths,
+  pausedMonths,
+  pausedUntil,
+  pauseStart,
 } from './bills/schedule';
 export { type Period, type PeriodKind, parsePeriod, periodLabel, stepPeriod, weekOf, weeksOfMonth } from './reports/view-period';
 export {
@@ -247,7 +251,7 @@ export {
   type SheetTotals,
   WATCH_BAND,
 } from './assets/health';
-export { GoalError, type GoalUnits, goalUnitsFor, goalUnitsOf, UNTAGGED } from './goals/units';
+export { GoalError, type GoalUnits, goalUnitsFor, goalUnitsOf, retagFits, UNTAGGED } from './goals/units';
 export {
   fitByRank,
   futureValueMinor,
@@ -256,6 +260,7 @@ export {
   type GoalLink,
   type GoalPlan,
   goalPlan,
+  goalStatusOf,
   type GoalStage,
   type GoalStatus,
   monthlyNeededMinor,
@@ -313,6 +318,9 @@ export {
   flatToEffectiveBps,
   PAYOFF_TOLERANCE_MONTHS,
   payoffMismatchMonths,
+  type PayoffQuote,
+  payoffQuote,
+  type SettlementFee,
 } from './loans/effects';
 export { type CardInstallment, type InstallmentBilling, installmentSchedule, type InstallmentSplit, installmentSplit } from './loans/installments';
 export {
@@ -355,6 +363,7 @@ export {
 export { csvColumns, toReportCsv } from './coretax/export';
 export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
 export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
+export { INDONESIAN_WALLETS, type IndonesianWallet, walletMatches } from './coretax/wallets';
 export {
   type ConverterHeader,
   ConverterError,
@@ -488,6 +497,18 @@ export {
 } from './net-worth/group';
 export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
+export { closePriceMicro, isIdxListing, type ListedPriceChoice, type ListedPriceSource, listedPriceChoice, priceAgeDays, STALE_PRICE_DAYS } from './prices/listed';
+export { parseYahooChart, type YahooClose, yahooChartUrl, YahooPriceError, yahooSymbol } from './prices/yahoo';
+export { idxDate, IdxFileError, type IdxSummary, type InflateRaw, parseIdxRows, readIdxSummary, sheetRows } from './prices/idx-summary';
+export {
+  brokerFeeDefaults, type BrokerFees, DEFAULT_BROKER_FEES, IDX_SALE_TAX_PPM, type IdxCharge, idxCharge, idxTickSize, isIdxTick, parsePercentPpm, ppmOf, ppmPercent, stepIdxPrice,
+} from './assets/idx-trade';
+export {
+  FUND_UNIT_DECIMALS, type FundSell, type FundTrade, fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, isMoneyMarketFund,
+} from './assets/fund-trade';
+export {
+  GOLD_BAR_SIZES, type GoldBrand, goldBarSizes, goldBrandOf, goldGainMinor, goldSellGrams, gramsMicro, gramsText, typedGramsMicro,
+} from './assets/gold-trade';
 export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
 export { findDateTime } from './capture/date';
 export { fingerprintOf, sameSource } from './capture/fingerprint';

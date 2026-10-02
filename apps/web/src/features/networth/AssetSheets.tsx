@@ -206,17 +206,31 @@ export function TradeActionsSheet({ title, onEdit, onDelete, onClose }: { title:
   );
 }
 
-const SOURCES: { choice: GoldPriceChoice; label: string; detail: string }[] = [
+/** The two answers a gold holding has. */
+export const GOLD_SOURCES: { choice: GoldPriceChoice; label: string; detail: string }[] = [
   { choice: 'world', label: 'World price (XAU)', detail: 'Updated daily · spot price, not buyback' },
   { choice: 'typed', label: "I'll type it", detail: 'No automatic price' },
 ];
 
-/** Where a gold holding's price comes from: two answers, the chosen one ticked, each saying in a line what it means. */
-export function PriceSourceSheet({ choice, onPick, onClose }: { choice: GoldPriceChoice; onPick: (choice: GoldPriceChoice) => void; onClose: () => void }) {
+/**
+ * Where a holding's price comes from: its answers (gold's two, a listed share's two or three), the chosen one ticked,
+ * each saying in a line what it means.
+ */
+export function PriceSourceSheet<C extends string>({
+  choice,
+  options,
+  onPick,
+  onClose,
+}: {
+  choice: C;
+  options: readonly { choice: C; label: string; detail: string }[];
+  onPick: (choice: C) => void;
+  onClose: () => void;
+}) {
   return (
     <Sheet grouped title="Price source" onClose={onClose}>
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
-        {SOURCES.map((source) => (
+        {options.map((source) => (
           <button
             key={source.choice}
             type="button"

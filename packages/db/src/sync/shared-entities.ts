@@ -254,6 +254,17 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'bill_pause',
+    table: 'bill_pauses',
+    scopeRule: 'its template_id is a bill of the book',
+    scope: (bookId) => sql`t.template_id IN (${billsOfBook(bookId)})`,
+    // Keyed as a skip is: (workspace_id, template_id, month), with workspace_id dropped since it differs per device.
+    keyColumns: ['template_id', 'month'],
+    fields: {},
+    localOnInsert: ['created_at'],
+  },
+  {
+    kind: 'row',
     entity: 'net_worth_group',
     table: 'group_logs',
     // The one joint-net-worth row of the WORKSPACE log (joint-net-worth spec §4, task 4): which group log the
@@ -393,6 +404,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   expense_templates: ['workspace_id', 'created_at'],
   bill_windows: ['workspace_id'],
   bill_skips: ['workspace_id', 'created_at'],
+  bill_pauses: ['workspace_id', 'created_at'],
   transactions: [
     'workspace_id',
     'source',

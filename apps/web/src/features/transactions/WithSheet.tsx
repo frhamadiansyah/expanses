@@ -8,7 +8,7 @@ import { useRecentPeople } from '../debts/queries';
 import { billMinor, type FormDraft, peopleOn, type WithRow, withShares } from './tx-form';
 
 /**
- * "None", or "3 people · They owe you Rp 300.000" — what the With row says without being opened.
+ * "None", or "3 people · Owed Rp 300.000" — what the With row says without being opened.
  *
  * `formatMinor`, never `minorToMajorString`: the same reason `splitSummary` gives. A display figure carries its
  * currency and its exponent with it, or US$85,00 is written "85.00" and read by this app's own number formatting
@@ -19,7 +19,7 @@ export function withSummary(draft: FormDraft, accounts: readonly AccountRow[], c
   if (people.length === 0) return 'None';
   const { each } = withShares(draft, currency, billMinor(draft, accounts) ?? 0, { lenient: true });
   const theirs = each.reduce((sum, share) => sum + share, 0);
-  return `${people.length} ${people.length === 1 ? 'person' : 'people'} · They owe you ${formatMinor(theirs, currency)}`;
+  return `${people.length} ${people.length === 1 ? 'person' : 'people'} · Owed ${formatMinor(theirs, currency)}`;
 }
 
 /**
@@ -147,8 +147,8 @@ export function WithSheet({
                 </span>
                 <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-3 py-2 pr-[13px]">
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">You</span>
-                    <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{['Your spending', categoryName].filter(Boolean).join(' · ')}</span>
+                    <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">Me</span>
+                    <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{['My spending', categoryName].filter(Boolean).join(' · ')}</span>
                   </span>
                   <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink-3)]" data-testid="with-your-share">
                     {ownShareMinor === null ? '—' : formatMinor(ownShareMinor, currency)}
@@ -163,7 +163,7 @@ export function WithSheet({
                   <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] leading-5 text-[var(--ph-ink)]">{row.name || 'Someone'}</span>
-                      <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">Owes you</span>
+                      <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">Owes</span>
                     </span>
                     {draft.withEqually ? (
                       <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink-3)]">{formatMinor(each[i] ?? 0, currency)}</span>
@@ -198,11 +198,11 @@ export function WithSheet({
                 <span className="tabular text-[var(--ph-ink-3)]">{formatMinor(bill, currency)}</span>
               </div>
               <div className="flex min-h-11 items-center justify-between gap-4 px-[13px]">
-                <span className="font-semibold text-[var(--ph-ink)]">They owe you</span>
+                <span className="font-semibold text-[var(--ph-ink)]">Owed</span>
                 <span className="tabular text-[var(--ph-ink-3)]">{formatMinor(theirs, currency)}</span>
               </div>
               <div className="flex min-h-11 items-center justify-between gap-4 px-[13px]">
-                <span className="font-semibold text-[var(--ph-ink)]">Your share</span>
+                <span className="font-semibold text-[var(--ph-ink)]">My share</span>
                 <span className="tabular text-[var(--ph-ink)]">
                   {ownShareMinor === null ? 'More than the bill' : formatMinor(ownShareMinor, currency)}
                 </span>

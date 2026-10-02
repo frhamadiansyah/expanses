@@ -219,8 +219,8 @@ describe('moving between pockets', () => {
 
   it('says a cost, a gain and a match in words, with one positive figure', () => {
     const idrFormat = (minor: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(minor);
-    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_089_840, costMinor: 35_160 }, 'IDR')).toEqual({ title: 'The bank’s rate cost you', figure: idrFormat(35_160) });
-    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_242_000, costMinor: -117_000 }, 'IDR')).toEqual({ title: 'The bank’s rate gained you', figure: idrFormat(117_000) });
+    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_089_840, costMinor: 35_160 }, 'IDR')).toEqual({ title: 'The bank’s rate cost extra', figure: idrFormat(35_160) });
+    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_242_000, costMinor: -117_000 }, 'IDR')).toEqual({ title: 'The bank’s rate gained extra', figure: idrFormat(117_000) });
     expect(spreadLine({ fromBaseMinor: 1, toBaseMinor: 1, costMinor: 0 }, 'IDR')!.title).toBe('The bank’s rate matched the day’s rate');
     expect(spreadLine(null, 'IDR')).toBeNull();
   });

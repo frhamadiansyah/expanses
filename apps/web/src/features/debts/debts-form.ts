@@ -128,7 +128,7 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
     }
     if (feeMinor < 0) throw new Error('A fee cannot be negative');
     if (feeMinor > 0 && !draft.feeCategoryId) throw new Error('Choose a category for the fee');
-    if (draft.direction === 'borrowed' && feeMinor >= amountMinor) throw new Error('The fee cannot be all of what you borrowed');
+    if (draft.direction === 'borrowed' && feeMinor >= amountMinor) throw new Error('The fee cannot be all of what was borrowed');
   }
 
   return {

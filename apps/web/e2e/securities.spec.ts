@@ -23,7 +23,7 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and the ba
   await expectBalance(page, 'BCA Tahapan', '41.236.875');
 
   // BBCA is held now, so it is picked from You hold, and Stockbit says what it holds.
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'Stockbit · you hold 1.000', quantity: '5', price: '9.000', paidFrom: 'BCA Tahapan (IDR)' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: 'Stockbit · held 1.000', quantity: '5', price: '9.000', paidFrom: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await expectBalance(page, 'BCA Tahapan', '36.736.875'); // − 500 × 9.000
@@ -93,7 +93,7 @@ test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked fo
   await expect(page.getByTestId('stock-row').filter({ hasText: 'AAPL' })).toContainText('10 shares');
   await page.goto('/net-worth/investments/new');
   await page.getByLabel('Ticker or name').pressSequentially('AAP');
-  await expect(page.getByText('You hold', { exact: true })).toBeVisible();
+  await expect(page.getByText('Held', { exact: true })).toBeVisible();
   await page.getByLabel('Ticker or name').fill('');
   await page.getByLabel('Ticker or name').pressSequentially('MSFT');
   await expect(page.getByText('Nothing on IDX matches MSFT')).toBeVisible(); // the US list is no longer searched
@@ -163,7 +163,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
-  await expect(page.getByText('This adds to BBCA, your BBCA with no broker named.')).toBeVisible();
+  await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
   await expect(page.getByLabel('Total')).toHaveValue(/900\.000$/);
   // m6: the note is about a buy with no broker. Kept at a broker, the buy lands there, and the note is gone.
   await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
@@ -171,7 +171,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
 
   // m7: the same stock named by hand is the stock already held, so the form says which holding it joins.
   await addHoldingFlow(page, { search: 'BBCA', nameIt: BBCA_BY_HAND, broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
-  await expect(page.getByText('This adds to BBCA, your BBCA with no broker named.')).toBeVisible();
+  await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
 
   // A holding from before, linked to BBCA with no broker: now there are two, and the form never picks silently.
   await addHoldingFlow(page, {
@@ -192,7 +192,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
 
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
   await expect(
-    page.getByText('You hold BBCA twice with no broker named. This adds to BBCA, the first recorded; to add to BBCA old instead, record the buy on Buy & sell.'),
+    page.getByText('Held as BBCA twice with no broker named. This adds to BBCA, the first recorded; to add to BBCA old instead, record the buy on Buy & sell.'),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
@@ -219,7 +219,7 @@ test('every way in reaches Investments and Add a holding: Buy & sell, the Assets
   // shares starts from a ticker.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Add asset' }).click();
-  await page.getByPlaceholder('Search everything you can own').pressSequentially('Listed shares');
+  await page.getByPlaceholder('Search everything that can be owned').pressSequentially('Listed shares');
   await page.getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await expect(page.getByLabel('Ticker or name')).toBeVisible();
@@ -232,7 +232,7 @@ test.describe('with the list unreadable', () => {
     await page.route(/\/assets\/idx-[^/]+\.js$/, (route) => void route.abort());
     await page.goto('/net-worth/investments/new');
     await page.getByLabel('Ticker or name').pressSequentially('BBCA');
-    await expect(page.getByText('The ticker list could not be read. Name it yourself instead.')).toBeVisible();
+    await expect(page.getByText('The ticker list could not be read. Name it directly instead.')).toBeVisible();
     await page.getByRole('button', { name: /Name it myself/ }).click();
     await expect(page.getByLabel('Ticker', { exact: true })).toBeVisible();
   });

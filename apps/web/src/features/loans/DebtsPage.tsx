@@ -74,12 +74,14 @@ function subtitleOf(row: DebtRow): string {
 }
 
 /** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
-function DebtItem({ row, kind, baseCurrency, rates }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number> }) {
+function DebtItem({ row, kind, baseCurrency, rates, nested = false }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean }) {
   return (
     <InsetRow
       {...destination(row)}
       testId={`debt-row-${row.key}`}
-      icon={<KindIcon kind={kind} />}
+      // Inside its kind's open drawer: one step in, no circle, the name level with the kind's.
+      icon={nested ? undefined : <KindIcon kind={kind} />}
+      depth={nested ? 1 : 0}
       title={row.name}
       subtitle={subtitleOf(row) || undefined}
       value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
@@ -209,7 +211,7 @@ export function DebtsPage() {
 
       {nothing && (
         <Empty>
-          Nothing owed. Tap ＋ to add a loan, a card, or money you borrowed from someone; a loan already on{' '}
+          Nothing owed. Tap ＋ to add a loan, a card, or money borrowed from someone; a loan already on{' '}
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}
@@ -272,7 +274,7 @@ export function DebtsPage() {
                     testId={`type-drawer-${key}`}
                     onToggle={() => drawersState.toggle(key)}
                   />,
-                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} />) : []),
+                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested />) : []),
                 ];
               })}
               {debts.cleared.length > 0 && (

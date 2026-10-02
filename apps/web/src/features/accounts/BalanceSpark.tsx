@@ -1,4 +1,5 @@
 import { formatMinor } from '@expanses/core';
+import { useEffect, useState } from 'react';
 import { dayLabel } from '../networth/asset-page';
 import { ChartAnnouncement, ChartReading, useChartReading } from '../networth/chart-reading';
 import { dayMonth } from '../networth/debt-rows';
@@ -39,7 +40,11 @@ export function BalanceSpark({
   throughZero?: boolean;
   className?: string;
 }) {
-  const width = 268;
+  // Drawn at the width it is shown at, so the reading's words and the line are the size they say, as Net worth's are:
+  // a drawing 268 wide stretched over a 330 px card made the reading's text a quarter larger than the Net worth one.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const shown = useShownWidth(box);
+  const width = shown ?? 268;
   const height = 64;
   /* Room under the plot for the crossing's date, and nothing above: the chart starts at its own top. */
   const paper = height + 16;
@@ -69,7 +74,7 @@ export function BalanceSpark({
   const { reading, svgProps } = useChartReading(points, width, { label: 'Balance over the last 30 days. Tap a day to read it, or use the arrow keys.', hover: true });
 
   return (
-    <div className={className}>
+    <div ref={setBox} className={className}>
       <svg
         width="100%"
         viewBox={`0 0 ${width} ${paper}`}
@@ -106,4 +111,22 @@ export function BalanceSpark({
       </div>
     </div>
   );
+}
+
+/** The width an element is laid out at, kept current as it changes; null until it has been measured. */
+function useShownWidth(element: HTMLElement | null): number | null {
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!element) return;
+    const measure = () => {
+      const next = Math.round(element.getBoundingClientRect().width);
+      if (next > 0) setWidth(next);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return width;
 }

@@ -51,7 +51,7 @@ function PortfolioFigure({ view, base, left }: { view: PortfolioView; base: stri
         // The Assets page's own words when a rate is missing: no partial total, every figure below exact.
         <div className={cx('flex flex-col', left ? 'items-start text-left' : 'items-center text-center')} style={{ marginBottom: 18 }}>
           <p className="text-[22px] leading-[28px] font-extrabold tracking-[-0.03em] text-[var(--ph-warn)]">No {summary.missingRates.join(', ')} rate yet</p>
-          <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">so your investments can't be added up. Each figure below is exact.</p>
+          <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">so these investments can't be added up. Each figure below is exact.</p>
         </div>
       )}
     </div>

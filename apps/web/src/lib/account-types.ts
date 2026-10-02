@@ -115,6 +115,19 @@ export function canTransferBetween(from: Pick<AccountRow, 'id' | 'subtype'>, to:
 }
 
 /**
+ * May money come **into** cash or a digital wallet from this account, by the account's own Withdraw or Top up?
+ *
+ * Money you hold, by the transfer's own pairing rule — so never a broker's cash. And, into a wallet only, a credit
+ * card: GoPay, OVO and the rest take a card, and topping one up from it is the one time a card's money goes anywhere
+ * but a purchase. That is allowed here and nowhere else — a transfer's From and To still never name a card.
+ */
+export function canMoveMoneyIn(from: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, into: Pick<AccountRow, 'id' | 'subtype'>): boolean {
+  if (from.id === into.id) return false;
+  if (from.kind === 'liability') return from.subtype === 'credit_card' && into.subtype === 'ewallet';
+  return from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype) && canTransferBetween(from, into);
+}
+
+/**
  * May this account be offered as a way to pay, or as somewhere money is received? Every "pay with", "paid from"
  * and "received into" list asks this, because holding a balance is not the same as being spendable.
  *

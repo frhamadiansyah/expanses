@@ -96,7 +96,7 @@ test('remembering a merchant MCC removes the Maybank Platinum extra from past pu
   await openCardPage(page, 'Maybank Platinum');
   await cardSection(page, 'Points');
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('0 points');
-  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5814 · yours');
+  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5814 · remembered');
 });
 
 test('a per-purchase actual of 0 suggests fast food, and remembering it matches the bank', async ({ page }) => {
@@ -111,7 +111,7 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
   await row.getByRole('button', { name: 'Save actual for WARUNG STEAK JKT' }).click();
   await expect(row).toContainText('WARUNG STEAK JKT as MCC 5814 Fast Food Restaurants would earn 0 points');
   await row.getByRole('button', { name: 'Remember “warung steak jkt” as 5814' }).click();
-  await expect(row).toContainText('MCC 5814 · yours');
+  await expect(row).toContainText('MCC 5814 · remembered');
   await expect(row).toContainText('Matches the bank');
 });
 

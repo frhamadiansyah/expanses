@@ -73,7 +73,7 @@ test('a card that earns by level is refused until the level is chosen, and nothi
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Add card' }).click();
 
-  await expect(page.getByText(/Choose the level you are on/)).toBeVisible();
+  await expect(page.getByText(/Choose the level before adding it/)).toBeVisible();
   await expect(page).toHaveURL(/\/debts\/new$/);
   // Nothing was opened, so the same button finishes the job once the level is given.
   await page.goto('/cards');

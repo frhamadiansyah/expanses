@@ -96,7 +96,7 @@ export function CoretaxPage() {
         <InsetGroup
           footer={
             jointView.complete
-              ? 'Every item of both of you is in it, each as its owner’s phone reads 31 December.'
+              ? 'Every item of both members is in it, each as its owner’s phone reads 31 December.'
               : 'Not complete yet: file once nothing above is waiting.'
           }
         >
@@ -136,7 +136,7 @@ export function CoretaxPage() {
 
       {!report.data && report.isSuccess && (
         <Empty>
-          Nothing for {taxYear} yet. Starting a report reads what your ledger held on 31 December {taxYear} — it changes nothing and files nothing.
+          Nothing for {taxYear} yet. Starting a report reads what the ledger held on 31 December {taxYear} — it changes nothing and files nothing.
         </Empty>
       )}
 
@@ -150,14 +150,14 @@ export function CoretaxPage() {
                 <Money minor={reportTotals.utangMinor} currency={ws.baseCurrency} />. The report says{' '}
                 <Money minor={reportTotals.reportNetMinor} currency={ws.baseCurrency} />
                 {jointTotals ? (
-                  <span data-testid="reconciliation-joint">. It holds both of your items, and your balance sheet only yours, so the two are not compared.</span>
+                  <span data-testid="reconciliation-joint">. It holds items from both members, and the balance sheet only this device's own, so the two are not compared.</span>
                 ) : check === null ? (
                   <span data-testid="reconciliation-missing" className="text-[var(--ph-warn)]">
-                    . No {missing.join(', ')} rate yet for 31 December {taxYear}, so your balance sheet cannot be compared with it.
+                    . No {missing.join(', ')} rate yet for 31 December {taxYear}, so the balance sheet cannot be compared with it.
                   </span>
                 ) : (
                   <>
-                    , and your balance sheet on 31 December {taxYear} says <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
+                    , and the balance sheet on 31 December {taxYear} says <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
                   </>
                 )}
                 {check !== null && check.differenceMinor !== 0 && (
@@ -199,7 +199,7 @@ export function CoretaxPage() {
                 <TextRow label="Nama wajib pajak" value={taxpayerName} onChange={(e) => setTaxpayerName(e.target.value)} />
                 <SelectRow
                   label="Property and vehicles report"
-                  hint="The cost is what you paid; the others are what you say it is worth now."
+                  hint="The cost is what was paid; the others are what it is said to be worth now."
                   value={report.data.propertyBasis}
                   onChange={(e) => void start(e.target.value as 'cost' | 'estimate' | 'njop' | 'appraisal', report.data!.repeatRows)}
                 >
@@ -233,7 +233,7 @@ export function CoretaxPage() {
           )}
 
           {[...blocking, ...warnings].length > 0 ? (
-            <InsetGroup header="Before you file">
+            <InsetGroup header="Before filing">
               {[...blocking, ...warnings].map((link) => (
                 link.owner ? (
                   <InsetRow
@@ -246,7 +246,7 @@ export function CoretaxPage() {
                   <InsetRow
                     key={link.issue.key}
                     title={link.issue.message}
-                    subtitle={link.issue.level === 'blocking' ? 'Needs fixing before you file' : 'Worth a look'}
+                    subtitle={link.issue.level === 'blocking' ? 'Needs fixing before filing' : 'Worth a look'}
                     value="Fix"
                     to={link.to}
                   />
@@ -269,8 +269,8 @@ export function CoretaxPage() {
 
           <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
             {joint
-              ? `With one tax ID, each item you share goes to ${partners.join(' and ') || 'your partner'}'s phone with its row here — its code, figures and the details its table asks for. Your NPWP and anything typed into the report stay on this device, and nothing is filed for you.`
-              : 'Everything here stays on this device. The report holds your NPWP, NIK and account numbers, so nothing is sent anywhere and nothing is filed for you.'}
+              ? `With one tax ID, each item shared goes to ${partners.join(' and ') || 'the partner'}'s phone with its row here — its code, figures and the details its table asks for. The NPWP and anything typed into the report stay on this device, and nothing is filed automatically.`
+              : 'Everything here stays on this device. The report holds the NPWP, NIK and account numbers, so nothing is sent anywhere and nothing is filed automatically.'}
           </p>
         </>
       )}

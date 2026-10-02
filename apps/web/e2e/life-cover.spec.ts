@@ -16,7 +16,7 @@ test('life cover adds every need once and takes off what is already there', asyn
   // The method and its sources are named; no link is fetched.
   await expect(page.getByText(/^Capital needs analysis:.*CFP Board.*Insurance Information Institute/)).toBeVisible();
 
-  await type(page, 'Yearly amount your family needs (IDR)', '120000000');
+  await type(page, 'Yearly amount the family needs (IDR)', '120000000');
   await type(page, 'Debts to clear (IDR)', '300000000');
   await type(page, 'Education still to fund (IDR)', '150000000');
   await type(page, 'Final expenses (IDR)', '25000000');
@@ -33,13 +33,13 @@ test('life cover adds every need once and takes off what is already there', asyn
   await expect(page.getByText('Kept the life cover figures.')).toBeVisible();
   await page.reload();
   await expect(page.getByLabel('Liquid assets (IDR)', { exact: true })).toHaveValue('2000000000');
-  await expect(page.getByLabel('Yearly amount your family needs (IDR)', { exact: true })).toHaveValue('120000000');
+  await expect(page.getByLabel('Yearly amount the family needs (IDR)', { exact: true })).toHaveValue('120000000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('915.358.073');
 });
 
 test('a half-typed rate is refused on its own row, and the page stays up', async ({ page }) => {
   await page.goto('/calculators/life-cover');
-  await type(page, 'Yearly amount your family needs (IDR)', '120000000');
+  await type(page, 'Yearly amount the family needs (IDR)', '120000000');
   await type(page, 'Debts to clear (IDR)', '300000000');
   await type(page, 'Education still to fund (IDR)', '150000000');
   await type(page, 'Final expenses (IDR)', '25000000');

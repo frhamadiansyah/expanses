@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   ArrowDownToLine,
   ArrowUpFromLine,
   Bell,
@@ -9,12 +10,11 @@ import {
   FileSpreadsheet,
   Landmark,
   PiggyBank,
-  Scale,
   Settings,
   Sparkles,
+  TrendingUp,
   Store,
   Tags,
-  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -36,8 +36,8 @@ export interface NavGroup {
  * The fourth place is the account sheet, which holds everything else, so its route is not listed here.
  */
 export const TABS: readonly NavItem[] = [
-  { to: '/transactions', label: 'Transactions', icon: Wallet },
-  { to: '/net-worth', label: 'Net worth', icon: Scale },
+  { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
+  { to: '/net-worth', label: 'Net worth', icon: TrendingUp },
   { to: '/cards', label: 'Cards', icon: CreditCard },
 ] as const;
 

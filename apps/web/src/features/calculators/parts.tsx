@@ -47,11 +47,11 @@ export function Answer({
     <Panel wide testId={testId}>
       {/* Two figures, side by side where there is room: the desktop keeps both columns. */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Figure caption="You need" minor={answer.targetMinor} />
+        <Figure caption="Needed" minor={answer.targetMinor} />
         <Figure
           caption="Save each month"
           minor={answer.monthlyMinor}
-          note={answer.covered ? <p className="text-[12.5px] leading-[16px] text-[var(--ph-tint)]">What you hold already covers it.</p> : undefined}
+          note={answer.covered ? <p className="text-[12.5px] leading-[16px] text-[var(--ph-tint)]">What is held already covers it.</p> : undefined}
         />
       </div>
     </Panel>

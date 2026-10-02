@@ -151,7 +151,7 @@ export function AssetSettings({
           onChange={(e) =>
             void save('treatment', () => setAssetReporting(database, ws, accountId, { taxTreatment: e.target.value === 'unset' ? null : (e.target.value as Treatment) }))
           }
-          info="Final: reported, not added to taxable income — a government coupon. Not a tax object: no tax at all. Ordinary: added to taxable income — a holding abroad. A dividend you reinvest is marked on the payment itself."
+          info="Final: reported, not added to taxable income — a government coupon. Not a tax object: no tax at all. Ordinary: added to taxable income — a holding abroad. A reinvested dividend is marked on the payment itself."
           hint={errorHint(errors.treatment)}
         >
           <option value="unset">Not set</option>
@@ -168,7 +168,7 @@ export function AssetSettings({
           label="Report as harta"
           checked={reportable}
           onChange={(on) => void save('reportable', () => setAssetReporting(database, ws, accountId, { reportable: on }))}
-          info="Turn it off for money that is yours but is not reported yet — a pension balance that counts only once it has been paid out, for instance. It still counts toward net worth."
+          info="Turn it off for money that is held but not reported yet — a pension balance that counts only once it has been paid out, for instance. It still counts toward net worth."
           hint={errorHint(errors.reportable)}
         />
         <PickerRow label="What it is" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />

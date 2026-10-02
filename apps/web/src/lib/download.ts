@@ -43,5 +43,5 @@ export async function saveBytes(bytes: Uint8Array, filename: string, type = 'app
  * shown on a phone that has no Downloads folder to check.
  */
 export function savedWhere(to: SavedTo): string {
-  return to === 'share-sheet' ? 'Keep it somewhere private — in Files, or sent to yourself.' : 'Check it is in your Downloads and keep it somewhere private.';
+  return to === 'share-sheet' ? 'Keep it somewhere private — in Files, or sent elsewhere to keep.' : 'Check it is in Downloads and keep it somewhere private.';
 }

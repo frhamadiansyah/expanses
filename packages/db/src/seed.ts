@@ -1,6 +1,9 @@
 export const SYSTEM_ACCOUNTS = [
   { key: 'opening_balance', name: 'Opening Balances' },
   { key: 'currency_exchange', name: 'Currency Exchange' },
+  // The other side of a balance fixed to what was counted, when the difference is not spending or income. Added after
+  // workspaces existed, so it is also made on first use (`ensureSystemAccountTx`) rather than only here.
+  { key: 'balance_correction', name: 'Balance corrections' },
 ] as const;
 
 export type SystemAccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'];

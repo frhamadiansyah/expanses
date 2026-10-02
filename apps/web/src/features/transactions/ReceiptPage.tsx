@@ -171,7 +171,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       <ErrorBox error={error} />
 
       <section data-testid="receipt-hero" className="flex flex-col items-center gap-1 text-center">
-        <CategoryIcon categoryId={kind.categoryIds[0] ?? null} accounts={accounts} transfer={kind.type === 'transfer' || kind.type === 'opening'} size="lg" />
+        <CategoryIcon categoryId={kind.categoryIds[0] ?? null} accounts={accounts} transfer={kind.type === 'transfer' || kind.type === 'opening' || kind.type === 'correction'} size="lg" />
         <span data-testid="hero-amount" className={cx('tabular text-3xl font-semibold', tx.status === 'void' && 'text-slate-400 line-through')}>
           {formatMinor(kind.amountMinor, kind.currency)}
         </span>

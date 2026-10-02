@@ -49,6 +49,7 @@ import { DebtsPage } from '../features/loans/DebtsPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
 import { OverviewPage } from '../features/networth/OverviewPage';
 import { TradesPage } from '../features/networth/TradesPage';
+import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
@@ -242,6 +243,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/$accountId', component: () => <BrokerPage /> }),
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
+  // Every share and fund held, one price box each, and IDX's daily file to fill the shares.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/prices', component: UpdatePricesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   // An asset's settings, behind its gear: they used to sit at the bottom of the asset's own page.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),

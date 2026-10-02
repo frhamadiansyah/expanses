@@ -13,7 +13,7 @@ export function DeveloperSettingsPage() {
       <LargeTitle title="Developer" back="Settings" backTo="/settings" />
       <InsetGroup
         header="Previews"
-        footer="On this device only. Turning it off keeps every holding you added from the list; search just stops finding new US tickers."
+        footer="On this device only. Turning it off keeps every holding already added from the list; search just stops finding new US tickers."
       >
         <SwitchRow label="US ticker list" hint="The paid list, before purchases exist." checked={foreign} onChange={(on) => setPreviewEntitlement('foreign_securities', on)} />
       </InsetGroup>

@@ -217,7 +217,7 @@ describe('the emergency card grades against the household’s own months', () =>
     const ratio = by(healthRatios(flows(), totals(), { emergencyTargetMonths: 12 }), 'emergency_fund');
     expect(ratio.status).toBe('act');
     expect(ratio.target).toBe(12);
-    expect(ratio.benchmarkText).toBe('12 months · your household');
+    expect(ratio.benchmarkText).toBe('12 months · this household');
   });
 
   it('is watch between the watch floor and the household’s months', () => {

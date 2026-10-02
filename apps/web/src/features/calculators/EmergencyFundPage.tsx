@@ -109,7 +109,7 @@ export function EmergencyFundPage() {
       </InsetGroup>
 
       {/* How long you give yourself, and what the money earns while it waits — the two figures that used to be assumptions. */}
-      <InsetGroup header="The plan" footer="Yours to set: the answer only ever shows what these two say.">
+      <InsetGroup header="The plan" footer="Set here: the answer only ever shows what these two say.">
         <TextRow
           label="Save it over (months)"
           hint={horizonProblem}

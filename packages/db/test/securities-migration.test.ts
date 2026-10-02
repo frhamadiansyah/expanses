@@ -58,8 +58,9 @@ describe('migration 0051', () => {
 
     const after = await schemaOf(database);
     for (const [name, ddl] of before) expect(after.get(name)).toBe(ddl);
+    // security_prices is already there: 0062, which ran first, made it (empty) to widen its source check.
     expect([...after.keys()].filter((name) => !before.has(name)).sort()).toEqual(
-      ['holding_links', 'holding_links_security', 'securities', 'securities_ticker', 'security_prices'],
+      ['holding_links', 'holding_links_security', 'securities', 'securities_ticker'],
     );
     expect(await nativeBalances(database, ws)).toEqual(balancesBefore);
     expect(balancesBefore[bank.id]).toBe(12_345_678);

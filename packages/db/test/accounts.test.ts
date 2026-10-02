@@ -23,7 +23,7 @@ describe('workspace seed', () => {
   it('creates system equity accounts and a two-level category tree', async () => {
     const { database, ws } = await setupDb();
     const all = await listAccounts(database, ws);
-    expect(all.filter((a) => a.kind === 'equity').map((a) => a.systemKey).sort()).toEqual(['currency_exchange', 'opening_balance']);
+    expect(all.filter((a) => a.kind === 'equity').map((a) => a.systemKey).sort()).toEqual(['balance_correction', 'currency_exchange', 'opening_balance']);
     const food = all.find((a) => a.name === 'Food and beverage')!;
     const groceries = all.find((a) => a.name === 'Groceries')!;
     expect(food.kind).toBe('expense');

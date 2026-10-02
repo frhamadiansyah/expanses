@@ -23,8 +23,11 @@ export function gramPriceMicroFromOunce(perOunce: number, currency: string): num
 /** Where a gold holding's price comes from: the world price, fetched once a day, or only what the owner types. */
 export type GoldPriceChoice = 'world' | 'typed';
 
-/** Where a stored price came from: typed by the owner, or fetched as the world price. */
-export type PriceSource = 'manual' | 'world';
+/**
+ * Where a stored price came from: typed by the owner, fetched as the world price, or — for a listed share, whose price
+ * is its security's — fetched from Yahoo Finance or read from IDX's daily file.
+ */
+export type PriceSource = 'manual' | 'world' | 'yahoo' | 'idx';
 
 /**
  * Whether today's world price should be fetched. Only when the holding follows the world price and holds no price for

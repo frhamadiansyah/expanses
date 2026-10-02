@@ -98,7 +98,8 @@ const toRow = (row: TradeDbRow): TradeRow => ({
   replacesTradeId: row.replacesTradeId,
 });
 
-async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: string): Promise<TradeRow[]> {
+/** A holding's (or every holding's) active trades, inside a transaction when given one. */
+export async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: string): Promise<TradeRow[]> {
   const where = [eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')];
   if (accountId) where.push(eq(investmentTrades.accountId, accountId));
   const rows = await tx

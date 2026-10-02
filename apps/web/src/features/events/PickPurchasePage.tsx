@@ -156,7 +156,7 @@ export function PickPurchasePage() {
         )}
 
         <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Only payments already tagged to this event are here. The receipt itself is never split — saying what it covers is a reading of it, and your statement
+          Only payments already tagged to this event are here. The receipt itself is never split — saying what it covers is a reading of it, and the statement
           and points are untouched.
         </p>
       </div>

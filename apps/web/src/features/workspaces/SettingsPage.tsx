@@ -215,7 +215,7 @@ export function SettingsPage() {
       <LargeTitle title="Settings" />
 
       {/* The section title moves outside the card it used to sit inside — the kit's one unmissable difference. */}
-      <InsetGroup header="Your money" footer="Net worth, balances, statements and the tax report are read in this currency.">
+      <InsetGroup header="Money" footer="Net worth, balances, statements and the tax report are read in this currency.">
         <ReadOnlyRow label={workspaceName} value={ws.baseCurrency} />
       </InsetGroup>
 

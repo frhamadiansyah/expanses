@@ -438,7 +438,7 @@ export function CardHero({
               figure={formatMinor(owedMinor, currency)}
               figureTestId="tile-unpaid-balance"
               caption={billCaption()}
-              note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this for you">{creditLine(creditMinor, currency)}</span> : undefined}
+              note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this as credit">{creditLine(creditMinor, currency)}</span> : undefined}
               action={paying ? undefined : 'Pay'}
               onAction={() => setPaying(true)}
             >
@@ -469,7 +469,7 @@ export function CardHero({
             <InsetGroup header="Current bill" wide>
               <InsetRow title={<TileFigure>{cp.terms && lastCycle ? formatMinor(leftToPayMinor, currency) : '—'}</TileFigure>} subtitle={billCaption()} />
               {creditMinor > 0 && (
-                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-tint)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this for you" />
+                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-tint)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this as credit" />
               )}
               {!paying &&
                 (cp.terms && lastCycle ? (

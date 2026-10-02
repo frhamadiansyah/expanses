@@ -161,7 +161,7 @@ describe('a screen that threw while it was drawing', () => {
   it('says nothing about a screen to someone who never got one', () => {
     // The open-time `cannot-open` is a different sentence, and must not pick this one up.
     const copy = recoveryCopy({ kind: 'cannot-open', headline: 'log', detail: 'x', exportable: true }, { hasSnapshot: true });
-    expect(copy.headline).toBe('We could not open your data this time');
+    expect(copy.headline).toBe('The data could not open this time');
     expect(copy.body).not.toContain(SCREEN_STOPPED_NOTE);
   });
 });

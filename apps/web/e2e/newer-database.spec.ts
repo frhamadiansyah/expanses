@@ -94,7 +94,7 @@ test('a database already at a newer version refuses to open, and offers export b
 
   // Both versions are there for anyone who wants them, under Details, where every technical line lives.
   await page.getByRole('group').getByText('Details', { exact: true }).click();
-  await expect(page.getByText(new RegExp(`Your data: update ${FUTURE} · This app: update \\d+`))).toBeVisible();
+  await expect(page.getByText(new RegExp(`Data: update ${FUTURE} · This app: update \\d+`))).toBeVisible();
 
   // Nothing here offers to destroy data the app merely cannot read yet, and an older copy is not the fix.
   await expect(page.getByRole('button', { name: /Start fresh/ })).toHaveCount(0);

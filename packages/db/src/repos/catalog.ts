@@ -171,7 +171,7 @@ export function applyCatalogEntry(
   return database.transaction(async (tx) => {
     // Rejects like every other refusal here, rather than throwing before the promise exists.
     if (levels.length > 0 && !levels.some((level) => level.key === memberLevel)) {
-      throw new CatalogError(`This card earns by ${input.entry.program.name} level. Choose the level you are on before applying it.`);
+      throw new CatalogError(`This card earns by ${input.entry.program.name} level. Choose the level before applying it.`);
     }
     const [card] = await tx
       .select({ subtype: accounts.subtype })
@@ -224,7 +224,7 @@ export function applyCatalogEntry(
         .from(earnRules)
         .where(and(eq(earnRules.programId, program.id), isNull(earnRules.archivedAt), isNull(earnRules.catalogKey)))
         .limit(1);
-      if (manual) throw new CatalogError('This card has earn rules you set up yourself. Confirm replacing them to use the catalogue terms.');
+      if (manual) throw new CatalogError('This card has earn rules set up by hand. Confirm replacing them to use the catalogue terms.');
     }
 
     await clearRows(tx, ws, program.id, input.replaceManual);

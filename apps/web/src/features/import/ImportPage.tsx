@@ -137,7 +137,7 @@ export function ImportPage() {
           rawPayload: null,
         })),
       );
-      setResult(`Sent ${outcome.captured} rows to Review${outcome.skipped > 0 ? `, ${outcome.skipped} already captured` : ''}. Nothing is recorded until you confirm it there.`);
+      setResult(`Sent ${outcome.captured} rows to Review${outcome.skipped > 0 ? `, ${outcome.skipped} already captured` : ''}. Nothing is recorded until confirmed there.`);
       setTable([]);
       setMapping(null);
       await invalidate();
@@ -189,7 +189,7 @@ export function ImportPage() {
       {/* The row opens the platform's own chooser; this is the chooser, so the file the app reads is the file. */}
       <input ref={fileInput} type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e)} className="sr-only" tabIndex={-1} />
 
-      <InsetGroup header="What to import" footer="Export from your bank or card portal. Re-importing the same file skips rows already imported.">
+      <InsetGroup header="What to import" footer="Export from the bank or card portal. Re-importing the same file skips rows already imported.">
         <SelectRow
           label="Into account"
           value={accountId}
@@ -255,7 +255,7 @@ export function ImportPage() {
 
           <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
             {mapped.rows.length} rows · {duplicates.size} already imported · {mapped.errors.length} unreadable
-            {account.subtype === 'credit_card' && ' · Card payments default to Skip — record them as transfers from your bank.'}
+            {account.subtype === 'credit_card' && ' · Card payments default to Skip — record them as transfers from the bank.'}
           </p>
           {mapped.errors.length > 0 && (
             <ul className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-alarm)]">

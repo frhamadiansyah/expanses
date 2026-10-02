@@ -14,7 +14,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await page.getByRole('button', { name: /^Fund account/ }).click();
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0);
   await page.getByLabel('Broker', { exact: true }).pressSequentially('Stockbit Sekuritas');
-  await page.getByLabel('RDN bank', { exact: true }).pressSequentially('CIMB Niaga');
+  await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
@@ -34,24 +34,23 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await openDrawers(page);
   await page.getByRole('link', { name: /^Stockbit Sekuritas/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Stockbit Sekuritas' })).toBeVisible();
-  await expect(page.getByTestId('balance-card')).toContainText('RDN at CIMB Niaga · IDR');
+  await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
   const held = page.getByTestId('broker-holding');
   await expect(held).toHaveCount(1);
   await expect(held).toContainText('BBRI');
   await expect(held).toContainText('5 lots');
-  const details = page.locator('section').filter({ hasText: 'Details' });
-  await expect(details).toContainText('BrokerStockbit Sekuritas');
-  await expect(details).toContainText('RDN bankCIMB Niaga');
+  // The broker is the title and the RDN bank is on the card, so Details doesn't say them again.
+  await expect(page.locator('section').filter({ hasText: 'Details' }).filter({ hasText: 'Custodian' })).toHaveCount(0);
 
   await held.click();
   await expect(page.getByText('Value now')).toBeVisible();
   await expect(page.getByLabel('Kept at', { exact: true })).toHaveValue(/.+/);
   await expect(page.getByRole('main')).toContainText('Stockbit Sekuritas');
-  await expect(page.getByRole('main')).toContainText('Cash throughRDN at CIMB Niaga');
+  await expect(page.getByRole('main')).toContainText('CustodianCIMB Niaga');
 });
 
 test('a fund account opened by a walk is called by the broker it names', async ({ page }) => {
   await openAccount(page, { subtype: 'fund', name: 'Mirae Asset Sekuritas', bank: 'Bank Central Asia', balance: '1000000' });
   await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().click();
-  await expect(page.getByTestId('balance-card')).toContainText('RDN at Bank Central Asia · IDR');
+  await expect(page.getByTestId('balance-card')).toContainText('Custodian · Bank Central Asia');
 });

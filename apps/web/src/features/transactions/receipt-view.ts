@@ -60,7 +60,7 @@ function paidEntry(tx: TransactionView) {
 export function heroCaption(tx: TransactionView, heroMinor: number): string | null {
   const { paid } = paidEntry(tx);
   if (!paid) return null;
-  return Math.abs(paid.amountMinor) === heroMinor ? null : 'Your share';
+  return Math.abs(paid.amountMinor) === heroMinor ? null : 'My share';
 }
 
 /** "Andi" · "Andi and Putri" · "Andi, Putri and Chika" — the way a person reads a list aloud. */
@@ -100,7 +100,7 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const payer = input.payer ?? null;
   if (payer) {
     if (payer.paidLabel) lines.push({ label: 'Paid with', value: payer.paidLabel });
-    lines.push({ label: 'Paid by', value: payer.mine ? 'You' : (payer.payerName ?? 'Someone else') });
+    lines.push({ label: 'Paid by', value: payer.mine ? 'Me' : (payer.payerName ?? 'Someone else') });
   } else if (paid) lines.push({ label: left[0] ? 'Paid with' : 'Paid into', value: accountText(paid.accountId) });
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
@@ -109,10 +109,10 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (points) lines.push({ label: 'Points earned', value: pointsText(points), tone: 'points' });
   if (owed.length > 0) {
     const total = owed.reduce((sum, person) => sum + person.totalMinor, 0);
-    lines.push({ label: `${nameList(owed.map((person) => person.personName))} ${owed.length === 1 ? 'owes' : 'owe'} you`, value: formatMinor(total, currency) });
-    // Your own share is the expense side of the split. A bill none of which was yours has no share line.
+    lines.push({ label: `Owed by ${nameList(owed.map((person) => person.personName))}`, value: formatMinor(total, currency) });
+    // This share is the expense side of the split. A bill none of which was paid from here has no share line.
     const share = tx.entries.filter((entry) => entry.accountKind === 'expense').reduce((sum, entry) => sum + entry.amountMinor, 0);
-    if (share !== 0) lines.push({ label: 'Your share', value: formatMinor(share, currency) });
+    if (share !== 0) lines.push({ label: 'My share', value: formatMinor(share, currency) });
   }
   if (input.eventName) lines.push({ label: 'Event', value: input.eventName });
   // Not in B8's list, but the list row says "· for Umrah" today, and a receipt that dropped it would hide a

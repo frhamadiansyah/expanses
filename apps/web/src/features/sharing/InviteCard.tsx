@@ -43,9 +43,9 @@ export function InviteCard({
     try {
       const done = await shareText({
         title: `Join ${bookName}`,
-        text: `${inviterName} invited you to ${bookName}. Open ${invite.link} — or choose Join a workspace in the app and enter ${invite.code}`,
+        text: `${inviterName} sent an invite to ${bookName}. Open ${invite.link} — or choose Join a workspace in the app and enter ${invite.code}`,
       });
-      if (done === 'copied') setNote('Copied. Paste it to the person you are inviting.');
+      if (done === 'copied') setNote('Copied. Paste it to the person being invited.');
     } catch (failure) {
       setError(failure);
     }

@@ -135,7 +135,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
        */
       const saved = await listEventItems(database, ws, eventId);
       if (!saved.some((row) => row.id === id)) {
-        throw new Error('Nothing was saved: this copy of your data is from before a plan was a list of things to buy. Open it once on a finished version, then try again.');
+        throw new Error('Nothing was saved: this copy of the data is from before a plan was a list of things to buy. Open it once on a finished version, then try again.');
       }
       await invalidate();
       await navigate(backTo);
@@ -193,7 +193,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       <ErrorBox error={error ?? plan.error} />
       {blocked && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          This copy of your data is from before a plan was a list of things to buy, so nothing here can be saved yet. Open it once on a version that has finished
+          This copy of the data is from before a plan was a list of things to buy, so nothing here can be saved yet. Open it once on a version that has finished
           updating, and the plan will be here.
         </p>
       )}

@@ -257,7 +257,7 @@ function ActualForm({
         <InsetGroup>
           {perPurchase ? (
             <TextLine>
-              Points your bank credited outside individual purchases, such as cycle bonuses. Estimated <span className="tabular font-medium">{formatPoints(estimatedBonus)}</span> {unit}.
+              Points the bank credited outside individual purchases, such as cycle bonuses. Estimated <span className="tabular font-medium">{formatPoints(estimatedBonus)}</span> {unit}.
             </TextLine>
           ) : (
             <TextLine>
@@ -418,7 +418,7 @@ export function CardDetailPage() {
   }
   const confirmCustomise = () =>
     cp.catalog.status !== 'linked' ||
-    window.confirm(`${card.name} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for your review. Continue?`);
+    window.confirm(`${card.name} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for review. Continue?`);
   const chooseEntry = (entry: CatalogEntry) => {
     setCatalogId(entry.id);
     // Some issuers close every cardholder's statement on the same day.
@@ -426,7 +426,7 @@ export function CardDetailPage() {
   };
   const applyEntry = (entry: CatalogEntry, memberLevel: string | null = null, categoryOption: string | null = null) => {
     const manual = cp.rules.length;
-    if (manual > 0 && !window.confirm(`Replace your ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
+    if (manual > 0 && !window.confirm(`Replace the ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
     void run(async () => {
       const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
       // The first pick runs from the start of the card, so every cycle already recorded is covered by it.
@@ -484,7 +484,7 @@ export function CardDetailPage() {
           >
             <ColumnGroup
               header="Card terms"
-              footer={step === 1 ? 'Start with your billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
+              footer={step === 1 ? 'Start with the billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
               columns={[
                 [
                   <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required />,
@@ -549,7 +549,7 @@ export function CardDetailPage() {
               header="Add a card"
               columns={[
                 [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="8802" />],
-                [<TextRow label="Whose card" hint="Optional. Yours, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
+                [<TextRow label="Whose card" hint="Optional. The account holder, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
                 [<SubmitRow label="Add card" />],
               ]}
             />
@@ -559,7 +559,7 @@ export function CardDetailPage() {
 
       {on('card') && step === 1 && (
         <CatalogPicker
-          header="Is your card in the catalogue?"
+          header="Is this card in the catalogue?"
           today={today}
           selectedId={catalogId}
           onSelect={chooseEntry}
@@ -614,7 +614,7 @@ export function CardDetailPage() {
             <>
               <InsetGroup
                 header="Points balance"
-                footer="Posted points come from figures you typed in. Estimated points are worked out from your rules, and become posted as you record what the bank actually gave."
+                footer="Posted points come from figures typed in. Estimated points are worked out from these rules, and become posted once what the bank actually gave is recorded."
               >
                 <InsetRow
                   title={
@@ -629,7 +629,7 @@ export function CardDetailPage() {
                   }
                 />
               </InsetGroup>
-              <InsetGroup footer="Works the last two years of cycles out from purchases already recorded here. Points earned before you used this app are not among them — type the balance the issuer shows instead.">
+              <InsetGroup footer="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — type the balance the issuer shows instead.">
                 <ActionRow label="Catch up this card" onClick={() => void run(() => backfillCycles(database, ws, cp.program!.id, 24, today))} />
               </InsetGroup>
               <form
@@ -765,7 +765,7 @@ export function CardDetailPage() {
               </div>
               {ledger.data.roi.realised && (
                 <div data-testid="card-year-realised">
-                  <InsetGroup header="At what your points have really fetched" footer="The figures above value points at the best option, which assumes the best use.">
+                  <InsetGroup header="At what these points have really fetched" footer="The figures above value points at the best option, which assumes the best use.">
                     <InsetRow title="Earned" value={`${formatMinor(ledger.data.roi.realised.valueMinor, currency)} earned`} valueTone="ink" />
                     <InsetRow
                       title="Net"
@@ -832,7 +832,7 @@ export function CardDetailPage() {
                       <InsetGroup header="Earn rules">
                         {cp.rules.length === 0 && editingRule === null && (
                           <TextLine tone="ink-3">
-                            Add your card's base earn rate first. The form starts with a typical rate — change it to match your card. Then add bonus rules with a higher priority.
+                            Add the card's base earn rate first. The form starts with a typical rate — change it to match the card. Then add bonus rules with a higher priority.
                           </TextLine>
                         )}
                         {before.map(row)}

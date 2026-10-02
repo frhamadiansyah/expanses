@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
-import { openGoalForm } from './goals';
+import { expectArchiveNote, goalMenu, openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 /*
@@ -245,11 +245,11 @@ export const JOURNEYS: Journey[] = [
       // 7.500.000 − 6.000.000. Taking only the part over the free money would leave 6.500.000.
       await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.1\.500\.000/);
       await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
-      await expect(umrah.getByText('Keeps the history, stops it claiming money.')).toBeVisible();
+      await expectArchiveNote(umrah, true);
       await expectFree(page, 'Jenius', 'Rp.5\\.000\\.000');
 
       await page.goto('/goals');
-      await (await goalCard(page, 'Umrah 2027')).getByRole('button', { name: 'Archive' }).click();
+      await goalMenu(await goalCard(page, 'Umrah 2027'), /^Archive/);
       // Back on the list, where the goal's row went with it.
       await expect(page.getByRole('heading', { name: 'Umrah 2027', exact: true })).toHaveCount(0);
       // Free rises by the 1.500.000 Umrah still promised: 5.000.000 → 6.500.000.
@@ -331,7 +331,7 @@ export const JOURNEYS: Journey[] = [
       await expect(ef.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.23\.200\.000/);
       // …and open to be rebuilt: not Done, and no archive note.
       await expect(ef.getByText('Done', { exact: true })).toHaveCount(0);
-      await expect(ef.getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
+      await expectArchiveNote(ef, false);
     },
   },
   {

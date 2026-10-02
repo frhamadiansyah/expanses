@@ -107,7 +107,7 @@ export async function listGoals(database: Database, ws: WorkspaceContext, opts: 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function checkStages(stages: SaveGoalStageInput[]): void {
-  if (stages.length === 0) throw new GoalDbError('A goal needs at least one stage: what it costs and when you need it');
+  if (stages.length === 0) throw new GoalDbError('A goal needs at least one stage: what it costs and when it is needed');
   for (const stage of stages) {
     if (!stage.name.trim()) throw new GoalDbError('Every stage needs a name');
     if (!DATE.test(stage.dueOn)) throw new GoalDbError(`Stage "${stage.name}" needs a date`);
@@ -287,5 +287,52 @@ export async function removeEarmark(database: Database, ws: WorkspaceContext, go
       .delete(goalEarmarks)
       .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     await recordContributionTx(tx, ws, goalId, accountId, -before.amountMinor);
+  });
+}
+
+/**
+ * What goes to a goal each month by standing arrangement, changed on its own: the stages, the working behind them and
+ * the note stay as they are, so a goal worked out by a calculator stays worked out.
+ */
+export async function setStandingMonthly(database: Database, ws: WorkspaceContext, goalId: string, amountMinor: number): Promise<void> {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new GoalDbError('A monthly amount is a whole figure, nought or more');
+  const [goal] = await database.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  if (!goal) throw new GoalDbError('Goal not found in this workspace');
+  await database.db.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+}
+
+/**
+ * Hands part of one goal's set-aside on an account to another goal, on the same account, in one go: the money does
+ * not move, only which goal it waits for. Never more than the first goal has there.
+ */
+export async function moveSetAside(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { fromGoalId: string; toGoalId: string; accountId: string; amountMinor: number },
+): Promise<void> {
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new GoalDbError('Move an amount greater than zero');
+  if (input.fromGoalId === input.toGoalId) throw new GoalDbError('Pick another goal to move it to');
+  await database.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ id: goals.id, status: goals.status })
+      .from(goals)
+      .where(and(eq(goals.id, input.toGoalId), eq(goals.workspaceId, ws.workspaceId)));
+    if (!target || target.status === 'archived') throw new GoalDbError('Goal not found in this workspace');
+    const [source] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, input.fromGoalId), eq(goalEarmarks.accountId, input.accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    if (!source) throw new GoalDbError('Nothing is set aside for that goal in this account');
+    if (input.amountMinor > source.amountMinor) throw new GoalDbError('That is more than is set aside there');
+    const left = source.amountMinor - input.amountMinor;
+    const where = and(eq(goalEarmarks.goalId, input.fromGoalId), eq(goalEarmarks.accountId, input.accountId), eq(goalEarmarks.workspaceId, ws.workspaceId));
+    if (left === 0) await tx.delete(goalEarmarks).where(where);
+    else await tx.update(goalEarmarks).set({ amountMinor: left }).where(where);
+    await tx
+      .insert(goalEarmarks)
+      .values({ goalId: input.toGoalId, accountId: input.accountId, workspaceId: ws.workspaceId, amountMinor: input.amountMinor })
+      .onConflictDoUpdate({ target: [goalEarmarks.goalId, goalEarmarks.accountId], set: { amountMinor: sql`${goalEarmarks.amountMinor} + ${input.amountMinor}` } });
+    await recordContributionTx(tx, ws, input.fromGoalId, input.accountId, -input.amountMinor);
+    await recordContributionTx(tx, ws, input.toGoalId, input.accountId, input.amountMinor);
   });
 }

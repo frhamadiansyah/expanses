@@ -68,7 +68,7 @@ function ownerOf(value: unknown): string | null {
 /** The active group, when it is this workspace's: the only place a transfer between partners is recorded or changed. */
 async function groupOf(database: Database, workspaceBookId: string): Promise<ActiveNetWorthGroup> {
   const group = await activeNetWorthGroup(database);
-  if (!group || group.workspaceBookId !== workspaceBookId) throw new NetWorthError('not-listed', "You're not in this workspace's net-worth group");
+  if (!group || group.workspaceBookId !== workspaceBookId) throw new NetWorthError('not-listed', "Not in this workspace's net-worth group");
   return group;
 }
 
@@ -102,12 +102,12 @@ export async function recordMemberTransfer(database: Database, workspaceBookId: 
   checkDate(t.occurredOn);
   checkAmount(t.amountMinor);
   if (!isSupportedCurrency(t.currency)) throw new NetWorthError('invalid', `Unsupported currency ${t.currency}`);
-  if (t.from.owner === t.to.owner || (t.from.owner !== me && t.to.owner !== me)) throw new NetWorthError('invalid', 'A transfer is between you and a partner');
+  if (t.from.owner === t.to.owner || (t.from.owner !== me && t.to.owner !== me)) throw new NetWorthError('invalid', 'A transfer is between this member and a partner');
   const mine = t.from.owner === me ? t.from : t.to;
   const theirs = t.from.owner === me ? t.to : t.from;
-  if (!group.members.includes(theirs.owner)) throw new NetWorthError('invalid', 'That person is not in your net-worth group');
+  if (!group.members.includes(theirs.owner)) throw new NetWorthError('invalid', 'That person is not in this net-worth group');
   const own = await ownItemAccount(database.db, groupBookId, me, mine.itemId);
-  if (!own) throw new NetWorthError('item-not-shared', 'Your account is not shared with the household. Share it first, or pick another.');
+  if (!own) throw new NetWorthError('item-not-shared', 'This account is not shared with the household. Share it first, or pick another.');
   const partner = (await receivedItems(database, groupBookId)).find((item) => item.itemId === theirs.itemId && item.owner === theirs.owner);
   if (!partner) throw new NetWorthError('item-not-shared', 'That item is no longer shared. Pick another.');
   if (own.currency !== t.currency || partner.currency !== t.currency) throw new NetWorthError('invalid', `Both accounts must be in ${t.currency}`);
@@ -136,7 +136,7 @@ async function editableTransfer(
   const [row] = await database.db.values<[string, string, number]>(
     sql`SELECT from_json, to_json, void FROM member_transfers WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`,
   );
-  if (!row) throw new NetWorthError('not-listed', 'That transfer is not in your net-worth group');
+  if (!row) throw new NetWorthError('not-listed', 'That transfer is not in this net-worth group');
   if (ownerOf(row[0]) !== me && ownerOf(row[1]) !== me) throw new NetWorthError('not-listed', 'Only the two people in a transfer can change it');
   return { groupBookId, me, members, parties: { void: Number(row[2]) === 1, owners: [ownerOf(row[0]), ownerOf(row[1])] } };
 }
@@ -147,7 +147,7 @@ export async function editMemberTransfer(database: Database, workspaceBookId: st
   if (parties.void) throw new NetWorthError('invalid', 'That transfer was deleted');
   // Review round 1: never write a row this phone's side would not follow — a party who has left makes it delete-only.
   if (!parties.owners.every((owner) => owner !== null && members.includes(owner))) {
-    throw new NetWorthError('left-group', 'The other person no longer shares net worth with you. This transfer can only be deleted.');
+    throw new NetWorthError('left-group', 'The other person no longer shares net worth here. This transfer can only be deleted.');
   }
   if (patch.occurredOn !== undefined) checkDate(patch.occurredOn);
   if (patch.amountMinor !== undefined) checkAmount(patch.amountMinor);
@@ -366,7 +366,7 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
     ratesToBase[currency] = rate;
   }
   const [name] = await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${group.workspaceBookId} AND member_id = ${other}`);
-  const who = name?.[0] || 'your partner';
+  const who = name?.[0] || 'the partner';
   const sign = side === 'from' ? -1 : 1;
   const lines: PostingLine[] = [
     { accountId: account[0], amountMinor: sign * amountMinor, currency },

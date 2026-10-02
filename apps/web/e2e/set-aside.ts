@@ -62,16 +62,18 @@ export async function addGoal(page: Page, name: string, amount: string, dueOn = 
   await expect(goalRow(page, name)).toBeVisible();
 }
 
+/** Through the goal page's round Set aside, whose sheet holds the goal form's set-aside boxes and nothing else. */
 export async function setAside(page: Page, goal: string, box: string, amount: string) {
   const card = await goalCard(page, goal);
-  await card.getByRole('button', { name: 'Edit' }).click();
-  const input = page.getByLabel(box);
+  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Set aside' });
+  const input = sheet.getByLabel(box);
   await input.clear();
   await input.pressSequentially(amount);
-  await page.getByRole('button', { name: 'Save goal' }).click();
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
-  // Saved, not merely pressed: the form closes once the save lands. Navigating away before that loses it.
-  await expect(page.getByRole('button', { name: 'Save goal' })).toHaveCount(0);
+  // Saved, not merely pressed: the sheet closes once the save lands. Navigating away before that loses it.
+  await expect(sheet).toHaveCount(0);
   await expect(card.getByTestId('goal-link').filter({ hasText: box.replace(/ \(.*\)$/, '') }).first()).toBeVisible();
 }
 

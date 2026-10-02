@@ -139,6 +139,21 @@ describe('retagTrade', () => {
     await expect(goalLinksFor(database, ws, TODAY)).resolves.toEqual([]);
   });
 
+  it('refuses to move a buy whose units were already sold from its goal, and changes nothing', async () => {
+    const trade = await buyGold('2026-03-09', 10, hajjId);
+    await sellGold('2026-04-01', 3, hajjId);
+
+    await expect(retagTrade(database, ws, trade.tradeId, eduId)).rejects.toThrow(/already sold/);
+
+    const trades = await listTrades(database, ws, { accountId: gold.id });
+    expect(trades.find((row) => row.id === trade.tradeId)!.goalId).toBe(hajjId);
+    // The goals still read: Hajj holds the 7 g left, and nothing went to University.
+    const links = await goalLinksFor(database, ws, TODAY);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ goalId: hajjId, unitsMicro: g(7) });
+    await expect(goalPlansFor(database, ws, TODAY)).resolves.toBeTruthy();
+  });
+
   it('refuses a goal from another workspace', async () => {
     const trade = await buyGold('2026-08-09', 1, eduId);
     const other = await createWorkspace(database, { name: 'Shared', type: 'shared', baseCurrency: 'IDR' });

@@ -1,6 +1,6 @@
 import type { TransactionView } from '@expanses/db';
 
-export type TransactionType = 'expense' | 'income' | 'transfer' | 'opening';
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction';
 
 export interface Classified {
   type: TransactionType;
@@ -32,5 +32,7 @@ export function classify(tx: TransactionView): Classified {
   }
   const into = money.find((e) => e.amountMinor > 0) ?? money[0] ?? tx.entries[0]!;
   const isOpening = equity.length > 0 && money.length === 1;
-  return { type: isOpening ? 'opening' : 'transfer', amountMinor: Math.abs(into.amountMinor), currency: into.currency, categoryIds: [], moneyAccountNames: names };
+  // A balance fixed to what was counted posts against equity too, but it is no opening balance: it says so.
+  const isCorrection = isOpening && equity.some((e) => e.accountSystemKey === 'balance_correction');
+  return { type: isCorrection ? 'correction' : isOpening ? 'opening' : 'transfer', amountMinor: Math.abs(into.amountMinor), currency: into.currency, categoryIds: [], moneyAccountNames: names };
 }

@@ -119,7 +119,7 @@ export function positionAfter(trades: TradeRecord[], upTo?: string): Position {
 export function sellBasisMinor(position: Position, unitsMicro: number): number {
   if (unitsMicro <= 0) throw new TradeError('INVALID_UNITS', 'A sell needs units greater than zero');
   if (unitsMicro > position.unitsMicro) {
-    throw new TradeError('OVERSELL', `You hold ${formatUnits(position.unitsMicro)}; enter up to ${formatUnits(position.unitsMicro)}`);
+    throw new TradeError('OVERSELL', `Held: ${formatUnits(position.unitsMicro)}; enter up to ${formatUnits(position.unitsMicro)}`);
   }
   if (unitsMicro === position.unitsMicro) return position.costMinor;
   return Number(divRound(BigInt(position.costMinor) * BigInt(unitsMicro), BigInt(position.unitsMicro)));

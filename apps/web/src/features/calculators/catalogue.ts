@@ -32,14 +32,14 @@ export const RETIREMENT_FUND: CalculatorEntry = {
   to: '/calculators/retirement',
   icon: Sunset,
   label: 'Retirement fund',
-  blurb: 'What the pot must hold the day you stop, drawn down while it earns.',
+  blurb: 'What the pot must hold the day saving stops, drawn down while it earns.',
 };
 
 export const LIFE_COVER: CalculatorEntry = {
   to: '/calculators/life-cover',
   icon: ShieldCheck,
   label: 'Life cover',
-  blurb: 'What your family would need, minus what is already there.',
+  blurb: 'What the family would need, minus what is already there.',
 };
 
 export const CATALOGUE: readonly CalculatorEntry[] = [EMERGENCY_FUND, EDUCATION_FUND, RETIREMENT_FUND, LIFE_COVER];

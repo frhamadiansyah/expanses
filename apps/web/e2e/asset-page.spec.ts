@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEstimated, addPriced, openAsset, typePrice } from './asset-page';
+import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
 
 test.beforeEach(({ page }) => {
@@ -29,9 +29,11 @@ test('gold reads as grams, what went in, the average and the price, and each pur
   await expect(grid).toContainText('Average buy');
   await expect(grid).toContainText('2.319.500/g');
   // A price typed by hand is the owner's own, not the world's.
-  await expect(grid).toContainText('Your price');
+  await expect(grid).toContainText('Typed price');
   await expect(grid).toContainText('2.485.000/g');
-  const priceLine = (await page.getByTestId('price-line').innerText()).split(' · ');
+  // Where it came from and its day sit behind the price's ⓘ, not on a line of their own.
+  await expect(page.getByTestId('price-line')).toHaveCount(0);
+  const priceLine = (await (await priceSaid(page, 'Typed price')).innerText()).split(' · ');
   expect(priceLine[0]).toBe('Typed');
   expect(priceLine[1]).toMatch(DAY);
 
@@ -126,7 +128,9 @@ test('Buy opens the Buy & sell form over the page with this holding already chos
   await offline(page);
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20395000']]);
   await openAsset(page, 'Antam gold bars');
+  // Gold's Buy is a short sheet of its own; its More options is the full form.
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByRole('button', { name: 'More options' }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByLabel('Holding')).toHaveValue(/.+/);
   await expect(sheet.getByLabel('What happened')).toHaveValue('buy');
@@ -143,24 +147,25 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '20', '46000000']]);
   await openAsset(page, 'Antam gold bars');
   // 74.639.548 an ounce is 2.399.717 a gram, to the whole rupiah; 20 g of it.
-  await expect(page.getByTestId('price-line')).toHaveText(/^World price \(XAU\) · \d{1,2} \w{3} \d{4}$/);
+  await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\) · \d{1,2} \w{3} \d{4}\. Not buyback: this is the world spot price/);
   await expect(page.getByText('Rp 47.994.340').first()).toBeVisible();
   const grid = page.getByTestId('asset-grid');
   await expect(grid).toContainText('World price');
   await expect(grid).toContainText('Rp 2.399.717/g');
   await expect(grid).not.toContainText(',19');
-  await expect(grid).toContainText('not buyback');
-  await grid.getByRole('button', { name: 'About World price' }).click();
+  // "Not buyback" is said behind the ⓘ, not as a tag under the figure.
+  await expect(grid).not.toContainText('not buyback');
   await expect(page.getByText(/buys gold back a few percent below it/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText('World price');
 
   // A price typed for today is the day's price, and ↻ does not take it back.
   await typePrice(page, '2485000');
-  await expect(page.getByTestId('price-line')).toHaveText(/^Typed · /);
-  await expect(grid).toContainText('Your price');
+  await expect(await priceSaid(page, 'Typed price')).toHaveText(/^Typed · /);
+  await expect(grid).toContainText('Typed price');
   await expect(page.getByText('Rp 49.700.000').first()).toBeVisible();
+  // ↻ sits with the explanation, for a holding that follows the world price.
   await page.getByRole('button', { name: 'Fetch today’s world price' }).click();
-  await expect(page.getByTestId('price-line')).toHaveText(/^Typed · /);
+  await expect(await priceSaid(page, 'Typed price')).toHaveText(/^Typed · /);
   await expect(page.getByText('Rp 49.700.000').first()).toBeVisible();
 });
 
@@ -172,7 +177,7 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   });
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '20', '46000000']]);
   await openAsset(page, 'Antam gold bars');
-  await expect(page.getByTestId('price-line')).toHaveText(/^World price \(XAU\)/);
+  await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\)/);
 
   await page.getByRole('button', { name: /^Price source/ }).click();
   await expect(page.getByRole('button', { name: /World price \(XAU\)/ })).toHaveAttribute('aria-pressed', 'true');
@@ -186,11 +191,12 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   const before = asked;
   await page.reload();
   await expect(page.getByText('Value now')).toBeVisible();
-  await expect(page.getByTestId('price-line')).toBeVisible();
+  await expect(await priceSaid(page, 'World price')).toBeVisible();
   expect(asked).toBe(before);
   await expect(page.getByTestId('asset-grid')).toContainText('World price');
 
   await page.getByRole('button', { name: /^Price source/ }).click();
   await page.getByRole('button', { name: /World price \(XAU\)/ }).click();
+  await priceSaid(page, 'World price');
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toBeVisible();
 });

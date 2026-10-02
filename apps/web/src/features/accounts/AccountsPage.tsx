@@ -16,6 +16,7 @@ import { type CornerAction, ActionLine, Drawer, Figure, groupedFigure, InsetGrou
 import { useSharedNetWorth } from '../networth/queries';
 import { sharedSections } from './shared-accounts';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { accountDestination, CASH_SUBTYPES } from './destination';
 import { BalanceSpark } from './BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from './balance-series';
 import { useHeldRates } from './queries';
@@ -95,24 +96,7 @@ const SPARK_DAYS = 30;
 /** Every subtype this page can list, so an account it does not list is never counted or drawn. */
 const LISTED = new Set<AccountSubtype>(GROUPS.flatMap((group) => group.subtypes));
 
-/** The kinds of account whose own page is on `/accounts`: money, not things. */
-const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 
-/**
- * Where a row opens. One account has to mean one tap wherever it is listed, so this follows the two lists that
- * already file these accounts: money its own page, the way the Assets list opens one; a card the card, a loan its
- * terms, a person Lend & borrow, the way the Debts list opens them — and what is neither, its own asset page.
- *
- * The name used to go straight to the account's ledger. That was the only door a single-currency account had before
- * it had a page of its own, and it made one tap mean two different things depending on which list you came from.
- */
-function destination(account: AccountRow): Pick<LinkProps, 'to' | 'params' | 'search'> {
-  if (CASH_SUBTYPES.has(account.subtype)) return { to: '/accounts/$accountId', params: { accountId: account.id } };
-  if (account.subtype === 'credit_card') return { to: '/cards/$cardId', params: { cardId: account.id } };
-  if (account.subtype === 'loan') return { to: '/net-worth/loans/$accountId', params: { accountId: account.id } };
-  if (account.subtype === 'payable') return { to: '/net-worth/lend-borrow' };
-  return { to: '/net-worth/assets/$accountId', params: { accountId: account.id } };
-}
 
 /**
  * How a group's rows read: the figure one row draws, the quieter line under it, and whether that figure was
@@ -260,7 +244,7 @@ function AccountList({
         name={
           /* An account's name opens the account itself: a pocket parent to its pockets, money to the page that
            * tells its whole story, and everything else to the page its own list opens it with. */
-          <Link {...destination(account)} className="ph-focus">
+          <Link {...accountDestination(account)} className="ph-focus">
             {account.name}
           </Link>
         }
@@ -493,7 +477,7 @@ export function AccountsPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
-      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
+      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money to spend, or money owed.</Empty>}
       {/*
        * Balance, and the two numbers it is made of, as one block: a ring, the figure, and the rows that are the
        * ring's legend — the shape iOS draws a metric in, where the figure answers "how much" and the ring answers "of

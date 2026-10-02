@@ -26,6 +26,14 @@ export const securityPrices = sqliteTable('security_prices', {
   workspaceId: text('workspace_id').notNull(),
   onDate: text('on_date').notNull(),
   priceMicro: integer('price_micro').notNull(),
-  source: text('source', { enum: ['manual'] }).notNull(),
+  /** Typed by the owner, fetched from Yahoo Finance, or read from IDX's daily file (0062). */
+  source: text('source', { enum: ['manual', 'yahoo', 'idx'] }).notNull(),
   createdAt: text('created_at').notNull(),
+});
+
+/** Where a security takes its price from (0062): Yahoo Finance, IDX's daily file, or only what is typed. */
+export const securityPriceChoices = sqliteTable('security_price_choices', {
+  securityId: text('security_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  choice: text('choice', { enum: ['yahoo', 'idx', 'typed'] }).notNull(),
 });

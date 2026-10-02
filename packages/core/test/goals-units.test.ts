@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GoalError, goalUnitsFor, goalUnitsOf, positionAfter, type TradeRecord, UNTAGGED } from '../src/index';
+import { GoalError, goalUnitsFor, goalUnitsOf, positionAfter, retagFits, type TradeRecord, UNTAGGED } from '../src/index';
 
 let seq = 0;
 function trade(partial: Partial<TradeRecord> & Pick<TradeRecord, 'kind' | 'occurredOn'>): TradeRecord {
@@ -100,5 +100,28 @@ describe('goalUnitsFor', () => {
 
   it('returns nothing for no trades', () => {
     expect(goalUnitsFor([])).toEqual({});
+  });
+});
+
+describe('retagFits', () => {
+  it('lets a buy move when nothing was sold from its goal', () => {
+    const bought = buy('2026-03-09', 10, 'a');
+    expect(retagFits([bought, buy('2026-03-10', 2, 'b')], bought.id)).toBe(true);
+    expect(retagFits([bought], bought.id, 'b')).toBe(true);
+  });
+
+  it('refuses a move that leaves its goal holding less than it later sold', () => {
+    const bought = buy('2026-03-09', 10, 'a');
+    const trades = [bought, sell('2026-04-01', 3, 'a')];
+    expect(retagFits(trades, bought.id)).toBe(false);
+    expect(retagFits(trades, bought.id, 'b')).toBe(false);
+  });
+
+  it('lets one of two buys move when the other still covers what was sold', () => {
+    const first = buy('2026-03-09', 10, 'a');
+    const second = buy('2026-03-10', 2, 'a');
+    const trades = [first, second, sell('2026-04-01', 3, 'a')];
+    expect(retagFits(trades, second.id)).toBe(true);
+    expect(retagFits(trades, first.id)).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ import { openCard } from './accounts';
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/cards');
-  await page.getByRole('region', { name: 'Your cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -25,7 +25,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
   await page.goto('/cards');
-  const wall = page.getByRole('region', { name: 'Your cards' });
+  const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(2);
   const [back, front] = [(await cards.nth(0).boundingBox())!, (await cards.nth(1).boundingBox())!];

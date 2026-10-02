@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * The + opens the template list, and a template opens the form it used to open by itself: the "Start from a
@@ -15,7 +15,7 @@ export async function openGoalForm(page: Page, template: string) {
  */
 export async function openWorking(page: Page) {
   await workingSettled(page);
-  await page.getByRole('button', { name: 'Edit' }).click();
+  await editGoal(page);
   await page.getByRole('button', { name: 'Work out the amount' }).click();
 }
 
@@ -25,4 +25,28 @@ export async function openWorking(page: Page) {
  */
 export async function workingSettled(page: Page) {
   await expect(page.getByRole('button', { name: 'Use this amount' })).toHaveCount(0);
+}
+
+/** A goal page's ⋯, then one of its lines: Edit, Mark paid, Mark not paid, Archive. `scope` is the page or its root. */
+export async function goalMenu(scope: Page | Locator, item: string | RegExp) {
+  const root = 'goto' in scope ? scope.getByTestId('goal-page') : scope;
+  await root.getByRole('button', { name: 'More', exact: true }).first().click();
+  await root.getByRole('menuitem', { name: item }).first().click();
+}
+
+/** Edit is behind the goal page's ⋯ now, beside Archive. */
+export const editGoal = (scope: Page | Locator) => goalMenu(scope, /^Edit$/);
+
+/**
+ * What archiving says on a finished goal, read on Archive's line behind the ⋯ (and the menu put away again): the
+ * note is there once the goal is done and only then.
+ */
+export async function expectArchiveNote(goal: Locator, shown: boolean) {
+  await goal.getByRole('button', { name: 'More', exact: true }).first().click();
+  const archive = goal.getByRole('menuitem', { name: /^Archive/ }).first();
+  await expect(archive).toBeVisible();
+  if (shown) await expect(archive).toContainText('Keeps the history, stops it claiming money.');
+  else await expect(archive).not.toContainText('Keeps the history');
+  await goal.page().keyboard.press('Escape');
+  await expect(archive).toHaveCount(0);
 }

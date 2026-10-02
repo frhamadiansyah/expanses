@@ -24,6 +24,15 @@ export const billSkips = sqliteTable('bill_skips', {
   createdAt: text('created_at').notNull(),
 });
 
+/** A month a recurring bill is paused: no bill comes out for it (migration 0064). */
+export const billPauses = sqliteTable('bill_pauses', {
+  workspaceId: text('workspace_id').notNull(),
+  templateId: text('template_id').notNull(),
+  /** YYYY-MM. */
+  month: text('month').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 /** A bill's pay-by day and the first month it is tracked for. One row per bill. */
 export const billWindows = sqliteTable('bill_windows', {
   templateId: text('template_id').primaryKey(),

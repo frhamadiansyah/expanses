@@ -38,7 +38,7 @@ export function NetWorthSetup({
   const others = inviteesFor(members.filter((member) => !member.me), activeMembers);
   const whoFooter =
     activeMembers === null
-      ? 'They confirm on their own phone. Nothing is shared until they do and each of you has reviewed your items.'
+      ? 'They confirm on their own phone. Nothing is shared until they do and every member has reviewed their items.'
       : `They confirm on their own phone. ${ADD_SOMEONE_LINE}`;
 
   function pickMode(next: FilingMode) {
@@ -65,7 +65,7 @@ export function NetWorthSetup({
   return (
     <form onSubmit={(event) => void submit(event)} aria-label="Share net worth" data-testid="net-worth-setup">
       <ErrorBox error={error} />
-      <InsetGroup wide header={FILING_QUESTION} footer="One tax ID: the yearly return lists both of you, so Net worth and the tax report are the household's. Separate: each keeps their own; what the other shares is visible but not counted.">
+      <InsetGroup wide header={FILING_QUESTION} footer="One tax ID: the yearly return lists both members, so Net worth and the tax report are the household's. Separate: each keeps their own; what the other shares is visible but not counted.">
         {MODES.map((option) => (
           <InsetRow
             key={option}
@@ -78,7 +78,7 @@ export function NetWorthSetup({
         ))}
       </InsetGroup>
       {mode ? (
-        <InsetGroup wide header={mode === 'joint' ? 'Who files with you' : 'Who to invite'} footer={whoFooter}>
+        <InsetGroup wide header={mode === 'joint' ? 'Who joins the filing' : 'Who to invite'} footer={whoFooter}>
           {others.map((member) => (
             <InsetRow
               key={member.memberId}

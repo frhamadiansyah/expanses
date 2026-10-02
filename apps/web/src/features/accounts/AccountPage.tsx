@@ -13,10 +13,13 @@ import {
   Pencil,
   Plus,
   Repeat,
+  Scale,
   Settings,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
+import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { SPENDABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -44,8 +47,13 @@ import { SetAsidePanel } from '../networth/SetAsidePanel';
 import { useAssetProfiles, useAssetValues, useDepositAutomation, usePositions } from '../networth/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { buildRows } from '../transactions/list-model';
+import { TransactionCard } from '../transactions/TransactionCard';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
+import { AddCurrencyForm } from './AddPocketPage';
+import { AdjustBalanceForm } from './AdjustBalanceForm';
+import { adjustTitle } from './adjust-model';
+import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { BalanceCard } from './BalanceCard';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
@@ -85,7 +93,15 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const navigate = useNavigate();
   const balances = useBalances();
   const profiles = useAssetProfiles();
+  const goBack = useBack(parent ? `/accounts/${parent.id}` : '/accounts');
   const [actionError, setActionError] = useState<unknown>(null);
+  const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
+  const [txReady, setTxReady] = useState(false);
+  const [addingCurrency, setAddingCurrency] = useState(false);
+  const [currencyReady, setCurrencyReady] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  const [movingIn, setMovingIn] = useState<MoneyInMode | null>(null);
+  const [sheetReady, setSheetReady] = useState(false);
   const pocketIds = pockets?.map((p) => p.id) ?? [];
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
   const rates = useHeldRates(currencies);
@@ -108,7 +124,9 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
-  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError });
+  // A plain current or saving account takes another currency from its ⋯; one with pockets from the foot of its list.
+  const takesCurrency = !parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings');
+  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError, onAddCurrency: takesCurrency ? () => setAddingCurrency(true) : undefined });
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
@@ -119,9 +137,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
        */}
       <PushedTitle
         title={title}
-        back={parent?.name ?? 'Accounts'}
-        backTo={parent ? '/accounts/$accountId' : '/accounts'}
-        backParams={parent ? { accountId: parent.id } : undefined}
+        back={parent?.name ?? 'Back'}
+        // Back goes where the page was opened from — Net worth, Assets, Accounts, a search — and only a page opened
+        // with nothing behind it (a fresh launch, a link) falls back to its account or the Accounts list.
+        onBack={goBack}
         actions={menu}
       />
       <ErrorBox error={actionError ?? balances.error ?? profiles.error ?? rates.error} />
@@ -135,9 +154,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
             currency={account.currency!}
             series={null}
             testId="deposit-card"
+            corner={<CurrencyFlag currency={account.currency!} />}
             caption={
               <>
-                <span className="block">{[inst, typeLabel, account.currency].filter(Boolean).join(' · ')}</span>
+                <span className="block">{[inst, typeLabel].filter(Boolean).join(' · ')}</span>
                 {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
               </>
             }
@@ -156,11 +176,13 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           currency={account.currency!}
           series={series}
           testId="balance-card"
+          corner={<CurrencyFlag currency={account.currency!} />}
           caption={
             <>
               <span className="block">
-                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. */}
-                {account.subtype === 'fund' && inst ? `RDN at ${inst} · ${account.currency}` : [inst, typeLabel, account.currency].filter(Boolean).join(' · ')}
+                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
+                    is the flag in the corner, so the line names only where the money is and what kind of account. */}
+                {account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
               </span>
               {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
             </>
@@ -171,14 +193,14 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
-        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency)} />
+        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, { newTx: setNewTx, moneyIn: setMovingIn, adjust: () => setAdjusting(true) })} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
       <SetAsidePanel accountId={account.id} />
 
       {pockets ? (
-        <PocketList parentId={account.id} pockets={pockets} held={held} />
+        <PocketList pockets={pockets} held={held} onAdd={() => setAddingCurrency(true)} />
       ) : deposit ? (
         <MaturitySettings accountId={account.id} currency={account.currency!} />
       ) : account.subtype === 'fund' ? (
@@ -187,25 +209,78 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
 
+      {/* Only what the card does not already say: the broker is the title, the bank and the currency are on the card. */}
       <Details
         rows={[
-          account.subtype === 'fund' ? <InsetRow key="broker" title="Broker" value={account.name} chevron={false} /> : null,
-          inst ? <InsetRow key="bank" title={account.subtype === 'fund' ? 'RDN bank' : 'Bank'} value={inst} chevron={false} /> : null,
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
-          !pockets ? <InsetRow key="currency" title="Currency" value={`${account.currency} · ${currencyName(account.currency!)}`} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
-          // Another currency makes a current or saving account one with pockets; a pocket cannot hold a pocket, and an
-          // account that already has them takes one more through the same door, drawn among its actions.
-          !parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings') ? (
-            <InsetRow key="pocket" title="Add a currency" to="/accounts/$accountId/pocket" params={{ accountId: account.id }} />
-          ) : null,
         ]}
       />
       {/* Joint net worth (§8.1): what the household sees of it, under the facts. Nothing while this person is in no group. */}
       <ShareWithHouseholdRow accountId={account.id} />
       {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
       {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
+      {addingCurrency && (
+        <Sheet
+          grouped
+          tall
+          title="Add a currency"
+          onClose={() => setAddingCurrency(false)}
+          confirm={{ label: 'Add', disabled: !currencyReady, run: () => (document.getElementById(ADD_CURRENCY_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <AddCurrencyForm
+            accountId={account.id}
+            formId={ADD_CURRENCY_FORM}
+            onCanSave={setCurrencyReady}
+            onAdded={(landing) => {
+              setAddingCurrency(false);
+              // A plain account becomes one with pockets under a new parent: land on it, where the new pocket shows.
+              if (landing !== account.id) void navigate({ to: '/accounts/$accountId', params: { accountId: landing } });
+            }}
+          />
+        </Sheet>
+      )}
+      {adjusting && (
+        <Sheet
+          grouped
+          tall
+          title={adjustTitle(account.subtype)}
+          onClose={() => setAdjusting(false)}
+          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <AdjustBalanceForm account={account} formId={ADJUST_FORM} onCanSave={setSheetReady} onDone={() => setAdjusting(false)} />
+        </Sheet>
+      )}
+      {movingIn && (
+        <Sheet
+          grouped
+          tall
+          title={MONEY_IN[movingIn].title}
+          onClose={() => setMovingIn(null)}
+          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <MoneyInForm into={account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
+        </Sheet>
+      )}
+      {newTx && (
+        <Sheet
+          grouped
+          tall
+          title={NEW_TX_TITLE[newTx.mode]}
+          onClose={() => setNewTx(null)}
+          // ✕ and ✓ in the header, as every other sheet that makes something: no Save bar floating at the foot.
+          confirm={{ label: 'Save', disabled: !txReady, run: () => (document.getElementById(NEW_TX_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+        >
+          <TransactionCard
+            fixedMode
+            headerSave={{ formId: NEW_TX_FORM, onReady: setTxReady }}
+            mode={newTx.mode}
+            seed={{ moneyId: newTx.account, toId: newTx.to }}
+            onDone={() => setNewTx(null)}
+          />
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -223,7 +298,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
  */
 function usePageMenu(
   account: AccountRow,
-  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void },
+  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void; onAddCurrency?: () => void },
 ): CornerAction[] {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -237,6 +312,8 @@ function usePageMenu(
       to: '/net-worth/assets/$accountId/settings',
       params: { accountId: account.id },
     },
+    // Once a round action of its own; it is done once in an account's life, so it waits here with the settings.
+    ...(o.onAddCurrency ? [{ key: 'currency', label: 'Add a currency', glyph: <Plus size={18} aria-hidden />, run: o.onAddCurrency }] : []),
     {
       key: 'edit',
       label: 'Edit',
@@ -274,23 +351,29 @@ function usePageMenu(
 }
 
 /**
- * What the account does, by kind. Money that can be spent is spent, received into and moved; an RDN is only topped
- * up from a current account and withdrawn to one, so both open a transfer with the RDN on the side the words say —
- * the pairing rule keeps the other side to current accounts. A deposit's one action is its own (`DepositMoneyOut`).
+ * What the account does, by kind. Spend comes first on everything that can be spent from; what follows is what that
+ * kind of money is for. Cash is filled from a bank and counted: Withdraw, Count cash. A wallet is topped up — from a
+ * bank or a card — and paid into by others, so Top up comes before Receive. A bank or a saving account moves money
+ * on. Anything but cash can be adjusted to what its bank or app says, which Count cash is for cash.
+ *
+ * An RDN is only topped up from a current account and withdrawn to one, so both open a transfer with the RDN on the
+ * side the words say — the pairing rule keeps the other side to current accounts. A deposit's one action is its own
+ * (`DepositMoneyOut`).
  *
  * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Spend, Receive and
  * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
- * Adding another currency is the last row of its Pockets list.
+ * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
-function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurrency: string): RoundAction[] {
+function actionsFor(
+  account: AccountRow,
+  pockets: AccountRow[] | null,
+  baseCurrency: string,
+  open: { newTx: (draft: NewTxDraft) => void; moneyIn: (mode: MoneyInMode) => void; adjust: () => void },
+): RoundAction[] {
   const id = account.id;
-  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], search: { mode: 'expense' | 'income' | 'transfer'; account?: string; to?: string }): RoundAction => ({
-    key,
-    label,
-    glyph,
-    to: '/transactions/new',
-    search,
-  });
+  // The form opens as a sheet over the account, not a screen of its own: the account stays underneath, and saving or
+  // closing lands back on it with its balance and Recent already showing the new row.
+  const newTx = (key: string, label: string, glyph: RoundAction['glyph'], draft: NewTxDraft): RoundAction => ({ key, label, glyph, run: () => open.newTx(draft) });
   if (pockets) {
     // Spent, received and moved from a pocket: the one in the workspace's own currency, or the first — the form's
     // Paid with, Received into and From still switch to any other.
@@ -313,11 +396,16 @@ function actionsFor(account: AccountRow, pockets: AccountRow[] | null, baseCurre
     ];
   }
   if (!SPENDABLE_SUBTYPES.includes(account.subtype)) return [];
-  return [
-    newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id }),
-    newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id }),
-    newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id }),
-  ];
+  const spend = newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id });
+  const receive = newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id });
+  const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <Scale size={20} aria-hidden />, run: open.adjust });
+  if (account.subtype === 'cash') {
+    return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Count cash')];
+  }
+  if (account.subtype === 'ewallet') {
+    return [spend, { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') }, receive, adjust('Adjust')];
+  }
+  return [spend, receive, newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id }), adjust('Adjust')];
 }
 
 /** What a foreign balance comes to here, and the rate that says so: "≈ Rp 39.000.000 at 16.250 IDR per 1 USD". */
@@ -331,6 +419,34 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
       {rate !== undefined && rates?.stale.includes(currency) && ' (last known)'}
     </span>
   );
+}
+
+/** The currency an account holds, as the round flag in its card's corner, named for a screen reader. */
+function CurrencyFlag({ currency }: { currency: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${currency} · ${currencyName(currency)}`}
+      data-testid="card-currency"
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[17px] leading-none"
+    >
+      {currencyFlag(currency)}
+    </span>
+  );
+}
+
+/** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
+const NEW_TX_FORM = 'account-new-transaction';
+const ADD_CURRENCY_FORM = 'account-add-currency';
+const ADJUST_FORM = 'account-adjust-balance';
+const MONEY_IN_FORM = 'account-money-in';
+const NEW_TX_TITLE: Record<NewTxDraft['mode'], string> = { expense: 'New expense', income: 'New income', transfer: 'New transfer' };
+
+/** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */
+interface NewTxDraft {
+  mode: 'expense' | 'income' | 'transfer';
+  account?: string;
+  to?: string;
 }
 
 /**
@@ -379,7 +495,7 @@ function ParentCard({ pockets, typeLabel, inst, held }: { pockets: AccountRow[];
  * Each pocket in its own currency, with what a foreign one comes to here, opening to the pocket's own page: its flag,
  * its code, and the amount. The currency's name is not repeated under the code the flag already says.
  */
-function PocketList({ parentId, pockets, held }: { parentId: string; pockets: AccountRow[]; held: Record<string, number> }) {
+function PocketList({ pockets, held, onAdd }: { pockets: AccountRow[]; held: Record<string, number>; onAdd: () => void }) {
   const { ws } = useApp();
   const balances = useBalances();
   return (
@@ -404,8 +520,7 @@ function PocketList({ parentId, pockets, held }: { parentId: string; pockets: Ac
         testId="pocket-add"
         icon={<Plus size={16} aria-hidden />}
         title="Add a currency"
-        to="/accounts/$accountId/pocket"
-        params={{ accountId: parentId }}
+        onClick={onAdd}
       />
     </InsetGroup>
   );
@@ -422,20 +537,7 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
   const recent = useRecentTransactions(accountIds);
   const rows = buildRows(recent.data ?? [], [], accounts.data ?? [], []);
   return (
-    <Panel
-      header="Recent"
-      trailing={
-        <Link
-          to="/transactions"
-          search={{ account: accountId }}
-          className="ph-focus inline-flex items-center gap-[2px] rounded text-[13px] font-medium tracking-normal text-[var(--ph-tint)] normal-case"
-        >
-          See all
-          <ChevronRight size={14} aria-hidden />
-        </Link>
-      }
-      testId="account-recent"
-    >
+    <Panel header="Recent" testId="account-recent">
       <ErrorBox error={recent.error} />
       {recent.isSuccess && rows.length === 0 ? (
         <p className="py-1 text-[15px] leading-[20px] text-[var(--ph-ink-3)]">No transactions yet.</p>
@@ -451,6 +553,17 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
               onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.id } })}
             />
           ))}
+          {/* The way to the rest is the box's last row; no padding under it, so the panel's own edge is its bottom gap. */}
+          <li>
+            <Link
+              to="/transactions"
+              search={{ account: accountId }}
+              className="ph-focus flex items-center justify-between pt-[10px] text-[15px] leading-[20px] text-[var(--ph-tint)]"
+            >
+              See all
+              <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
+            </Link>
+          </li>
         </ul>
       )}
     </Panel>
@@ -502,12 +615,3 @@ function Details({ rows }: { rows: (ReactElement | null)[] }) {
   return <InsetGroup header="Details">{present}</InsetGroup>;
 }
 
-/** Reached with an account that has no pockets and is not money: say so rather than draw an empty page. */
-export function NoPockets({ name }: { name: string }) {
-  return (
-    <div className={SCREEN}>
-      <LargeTitle title={name} back="Accounts" backTo="/accounts" />
-      <Empty>This account does not hold more than one currency, so it has no pockets.</Empty>
-    </div>
-  );
-}

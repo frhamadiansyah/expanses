@@ -30,7 +30,7 @@ export function SharedItemPage() {
     <div className={SCREEN}>
       <LargeTitle title={view?.name ?? 'Shared item'} {...back} />
       <ErrorBox error={shared.error ?? purchases.error ?? transfers.error} />
-      {!view && !shared.isPending && <Empty>This item is not shared with you any more.</Empty>}
+      {!view && !shared.isPending && <Empty>This item is no longer shared.</Empty>}
 
       {view && item && (
         <>
@@ -58,7 +58,7 @@ export function SharedItemPage() {
             </Panel>
           )}
 
-          <InsetGroup header="Lines you can see" footer={`Household purchases paid from it${withTransfers ? ' and transfers between partners' : ''}, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
+          <InsetGroup header="Lines visible here" footer={`Household purchases paid from it${withTransfers ? ' and transfers between partners' : ''}, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
             {view.lines.map((line) => (
               <InsetRow
                 key={line.lineageId}

@@ -117,7 +117,7 @@ export function RuleForm({
             <TextRow label={`Bonus cap: spend per cycle (${currency})`} hint="Spend beyond this falls through to lower rules." value={capSpend} onChange={(e) => setCapSpend(e.target.value)} inputMode="decimal" />
             <TextRow label="Cap: points per cycle" value={capPoints} onChange={(e) => setCapPoints(e.target.value)} inputMode="numeric" />
             <TextRow label={`Minimum transaction (${currency})`} value={minTx} onChange={(e) => setMinTx(e.target.value)} inputMode="decimal" />
-            <SelectRow label="Rounding" hint="Check your card terms: most floor each transaction." value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
+            <SelectRow label="Rounding" hint="Check the card terms: most floor each transaction." value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
               <option value="per_transaction_floor">Round down each transaction</option>
               <option value="per_cycle_sum">Sum the cycle, then round down</option>
               <option value="per_increment">Count only full multiples of the spend</option>

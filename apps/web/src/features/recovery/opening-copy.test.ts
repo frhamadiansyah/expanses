@@ -5,19 +5,19 @@ import { openingCopy, PACE_MS, paceStages } from './opening-copy';
 describe('openingCopy', () => {
   it('names the stage in the voice the rest of the app uses', () => {
     expect(openingCopy({ stage: 'opening' })).toEqual({
-      title: 'Opening your data…',
+      title: 'Opening the data…',
       body: 'Starting the database on this device. Nothing leaves it.',
       percent: null,
     });
     expect(openingCopy({ stage: 'snapshotting' })).toMatchObject({ title: 'Taking a copy first…' });
-    expect(openingCopy({ stage: 'checking' })).toMatchObject({ title: 'Checking your data…' });
+    expect(openingCopy({ stage: 'checking' })).toMatchObject({ title: 'Checking the data…' });
   });
 
   it('counts the step being worked on, not the one before it', () => {
     // `migrate` reports two finished, and is about to start the third of seven.
     expect(openingCopy({ stage: 'migrating', done: 2, total: 7, name: 'book_indexes', copied: true })).toEqual({
-      title: 'Updating your data…',
-      body: 'Step 3 of 7 · book_indexes · Do not close the app. Your data was copied before we started.',
+      title: 'Updating the data…',
+      body: 'Step 3 of 7 · book_indexes · Do not close the app. The data was copied before this started.',
       percent: 29,
     });
     // The closing call: everything is finished, so the count is already the total and must not run past it.

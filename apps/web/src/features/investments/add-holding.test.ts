@@ -81,14 +81,14 @@ describe('planAddHolding', () => {
 
 describe('brokerlessNote', () => {
   it('names the one holding a buy with no broker adds to', () => {
-    expect(brokerlessNote(['BBCA old'], 'BBCA')).toBe('This adds to BBCA old, your BBCA with no broker named.');
+    expect(brokerlessNote(['BBCA old'], 'BBCA')).toBe('This adds to BBCA old, the BBCA with no broker named.');
   });
   it('names the one it adds to when there are several, and how to reach the others — never a silent pick', () => {
     expect(brokerlessNote(['BBCA old', 'BBCA 2019'], 'BBCA')).toBe(
-      'You hold BBCA twice with no broker named. This adds to BBCA old, the first recorded; to add to BBCA 2019 instead, record the buy on Buy & sell.',
+      'Held as BBCA twice with no broker named. This adds to BBCA old, the first recorded; to add to BBCA 2019 instead, record the buy on Buy & sell.',
     );
     expect(brokerlessNote(['A', 'B', 'C'], 'BBCA')).toBe(
-      'You hold BBCA 3 times with no broker named. This adds to A, the first recorded; to add to B or C instead, record the buy on Buy & sell.',
+      'Held as BBCA 3 times with no broker named. This adds to A, the first recorded; to add to B or C instead, record the buy on Buy & sell.',
     );
   });
   it('says nothing when there is none: a new holding opens', () => {
@@ -133,7 +133,7 @@ describe('brokerlessNames (m8)', () => {
   });
   it('makes a note whose two names differ', () => {
     const note = brokerlessNote(brokerlessNames(['a', 'b'], accounts, { a: 300_000_000, b: 1_500_000_000 }), 'BBCA')!;
-    expect(note).toBe('You hold BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.');
+    expect(note).toBe('Held as BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.');
   });
 });
 
@@ -145,7 +145,7 @@ describe('landsOnNote (m6, m8)', () => {
   const positions = { a: { unitsMicro: 300_000_000 }, b: { unitsMicro: 1_500_000_000 } };
   it('names the holdings, told apart by the shares each holds, for a buy with no broker', () => {
     expect(landsOnNote(NO_BROKER_CHOICE, ['a', 'b'], accounts, positions, 'BBCA')).toBe(
-      'You hold BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.',
+      'Held as BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.',
     );
   });
   it('says nothing for a buy kept at a broker, or a new one', () => {

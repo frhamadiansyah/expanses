@@ -40,7 +40,7 @@ export function attentionItems(
     if (!value.stale) continue;
     if (value.mode === 'market' && value.unitsMicro === 0) continue;
     const what = value.mode === 'market' ? 'price' : 'estimate';
-    const text = value.asOf ? `${value.name}: ${what} last updated ${shortDate(value.asOf)}` : `${value.name}: no ${what} yet, showing what you paid`;
+    const text = value.asOf ? `${value.name}: ${what} last updated ${shortDate(value.asOf)}` : `${value.name}: no ${what} yet, showing the price paid`;
     items.push({ key: `stale-${value.accountId}`, tone: 'warn', text, action: 'Update', to: '/net-worth/assets' });
   }
   for (const template of dueTemplates) {
@@ -49,7 +49,7 @@ export function attentionItems(
   }
   for (const plan of goalPlans) {
     if (plan.status === 'behind') {
-      items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than you have set up`, action: 'Review', to: '/goals' });
+      items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than is set up`, action: 'Review', to: '/goals' });
     }
     // A short account is said once, below, for the account; a goal keeps only what could not be converted.
     if (plan.unconvertedWarning) {
@@ -82,7 +82,7 @@ export function attentionItems(
     for (const loan of person.loans) {
       // Only a date the owner agreed to is worth a warning; a loan with no date waits quietly.
       if (loan.dueState === 'none') continue;
-      const who = person.direction === 'lent' ? `${person.personName} owes you` : `You owe ${person.personName}`;
+      const who = person.direction === 'lent' ? `Owed by ${person.personName}` : `Owed to ${person.personName}`;
       items.push({
         key: `debt-${loan.accountId}`,
         tone: 'warn',

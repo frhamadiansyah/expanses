@@ -45,8 +45,8 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await openSettings(page);
   await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0102');
   // Back to the pocket's page, and from there to its account.
-  await page.getByRole('link', { name: /Valas Plus · USD/ }).first().click();
-  await page.getByRole('link', { name: 'Valas Plus' }).first().click();
+  await page.getByRole('button', { name: 'Valas Plus · USD', exact: true }).click();
+  await page.getByRole('button', { name: 'Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 
@@ -71,13 +71,13 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
-  await page.getByRole('link', { name: 'Add a currency', exact: true }).click();
+  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   // Currencies it already has are not offered.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="USD"]')).toHaveCount(0);
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'JPY');
   await page.getByLabel('Opening JPY').pressSequentially('30000');
-  await page.getByLabel('Rate: IDR per 1 JPY').pressSequentially('108,3');
-  await page.getByRole('button', { name: 'Add pocket' }).click();
+  await page.getByLabel('Rate: IDR per 1 JPY', { exact: true }).pressSequentially('108,3');
+  await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
   // ¥30.000, not ¥300: JPY has no decimals.
   await expect(page.getByTestId('pocket-JPY')).toContainText('30.000');
   await expect(page.getByTestId('pocket-JPY')).toContainText('3.249.000');
@@ -95,7 +95,7 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
-  await expect(page.getByText('The bank’s rate cost you')).toBeVisible();
+  await expect(page.getByText('The bank’s rate cost extra')).toBeVisible();
   await expect(page.getByTestId('spread')).toContainText('35.160');
   await page.getByRole('button', { name: 'Move it' }).click();
 
@@ -173,7 +173,7 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.getByLabel('Opening IDR', { exact: true }).pressSequentially('5400000');
   await setCurrency(page.getByLabel('Pocket 2', { exact: true }), 'USD');
   await page.getByLabel('Opening USD', { exact: true }).pressSequentially('100');
-  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
+  await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Old Valas', exact: true })).toBeVisible();
 
@@ -210,7 +210,7 @@ test('an account without pockets opened at the pockets routes says it has none (
   // And the route that *adds* a pocket refuses it: a pocket cannot hold a pocket.
   await page.goto(`/accounts/${id}/pocket`);
   await expect(page.getByText('it has no pockets')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);
+  await expect(page.getByLabel('Currency', { exact: true })).toHaveCount(0);
 });
 
 test('a pocket’s ≈ line marks a rate held for an earlier day as last known (M5)', async ({ page }, testInfo) => {
@@ -404,11 +404,11 @@ test('a USD pocket added to an account reads its opening balance in dollars, not
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
   await page.getByRole('link', { name: 'Two Pocket', exact: true }).click();
-  await page.getByRole('link', { name: 'Add a currency', exact: true }).click();
+  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');
-  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add pocket' }).click();
+  await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
+  await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
   // $2.400,00 — read at USD's two decimals. Read at the base's none, it would be $24,00 and ≈ Rp 390.000.
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
@@ -426,9 +426,9 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
   await expect(page.getByLabel(`Pocket ${all}`, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
   await page.getByRole('link', { name: 'Every Currency', exact: true }).click();
-  await page.getByRole('link', { name: 'Add a currency', exact: true }).click();
+  await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await expect(page.getByText('This account already holds every currency.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
 });
 
 test('Add asset reads a typed rate of 16.500 as 16,5, key by key (P2-I1)', async ({ page }) => {

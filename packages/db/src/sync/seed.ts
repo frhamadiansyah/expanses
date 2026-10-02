@@ -73,7 +73,7 @@ export async function assertShareableTx(tx: Tx, bookId: string): Promise<void> {
   if (bookCurrency !== ownCurrency) {
     throw new SharingError(
       'CURRENCY',
-      `This workspace keeps its money in ${bookCurrency}; this app keeps yours in ${ownCurrency}. Sharing across currencies isn't supported yet.`,
+      `This workspace keeps its money in ${bookCurrency}; this app's own accounts are kept in ${ownCurrency}. Sharing across currencies isn't supported yet.`,
     );
   }
   if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0) {
@@ -152,7 +152,7 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
   ops.push(...parentsFirst(await rows('category')), ...(await rows('category_need')), ...(await rows('category_colour')));
   ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
-  ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')));
+  ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')), ...(await rows('bill_pause')));
 
   // Every non-void purchase, oldest first. A void one never existed for the other member.
   const heads = await tx.values<[string]>(sql`

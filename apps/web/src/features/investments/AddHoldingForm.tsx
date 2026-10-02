@@ -97,7 +97,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onCancel }: 
       <RowHint>{[`Adding ${label}`, security.name, security.market || null, `trades in ${security.currency}`].filter(Boolean).join(' · ')}</RowHint>
       <FormRows>
         <SelectRow label="Where is it kept" value={draft.brokerChoice} onChange={(e) => change({ brokerChoice: e.target.value })}>
-          {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{heldAt[b.id] ? ` · you hold ${formatUnits(heldAt[b.id]!)}` : ''}</option>)}
+          {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{heldAt[b.id] ? ` · held ${formatUnits(heldAt[b.id]!)}` : ''}</option>)}
           <option value={NEW_BROKER}>Another broker…</option>
           <option value={NO_BROKER_CHOICE}>No broker</option>
         </SelectRow>

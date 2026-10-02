@@ -189,7 +189,7 @@ export function ReviewPage() {
       />
       <ErrorBox error={error ?? scan.error ?? drafts.error} />
 
-      {drafts.isSuccess && list.length === 0 && <Empty>Nothing waiting. Captured spending appears here before it reaches your accounts.</Empty>}
+      {drafts.isSuccess && list.length === 0 && <Empty>Nothing waiting. Captured spending appears here before it reaches the accounts.</Empty>}
 
       {list.length > 0 && (
         <RecordTable

@@ -73,7 +73,7 @@ describe('planning a card before anything is written', () => {
   const card = (patch: Partial<NewCardDraft>) => ({ ...emptyNewCardDraft(), ...patch });
 
   it('refuses a card that earns by level until the level is chosen, so no account is opened first', () => {
-    expect(() => planNewCard(card({ name: 'Jenius', statementDay: '25', dueDay: '12' }), tiered, 'IDR')).toThrow(/Choose the level you are on/);
+    expect(() => planNewCard(card({ name: 'Jenius', statementDay: '25', dueDay: '12' }), tiered, 'IDR')).toThrow(/Choose the level before adding it/);
     expect(planNewCard(card({ name: 'Jenius', memberLevel: 'grow-plus', statementDay: '25', dueDay: '12' }), tiered, 'IDR')).toMatchObject({
       memberLevel: 'grow-plus',
       terms: { statementDay: 25, dueDay: 12 },

@@ -62,7 +62,7 @@ export function KmkRates({ taxYear }: { taxYear: number }) {
 
       {missing.length > 0 && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          Nothing is entered for {missing.join(', ')} yet, so anything held in {missing.length === 1 ? 'it' : 'them'} is reported as nothing. Enter the rate before you file.
+          Nothing is entered for {missing.join(', ')} yet, so anything held in {missing.length === 1 ? 'it' : 'them'} is reported as nothing. Enter the rate before filing.
         </p>
       )}
 

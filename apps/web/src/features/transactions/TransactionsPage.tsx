@@ -663,11 +663,13 @@ export function TransactionsPage() {
           ? 'Transfer'
           : row.type === 'opening'
             ? 'Opening balance'
-            : tx.entries
-                .filter((e) => e.accountKind === row.type)
-                // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
-                .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
-                .join(', ');
+            : row.type === 'correction'
+              ? 'Balance correction'
+              : tx.entries
+                  .filter((e) => e.accountKind === row.type)
+                  // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
+                  .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
+                  .join(', ');
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.has(tx.id);

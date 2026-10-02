@@ -123,7 +123,7 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
         }
       />
       <p className="px-2.5 pb-1.5 text-xs text-slate-500">
-        {guessed ? 'Category guessed from the last time you bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
+        {guessed ? 'Category guessed from the last time this was bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
       </p>
     </div>
   );
@@ -218,7 +218,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   const [form, setForm] = useState(false);
   const tx = row.tx!;
   const sign = row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
-  const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance' }[row.type as 'debt' | 'transfer' | 'opening'];
+  const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
   const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);
