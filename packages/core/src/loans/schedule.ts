@@ -101,7 +101,8 @@ export function loanSchedule(balanceMinor: number, terms: LoanTerms, periods: Ra
     let paymentMinor: number;
     if (terms.method === 'zero') {
       interestMinor = 0;
-      paymentMinor = roundHalfAwayFromZero(balance / monthsRemaining);
+      // The lender's own figure wins, as for an annuity; otherwise what is left shared over the months left.
+      paymentMinor = period?.paymentMinor && period.paymentMinor > 0 ? period.paymentMinor : roundHalfAwayFromZero(balance / monthsRemaining);
     } else if (terms.method === 'flat') {
       interestMinor = flatInterest;
       paymentMinor = flatPrincipal + flatInterest;
