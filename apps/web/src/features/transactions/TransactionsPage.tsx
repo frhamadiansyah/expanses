@@ -332,6 +332,13 @@ export function TransactionsPage() {
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
   const paidPicked = paidOptions.find((option) => option.value === filters.paid && option.value);
+  // The donut follows the same filter. A single card of a shared account reads as its account: categories are
+  // totalled per account, and the card is one way of paying from it.
+  const paidAccountId = filters.paid.startsWith('acct:')
+    ? filters.paid.slice('acct:'.length)
+    : filters.paid.startsWith('card:')
+      ? cards.find((card) => card.id === filters.paid.slice('card:'.length))?.accountId
+      : undefined;
   // A category opens as its own screen: its ring, its transactions, and a way back to the month.
 
   const keptLine = phone ? 'the original is kept' : 'the original stays under Show deleted';
@@ -1046,6 +1053,7 @@ export function TransactionsPage() {
           onPick={(id) => setSearch({ account: id })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
+          paidAccountId={paidAccountId}
         />
       )}
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
@@ -1118,6 +1126,7 @@ export function TransactionsPage() {
                 name="Paid with"
                 value={filters.paid}
                 active={Boolean(paidPicked)}
+                count={paidPicked ? 1 : 0}
                 // A wide screen's list is long enough to want a box to type in; a phone's control is a tap away.
                 searchable={!phone}
                 options={paidOptions}

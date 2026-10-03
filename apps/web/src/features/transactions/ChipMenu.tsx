@@ -15,6 +15,15 @@ export interface ChipOption {
 }
 
 /**
+ * The number an icon-only filter carries in its corner, or null for none: shown only while the filter is on, so the
+ * dark icon and its count are the one sign that the list and the chart above it are narrowed (statement check S11).
+ */
+export function chipBadge(p: { active: boolean; iconOnly: boolean; count?: number }): string | null {
+  if (!p.active || !p.iconOnly || !p.count || p.count < 1) return null;
+  return String(p.count);
+}
+
+/**
  * A filter chip that opens a short list. A long list gets a box to type into, so a category or a card
  * is found by typing a few letters rather than scrolling.
  */
@@ -27,6 +36,7 @@ export function ChipMenu({
   active,
   shown,
   iconOnly = false,
+  count,
 }: {
   /** What the chip filters, shown when nothing is picked and read by screen readers either way. */
   name: string;
@@ -40,7 +50,13 @@ export function ChipMenu({
   shown?: ReactNode;
   /** Draws the chip as its icon alone: no name, no chevron. */
   iconOnly?: boolean;
+  /**
+   * How many filters this icon has on. Given and above zero, an active icon is drawn dark with the count in its
+   * corner. Left out, as the Sort icon leaves it, the chip keeps the white pill: sorting does not narrow anything.
+   */
+  count?: number;
 }) {
+  const badge = chipBadge({ active, iconOnly, count });
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
@@ -108,7 +124,7 @@ export function ChipMenu({
             'inline-flex max-w-64 items-center gap-1.5 rounded-md text-sm',
             // An icon sits beside a heading, so it is sized to the heading rather than to a row of named chips.
             iconOnly ? 'h-7 w-7 justify-center' : 'h-7 px-2.5',
-            active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
+            badge ? 'relative bg-slate-900 text-white shadow-sm' : active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
           )}
         >
           {/* Named in text rather than aria-label, so a form's own "Category" field keeps its label to itself. */}
@@ -121,6 +137,13 @@ export function ChipMenu({
             name
           )}
           {!iconOnly && <ChevronDown size={14} aria-hidden />}
+          {badge && (
+            // The count is drawn, not read: the chip's name already says what it filters, and a screen reader's list
+            // of options says which one is chosen.
+            <span aria-hidden className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-slate-200">
+              {badge}
+            </span>
+          )}
         </button>
       </div>
       {open && (
