@@ -163,6 +163,8 @@ export function AssetsPage() {
   const oldPrices = listed.filter((row) => row.source !== 'price' || !row.asOf || priceAgeDays(row.asOf, isoDate()) > 7).length;
   // The chart divides what is held: a section taken below nought by an overdraft is named under it instead.
   const shares = heldShares(assetSegments(live));
+  // The pick holds only while its box is drawn: a section gone or taken below nought lets go of it.
+  const active = shares.shown.some((segment) => segment.key === picked) ? picked : null;
   // Which of the rows drawn below are money: those open their own page, not the asset page.
   const money = new Set((accounts.data ?? []).filter((account) => CASH_SUBTYPES.has(account.subtype)).map((account) => account.id));
 
@@ -197,7 +199,7 @@ export function AssetsPage() {
             <Hero minor={total.totalMinor} currency={baseCurrency} plain align="center" />
           </div>
           {shares.shown.length > 0 && (
-            <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={picked} onPick={setPicked} />
+            <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={active} onPick={setPicked} />
           )}
           {shares.below.length > 0 && (
             <p data-testid="assets-below-zero" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -245,12 +247,12 @@ export function AssetsPage() {
       )}
 
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
-      {picked !== null && <ShowAll onClick={() => setPicked(null)} />}
+      {active !== null && <ShowAll onClick={() => setPicked(null)} />}
       {live
-        .filter((group) => picked === null || group.group === picked)
+        .filter((group) => active === null || group.group === active)
         .map((group) => (
           // Keyed by the pick too, so a group picked opens afresh and goes back to its drawers when let go.
-          <Group key={`${group.group}:${picked === group.group}`} group={group} baseCurrency={baseCurrency} money={money} opened={picked === group.group} />
+          <Group key={`${group.group}:${active === group.group}`} group={group} baseCurrency={baseCurrency} money={money} opened={active === group.group} />
         ))}
 
       {listed.length > 0 && (

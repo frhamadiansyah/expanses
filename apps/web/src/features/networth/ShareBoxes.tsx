@@ -8,6 +8,12 @@ import { squarify } from './treemap';
 const WIDE = 100;
 const TALL = 82;
 
+/**
+ * The segment colours too pale to carry white words: on these the box writes in the ink instead. Literal colours, like
+ * the white, because both sit on a colour that is the same in either theme.
+ */
+const PALE = new Set(['bg-rose-300', 'bg-amber-500', 'bg-slate-400']);
+
 /** A share as it is written in a box: whole per cent, and "<1%" for one too small to round to anything. */
 function percent(minor: number, totalMinor: number): string {
   const share = (minor / totalMinor) * 100;
@@ -44,6 +50,8 @@ export function ShareBoxes({
     TALL,
   );
   if (totalMinor <= 0 || boxes.length === 0) return null;
+  // A pick whose box is gone (paid off, moved below nought) picks nothing, rather than fading every box there is.
+  const active = shown.some((segment) => segment.key === picked) ? picked : null;
   return (
     <div role="group" aria-label="What the total is made of. Tap a part to show only it below." className="relative w-full" style={{ aspectRatio: `${WIDE} / ${TALL}` }} data-testid="share-boxes">
       {shown.map((segment, index) => {
@@ -53,7 +61,7 @@ export function ShareBoxes({
         const words = box.w >= 24 && box.h >= 22;
         const marks = box.w >= 11 && box.h >= 14;
         const share = percent(segment.minor, totalMinor);
-        const on = picked === segment.key;
+        const on = active === segment.key;
         return (
           <button
             key={segment.key}
@@ -70,9 +78,10 @@ export function ShareBoxes({
               className={cx(
                 // White as a literal: the kit's `white` is the surface, which turns near-black at night, and these words sit on
                 // a colour in both themes. The sheen over the colour is the same light either way.
-                'flex h-full w-full flex-col justify-between overflow-hidden rounded-[10px] bg-linear-to-b from-[#ffffff33] to-[#ffffff00] p-2 text-left text-[#ffffff] transition-opacity',
+                'flex h-full w-full flex-col justify-between overflow-hidden rounded-[10px] bg-linear-to-b from-[#ffffff33] to-[#ffffff00] p-2 text-left transition-opacity',
+                PALE.has(segment.className) ? 'text-[#1c1c1e]' : 'text-[#ffffff]',
                 segment.className,
-                picked !== null && !on && 'opacity-35',
+                active !== null && !on && 'opacity-35',
               )}
             >
               {marks && (

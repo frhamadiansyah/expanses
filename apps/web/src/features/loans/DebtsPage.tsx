@@ -191,7 +191,6 @@ export function DebtsPage() {
     setPicked(key);
     if (key !== null && !drawersState.open.has(key)) drawersState.toggle(key);
   };
-  const listed = drawers.filter(({ key }) => picked === null || key === picked);
   /*
    * What the total is made of: one segment per kind of debt, keyed the way the drawers are so a card and a loan that
    * shared a word could not share a segment. The same fold the list below makes, drawn above it — the bar is this
@@ -202,6 +201,9 @@ export function DebtsPage() {
       group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, label: drawer.label, totalMinor: drawer.totalMinor, kind: group.kind })),
     ),
   );
+  // The pick holds only while its box is drawn: a kind paid off, or gone with a workspace, lets go of it.
+  const active = segments.some((segment) => segment.key === picked && segment.minor > 0) ? picked : null;
+  const listed = drawers.filter(({ key }) => active === null || key === active);
 
   return (
     <div className={SCREEN}>
@@ -255,13 +257,13 @@ export function DebtsPage() {
                   totalMinor={debts.total.totalMinor}
                   currency={baseCurrency}
                   iconOf={(key) => debtKindTile(key.slice(key.indexOf(':') + 1))}
-                  picked={picked}
+                  picked={active}
                   onPick={pick}
                 />
               )}
             </Panel>
           )}
-          {picked !== null && <ShowAll onClick={() => setPicked(null)} />}
+          {active !== null && <ShowAll onClick={() => setPicked(null)} />}
           {(drawers.length > 0 || debts.cleared.length > 0) && (
             <InsetGroup footer={instalmentLine}>
               {listed.flatMap(({ key, drawer }, index) => {
