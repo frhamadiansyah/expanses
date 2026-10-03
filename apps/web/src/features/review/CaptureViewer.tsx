@@ -1,6 +1,7 @@
 import type { DraftRow } from '@expanses/db';
-import { X } from 'lucide-react';
+import { Minus, Plus, X } from 'lucide-react';
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
 import { captureBytes, native } from '../../capture/native';
 import { fieldBoxes, type ReadingWithLines } from './capture-view';
@@ -43,6 +44,17 @@ export function CaptureViewer({
   const stage = useRef<HTMLDivElement | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ distance: number; midX: number; midY: number; view: View } | null>(null);
+
+  // WebKit's own pinch (page zoom) would take the two fingers before the picture sees them.
+  useEffect(() => {
+    const stop = (event: Event) => event.preventDefault();
+    document.addEventListener('gesturestart', stop);
+    document.addEventListener('gesturechange', stop);
+    return () => {
+      document.removeEventListener('gesturestart', stop);
+      document.removeEventListener('gesturechange', stop);
+    };
+  }, []);
 
   // The bytes come from the phone's private capture folder; the object URL is this page's own view of them.
   useEffect(() => {
@@ -122,22 +134,26 @@ export function CaptureViewer({
 
   const boxes = fieldBoxes(reading);
 
-  return (
+  /*
+   * On the document's body, not inside the page: a sheet or a screen that moves (a transform) would otherwise hold
+   * a "fixed" layer inside itself, and the top bar would sit under the phone's status bar where nothing can be tapped.
+   */
+  return createPortal(
     <div
       role="dialog"
       aria-label={`What was read from ${draft.description}`}
-      className="fixed inset-0 z-50 flex flex-col bg-black/95 text-white"
+      className="fixed inset-0 z-50 flex flex-col bg-black text-white"
       onWheel={(event) => zoomBy(event.deltaY < 0 ? 1.1 : 0.9)}
     >
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-[15px] font-semibold">{draft.description}</span>
+      <div className="flex items-center justify-between gap-3 px-4 pb-3" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
+        <span className="min-w-0 truncate text-[15px] font-semibold">{draft.description}</span>
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="ph-focus flex h-[36px] w-[36px] items-center justify-center rounded-full bg-white/10"
+          className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15"
         >
-          <X size={18} aria-hidden />
+          <X size={20} aria-hidden />
         </button>
       </div>
 
@@ -196,9 +212,28 @@ export function CaptureViewer({
         </div>
       )}
 
-      <p className="px-4 pb-4 text-center text-[12.5px] text-white/50">
-        {draft.imageFile ? 'Pinch or scroll to zoom · drag to move · double-tap to reset' : 'Correcting a field happens on the sheet behind this view'}
-      </p>
-    </div>
+      <div className="px-4 pt-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}>
+        {draft.imageFile && src && (
+          <div className="mb-3 flex items-center justify-center gap-3">
+            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.5)} className="ph-focus flex h-11 w-11 items-center justify-center rounded-full bg-white/15">
+              <Minus size={20} aria-hidden />
+            </button>
+            <button type="button" onClick={() => setView({ scale: 1, x: 0, y: 0 })} className="ph-focus h-11 rounded-full bg-white/15 px-5 text-[15px] font-semibold">
+              Fit
+            </button>
+            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(1.5)} className="ph-focus flex h-11 w-11 items-center justify-center rounded-full bg-white/15">
+              <Plus size={20} aria-hidden />
+            </button>
+          </div>
+        )}
+        <p className="mb-3 text-center text-[12.5px] text-white/50">
+          {draft.imageFile ? 'Pinch to zoom · drag to move · double-tap to fit' : 'Correcting a field happens on the screen behind this view'}
+        </p>
+        <button type="button" onClick={onClose} className="ph-focus min-h-11 w-full rounded-full bg-white text-[15px] font-semibold text-black">
+          Done
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
