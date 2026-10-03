@@ -57,6 +57,11 @@ export interface Reading {
   name: Field<string> | null;
   /** The masked digits of an account, as the capture printed them after the mask: `"1234"`. */
   accountHint: string | null;
+  /**
+   * What the capture says paid, under its payment-method label — "Credit Card NUSA (6175)" — and the last four digits
+   * printed in it, when it printed them. Null when the capture names no payment method.
+   */
+  paymentMethod: { text: string; last4: string | null } | null;
 }
 
 /** A learned place for one field: the label it sat under, and roughly where on the image it was. */
@@ -97,6 +102,12 @@ export interface WordList {
   nameLabels: string[];
   /** Words that introduce a name: "ke", "to". */
   nameLeadIns: string[];
+  /** Labels whose value is what paid — a card, a balance: "payment method", "sumber dana". */
+  paymentLabels: string[];
+  /** Words that say a payment method is a card: "credit card", "kartu". */
+  cardWords: string[];
+  /** Labels of a number that names a person rather than an account: "ID", "no. hp". A mask beside one is no account. */
+  idLabels: string[];
   /** Shorthands after a figure: "rb" = a thousand, "k" = a thousand. */
   thousand: string[];
   /** "jt" = a million, "m" = a million. */

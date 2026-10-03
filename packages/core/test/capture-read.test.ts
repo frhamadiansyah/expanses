@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RawCapture, readCapture, WORDS } from '../src/index';
+import { namesCard, type RawCapture, readCapture, WORDS } from '../src/index';
 
 const notification = (body: string, title: string | null = null): RawCapture => ({
   id: 'c1',
@@ -98,5 +98,76 @@ describe('readCapture', () => {
   it('reads the masked digits of an account, however the mask is written', () => {
     expect(readCapture(notification('Rekening **1234 didebit Rp38.000'), WORDS, null).accountHint).toBe('1234');
     expect(readCapture(notification('Kartu ···· 5678 dipakai Rp38.000'), WORDS, null).accountHint).toBe('5678');
+  });
+
+  it('does not take a wallet ID or a phone number for an account', () => {
+    expect(readCapture(notification('Pembayaran Rp38.000 berhasil. KANTONG ID 0811•••9159'), WORDS, null).accountHint).toBeNull();
+    expect(readCapture(notification('Pembayaran Rp38.000 berhasil. No. HP 0811****9159'), WORDS, null).accountHint).toBeNull();
+    expect(readCapture(notification('Payment $12.00 sent. Phone ••••9159'), WORDS, null).accountHint).toBeNull();
+  });
+
+  it('does not take a figure in brackets for an account outside the payment method', () => {
+    const reading = readCapture(notification('Pembayaran Rp38.000 ke TOKO ABC (2026) berhasil'), WORDS, null);
+    expect(reading.accountHint).toBeNull();
+    expect(reading.paymentMethod).toBeNull();
+  });
+
+  describe('the payment method', () => {
+    const screen = (lines: [string, number][]): RawCapture => ({
+      ...image([]),
+      lines: lines.map(([text, y], index) => ({
+        text,
+        box: [index % 2 === 0 ? 0.08 : 0.55, y, 0.4, 0.03] as [number, number, number, number],
+        height: 0.03,
+      })),
+    });
+
+    it('reads the label and its value on one line', () => {
+      const reading = readCapture(image(['Total Payment', 'Rp295.000', 'Payment Method Credit Card NUSA (6175)']), WORDS, null);
+      expect(reading.paymentMethod).toEqual({ text: 'Credit Card NUSA (6175)', last4: '6175' });
+      expect(reading.accountHint).toBe('6175');
+    });
+
+    it('reads the label and its value side by side, as two lines', () => {
+      const reading = readCapture(
+        screen([
+          ['KANTONG ID 0811•••9159', 0.14],
+          ['Total Payment', 0.3],
+          ['Rp295.000', 0.3],
+          ['Payment Method', 0.36],
+          ['Credit Card NUSA (6175)', 0.36],
+        ]),
+        WORDS,
+        null,
+      );
+      expect(reading.paymentMethod).toEqual({ text: 'Credit Card NUSA (6175)', last4: '6175' });
+      expect(reading.accountHint).toBe('6175');
+    });
+
+    it('reads the last four digits however they are masked', () => {
+      const last4 = (value: string) => readCapture(image(['Total Bayar Rp38.000', `Metode Pembayaran ${value}`]), WORDS, null).paymentMethod?.last4;
+      expect(last4('Kartu Kredit (6175)')).toBe('6175');
+      expect(last4('Kartu •••• 6175')).toBe('6175');
+      expect(last4('Card **** 6175')).toBe('6175');
+      expect(last4('Card xx6175')).toBe('6175');
+      expect(last4('Visa ending 6175')).toBe('6175');
+      expect(last4('Kartu akhiran 6175')).toBe('6175');
+    });
+
+    it('keeps a method that prints no digits, with none', () => {
+      const reading = readCapture(image(['Total Bayar Rp38.000', 'Sumber Dana', 'Saldo Dompet']), WORDS, null);
+      expect(reading.paymentMethod).toEqual({ text: 'Saldo Dompet', last4: null });
+    });
+
+    it('says whether the method is a card', () => {
+      expect(namesCard('Credit Card NUSA (6175)')).toBe(true);
+      expect(namesCard('Kartu Debit •••• 6175')).toBe(true);
+      expect(namesCard('Saldo Dompet')).toBe(false);
+      expect(namesCard('Transfer Bank')).toBe(false);
+    });
+
+    it('is nothing when the capture names no payment method', () => {
+      expect(readCapture(notification('Pembayaran Rp38.000 ke KOPI KENANGAN berhasil'), WORDS, null).paymentMethod).toBeNull();
+    });
   });
 });

@@ -436,6 +436,7 @@ describe('one movement seen from both sides', () => {
         type: { value: 'topup', confidence: 85, line: null },
         name: null,
         accountHint: null,
+        paymentMethod: null,
       },
     });
     await makeTransferPair(database.db, ws, topUp.id, {
