@@ -1,12 +1,12 @@
 import { type DraftRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, CircleAlert } from 'lucide-react';
-import { Card, Money } from '../../ui';
+import { Money } from '../../ui';
 import { useBookMoney } from '../workspaces/queries';
 
 /**
- * Captured spending that has not reached the accounts yet, as one line above the transactions — the sibling of the
- * Recurring bills row, and the door to Review from the page the drafts will land on.
+ * Captured spending that has not reached the accounts yet, as one line in the box above the transactions — the
+ * sibling of the Recurring bills row, and the door to Review from the page the drafts will land on.
  *
  * The drafts are the page's own: `TransactionsPage` narrows the queue to the account or category the page is open
  * for, and hands the very same list here that the Not recorded filter carries, so the row, the filter and the
@@ -36,23 +36,21 @@ export function NotRecorded({ drafts }: { drafts: readonly DraftRow[] }) {
   const approximate = (rows ?? []).some((row) => row?.approximate);
 
   return (
-    <Card>
-      <Link to="/review" className="flex w-full items-center gap-3 text-left" data-testid="not-recorded-card">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
-          <CircleAlert size={18} strokeWidth={2.2} aria-hidden />
+    <Link to="/review" className="flex w-full items-center gap-3 py-3 text-left" data-testid="not-recorded-card">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
+        <CircleAlert size={18} strokeWidth={2.2} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">Review transactions</span>
+        <span className="block truncate text-xs text-slate-500">{drafts.length} not recorded</span>
+      </span>
+      {read && !held && total > 0 && (
+        <span className="shrink-0 text-sm font-semibold">
+          {approximate && '~'}
+          <Money minor={total} currency={read.currency} />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium">Review transactions</span>
-          <span className="block truncate text-xs text-slate-500">{drafts.length} not recorded</span>
-        </span>
-        {read && !held && total > 0 && (
-          <span className="shrink-0 text-sm font-semibold">
-            {approximate && '~'}
-            <Money minor={total} currency={read.currency} />
-          </span>
-        )}
-        <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
-      </Link>
-    </Card>
+      )}
+      <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
+    </Link>
   );
 }

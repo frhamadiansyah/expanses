@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
 import { Bell, ChevronRight } from 'lucide-react';
 import { useApp } from '../../app/context';
-import { Card, Money } from '../../ui';
+import { Money } from '../../ui';
 import { useAccounts } from '../../lib/queries';
 import { billsInReadCurrency, isPaused, isSettled, owedNow } from '../bills/bill-view';
 import type { MonthlyBill } from '@expanses/db';
@@ -10,7 +10,7 @@ import { useMonthlyBills } from '../bills/queries';
 import { useBookMoney } from '../workspaces/queries';
 
 /**
- * The month's recurring bills, as one line above the transactions.
+ * The month's recurring bills, as one line in the box above the transactions — beside the queue's own line.
  *
  * Rent, internet and the gym are the predictable part of a month, so the useful question is not "which are
  * late" but "how much of this month is already spoken for". The line answers that; the Recurring screen
@@ -38,32 +38,30 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
   const readCurrency = money.data?.currency ?? ws.baseCurrency;
 
   return (
-    // The same card as a category group below it, so the bills read as one more line of the list.
-    <Card>
-      <Link to="/bills" className="flex w-full items-center gap-3 text-left" data-testid="recurring-card">
-        {/* The circle is the kit's own grey, the same one the queue's row wears: neither of these lines is a
-            warning, so neither borrows the alarm's amber to say "there is something here". The glyph is a bell —
-            the month reminding you what is already spoken for — where the screen behind it is a page of bills. */}
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
-          <Bell size={18} strokeWidth={2.2} aria-hidden />
+    // A row, not a card: it shares a box with the queue's line (`WaitingBox`), above the history rather than in it.
+    <Link to="/bills" className="flex w-full items-center gap-3 py-3 text-left" data-testid="recurring-card">
+      {/* The circle is the kit's own grey, the same one the queue's row wears: neither of these lines is a
+          warning, so neither borrows the alarm's amber to say "there is something here". The glyph is a bell —
+          the month reminding you what is already spoken for — where the screen behind it is a page of bills. */}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
+        <Bell size={18} strokeWidth={2.2} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        {/* "Recurring bills", not "Recurring": the line is a total across bills, and the screen behind it is
+            the one called Recurring. */}
+        <span className="block text-sm font-medium">Recurring bills</span>
+        <span className="block truncate text-xs text-slate-500">
+          {settled} of {readRows.length} {readRows.length === 1 ? 'bill' : 'bills'} paid
         </span>
-        <span className="min-w-0 flex-1">
-          {/* "Recurring bills", not "Recurring": the line is a total across bills, and the screen behind it is
-              the one called Recurring. */}
-          <span className="block text-sm font-medium">Recurring bills</span>
-          <span className="block truncate text-xs text-slate-500">
-            {settled} of {readRows.length} {readRows.length === 1 ? 'bill' : 'bills'} paid
-          </span>
+      </span>
+      {/* What is still owed sits where a category group puts its total, and reads the same way. */}
+      {money.isSuccess && owed.minor > 0 && (
+        <span className="shrink-0 text-sm font-semibold">
+          {owed.approximate && '~'}
+          <Money minor={owed.minor} currency={readCurrency} />
         </span>
-        {/* What is still owed sits where a category group puts its total, and reads the same way. */}
-        {money.isSuccess && owed.minor > 0 && (
-          <span className="shrink-0 text-sm font-semibold">
-            {owed.approximate && '~'}
-            <Money minor={owed.minor} currency={readCurrency} />
-          </span>
-        )}
-        <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
-      </Link>
-    </Card>
+      )}
+      <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
+    </Link>
   );
 }

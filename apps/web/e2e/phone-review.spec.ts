@@ -73,6 +73,13 @@ test('the queue is rows, and a tap opens the Add form that records one', async (
   await expect(toast(page)).toContainText('Recorded SUPERINDO KEBAYORAN');
   await page.goto('/transactions');
   await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
+
+  // The queue's line sits above the transaction history, not under its heading: it is not a transaction.
+  await page.goto('/transactions?month=%222026-09%22');
+  const history = page.getByRole('heading', { name: 'Transaction history' });
+  await expect(history).toBeVisible();
+  const queue = (await page.getByTestId('not-recorded-card').boundingBox())!;
+  expect(queue.y + queue.height).toBeLessThan((await history.boundingBox())!.y);
 });
 
 test('a swipe right records, and the toast takes it back', async ({ page }) => {
