@@ -29,6 +29,7 @@
 		CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA5705072FE9A10100000007 /* CaptureShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		95F1D0012FEA000000000001 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000001 /* AppViewController.swift */; };
 		95F1D0012FEA000000000002 /* IdxDownloadPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000002 /* IdxDownloadPlugin.swift */; };
+		95F1D0012FEA000000000003 /* ICloudBackupPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,8 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		95F1D0002FEA000000000001 /* AppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewController.swift; sourceTree = "<group>"; };
 		95F1D0002FEA000000000002 /* IdxDownloadPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdxDownloadPlugin.swift; sourceTree = "<group>"; };
+		95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudBackupPlugin.swift; sourceTree = "<group>"; };
+		95F1D0002FEA000000000004 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		CA5702012FE9A10100000001 /* CapturePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePlugin.swift; sourceTree = "<group>"; };
@@ -117,6 +120,8 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				95F1D0002FEA000000000001 /* AppViewController.swift */,
 				95F1D0002FEA000000000002 /* IdxDownloadPlugin.swift */,
+				95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */,
+				95F1D0002FEA000000000004 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				CA5703012FE9A10100000001 /* Capture */,
@@ -288,6 +293,7 @@
 				CA5704032FE9A10100000003 /* CaptureShortcuts.swift in Sources */,
 				95F1D0012FEA000000000001 /* AppViewController.swift in Sources */,
 				95F1D0012FEA000000000002 /* IdxDownloadPlugin.swift in Sources */,
+				95F1D0012FEA000000000003 /* ICloudBackupPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

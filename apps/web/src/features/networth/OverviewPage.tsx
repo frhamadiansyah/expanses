@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { BellRing, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, BellRing, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -407,10 +407,9 @@ export function OverviewPage() {
      * the screens worth a corner of their own have one, and the rest are one tap further. A section row at the top of
      * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
      */
-    // Also opened from their total cards; these stay for when the cards are not drawn (a rate missing).
-    { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
-    { key: 'trades', label: 'Buy & sell', to: '/net-worth/trades' },
-    { key: 'debts', label: 'Liabilities', to: '/net-worth/loans' },
+    // Assets and Liabilities are opened from their total cards, which are always drawn; Buy & sell is the corner's last
+    // door, a glyph of its own now that there is no `…` to hold it.
+    { key: 'trades', label: 'Buy & sell', glyph: <ArrowLeftRight size={18} aria-hidden />, to: '/net-worth/trades' },
   ];
 
   const nothingYet = !holding && series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
@@ -485,13 +484,18 @@ export function OverviewPage() {
     return (
       <div className={SCREEN}>
         <LargeTitle title="Net worth" actions={actions} max={3} />
+        {/* The two cards are the way into Assets and Liabilities, so they are here even with nothing to add up. */}
+        <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
+          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={formatMinor(0, ws.baseCurrency)} />
+          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={formatMinor(0, ws.baseCurrency)} />
+        </section>
         <Panel wide>
           <Empty>
             Start by adding bank accounts and credit cards on the{' '}
             <Link to="/accounts" className="font-medium underline">
               Accounts
             </Link>{' '}
-            page.
+            page, or open Assets above to add a house, a car or gold.
           </Empty>
         </Panel>
       </div>
@@ -509,11 +513,7 @@ export function OverviewPage() {
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}
-          or an asset on the{' '}
-          <Link to="/net-worth/assets" className="font-medium underline">
-            Assets
-          </Link>{' '}
-          tab.
+          or an asset from the Assets card below.
         </Empty>
       )}
 
@@ -626,14 +626,14 @@ export function OverviewPage() {
        * box it was in. Nothing else is in the card — no sentence under the figure saying which side it is — because the
        * label above it already says it, and the room the sentence took is room the figure needed.
        *
-       * Not drawn while a rate is missing: a pair of figures built from rows that read 0 would be two more things to
-       * read past, and the sheet below says which rate it is waiting on.
+       * Always drawn, because each card is the way into its side's page. While a rate is missing the figure is a dash —
+       * a total built from rows that read 0 would be wrong — and the sheet below says which rate it is waiting on.
        */}
-      {!holding && sheetMissing.length === 0 && (
+      {!holding && (
         <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
-          {/* Each card opens its side's own page, as the ⋯ rows do. */}
-          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)} />
-          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)} />
+          {/* Each card opens its side's own page. */}
+          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={sheetMissing.length > 0 ? '—' : formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)} />
+          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={sheetMissing.length > 0 ? '—' : formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)} />
         </section>
       )}
 

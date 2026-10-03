@@ -1,4 +1,4 @@
-import { displayAmount } from '@expanses/core';
+import { type DayTotal, displayAmount } from '@expanses/core';
 import { and, eq, gte, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -165,6 +165,79 @@ export async function categoryTotalsIn(
     currency: money.currency,
     missing: money.missing(),
   };
+}
+
+/**
+ * The same money as `categoryTotalsIn`, added up by day instead of by category: the bars on the Cashflow card.
+ *
+ * It stands on the same rows, so the days of a month add up to what its donut says it came to. Under `billMonths` a
+ * bill counts on the day it is attributed to, not the day it was paid.
+ */
+export async function dailyTotalsIn(
+  database: Database,
+  ws: WorkspaceContext,
+  kind: 'expense' | 'income',
+  from: string,
+  to: string,
+  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+): Promise<{ days: DayTotal[]; currency: string; missing: Unconverted[] }> {
+  const money = await bookMoneyFor(database, ws);
+  const { where, onDate } = await categoryRows(database, ws, kind, from, to, opts);
+
+  const byDay = new Map<string, number>();
+  if (!money.converts) {
+    const rows = await database.db
+      .select({ onDate, total: sql<number>`sum(${entries.amountBaseMinor})` })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .innerJoin(accounts, eq(entries.accountId, accounts.id))
+      .where(where)
+      .groupBy(onDate);
+    for (const row of rows) byDay.set(row.onDate, displayAmount(kind, Number(row.total)));
+  } else {
+    // A rate belongs to a day, so each amount is converted on its own before the day is added up.
+    const rows = await database.db
+      .select({ onDate, amountMinor: entries.amountMinor, currency: entries.currency })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .innerJoin(accounts, eq(entries.accountId, accounts.id))
+      .where(where);
+    for (const row of rows) {
+      const converted = money.convert(displayAmount(kind, Number(row.amountMinor)), row.currency, row.onDate);
+      if (converted === null) continue; // left out, and named by money.missing()
+      byDay.set(row.onDate, (byDay.get(row.onDate) ?? 0) + converted);
+    }
+  }
+  return {
+    days: [...byDay]
+      .filter(([, amountMinor]) => amountMinor !== 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, amountMinor]) => ({ date, amountMinor })),
+    currency: money.currency,
+    missing: money.converts ? money.missing() : [],
+  };
+}
+
+/**
+ * The first day money went out (or came in), read through the same rows as the totals above.
+ *
+ * The bars compare a period only with periods this side was being kept for. An opening balance from years before
+ * the first purchase was recorded says nothing about when the spending started.
+ */
+export async function firstDayOf(
+  database: Database,
+  ws: WorkspaceContext,
+  kind: 'expense' | 'income',
+  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+): Promise<string | null> {
+  const { where, onDate } = await categoryRows(database, ws, kind, '0000-01-01', '9999-12-31', opts);
+  const [row] = await database.db
+    .select({ first: sql<string | null>`min(${onDate})` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(where);
+  return row?.first ?? null;
 }
 
 /**

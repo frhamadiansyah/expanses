@@ -294,7 +294,9 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
   await page.getByRole('button', { name: 'Pay extra', exact: true }).click();
-  await page.getByLabel(/How much/).fill('500.00');
+  // Typed the app's way, grouped as it goes: a dot is a thousands mark and the comma starts the cents.
+  await page.getByLabel(/How much/).pressSequentially('500,00');
+  await expect(page.getByLabel(/How much/)).toHaveValue('500,00');
   /*
    * The bank's penalty, written the way a dollar figure is: twelve dollars fifty. The box used to be read with
    * `Number(x.replace(/\./g, ''))`, which is right for rupiah and answers this with `NaN` — so the fee the bank

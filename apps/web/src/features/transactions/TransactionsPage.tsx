@@ -46,8 +46,7 @@ import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
-import { Recurring } from './Recurring';
-import { NotRecorded } from './NotRecorded';
+import { WaitingBox } from './WaitingBox';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
@@ -1028,10 +1027,10 @@ export function TransactionsPage() {
       )}
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
       <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
+      {/* The month's bills and the queue, between the chart and the history: neither is a transaction. */}
+      {!inCategory && chartShown && <WaitingBox today={today} drafts={pending} />}
       {view === 'table' ? (
         <>
-        {!inCategory && chartShown && <Recurring today={today} />}
-        {!inCategory && chartShown && <NotRecorded drafts={pending} />}
         {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
         <TransactionsTable
           rows={shown}
@@ -1119,10 +1118,6 @@ export function TransactionsPage() {
               />
             </div>
           )}
-          {/* The month's recurring bills sit with the list they are part of, under its controls. */}
-          {!inCategory && chartShown && <Recurring today={today} />}
-          {/* And the queue's own door, in the same place: one row for what has not reached the accounts yet. */}
-          {!inCategory && chartShown && <NotRecorded drafts={pending} />}
 
           {sort.key === 'amount' && grouping === 'date' && shown.length > 0 ? (
             <>

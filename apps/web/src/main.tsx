@@ -5,6 +5,7 @@ import { bootstrap } from './db/bootstrap';
 import { guardMount } from './db/fatal-gate';
 import type { OpenStage } from './db/open';
 import { opfsSnapshots } from './db/snapshots';
+import { ICloudWelcome, welcomeCopy } from './features/backup/icloud/ICloudWelcome';
 import { ErrorBoundary } from './features/recovery/ErrorBoundary';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { paceStages } from './features/recovery/opening-copy';
@@ -126,10 +127,15 @@ async function start() {
       }
       if (wantsOverBudget()) await pushOverBudget(app.database, app.ws);
     }
+    /*
+     * An empty app on an iPhone with a copy in iCloud — a new phone, or a reinstall — opens on the offer to restore it
+     * instead. Asked for with a ceiling of a few seconds, so a slow network never holds the app back.
+     */
+    const welcome = await welcomeCopy(app.database);
     if (!gate.mountable()) return;
     // Sync was readied inside the open, before its first write (`openAppDb`, spec §5.1, §8.7): the app takes it from there.
     const sync = app.sync;
-    root.render(
+    const renderApp = () => root.render(
       <StrictMode>
         {/*
           The floor under every screen: a render that throws draws the recovery screen, never a white page.
@@ -141,6 +147,8 @@ async function start() {
         </ErrorBoundary>
       </StrictMode>,
     );
+    if (welcome) root.render(<ICloudWelcome copy={welcome} database={app.database} safety={app.safety} onDone={renderApp} />);
+    else renderApp();
   } catch (error) {
     // openSafely names every failure it knows about; anything that still lands here is unnamed, so it is
     // shown the same way as the rest rather than as a blank page.

@@ -46,6 +46,9 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   // The group's heading sits outside it now, so the heading's parent is its own line rather than the whole card.
   const copies = page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) });
   await expect(copies).toContainText('The day’s copy');
+  // What the copies are not is said behind the group's ⓘ, not in a footer.
+  await expect(copies).not.toContainText('not a backup');
+  await copies.getByRole('button', { name: 'About Safety copies on this device' }).click();
   await expect(copies).toContainText('not a backup');
 
   page.once('dialog', (dialog) => void dialog.accept());
@@ -70,13 +73,12 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   await expect(page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) })).toContainText('Taken before a restore');
 });
 
-test('the iPhone paragraph promises only what has been checked', async ({ page }) => {
+test('every explanation on the Backup page waits behind its ⓘ', async ({ page }) => {
   await page.goto('/backup');
-  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Backups and iPhone' }) });
-  // Spec §8.2: no claim that a device backup covers this data until that has been checked on a device.
-  await expect(section).toContainText('an iPhone backup does not carry this data with it');
-  await expect(section).not.toContainText('back up with the rest of the phone');
-  await expect(section).not.toContainText("sits in the app's own container");
-  // And the one thing that is true today is still said plainly.
-  await expect(section).toContainText('keep downloading a backup');
+  const file = page.locator('section', { has: page.getByRole('heading', { name: 'File' }) });
+  await expect(file).not.toContainText('not encrypted');
+  await file.getByRole('button', { name: 'About File' }).click();
+  await expect(file).toContainText('not encrypted');
+  // The browser has no iCloud: that group is the iOS app's alone.
+  await expect(page.getByRole('heading', { name: 'iCloud' })).toHaveCount(0);
 });

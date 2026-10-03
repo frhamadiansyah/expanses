@@ -80,13 +80,11 @@ test('by thumb: ＋ opens the chooser, and each row opens its own place', async 
 
 test('by thumb: the sections are behind the corner, and Lend & borrow is not one of them', async ({ page }) => {
   await page.goto('/net-worth');
-  // No strip to hold them any more: the three sections are the corner's `…`, and each row is a link.
-  await page.getByRole('button', { name: 'More' }).tap();
-  const items = page.getByRole('menuitem');
-  await expect(items).toHaveCount(3);
-  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
-  await expect(page.getByRole('menuitem', { name: 'Loans' })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: 'Liabilities' }).tap();
+  // Assets and Liabilities are their total cards; the corner's `…` keeps only Buy & sell.
+  // No `…` any more: Buy & sell is a corner link of its own.
+  await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
+  await page.getByRole('link', { name: 'Liabilities', exact: true }).tap();
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 
   await page.goto('/transactions');
@@ -98,4 +96,38 @@ test('by thumb: the sections are behind the corner, and Lend & borrow is not one
   // The address it used to be drawn at still answers.
   await page.goto('/net-worth/debts');
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
+});
+
+test('by thumb: the boxes over the total divide it, and a tapped box narrows the list to its kind', async ({ page }) => {
+  await oneOfEach(page);
+  await page.goto('/net-worth/loans');
+  await expect(page.getByTestId('debts-total')).toContainText('Rp 731.950.000');
+
+  // One box per kind of debt, each naming itself: no colour key under them.
+  const boxes = page.getByTestId('share-boxes');
+  await expect(boxes.getByRole('button')).toHaveCount(4);
+  await expect(page.getByTestId('share-box-loan:home_mortgage')).toContainText('Home mortgage');
+  await expect(page.getByTestId('share-box-loan:home_mortgage')).toContainText('Rp 712.500.000');
+  await expect(page.getByTestId('share-box-loan:home_mortgage')).toContainText('97%');
+
+  // Nothing picked: every drawer, shut.
+  const drawers = page.locator('[data-testid^="type-drawer-"]');
+  await expect(drawers).toHaveCount(4);
+  await expect(page.getByTestId('show-all')).toHaveCount(0);
+
+  // A box picked: its drawer alone, open on its debts.
+  await page.getByTestId('share-box-card:credit_card').tap();
+  await expect(drawers).toHaveCount(1);
+  await expect(page.getByTestId('type-drawer-card:credit_card')).toBeVisible();
+  await expect(page.getByRole('link', { name: /BCA Visa/ })).toBeVisible();
+  await expect(page.getByTestId('share-box-card:credit_card')).toHaveAttribute('aria-pressed', 'true');
+
+  // The same box again lets go; so does Show all.
+  await page.getByTestId('share-box-card:credit_card').tap();
+  await expect(drawers).toHaveCount(4);
+  await page.getByTestId('share-box-person:payable').tap();
+  await expect(drawers).toHaveCount(1);
+  await page.getByTestId('show-all').tap();
+  await expect(drawers).toHaveCount(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

@@ -53,8 +53,10 @@ test('the two pages are one, and what is left of them is all here', async ({ pag
   await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Needs attention' })).toBeVisible();
 
-  // What the Overview had, with the ratios one tap away in the corner and the three sections behind the `…` beside it.
-  await expect(page.getByRole('button', { name: 'More' })).toBeVisible();
+  // What the Overview had, with the ratios and Buy & sell one tap away in the corner, and Assets and Liabilities on
+  // their total cards.
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Liabilities', exact: true })).toBeVisible();
   // The sheet is headed by its two sides and nothing else: "Balance sheet" and the line under it saying how it was
   // valued both said what "Assets" and "Liabilities" say with a figure beside them.
   await expect(page.getByRole('heading', { name: 'Balance sheet' })).toHaveCount(0);
@@ -161,11 +163,13 @@ test('reads what you owe by kind rather than by when it falls due', async ({ pag
   await page.getByTestId('type-drawer-debts:multi_purpose_loan').click();
   await expect(page.getByText('KPR BCA')).toHaveCount(1);
 
-  // And the bar divides the same kinds into shares — read on the sub page, where the bar and the list it divides are
+  // And the boxes divide the same kinds into shares — read on the sub page, where the chart and the list it divides are
   // drawn: the Overview draws a side's sections and its total, and the drawing of what makes it up is that page's.
+  // Each box says its share in its name, so one too small for words still does.
   await page.goto('/net-worth/loans');
-  await expect(page.getByText(/Credit card \d+%/)).toBeVisible();
-  await expect(page.getByText(/Multi-purpose loan \d+%/)).toBeVisible();
+  const boxes = page.getByTestId('share-boxes');
+  await expect(boxes.getByRole('button', { name: /^Credit card, .+, (<1|\d+)%$/ })).toBeVisible();
+  await expect(boxes.getByRole('button', { name: /^Multi-purpose loan, .+, (<1|\d+)%$/ })).toBeVisible();
 });
 
 /**
@@ -382,15 +386,15 @@ test('moves net worth by the price difference only', async ({ page }) => {
  * new tab" have to work on them. Only a real `<a href>` gives a browser that — a row that calls `navigate` looks
  * identical and answers none of it — so the href is what is asserted.
  */
-test('every net-worth section is a real link in the corner menu, so it can be opened in a new tab', async ({ page }) => {
+test('every net-worth section is a real link, so it can be opened in a new tab', async ({ page }) => {
   await page.goto('/net-worth');
-  await page.getByRole('button', { name: 'More' }).click();
-  const items = page.getByRole('menuitem');
-  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
-  expect(await items.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href')))).toEqual(['/net-worth/assets', '/net-worth/trades', '/net-worth/loans']);
+  // Assets and Liabilities are their total cards; Buy & sell is the corner's one row.
+  expect(await page.getByRole('link', { name: 'Assets', exact: true }).getAttribute('href')).toBe('/net-worth/assets');
+  expect(await page.getByRole('link', { name: 'Liabilities', exact: true }).getAttribute('href')).toBe('/net-worth/loans');
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
 
   // And each one goes there: the section opens as its own screen, with Net worth as the way back.
-  await page.getByRole('menuitem', { name: 'Liabilities' }).click();
+  await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 });
