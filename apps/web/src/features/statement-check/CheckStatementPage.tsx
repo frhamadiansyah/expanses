@@ -7,6 +7,7 @@ import {
   getCardTerms,
   listDrafts,
   listTransactions,
+  NO_PREVIOUS_BALANCE_MESSAGE,
   ownerScope,
   type PreparedCheck,
   prepareStatementCheck,
@@ -168,7 +169,8 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       setRows(result.rows);
       setDecisions(NO_DECISIONS);
       setView('result');
-      // S10: older than the card's start in cicis, and the summary says what was owed before it.
+      // S10: older than the card's start in cicis, and the summary says what was owed before it. Without it, recording
+      // waits for that screenshot. Either way today's balance stays as it is.
       setGuard(result.startsAfterPeriod && result.previousMinor !== null);
     } catch (e) {
       setError(e);
@@ -279,12 +281,17 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   const missing = rows.filter((r) => r.outcome.status === 'missing');
   const gaps = missing.filter((r) => needsCategory(r) && r.categoryId === null).length;
   const asksOpen = rows.some((r) => r.outcome.status === 'ask' && decisions.ask[r.index] === undefined);
-  const ready = canRecordAll(rows, decisions.ask);
+  const ready = canRecordAll(rows, decisions.ask) && !prepared.needsPreviousBalance;
   const footer = (
     <div className="mt-[6px] mb-[18px]">
       <Button data-testid="record-all" className="min-h-12 w-full text-[17px]" disabled={busy || !ready} onClick={() => void record()}>
         {missing.length === 0 ? 'Finish the check' : recordLabel(missing.length, gaps)}
       </Button>
+      {prepared.needsPreviousBalance && (
+        <p data-testid="needs-previous" className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">
+          {NO_PREVIOUS_BALANCE_MESSAGE}
+        </p>
+      )}
       {asksOpen && <p className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">Choose the recorded transaction for each alike row first.</p>}
     </div>
   );

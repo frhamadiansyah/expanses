@@ -293,6 +293,67 @@ describe('recording a check', () => {
     expect(openings[0]!.occurredOn).toBe('2026-04-10');
   });
 
+  /** A card opened on 1 Aug owing 5,500,000, and its four statements before that, newest first. */
+  const catchUp = (): [StatementPeriod, CaptureLine[][]][] => [
+    [{ start: '2026-07-11', end: '2026-08-10' }, [image([['15JUL', 'TOKO ALFA', '500,000']], { previous: '5,000,000', closing: '5,500,000' })]],
+    [{ start: '2026-06-11', end: '2026-07-10' }, [image([['15JUN', 'TOKO ALFA', '1,500,000'], ['25JUN', 'PAYMENT THANK YOU', '500,000CR']], { previous: '4,000,000', closing: '5,000,000' })]],
+    [{ start: '2026-05-11', end: '2026-06-10' }, [image([['15MAY', 'TOKO ALFA', '2,000,000']], { previous: '2,000,000', closing: '4,000,000' })]],
+    [{ start: '2026-04-11', end: '2026-05-10' }, [image([['15APR', 'TOKO ALFA', '1,500,000'], ['25APR', 'PAYMENT THANK YOU', '500,000CR']], { previous: '1,000,000', closing: '2,000,000' })]],
+  ];
+
+  it('keeping the card’s start keeps today’s balance while older statements are checked newest first', async () => {
+    const h = await household({ openingBalanceMinor: 5_500_000, openedOn: '2026-08-01' });
+    await h.buy('2026-08-15', 'SETELAH MULAI', 300_000);
+    const today = '2026-09-01';
+    const balanceToday = async () => (await cardStatement(h.database, h.ws, h.card.id, { start: '2026-08-11', end: today }, today)).closingMinor;
+    expect(await balanceToday()).toBe(5_800_000);
+    for (const [period, images] of catchUp()) {
+      const prepared = await h.prepare(images, period, today);
+      expect(prepared.startsAfterPeriod).toBe(true);
+      await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+      expect(await balanceToday()).toBe(5_800_000);
+    }
+    // Checked again once the history is in, the newest one still reconciles and today's balance holds.
+    const [july, images] = catchUp()[0]!;
+    const again = await h.prepare(images, july, today);
+    expect(await recordStatementCheck(h.database, h.ws, again, NO_DECISIONS)).toMatchObject({ status: 'reconciled' });
+    expect(await balanceToday()).toBe(5_800_000);
+  });
+
+  it('a second start move keeps today’s balance and reconciles both statements', async () => {
+    const h = await household({ openingBalanceMinor: 5_500_000, openedOn: '2026-08-01' });
+    await h.buy('2026-08-15', 'SETELAH MULAI', 300_000);
+    const today = '2026-09-01';
+    const balanceToday = async () => (await cardStatement(h.database, h.ws, h.card.id, { start: '2026-08-11', end: today }, today)).closingMinor;
+    const [, june, may] = catchUp();
+    const ids: string[] = [];
+    for (const [period, images] of [june!, may!]) {
+      const prepared = await h.prepare(images, period, today);
+      expect(prepared.startsAfterPeriod).toBe(true);
+      const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, moveStart: true });
+      expect(result.status).toBe('reconciled');
+      ids.push(result.checkId);
+      expect(await balanceToday()).toBe(5_800_000);
+    }
+    // The June statement still closes where it said after the May move.
+    const again = await h.prepare(june![1], june![0], today);
+    expect(await recordStatementCheck(h.database, h.ws, again, NO_DECISIONS)).toMatchObject({ checkId: ids[0], status: 'reconciled' });
+    expect((await listStatementChecks(h.database, h.ws, h.card.id)).map((c) => c.status)).toEqual(['reconciled', 'reconciled']);
+    const openings = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Opening balance'));
+    expect(openings.map((t) => t.occurredOn)).toEqual(['2026-05-10']);
+    expect(await balanceToday()).toBe(5_800_000);
+  });
+
+  it('refuses a statement older than the card’s start without its previous balance, posting nothing', async () => {
+    const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { closing: '100,000' })], MAY, '2026-09-01');
+    expect(prepared).toMatchObject({ startsAfterPeriod: true, previousMinor: null, needsPreviousBalance: true });
+    const before = await h.posted();
+    await expect(recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS)).rejects.toMatchObject({ code: 'NO_PREVIOUS_BALANCE' });
+    expect(await h.posted()).toBe(before);
+    expect((await h.balances())[h.card.id]).toBe(-2_000_000);
+  });
+
   it('moving the start of a card owing nothing before the statement takes its opening away', async () => {
     const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
     const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '100,000' })], MAY, '2026-09-01');

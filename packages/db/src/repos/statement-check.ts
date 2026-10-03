@@ -56,6 +56,8 @@ const REFUNDS = { key: 'miscellaneous.refunds', name: 'Refunds' };
 const MISCELLANEOUS_KEY = 'miscellaneous';
 /** Days either side of the period whose transactions may still be a statement row (the matcher's widest window and some). */
 const CANDIDATE_MARGIN_DAYS = 7;
+/** Why a statement older than the card's start cannot be recorded yet (S10). */
+export const NO_PREVIOUS_BALANCE_MESSAGE = 'This statement is older than the card’s start: add the summary screenshot with the previous balance to record it.';
 /** The quiet adjustment's description begins with this; the main transaction list hides it by it. */
 export const PAYMENTS_NOT_TRACKED_PREFIX = 'Payments not tracked (';
 
@@ -94,6 +96,11 @@ export interface PreparedCheck {
   cardBalanceAtEndMinor: number;
   /** The card's opening is later than the period's start (S10). */
   startsAfterPeriod: boolean;
+  /**
+   * Older than the card's start with no previous balance read, now or by an earlier check of the period: recording
+   * waits for the summary screenshot that shows it.
+   */
+  needsPreviousBalance: boolean;
   alreadyChecked: boolean;
   /** The day the check was prepared for: what recording reads the card's balance on, unless told otherwise. */
   today: string;
@@ -322,8 +329,9 @@ export async function prepareStatementCheck(
   const byCandidate = new Map(candidates.map((c) => [c.id, c]));
   const untracked = rows.filter((r) => r.outcome.status === 'payment-untracked');
   const opening = await openingOfCard(database.db, ws, cardAccountId);
+  const startsAfterPeriod = opening !== null && opening.occurredOn > period.start;
   const [existing] = await database.db
-    .select({ id: statementChecks.id })
+    .select({ id: statementChecks.id, previousMinor: statementChecks.previousMinor })
     .from(statementChecks)
     .where(and(eq(statementChecks.cardAccountId, cardAccountId), eq(statementChecks.periodStart, period.start), eq(statementChecks.periodEnd, period.end)));
 
@@ -342,7 +350,8 @@ export async function prepareStatementCheck(
     untrackedPaymentsMinor: untracked.reduce((sum, r) => sum + r.amountMinor, 0),
     untrackedPaymentsCount: untracked.length,
     cardBalanceAtEndMinor: (await cardStatement(database, ws, cardAccountId, period, input.today)).closingMinor,
-    startsAfterPeriod: opening !== null && opening.occurredOn > period.start,
+    startsAfterPeriod,
+    needsPreviousBalance: startsAfterPeriod && reading.previousMinor === null && (existing?.previousMinor ?? null) === null,
     alreadyChecked: existing !== undefined,
     today: input.today,
   };
@@ -436,8 +445,8 @@ export async function recordStatementCheck(
   if (gap) throw new StatementCheckError('NEEDS_CATEGORY', `Choose a category for “${gap.description}”`);
   const unanswered = prepared.rows.find((r) => r.outcome.status === 'ask' && !r.outcome.candidateIds.includes(decisions.ask[r.index] ?? ''));
   if (unanswered) throw new StatementCheckError('ASK_UNANSWERED', `Say which recorded transaction “${unanswered.description}” is`);
-  if (decisions.moveStart && prepared.previousMinor === null) {
-    throw new StatementCheckError('NO_PREVIOUS_BALANCE', 'Add the summary with the previous balance to move the card’s start');
+  if (prepared.needsPreviousBalance || (decisions.moveStart && prepared.previousMinor === null)) {
+    throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
   }
   const { cardAccountId, period } = prepared;
   const card = await cardOf(database.db, ws, cardAccountId);
@@ -484,23 +493,22 @@ export async function recordStatementCheck(
       await tx.insert(statementLinks).values({ checkId, transactionId, kind }).onConflictDoNothing();
     };
 
-    // S10's bridge: what the card owed at its old start before the move, held there while the history before it is
-    // checked. Read before anything below changes the card.
+    // S10's bridge: what the card owed at its start, held there while the history before it is checked, so nothing
+    // is counted twice and today's balance never changes, whether the start moves or not. Read before anything below
+    // changes the card.
     const [bridge] = await tx
       .select({ id: transactions.id, occurredOn: transactions.occurredOn })
       .from(transactions)
       .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.externalRef, bridgeRefOf(cardAccountId)), eq(transactions.status, 'posted')));
-    let bridgeOn: string | null = bridge?.occurredOn ?? null;
-    let owedThen = bridgeOn ? await owedAt(tx, ws, cardAccountId, bridgeOn) : 0;
+    const opening = await openingOfCard(tx, ws, cardAccountId);
+    const beforeStart = opening !== null && opening.occurredOn > period.start;
+    if (beforeStart && previousMinor === null) throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
+    const bridgeOn: string | null = bridge?.occurredOn ?? (beforeStart ? opening.occurredOn : null);
+    const owedThen = bridgeOn ? await owedAt(tx, ws, cardAccountId, bridgeOn) : 0;
 
     // S10: the card starts the day before this statement, owing what the statement says was owed before it.
     if (decisions.moveStart) {
-      const opening = await openingOfCard(tx, ws, cardAccountId);
-      if (opening && opening.occurredOn > period.start) {
-        if (bridgeOn === null) {
-          bridgeOn = opening.occurredOn;
-          owedThen = await owedAt(tx, ws, cardAccountId, bridgeOn);
-        }
+      if (opening && beforeStart) {
         if (previousMinor === 0) {
           await voidTransactionTx(tx, ws, opening.id);
         } else {

@@ -36,6 +36,7 @@ function prepared(patch: Partial<PreparedCheck>): PreparedCheck {
     untrackedPaymentsCount: 0,
     cardBalanceAtEndMinor: 0,
     startsAfterPeriod: false,
+    needsPreviousBalance: false,
     alreadyChecked: false,
     today: '2026-06-15',
     ...patch,
