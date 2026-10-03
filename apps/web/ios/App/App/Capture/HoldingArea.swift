@@ -120,11 +120,15 @@ enum HoldingArea {
     /// there on every drain, before the web layer sees the capture; the shared copy stays until the ack. Before and
     /// after the ack the same name opens the same picture.
     ///
+    /// Statement batches older than `statementBatchLifetime` are deleted on the way: the app drains on every start.
+    ///
     /// A file that cannot be read is moved aside (`captures/broken`) rather than deleted: it is evidence of a writer
     /// that got something wrong, and `holdingAreaStatus` reports it. A capture whose picture cannot be copied loses
     /// the reference rather than keeping one that will not resolve.
     static func drain() throws -> [RawCapture] {
         let folder = try groupCaptures()
+        // Statement batches nobody took go here too, not only on the next share of several screenshots.
+        sweepStatementBatches(in: folder)
         let brokenFolder = folder.appendingPathComponent("broken", isDirectory: true)
         let manager = FileManager.default
         let files = try manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
@@ -213,9 +217,9 @@ enum HoldingArea {
         try groupCaptures().appendingPathComponent("statement-\(batchId)", isDirectory: true)
     }
 
-    /// A batch nobody took (the share was left on the card picker) is not kept past a day: statement text does not
-    /// wait on the phone.
-    static let statementBatchLifetime: TimeInterval = 24 * 60 * 60
+    /// A batch nobody took (the share was left on the card picker, or the app never opened on it) is not kept past an
+    /// hour: statement text does not wait on the phone (privacy §5). The app takes a batch the moment it opens on it.
+    static let statementBatchLifetime: TimeInterval = 60 * 60
 
     /// Writes one statement batch: the lines of each screenshot, in order. The batch is written aside and moved into
     /// place in one step, so the app never finds half of one. Older batches nobody took are deleted on the way.
