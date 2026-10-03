@@ -213,12 +213,21 @@ test('the chart card turns to the month over time, and a bar is read by tapping 
   const today = new Date();
   await expect(bars.getByTestId('trend-bar')).toHaveCount(today.getDate());
 
-  // Nothing is written on the bars until one is tapped.
+  // Nothing is written on the bars, and nothing listed under them, until one is tapped — as the ring keeps its rows.
   await expect(bars.getByTestId('net-worth-reading')).toHaveCount(0);
+  await expect(chart.getByTestId('trend-under')).toHaveCount(0);
   await bars.getByTestId('trend-bar').last().click();
   await expect(bars.getByTestId('net-worth-reading')).toContainText('Rp 290.000');
-  // A tap on the bars is a reading, not a request for the categories.
+  await expect(chart.getByTestId('trend-under')).toBeVisible();
+  // The page lists its own things: the categories stay with the ring.
   await expect(chart.getByTestId('report-row')).toHaveCount(0);
+
+  // The same bar again folds the list and lets go of the reading; one more tap brings both back.
+  await bars.getByTestId('trend-bar').last().click();
+  await expect(chart.getByTestId('trend-under')).toHaveCount(0);
+  await expect(bars.getByTestId('net-worth-reading')).toHaveCount(0);
+  await bars.getByTestId('trend-bar').last().click();
+  await expect(chart.getByTestId('trend-under')).toBeVisible();
 
   // Under the bars, the biggest day, on one line, and nothing to compare a first month with.
   await expect(chart.getByTestId('trend-comparisons')).toHaveCount(0);

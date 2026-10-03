@@ -124,7 +124,7 @@ function Ring({
   extra?: readonly { key: string; label: string; totalMinor: number }[];
   /** A second chart, shown by swiping the card sideways. Given, the card grows a pair of dots. */
   second?: ReactNode;
-  /** The spending over time, as the last page. Its own list replaces the categories while it is showing. */
+  /** The spending over time, as the last page. Its own list replaces the categories while it is showing, folded the same way. */
   third?: ReactNode;
   /** What is listed under the third page. */
   under?: ReactNode;
@@ -170,7 +170,7 @@ function Ring({
       <div
         role="button"
         tabIndex={0}
-        // The bars are read by tapping them, and their page lists its own things, so it folds nothing.
+        // The bars fold their list themselves, since the same tap also reads the bar under it.
         onClick={onThird ? undefined : fold}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -208,7 +208,7 @@ function Ring({
       {header}
       {/* No legend: the ring writes each name against its own slice, and the rows below name the rest. */}
       {chart}
-      {onThird ? under : showRows && (
+      {onThird ? showRows && under : showRows && (
         <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
           {ordered.map((node, index) => (
             <Row
@@ -417,7 +417,7 @@ export function SpendingReport({
               second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
               third={
                 trend ? (
-                  <TrendBars bars={trend.bars} unit={trend.unit} currency={trend.currency} />
+                  <TrendBars bars={trend.bars} unit={trend.unit} currency={trend.currency} open={showAll} onAsk={() => setShowAll(true)} onFold={() => setShowAll(false)} />
                 ) : (
                   // Held at the bars' own size while the days are read, so the card does not grow when they arrive.
                   <div className="aspect-[400/290] w-full" />

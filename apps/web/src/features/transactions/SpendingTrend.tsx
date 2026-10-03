@@ -1,11 +1,11 @@
 import { isoDate, parsePeriod, spendingComparisons, spendingTrend, type TrendBar, type TrendComparison, type TrendUnit, trendWindow, weekOf } from '@expanses/core';
 import { dailyTotalsIn, firstDayOf } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx, Money } from '../../ui';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from '../networth/chart-reading';
-import type { ChartPoint } from '../networth/value-chart';
+import { type ChartPoint, nearestIndex } from '../networth/value-chart';
 
 /** The donut's own box, so turning the card from the ring to the bars never moves the list under it. */
 const WIDTH = 400;
@@ -70,8 +70,26 @@ function tickEvery(unit: TrendUnit, count: number): number {
  * Read the way the net worth line is read: a tap picks the bar under it and its total is written in a pill above it,
  * dragging moves the reading along, and Escape lets go. Thirty figures printed over thirty bars would be none of them
  * legible. The biggest bar is drawn in the warning colour, the one still under way faint, and one yet to come not at all.
+ *
+ * A tap also unfolds what is listed under the card, as a tap on the ring or the gauge does. Another bar moves the
+ * reading and leaves the list open; the same bar again folds the list and lets go of the reading.
  */
-export function TrendBars({ bars, unit, currency }: { bars: readonly TrendBar[]; unit: TrendUnit; currency: string }) {
+export function TrendBars({
+  bars,
+  unit,
+  currency,
+  open = false,
+  onAsk,
+  onFold,
+}: {
+  bars: readonly TrendBar[];
+  unit: TrendUnit;
+  currency: string;
+  /** Whether the card's list is unfolded. */
+  open?: boolean;
+  onAsk?: () => void;
+  onFold?: () => void;
+}) {
   const base = HEIGHT - TICK_ROOM;
   const top = READING_ROOM;
   const step = WIDTH / Math.max(1, bars.length);
@@ -83,15 +101,31 @@ export function TrendBars({ bars, unit, currency }: { bars: readonly TrendBar[];
   const points: (ChartPoint | null)[] = bars.map((bar, index) =>
     bar.totalMinor === null ? null : { x: index * step + step / 2, y: base - height(bar.totalMinor), value: bar.totalMinor, label: bar.partial ? `${bar.label} so far` : bar.label },
   );
-  const { reading, svgProps } = useChartReading(points, WIDTH, { label: `Spending by ${unit}. Tap a bar to read it, or use the arrow keys.`, hover: true });
+  const { reading, clear, svgProps } = useChartReading(points, WIDTH, { label: `Spending by ${unit}. Tap a bar to read it, or use the arrow keys.`, hover: true });
   const picked = reading ? points.indexOf(reading) : -1;
+  // Folded from anywhere else — another page of the card, a new period — the reading goes with it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the fold is followed
+  useEffect(() => {
+    if (!open) clear();
+  }, [open]);
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const at = nearestIndex(points, ((event.clientX - box.left) / box.width) * WIDTH);
+    if (open && at !== null && at === picked) {
+      clear();
+      onFold?.();
+      return;
+    }
+    svgProps.onPointerDown(event);
+    if (!open) onAsk?.();
+  };
   const every = tickEvery(unit, bars.length);
 
   return (
     // The card under it folds its categories on a tap; a tap here is a reading, so it stops before it gets there.
     // biome-ignore lint/a11y/noStaticElementInteractions: only keeps the tap from reaching the card behind
     <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} data-testid="trend-bars">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} {...svgProps} className={`block h-auto w-full ${svgProps.className}`}>
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} {...svgProps} onPointerDown={onPointerDown} aria-expanded={open} className={`block h-auto w-full ${svgProps.className}`}>
         {bars.map((bar, index) =>
           bar.totalMinor === null ? null : (
             <rect
