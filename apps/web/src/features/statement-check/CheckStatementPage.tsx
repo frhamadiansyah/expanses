@@ -295,6 +295,12 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         </p>
       )}
       {asksOpen && <p className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">Choose the recorded transaction for each alike row first.</p>}
+      {/* Once the statement is read, only recording sets an error: it shows by the button pressed, as well as at the top. */}
+      {error !== null && (
+        <div data-testid="record-error" className="mt-[8px]">
+          <ErrorBox error={error} />
+        </div>
+      )}
     </div>
   );
   const map = candidates.data ?? new Map<string, CandidateInfo>();
