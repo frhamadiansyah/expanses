@@ -91,6 +91,8 @@ test('correcting the merchant teaches the source, and the next screenshot is rea
   // Correcting is also teaching: recording takes the name, and the source is told where it was printed.
   await page.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  // The row leaves as soon as Record is pressed; the toast comes once the lesson and the record are both written.
+  await expect(page.getByText('Recorded TOKO KOPI MAKMUR')).toBeVisible();
 
   // The next screen of the same app is read where the correction said the name sits — no second correction needed:
   // the name the owner typed is the name the form now holds.

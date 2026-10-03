@@ -1,6 +1,7 @@
 import { findAmounts } from './amount';
 import { findDateTime } from './date';
 import type { CaptureLine, Field, MoveType, RawCapture, Reading, Template, WordList } from './types';
+import { WORDS } from './words';
 
 /**
  * What one capture says, read out of it and nothing else.
@@ -114,12 +115,89 @@ const namesDirection = (text: string, words: WordList) => {
 };
 
 /** The mask a capture prints before the digits of an account it does not want to spell out. */
-const ACCOUNT_HINT = /(?:[·•*x]{2,}|[·•*x]{1,3}\s)[ \u00a0]*(\d{3,6})\b/i;
+const ACCOUNT_HINT = /(?:[·•*x]{2,}|[·•*x]{1,3}\s)[ \u00a0]*(\d{3,6})\b/gi;
 
-/** The masked digits of an account, as the capture printed them after the mask — or null when it printed none. */
-export function accountHintOf(text: string): string | null {
-  const match = ACCOUNT_HINT.exec(text);
-  return match ? match[1]! : null;
+/**
+ * The masked digits of an account, as the capture printed them after the mask — or null when it printed none.
+ *
+ * A mask is not always an account: a wallet prints its owner's ID or phone number the same way ("ID 0811•••9159"), and
+ * that number is a person, not where the money was. A mask whose own sentence carries an ID or phone label is passed
+ * over.
+ */
+export function accountHintOf(text: string, words: WordList = WORDS): string | null {
+  for (const line of text.split('\n')) {
+    for (const match of line.matchAll(ACCOUNT_HINT)) {
+      const clause = line.slice(0, match.index).split(/(?<=[.!?])\s+/).pop() ?? '';
+      if (hasWord(clause, words.idLabels)) continue;
+      return match[1]!;
+    }
+  }
+  return null;
+}
+
+/**
+ * The last four digits inside a payment method's value, however they were written: "(6175)", "•••• 6175", "xx6175",
+ * "ending 6175", "akhiran 6175". The bracketed form counts only here, under a payment-method label — anywhere else a
+ * figure in brackets is as likely a year.
+ */
+const LAST4 = /\((\d{4})\)|[·•*x]+\s*(\d{4})(?!\d)|\b(?:ending(?:\s+in)?|akhiran)\s*(\d{4})(?!\d)/i;
+
+function last4Of(value: string): string | null {
+  const match = LAST4.exec(value);
+  return match ? (match[1] ?? match[2] ?? match[3])! : null;
+}
+
+/** What a capture says paid, and which of its lines said it. */
+export interface PaymentMethodRead {
+  text: string;
+  last4: string | null;
+  /** The label's line and the value's line, as indices into `capture.lines`; empty for a notification. */
+  lines: number[];
+}
+
+/** The line set beside this one — the same height on the image, to the right of it — or the line under it. */
+function valueLineOf(capture: RawCapture, index: number): number | null {
+  const here = capture.lines[index];
+  if (!here) return null;
+  const [x, y, , h] = here.box;
+  const beside = capture.lines.findIndex(
+    (line, other) => other !== index && Math.abs(line.box[1] - y) < Math.max(h, line.box[3]) / 2 && line.box[0] > x,
+  );
+  if (beside >= 0) return beside;
+  return capture.lines[index + 1] ? index + 1 : null;
+}
+
+/** Whether a payment method's text says it is a card: "Credit Card NUSA (6175)", "Kartu Debit". */
+export function namesCard(text: string, words: WordList = WORDS): boolean {
+  return hasWord(text, words.cardWords);
+}
+
+/**
+ * The payment method: the value after a "Payment Method" or "Sumber Dana" label — on the label's own line, or on the
+ * line beside or under it when the label stands alone.
+ */
+export function paymentMethodOf(capture: RawCapture, words: WordList = WORDS): PaymentMethodRead | null {
+  const units = unitsOf(capture);
+  for (let index = 0; index < units.length; index += 1) {
+    const text = units[index]!.text;
+    for (const label of words.paymentLabels) {
+      const at = wordAt(text, label);
+      if (at === null) continue;
+      const rest = text
+        .slice(at + label.length)
+        .replace(/^\s*[:=]?\s*/, '')
+        .split(/(?<=[.!?])\s+/)[0]!
+        .trim();
+      const line = units[index]!.line;
+      if (rest !== '') return { text: rest, last4: last4Of(rest), lines: line === null ? [] : [line] };
+      if (line === null) continue;
+      const valueLine = valueLineOf(capture, line);
+      const value = valueLine === null ? '' : capture.lines[valueLine]!.text.trim();
+      if (value === '') continue;
+      return { text: value, last4: last4Of(value), lines: [line, valueLine!] };
+    }
+  }
+  return null;
 }
 
 /** A figure that may be an amount, with the unit it sat in. */
@@ -313,6 +391,9 @@ const WORDS_FOR_CUT: WordList = {
   amountLabels: [],
   nameLabels: [],
   nameLeadIns: [],
+  paymentLabels: [],
+  cardWords: [],
+  idLabels: [],
   thousand: ['rb', 'ribu', 'k'],
   million: ['jt', 'juta', 'm'],
 };
@@ -444,13 +525,14 @@ function withoutOffers(units: readonly Unit[], words: WordList): Unit[] | null {
   return hasFigure && saysWhat ? rest : null;
 }
 
-const SKIPPED = (skipped: 'promo' | 'unreadable', accountHint: string | null): Reading => ({
+const SKIPPED = (skipped: 'promo' | 'unreadable', accountHint: string | null, paymentMethod: Reading['paymentMethod']): Reading => ({
   skipped,
   amount: null,
   occurredAt: null,
   type: { value: 'spent', confidence: 0, line: null },
   name: null,
   accountHint,
+  paymentMethod,
 });
 
 /**
@@ -470,11 +552,14 @@ export function readCapture(
 ): Reading {
   const all = unitsOf(capture);
   const text = all.map((unit) => unit.text).join('\n');
-  const hint = accountHintOf(text);
+  // What paid is the account the money left, when the capture says so; a masked number elsewhere is the next best.
+  const method = paymentMethodOf(capture, words);
+  const paymentMethod = method ? { text: method.text, last4: method.last4 } : null;
+  const hint = paymentMethod?.last4 ?? accountHintOf(text, words);
 
-  if (all.length === 0) return SKIPPED('unreadable', hint);
+  if (all.length === 0) return SKIPPED('unreadable', hint, paymentMethod);
   const units = opts.skipPromos === false ? all : withoutOffers(all, words);
-  if (units === null) return SKIPPED('promo', hint);
+  if (units === null) return SKIPPED('promo', hint, paymentMethod);
 
   const learned = template ?? null;
   const figures = figuresOf(units, words);
@@ -482,7 +567,7 @@ export function readCapture(
 
   if (amount === null) {
     // An image with no figure is nothing; a notification with no figure is nothing to record either.
-    return SKIPPED('unreadable', hint);
+    return SKIPPED('unreadable', hint, paymentMethod);
   }
 
   return {
@@ -492,5 +577,6 @@ export function readCapture(
     type: typeOf(units, words, false),
     name: nameOf(units, words, capture, learned ?? {}),
     accountHint: hint,
+    paymentMethod,
   };
 }

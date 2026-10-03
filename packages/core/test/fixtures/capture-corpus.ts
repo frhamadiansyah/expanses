@@ -18,6 +18,8 @@ export interface CorpusCase {
     name?: string | null;
     occurredAt?: string | null;
     accountHint?: string | null;
+    /** The last four digits of the card or account the screen says paid, under its payment-method label. */
+    paymentLast4?: string | null;
     /** The line an image's amount came from, when the sample is an image. */
     line?: number | null;
   };
@@ -342,5 +344,63 @@ export const CORPUS: readonly CorpusCase[] = [
     'a receipt with a discount line and a thank-you',
     ['TOKO SEJAHTERA', 'Kopi Susu 2x   Rp40.000', 'DISKON   -Rp5.000', 'TOTAL   Rp35.000', 'TERIMA KASIH'],
     { skipped: null, amount: { minor: 35_000, currency: 'IDR' }, type: 'spent', name: null, line: 3 },
+  ),
+
+  // ── A wallet's transaction detail, paid by card: the wallet ID is not an account, the payment method is ─────────
+  shot(
+    'wallet transaction detail paid by card, label and value on one line',
+    [
+      'Transaction Detail',
+      'Lazada',
+      '02 Oct 2026 • 21:35',
+      'KANTONG ID 0811•••9159',
+      'Transaction success!',
+      'Payment to Lazada Indonesia',
+      'Total Payment',
+      'Rp1.010.000',
+      'Payment Method Credit Card NUSA (6175)',
+      'Transaction Detail',
+      'CREATE SPLIT BILL',
+      'Ads by Google',
+      'SHARE',
+      'NEED SOME HELP?',
+    ],
+    {
+      skipped: null,
+      amount: { minor: 1_010_000, currency: 'IDR' },
+      type: 'spent',
+      name: 'Lazada Indonesia',
+      occurredAt: '2026-10-02T21:35',
+      accountHint: '6175',
+      paymentLast4: '6175',
+      line: 7,
+    },
+  ),
+  shot(
+    'wallet transaction detail paid by card, label over its value',
+    [
+      'Transaction Detail',
+      'QRIS',
+      '01 Oct 2026 • 11:06',
+      'KANTONG ID 0811•••9159',
+      'Transaction success!',
+      'Payment to Logitek Digital Nusantara',
+      'Total Payment',
+      'Rp295.000',
+      'Payment Method',
+      'Credit Card NUSA (6175)',
+      'Transaction Detail',
+      'SHARE',
+    ],
+    {
+      skipped: null,
+      amount: { minor: 295_000, currency: 'IDR' },
+      type: 'spent',
+      name: 'Logitek Digital Nusantara',
+      occurredAt: '2026-10-01T11:06',
+      accountHint: '6175',
+      paymentLast4: '6175',
+      line: 7,
+    },
   ),
 ];

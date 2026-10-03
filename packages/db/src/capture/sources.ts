@@ -8,7 +8,7 @@
  *
  * Everything here is local. What somebody's banking screens look like is not a fact about their money.
  */
-import { fingerprintOf, type RawCapture, sameSource, type Template, uuidv7 } from '@expanses/core';
+import { appNameOfScreen, fingerprintOf, type RawCapture, sameSource, type Template, uuidv7 } from '@expanses/core';
 import { asc, eq } from 'drizzle-orm';
 import type { Database, Db } from '../database';
 import { captureSources } from '../schema-capture';
@@ -73,10 +73,13 @@ function keyOf(capture: RawCapture): { keyKind: 'app' | 'fingerprint'; key: stri
   const app = capture.app?.trim();
   if (app) return { keyKind: 'app', key: app, label: appNameOf(app) };
   // An image has no app: its top band — the brand, the title bar, the masked digits — is what names it.
-  return { keyKind: 'fingerprint', key: JSON.stringify(fingerprintOf(capture)), label: labelOf(capture) };
+  return { keyKind: 'fingerprint', key: JSON.stringify(fingerprintOf(capture)), label: appNameOfScreen(capture) ?? labelOf(capture) };
 }
 
-/** What to call a screen, before anyone has said what it is: the first thing it says. */
+/**
+ * What to call a screen, before anyone has said what it is, when it prints no app name that can be trusted: the first
+ * thing it says.
+ */
 function labelOf(capture: RawCapture): string {
   return capture.lines[0]?.text.trim() || capture.title?.trim() || 'Capture';
 }

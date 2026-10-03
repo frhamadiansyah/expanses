@@ -9,12 +9,13 @@
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { capturedDayOf, exponentOf, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
+import { capturedDayOf, exponentOf, namesCard, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
 import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
 import { accounts, transactions, workspaces } from '../schema';
+import { cards } from '../schema-cards';
 import { captureSettings, captureSkipped } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
 import { readingWithLines, storedReadingOf } from './learn';
@@ -88,6 +89,43 @@ async function accountFor(tx: Db, source: CaptureSource): Promise<{ id: string; 
   return row ?? null;
 }
 
+/**
+ * The account of the card the capture says paid, when exactly one card in the workspace ends in those digits.
+ *
+ * A wallet screen paid by card ("Payment Method  Credit Card (6175)") is money out of the card, whatever the wallet's
+ * source learned. Four digits repeat across banks, so two cards ending alike — or none — is no answer, and the
+ * source's own account stands.
+ */
+async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null | undefined): Promise<{ id: string; currency: string | null } | null> {
+  if (!last4) return null;
+  const rows = await tx
+    .select({ id: accounts.id, currency: accounts.currency })
+    .from(cards)
+    .innerJoin(accounts, eq(accounts.id, cards.accountId))
+    .where(and(eq(cards.workspaceId, workspaceId), eq(cards.last4, last4), isNull(cards.archivedAt), isNull(accounts.archivedAt)));
+  return rows.length === 1 ? rows[0]! : null;
+}
+
+/**
+ * The note a draft starts with.
+ *
+ * A payment a card made through an app — a wallet's checkout paid by credit card — is noted as the app, then the
+ * merchant: "KANTONG Lazada Indonesia", because the card statement will say the app, not the shop. The app is the
+ * source's label, which the owner can rename. Anything else — the wallet's own balance, a transfer, a capture that
+ * names no payment method — is the merchant alone, as it always was. A merchant that already starts with the app's
+ * name is not given it twice; with no merchant, the note is what the capture says first.
+ */
+function descriptionOf(capture: RawCapture, source: CaptureSource, reading: Reading, paidByCard: boolean): string {
+  const merchant = reading.name?.value?.trim();
+  const app = source.label.trim();
+  // A screen's label is a name only when it was found (the wallet's name) or given by the owner; the fallback is the
+  // screen's own first line ("Transaction Detail"), which is no app name to put before the merchant.
+  const named = source.keyKind === 'app' || app !== (capture.lines[0]?.text.trim() ?? '');
+  if (merchant && app && named && paidByCard) return merchant.toLowerCase().startsWith(app.toLowerCase()) ? merchant : `${app} ${merchant}`;
+  // A picture that read no name still says what it is on its first line.
+  return merchant || capture.title?.trim() || capture.lines[0]?.text.trim() || 'Captured payment';
+}
+
 /** What the source said, verbatim: a notification's own words, or the lines read off an image. */
 function rawPayloadOf(capture: RawCapture): string | null {
   const text = [capture.title, capture.body].filter((part): part is string => part !== null && part !== '').join('\n');
@@ -117,7 +155,12 @@ export async function planDraft(
   opts: { today: string },
 ): Promise<CapturePlan> {
   const workspace = await workspaceFor(tx, ws, source);
-  const account = await accountFor(tx, source);
+  const learned = await accountFor(tx, source);
+  const card = await cardAccountFor(tx, workspace.workspaceId, reading.paymentMethod?.last4);
+  // The card that paid outranks what the source learned; a top-up paid by card is the card's money going in.
+  const account = card ?? learned;
+  const method = reading.paymentMethod ?? null;
+  const paidByCard = card !== null || (method !== null && namesCard(method.text, WORDS));
   const type = reading.type.value;
   const currency = reading.amount?.value.currency ?? account?.currency ?? workspace.baseCurrency;
   // A figure that wore no currency was read in whole units; the account (or the workspace) says how to scale it.
@@ -132,14 +175,12 @@ export async function planDraft(
       kind: type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income',
       // The day where the owner was, from the offset the capture was stamped with — never the UTC day.
       occurredOn: printed?.slice(0, 10) || capturedDayOf(capture.capturedAt) || opts.today,
-      // A picture that read no name still says what it is on its first line.
-      description:
-        reading.name?.value?.trim() || capture.title?.trim() || capture.lines[0]?.text.trim() || 'Captured payment',
+      description: descriptionOf(capture, source, reading, paidByCard),
       // Leaving is positive, arriving is negative: the one convention every other draft already keeps.
       amountMinor: directionOf(type) === 'out' ? amountMinor : -amountMinor,
       currency,
-      accountId: type === 'topup' ? null : (account?.id ?? null),
-      toAccountId: type === 'topup' ? (account?.id ?? null) : null,
+      accountId: type === 'topup' ? (card?.id ?? null) : (account?.id ?? null),
+      toAccountId: type === 'topup' ? (learned?.id ?? null) : null,
       categoryAccountId: null,
       sourceId: source.id,
       captureIds: [capture.id],
@@ -280,11 +321,11 @@ export async function ingestCaptures(
       }
 
       const plan = await planDraft(tx, ws, capture, source, reading, opts);
-      const knows = await accountFor(tx, source);
       const match = await findMatch(tx, plan.workspace, {
         amountMinor: plan.draft.amountMinor,
         currency: plan.draft.currency,
-        accountId: knows?.id ?? null,
+        // The account this capture is about: where a top-up landed, or the account (or card) the money left.
+        accountId: (reading.type.value === 'topup' ? plan.draft.toAccountId : plan.draft.accountId) ?? null,
         direction: directionOf(reading.type.value),
         at: capture.capturedAt,
       });

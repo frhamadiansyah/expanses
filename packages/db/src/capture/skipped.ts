@@ -53,6 +53,7 @@ const toRow = (row: typeof captureSkipped.$inferSelect): SkippedRow => ({
     type: { value: 'spent', confidence: 0, line: null },
     name: null,
     accountHint: null,
+    paymentMethod: null,
   }),
 });
 

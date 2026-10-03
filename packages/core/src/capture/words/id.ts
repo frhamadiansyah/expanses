@@ -12,6 +12,9 @@ export const ID: WordList = {
   amountLabels: ['total', 'total bayar', 'jumlah', 'nominal', 'total pembayaran'],
   nameLabels: ['merchant', 'penerima', 'nama penerima', 'toko', 'pengirim'],
   nameLeadIns: ['ke', 'di', 'dari'],
+  paymentLabels: ['metode pembayaran', 'sumber dana', 'dibayar dengan', 'bayar pakai'],
+  cardWords: ['kartu kredit', 'kartu debit', 'kartu'],
+  idLabels: ['hp', 'no. hp', 'no hp', 'nomor hp', 'nomor ponsel', 'nomor telepon', 'no. telp'],
   thousand: ['rb', 'ribu'],
   million: ['jt', 'juta'],
 };

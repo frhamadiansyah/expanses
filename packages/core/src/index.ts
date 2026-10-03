@@ -511,7 +511,7 @@ export {
 } from './assets/gold-trade';
 export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
 export { capturedDayOf, findDateTime } from './capture/date';
-export { fingerprintOf, sameSource } from './capture/fingerprint';
-export { accountHintOf, readCapture } from './capture/read';
+export { appNameOfScreen, fingerprintOf, sameSource } from './capture/fingerprint';
+export { accountHintOf, namesCard, paymentMethodOf, readCapture } from './capture/read';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';

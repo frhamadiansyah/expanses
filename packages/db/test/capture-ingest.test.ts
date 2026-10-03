@@ -16,8 +16,12 @@ import {
   createAccount,
   createWorkspace,
   type WorkspaceContext,
+  addCard,
+  archiveCard,
+  createCardAccount,
+  listCards,
 } from '../src/index';
-import { captureSkipped } from '../src/schema-capture';
+import { captureSkipped, captureSources } from '../src/schema-capture';
 import { eq } from 'drizzle-orm';
 import { draftTransactions } from '../src/schema-drafts';
 import { setupDb, type TestDb } from './helpers';
@@ -499,5 +503,156 @@ describe('a merged draft, dealt with', () => {
     // A week on the skipped capture goes, and its picture with it; the waiting draft keeps its own.
     expect((await purgeCaptureLeftovers(database, daysFrom(8))).images).toEqual(['captures/promo.png']);
     expect((await draftsOf(database, ws))[0]).toMatchObject({ imageFile: 'captures/38.000.png' });
+  });
+});
+
+/** A wallet's transaction detail, paid by a card: the wallet ID at the top, the card under "Payment Method". */
+const walletDetail = (id: string, merchant: string, figure: string, paidWith = 'Credit Card NUSA (6175)'): RawCapture => ({
+  id,
+  kind: 'screen',
+  capturedAt: '2026-10-02T21:40:00+07:00',
+  app: null,
+  title: null,
+  body: null,
+  lines: [
+    line('Transaction Detail', 0.06),
+    line(merchant.split(' ')[0]!, 0.11),
+    line('02 Oct 2026 • 21:35', 0.14),
+    line('KANTONG ID 0811•••9159', 0.14),
+    line('Transaction success!', 0.2),
+    line(`Payment to ${merchant}`, 0.24),
+    line('Total Payment', 0.3),
+    line(figure, 0.34),
+    line(`Payment Method ${paidWith}`, 0.4),
+  ],
+  imageFile: `captures/${id}.png`,
+});
+
+describe('the card a screen says paid', () => {
+  async function withCard() {
+    const { database, ws, wallet } = await workspace();
+    const card = await createCardAccount(database, ws, { name: 'Travel card', subtype: 'credit_card', currency: 'IDR', issuer: 'NUSA', last4: '6175' });
+    return { database, ws, wallet, cardAccountId: card.id };
+  }
+
+  it('files the payment on the card’s account, over the account the source learned', async () => {
+    const { database, ws, wallet, cardAccountId } = await withCard();
+    await answer(database, ws, walletDetail('d-0', 'Lazada Indonesia', 'Rp1.010.000'), wallet.id);
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ accountId: cardAccountId, amountMinor: 1_010_000 });
+  });
+
+  it('files on the card even when the source has not been told whose it is', async () => {
+    const { database, ws, cardAccountId } = await withCard();
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Logitek Digital Nusantara', 'Rp295.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ accountId: cardAccountId, amountMinor: 295_000 });
+  });
+
+  it('falls back to the learned account when no card, or more than one, ends in those digits', async () => {
+    const { database, ws, wallet, cardAccountId } = await withCard();
+    await answer(database, ws, walletDetail('d-0', 'Lazada Indonesia', 'Rp1.010.000'), wallet.id);
+
+    await ingestCaptures(database, ws, [walletDetail('d-none', 'Lazada Indonesia', 'Rp20.000', 'Credit Card NUSA (9999)')], { today: DAY });
+    const bank = (await listAccounts(database, ws)).find((account) => account.name === 'Everyday bank')!;
+    await addCard(database, ws, { accountId: bank.id, last4: '6175' });
+    await ingestCaptures(database, ws, [walletDetail('d-two', 'Lazada Indonesia', 'Rp30.000')], { today: DAY });
+
+    const drafts = await draftsOf(database, ws);
+    expect(drafts.find((draft) => draft.amountMinor === 20_000)).toMatchObject({ accountId: wallet.id });
+    expect(drafts.find((draft) => draft.amountMinor === 30_000)).toMatchObject({ accountId: wallet.id });
+    expect(cardAccountId).not.toBe(wallet.id);
+  });
+
+  it('passes over a card that has been put away', async () => {
+    const { database, ws } = await workspace();
+    const card = await createCardAccount(database, ws, { name: 'Old card', subtype: 'credit_card', currency: 'IDR', last4: '6175' });
+    const [plastic] = (await listCards(database, ws)).filter((row) => row.accountId === card.id);
+    await archiveCard(database, ws, plastic!.id);
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ accountId: null });
+  });
+});
+
+describe('the note a draft is given', () => {
+  it('is the merchant alone when the screen names no app, even when a card paid', async () => {
+    const { database, ws } = await workspace();
+    const anonymous = walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000');
+    anonymous.lines = anonymous.lines.filter((l) => !l.text.startsWith('KANTONG'));
+
+    await ingestCaptures(database, ws, [anonymous], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Lazada Indonesia' });
+  });
+
+  it('is the app, then the merchant, when a card paid', async () => {
+    const { database, ws } = await workspace();
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'KANTONG Lazada Indonesia' });
+    expect((await listSources(database))[0]).toMatchObject({ label: 'KANTONG' });
+  });
+
+  it('is the app, then the merchant, when the digits match a card the method does not call one', async () => {
+    const { database, ws } = await workspace();
+    await createCardAccount(database, ws, { name: 'Travel card', subtype: 'credit_card', currency: 'IDR', last4: '6175' });
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000', 'NUSA •••• 6175')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'KANTONG Lazada Indonesia' });
+  });
+
+  it('is the merchant alone when the wallet’s balance paid', async () => {
+    const { database, ws } = await workspace();
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000', 'KANTONG Balance')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Lazada Indonesia' });
+  });
+
+  it('is the merchant alone when the capture names no payment method', async () => {
+    const { database, ws } = await workspace();
+    const plain = walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000');
+
+    await ingestCaptures(database, ws, [{ ...plain, lines: plain.lines.slice(0, -1) }, at('09:30')], { today: DAY });
+
+    expect((await draftsOf(database, ws)).map((draft) => draft.description).sort()).toEqual(['Lazada Indonesia', 'TOKO KOPI']);
+  });
+
+  it('follows the name the owner gave the source', async () => {
+    const { database, ws } = await workspace();
+    const source = await sourceFor(database.db, walletDetail('d-0', 'Lazada Indonesia', 'Rp1.010.000'));
+    await database.db.update(captureSources).set({ label: 'Kantong' }).where(eq(captureSources.id, source.id));
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Logitek Digital Nusantara', 'Rp295.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Kantong Logitek Digital Nusantara' });
+  });
+
+  it('does not say the app twice when the merchant already starts with it', async () => {
+    const { database, ws } = await workspace();
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Kantong Mart', 'Rp50.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Kantong Mart' });
+  });
+
+  it('is a notification’s merchant alone, and its app first when a card paid', async () => {
+    const { database, ws } = await workspace();
+
+    await ingestCaptures(
+      database,
+      ws,
+      [at('09:30', { body: 'Pembayaran Rp38.000 berhasil. Merchant: TOKO KOPI. Paid with Credit Card ending 6175' })],
+      { today: DAY },
+    );
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Bank TOKO KOPI' });
   });
 });
