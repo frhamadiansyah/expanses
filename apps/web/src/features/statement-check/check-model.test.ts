@@ -1,6 +1,6 @@
 import type { CheckDraftRow, PreparedCheck } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canRecordAll, missingByDay, needsCategory, recordLabel, statementMonth, summaryOf, takenByOthers, unchosenTied } from './check-model';
+import { canRecordAll, mayBeOnNextStatement, missingByDay, needsCategory, recordLabel, statementMonth, summaryOf, takenByOthers, unchosenTied } from './check-model';
 
 let next = 0;
 function row(patch: Partial<CheckDraftRow> & Pick<CheckDraftRow, 'outcome'>): CheckDraftRow {
@@ -155,6 +155,14 @@ describe('missingByDay', () => {
       ['2026-05-06', [0, 2], -240],
       ['2026-05-24', [3, 4], -58],
     ]);
+  });
+});
+
+describe('mayBeOnNextStatement', () => {
+  it('is said of a transaction dated in the last three days of the period, not earlier', () => {
+    const period = { start: '2026-05-11', end: '2026-06-10' };
+    expect(['2026-06-10', '2026-06-08', '2026-06-07', '2026-06-06', '2026-05-20'].map((on) => mayBeOnNextStatement(on, period))).toEqual([true, true, true, false, false]);
+    expect(mayBeOnNextStatement('', period)).toBe(false);
   });
 });
 

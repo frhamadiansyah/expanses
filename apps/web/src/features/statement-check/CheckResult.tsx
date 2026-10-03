@@ -6,7 +6,7 @@ import { ChoiceSheet } from '../transactions/ChoiceSheet';
 import { Button, cx } from '../../ui';
 import { InsetGroup, InsetRow } from '../../ui/native';
 import { Line } from '../cards/rows';
-import { summaryOf, takenByOthers, unchosenTied } from './check-model';
+import { mayBeOnNextStatement, summaryOf, takenByOthers, unchosenTied } from './check-model';
 import { CreditKindSwitch } from './MissingRows';
 
 /** A recorded transaction or pending draft as a row can name it. */
@@ -272,6 +272,11 @@ export function FlaggedList({
                 {money(item.amountMinor)}
                 {movedTo ? ` · moves to ${movedTo}` : ' · on this card'}
               </p>
+              {mayBeOnNextStatement(item.on, prepared.period) && (
+                <p data-testid="next-statement-hint" className="text-[12.5px] text-[var(--ph-ink-3)]">
+                  May be on the next statement
+                </p>
+              )}
               <div className="mt-[8px] flex flex-wrap gap-[8px]">
                 <Choice pressed={typeof answer === 'object'} disabled={otherCards.length === 0} onClick={() => setMoving(item.transactionId)}>
                   Move to another card

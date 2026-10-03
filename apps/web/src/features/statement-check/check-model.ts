@@ -113,6 +113,16 @@ export function missingByDay(rows: readonly CheckDraftRow[]): MissingDay[] {
   return days;
 }
 
+/** Days before the period's end a recorded transaction may still be billed on the next statement. */
+const NEXT_STATEMENT_DAYS = 3;
+
+/** A transaction the statement does not show, dated so near its end that the bank may bill it on the next one. */
+export function mayBeOnNextStatement(on: string, period: { start: string; end: string }): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(on)) return false;
+  const days = (Date.parse(`${period.end}T00:00:00Z`) - Date.parse(`${on}T00:00:00Z`)) / 86_400_000;
+  return days >= 0 && days <= NEXT_STATEMENT_DAYS;
+}
+
 /** "Record all 9", or with what still holds it back. */
 export function recordLabel(total: number, gaps: number): string {
   if (gaps === 0) return `Record all ${total}`;
