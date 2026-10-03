@@ -40,7 +40,7 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
     key: 'notifications',
     title: 'Notifications',
     blurb: 'A payment notification becomes a draft the moment it arrives, without opening anything.',
-    note: 'Needs iOS 17 or later, where a personal automation can save without asking.',
+    note: 'Needs iOS 27 or later: that is the release where Shortcuts gained the notification trigger. On iOS 26 and earlier the Automation list has no such trigger, so use the Screen scanner instead.',
     steps: [
       'Open Shortcuts.',
       'Automation → New → When I receive a notification.',
