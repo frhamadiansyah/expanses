@@ -1,10 +1,9 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, CaptureSource, DraftRow } from '@expanses/db';
-import { CircleHelp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Card, cx } from '../../ui';
 import { SwipeRow } from '../../ui/SwipeRow';
-import { CategoryIcon } from '../categories/CategoryIcon';
+import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
 import { captureRowView, draftDays } from './capture-view';
 
@@ -88,14 +87,7 @@ function DraftFace({ draft, accounts, source }: { draft: DraftRow; accounts: rea
       {transfer || category ? (
         <CategoryIcon categoryId={category?.id ?? null} accounts={accounts} transfer={transfer} />
       ) : (
-        // No category yet: the unknown mark, in the warning tone, because it is a question still to answer.
-        <span
-          data-testid="category-mark"
-          aria-hidden
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]"
-        >
-          <CircleHelp size={18} strokeWidth={2.2} />
-        </span>
+        <UnknownCategoryMark />
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">

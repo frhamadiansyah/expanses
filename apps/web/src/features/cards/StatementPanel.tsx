@@ -1,8 +1,8 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, payCardPurchases, setPostedOn, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, listStatementChecks, payCardPurchases, setPostedOn, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarArrowUp, Undo2 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
@@ -18,6 +18,7 @@ import { groupStatementLines } from './statement-groups';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { formatPoints } from './useCardPoints';
+import { takeCheckedNote } from '../statement-check/batch';
 
 /** Points worked out for one purchase, with its merchant category code, for the statement's points column. */
 export interface StatementPoints {
@@ -73,6 +74,20 @@ export function StatementPanel({
 
   const currency = card.currency ?? ws.baseCurrency;
   const money = (minor: number) => formatMinor(minor, currency);
+  // The statements checked from screenshots, so a closed cycle that was checked says how it came out.
+  const checks = useQuery({ queryKey: ['statement-checks', ws.workspaceId, card.id], queryFn: () => listStatementChecks(database, ws, card.id) });
+  const checked = cycle.end < today ? checks.data?.find((c) => c.periodStart === cycle.start && c.periodEnd === cycle.end) : undefined;
+  const checkedText = checked
+    ? `Checked · ${checked.status === 'reconciled' ? '✓ Reconciled' : checked.status === 'differs' ? `Differs by ${money(Math.abs(checked.differenceMinor))}` : 'no summary yet'}`
+    : "Compare screenshots of the bank's statement";
+  // Back from a check: what it came to, said once.
+  const [note] = useState(takeCheckedNote);
+  const [noteShown, setNoteShown] = useState(note !== null);
+  useEffect(() => {
+    if (!noteShown) return;
+    const timer = window.setTimeout(() => setNoteShown(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [noteShown]);
   const last4 = (cardId: string | null) => plastic.find((piece) => piece.id === cardId)?.last4;
   /** A card fee, or an MCC the owner set; nothing for a guessed MCC or a plan's rows. */
   // Short, the way statements print it: 126 PTS.
@@ -333,6 +348,14 @@ export function StatementPanel({
         >
           {day(cycle.start)} – {dayYear(cycle.end)}
         </StepperRow>
+        <InsetRow
+          testId="check-statement"
+          title="Check statement"
+          subtitle={checkedText}
+          to="/cards/$cardId/check"
+          params={{ cardId: card.id }}
+          search={{ start: cycle.start, end: cycle.end }}
+        />
       </InsetGroup>
 
       <SearchField label="Search statements" value={query} onChange={setQuery} placeholder="Search every statement: description, category, card digits or amount" />
@@ -434,6 +457,14 @@ export function StatementPanel({
         </form>
       )}
       <ErrorBox error={error ?? statement.error} />
+      {noteShown && note && (
+        <div
+          role="status"
+          className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto max-w-md rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg md:bottom-6"
+        >
+          {note}
+        </div>
+      )}
     </div>
   );
 }
