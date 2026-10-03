@@ -295,7 +295,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         </p>
       )}
       {asksOpen && <p className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">Choose the recorded transaction for each alike row first.</p>}
-      {/* Once the statement is read, only recording sets an error: it shows by the button pressed, as well as at the top. */}
+      {/* Once the statement is read, only recording sets an error: it shows by the button pressed. */}
       {error !== null && (
         <div data-testid="record-error" className="mt-[8px]">
           <ErrorBox error={error} />
@@ -320,7 +320,8 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       {view === 'flagged' && <LargeTitle title="Not on this statement" {...toResult} />}
       {view === 'ask' && <LargeTitle title="Which one was it?" {...toResult} />}
       {view === 'payments' && <LargeTitle title="Payments not tracked" {...toResult} />}
-      <ErrorBox error={error ?? candidates.error} />
+      {/* A record error is announced once: by the Record button while it shows, at the top on the other lists. */}
+      <ErrorBox error={view === 'result' || view === 'missing' ? candidates.error : (error ?? candidates.error)} />
 
       {view === 'result' && <CheckResult prepared={current} rows={rows} ask={decisions.ask} onOpen={setView} footer={footer} />}
       {view === 'payments' && <PaymentsList rows={rows} currency={currency} onKind={onKind} />}
