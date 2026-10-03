@@ -380,6 +380,21 @@ describe('recording a check', () => {
     expect(await listStatementLinks(h.database, result.checkId)).toEqual(expect.arrayContaining([{ checkId: result.checkId, transactionId: paid, kind: 'matched' }]));
   });
 
+  it('a transaction one statement took is not taken again by the next', async () => {
+    const h = await household();
+    const kopi = await h.buy('2026-05-09', 'KOPI SENJA', 35_000);
+    const april = await h.prepare([image([['09MAY', 'KOPI SENJA', '35,000']])], { start: '2026-04-11', end: '2026-05-10' });
+    expect(april.rows[0]!.outcome).toMatchObject({ status: 'matched', candidateIds: [kopi] });
+    await recordStatementCheck(h.database, h.ws, april, NO_DECISIONS);
+
+    const may = await h.prepare([image([['11MAY', 'KOPI SENJA', '35,000']])]);
+    expect(may.rows[0]!.outcome).toMatchObject({ status: 'missing', as: 'purchase' });
+    expect(may.flagged).toEqual([]);
+    // Its own check of the period still finds it again.
+    const aprilAgain = await h.prepare([image([['09MAY', 'KOPI SENJA', '35,000']])], { start: '2026-04-11', end: '2026-05-10' });
+    expect(aprilAgain.rows[0]!.outcome).toMatchObject({ status: 'matched', candidateIds: [kopi] });
+  });
+
   it('a re-check from screenshots that start a row later posts nothing twice', async () => {
     const h = await household();
     await setTrackPayments(h.database, h.card.id, true);

@@ -204,6 +204,26 @@ async function linkedRows(db: Db, ids: readonly string[]): Promise<Set<string>> 
   return new Set(rows.map((r) => r.transactionId));
 }
 
+/**
+ * The transactions another check of this card already took: each is that statement's row, so it is no candidate for
+ * this one. Links of this period's own check stay, so checking the period again finds them again.
+ */
+async function takenByOtherChecks(db: Db, cardAccountId: string, period: StatementPeriod, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ transactionId: statementLinks.transactionId })
+    .from(statementLinks)
+    .innerJoin(statementChecks, eq(statementLinks.checkId, statementChecks.id))
+    .where(
+      and(
+        eq(statementChecks.cardAccountId, cardAccountId),
+        inArray(statementLinks.transactionId, [...ids]),
+        sql`NOT (${statementChecks.periodStart} = ${period.start} AND ${statementChecks.periodEnd} = ${period.end})`,
+      ),
+    );
+  return new Set(rows.map((r) => r.transactionId));
+}
+
 /** What a recorded transaction is to the card: a charge or a credit, and of which kind. Null when it is not one. */
 function candidateOf(view: TransactionView, cardAccountId: string, postedOn: string | undefined, linked: ReadonlySet<string>): Candidate | null {
   // An opening and a balance correction (the "Payments not tracked" line, a start's bridge) are not statement rows; a
@@ -242,8 +262,10 @@ export async function prepareStatementCheck(
   const posted = await postingDates(database, ws, views.map((v) => v.id));
   const viewById = new Map(views.filter((v) => here === null || here.has(v.id)).map((v) => [v.id, v]));
   const linked = await linkedRows(database.db, views.map((v) => v.id));
+  const taken = await takenByOtherChecks(database.db, cardAccountId, period, views.map((v) => v.id));
   const candidates: Candidate[] = [];
   for (const view of [...views].reverse()) {
+    if (taken.has(view.id)) continue;
     const candidate = candidateOf(view, cardAccountId, posted.get(view.id), linked);
     if (candidate) candidates.push(candidate);
   }
