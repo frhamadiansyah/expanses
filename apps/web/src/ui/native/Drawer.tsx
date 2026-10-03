@@ -26,8 +26,9 @@ import { NESTED_ICON, nestedPad, ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metri
  * opens itself is that answer hidden again. The key is the caller's, because a page with two columns of drawers needs
  * one that is unique across both — `group:kind` rather than `kind`.
  */
-export function useDrawers() {
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+export function useDrawers(initiallyOpen: Iterable<string> = []) {
+  // Shut unless the caller already knows what was asked for: a box tapped on the chart above is a drawer asked open.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(initiallyOpen));
   const toggle = (key: string) =>
     setOpen((was) => {
       const next = new Set(was);

@@ -6,10 +6,10 @@ import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
-import { assetKindTile } from '../ownables/catalogue-view';
+import { assetKindTile, assetSectionTile } from '../ownables/catalogue-view';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
-import { ShareBar, ShareLegend } from './ShareBar';
+import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares } from './share-segments';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
@@ -105,8 +105,9 @@ function DrawerFigure({ drawer, baseCurrency }: { drawer: AssetDrawer; baseCurre
  * balance sheet on the page above folds the same money by. A kind of one still folds: "Intangible and other" holding
  * nothing but gold must still say that what is in it is gold.
  */
-function Group({ group, baseCurrency, money }: { group: AssetGroup; baseCurrency: string; money: Set<string> }) {
-  const drawers = useDrawers();
+function Group({ group, baseCurrency, money, opened = false }: { group: AssetGroup; baseCurrency: string; money: Set<string>; opened?: boolean }) {
+  // A group picked on the chart above is shown with everything in it, not as drawers still to open.
+  const drawers = useDrawers(opened ? group.drawers.map((drawer) => `${group.group}:${drawer.key}`) : []);
   const trailing = group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />;
   return (
     <InsetGroup header={group.label} trailing={trailing}>
@@ -142,6 +143,8 @@ export function AssetsPage() {
   const held = useHeldRates((values.data ?? []).map((row) => row.currency));
   const [showSold, setShowSold] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState(false);
+  // The section picked on the chart, if one is: the list below narrows to it.
+  const [picked, setPicked] = useState<string | null>(null);
 
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
@@ -158,8 +161,10 @@ export function AssetsPage() {
   const kinds = new Map((profiles.data ?? []).map((profile) => [profile.accountId, profile.assetKind]));
   const listed = (values.data ?? []).filter((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0 && ['stock', 'fund'].includes(kinds.get(row.accountId) ?? ''));
   const oldPrices = listed.filter((row) => row.source !== 'price' || !row.asOf || priceAgeDays(row.asOf, isoDate()) > 7).length;
-  // The bar divides what is held: a section taken below nought by an overdraft is named under it instead.
+  // The chart divides what is held: a section taken below nought by an overdraft is named under it instead.
   const shares = heldShares(assetSegments(live));
+  // The pick holds only while its box is drawn: a section gone or taken below nought lets go of it.
+  const active = shares.shown.some((segment) => segment.key === picked) ? picked : null;
   // Which of the rows drawn below are money: those open their own page, not the asset page.
   const money = new Set((accounts.data ?? []).filter((account) => CASH_SUBTYPES.has(account.subtype)).map((account) => account.id));
 
@@ -179,12 +184,12 @@ export function AssetsPage() {
       <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error} />
 
       {/*
-       * The page's figure, inside the box it is made of: the bar under it is that total divided, so the number and
+       * The page's figure, inside the box it is made of: the boxes under it are that total divided, so the number and
        * the drawing of it read as one thing rather than a figure with a chart somewhere below it. The caption went
        * with the move — the page is called Assets, and the box sits under that title.
        *
        * What the total is made of is drawn where the list it divides is. It used to sit on the Overview's own column,
-       * beside a total it was read as part of; here the page is about what is owned, and the bar is that page's
+       * beside a total it was read as part of; here the page is about what is owned, and the chart is that page's
        * subject: one segment per section of the statement, in the catalogue's own words.
        */}
       {total.totalMinor !== null && (
@@ -194,10 +199,7 @@ export function AssetsPage() {
             <Hero minor={total.totalMinor} currency={baseCurrency} plain align="center" />
           </div>
           {shares.shown.length > 0 && (
-            <>
-              <ShareBar segments={shares.shown} totalMinor={shares.heldMinor} />
-              <ShareLegend segments={shares.shown} totalMinor={shares.heldMinor} />
-            </>
+            <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={active} onPick={setPicked} />
           )}
           {shares.below.length > 0 && (
             <p data-testid="assets-below-zero" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -207,7 +209,7 @@ export function AssetsPage() {
                   {segment.label} is below zero at <Money minor={segment.minor} currency={baseCurrency} />
                 </span>
               ))}
-              , so the bar divides the rest.
+              , so the chart divides the rest.
             </p>
           )}
         </Panel>
@@ -245,9 +247,13 @@ export function AssetsPage() {
       )}
 
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
-      {live.map((group) => (
-        <Group key={group.group} group={group} baseCurrency={baseCurrency} money={money} />
-      ))}
+      {active !== null && <ShowAll onClick={() => setPicked(null)} />}
+      {live
+        .filter((group) => active === null || group.group === active)
+        .map((group) => (
+          // Keyed by the pick too, so a group picked opens afresh and goes back to its drawers when let go.
+          <Group key={`${group.group}:${active === group.group}`} group={group} baseCurrency={baseCurrency} money={money} opened={active === group.group} />
+        ))}
 
       {listed.length > 0 && (
         <InsetGroup>
