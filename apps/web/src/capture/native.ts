@@ -6,7 +6,7 @@
  * none of that exists — nothing ever arrives, and the calls that only make sense on a phone say so instead of
  * pretending something happened.
  */
-import type { RawCapture } from '@expanses/core';
+import type { CaptureLine, RawCapture } from '@expanses/core';
 import { registerPlugin, WebPlugin } from '@capacitor/core';
 
 export interface CapturePluginApi {
@@ -23,6 +23,8 @@ export interface CapturePluginApi {
   readCaptureImage(opts: { file: string }): Promise<{ base64: string; mime: string }>;
   /** Drops a capture's picture from the app's private storage. */
   deleteCaptureImage(opts: { file: string }): Promise<void>;
+  /** The text of a picture handed over as base64, read on the phone; nothing is stored. */
+  recognizeImage(opts: { base64: string }): Promise<{ lines: CaptureLine[] }>;
   /** How much is still waiting in the holding area, and how much of it could not be opened. */
   holdingAreaStatus(): Promise<{ pending: number; broken: number }>;
 }
@@ -49,6 +51,13 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
 
   async deleteCaptureImage(): Promise<void> {
     // There is no picture here to delete.
+  }
+
+  async recognizeImage(_opts: { base64: string }): Promise<{ lines: CaptureLine[] }> {
+    // The e2e build's injected readings stand in for Vision, one per call, in order.
+    const lines = import.meta.env.VITE_E2E === '1' ? window.__statementLines?.shift() : undefined;
+    if (lines) return { lines };
+    throw new Error('Not available here');
   }
 
   async holdingAreaStatus(): Promise<{ pending: number; broken: number }> {
