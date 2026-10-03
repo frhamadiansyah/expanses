@@ -74,7 +74,9 @@ Input: the Vision lines of each image (`CaptureLine[]`: text, box, height — th
 6. **Learned layout.** If the owner corrects a row's amount or date, the card remembers which column held it. This
    is the capture template idea, keyed by the card (§3.4 of the transaction-capture spec).
 
-Output: `StatementReading { rows: StatementRow[]; closingMinor: number | null; previousMinor: number | null; skipped: string[] }`.
+Output: `StatementReading { rows: StatementRow[]; closingMinor: number | null; previousMinor: number | null; emptyImages: number[] }`.
+(Corrected in the build: the screenshots that gave nothing are listed by index as `emptyImages`, which is what
+"Nothing read from screenshot N" needs; the draft's `skipped: string[]` was never built.)
 Each `StatementRow` has `{ on, postedOn, description, amountMinor (positive), direction: 'out'|'in', isFee }`.
 Amounts are in the card's currency and IDR has exponent 0.
 
@@ -94,7 +96,9 @@ For each row, in date order, against the card's transactions in the period plus 
   - With tracking off: payments are summed into §3.6's adjustment, not matched.
   - With tracking on: a payment matches a transfer into the card within ±5 days. Several rows may sum to one
     transfer. Unmatched payments become transfer drafts.
-- **Ties.** The text and then the date break ties between same-amount candidates. If still unclear: **Ask**.
+- **Ties.** The date and then the text break ties between same-amount candidates. If still unclear: **Ask**.
+  (Corrected in the build: the nearer date decides first, as Review Focus 3 expects; the text only breaks a tie
+  between equally near dates.)
 - **Each transaction matches at most one row,** except a payment matched by a sum.
 - **Flagged:** every transaction on the card inside the period that no row matched is **Recorded, not on this
   statement**. Choices: **Move to another card**, **Delete**, **Keep**. Transactions after the closing date are not
@@ -143,16 +147,20 @@ For each row, in date order, against the card's transactions in the period plus 
 
 - `statement_checks(id, workspace_id, card_account_id, period_start, period_end, closing_minor, previous_minor,
   status 'reconciled'|'differs'|'open', difference_minor, checked_at)`.
-- `statement_links(check_id, transaction_id, kind 'matched'|'recorded'|'differs-kept'|'differs-updated')`, which
-  links each transaction to the check it belongs to.
-- The per-card setting **Track card payments** is stored with the card's terms; it defaults to off.
-- Synced like the card's other data (shared workspaces see the reconciled status). **No statement text and no image
-  is stored**; rows exist only in memory during the check.
+- `statement_links(check_id, transaction_id, kind 'matched'|'recorded'|'differs-kept'|'differs-updated'|
+  'payments-untracked')`, which links each transaction to the check it belongs to.
+- The per-card setting **Track card payments** is stored beside the card's terms, in `card_statement_settings`; it
+  defaults to off.
+- **Device-local, never synced** (corrected in the build): the card's terms, postings and settlements are not synced
+  today, so the checks, their links and the setting stay on the device too (none is in `SHARED_ENTITIES`). The
+  transactions a check posts are ordinary transactions and sync as usual. **No statement text and no image is
+  stored**; rows exist only in memory during the check.
 
 ### 3.6 "Payments not tracked" (S7)
 
 - **One transaction per statement.** It moves money into the card from the system **opening balance** equity
-  account, by the sum of the statement's payment rows. Its description is "Payments not tracked (N payments)".
+  account, by the sum of the statement's payment rows. Its description is "Payments not tracked (N payments)" ("(1
+  payment)" for one).
 - **Excluded from reports**, from spending and from the main transaction list, using the existing exclude flag plus
   a list filter for this system kind.
 - **Where it shows:** only in the card's statement list, under the Payment group.

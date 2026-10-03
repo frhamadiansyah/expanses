@@ -102,7 +102,13 @@ export function buildRows(
   const cardById = new Map(cards.map((card) => [card.id, card]));
   const isPerson = (id: string) => ['receivable', 'payable'].includes(byId.get(id)?.subtype ?? '');
 
-  const recorded = txs.map((tx): ListRow => {
+  // A statement check's "Payments not tracked" adjustment (statement-check spec §3.6) is the card's business alone: it
+  // shows in the card's statement list, never here. Known by its description and its opening-balance equity side.
+  const quiet = (tx: TransactionView) =>
+    tx.description.startsWith('Payments not tracked (') &&
+    tx.entries.some((e) => (e.accountSystemKey ?? byId.get(e.accountId)?.systemKey) === 'opening_balance');
+
+  const recorded = txs.filter((tx) => !quiet(tx)).map((tx): ListRow => {
     const c = classify(tx);
     const categoryId = c.categoryIds[0] ?? null;
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
