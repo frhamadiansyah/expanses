@@ -198,4 +198,46 @@ export const STATEMENT_CORPUS: StatementCase[] = [
     currency: 'IDR',
     expected: reading([row('2026-05-21', 'BENGKEL MAJU', 300000)], { closingMinor: 300000, emptyImages: [2] }),
   },
+  {
+    name: 'a date printed with its year on a line of its own is a heading, not a transaction of its year in rupiah',
+    images: [[line('12 Mei 2026', 0.05, 0.05, 0.3), ...oneDate(0.1, '12 Mei 2026', 'TOKO ROTI', '45.000')]],
+    period: MAY_JUN,
+    currency: 'IDR',
+    expected: reading([row('2026-05-12', 'TOKO ROTI', 45000)]),
+  },
+  {
+    name: "a description that starts with a number and a month-like word is not a second date",
+    images: [
+      [
+        ...oneDate(0.1, '06/05', '3 MAYBERRY CLINIC', '150.000'),
+        ...oneDate(0.15, '07/05', '2 MARKET STREET', '20.000'),
+        ...oneDate(0.2, '08 Mei', '9 Mei Bakery', '30.000'),
+      ],
+    ],
+    period: { start: '2026-05-01', end: '2026-05-31' },
+    currency: 'IDR',
+    // `08 Mei` then `9 Mei` has the shape of two word dates, so it is read as posting and transaction dates.
+    expected: reading([
+      row('2026-05-06', '3 MAYBERRY CLINIC', 150000),
+      row('2026-05-07', '2 MARKET STREET', 20000),
+      row('2026-05-09', 'Bakery', 30000, { postedOn: '2026-05-08' }),
+    ]),
+  },
+  {
+    name: 'interest is a fee only when it says so: a florist is not a charge',
+    images: [
+      [
+        ...oneDate(0.1, '14/05', 'TOKO BUNGA MAWAR', '120.000'),
+        ...oneDate(0.15, '31/05', 'BIAYA BUNGA', '35.000'),
+        ...oneDate(0.2, '31/05', 'BUNGA KARTU KREDIT', '12.000'),
+      ],
+    ],
+    period: { start: '2026-05-01', end: '2026-05-31' },
+    currency: 'IDR',
+    expected: reading([
+      row('2026-05-14', 'TOKO BUNGA MAWAR', 120000),
+      row('2026-05-31', 'BIAYA BUNGA', 35000, { isFee: true }),
+      row('2026-05-31', 'BUNGA KARTU KREDIT', 12000, { isFee: true }),
+    ]),
+  },
 ];

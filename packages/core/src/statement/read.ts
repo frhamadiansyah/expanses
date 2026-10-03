@@ -41,6 +41,8 @@ interface PrintedDate {
   month: number;
   year: number | null;
   length: number;
+  /** `word` for `06MAY`, `numeric` for `06/05`: a statement prints both of a row's dates the same way. */
+  shape: 'word' | 'numeric';
 }
 
 /** `06MAY`, `06 MAY`, `6 Mei`, `12 Mei 2026`, `10JUN2026`. */
@@ -51,9 +53,11 @@ const NUMBER_DATE = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?=\s|$)/;
 function dateAt(text: string): PrintedDate | null {
   const word = WORD_DATE.exec(text);
   if (word) {
-    const month = W.months[word[2]!.slice(0, 3).toLowerCase()];
+    // The whole word must be a month — `MAY`, `Mei`, `August` — so a shop called `3 MAYxxx` is not the 3rd of May.
+    const name = word[2]!.toLowerCase();
+    const month = W.months[name] ?? W.monthNames[name];
     if (month !== undefined) {
-      return { day: Number(word[1]), month, year: word[3] === undefined ? null : Number(word[3]), length: word[0].length };
+      return { day: Number(word[1]), month, year: word[3] === undefined ? null : Number(word[3]), length: word[0].length, shape: 'word' };
     }
   }
   const num = NUMBER_DATE.exec(text);
@@ -61,7 +65,7 @@ function dateAt(text: string): PrintedDate | null {
     const raw = num[3];
     const year = raw === undefined ? null : raw.length === 2 ? 2000 + Number(raw) : raw.length === 4 ? Number(raw) : NaN;
     if (Number.isNaN(year)) return null;
-    return { day: Number(num[1]), month: Number(num[2]), year, length: num[0].length };
+    return { day: Number(num[1]), month: Number(num[2]), year, length: num[0].length, shape: 'numeric' };
   }
   return null;
 }
@@ -103,13 +107,18 @@ function placeDate(printed: PrintedDate, period: StatementPeriod): string | null
   return null;
 }
 
-/** Up to two dates at the left of a row, and where the text after them starts. */
+/**
+ * Up to two dates at the left of a row, and where the text after them starts. A second date counts only in the first's
+ * shape: `06/05 3 MAY...` is one date and a description, `07MAY 06MAY` is two dates.
+ */
 function leadingDates(text: string, period: StatementPeriod): { dates: string[]; rest: number } {
   const dates: string[] = [];
+  let shape: PrintedDate['shape'] | null = null;
   let at = 0;
   while (dates.length < 2) {
     const printed = dateAt(text.slice(at));
-    if (!printed) break;
+    if (!printed || (shape !== null && printed.shape !== shape)) break;
+    shape = printed.shape;
     const iso = placeDate(printed, period);
     if (iso === null) break;
     dates.push(iso);
@@ -177,8 +186,9 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
       const amount = trailingAmount(text, currency);
       if (amount === null) continue;
       const { dates, rest } = leadingDates(text, period);
-      if (dates.length > 0) {
-        const description = text.slice(rest, amount.start).replace(/\s+/g, ' ').trim();
+      const description = dates.length > 0 && amount.start >= rest ? text.slice(rest, amount.start).replace(/\s+/g, ' ').trim() : '';
+      // A transaction has a date, then a description, then the amount; a lone `12 Mei 2026` is a date, not Rp2.026.
+      if (description !== '') {
         imageRows.push({
           on: dates[dates.length - 1]!,
           postedOn: dates.length === 2 ? dates[0]! : null,

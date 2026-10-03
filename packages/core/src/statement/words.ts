@@ -15,18 +15,25 @@ export interface StatementWords {
   inMarkers: string[];
   /** Markers after an amount that mean money out. */
   outMarkers: string[];
-  /** A month's first three letters, in either language, to its number. */
+  /** A month's three-letter form, in either language, to its number. */
   months: Record<string, number>;
+  /** A month's full name, in either language, to its number. A month word is one of these or of `months`, exactly. */
+  monthNames: Record<string, number>;
 }
 
 export const STATEMENT_WORDS: StatementWords = {
   closing: ['new balance', 'closing balance', 'saldo akhir', 'tagihan baru', 'total tagihan', 'outstanding', 'current balance'],
   previous: ['previous balance', 'saldo sebelumnya', 'tagihan sebelumnya', 'last statement balance'],
-  fee: ['fee', 'biaya', 'materai', 'stamp duty', 'interest', 'bunga', 'annual', 'iuran', 'late charge', 'denda'],
+  fee: ['fee', 'biaya', 'materai', 'stamp duty', 'interest', 'biaya bunga', 'bunga kartu', 'annual', 'iuran', 'late charge', 'denda'],
   inMarkers: ['cr', 'k', 'kredit', 'credit'],
   outMarkers: ['db', 'd', 'debit'],
   months: {
     jan: 1, feb: 2, mar: 3, apr: 4, may: 5, mei: 5, jun: 6, jul: 7, aug: 8, agu: 8, ags: 8, sep: 9, oct: 10, okt: 10,
     nov: 11, dec: 12, des: 12,
+  },
+  monthNames: {
+    january: 1, januari: 1, february: 2, februari: 2, march: 3, maret: 3, april: 4, may: 5, mei: 5, june: 6, juni: 6,
+    july: 7, juli: 7, august: 8, agustus: 8, september: 9, october: 10, oktober: 10, november: 11, december: 12,
+    desember: 12,
   },
 };
