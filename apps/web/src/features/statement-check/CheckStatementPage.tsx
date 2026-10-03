@@ -12,6 +12,8 @@ import {
   type PreparedCheck,
   prepareStatementCheck,
   recordStatementCheck,
+  setCreditKind,
+  withRows,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -25,7 +27,7 @@ import { Button, Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
-import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList } from './CheckResult';
+import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
 import { canRecordAll, needsCategory, recordLabel, statementMonth } from './check-model';
 import { MissingRows } from './MissingRows';
 
@@ -185,7 +187,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
     setError(null);
     setBusy(true);
     try {
-      const result = await recordStatementCheck(database, ws, { ...prepared, rows }, decisions);
+      const result = await recordStatementCheck(database, ws, withRows(prepared, rows), decisions);
       const month = statementMonth(prepared.period);
       setCheckedNote(
         result.status === 'reconciled'
@@ -299,6 +301,8 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   const month = statementMonth(prepared.period);
   const year = prepared.period.start.slice(0, 4);
   const toResult = { back: `${month} statement`, onBack: () => setView('result') };
+  const current = withRows(prepared, rows);
+  const onKind = (index: number, kind: 'refund' | 'payment') => setRows((was) => setCreditKind(was, index, kind, prepared.trackPayments));
   const otherCards = accounts.filter((a) => a.id !== card.id && a.archivedAt === null && a.subtype === 'credit_card' && (a.currency ?? ws.baseCurrency) === currency);
 
   return (
@@ -309,9 +313,11 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       {view === 'differs' && <LargeTitle title="Amount differs" {...toResult} />}
       {view === 'flagged' && <LargeTitle title="Not on this statement" {...toResult} />}
       {view === 'ask' && <LargeTitle title="Which one was it?" {...toResult} />}
+      {view === 'payments' && <LargeTitle title="Payments not tracked" {...toResult} />}
       <ErrorBox error={error ?? candidates.error} />
 
-      {view === 'result' && <CheckResult prepared={prepared} rows={rows} ask={decisions.ask} onOpen={setView} footer={footer} />}
+      {view === 'result' && <CheckResult prepared={current} rows={rows} ask={decisions.ask} onOpen={setView} footer={footer} />}
+      {view === 'payments' && <PaymentsList rows={rows} currency={currency} onKind={onKind} />}
       {view === 'missing' && (
         <MissingRows
           rows={rows}
@@ -320,6 +326,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           accounts={accounts}
           onPick={(index, categoryId) => setRows((was) => fillSameMerchant(was, index, categoryId))}
           onCorrect={(index, patch) => setRows((was) => was.map((r) => (r.index === index ? { ...r, ...patch } : r)))}
+          onKind={onKind}
           footer={footer}
         />
       )}

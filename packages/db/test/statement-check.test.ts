@@ -24,7 +24,9 @@ import {
   prepareStatementCheck,
   recordStatementCheck,
   saveCardTerms,
+  setCreditKind,
   setTrackPayments,
+  withRows,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -438,6 +440,42 @@ describe('recording a check', () => {
     const balances = await h.balances();
     expect(balances[h.card.id] ?? 0).toBe(0);
     expect(balances[h.fees] ?? 0).toBe(0);
+  });
+
+  it('a credit read as a refund and switched to a card payment posts into the payments line, not spending', async () => {
+    const h = await household();
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000'], ['14MAY', 'SETORAN TUNAI', '60,000CR']], { previous: '0', closing: '40,000' })]);
+    expect(prepared.rows[1]!.outcome).toMatchObject({ status: 'missing', as: 'refund' });
+    expect(prepared.trackPayments).toBe(false);
+    const switched = setCreditKind(categorised(prepared.rows, h.groceries), 1, 'payment', prepared.trackPayments);
+    expect(switched[1]!.outcome).toEqual({ row: 1, status: 'payment-untracked' });
+    // Switched back, it is money back again, keeping the category it had.
+    expect(prepared.rows[1]!.categorySource).toBe('refund');
+    expect(setCreditKind(switched, 1, 'refund', false)[1]).toMatchObject({ outcome: { row: 1, status: 'missing', as: 'refund' }, categoryId: prepared.rows[1]!.categoryId });
+    expect(withRows(prepared, switched)).toMatchObject({ untrackedPaymentsMinor: 60_000, untrackedPaymentsCount: 1 });
+
+    const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: switched }, NO_DECISIONS);
+    expect(result).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    const balances = await h.balances();
+    expect(balances[h.card.id]).toBe(-40_000);
+    expect(balances[h.groceries]).toBe(100_000);
+    expect(balances[prepared.rows[1]!.categoryId!] ?? 0).toBe(0);
+    const lines = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Payments not tracked'));
+    expect(lines.map((t) => t.description)).toEqual(['Payments not tracked (1 payment)']);
+  });
+
+  it('with payments tracked, a credit switched to a card payment is recorded as one', async () => {
+    const h = await household();
+    await setTrackPayments(h.database, h.card.id, true);
+    const prepared = await h.prepare([image([['14MAY', 'SETORAN TUNAI', '60,000CR']])]);
+    const switched = setCreditKind(prepared.rows, 0, 'payment', prepared.trackPayments);
+    expect(switched[0]!.outcome).toEqual({ row: 0, status: 'missing', as: 'payment' });
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows: switched }, NO_DECISIONS);
+    const [payment] = await listTransactions(h.database, h.ws, { accountId: h.card.id });
+    expect(payment).toMatchObject({ description: 'Card payment', excluded: false });
+    // A purchase is never switched.
+    const purchase = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']])]);
+    expect(setCreditKind(purchase.rows, 0, 'payment', true)).toEqual(purchase.rows);
   });
 
   it('refuses to record while a row the matcher could not decide is unanswered', async () => {

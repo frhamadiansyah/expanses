@@ -1,5 +1,5 @@
 import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
-import type { AccountRow, CheckDraftRow } from '@expanses/db';
+import { type AccountRow, type CheckDraftRow, creditKindOf } from '@expanses/db';
 import { MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -13,7 +13,8 @@ import { missingByDay, needsCategory } from './check-model';
 /**
  * The statement's rows missing from cicis, drawn like the Cashflow list (S9): a card per day, the category's circle,
  * the category as the title and "merchant · card" underneath. A tap chooses the category, which fills every row of
- * the same merchant; ⋯ corrects the amount or date the screenshot gave.
+ * the same merchant; ⋯ corrects the amount or date the screenshot gave. A credit says whether it is money back or a
+ * card payment.
  */
 export function MissingRows({
   rows,
@@ -22,6 +23,7 @@ export function MissingRows({
   accounts,
   onPick,
   onCorrect,
+  onKind,
   footer,
 }: {
   rows: readonly CheckDraftRow[];
@@ -30,6 +32,7 @@ export function MissingRows({
   accounts: readonly AccountRow[];
   onPick: (index: number, categoryId: string) => void;
   onCorrect: (index: number, patch: { on: string; amountMinor: number }) => void;
+  onKind: (index: number, kind: 'refund' | 'payment') => void;
   footer: ReactNode;
 }) {
   const [tab, setTab] = useState<'all' | 'gaps'>('all');
@@ -62,37 +65,40 @@ export function MissingRows({
               const name = nameOf(row.categoryId);
               const source = row.categorySource === 'known' ? 'known · ' : row.categorySource === 'same-merchant' ? 'same merchant · ' : '';
               return (
-                <li key={row.index} data-testid="missing-row" className="flex list-none items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={payment}
-                    onClick={() => setPicking(row)}
-                    className="ph-focus flex min-w-0 flex-1 items-center gap-3 py-2 text-left"
-                  >
-                    {payment || row.categoryId ? <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={payment} /> : <UnknownCategoryMark />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {payment ? 'Card payment' : name ? name : <span className="text-[var(--ph-warn)]">Choose category</span>}
+                <li key={row.index} data-testid="missing-row" className="list-none">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={payment}
+                      onClick={() => setPicking(row)}
+                      className="ph-focus flex min-w-0 flex-1 items-center gap-3 py-2 text-left"
+                    >
+                      {payment || row.categoryId ? <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={payment} /> : <UnknownCategoryMark />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {payment ? 'Card payment' : name ? name : <span className="text-[var(--ph-warn)]">Choose category</span>}
+                        </span>
+                        <span className="block truncate text-xs text-[var(--ph-ink-3)]">
+                          {source && <span className="text-[var(--ph-tint)]">{source}</span>}
+                          {row.description}
+                          {' · '}
+                          {cardName}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-[var(--ph-ink-3)]">
-                        {source && <span className="text-[var(--ph-tint)]">{source}</span>}
-                        {row.description}
-                        {' · '}
-                        {cardName}
+                      <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                        {formatMinor(row.amountMinor, currency)}
                       </span>
-                    </span>
-                    <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
-                      {formatMinor(row.amountMinor, currency)}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Correct ${row.description}`}
-                    onClick={() => setEditing(row)}
-                    className="ph-focus flex h-11 w-9 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
-                  >
-                    <MoreHorizontal size={18} aria-hidden />
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Correct ${row.description}`}
+                      onClick={() => setEditing(row)}
+                      className="ph-focus flex h-11 w-9 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
+                    >
+                      <MoreHorizontal size={18} aria-hidden />
+                    </button>
+                  </div>
+                  {creditKindOf(row) !== null && <CreditKindSwitch row={row} onKind={onKind} className="pb-[8px]" />}
                 </li>
               );
             })}
@@ -112,6 +118,24 @@ export function MissingRows({
       )}
       {editing && <CorrectSheet row={editing} currency={currency} onSave={(patch) => onCorrect(editing.index, patch)} onClose={() => setEditing(null)} />}
     </>
+  );
+}
+
+/** Money back or a card payment: the owner's word on a credit the reading may have taken for the other. */
+export function CreditKindSwitch({ row, onKind, className }: { row: CheckDraftRow; onKind: (index: number, kind: 'refund' | 'payment') => void; className?: string }) {
+  const kind = creditKindOf(row);
+  if (kind === null) return null;
+  return (
+    <SegmentedControl
+      label={`What ${row.description} is`}
+      className={className}
+      value={kind}
+      onChange={(key) => onKind(row.index, key as 'refund' | 'payment')}
+      segments={[
+        { key: 'refund', label: 'Refund' },
+        { key: 'payment', label: 'Card payment' },
+      ]}
+    />
   );
 }
 

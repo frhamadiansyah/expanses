@@ -237,6 +237,11 @@ describe('looksLikeRefund', () => {
     expect(looksLikeRefund(payment, [{ description: 'KOPI SENJA JAKARTA SLT ID', amountMinor: 126_500 }])).toBe(false);
   });
 
+  it('reads a credit naming a transfer as the holder’s payment', () => {
+    const transfer = row('2026-05-08', 'TRANSFER DARI REK 123', 3_000_000, { direction: 'in' });
+    expect(looksLikeRefund(transfer, [])).toBe(false);
+  });
+
   it('reads a credit naming a shop as a refund with no earlier purchase', () => {
     const credit = row('2026-05-08', 'TOKO SEPATU MAJU', 250_000, { direction: 'in' });
     expect(looksLikeRefund(credit, [])).toBe(true);

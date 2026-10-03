@@ -102,6 +102,8 @@ export interface PreparedCheck {
    */
   needsPreviousBalance: boolean;
   alreadyChecked: boolean;
+  /** The card's Track card payments setting (S7), which decides what a credit switched to a card payment becomes. */
+  trackPayments: boolean;
   /** The day the check was prepared for: what recording reads the card's balance on, unless told otherwise. */
   today: string;
 }
@@ -349,7 +351,6 @@ export async function prepareStatementCheck(
   }
 
   const byCandidate = new Map(candidates.map((c) => [c.id, c]));
-  const untracked = rows.filter((r) => r.outcome.status === 'payment-untracked');
   const opening = await openingOfCard(database.db, ws, cardAccountId);
   const startsAfterPeriod = opening !== null && opening.occurredOn > period.start;
   const [existing] = await database.db
@@ -361,6 +362,7 @@ export async function prepareStatementCheck(
     cardAccountId,
     period,
     currency: card.currency,
+    ...untrackedOf(rows),
     rows,
     flagged: flagged.map((id) => {
       const c = byCandidate.get(id)!;
@@ -369,12 +371,11 @@ export async function prepareStatementCheck(
     closingMinor: reading.closingMinor,
     previousMinor: reading.previousMinor,
     emptyImages: reading.emptyImages,
-    untrackedPaymentsMinor: untracked.reduce((sum, r) => sum + r.amountMinor, 0),
-    untrackedPaymentsCount: untracked.length,
     cardBalanceAtEndMinor: (await cardStatement(database, ws, cardAccountId, period, input.today)).closingMinor,
     startsAfterPeriod,
     needsPreviousBalance: startsAfterPeriod && reading.previousMinor === null && (existing?.previousMinor ?? null) === null,
     alreadyChecked: existing !== undefined,
+    trackPayments,
     today: input.today,
   };
 }
@@ -393,6 +394,39 @@ export function fillSameMerchant(rows: CheckDraftRow[], index: number, categoryI
       return { ...r, categoryId, categorySource: 'same-merchant' };
     }
     return r;
+  });
+}
+
+/** The statement's card payments that match nothing recorded: one quiet line on the card (§3.6). */
+function untrackedOf(rows: readonly CheckDraftRow[]): { untrackedPaymentsMinor: number; untrackedPaymentsCount: number } {
+  const untracked = rows.filter((r) => r.outcome.status === 'payment-untracked');
+  return { untrackedPaymentsMinor: untracked.reduce((sum, r) => sum + r.amountMinor, 0), untrackedPaymentsCount: untracked.length };
+}
+
+/** The check with the owner's rows, its payments line counted from them. Pure. */
+export function withRows(prepared: PreparedCheck, rows: CheckDraftRow[]): PreparedCheck {
+  return { ...prepared, rows, ...untrackedOf(rows) };
+}
+
+/** A credit row the owner may call money back or a card payment: one still to record or in the payments line. */
+export function creditKindOf(row: CheckDraftRow): 'refund' | 'payment' | null {
+  if (row.direction !== 'in') return null;
+  if (row.outcome.status === 'payment-untracked') return 'payment';
+  if (row.outcome.status === 'missing') return row.outcome.as === 'payment' ? 'payment' : 'refund';
+  return null;
+}
+
+/**
+ * The owner says what a missing credit is: money back, recorded under a category, or a card payment — into the
+ * payments line, or recorded as a card payment when the card's payments are tracked. The category it had stays, so
+ * switching back restores it. Any other row is left as it is. Pure; the rows given are not changed.
+ */
+export function setCreditKind(rows: CheckDraftRow[], index: number, kind: 'refund' | 'payment', trackPayments: boolean): CheckDraftRow[] {
+  return rows.map((r) => {
+    if (r.index !== index || creditKindOf(r) === null) return r;
+    const outcome: RowOutcome =
+      kind === 'refund' ? { row: r.outcome.row, status: 'missing', as: 'refund' } : trackPayments ? { row: r.outcome.row, status: 'missing', as: 'payment' } : { row: r.outcome.row, status: 'payment-untracked' };
+    return { ...r, outcome };
   });
 }
 
@@ -619,9 +653,9 @@ export async function recordStatementCheck(
       }
     }
 
-    // §3.6: the statement's card payments that match nothing recorded, as one quiet balance correction.
-    const count = prepared.untrackedPaymentsCount;
-    const total = prepared.untrackedPaymentsMinor;
+    // §3.6: the statement's card payments that match nothing recorded, as one quiet balance correction. Counted from
+    // the rows, so a credit the owner switched to a card payment is in it.
+    const { untrackedPaymentsCount: count, untrackedPaymentsMinor: total } = untrackedOf(prepared.rows);
     const description = `${PAYMENTS_NOT_TRACKED_PREFIX}${count} payment${count === 1 ? '' : 's'})`;
     const adjustmentLines = transferLines({ fromAccountId: correctionId, toAccountId: cardAccountId, amountMinor: total, currency: card.currency });
     const priorAdjustment = priorLinks.find((l) => l.kind === 'payments-untracked');

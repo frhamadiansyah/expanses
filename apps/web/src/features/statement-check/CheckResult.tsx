@@ -7,6 +7,7 @@ import { Button, cx } from '../../ui';
 import { InsetGroup, InsetRow } from '../../ui/native';
 import { Line } from '../cards/rows';
 import { summaryOf, takenByOthers, unchosenTied } from './check-model';
+import { CreditKindSwitch } from './MissingRows';
 
 /** A recorded transaction or pending draft as a row can name it. */
 export interface CandidateInfo {
@@ -15,7 +16,7 @@ export interface CandidateInfo {
   amountMinor: number;
 }
 
-export type CheckList = 'matched' | 'differs' | 'missing' | 'flagged' | 'ask';
+export type CheckList = 'matched' | 'differs' | 'missing' | 'flagged' | 'ask' | 'payments';
 
 const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
@@ -94,13 +95,32 @@ export function CheckResult({
             title="Payments not tracked"
             subtitle={`One quiet line on the card · −${money(prepared.untrackedPaymentsMinor)}`}
             value={String(counts.payments)}
-            chevron={false}
+            onClick={() => onOpen('payments')}
           />
         )}
         <InsetRow testId="count-flagged" title="Recorded, not on this statement" value={String(notOn)} onClick={() => onOpen('flagged')} />
       </InsetGroup>
       {footer}
     </>
+  );
+}
+
+/** The card payments that go into the one quiet line. Any of them may be money back instead. */
+export function PaymentsList({ rows, currency, onKind }: { rows: CheckDraftRow[]; currency: string; onKind: (index: number, kind: 'refund' | 'payment') => void }) {
+  const payments = rows.filter((r) => r.outcome.status === 'payment-untracked');
+  return (
+    <InsetGroup header="Payments not tracked" footer="Summed into one quiet line on the card. A refund here is recorded under a category instead.">
+      {payments.length === 0 && <InsetRow title="No payment left untracked" chevron={false} />}
+      {payments.map((row) => (
+        <Line key={row.index} testId="payment-row">
+          <p className="text-[15px] text-[var(--ph-ink)]">{row.description}</p>
+          <p className="tabular mb-[8px] text-[12.5px] text-[var(--ph-ink-3)]">
+            {day(row.on)} · {formatMinor(row.amountMinor, currency)}
+          </p>
+          <CreditKindSwitch row={row} onKind={onKind} />
+        </Line>
+      ))}
+    </InsetGroup>
   );
 }
 

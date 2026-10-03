@@ -38,6 +38,7 @@ function prepared(patch: Partial<PreparedCheck>): PreparedCheck {
     startsAfterPeriod: false,
     needsPreviousBalance: false,
     alreadyChecked: false,
+    trackPayments: false,
     today: '2026-06-15',
     ...patch,
   };

@@ -27,7 +27,7 @@ export const STATEMENT_WORDS: StatementWords = {
   closing: ['new balance', 'closing balance', 'saldo akhir', 'tagihan baru', 'total tagihan', 'outstanding', 'current balance'],
   previous: ['previous balance', 'saldo sebelumnya', 'tagihan sebelumnya', 'last statement balance'],
   fee: ['fee', 'biaya', 'materai', 'stamp duty', 'interest', 'biaya bunga', 'bunga kartu', 'annual', 'iuran', 'late charge', 'denda'],
-  paymentWords: ['payment', 'pembayaran', 'terima kasih', 'thank you', 'autodebet', 'autodebit', 'autopay'],
+  paymentWords: ['payment', 'pembayaran', 'terima kasih', 'thank you', 'autodebet', 'autodebit', 'autopay', 'transfer'],
   inMarkers: ['cr', 'k', 'kredit', 'credit'],
   outMarkers: ['db', 'd', 'debit'],
   months: {
