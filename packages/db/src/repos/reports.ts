@@ -41,6 +41,8 @@ async function categoryRows(
   // The budget and Cashflow ask for bills in the month they came out; every other reader keeps the day paid.
   const byBillMonth = opts.billMonths === true && (await billTablesExist(database.db));
   const paid = opts.paidAccountId;
+  // What the filtered account put into a transaction, in base: one entry, or the sum of several on the same account.
+  const ownSum = sql`(SELECT sum(own.amount_base_minor) FROM entries own WHERE own.transaction_id = ${transactions.id} AND own.account_id = ${paid ?? null})`;
   const inPeriod = byBillMonth
     ? [
         // The first test keeps the date index in play; the second moves a bill paid in another month onto its own.
@@ -67,11 +69,13 @@ async function categoryRows(
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
     // counted in August and converted at August's rate, which is the month the figure speaks for.
     onDate: byBillMonth ? sql<string>`${attributedOn()}` : sql<string>`${transactions.occurredOn}`,
-    // The part of each transaction the account paid: its own entry over everything on the money side (what is not a
-    // category). A purchase split 80/20 between a card and a bank counts 80% of each category on the card. Ratios
-    // are read from base amounts, so a split across currencies is weighed in one unit.
+    // The part of each transaction the account paid: its own entry over the payers' entries — money-side entries (not
+    // a category) with the same sign as its own. A purchase split 80/20 between a card and a bank, or with a friend who
+    // paid part, counts 80% on the card. A bill the card paid for friends too is not divided: their receivables are
+    // where the card's money went, so the owner's own part was all paid by the card. Ratios are read from base
+    // amounts, so a split across currencies is weighed in one unit.
     share: paid
-      ? sql<number>`(SELECT abs(sum(own.amount_base_minor)) FROM entries own WHERE own.transaction_id = ${transactions.id} AND own.account_id = ${paid}) * 1.0 / NULLIF((SELECT sum(abs(side.amount_base_minor)) FROM entries side INNER JOIN accounts side_account ON side_account.id = side.account_id WHERE side.transaction_id = ${transactions.id} AND side_account.kind NOT IN ('expense', 'income')), 0)`
+      ? sql<number>`abs(${ownSum}) * 1.0 / NULLIF((SELECT sum(abs(side.amount_base_minor)) FROM entries side INNER JOIN accounts side_account ON side_account.id = side.account_id WHERE side.transaction_id = ${transactions.id} AND side_account.kind NOT IN ('expense', 'income') AND side.amount_base_minor * ${ownSum} > 0), 0)`
       : sql<number>`1`,
   };
 }

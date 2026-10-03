@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, splitBillPostings } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { categoryTotalsIn, createAccount, createBook, inBook, listAccounts, postTransaction, upsertRate } from '../src/index';
 import { setupDb } from './helpers';
@@ -54,6 +54,48 @@ describe('categoryTotalsIn paid with one account', () => {
     expect(amounts(onCard.rows)).toEqual({ [id('Groceries')]: 100, [id('Restaurants')]: 30 + 80 });
     const onBank = await categoryTotalsIn(database, ws, 'expense', '2026-09-01', '2026-09-30', { paidAccountId: bank.id });
     expect(amounts(onBank.rows)).toEqual({ [id('Groceries')]: 50, [id('Restaurants')]: 20 });
+  });
+
+  it('counts all of the owner\'s part of a bill the card paid for friends too', async () => {
+    const { database, ws, card, id } = await household();
+    const ana = await createAccount(database, ws, { name: 'Ana owes', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
+    const budi = await createAccount(database, ws, { name: 'Budi owes', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-14',
+      description: 'Dinner for three',
+      lines: splitBillPostings(
+        {
+          totalMinor: 300,
+          ownCategoryId: id('Restaurants'),
+          ownShareMinor: 100,
+          shares: [
+            { debtAccountId: ana.id, amountMinor: 100 },
+            { debtAccountId: budi.id, amountMinor: 100 },
+          ],
+          currency: 'IDR',
+        },
+        { moneyAccountId: card.id },
+      ),
+    });
+    const onCard = await categoryTotalsIn(database, ws, 'expense', '2026-09-01', '2026-09-30', { paidAccountId: card.id });
+    // The friends' receivables are what the card's money went to, not what paid: the card paid all of the owner's 100.
+    expect(amounts(onCard.rows)).toEqual({ [id('Groceries')]: 100, [id('Restaurants')]: 30 + 100 });
+  });
+
+  it('divides with a friend who paid part, as with a second account', async () => {
+    const { database, ws, card, id } = await household();
+    const owed = await createAccount(database, ws, { name: 'Owed to Citra', kind: 'liability', subtype: 'payable', currency: 'IDR' });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-15',
+      description: 'Dinner Citra helped pay',
+      lines: [
+        { accountId: id('Restaurants'), amountMinor: 100, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -60, currency: 'IDR' },
+        { accountId: owed.id, amountMinor: -40, currency: 'IDR' },
+      ],
+    });
+    const onCard = await categoryTotalsIn(database, ws, 'expense', '2026-09-01', '2026-09-30', { paidAccountId: card.id });
+    expect(amounts(onCard.rows)).toEqual({ [id('Groceries')]: 100, [id('Restaurants')]: 30 + 60 });
   });
 
   it('applies the same share in a workspace that reads in another currency', async () => {

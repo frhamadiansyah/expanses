@@ -140,7 +140,7 @@ export function ChipMenu({
           {badge && (
             // The count is drawn, not read: the chip's name already says what it filters, and a screen reader's list
             // of options says which one is chosen.
-            <span aria-hidden className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-slate-200">
+            <span aria-hidden className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-slate-200">
               {badge}
             </span>
           )}
