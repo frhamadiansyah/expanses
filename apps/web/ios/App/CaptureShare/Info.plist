@@ -24,12 +24,12 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<!-- One image at a time: a share is one receipt or one screenshot, and the app's reading is about one
-			     movement. -->
+			<!-- One image is one receipt or one screenshot, read as one movement. Two or more are one statement's
+			     screenshots, read as a batch for the statement check. -->
 			<key>NSExtensionActivationRule</key>
 			<dict>
 				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>1</integer>
+				<integer>20</integer>
 			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>

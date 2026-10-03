@@ -1,4 +1,4 @@
-import { isoDate, type RawCapture } from '@expanses/core';
+import { type CaptureLine, isoDate, type RawCapture } from '@expanses/core';
 import { type Database, ingestCaptures, type WorkspaceContext } from '@expanses/db';
 
 /**
@@ -37,5 +37,7 @@ declare global {
     ) => Promise<{ drafts: number; merged: number; skipped: number }>;
     /** Picture bytes the injected captures' `imageFile` names resolve to. E2E builds only. */
     __captureImages?: Record<string, { base64: string; mime: string }>;
+    /** Readings `recognizeImage` hands back, one list per call, in order. E2E builds only. */
+    __statementLines?: CaptureLine[][];
   }
 }

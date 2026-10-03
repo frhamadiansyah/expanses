@@ -276,23 +276,35 @@ export async function editDraft(
  * read back afterwards. A capture that was photographed hands its picture back to the caller, which is what writes it
  * into the owner's own photo storage; the reading here never touches those bytes.
  */
-export async function confirmDraft(
+export function confirmDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  opts: {
-    /** Which goal the money came out of, when it took more than was free (spec §4.4). */
-    setAside?: SetAsideChoice | null;
-    /** Keep the capture's picture with the transaction. The caller copies the bytes; this only says which file. */
-    keepPhoto?: boolean;
-    /**
-     * What the Add form's extra rows say, when the draft was finished on it: the posting carries them as a
-     * transaction added by hand would. The figure, accounts and category are the draft's own, written first.
-     */
-    extras?: Pick<PostTransactionInput, 'eventId' | 'channel' | 'excludedFromReport' | 'mcc' | 'photoIds'>;
-  } = {},
+  opts: ConfirmDraftOptions = {},
 ): Promise<{ transactionId: string; keptImage: string | null }> {
-  const [draft] = await database.db
+  return database.transaction((tx) => confirmDraftTx(tx, ws, id, opts));
+}
+
+export interface ConfirmDraftOptions {
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
+  /** Keep the capture's picture with the transaction. The caller copies the bytes; this only says which file. */
+  keepPhoto?: boolean;
+  /**
+   * What the Add form's extra rows say, when the draft was finished on it: the posting carries them as a
+   * transaction added by hand would. The figure, accounts and category are the draft's own, written first.
+   */
+  extras?: Pick<PostTransactionInput, 'eventId' | 'channel' | 'excludedFromReport' | 'mcc' | 'photoIds'>;
+}
+
+/** `confirmDraft` inside a transaction already running: a statement check confirms the drafts it matched in its own. */
+export async function confirmDraftTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  id: string,
+  opts: ConfirmDraftOptions = {},
+): Promise<{ transactionId: string; keptImage: string | null }> {
+  const [draft] = await tx
     .select()
     .from(draftTransactions)
     .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id)));
@@ -317,29 +329,27 @@ export async function confirmDraft(
 
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();
-  return database.transaction(async (tx) => {
-    const transactionId = await postTransactionTx(tx, ws, {
-      occurredOn: draft.occurredOn,
-      description: draft.description,
-      source: ledgerSourceOf(draft.source),
-      externalRef: draft.externalRef,
-      cardId: draft.cardId,
-      lines,
-      ...opts.extras,
-      setAside: opts.setAside ?? null,
-    });
-    const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);
-    await tx
-      .update(draftTransactions)
-      .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: purgeAfter })
-      .where(eq(draftTransactions.id, id));
-    // The sightings folded into it are dealt with too, so what they were read from is swept with it.
-    await tx
-      .update(draftTransactions)
-      .set({ status: 'confirmed', resolvedAt: now, rawPurgeAfter: purgeAfter })
-      .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
-    return { transactionId, keptImage };
+  const transactionId = await postTransactionTx(tx, ws, {
+    occurredOn: draft.occurredOn,
+    description: draft.description,
+    source: ledgerSourceOf(draft.source),
+    externalRef: draft.externalRef,
+    cardId: draft.cardId,
+    lines,
+    ...opts.extras,
+    setAside: opts.setAside ?? null,
   });
+  const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);
+  await tx
+    .update(draftTransactions)
+    .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: purgeAfter })
+    .where(eq(draftTransactions.id, id));
+  // The sightings folded into it are dealt with too, so what they were read from is swept with it.
+  await tx
+    .update(draftTransactions)
+    .set({ status: 'confirmed', resolvedAt: now, rawPurgeAfter: purgeAfter })
+    .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
+  return { transactionId, keptImage };
 }
 
 /** Says a draft is not something to record. It stays, so the same capture is not offered again. */

@@ -14,7 +14,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, CalendarX2, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -35,6 +35,7 @@ import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
+import { DayHeader } from './DayHeader';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -113,37 +114,6 @@ function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLab
         <X size={14} aria-hidden />
       </button>
     </span>
-  );
-}
-
-function DayHeader({ date, net, currency }: { date: string; net: number; currency: string }) {
-  if (!date) {
-    return (
-      <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
-        <CalendarX2 size={22} className="text-amber-700" aria-hidden />
-        <span className="flex flex-col text-xs leading-tight text-slate-500">
-          <b className="font-semibold text-slate-700">No date yet</b>
-          Give these a date to file them
-        </span>
-      </div>
-    );
-  }
-  const d = new Date(`${date}T00:00:00`);
-  return (
-    <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
-      <span className="tabular w-9 shrink-0 text-2xl leading-none font-semibold">{d.getDate()}</span>
-      <span className="flex flex-col text-xs leading-tight text-slate-500">
-        <b className="font-semibold text-slate-700">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</b>
-        {d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-      </span>
-      {/* From md a row ends with room for its edit pencil, so the day's total leaves the same room. */}
-      {/* No sign and no red: the day's total sums the rows below it rather than adding anything to them. */}
-      {net !== 0 && (
-        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net > 0 ? 'text-emerald-700' : 'text-slate-600')}>
-          {formatMinor(Math.abs(net), currency)}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -331,6 +301,13 @@ export function TransactionsPage() {
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
   const paidPicked = paidOptions.find((option) => option.value === filters.paid && option.value);
+  // The donut follows the same filter. A single card of a shared account reads as its account: categories are
+  // totalled per account, and the card is one way of paying from it.
+  const paidAccountId = filters.paid.startsWith('acct:')
+    ? filters.paid.slice('acct:'.length)
+    : filters.paid.startsWith('card:')
+      ? cards.find((card) => card.id === filters.paid.slice('card:'.length))?.accountId
+      : undefined;
   // A category opens as its own screen: its ring, its transactions, and a way back to the month.
 
   const keptLine = phone ? 'the original is kept' : 'the original stays under Show deleted';
@@ -1045,6 +1022,7 @@ export function TransactionsPage() {
           onPick={(id) => setSearch({ account: id })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
+          paidAccountId={paidAccountId}
         />
       )}
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
@@ -1117,6 +1095,7 @@ export function TransactionsPage() {
                 name="Paid with"
                 value={filters.paid}
                 active={Boolean(paidPicked)}
+                count={paidPicked ? 1 : 0}
                 // A wide screen's list is long enough to want a box to type in; a phone's control is a tap away.
                 searchable={!phone}
                 options={paidOptions}

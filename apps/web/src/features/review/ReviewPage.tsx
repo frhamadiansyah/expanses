@@ -30,6 +30,7 @@ import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
 import { answerPatch, captureRowView, type ReadingWithLines } from './capture-view';
 import { CaptureViewer } from './CaptureViewer';
+import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
 import { corrections, draftPatch } from './draft-form';
 import type { FormDraft } from '../transactions/tx-form';
@@ -204,6 +205,18 @@ export function ReviewPage() {
     else void record(draft, { undoable: true });
   }
 
+  /** What stands behind a row dragged left: Discard, undoable from the toast. */
+  const discardButton = (draft: DraftRow) => (
+    <button
+      type="button"
+      aria-label={`Discard ${draft.description}`}
+      onClick={() => void discard(draft, true)}
+      className="w-[76px] bg-[var(--ph-ink-3)] text-[15px] font-semibold text-white"
+    >
+      Discard
+    </button>
+  );
+
   const list = drafts.data ?? [];
   const editingDraft = list.find((draft) => draft.id === editing) ?? null;
 
@@ -306,27 +319,27 @@ export function ReviewPage() {
 
       {drafts.isSuccess && list.length === 0 && <Empty>Nothing waiting. Captured spending appears here before it reaches the accounts.</Empty>}
 
-      {list.length > 0 && (
+      {list.length > 0 && phone && (
+        // A phone draws the queue as Cashflow draws the ledger: a card per day, each row headed by its category.
+        <DraftDays
+          drafts={list}
+          accounts={accounts}
+          sourceOf={sourceOf}
+          busy={busy}
+          onOpen={(draft) => setEditing(draft.id)}
+          onSwipeRight={swipeRecord}
+          discardAction={discardButton}
+        />
+      )}
+
+      {list.length > 0 && !phone && (
         <RecordTable
           records={list}
           rowTestId={() => 'draft-row'}
           /* A row opens the sheet on a phone, and the sheet holds what the row had no width for. A desktop reads
              the very same fields as columns and has nowhere to open. */
           detail={{ kind: 'screen', open: (draft) => setEditing(draft.id) }}
-          rowSwipe={(draft) => ({
-            onSwipeRight: () => swipeRecord(draft),
-            rightHint: 'Record',
-            leftAction: (
-              <button
-                type="button"
-                aria-label={`Discard ${draft.description}`}
-                onClick={() => void discard(draft, true)}
-                className="w-[76px] bg-[var(--ph-ink-3)] text-[15px] font-semibold text-white"
-              >
-                Discard
-              </button>
-            ),
-          })}
+          rowSwipe={(draft) => ({ onSwipeRight: () => swipeRecord(draft), rightHint: 'Record', leftAction: discardButton(draft) })}
           shape={{
             key: (draft) => draft.id,
             title: (draft) => {

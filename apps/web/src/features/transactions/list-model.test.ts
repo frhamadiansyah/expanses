@@ -58,6 +58,16 @@ describe('buildRows', () => {
     expect(find(superindo.id)).toMatchObject({ kind: 'tx', type: 'expense', amountMinor: 45000000, baseMinor: 45000000, categoryName: 'Groceries', parentName: 'Food & Beverage', accountLabel: 'CIMB Octo', last4: '8802', holderName: 'Aisyah' });
   });
 
+  it('leaves out a statement check’s Payments not tracked adjustment, and nothing else named like it', () => {
+    const equity = account('correction', 'equity', 'balance_correction' as AccountRow['subtype'], { systemKey: 'balance_correction' });
+    const withEquity = [...accounts, equity];
+    const adjustment = tx('2026-09-10', 'Payments not tracked (2 payments)', [['octo', 70000], ['bca', -70000]]);
+    adjustment.entries[1] = { ...adjustment.entries[1]!, accountId: 'correction', accountName: 'Balance correction', accountKind: 'equity', accountSystemKey: 'balance_correction' };
+    const lookalike = tx('2026-09-10', 'Payments not tracked (a note)', [['octo', 70000], ['bca', -70000]]);
+    const shown = buildRows([adjustment, lookalike, superindo], [], withEquity, cards).map((row) => row.id);
+    expect(shown).toEqual([lookalike.id, superindo.id]);
+  });
+
   it('calls money lent to a person lending, not a transfer, and gives it no base amount', () => {
     expect(find(lend.id)).toMatchObject({ type: 'debt', baseMinor: 0 });
     // The two-account line reads the way the money went — what lost it first — whatever order the entries were

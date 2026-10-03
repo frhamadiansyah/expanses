@@ -128,3 +128,19 @@ export function CategoryIcon({
     </span>
   );
 }
+
+/**
+ * No category yet: the unknown mark in the warning tone, because it is a question still to answer. Every list that
+ * holds rows waiting for a category — Review's captures, a statement check's missing rows — draws this one.
+ */
+export function UnknownCategoryMark() {
+  return (
+    <span
+      data-testid="category-mark"
+      aria-hidden
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]"
+    >
+      <CircleHelp size={18} strokeWidth={2.2} />
+    </span>
+  );
+}

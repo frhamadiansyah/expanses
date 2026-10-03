@@ -245,6 +245,7 @@ export function SpendingReport({
   onPick,
   onMonth,
   alsoMissing = [],
+  paidAccountId,
 }: {
   month: string;
   categoryId?: string;
@@ -256,6 +257,8 @@ export function SpendingReport({
   onMonth?: (month: string) => void;
   /** What the list below could not convert either. The chart says it once for the whole screen. */
   alsoMissing?: readonly UnconvertedRow[];
+  /** The list's Paid with filter: the ring, the total and the categories read only what this account paid. */
+  paidAccountId?: string;
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
@@ -280,8 +283,8 @@ export function SpendingReport({
   // swallow the shape of an ordinary month.
   const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, eventsInCaps ? 'with-events' : 'without-events'],
-    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true }),
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null],
+    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],

@@ -120,11 +120,15 @@ enum HoldingArea {
     /// there on every drain, before the web layer sees the capture; the shared copy stays until the ack. Before and
     /// after the ack the same name opens the same picture.
     ///
+    /// Statement batches older than `statementBatchLifetime` are deleted on the way: the app drains on every start.
+    ///
     /// A file that cannot be read is moved aside (`captures/broken`) rather than deleted: it is evidence of a writer
     /// that got something wrong, and `holdingAreaStatus` reports it. A capture whose picture cannot be copied loses
     /// the reference rather than keeping one that will not resolve.
     static func drain() throws -> [RawCapture] {
         let folder = try groupCaptures()
+        // Statement batches nobody took go here too, not only on the next share of several screenshots.
+        sweepStatementBatches(in: folder)
         let brokenFolder = folder.appendingPathComponent("broken", isDirectory: true)
         let manager = FileManager.default
         let files = try manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
@@ -199,6 +203,77 @@ enum HoldingArea {
         guard let files = try? FileManager.default.contentsOfDirectory(at: brokenFolder, includingPropertiesForKeys: nil)
         else { return 0 }
         return files.filter { $0.pathExtension == "json" }.count
+    }
+
+    // MARK: Statement batches (statement-check S2)
+
+    /// One screenshot of a statement batch as it is written down: its text lines and nothing else — no image bytes.
+    struct StatementImage: Codable {
+        let lines: [CaptureLine]
+    }
+
+    /// `captures/statement-<id>`: one batch of statement screenshots, a `<n>.json` per screenshot in share order.
+    static func statementFolder(_ batchId: String) throws -> URL {
+        try groupCaptures().appendingPathComponent("statement-\(batchId)", isDirectory: true)
+    }
+
+    /// A batch nobody took (the share was left on the card picker, or the app never opened on it) is not kept past an
+    /// hour: statement text does not wait on the phone (privacy §5). The app takes a batch the moment it opens on it.
+    static let statementBatchLifetime: TimeInterval = 60 * 60
+
+    /// Writes one statement batch: the lines of each screenshot, in order. The batch is written aside and moved into
+    /// place in one step, so the app never finds half of one. Older batches nobody took are deleted on the way.
+    static func writeStatementBatch(id batchId: String, images: [[CaptureLine]]) throws {
+        guard isPlainName(batchId) else { return }
+        let manager = FileManager.default
+        let folder = try groupCaptures()
+        sweepStatementBatches(in: folder)
+        let partial = folder.appendingPathComponent(".statement-\(batchId).partial", isDirectory: true)
+        try? manager.removeItem(at: partial)
+        try manager.createDirectory(at: partial, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        for (index, lines) in images.enumerated() {
+            let json = try encoder.encode(StatementImage(lines: lines))
+            try json.write(to: partial.appendingPathComponent("\(index).json"), options: .atomic)
+        }
+        let destination = try statementFolder(batchId)
+        try? manager.removeItem(at: destination)
+        try manager.moveItem(at: partial, to: destination)
+    }
+
+    /// Hands a statement batch over and deletes it: a second take finds nothing. Screenshots come back in the order
+    /// they were shared; a file that cannot be read is skipped, never kept.
+    static func takeStatementBatch(id batchId: String) throws -> [StatementImage] {
+        guard isPlainName(batchId) else { return [] }
+        let manager = FileManager.default
+        let folder = try statementFolder(batchId)
+        defer { try? manager.removeItem(at: folder) }
+        guard let files = try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return [] }
+        let numbered = files.compactMap { file -> (Int, URL)? in
+            guard file.pathExtension == "json", let n = Int(file.deletingPathExtension().lastPathComponent) else { return nil }
+            return (n, file)
+        }.sorted { $0.0 < $1.0 }
+        let decoder = JSONDecoder()
+        return numbered.compactMap { _, file in
+            guard let data = try? Data(contentsOf: file) else { return nil }
+            return try? decoder.decode(StatementImage.self, from: data)
+        }
+    }
+
+    /// Deletes statement batches (and half-written ones) older than `statementBatchLifetime`.
+    static func sweepStatementBatches(in folder: URL, now: Date = Date()) {
+        let manager = FileManager.default
+        guard let entries = try? manager.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.creationDateKey], options: [])
+        else { return }
+        for entry in entries {
+            let name = entry.lastPathComponent
+            guard name.hasPrefix("statement-") || name.hasPrefix(".statement-") else { continue }
+            let created = (try? entry.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            if now.timeIntervalSince(created) > statementBatchLifetime {
+                try? manager.removeItem(at: entry)
+            }
+        }
     }
 
     /// What a picture is, for the web layer that will draw it.

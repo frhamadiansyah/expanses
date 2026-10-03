@@ -17,6 +17,8 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "readCaptureImage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteCaptureImage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "holdingAreaStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "recognizeImage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeStatementBatch", returnType: CAPPluginReturnPromise),
     ]
 
     private var receiptCall: CAPPluginCall?
@@ -60,6 +62,40 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["base64": data.base64EncodedString(), "mime": HoldingArea.mimeType(of: file)])
         } catch {
             call.reject("That picture is not on this phone", nil, error)
+        }
+    }
+
+    /// The text of a picture the web layer hands over (base64), read on the phone. Nothing is written to disk.
+    @objc func recognizeImage(_ call: CAPPluginCall) {
+        guard let base64 = call.getString("base64"),
+              let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters),
+              let decoded = UIImage(data: data),
+              let cgImage = TextRecognizer.upright(decoded).cgImage
+        else {
+            call.reject("unreadableImage")
+            return
+        }
+        Task {
+            do {
+                call.resolve(with: RecognizedImage(lines: try await TextRecognizer.recognize(image: cgImage)))
+            } catch {
+                call.reject("The picture could not be read", nil, error)
+            }
+        }
+    }
+
+    /// The statement screenshots the share sheet read as one batch, handed over and deleted from the App Group.
+    @objc func takeStatementBatch(_ call: CAPPluginCall) {
+        guard let batchId = call.getString("batchId"), HoldingArea.isPlainName(batchId) else {
+            call.reject("A batch id is required")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                call.resolve(with: StatementBatch(images: try HoldingArea.takeStatementBatch(id: batchId)))
+            } catch {
+                call.reject("The statement screenshots could not be read", nil, error)
+            }
         }
     }
 
@@ -150,4 +186,12 @@ private struct DrainedCaptures: Encodable {
 
 private struct ScanResult: Encodable {
     let capture: RawCapture
+}
+
+private struct RecognizedImage: Encodable {
+    let lines: [CaptureLine]
+}
+
+private struct StatementBatch: Encodable {
+    let images: [HoldingArea.StatementImage]
 }

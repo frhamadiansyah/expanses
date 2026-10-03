@@ -40,6 +40,7 @@ import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
 import { StatementPanel, type StatementPoints } from './StatementPanel';
+import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardHero, type CardTab, CardTabs } from './CardHero';
 import { purchasesOf } from './hint-text';
 import { TransferEstimates } from './TransferEstimates';
@@ -505,6 +506,8 @@ export function CardDetailPage() {
           </form>
         </>
       )}
+
+      {on('card') && !isDebit && <TrackPaymentsSetting cardAccountId={card.id} />}
 
       {on('statement') && cp.terms && <StatementPanel card={card} statementDay={cp.terms.statementDay} accounts={all} plastic={plastic} today={today} points={cp.program && cp.rules.length > 0 ? statementPoints : undefined} unit={cp.program?.unit} />}
 

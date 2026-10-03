@@ -98,6 +98,8 @@ export * from './capture/match';
 export * from './capture/ingest';
 export * from './capture/skipped';
 export * from './repos/statements';
+export * as statementsSchema from './schema-statements';
+export * from './repos/statement-check';
 export * as cardsSchema from './schema-cards';
 export * from './repos/cards';
 export * as booksSchema from './schema-books';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/pwa', () => ({ isNative: () => false }));
 
-import { isReviewLink, joinCodeOf, listenForJoinLinks, listenForReviewLinks } from './deep-link';
+import { isReviewLink, joinCodeOf, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks, statementBatchOf } from './deep-link';
 
 describe('a join link (spec §8.1, §11)', () => {
   const code = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789-ABCD-EFGH-JKMN-PQRS-TVWX';
@@ -44,6 +44,32 @@ describe('the link the share sheet opens the app with', () => {
   it('is not listened for outside the shell', () => {
     const open = vi.fn();
     listenForReviewLinks(open)();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('the link the share sheet opens the app with for several screenshots (statement-check S2)', () => {
+  const id = '6F9619FF-8B86-D011-B42D-00C04FC964FF';
+
+  it('gives the batch id, however iOS hands it over', () => {
+    expect(statementBatchOf(`cicis://statement/${id}`)).toBe(id);
+    expect(statementBatchOf(`CICIS://statement/${id}/`)).toBe(id);
+    expect(statementBatchOf(` cicis://statement/${id} `)).toBe(id);
+  });
+
+  it('is nothing for any other address, or an id that would leave its folder', () => {
+    expect(statementBatchOf('cicis://statement/')).toBeNull();
+    expect(statementBatchOf('cicis://statement')).toBeNull();
+    expect(statementBatchOf('cicis://review')).toBeNull();
+    expect(statementBatchOf('cicis://statements/abc')).toBeNull();
+    expect(statementBatchOf('https://example.com/statement/abc')).toBeNull();
+    expect(statementBatchOf('cicis://statement/../captures')).toBeNull();
+    expect(statementBatchOf('cicis://statement/a/b')).toBeNull();
+  });
+
+  it('is not listened for outside the shell', () => {
+    const open = vi.fn();
+    listenForStatementLinks(open)();
     expect(open).not.toHaveBeenCalled();
   });
 });

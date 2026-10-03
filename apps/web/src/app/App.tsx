@@ -6,7 +6,7 @@ import { watchCaptures } from '../capture/drain';
 import { installCaptureTestHook } from '../capture/test-hook';
 import type { AppDb } from '../db/bootstrap';
 import { scheduleDailyCopy } from '../db/snapshots';
-import { listenForJoinLinks, listenForReviewLinks } from '../native/deep-link';
+import { listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
 import { router } from './router';
@@ -36,6 +36,9 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // the fragment rather than the path.
   useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);
   useEffect(() => listenForReviewLinks(() => void router.navigate({ to: '/review' })), []);
+  // Several statement screenshots shared from Photos: already read on the phone, they wait for the owner to say which
+  // card they belong to (statement-check S2).
+  useEffect(() => listenForStatementLinks((batch) => void router.navigate({ to: '/statement/shared', search: { batch } })), []);
   /*
    * Captures wait in the phone's holding area while the app is closed — a shortcut or the share sheet cannot reach
    * the database. Draining turns them into drafts when the app opens and every time it comes back to the front,

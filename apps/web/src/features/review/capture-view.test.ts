@@ -1,7 +1,7 @@
 import type { CaptureLine, Reading } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { answerPatch, asksForSourceAccount, captureRowView, fieldBoxes, majorText, minorFromTyped } from './capture-view';
+import { answerPatch, asksForSourceAccount, captureRowView, draftDays, fieldBoxes, majorText, minorFromTyped } from './capture-view';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -163,5 +163,33 @@ describe('the answer to "Which account is this?"', () => {
   it('is not asked of a source that has answered', () => {
     expect(asksForSourceAccount(draft({ accountId: null }), source())).toBe(false);
     expect(asksForSourceAccount(draft({ accountId: null }), null)).toBe(false);
+  });
+});
+
+describe('draftDays', () => {
+  it('groups by day, newest first, keeping the queue order inside a day', () => {
+    const days = draftDays([
+      draft({ id: 'a', occurredOn: '2026-10-02' }),
+      draft({ id: 'b', occurredOn: '2026-10-03' }),
+      draft({ id: 'c', occurredOn: '2026-10-02' }),
+    ]);
+    expect(days.map((day) => [day.date, day.drafts.map((d) => d.id)])).toEqual([
+      ['2026-10-03', ['b']],
+      ['2026-10-02', ['a', 'c']],
+    ]);
+  });
+
+  it('nets a day as income less what went out, transfers counted as out', () => {
+    const [day] = draftDays([
+      draft({ id: 'a', amountMinor: 52_000 }),
+      draft({ id: 'b', kind: 'transfer', amountMinor: 1_500_000 }),
+      draft({ id: 'c', kind: 'income', amountMinor: -100_000 }),
+    ]);
+    expect(day).toMatchObject({ net: -1_452_000, currency: 'IDR' });
+  });
+
+  it('gives no total for a day mixing currencies', () => {
+    const [day] = draftDays([draft({ id: 'a' }), draft({ id: 'b', currency: 'USD', amountMinor: 500 })]);
+    expect(day!.net).toBe(0);
   });
 });

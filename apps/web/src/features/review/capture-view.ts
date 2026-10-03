@@ -49,6 +49,38 @@ export function captureRowView(draft: DraftRow, source: CaptureSource | null): C
   };
 }
 
+/** One day of the queue, as the phone draws it: a card headed by the day and what it came to. */
+export interface DraftDay {
+  date: string;
+  drafts: DraftRow[];
+  /** Income less what went out, in `currency` — the sign `DayHeader` reads. Zero when the day mixes currencies. */
+  net: number;
+  currency: string;
+}
+
+/**
+ * The queue by day, newest first, in the queue's own order within a day. A day's total counts every draft's
+ * figure as the import convention signs it — out for spending and transfers, in for income — because nothing here
+ * is recorded yet and the total only says how much is waiting on that day. Figures in different currencies are not
+ * added: such a day shows no total.
+ */
+export function draftDays(drafts: readonly DraftRow[]): DraftDay[] {
+  const byDate = new Map<string, DraftRow[]>();
+  for (const draft of drafts) {
+    const day = byDate.get(draft.occurredOn);
+    if (day) day.push(draft);
+    else byDate.set(draft.occurredOn, [draft]);
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([date, rows]) => {
+      const currency = rows[0]!.currency;
+      const mixed = rows.some((row) => row.currency !== currency);
+      const out = rows.reduce((sum, row) => sum + (row.kind === 'income' ? -Math.abs(row.amountMinor) : Math.abs(row.amountMinor)), 0);
+      return { date, drafts: rows, net: mixed ? 0 : -out, currency };
+    });
+}
+
 /**
  * Which of a draft's accounts its source speaks for.
  *
