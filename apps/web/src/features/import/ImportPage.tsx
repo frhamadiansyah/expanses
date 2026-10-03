@@ -5,6 +5,7 @@ import { useApp } from '../../app/context';
 import { moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ErrorBox, Select } from '../../ui';
 import { Figure, type GroupChild, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, SwitchRow } from '../../ui/native';
+import { afterBigChange } from '../backup/icloud/runner';
 
 const PREVIEW_LIMIT = 300;
 
@@ -141,6 +142,8 @@ export function ImportPage() {
       setTable([]);
       setMapping(null);
       await invalidate();
+      // An import is a big change: the iCloud copy is taken now rather than tomorrow.
+      afterBigChange(database);
     } catch (e) {
       setError(e);
     } finally {
@@ -174,6 +177,8 @@ export function ImportPage() {
       setTable([]);
       setMapping(null);
       await invalidate();
+      // An import is a big change: the iCloud copy is taken now rather than tomorrow.
+      afterBigChange(database);
     } catch (e) {
       setError(e);
     } finally {

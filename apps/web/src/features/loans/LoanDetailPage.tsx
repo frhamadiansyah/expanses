@@ -1,4 +1,4 @@
-import { debtItem, extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString, payoffQuote, periodOn } from '@expanses/core';
+import { debtItem, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, payoffQuote, periodOn } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent } from 'lucide-react';
@@ -364,7 +364,7 @@ function PayExtraSheet({
   return (
     <Sheet grouped tall title="Pay extra" onClose={onClose} confirm={{ label: 'Save extra payment', disabled: saving.busy || !setAside.ready, run: () => void save() }}>
       <InsetGroup>
-        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="50.000.000" />
+        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="50.000.000" />
         <SelectRow label="How often" value={repeat} onChange={(e) => setRepeat(e.target.value as 'once' | 'yearly' | 'monthly')}>
           <option value="once">Once</option>
           <option value="yearly">Every year</option>
@@ -402,7 +402,7 @@ function PayExtraSheet({
           info="What the bank charges for paying early, booked as a fee and never as principal. Left empty when there is none."
           value={penalty}
           inputMode="decimal"
-          onChange={(e) => setPenalty(e.target.value)}
+          onChange={(e) => setPenalty(groupTypedAmount(e.target.value, currency))}
           placeholder="None"
         />
         {/* The rate, and only while the day has none: a loan in the base currency draws nothing here. */}

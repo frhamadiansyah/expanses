@@ -504,7 +504,7 @@ export {
   brokerFeeDefaults, type BrokerFees, DEFAULT_BROKER_FEES, IDX_SALE_TAX_PPM, type IdxCharge, idxCharge, idxTickSize, isIdxTick, parsePercentPpm, ppmOf, ppmPercent, stepIdxPrice,
 } from './assets/idx-trade';
 export {
-  FUND_UNIT_DECIMALS, type FundSell, type FundTrade, fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, isMoneyMarketFund,
+  FUND_UNIT_DECIMALS, type FundSell, type FundTrade, fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount,
 } from './assets/fund-trade';
 export {
   GOLD_BAR_SIZES, type GoldBrand, goldBarSizes, goldBrandOf, goldGainMinor, goldSellGrams, gramsMicro, gramsText, typedGramsMicro,

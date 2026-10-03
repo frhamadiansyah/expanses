@@ -13,6 +13,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { formatBytes, formatWhen } from '../recovery/recovery-copy';
+import { ICloudGroup } from './icloud/ICloudGroup';
 import { copyReasonWords, daysSince, getLastBackupAt, isSqliteFile, setLastBackupAt } from './backupState';
 
 interface PendingRestore {
@@ -258,31 +259,34 @@ export function BackupPage() {
     <div className={SCREEN}>
       <LargeTitle title="Backup" />
 
-      {/* The two sentences that are not an action: where the data lives, and what the file it makes is not. */}
-      <p className="mb-[10px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-        Data lives only in this browser on this device. Nothing is sent to a server. If browser data is cleared, or Safari removes it after a week unused, it is gone — back up regularly.
-      </p>
-      <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-alarm)]">
-        Backup files are <strong>not encrypted</strong>. Anyone with the file can read the finances in it. Store it somewhere private.
-      </p>
+      <ICloudGroup blocked={busy || !!pending} />
 
-      <InsetGroup header="Figures" footer="A backup made on any device or browser will do: it is the same file everywhere.">
+      <InsetGroup
+        header="File"
+        info={
+          <>
+            A file you keep somewhere yourself — in Files, on a computer, sent to yourself. A backup made on any device will do: it is the same file everywhere. It is <strong>not encrypted</strong>: anyone with the file can read the finances in it, so keep it somewhere private.
+          </>
+        }
+      >
         <InsetRow
           title="Download backup"
-          subtitle={last.data ? `Last downloaded ${daysSince(last.data) === 0 ? 'today' : `${daysSince(last.data)} days ago`}.` : 'No backup yet.'}
+          value={last.data ? (daysSince(last.data) === 0 ? 'Today' : `${daysSince(last.data)} days ago`) : 'Never'}
+          valueTone="ink-3"
           chevron={false}
           className={busy || !!pending ? 'opacity-40' : undefined}
           onClick={() => !busy && !pending && void onExport()}
         />
         <InsetRow
-          title="Restore from file…"
+          title={<span className="text-[var(--ph-tint)]">Restore from file…</span>}
+          label="Restore from file…"
           chevron={false}
           className={busy || !!pending ? 'opacity-40' : undefined}
           onClick={() => !busy && !pending && sqliteInput.current?.click()}
         />
       </InsetGroup>
 
-      <InsetGroup header="Photos" footer="Photos live beside the database on this device. The backup file holds the figures; this zip holds the pictures.">
+      <InsetGroup header="Photos" info="Photos live beside the database on this device. The backup file holds the figures; this zip holds the pictures.">
         {!!photoIndex.data?.length && (
           <InsetRow
             title={`Download photos (${photoIndex.data.length})`}
@@ -323,9 +327,9 @@ export function BackupPage() {
 
       <InsetGroup
         header="Safety copies on this device"
-        footer={
+        info={
           <>
-            Expanses keeps a copy of the data before every update and once on each day the app is opened, so a bad update or the wrong restore can be undone. They sit in this app&apos;s own storage on this device, which means they are <strong>not a backup</strong>: anything that loses the data loses them with it. Only a file downloaded and kept somewhere else is a backup.
+            cicis keeps a copy of the data before every update and once on each day the app is opened, so a bad update or the wrong restore can be undone. They sit in the app&apos;s own storage on this device, which means they are <strong>not a backup</strong>: anything that loses the data loses them with it.
           </>
         }
       >
@@ -352,16 +356,6 @@ export function BackupPage() {
         )}
       </InsetGroup>
 
-      <Panel header="Backups and iPhone">
-        {/* Spec §8.2: until the device check has actually been run on a phone, nothing here may say a
-            device backup covers this data. What is true today is said instead. */}
-        <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-          Expanses runs in the browser today, so an iPhone backup does not carry this data with it: an iCloud or Finder backup does not include a website&apos;s storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
-        </p>
-        <p className="mt-[10px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-          So keep downloading a backup. A file kept elsewhere is the only copy that survives a lost phone, a deleted app, and a restore that goes wrong — and it opens on any device Expanses is installed on.
-        </p>
-      </Panel>
 
       {/*
        * The two real choosers, out of the way at the foot of the page: every row above opens the one that names

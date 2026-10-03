@@ -16,6 +16,7 @@ import { AccountSheet } from './AccountSheet';
 import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
 import { useYahooClosesAtStart } from '../features/prices/yahoo';
+import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
@@ -84,6 +85,8 @@ export function Layout() {
   }, [database]);
   // The day's closes for the shares that follow Yahoo Finance, once a day each, behind whatever is on screen.
   useYahooClosesAtStart();
+  // The day's iCloud copy, in the iOS app with the switch on: at open, and each time the app comes back to the front.
+  useICloudBackupAtStart(database);
 
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);

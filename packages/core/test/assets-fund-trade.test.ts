@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, isMoneyMarketFund, parsePriceMicro, parseUnits, sellBasisMinor } from '../src/index';
+import { fundBuy, fundNavText, fundSell, fundUnitsMicro, fundUnitsText, groupTypedAmount, parsePriceMicro, parseUnits, sellBasisMinor } from '../src/index';
 
 const NAV = parsePriceMicro('1.843,2715', 'IDR');
 
@@ -58,14 +58,6 @@ describe('what else a fund’s sheet needs', () => {
     expect(fundUnitsText(10_000_000)).toBe('10,0000');
     expect(fundUnitsText(1_356_248_100)).toBe('1.356,2481');
     expect(fundUnitsText(1_500_000_000_000)).toBe('1.500.000,0000');
-  });
-
-  it('tells a money market fund by its name', () => {
-    expect(isMoneyMarketFund('Sucorinvest Money Market Fund')).toBe(true);
-    expect(isMoneyMarketFund('Reksadana Pasar Uang Syariah')).toBe(true);
-    expect(isMoneyMarketFund('Bahana RDPU')).toBe(true);
-    expect(isMoneyMarketFund('Schroder Dana Prestasi Plus')).toBe(false);
-    expect(isMoneyMarketFund('Sucorinvest Equity Fund')).toBe(false);
   });
 
   it('groups a money amount as it is typed', () => {

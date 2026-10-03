@@ -74,15 +74,6 @@ export function fundNavText(priceMicro: number, currency: string): string {
 }
 
 /**
- * Whether a fund is a money market fund (reksadana pasar uang), told by its name — the app keeps no field for the
- * fund's type. Only used to say when a sale's money usually arrives.
- */
-export function isMoneyMarketFund(name: string): boolean {
-  const text = name.toLowerCase();
-  return /\bpasar uang\b|\bmoney market\b|\brdpu\b|\bmmf\b/.test(text);
-}
-
-/**
  * A money amount as it is being typed, grouped in id-ID as it goes: digits, a dot every three, and — for a currency
  * with cents — one decimal comma with no more digits after it than the currency has. "1000000" is "1.000.000".
  */
