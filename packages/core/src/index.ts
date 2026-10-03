@@ -515,3 +515,6 @@ export { appNameOfScreen, fingerprintOf, sameSource } from './capture/fingerprin
 export { accountHintOf, namesCard, paymentMethodOf, readCapture } from './capture/read';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
+export { merchantKeyOf, readStatement } from './statement/read';
+export { STATEMENT_WORDS, type StatementWords } from './statement/words';
+export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';
