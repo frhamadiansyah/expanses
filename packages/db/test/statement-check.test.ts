@@ -4,17 +4,22 @@ import {
   type CheckDecisions,
   type CheckDraftRow,
   cardStatement,
+  categoryIdsByKey,
   createAccount,
+  createBook,
   createCardAccount,
   createDraft,
   fillSameMerchant,
   getTrackPayments,
+  inBook,
   listAccounts,
+  listBooks,
   listDrafts,
   listStatementChecks,
   listStatementLinks,
   listTransactions,
   nativeBalances,
+  ownerScope,
   postTransaction,
   prepareStatementCheck,
   recordStatementCheck,
@@ -383,6 +388,30 @@ describe('recording a check', () => {
     expect(payment).toMatchObject({ description: 'Card payment', excluded: false });
     expect(payment!.entries.find((e) => e.accountId === correction)?.amountMinor).toBe(-50_000);
     expect(await listStatementLinks(h.database, result.checkId)).toEqual([{ checkId: result.checkId, transactionId: payment!.id, kind: 'recorded' }]);
+  });
+});
+
+describe('a card used from several workspaces', () => {
+  it('matches a purchase filed in another workspace, posts nothing, and reconciles', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const personal = (await listBooks(database, ws)).find((b) => b.kind === 'personal')!;
+    const businessId = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const home = inBook(ws, personal.id);
+    const business = inBook(ws, businessId);
+    const card = await createCardAccount(database, home, { name: 'Visa', subtype: 'credit_card', currency: 'IDR', openingBalanceMinor: 0, openedOn: '2026-01-01' });
+    await saveCardTerms(database, home, { accountId: card.id, statementDay: 10, dueDay: 25, creditLimitMinor: null, annualFeeMinor: null });
+    const lunch = (await categoryIdsByKey(database, business))['food_beverage.restaurants']!;
+    const filed = await postTransaction(database, business, { occurredOn: '2026-05-20', description: 'CLIENT LUNCH', lines: expenseLines({ categoryAccountId: lunch, paymentAccountId: card.id, amountMinor: 450_000, currency: 'IDR' }) });
+    const before = (await listTransactions(database, ownerScope(ws), { limit: 5000 })).length;
+
+    const prepared = await prepareStatementCheck(database, home, { cardAccountId: card.id, period: MAY, images: [image([['20MAY', 'CLIENT LUNCH', '450,000']], { closing: '450,000' })], today: TODAY });
+    expect(prepared.rows.map((r) => r.outcome)).toMatchObject([{ status: 'matched', candidateIds: [filed] }]);
+    expect(prepared.flagged).toEqual([]);
+    const result = await recordStatementCheck(database, home, prepared, NO_DECISIONS);
+    expect(result).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    expect((await listTransactions(database, ownerScope(ws), { limit: 5000 })).length).toBe(before);
+    expect((await nativeBalances(database, ws))[card.id]).toBe(-450_000);
   });
 });
 

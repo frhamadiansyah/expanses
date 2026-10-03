@@ -25,7 +25,7 @@ import {
   uuidv7,
 } from '@expanses/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { cardPostings } from '../schema-cards';
@@ -227,14 +227,13 @@ export async function prepareStatementCheck(
   const reading = readStatement(input.images, period, card.currency);
   const trackPayments = await getTrackPayments(database, cardAccountId);
 
-  const views = await listTransactions(database, ws, {
-    accountId: cardAccountId,
-    from: addDays(period.start, -CANDIDATE_MARGIN_DAYS),
-    to: addDays(period.end, CANDIDATE_MARGIN_DAYS),
-    limit: 2000,
-  });
+  // The card's balance counts what it paid in every workspace, so every one of those transactions may be a row.
+  const window = { accountId: cardAccountId, from: addDays(period.start, -CANDIDATE_MARGIN_DAYS), to: addDays(period.end, CANDIDATE_MARGIN_DAYS), limit: 2000 };
+  const views = await listTransactions(database, ownerScope(ws), window);
+  // A category is only taken from what this workspace holds: a row is recorded here, under this workspace's categories.
+  const here = ws.bookId ? new Set((await listTransactions(database, ws, window)).map((v) => v.id)) : null;
   const posted = await postingDates(database, ws, views.map((v) => v.id));
-  const viewById = new Map(views.map((v) => [v.id, v]));
+  const viewById = new Map(views.filter((v) => here === null || here.has(v.id)).map((v) => [v.id, v]));
   const linked = await linkedRows(database.db, views.map((v) => v.id));
   const candidates: Candidate[] = [];
   for (const view of [...views].reverse()) {

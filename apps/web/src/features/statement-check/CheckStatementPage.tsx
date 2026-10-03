@@ -7,6 +7,7 @@ import {
   getCardTerms,
   listDrafts,
   listTransactions,
+  ownerScope,
   type PreparedCheck,
   prepareStatementCheck,
   recordStatementCheck,
@@ -117,7 +118,8 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       const period = prepared!.period;
       const shift = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
       const map = new Map<string, CandidateInfo>();
-      for (const view of await listTransactions(database, ws, { accountId: card.id, from: shift(period.start, -7), to: shift(period.end, 7), limit: 2000 })) {
+      // The card's purchases from every workspace, as the check matched them.
+      for (const view of await listTransactions(database, ownerScope(ws), { accountId: card.id, from: shift(period.start, -7), to: shift(period.end, 7), limit: 2000 })) {
         const onCard = view.entries.filter((e) => e.accountId === card.id).reduce((sum, e) => sum + e.amountMinor, 0);
         map.set(view.id, { on: view.occurredOn, description: view.description, amountMinor: Math.abs(onCard) });
       }
