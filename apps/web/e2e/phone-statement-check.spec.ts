@@ -49,8 +49,24 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await expect(page.getByTestId('count-matched')).toHaveText(/^Matched1›?$/);
   await expect(page.getByTestId('count-differs')).toHaveText(/^Amount differs1›?$/);
   await expect(page.getByTestId('count-missing')).toHaveText(/^Missing — record here3›?$/);
-  await expect(page.getByTestId('count-payments')).toHaveText(/^Payments not tracked.*−Rp\s100\.0001$/);
+  await expect(page.getByTestId('count-payments')).toHaveText(/^Payments not tracked.*−Rp\s100\.0001›?$/);
   await expect(page.getByTestId('count-flagged')).toHaveText(/not on this statement0›?$/);
+
+  // A credit can be called a refund instead, and back: it moves between the payments line and the missing rows.
+  await page.getByTestId('count-payments').click();
+  const payment = page.getByTestId('payment-row');
+  await expect(payment).toContainText('PAYMENT - THANK YOU');
+  await expect(payment.getByRole('radio', { name: 'Card payment' })).toHaveAttribute('aria-checked', 'true');
+  await payment.getByRole('radio', { name: 'Refund' }).click();
+  await expect(payment).toHaveCount(0);
+  await page.getByRole('button', { name: 'August statement' }).click();
+  await expect(page.getByTestId('count-missing')).toHaveText(/^Missing — record here4›?$/);
+  await expect(page.getByTestId('count-payments')).toHaveCount(0);
+  await page.getByTestId('count-missing').click();
+  await page.getByTestId('missing-row').filter({ hasText: 'PAYMENT - THANK YOU' }).getByRole('radio', { name: 'Card payment' }).click();
+  await expect(page.getByTestId('missing-row')).toHaveCount(3);
+  await page.getByRole('button', { name: 'August statement' }).click();
+  await expect(page.getByTestId('count-payments')).toHaveText(/^Payments not tracked.*−Rp\s100\.0001›?$/);
 
   // The near amount takes the statement's figure.
   await page.getByTestId('count-differs').click();
