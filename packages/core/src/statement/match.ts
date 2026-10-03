@@ -6,6 +6,7 @@
  */
 import { merchantKeyOf } from './read';
 import type { StatementPeriod, StatementRow } from './types';
+import { STATEMENT_WORDS } from './words';
 
 /** A transaction or a pending draft on the card that a statement row may be. */
 export interface Candidate {
@@ -128,11 +129,13 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     const tied = exact.filter((e) => e.days === best.days && e.text === best.text).map((e) => e.c);
     if (tied.length > 1) {
       // Rows still open that read exactly like this one can take the tied candidates in turn: nothing to ask then.
+      // With more tied candidates than such rows, every one of those rows asks over the same candidates.
       const alike = order.filter((j) => !outcomes.has(j) && poolOf(j) === poolOf(i) && rows[j]!.amountMinor === r.amountMinor
-        && rows[j]!.on === r.on && merchantKeyOf(rows[j]!.description) === merchantKeyOf(r.description)).length;
-      if (alike < tied.length) {
-        for (const c of tied) used.add(c.id);
-        outcomes.set(i, { row: i, status: 'ask', candidateIds: tied.map((c) => c.id) });
+        && rows[j]!.on === r.on && merchantKeyOf(rows[j]!.description) === merchantKeyOf(r.description));
+      if (alike.length < tied.length) {
+        const candidateIds = tied.map((c) => c.id);
+        for (const id of candidateIds) used.add(id);
+        for (const j of alike) outcomes.set(j, { row: j, status: 'ask', candidateIds: [...candidateIds] });
         continue;
       }
     }
@@ -158,7 +161,10 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
   for (const i of order) {
     if (outcomes.has(i)) continue;
     const r = rows[i]!;
-    const near = ranked(i, candidates.filter((c) => eligible(i, c) && Math.abs(c.amountMinor - r.amountMinor) <= NEAR_SHARE * r.amountMinor));
+    const gap = (c: Candidate) => Math.abs(c.amountMinor - r.amountMinor);
+    // The closest amount first; then the date and the text, as for an exact amount.
+    const near = ranked(i, candidates.filter((c) => eligible(i, c) && gap(c) <= NEAR_SHARE * r.amountMinor))
+      .sort((a, b) => gap(a.c) - gap(b.c));
     if (near.length === 0) continue;
     const best = near[0]!.c;
     used.add(best.id);
@@ -203,12 +209,16 @@ function subsetSumming(items: number[], amount: (i: number) => number, day: (i: 
   return search(0, 0, Infinity, -Infinity) ? [...pick] : null;
 }
 
+const PAYMENT_WORD = new RegExp(`\\b(?:${STATEMENT_WORDS.paymentWords.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
+
 /**
- * Whether a credit row reads like a shop's refund rather than a card payment: it names a merchant the card bought
- * from earlier (half or more of the merchant words in common). Out rows never do.
+ * Whether a credit row reads like a shop's refund rather than the card holder's payment. A row naming a payment never
+ * does; otherwise it does when it names a merchant the card bought from earlier (half or more of the merchant words in
+ * common), equals an earlier purchase's amount, or names something shop-like (a merchant word of three letters or
+ * more). Out rows never do.
  */
 export function looksLikeRefund(row: StatementRow, earlierPurchases: readonly { description: string; amountMinor: number }[]): boolean {
-  if (row.direction !== 'in') return false;
-  if (wordsOf(row.description).size === 0) return false;
-  return earlierPurchases.some((p) => textOverlap(row.description, p.description) >= 0.5);
+  if (row.direction !== 'in' || PAYMENT_WORD.test(row.description)) return false;
+  if (earlierPurchases.some((p) => textOverlap(row.description, p.description) >= 0.5 || p.amountMinor === row.amountMinor)) return true;
+  return [...wordsOf(row.description)].some((w) => /\p{L}{3,}/u.test(w));
 }

@@ -42,5 +42,7 @@ describe('merchantKeyOf', () => {
 
   it('keeps a city word that is not at the end', () => {
     expect(merchantKeyOf('BANDUNG BAKERY SURABAYA ID')).toBe('bandung bakery');
+    expect(merchantKeyOf('0811000000 JKT ID ID')).toBe('');
+    expect(merchantKeyOf('KOPI SENJA JKT ID')).toBe('kopi senja');
   });
 });

@@ -99,10 +99,71 @@ describe('matchStatement', () => {
       [cand('a', '2026-05-10', 55_000, { description: 'TOKO A' }), cand('b', '2026-05-10', 55_000, { description: 'TOKO A' })],
       OFF,
     );
-    expect(result.outcomes).toHaveLength(2);
+    expect(result.outcomes.map((o) => o.status)).toEqual(['matched', 'matched']);
     const ids = result.outcomes.map((o) => (o.status === 'matched' ? o.candidateIds : []));
     expect(ids.flat().sort()).toEqual(['a', 'b']);
     expect(result.flagged).toEqual([]);
+  });
+
+  it('asks every alike row over the same tied candidates when there are more candidates than rows', () => {
+    const result = matchStatement(
+      [row('2026-05-10', 'TOKO A', 55_000), row('2026-05-10', 'TOKO A', 55_000)],
+      [
+        cand('a', '2026-05-10', 55_000, { description: 'TOKO A' }),
+        cand('b', '2026-05-10', 55_000, { description: 'TOKO A' }),
+        cand('c', '2026-05-10', 55_000, { description: 'TOKO A' }),
+      ],
+      OFF,
+    );
+    expect(result.outcomes).toEqual([
+      { row: 0, status: 'ask', candidateIds: ['a', 'b', 'c'] },
+      { row: 1, status: 'ask', candidateIds: ['a', 'b', 'c'] },
+    ]);
+    expect(result.flagged).toEqual([]);
+  });
+
+  it('keeps candidates a row asks about out of flagged', () => {
+    const result = matchStatement(
+      [row('2026-05-10', 'TOKO A', 55_000)],
+      [cand('a', '2026-05-10', 55_000, { description: 'TOKO A' }), cand('b', '2026-05-10', 55_000, { description: 'TOKO A' })],
+      OFF,
+    );
+    expect(result.outcomes).toEqual([{ row: 0, status: 'ask', candidateIds: ['a', 'b'] }]);
+    expect(result.flagged).toEqual([]);
+  });
+
+  it('ranks near amounts by the difference first, then the date', () => {
+    const result = matchStatement(
+      [row('2026-05-10', 'TOKO A', 100_000)],
+      [cand('far', '2026-05-10', 96_000), cand('close', '2026-05-11', 99_900)],
+      OFF,
+    );
+    expect(result.outcomes).toEqual([{ row: 0, status: 'differs', candidateId: 'close', statementMinor: 100_000, recordedMinor: 99_900 }]);
+    expect(result.flagged).toEqual(['far']);
+  });
+
+  it('matches a refund row with a recorded refund', () => {
+    const result = matchStatement(
+      [row('2026-05-08', 'KOPI SENJA', 113_190, { direction: 'in' })],
+      [cand('r1', '2026-05-09', 113_190, { direction: 'in', kind: 'refund' })],
+      { ...OFF, refundHints: new Map([[0, true]]) },
+    );
+    expect(result.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['r1'] }]);
+  });
+
+  it('calls a tracked payment with no transfer missing as a payment', () => {
+    const result = matchStatement([row('2026-05-08', 'PAYMENT', 500_000, { direction: 'in' })], [], ON);
+    expect(result.outcomes).toEqual([{ row: 0, status: 'missing', as: 'payment' }]);
+  });
+
+  it('never matches a credit with a purchase draft', () => {
+    const result = matchStatement(
+      [row('2026-05-08', 'KOPI SENJA', 113_190, { direction: 'in' })],
+      [cand('draft:1', '2026-05-08', 113_190, { isDraft: true }), cand('draft:2', '2026-05-08', 113_190, { isDraft: true, direction: 'in' })],
+      { ...OFF, refundHints: new Map([[0, true]]) },
+    );
+    expect(result.outcomes).toEqual([{ row: 0, status: 'missing', as: 'refund' }]);
+    expect(result.flagged).toEqual(['draft:1', 'draft:2']);
   });
 
   it('matches a pending draft like a transaction', () => {
@@ -127,5 +188,20 @@ describe('looksLikeRefund', () => {
 
     const transfer = row('2026-05-08', '0811000000 JKT ID ID', 500_000, { direction: 'in' });
     expect(looksLikeRefund(transfer, [{ description: 'KOPI SENJA JAKARTA SLT ID', amountMinor: 113_190 }])).toBe(false);
+  });
+
+  it('reads a credit equal to an earlier purchase as a refund, whatever its text', () => {
+    const credit = row('2026-05-08', '88123 JKT ID', 126_500, { direction: 'in' });
+    expect(looksLikeRefund(credit, [{ description: 'KOPI SENJA JAKARTA SLT ID', amountMinor: 126_500 }])).toBe(true);
+  });
+
+  it('never reads a row naming a payment as a refund', () => {
+    const payment = row('2026-05-08', 'PAYMENT - THANK YOU', 126_500, { direction: 'in' });
+    expect(looksLikeRefund(payment, [{ description: 'KOPI SENJA JAKARTA SLT ID', amountMinor: 126_500 }])).toBe(false);
+  });
+
+  it('reads a credit naming a shop as a refund with no earlier purchase', () => {
+    const credit = row('2026-05-08', 'TOKO SEPATU MAJU', 250_000, { direction: 'in' });
+    expect(looksLikeRefund(credit, [])).toBe(true);
   });
 });
