@@ -112,6 +112,8 @@ For each row, in date order, against the card's transactions in the period plus 
 - **Same merchant in this check.** Choosing a category for one row fills every unanswered row of the same normalised
   merchant, marked "same merchant". The owner can change any row on its own afterwards.
 - **Fees** go to **Fees & charges**. If the workspace has no such category, it is created on first use.
+- **Refunds** with no purchase to go back under (no merchant history, no earlier purchase of the same amount, none
+  on the statement) go to **Refunds** (`miscellaneous.refunds`, under Miscellaneous), created on first use.
 - The answers are remembered through the transactions they create, so next month's rows and captures read them as
   "known".
 
@@ -125,6 +127,9 @@ For each row, in date order, against the card's transactions in the period plus 
 2. **Reading.** A progress line while each image is read on the phone. Vision is reached through the capture
    plugin's text recognition, extended to accept image data from the web layer.
 3. **History guard (S10).** If needed, the question "Start this card on 1 Jan 2026 with Rp X owed?" is asked here.
+   Moving the start replaces the card's opening (dated the day before the statement, owing its previous balance;
+   removed when that is zero) and keeps one bridging balance correction on the old start date, so today's balance
+   never changes. The bridge is recomputed on every later check of the card and goes when it reaches zero.
 4. **Result.**
    - The headline balance card: **✓ Reconciled**, or "Differs by Rp X" with the likely cause, e.g. a missing fee
      row or an unmatched flagged transaction.
@@ -158,9 +163,12 @@ For each row, in date order, against the card's transactions in the period plus 
 
 ### 3.6 "Payments not tracked" (S7)
 
-- **One transaction per statement.** It moves money into the card from the system **opening balance** equity
-  account, by the sum of the statement's payment rows. Its description is "Payments not tracked (N payments)" ("(1
-  payment)" for one).
+- **One transaction per statement.** It moves money into the card from the system **balance correction** equity
+  account, by the sum of the statement's payment rows that match no payment the owner recorded (a recorded transfer
+  into the card is matched and linked, with tracking on or off). Its description is "Payments not tracked (N
+  payments)" ("(1 payment)" for one). (Corrected in the build: the opening-balance account would make the line read
+  as the card's opening; a tracked "Card payment" recorded by a check uses the same correction account until its From
+  account is chosen.)
 - **Excluded from reports**, from spending and from the main transaction list, using the existing exclude flag plus
   a list filter for this system kind.
 - **Where it shows:** only in the card's statement list, under the Payment group.

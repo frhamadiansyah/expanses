@@ -103,10 +103,10 @@ export function buildRows(
   const isPerson = (id: string) => ['receivable', 'payable'].includes(byId.get(id)?.subtype ?? '');
 
   // A statement check's "Payments not tracked" adjustment (statement-check spec §3.6) is the card's business alone: it
-  // shows in the card's statement list, never here. Known by its description and its opening-balance equity side.
+  // shows in the card's statement list, never here. Known by its description and its balance-correction equity side.
   const quiet = (tx: TransactionView) =>
     tx.description.startsWith('Payments not tracked (') &&
-    tx.entries.some((e) => (e.accountSystemKey ?? byId.get(e.accountId)?.systemKey) === 'opening_balance');
+    tx.entries.some((e) => (e.accountSystemKey ?? byId.get(e.accountId)?.systemKey) === 'balance_correction');
 
   const recorded = txs.filter((tx) => !quiet(tx)).map((tx): ListRow => {
     const c = classify(tx);

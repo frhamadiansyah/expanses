@@ -59,10 +59,10 @@ describe('buildRows', () => {
   });
 
   it('leaves out a statement check’s Payments not tracked adjustment, and nothing else named like it', () => {
-    const equity = account('opening', 'equity', 'opening_balance' as AccountRow['subtype'], { systemKey: 'opening_balance' });
+    const equity = account('correction', 'equity', 'balance_correction' as AccountRow['subtype'], { systemKey: 'balance_correction' });
     const withEquity = [...accounts, equity];
     const adjustment = tx('2026-09-10', 'Payments not tracked (2 payments)', [['octo', 70000], ['bca', -70000]]);
-    adjustment.entries[1] = { ...adjustment.entries[1]!, accountId: 'opening', accountName: 'Opening balance', accountKind: 'equity', accountSystemKey: 'opening_balance' };
+    adjustment.entries[1] = { ...adjustment.entries[1]!, accountId: 'correction', accountName: 'Balance correction', accountKind: 'equity', accountSystemKey: 'balance_correction' };
     const lookalike = tx('2026-09-10', 'Payments not tracked (a note)', [['octo', 70000], ['bca', -70000]]);
     const shown = buildRows([adjustment, lookalike, superindo], [], withEquity, cards).map((row) => row.id);
     expect(shown).toEqual([lookalike.id, superindo.id]);

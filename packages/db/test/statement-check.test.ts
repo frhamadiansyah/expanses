@@ -1,4 +1,4 @@
-import { type CaptureLine, expenseLines, type StatementPeriod } from '@expanses/core';
+import { type CaptureLine, expenseLines, type StatementPeriod, transferLines } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   type CheckDecisions,
@@ -59,13 +59,16 @@ async function household(opening: { openingBalanceMinor: number; openedOn: strin
   const groceries = cat('household.groceries');
   const books = cat('shopping.books');
   const fees = cat('miscellaneous.fees_charges');
-  const equity = all.find((a) => a.systemKey === 'opening_balance')!.id;
+  /** The balance-correction equity, made the first time a check needs it. */
+  const correction = async () => (await listAccounts(database, ws)).find((a) => a.systemKey === 'balance_correction')!.id;
   const buy = (occurredOn: string, description: string, amountMinor: number, categoryAccountId = groceries, on = card.id) =>
     postTransaction(database, ws, { occurredOn, description, lines: expenseLines({ categoryAccountId, paymentAccountId: on, amountMinor, currency: 'IDR' }) });
   const balances = async () => nativeBalances(database, ws);
   const prepare = (images: CaptureLine[][], period = MAY, today = TODAY) => prepareStatementCheck(database, ws, { cardAccountId: card.id, period, images, today });
   const posted = async () => (await listTransactions(database, ws, { limit: 5000 })).length;
-  return { database, ws, card, other, bank, groceries, books, fees, equity, buy, balances, prepare, posted };
+  const pay = (occurredOn: string, amountMinor: number) =>
+    postTransaction(database, ws, { occurredOn, description: 'Pay the card', lines: transferLines({ fromAccountId: bank.id, toAccountId: card.id, amountMinor, currency: 'IDR' }) });
+  return { database, ws, card, other, bank, groceries, books, fees, correction, buy, pay, balances, prepare, posted };
 }
 
 /** Every row given the category it needs. */
@@ -101,7 +104,7 @@ describe('recording a check', () => {
   const statement = (closing: string) =>
     image(
       [['12MAY', 'TOKO ALFA', '100,000'], ['12MAY', 'KEDAI BETA', '200,000'], ['14MAY', 'TOKO ALFA', '30,000CR'], ['20MAY', 'PAYMENT THANK YOU', '50,000CR'], ['22MAY', 'PEMBAYARAN', '20,000CR']],
-      { closing },
+      { previous: '0', closing },
     );
 
   it('posts missing purchases and refunds, keeps untracked payments as one quiet line, and reconciles', async () => {
@@ -126,16 +129,17 @@ describe('recording a check', () => {
     expect(balances[h.groceries]).toBe(70_000); // the refund took the purchase's category back down
     expect(balances[h.books]).toBe(200_000);
 
+    const correction = await h.correction();
     const txs = await listTransactions(h.database, h.ws, { accountId: h.card.id });
     const adjustment = txs.filter((t) => t.description.startsWith('Payments not tracked'));
     expect(adjustment).toHaveLength(1);
     expect(adjustment[0]).toMatchObject({ description: 'Payments not tracked (2 payments)', excluded: true, occurredOn: MAY.end });
-    expect(adjustment[0]!.entries.find((e) => e.accountId === h.equity)?.amountMinor).toBe(-70_000);
+    expect(adjustment[0]!.entries.find((e) => e.accountId === correction)?.amountMinor).toBe(-70_000);
 
     const links = await listStatementLinks(h.database, result.checkId);
     expect(links.filter((l) => l.kind === 'recorded')).toHaveLength(3);
     expect(links.find((l) => l.kind === 'payments-untracked')?.transactionId).toBe(adjustment[0]!.id);
-    expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ id: result.checkId, periodStart: MAY.start, periodEnd: MAY.end, closingMinor: 200_000, previousMinor: null, status: 'reconciled' }]);
+    expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ id: result.checkId, periodStart: MAY.start, periodEnd: MAY.end, closingMinor: 200_000, previousMinor: 0, status: 'reconciled' }]);
   });
 
   it('says by how much it differs when cicis closes elsewhere', async () => {
@@ -264,17 +268,107 @@ describe('recording a check', () => {
       [{ start: '2026-05-11', end: '2026-06-10' }, [image([['15MAY', 'TOKO ALFA', '2,000,000']], { previous: '2,000,000', closing: '4,000,000' })]],
       [{ start: '2026-06-11', end: '2026-07-10' }, [image([['15JUN', 'TOKO ALFA', '1,500,000'], ['25JUN', 'PAYMENT THANK YOU', '500,000CR']], { previous: '4,000,000', closing: '5,000,000' })]],
     ];
+    const balanceToday = async () => (await cardStatement(h.database, h.ws, h.card.id, { start: '2026-08-11', end: today }, today)).closingMinor;
+    const bridges = async () => (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.externalRef?.startsWith('statement-bridge:'));
+    expect(await balanceToday()).toBe(5_300_000);
     for (const [i, [period, images]] of periods.entries()) {
       const prepared = await h.prepare(images, period, today);
       expect(prepared.startsAfterPeriod).toBe(i === 0);
       const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, moveStart: i === 0 });
       expect(result.status).toBe('reconciled');
+      // Today's balance is what it was before the move, after the first check and after each later one.
+      expect(await balanceToday()).toBe(5_300_000);
+      // The history not yet checked is bridged on the old opening date; it shrinks as statements are checked.
+      expect((await bridges()).map((b) => [b.occurredOn, b.entries.find((e) => e.accountId === h.card.id)?.amountMinor])).toEqual(
+        i === 2 ? [] : [['2026-08-01', i === 0 ? -3_000_000 : -1_000_000]],
+      );
     }
-    const now = await cardStatement(h.database, h.ws, h.card.id, { start: '2026-08-11', end: today }, today);
-    expect(now.closingMinor).toBe(5_300_000);
     const openings = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Opening balance'));
     expect(openings).toHaveLength(1);
     expect(openings[0]!.occurredOn).toBe('2026-04-10');
+  });
+
+  it('moving the start of a card owing nothing before the statement takes its opening away', async () => {
+    const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '100,000' })], MAY, '2026-09-01');
+    expect(prepared).toMatchObject({ previousMinor: 0, startsAfterPeriod: true });
+    const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, moveStart: true });
+    expect(result.status).toBe('reconciled');
+    const txs = await listTransactions(h.database, h.ws, { accountId: h.card.id });
+    expect(txs.filter((t) => t.description.startsWith('Opening balance'))).toEqual([]);
+    expect((await h.balances())[h.card.id]).toBe(-2_000_000);
+  });
+
+  it('with payments not tracked, links a payment the owner recorded and leaves it out of the adjustment', async () => {
+    const h = await household();
+    await h.buy('2026-05-12', 'TOKO ALFA', 300_000);
+    const paid = await h.pay('2026-05-21', 50_000);
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '300,000'], ['20MAY', 'PAYMENT THANK YOU', '50,000CR'], ['22MAY', 'PEMBAYARAN', '20,000CR']], { previous: '0', closing: '230,000' })]);
+    expect(prepared.rows.map((r) => r.outcome)).toMatchObject([{ status: 'matched' }, { status: 'matched', candidateIds: [paid] }, { status: 'payment-untracked' }]);
+    expect(prepared).toMatchObject({ untrackedPaymentsMinor: 20_000, untrackedPaymentsCount: 1, flagged: [] });
+    const result = await recordStatementCheck(h.database, h.ws, prepared, NO_DECISIONS);
+    expect(result.status).toBe('reconciled');
+    expect((await h.balances())[h.card.id]).toBe(-230_000);
+    const adjustment = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Payments not tracked'));
+    expect(adjustment.map((t) => t.description)).toEqual(['Payments not tracked (1 payment)']);
+    expect(await listStatementLinks(h.database, result.checkId)).toEqual(expect.arrayContaining([{ checkId: result.checkId, transactionId: paid, kind: 'matched' }]));
+  });
+
+  it('a re-check from screenshots that start a row later posts nothing twice', async () => {
+    const h = await household();
+    await setTrackPayments(h.database, h.card.id, true);
+    const rows: Printed[] = [['12MAY', 'TOKO ALFA', '100,000'], ['20MAY', 'PAYMENT THANK YOU', '50,000CR'], ['25MAY', 'TOKO BETA', '30,000'], ['25MAY', 'TOKO BETA', '30,000']];
+    const first = await h.prepare([image(rows, { closing: '110,000' })]);
+    await recordStatementCheck(h.database, h.ws, { ...first, rows: categorised(first.rows, h.groceries) }, NO_DECISIONS);
+    const count = await h.posted();
+    const later = await h.prepare([image(rows.slice(1), { closing: '110,000' })]);
+    expect(later.rows.map((r) => r.outcome.status)).toEqual(['matched', 'matched', 'matched']);
+    await recordStatementCheck(h.database, h.ws, { ...later, rows: categorised(later.rows, h.groceries) }, NO_DECISIONS);
+    expect(await h.posted()).toBe(count);
+    expect((await h.balances())[h.card.id]).toBe(-110_000);
+  });
+
+  it('files a refund with nothing to go back under as Refunds, and makes Fees & charges when it is gone', async () => {
+    const h = await household();
+    await h.database.execScript(`UPDATE accounts SET archived_at = '2026-01-01T00:00:00Z' WHERE system_key = 'miscellaneous.fees_charges'`);
+    const prepared = await h.prepare([image([['14MAY', 'TOKO ZETA', '30,000CR'], ['25MAY', 'BIAYA MATERAI', '10,000']])]);
+    const accounts = await listAccounts(h.database, h.ws);
+    const refunds = accounts.find((a) => a.systemKey === 'miscellaneous.refunds')!;
+    const fees = accounts.find((a) => a.systemKey === 'miscellaneous.fees_charges')!;
+    const misc = accounts.find((a) => a.systemKey === 'miscellaneous')!;
+    expect(refunds).toMatchObject({ name: 'Refunds', kind: 'expense', parentId: misc.id });
+    expect(fees).toMatchObject({ name: 'Fees & charges', parentId: misc.id });
+    expect(fees.id).not.toBe(h.fees);
+    expect(prepared.rows.map((r) => [r.outcome.status, r.categoryId, r.categorySource])).toEqual([['missing', refunds.id, 'refund'], ['missing', fees.id, 'fee']]);
+    // Asked again, the same categories are found, not made twice.
+    await h.prepare([image([['14MAY', 'TOKO ZETA', '30,000CR']])]);
+    expect((await listAccounts(h.database, h.ws)).filter((a) => a.systemKey === 'miscellaneous.refunds')).toHaveLength(1);
+  });
+
+  it('refuses to record while a row the matcher could not decide is unanswered', async () => {
+    const h = await household();
+    await h.buy('2026-05-31', 'WARUNG', 55_000);
+    await h.buy('2026-05-31', 'WARUNG', 55_000);
+    const prepared = await h.prepare([image([['31MAY', 'WARUNG', '55,000']])]);
+    await expect(recordStatementCheck(h.database, h.ws, prepared, NO_DECISIONS)).rejects.toMatchObject({ code: 'ASK_UNANSWERED' });
+  });
+
+  it('keeps a link’s kind and the stored balances on a re-check without a summary, and refuses a move to another currency', async () => {
+    const h = await household();
+    const usd = await createCardAccount(h.database, h.ws, { name: 'Dollar card', subtype: 'credit_card', currency: 'USD' });
+    const stray = await h.buy('2026-05-20', 'NOT ON IT', 11_000);
+    const images = [image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '111,000' })];
+    const prepared = await h.prepare(images);
+    await expect(recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, flagged: { [stray]: { moveTo: usd.id } } })).rejects.toMatchObject({ code: 'CURRENCY' });
+    expect(await h.posted()).toBe(1);
+
+    const first = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+    const again = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']])]);
+    expect(again.closingMinor).toBeNull();
+    const second = await recordStatementCheck(h.database, h.ws, again, NO_DECISIONS);
+    expect(second).toMatchObject({ checkId: first.checkId, status: 'reconciled' });
+    expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ closingMinor: 111_000, previousMinor: 0 }]);
+    expect((await listStatementLinks(h.database, first.checkId)).map((l) => l.kind)).toEqual(['recorded']);
   });
 
   it('with payments tracked, records a missing payment as a visible card payment', async () => {
@@ -284,9 +378,10 @@ describe('recording a check', () => {
     expect(prepared.rows[0]!.outcome).toMatchObject({ status: 'missing', as: 'payment' });
     expect(prepared.untrackedPaymentsCount).toBe(0);
     const result = await recordStatementCheck(h.database, h.ws, prepared, NO_DECISIONS);
+    const correction = await h.correction();
     const [payment] = await listTransactions(h.database, h.ws, { accountId: h.card.id });
     expect(payment).toMatchObject({ description: 'Card payment', excluded: false });
-    expect(payment!.entries.find((e) => e.accountId === h.equity)?.amountMinor).toBe(-50_000);
+    expect(payment!.entries.find((e) => e.accountId === correction)?.amountMinor).toBe(-50_000);
     expect(await listStatementLinks(h.database, result.checkId)).toEqual([{ checkId: result.checkId, transactionId: payment!.id, kind: 'recorded' }]);
   });
 });
