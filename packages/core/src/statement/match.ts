@@ -1,0 +1,214 @@
+/**
+ * Matching a statement's rows with what cicis holds for the card (spec §3.2).
+ *
+ * Pure: the caller loads the candidates (the card's transactions and pending drafts around the period) and decides,
+ * row by row, which credits look like a shop's refund. Notes never decide a match.
+ */
+import { merchantKeyOf } from './read';
+import type { StatementPeriod, StatementRow } from './types';
+
+/** A transaction or a pending draft on the card that a statement row may be. */
+export interface Candidate {
+  /** The transaction id, or `draft:<id>` for a pending draft. */
+  id: string;
+  /** The date that counts: the posting date when one is set, otherwise the date it happened. ISO. */
+  on: string;
+  /** Positive, in the card currency's minor units. */
+  amountMinor: number;
+  direction: 'out' | 'in';
+  /** `payment` is a transfer into the card. */
+  kind: 'purchase' | 'refund' | 'payment';
+  description: string;
+  isDraft: boolean;
+}
+
+export type RowOutcome =
+  | { row: number; status: 'matched'; candidateIds: string[] }
+  | { row: number; status: 'differs'; candidateId: string; statementMinor: number; recordedMinor: number }
+  | { row: number; status: 'missing'; as: 'purchase' | 'refund' | 'fee' | 'payment' }
+  | { row: number; status: 'ask'; candidateIds: string[] }
+  | { row: number; status: 'payment-untracked' };
+
+export interface MatchResult {
+  /** One outcome per row, in row order. */
+  outcomes: RowOutcome[];
+  /** Candidates dated inside the period that no row took, in candidate order. */
+  flagged: string[];
+}
+
+export interface MatchOptions {
+  period: StatementPeriod;
+  /** The card's setting: card payments are matched with transfers into the card. */
+  trackPayments: boolean;
+  /** Row index → the credit looks like a shop's refund (see `looksLikeRefund`). */
+  refundHints: ReadonlyMap<number, boolean>;
+}
+
+/** Days either side of a row a purchase or a refund may be dated. */
+const WINDOW_DAYS = 3;
+/** Days either side of a row a card payment may be dated. */
+const PAYMENT_WINDOW_DAYS = 5;
+/** Rows summed into one payment lie this many days apart at most. */
+const SUM_SPREAD_DAYS = 2;
+/** At most this many rows sum to one payment. */
+const SUM_MAX_ROWS = 4;
+/** A recorded amount this close to the statement's (as a share of it) "differs" rather than is missing. */
+const NEAR_SHARE = 0.05;
+
+const DAY_MS = 86_400_000;
+
+function dayNumber(iso: string): number {
+  return Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
+}
+
+function daysApart(a: string, b: string): number {
+  return Math.abs(dayNumber(a) - dayNumber(b));
+}
+
+function wordsOf(description: string): Set<string> {
+  return new Set(merchantKeyOf(description).split(' ').filter((w) => w.length > 0));
+}
+
+/** Jaccard overlap of two descriptions' merchant words, 0..1. */
+function textOverlap(a: string, b: string): number {
+  const wa = wordsOf(a);
+  const wb = wordsOf(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let shared = 0;
+  for (const w of wa) if (wb.has(w)) shared += 1;
+  return shared / (wa.size + wb.size - shared);
+}
+
+type Pool = 'purchase' | 'refund' | 'payment' | 'untracked';
+
+export function matchStatement(rows: readonly StatementRow[], candidates: readonly Candidate[], opts: MatchOptions): MatchResult {
+  const used = new Set<string>();
+  const outcomes = new Map<number, RowOutcome>();
+
+  const poolOf = (i: number): Pool => {
+    const r = rows[i]!;
+    if (r.direction === 'out') return 'purchase';
+    if (opts.refundHints.get(i) === true) return 'refund';
+    return opts.trackPayments ? 'payment' : 'untracked';
+  };
+
+  const windowOf = (pool: Pool): number => (pool === 'payment' ? PAYMENT_WINDOW_DAYS : WINDOW_DAYS);
+
+  const eligible = (i: number, c: Candidate): boolean => {
+    const r = rows[i]!;
+    const pool = poolOf(i);
+    if (used.has(c.id) || c.direction !== r.direction) return false;
+    if (daysApart(r.on, c.on) > windowOf(pool)) return false;
+    if (pool === 'purchase') return c.kind === 'purchase' || c.isDraft;
+    return c.kind === pool;
+  };
+
+  /** Candidates ranked for a row: nearest date first, then the most words in common; input order last. */
+  const ranked = (i: number, list: Candidate[]): { c: Candidate; days: number; text: number }[] => {
+    const r = rows[i]!;
+    return list
+      .map((c) => ({ c, days: daysApart(r.on, c.on), text: textOverlap(r.description, c.description) }))
+      .sort((a, b) => a.days - b.days || b.text - a.text);
+  };
+
+  // Rows in date order; equal dates keep statement order.
+  const order = rows.map((_, i) => i).sort((a, b) => dayNumber(rows[a]!.on) - dayNumber(rows[b]!.on) || a - b);
+
+  for (const i of order) {
+    if (poolOf(i) === 'untracked') outcomes.set(i, { row: i, status: 'payment-untracked' });
+  }
+
+  // 1. The same amount.
+  for (const i of order) {
+    if (outcomes.has(i)) continue;
+    const r = rows[i]!;
+    const exact = ranked(i, candidates.filter((c) => eligible(i, c) && c.amountMinor === r.amountMinor));
+    if (exact.length === 0) continue;
+    const best = exact[0]!;
+    const tied = exact.filter((e) => e.days === best.days && e.text === best.text).map((e) => e.c);
+    if (tied.length > 1) {
+      // Rows still open that read exactly like this one can take the tied candidates in turn: nothing to ask then.
+      const alike = order.filter((j) => !outcomes.has(j) && poolOf(j) === poolOf(i) && rows[j]!.amountMinor === r.amountMinor
+        && rows[j]!.on === r.on && merchantKeyOf(rows[j]!.description) === merchantKeyOf(r.description)).length;
+      if (alike < tied.length) {
+        for (const c of tied) used.add(c.id);
+        outcomes.set(i, { row: i, status: 'ask', candidateIds: tied.map((c) => c.id) });
+        continue;
+      }
+    }
+    used.add(best.c.id);
+    outcomes.set(i, { row: i, status: 'matched', candidateIds: [best.c.id] });
+  }
+
+  // 2. Card payments the bank split over several rows, paid as one transfer.
+  if (opts.trackPayments) {
+    const payments = candidates.filter((c) => c.direction === 'in' && c.kind === 'payment')
+      .sort((a, b) => dayNumber(a.on) - dayNumber(b.on));
+    for (const c of payments) {
+      if (used.has(c.id)) continue;
+      const open = order.filter((i) => !outcomes.has(i) && poolOf(i) === 'payment' && eligible(i, c));
+      const subset = subsetSumming(open, (i) => rows[i]!.amountMinor, (i) => dayNumber(rows[i]!.on), c.amountMinor);
+      if (subset === null) continue;
+      used.add(c.id);
+      for (const i of subset) outcomes.set(i, { row: i, status: 'matched', candidateIds: [c.id] });
+    }
+  }
+
+  // 3. A near amount: the row differs from what was recorded.
+  for (const i of order) {
+    if (outcomes.has(i)) continue;
+    const r = rows[i]!;
+    const near = ranked(i, candidates.filter((c) => eligible(i, c) && Math.abs(c.amountMinor - r.amountMinor) <= NEAR_SHARE * r.amountMinor));
+    if (near.length === 0) continue;
+    const best = near[0]!.c;
+    used.add(best.id);
+    outcomes.set(i, { row: i, status: 'differs', candidateId: best.id, statementMinor: r.amountMinor, recordedMinor: best.amountMinor });
+  }
+
+  // 4. Whatever is left is missing from cicis.
+  for (const i of order) {
+    if (outcomes.has(i)) continue;
+    const r = rows[i]!;
+    const pool = poolOf(i);
+    const as = r.isFee ? 'fee' : pool === 'refund' ? 'refund' : pool === 'payment' ? 'payment' : 'purchase';
+    outcomes.set(i, { row: i, status: 'missing', as });
+  }
+
+  const flagged = candidates
+    .filter((c) => !used.has(c.id) && c.on >= opts.period.start && c.on <= opts.period.end)
+    .map((c) => c.id);
+
+  return { outcomes: rows.map((_, i) => outcomes.get(i)!), flagged };
+}
+
+/** The first set of 2..SUM_MAX_ROWS items, dated within SUM_SPREAD_DAYS of each other, whose amounts sum to `target`. */
+function subsetSumming(items: number[], amount: (i: number) => number, day: (i: number) => number, target: number): number[] | null {
+  const pick: number[] = [];
+  const search = (from: number, sum: number, lo: number, hi: number): boolean => {
+    if (pick.length >= 2 && sum === target) return true;
+    if (pick.length === SUM_MAX_ROWS) return false;
+    for (let k = from; k < items.length; k += 1) {
+      const i = items[k]!;
+      const next = sum + amount(i);
+      const d = day(i);
+      const nlo = Math.min(lo, d);
+      const nhi = Math.max(hi, d);
+      if (next > target || nhi - nlo > SUM_SPREAD_DAYS) continue;
+      pick.push(i);
+      if (search(k + 1, next, nlo, nhi)) return true;
+      pick.pop();
+    }
+    return false;
+  };
+  return search(0, 0, Infinity, -Infinity) ? [...pick] : null;
+}
+
+/**
+ * Whether a credit row reads like a shop's refund rather than a card payment: it names a merchant the card bought
+ * from earlier (half or more of the merchant words in common). Out rows never do.
+ */
+export function looksLikeRefund(row: StatementRow, earlierPurchases: readonly { description: string; amountMinor: number }[]): boolean {
+  if (row.direction !== 'in') return false;
+  if (wordsOf(row.description).size === 0) return false;
+  return earlierPurchases.some((p) => textOverlap(row.description, p.description) >= 0.5);
+}
