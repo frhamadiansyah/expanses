@@ -93,6 +93,20 @@ describe('matchStatement', () => {
     expect(result.outcomes).toEqual([{ row: 0, status: 'missing', as: 'fee' }]);
   });
 
+  it('calls a credited fee missing as money back, never as a charge, whatever its refund hint', () => {
+    const rows = [
+      row('2026-05-20', 'ANNUAL FEE', 500_000, { isFee: true }),
+      row('2026-05-21', 'ANNUAL FEE REVERSAL', 500_000, { isFee: true, direction: 'in' }),
+      row('2026-05-22', 'BIAYA', 20_000, { isFee: true, direction: 'in' }),
+    ];
+    const result = matchStatement(rows, [], { ...OFF, refundHints: new Map([[1, true], [2, false]]) });
+    expect(result.outcomes).toEqual([
+      { row: 0, status: 'missing', as: 'fee' },
+      { row: 1, status: 'missing', as: 'refund' },
+      { row: 2, status: 'missing', as: 'refund' },
+    ]);
+  });
+
   it('breaks a tie by date, then text, then asks', () => {
     const byDate = matchStatement(
       [row('2026-05-31', 'NOB CAFE', 55_000)],

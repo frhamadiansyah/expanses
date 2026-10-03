@@ -92,7 +92,8 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
   const poolOf = (i: number): Pool => {
     const r = rows[i]!;
     if (r.direction === 'out') return 'purchase';
-    if (opts.refundHints.get(i) === true) return 'refund';
+    // A fee credited back (a reversal, a waiver) lowers the fees: money back, never the holder's payment.
+    if (opts.refundHints.get(i) === true || (r.isFee && !PAYMENT_WORD.test(r.description))) return 'refund';
     return 'payment';
   };
 
@@ -181,7 +182,8 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
       outcomes.set(i, { row: i, status: 'payment-untracked' });
       continue;
     }
-    const as = r.isFee ? 'fee' : pool === 'refund' ? 'refund' : pool === 'payment' ? 'payment' : 'purchase';
+    // Only a charge is a fee; a fee row credited back is money back, filed under the fees it lowers.
+    const as = pool === 'purchase' ? (r.isFee ? 'fee' : 'purchase') : pool;
     outcomes.set(i, { row: i, status: 'missing', as });
   }
 

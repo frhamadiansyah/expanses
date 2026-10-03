@@ -284,7 +284,8 @@ export async function prepareStatementCheck(
       .map((id) => draftById.get(draftIdOf(id) ?? ''))
       .some((d) => d !== undefined && d.kind !== 'transfer' && !d.categoryAccountId);
     if (needsCategory(outcome) || draftWithout) {
-      if (outcome.status === 'missing' && outcome.as === 'fee') {
+      // A fee, or a fee credited back: both are Fees & charges, the reversal taking it back down.
+      if (outcome.status === 'missing' && (outcome.as === 'fee' || (outcome.as === 'refund' && row.isFee))) {
         categoryId = await ensure(FEES);
         categorySource = 'fee';
       } else {

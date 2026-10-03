@@ -350,6 +350,20 @@ describe('recording a check', () => {
     expect((await listAccounts(h.database, h.ws)).filter((a) => a.systemKey === 'miscellaneous.refunds')).toHaveLength(1);
   });
 
+  it('records a reversed fee as money back under Fees & charges, so a fee and its reversal owe nothing', async () => {
+    const h = await household();
+    const prepared = await h.prepare([image([['20MAY', 'ANNUAL FEE', '500,000'], ['21MAY', 'ANNUAL FEE REVERSAL', '500,000CR']], { previous: '0', closing: '0' })]);
+    expect(prepared.rows.map((r) => [r.direction, r.outcome, r.categoryId, r.categorySource])).toEqual([
+      ['out', { row: 0, status: 'missing', as: 'fee' }, h.fees, 'fee'],
+      ['in', { row: 1, status: 'missing', as: 'refund' }, h.fees, 'fee'],
+    ]);
+    const result = await recordStatementCheck(h.database, h.ws, prepared, NO_DECISIONS);
+    expect(result).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    const balances = await h.balances();
+    expect(balances[h.card.id] ?? 0).toBe(0);
+    expect(balances[h.fees] ?? 0).toBe(0);
+  });
+
   it('refuses to record while a row the matcher could not decide is unanswered', async () => {
     const h = await household();
     await h.buy('2026-05-31', 'WARUNG', 55_000);
