@@ -75,6 +75,7 @@ export {
   pauseStart,
 } from './bills/schedule';
 export { type Period, type PeriodKind, parsePeriod, periodLabel, stepPeriod, weekOf, weeksOfMonth } from './reports/view-period';
+export { type DayTotal, spendingComparisons, spendingTrend, type TrendBar, type TrendComparison, type TrendContext, type TrendUnit, trendWindow } from './reports/spending-trend';
 export {
   categoryAncestors,
   type CategoryAmount,

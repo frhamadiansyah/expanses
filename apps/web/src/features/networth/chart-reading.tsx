@@ -52,6 +52,8 @@ export function useChartReading(
 
   return {
     reading,
+    /** Lets go of the reading, for a drawing that closes something along with it. */
+    clear: () => setPicked(null),
     /** Everything a drawing needs to be read: spread onto its own `<svg>`. */
     svgProps: {
       role: 'group' as const,
