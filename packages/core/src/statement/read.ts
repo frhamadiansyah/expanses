@@ -227,8 +227,8 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
   return { rows, closingMinor, previousMinor, emptyImages };
 }
 
-/** City and country words a card network appends to a merchant's name — geography, not brands. */
-const TRAILING_PLACE = /(?:^|\s)(?:id|idn|jkt|jakarta(?: (?:slt|selat|pusat|barat|timur|utara))?|tangerang(?: kab)?|bandung|surabaya|bali|sg|my|us)$/;
+/** The place words a card network appends to a merchant's name (`words.ts`), at the end of a description. */
+const TRAILING_PLACE = new RegExp(`(?:^|\\s)(?:${[...W.trailingPlaces].sort((a, b) => b.length - a.length).map(escape).join('|')})$`);
 
 /**
  * A description reduced to the merchant it names, so the same shop reads as one merchant from month to month: lower

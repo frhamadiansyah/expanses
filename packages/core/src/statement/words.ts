@@ -21,6 +21,11 @@ export interface StatementWords {
   months: Record<string, number>;
   /** A month's full name, in either language, to its number. A month word is one of these or of `months`, exactly. */
   monthNames: Record<string, number>;
+  /**
+   * City and country words a card network appends to a merchant's name — geography, not brands — dropped from the
+   * end of a description so two branches of one shop read as one merchant.
+   */
+  trailingPlaces: string[];
 }
 
 export const STATEMENT_WORDS: StatementWords = {
@@ -39,4 +44,8 @@ export const STATEMENT_WORDS: StatementWords = {
     july: 7, juli: 7, august: 8, agustus: 8, september: 9, october: 10, oktober: 10, november: 11, december: 12,
     desember: 12,
   },
+  trailingPlaces: [
+    'id', 'idn', 'jkt', 'jakarta', 'jakarta slt', 'jakarta selat', 'jakarta pusat', 'jakarta barat', 'jakarta timur',
+    'jakarta utara', 'tangerang', 'tangerang kab', 'bandung', 'surabaya', 'bali', 'sg', 'my', 'us',
+  ],
 };
