@@ -11,7 +11,7 @@ import { usePeopleDebts } from '../debts/queries';
 import { debtKindTile } from '../ownables/catalogue-view';
 import { bareFigure, type DebtDrawer, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
 import { useSheet } from '../networth/queries';
-import { ShareBar, ShareLegend } from '../networth/ShareBar';
+import { ShareBoxes, ShowAll } from '../networth/ShareBoxes';
 import { debtSegments } from '../networth/share-segments';
 import { monthlyInstalments } from './instalments';
 import { useCardFacts, useLoanItems, useLoans, useScheduledPayments } from './queries';
@@ -181,18 +181,17 @@ export function DebtsPage() {
    * Keyed by group as well as kind, so a drawer's own state belongs to one kind of debt: `loan:other_loans` and
    * `person:payable` cannot collide, and a card and a loan that happened to share a word could not either.
    */
-  const drawers = (debts?.groups ?? []).flatMap((group, groupIndex) =>
-    group.drawers.map((drawer, index) => ({
-      key: `${group.kind}:${drawer.key}`,
-      drawer,
-      // A hairline above every drawer but the box's first: with the group headers gone, the line is the only thing
-      // that tells one kind of debt from the next.
-      separator: groupIndex > 0 || index > 0,
-    })),
-  );
+  const drawers = (debts?.groups ?? []).flatMap((group) => group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, drawer })));
 
   const nothing = debts !== null && debts.groups.length === 0;
   const drawersState = useDrawers();
+  // The kind of debt picked on the chart, if one is: the box narrows to its drawer, opened.
+  const [picked, setPicked] = useState<string | null>(null);
+  const pick = (key: string | null) => {
+    setPicked(key);
+    if (key !== null && !drawersState.open.has(key)) drawersState.toggle(key);
+  };
+  const listed = drawers.filter(({ key }) => picked === null || key === picked);
   /*
    * What the total is made of: one segment per kind of debt, keyed the way the drawers are so a card and a loan that
    * shared a word could not share a segment. The same fold the list below makes, drawn above it — the bar is this
@@ -251,16 +250,24 @@ export function DebtsPage() {
                 <Hero minor={debts.total.totalMinor} currency={baseCurrency} align="center" />
               </div>
               {segments.length > 0 && (
-                <>
-                  <ShareBar segments={segments} totalMinor={debts.total.totalMinor} />
-                  <ShareLegend segments={segments} totalMinor={debts.total.totalMinor} />
-                </>
+                <ShareBoxes
+                  segments={segments}
+                  totalMinor={debts.total.totalMinor}
+                  currency={baseCurrency}
+                  iconOf={(key) => debtKindTile(key.slice(key.indexOf(':') + 1))}
+                  picked={picked}
+                  onPick={pick}
+                />
               )}
             </Panel>
           )}
+          {picked !== null && <ShowAll onClick={() => setPicked(null)} />}
           {(drawers.length > 0 || debts.cleared.length > 0) && (
             <InsetGroup footer={instalmentLine}>
-              {drawers.flatMap(({ key, drawer, separator }) => {
+              {listed.flatMap(({ key, drawer }, index) => {
+                // A hairline above every drawer but the box's first: with the group headers gone, the line is the only
+                // thing that tells one kind of debt from the next.
+                const separator = index > 0;
                 const shown = drawersState.open.has(key);
                 return [
                   <Drawer

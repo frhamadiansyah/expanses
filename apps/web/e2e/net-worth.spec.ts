@@ -161,11 +161,13 @@ test('reads what you owe by kind rather than by when it falls due', async ({ pag
   await page.getByTestId('type-drawer-debts:multi_purpose_loan').click();
   await expect(page.getByText('KPR BCA')).toHaveCount(1);
 
-  // And the bar divides the same kinds into shares — read on the sub page, where the bar and the list it divides are
+  // And the boxes divide the same kinds into shares — read on the sub page, where the chart and the list it divides are
   // drawn: the Overview draws a side's sections and its total, and the drawing of what makes it up is that page's.
+  // Each box says its share in its name, so one too small for words still does.
   await page.goto('/net-worth/loans');
-  await expect(page.getByText(/Credit card \d+%/)).toBeVisible();
-  await expect(page.getByText(/Multi-purpose loan \d+%/)).toBeVisible();
+  const boxes = page.getByTestId('share-boxes');
+  await expect(boxes.getByRole('button', { name: /^Credit card, .+, (<1|\d+)%$/ })).toBeVisible();
+  await expect(boxes.getByRole('button', { name: /^Multi-purpose loan, .+, (<1|\d+)%$/ })).toBeVisible();
 });
 
 /**
