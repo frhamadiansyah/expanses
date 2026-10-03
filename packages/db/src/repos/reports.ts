@@ -7,6 +7,17 @@ import { attributedOn, billTablesExist } from './bill-months';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 
+/** What narrows a category total beyond its kind and its dates. */
+export interface CategoryTotalsOptions {
+  excludeEvents?: boolean;
+  billMonths?: boolean;
+  /**
+   * Only what this account paid for: Cashflow's donut following the list's Paid with filter (statement check S11).
+   * A transaction counts when it has an entry on the account, and only by the account's share of what paid for it.
+   */
+  paidAccountId?: string;
+}
+
 export interface CategoryTotal {
   accountId: string;
   amountBaseMinor: number;
@@ -25,10 +36,13 @@ async function categoryRows(
   kind: 'expense' | 'income',
   from: string,
   to: string,
-  opts: { excludeEvents?: boolean; billMonths?: boolean },
-): Promise<{ where: SQL; onDate: SQL<string> }> {
+  opts: CategoryTotalsOptions,
+): Promise<{ where: SQL; onDate: SQL<string>; share: SQL<number> }> {
   // The budget and Cashflow ask for bills in the month they came out; every other reader keeps the day paid.
   const byBillMonth = opts.billMonths === true && (await billTablesExist(database.db));
+  const paid = opts.paidAccountId;
+  // What the filtered account put into a transaction, in base: one entry, or the sum of several on the same account.
+  const ownSum = sql`(SELECT sum(own.amount_base_minor) FROM entries own WHERE own.transaction_id = ${transactions.id} AND own.account_id = ${paid ?? null})`;
   const inPeriod = byBillMonth
     ? [
         // The first test keeps the date index in play; the second moves a bill paid in another month onto its own.
@@ -49,11 +63,20 @@ async function categoryRows(
       // What was marked "not my spending" leaves the chart, the rings and the budgets. It is still on the card,
       // still in the balance, still earning points: only this reading of it changes.
       ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+      ...(paid ? [sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${paid})`] : []),
     )!,
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
     // counted in August and converted at August's rate, which is the month the figure speaks for.
     onDate: byBillMonth ? sql<string>`${attributedOn()}` : sql<string>`${transactions.occurredOn}`,
+    // The part of each transaction the account paid: its own entry over the payers' entries — money-side entries (not
+    // a category) with the same sign as its own. A purchase split 80/20 between a card and a bank, or with a friend who
+    // paid part, counts 80% on the card. A bill the card paid for friends too is not divided: their receivables are
+    // where the card's money went, so the owner's own part was all paid by the card. Ratios are read from base
+    // amounts, so a split across currencies is weighed in one unit.
+    share: paid
+      ? sql<number>`abs(${ownSum}) * 1.0 / NULLIF((SELECT sum(abs(side.amount_base_minor)) FROM entries side INNER JOIN accounts side_account ON side_account.id = side.account_id WHERE side.transaction_id = ${transactions.id} AND side_account.kind NOT IN ('expense', 'income') AND side.amount_base_minor * ${ownSum} > 0), 0)`
+      : sql<number>`1`,
   };
 }
 
@@ -73,13 +96,13 @@ export async function categoryTotalsBetween(
   kind: 'expense' | 'income',
   from: string,
   to: string,
-  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+  opts: CategoryTotalsOptions = {},
 ): Promise<CategoryTotal[]> {
-  const { where } = await categoryRows(database, ws, kind, from, to, opts);
+  const { where, share } = await categoryRows(database, ws, kind, from, to, opts);
   const rows = await database.db
     .select({
       accountId: entries.accountId,
-      total: sql<number>`sum(${entries.amountBaseMinor})`,
+      total: sql<number>`sum(${entries.amountBaseMinor} * ${share})`,
       // How many transactions made up the total, for a report that says "14 transactions", not just a sum.
       count: sql<number>`count(distinct ${transactions.id})`,
     })
@@ -89,7 +112,7 @@ export async function categoryTotalsBetween(
     .where(where)
     .groupBy(entries.accountId);
   return rows
-    .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Number(r.total)), transactions: Number(r.count) }))
+    .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Math.round(Number(r.total))), transactions: Number(r.count) }))
     .filter((r) => r.amountBaseMinor !== 0);
 }
 
@@ -106,12 +129,12 @@ export async function categoryTotalsIn(
   kind: 'expense' | 'income',
   from: string,
   to: string,
-  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+  opts: CategoryTotalsOptions = {},
 ): Promise<{ rows: CategoryTotal[]; currency: string; missing: Unconverted[] }> {
   const money = await bookMoneyFor(database, ws);
   if (!money.converts) return { rows: await categoryTotalsBetween(database, ws, kind, from, to, opts), currency: money.currency, missing: [] };
 
-  const { where, onDate } = await categoryRows(database, ws, kind, from, to, opts);
+  const { where, onDate, share } = await categoryRows(database, ws, kind, from, to, opts);
   const rows = await database.db
     .select({
       accountId: entries.accountId,
@@ -119,6 +142,7 @@ export async function categoryTotalsIn(
       currency: entries.currency,
       onDate,
       transactionId: transactions.id,
+      share,
     })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
@@ -130,13 +154,13 @@ export async function categoryTotalsIn(
     const converted = money.convert(displayAmount(kind, Number(row.amountMinor)), row.currency, row.onDate);
     if (converted === null) continue; // left out, and named by money.missing()
     const held = totals.get(row.accountId) ?? { amountBaseMinor: 0, transactions: new Set<string>() };
-    held.amountBaseMinor += converted;
+    held.amountBaseMinor += converted * Number(row.share ?? 0);
     held.transactions.add(row.transactionId);
     totals.set(row.accountId, held);
   }
   return {
     rows: [...totals]
-      .map(([accountId, held]) => ({ accountId, amountBaseMinor: held.amountBaseMinor, transactions: held.transactions.size }))
+      .map(([accountId, held]) => ({ accountId, amountBaseMinor: Math.round(held.amountBaseMinor), transactions: held.transactions.size }))
       .filter((row) => row.amountBaseMinor !== 0),
     currency: money.currency,
     missing: money.missing(),
