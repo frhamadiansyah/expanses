@@ -51,11 +51,12 @@ test('the queue is rows, and a tap opens the Add form that records one', async (
   await capture(page, 'BCA Tahapan (IDR)', CSV);
 
   await page.goto('/review');
-  // No sideways table on a phone: two rows, each saying what it read and where it is headed.
+  // No sideways table on a phone: two rows in day cards, each saying what it read and where it is headed.
   await expect(page.getByRole('table')).toHaveCount(0);
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
   const superindo = row(page, 'SUPERINDO KEBAYORAN');
-  await expect(superindo).toContainText('9 Sep');
+  // The day is the card's, as on Cashflow: a card per day, headed by its date.
+  await expect(page.locator('section').filter({ has: superindo })).toContainText('September 2026');
   await expect(superindo).toContainText('250.000');
 
   // A tap opens the Add transaction form, filled in from what was read: the day, the figure, the account, the guess.

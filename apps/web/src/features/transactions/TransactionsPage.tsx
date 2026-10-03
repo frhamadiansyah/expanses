@@ -14,7 +14,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, CalendarX2, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -35,6 +35,7 @@ import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
+import { DayHeader } from './DayHeader';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -114,37 +115,6 @@ function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLab
         <X size={14} aria-hidden />
       </button>
     </span>
-  );
-}
-
-function DayHeader({ date, net, currency }: { date: string; net: number; currency: string }) {
-  if (!date) {
-    return (
-      <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
-        <CalendarX2 size={22} className="text-amber-700" aria-hidden />
-        <span className="flex flex-col text-xs leading-tight text-slate-500">
-          <b className="font-semibold text-slate-700">No date yet</b>
-          Give these a date to file them
-        </span>
-      </div>
-    );
-  }
-  const d = new Date(`${date}T00:00:00`);
-  return (
-    <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
-      <span className="tabular w-9 shrink-0 text-2xl leading-none font-semibold">{d.getDate()}</span>
-      <span className="flex flex-col text-xs leading-tight text-slate-500">
-        <b className="font-semibold text-slate-700">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</b>
-        {d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-      </span>
-      {/* From md a row ends with room for its edit pencil, so the day's total leaves the same room. */}
-      {/* No sign and no red: the day's total sums the rows below it rather than adding anything to them. */}
-      {net !== 0 && (
-        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net > 0 ? 'text-emerald-700' : 'text-slate-600')}>
-          {formatMinor(Math.abs(net), currency)}
-        </span>
-      )}
-    </div>
   );
 }
 
