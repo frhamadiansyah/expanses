@@ -1,8 +1,8 @@
-import { type ReactNode, useRef } from 'react';
+import { type ReactNode, useLayoutEffect, useRef } from 'react';
 import { cx } from '../../ui';
 
 /**
- * Two charts as pages of one card, moved between by swiping sideways or by tapping a dot.
+ * Charts as pages of one card, moved between by swiping sideways or by tapping a dot.
  *
  * A swipe is what the two charts already look like they want — a wallet card turned over — and the dots
  * are the only new furniture, so the card gains a second question without gaining a second switch.
@@ -30,6 +30,17 @@ export function Deck({
     const at = Math.round(box.scrollLeft / box.clientWidth);
     if (at !== page) onPage?.(at);
   };
+
+  // A page can go away under the reader — the budget page is not there for money coming in — and the deck is moved to
+  // wherever the page it was on now sits, without the slide a tap gets. Only when the pages change: during a swipe the
+  // page moves under the finger, and jumping there would fight it.
+  const pages = useRef(children.length);
+  useLayoutEffect(() => {
+    if (pages.current === children.length) return;
+    pages.current = children.length;
+    const box = deck.current;
+    if (box && box.clientWidth > 0) box.scrollTo({ left: page * box.clientWidth });
+  }, [page, children.length]);
 
   const go = (to: number) => {
     const box = deck.current;

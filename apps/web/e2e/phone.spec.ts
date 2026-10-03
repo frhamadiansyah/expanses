@@ -193,6 +193,48 @@ test('the chart card keeps its height when the month is read the other way', asy
 });
 
 /**
+ * The card's last page draws the period over time: a bar per day of the month, read by tapping it, and the month's
+ * biggest days under it — each one line, and each a way into that day.
+ */
+test('the chart card turns to the month over time, and a bar is read by tapping it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '40000' });
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+
+  const chart = page.getByTestId('spending-report');
+  const card = chart.locator('section').first();
+  const ringHeight = (await card.boundingBox())!.height;
+  await chart.getByRole('button', { name: 'Over time' }).click();
+  const bars = chart.getByTestId('trend-bars');
+  await expect(bars).toBeInViewport();
+  // One bar for every day of the month so far; the days still to come are not drawn.
+  const today = new Date();
+  await expect(bars.getByTestId('trend-bar')).toHaveCount(today.getDate());
+
+  // Nothing is written on the bars until one is tapped.
+  await expect(bars.getByTestId('net-worth-reading')).toHaveCount(0);
+  await bars.getByTestId('trend-bar').last().click();
+  await expect(bars.getByTestId('net-worth-reading')).toContainText('Rp 290.000');
+  // A tap on the bars is a reading, not a request for the categories.
+  await expect(chart.getByTestId('report-row')).toHaveCount(0);
+
+  // Under the bars, the biggest day, on one line, and nothing to compare a first month with.
+  await expect(chart.getByTestId('trend-comparisons')).toHaveCount(0);
+  await expect(chart.getByTestId('trend-biggest')).toHaveCount(1);
+  await expect(chart.getByTestId('trend-biggest')).toContainText('Rp 290.000');
+  // The drawing is the ring's own size, so the card grows only by the list under it.
+  const drawing = (await bars.boundingBox())!.height;
+  expect(drawing).toBeLessThanOrEqual(ringHeight);
+
+  // The day opens the list on that day.
+  await chart.getByTestId('trend-biggest').click();
+  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  await expect(page).toHaveURL(new RegExp(`month=${day}(\\.|%2E){2}${day}`));
+});
+
+/**
  * The list under the chart ends where the card's own padding begins.
  *
  * A row is floored at 48 so a thumb can find it, and that floor is not all content: the few pixels it has over are a

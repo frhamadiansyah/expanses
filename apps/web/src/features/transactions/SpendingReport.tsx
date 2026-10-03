@@ -17,6 +17,7 @@ import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { IncomeFlow } from './IncomeFlow';
+import { TrendBars, TrendUnder, useSpendingTrend } from './SpendingTrend';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
 import { useOpenBook } from '../workspaces/queries';
 
@@ -96,6 +97,8 @@ function Ring({
   header,
   extra = [],
   second,
+  third,
+  under,
   page = 0,
   onPage,
   onOpen,
@@ -121,6 +124,10 @@ function Ring({
   extra?: readonly { key: string; label: string; totalMinor: number }[];
   /** A second chart, shown by swiping the card sideways. Given, the card grows a pair of dots. */
   second?: ReactNode;
+  /** The spending over time, as the last page. Its own list replaces the categories while it is showing. */
+  third?: ReactNode;
+  /** What is listed under the third page. */
+  under?: ReactNode;
   /** Which chart is showing. The rows measure themselves against the same thing it does. */
   page?: number;
   onPage?: (page: number) => void;
@@ -131,6 +138,7 @@ function Ring({
 }) {
   // One tap on the chart, whichever way the list is at the time.
   const fold = showRows ? onFold : onAsk;
+  const onThird = third !== undefined && page === (second ? 2 : 1);
   const chosen = useCategoryColours().data;
   const ordered = [...nodes].sort((a, b) => b.totalMinor - a.totalMinor);
   const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })), 8, chosen);
@@ -162,7 +170,8 @@ function Ring({
       <div
         role="button"
         tabIndex={0}
-        onClick={fold}
+        // The bars are read by tapping them, and their page lists its own things, so it folds nothing.
+        onClick={onThird ? undefined : fold}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -186,9 +195,10 @@ function Ring({
    * a card that changes height with which side of the ledger it is showing — the month's ring is the same size either
    * way, so what moved was the pager's own strip. One page keeps the furniture and offers nothing to turn to.
    */
-  const pages = second ? [donut, second] : [donut];
+  const pages = [donut, ...(second ? [second] : []), ...(third ? [third] : [])];
+  const labels = [['Where the month went', true], ['Against budget', second !== undefined], ['Over time', third !== undefined]] as const;
   const chart = (
-    <Deck page={page} onPage={onPage} labels={second ? ['Where the month went', 'Against budget'] : []} frame={frame}>
+    <Deck page={page} onPage={onPage} labels={pages.length > 1 ? labels.filter(([, has]) => has).map(([label]) => label) : []} frame={frame}>
       {pages}
     </Deck>
   );
@@ -198,7 +208,7 @@ function Ring({
       {header}
       {/* No legend: the ring writes each name against its own slice, and the rows below name the rest. */}
       {chart}
-      {showRows && (
+      {onThird ? under : showRows && (
         <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
           {ordered.map((node, index) => (
             <Row
@@ -253,8 +263,9 @@ export function SpendingReport({
   const inOpenBook = useInOpenBook();
   // The categories are folded away until asked for: the list underneath is what most days are about.
   const [showAll, setShowAll] = useState(false);
-  // Which of the two charts the card is turned to. The rows follow it, so one denominator is on screen at a time.
-  const [page, setPage] = useState(0);
+  // Which chart the card is turned to. The rows follow it, so one denominator is on screen at a time. It is held by name,
+  // not position: the budget page comes and goes with the side of the ledger, and the bars must not move when it does.
+  const [pageName, setPageName] = useState<'ring' | 'budget' | 'trend'>('ring');
   const [picking, setPicking] = useState(false);
   // "month" is whatever period the page shows. All time is asked for as the widest possible stretch.
   const period = parsePeriod(month);
@@ -285,7 +296,10 @@ export function SpendingReport({
   const gaugeCurrency = budgets.data?.currency ?? currency;
   // The budget page exists only where there is a budget to measure, and only for money going out.
   const hasBudgets = kind === 'expense' && isMonth && progress.any;
-  const onBudgets = hasBudgets && page === 1;
+  const pageNames: readonly ('ring' | 'budget' | 'trend')[] = hasBudgets ? ['ring', 'budget', 'trend'] : ['ring', 'trend'];
+  const page = Math.max(0, pageNames.indexOf(pageName));
+  const onBudgets = pageNames[page] === 'budget';
+  const trend = useSpendingTrend(month, kind, !eventsInCaps);
   const caps: Record<string, number> = {};
   /** A category's budget, or what its children were budgeted between them: a parent row measures the lot. */
   const readCaps = (line: BudgetLine): number => {
@@ -401,8 +415,17 @@ export function SpendingReport({
               caps={onBudgets ? caps : undefined}
               header={header}
               second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
+              third={
+                trend ? (
+                  <TrendBars bars={trend.bars} unit={trend.unit} currency={trend.currency} />
+                ) : (
+                  // Held at the bars' own size while the days are read, so the card does not grow when they arrive.
+                  <div className="aspect-[400/290] w-full" />
+                )
+              }
+              under={trend && <TrendUnder bars={trend.bars} unit={trend.unit} comparisons={trend.comparisons} kind={kind} currency={trend.currency} onPeriod={onMonth} />}
               page={page}
-              onPage={setPage}
+              onPage={(index) => setPageName(pageNames[index] ?? 'ring')}
               showRows={showAll}
               onAsk={() => setShowAll(true)}
               onFold={() => setShowAll(false)}

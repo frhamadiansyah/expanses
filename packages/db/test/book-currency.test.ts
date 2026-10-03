@@ -7,6 +7,7 @@ import {
   categoryTotalsIn,
   createAccount,
   createBook,
+  dailyTotalsIn,
   getBudgetIncome,
   inBook,
   listBooks,
@@ -100,6 +101,13 @@ describe('the money a workspace reads in', () => {
     expect(totals.currency).toBe('SGD');
     expect(totals.rows).toEqual([{ accountId: meals.id, amountBaseMinor: 99_600, transactions: 1 }]);
     expect(totals.missing).toEqual([{ currency: 'IDR', onDate: '2026-08-10' }]);
+
+    // The bars on the same page read each day in the workspace's currency, and leave out the same day.
+    expect(await dailyTotalsIn(database, book, 'expense', '2026-08-01', '2026-09-30')).toEqual({
+      currency: 'SGD',
+      days: [{ date: '2026-09-10', amountMinor: 99_600 }],
+      missing: [{ currency: 'IDR', onDate: '2026-08-10' }],
+    });
 
     // The owner's own figures are untouched: the same two purchases in rupiah.
     const owner = await categoryTotalsBetween(database, ownerScope(ws), 'expense', '2026-08-01', '2026-09-30');
