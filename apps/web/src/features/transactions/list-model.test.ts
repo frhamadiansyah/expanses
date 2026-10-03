@@ -38,7 +38,7 @@ function tx(date: string, description: string, lines: [string, number, number?][
 
 function draft(extra: Partial<DraftRow>): DraftRow {
   return {
-    id: 'd1', source: 'csv', status: 'pending', rawPayload: null, occurredOn: '2026-09-12', description: 'APOTEK K24', amountMinor: 8500000, currency: 'IDR', accountId: 'octo', categoryAccountId: null, cardId: null, confidence: null, externalRef: null, transactionId: null,
+    id: 'd1', source: 'csv', kind: 'expense', status: 'pending', rawPayload: null, occurredOn: '2026-09-12', description: 'APOTEK K24', amountMinor: 8500000, currency: 'IDR', accountId: 'octo', toAccountId: null, categoryAccountId: null, cardId: null, sourceId: null, captureIds: [], imageFile: null, reading: null, mergedInto: null, confidence: null, externalRef: null, transactionId: null,
     ...extra,
   };
 }

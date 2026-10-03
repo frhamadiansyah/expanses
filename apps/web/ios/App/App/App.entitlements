@@ -15,5 +15,11 @@
 	<array>
 		<string>iCloud.com.cicis.app</string>
 	</array>
+	<!-- The shortcuts and the share extension run where the app's database is not reachable, so captures wait in
+	     this shared container until the app drains them. Nothing else is in it, and nothing in it is synced. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.cicis.app</string>
+	</array>
 </dict>
 </plist>

@@ -18,6 +18,14 @@ import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
 const IN_MONTH = '2026-09-09';
+
+// A set-aside is stamped by the clock, and every month this file asks about is September: pin the day rather than
+// assume the suite runs in the month it reads.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${IN_MONTH}T09:00:00Z`));
+});
+afterEach(() => vi.useRealTimers());
 const g = (grams: number) => grams * 1_000_000;
 
 async function workspace() {
@@ -41,15 +49,6 @@ async function goldAccount(database: Database, ws: WorkspaceContext) {
 }
 
 describe('what a set-aside records', () => {
-  // The figures below are September's, and what is written is dated by the clock: the clock is that month's.
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-09-20T12:00:00'));
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('writes a dated contribution for what actually moved', async () => {
     const { database, ws, pot, goalId } = await workspace();
 

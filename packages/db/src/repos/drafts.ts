@@ -1,10 +1,10 @@
-import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm';
+import { expenseLines, incomeLines, type Reading, transferLines, uuidv7 } from '@expanses/core';
+import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { draftTransactions } from '../schema-drafts';
 import { existingExternalRefs } from './imports';
-import { postTransactionTx, type TransactionSource } from './ledger';
+import { ledgerSourceOf, type PostTransactionInput, postTransactionTx, type TransactionSource } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class DraftError extends Error {
@@ -20,6 +20,8 @@ export class DraftError extends Error {
 export interface DraftRow {
   id: string;
   source: TransactionSource;
+  /** What confirming it will post. */
+  kind: DraftKind;
   status: 'pending' | 'confirmed' | 'dismissed';
   rawPayload: string | null;
   occurredOn: string;
@@ -28,12 +30,27 @@ export interface DraftRow {
   amountMinor: number;
   currency: string;
   accountId: string | null;
+  /** Where a transfer's money went. Null for anything else. */
+  toAccountId: string | null;
   categoryAccountId: string | null;
   cardId: string | null;
+  /** The source this capture was recognised as, once there is one. */
+  sourceId: string | null;
+  /** The captures it was read out of. */
+  captureIds: string[];
+  /** The picture it came from, when it came from one. */
+  imageFile: string | null;
+  /** What the reader made of it, as it made it. */
+  reading: Reading | null;
+  /** The draft this one was found to be a duplicate of. Hidden from the queue while it is set. */
+  mergedInto: string | null;
   confidence: number | null;
   externalRef: string | null;
   transactionId: string | null;
 }
+
+/** What a draft turns out to be: money out, money in, or money moved between two of the owner's own accounts. */
+export type DraftKind = 'expense' | 'income' | 'transfer';
 
 export interface NewDraft {
   source: TransactionSource;
@@ -41,9 +58,17 @@ export interface NewDraft {
   description: string;
   amountMinor: number;
   currency: string;
+  /** Defaults by the sign: money in (negative) is income, money out an expense, as an imported row always meant. */
+  kind?: DraftKind;
   accountId?: string | null;
+  toAccountId?: string | null;
   categoryAccountId?: string | null;
   cardId?: string | null;
+  sourceId?: string | null;
+  captureIds?: readonly string[];
+  imageFile?: string | null;
+  reading?: Reading | null;
+  mergedInto?: string | null;
   confidence?: number | null;
   externalRef?: string | null;
   rawPayload?: string | null;
@@ -61,6 +86,7 @@ const addDays = (isoDate: string, days: number) => {
 const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
   id: row.id,
   source: row.source,
+  kind: row.kind,
   status: row.status,
   rawPayload: row.rawPayload,
   occurredOn: row.occurredOn,
@@ -68,12 +94,71 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
   amountMinor: row.amountMinor,
   currency: row.currency,
   accountId: row.accountId,
+  toAccountId: row.toAccountId,
   categoryAccountId: row.categoryAccountId,
   cardId: row.cardId,
+  sourceId: row.sourceId,
+  captureIds: captureIdsOf(row.captureIds),
+  imageFile: row.imageFile,
+  reading: readingOf(row.readingJson),
+  mergedInto: row.mergedInto,
   confidence: row.confidence,
   externalRef: row.externalRef,
   transactionId: row.transactionId,
 });
+
+/** The captures a draft was read out of, as they were written. A row written by hand may carry none. */
+export function captureIdsOf(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** What the reader made of it. A draft typed by a person, or read before this column existed, carries none. */
+export function readingOf(json: string | null): Reading | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as Reading;
+  } catch {
+    return null;
+  }
+}
+
+/** Every column a new draft fills, in one place: two doors in, one shape. */
+function insertValues(ws: WorkspaceContext, draft: NewDraft, now: string) {
+  return {
+    id: uuidv7(),
+    workspaceId: ws.workspaceId,
+    source: draft.source,
+    // A row that names no kind says what it is by its sign: negative is money in (the import convention).
+    kind: draft.kind ?? (draft.amountMinor < 0 ? 'income' : 'expense'),
+    status: 'pending' as const,
+    rawPayload: draft.rawPayload ?? null,
+    rawPurgeAfter: null,
+    occurredOn: draft.occurredOn,
+    description: draft.description,
+    amountMinor: draft.amountMinor,
+    currency: draft.currency,
+    accountId: draft.accountId ?? null,
+    toAccountId: draft.toAccountId ?? null,
+    categoryAccountId: draft.categoryAccountId ?? null,
+    cardId: draft.cardId ?? null,
+    sourceId: draft.sourceId ?? null,
+    captureIds: draft.captureIds && draft.captureIds.length > 0 ? JSON.stringify(draft.captureIds) : null,
+    imageFile: draft.imageFile ?? null,
+    readingJson: draft.reading ? JSON.stringify(draft.reading) : null,
+    mergedInto: draft.mergedInto ?? null,
+    confidence: draft.confidence ?? null,
+    externalRef: draft.externalRef ?? null,
+    transactionId: null,
+    createdAt: now,
+    resolvedAt: null,
+  };
+}
 
 /**
  * One draft typed into the transactions table, returning its id so the row can keep being filled in.
@@ -82,28 +167,22 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
  * like one already there.
  */
 export async function createDraft(database: Database, ws: WorkspaceContext, draft: NewDraft): Promise<string> {
-  const id = uuidv7();
-  await database.db.insert(draftTransactions).values({
-    id,
-    workspaceId: ws.workspaceId,
-    source: draft.source,
-    status: 'pending',
-    rawPayload: draft.rawPayload ?? null,
-    rawPurgeAfter: null,
-    occurredOn: draft.occurredOn,
-    description: draft.description,
-    amountMinor: draft.amountMinor,
-    currency: draft.currency,
-    accountId: draft.accountId ?? null,
-    categoryAccountId: draft.categoryAccountId ?? null,
-    cardId: draft.cardId ?? null,
-    confidence: draft.confidence ?? null,
-    externalRef: draft.externalRef ?? null,
-    transactionId: null,
-    createdAt: new Date().toISOString(),
-    resolvedAt: null,
-  });
-  return id;
+  const values = insertValues(ws, draft, new Date().toISOString());
+  await database.db.insert(draftTransactions).values(values);
+  return values.id;
+}
+
+/**
+ * Writes one draft row for a caller that is deciding what an arriving capture becomes, inside its own transaction.
+ *
+ * Asking "have I seen this payment already?" and writing the answer have to be one step: two captures of the same
+ * payment arriving together would otherwise both look like the first one and the second would be queued as a
+ * separate thing to do.
+ */
+export async function insertDraftRow(tx: Db, ws: WorkspaceContext, draft: NewDraft, now: string): Promise<string> {
+  const values = insertValues(ws, draft, now);
+  await tx.insert(draftTransactions).values(values);
+  return values.id;
 }
 
 /**
@@ -136,37 +215,24 @@ export async function captureDrafts(
       skipped++;
       continue;
     }
-    await database.db.insert(draftTransactions).values({
-      id: uuidv7(),
-      workspaceId: ws.workspaceId,
-      source: draft.source,
-      status: 'pending',
-      rawPayload: draft.rawPayload ?? null,
-      rawPurgeAfter: null,
-      occurredOn: draft.occurredOn,
-      description: draft.description,
-      amountMinor: draft.amountMinor,
-      currency: draft.currency,
-      accountId: draft.accountId ?? null,
-      categoryAccountId: draft.categoryAccountId ?? null,
-      cardId: draft.cardId ?? null,
-      confidence: draft.confidence ?? null,
-      externalRef: draft.externalRef ?? null,
-      transactionId: null,
-      createdAt: now,
-      resolvedAt: null,
-    });
+    await database.db.insert(draftTransactions).values(insertValues(ws, draft, now));
     if (draft.externalRef) seen.add(draft.externalRef);
     captured++;
   }
   return { captured, skipped };
 }
 
+/**
+ * The queue: what is waiting to be dealt with.
+ *
+ * A draft that was merged into another is not waiting — it *is* that other row — so it is left out here and found
+ * again only by Unmerge, which reads its pointer.
+ */
 export async function listDrafts(database: Database, ws: WorkspaceContext, status: DraftRow['status'] = 'pending'): Promise<DraftRow[]> {
   const rows = await database.db
     .select()
     .from(draftTransactions)
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, status)))
+    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, status), isNull(draftTransactions.mergedInto)))
     .orderBy(asc(draftTransactions.occurredOn), asc(draftTransactions.createdAt));
   return rows.map(toRow);
 }
@@ -175,7 +241,14 @@ export async function countPendingDrafts(database: Database, ws: WorkspaceContex
   const [row] = await database.db
     .select({ count: sql<number>`count(*)` })
     .from(draftTransactions)
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, 'pending')));
+    // A draft that was merged into another is not something to deal with: it is the row it was merged into.
+    .where(
+      and(
+        eq(draftTransactions.workspaceId, ws.workspaceId),
+        eq(draftTransactions.status, 'pending'),
+        isNull(draftTransactions.mergedInto),
+      ),
+    );
   return Number(row?.count ?? 0);
 }
 
@@ -184,7 +257,7 @@ export async function editDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'accountId' | 'categoryAccountId' | 'cardId'>>,
+  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>,
 ): Promise<void> {
   await database.db
     .update(draftTransactions)
@@ -195,16 +268,30 @@ export async function editDraft(
 /**
  * Turns a reviewed draft into a transaction, through the same posting engine everything else uses.
  *
- * The draft is kept, marked confirmed and pointing at what it became, so a queue that was worked
- * through can still be read back afterwards.
+ * What it posts is what the draft turned out to be. An expense moves money out of an account into a spending category;
+ * money received moves it the other way, into an income category; a transfer moves it between two of the owner's own
+ * accounts and asks for no category at all, because nothing was earned or spent.
+ *
+ * The draft is kept, marked confirmed and pointing at what it became, so a queue that was worked through can still be
+ * read back afterwards. A capture that was photographed hands its picture back to the caller, which is what writes it
+ * into the owner's own photo storage; the reading here never touches those bytes.
  */
 export async function confirmDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
-  opts: { setAside?: SetAsideChoice | null } = {},
-): Promise<string> {
+  opts: {
+    /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+    setAside?: SetAsideChoice | null;
+    /** Keep the capture's picture with the transaction. The caller copies the bytes; this only says which file. */
+    keepPhoto?: boolean;
+    /**
+     * What the Add form's extra rows say, when the draft was finished on it: the posting carries them as a
+     * transaction added by hand would. The figure, accounts and category are the draft's own, written first.
+     */
+    extras?: Pick<PostTransactionInput, 'eventId' | 'channel' | 'excludedFromReport' | 'mcc' | 'photoIds'>;
+  } = {},
+): Promise<{ transactionId: string; keptImage: string | null }> {
   const [draft] = await database.db
     .select()
     .from(draftTransactions)
@@ -212,37 +299,66 @@ export async function confirmDraft(
   if (!draft) throw new DraftError('NOT_FOUND', 'That draft is not in this workspace');
   if (draft.status !== 'pending') throw new DraftError('ALREADY_RESOLVED', 'That draft has already been dealt with');
   if (!draft.accountId) throw new DraftError('NO_ACCOUNT', 'Say which account paid before confirming');
-  if (!draft.categoryAccountId) throw new DraftError('NO_CATEGORY', 'Choose a category before confirming');
+  if (draft.kind === 'transfer') {
+    if (!draft.toAccountId) throw new DraftError('NO_TO_ACCOUNT', 'Say which account the money went to');
+  } else if (!draft.categoryAccountId) {
+    throw new DraftError('NO_CATEGORY', 'Choose a category before confirming');
+  }
 
+  // The magnitude: the draft's own sign is the reader's convention, and the lines decide the direction.
+  const amountMinor = Math.abs(draft.amountMinor);
+  const currency = draft.currency;
+  const lines =
+    draft.kind === 'income'
+      ? incomeLines({ incomeAccountId: draft.categoryAccountId!, depositAccountId: draft.accountId, amountMinor, currency })
+      : draft.kind === 'transfer'
+        ? transferLines({ fromAccountId: draft.accountId, toAccountId: draft.toAccountId!, amountMinor, currency })
+        : expenseLines({ categoryAccountId: draft.categoryAccountId!, paymentAccountId: draft.accountId, amountMinor, currency });
+
+  const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();
   return database.transaction(async (tx) => {
     const transactionId = await postTransactionTx(tx, ws, {
       occurredOn: draft.occurredOn,
       description: draft.description,
-      source: draft.source,
+      source: ledgerSourceOf(draft.source),
       externalRef: draft.externalRef,
       cardId: draft.cardId,
-      lines: [
-        { accountId: draft.categoryAccountId!, amountMinor: draft.amountMinor, currency: draft.currency },
-        { accountId: draft.accountId!, amountMinor: -draft.amountMinor, currency: draft.currency },
-      ],
+      lines,
+      ...opts.extras,
       setAside: opts.setAside ?? null,
     });
+    const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);
     await tx
       .update(draftTransactions)
-      .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) })
+      .set({ status: 'confirmed', transactionId, resolvedAt: now, rawPurgeAfter: purgeAfter })
       .where(eq(draftTransactions.id, id));
-    return transactionId;
+    // The sightings folded into it are dealt with too, so what they were read from is swept with it.
+    await tx
+      .update(draftTransactions)
+      .set({ status: 'confirmed', resolvedAt: now, rawPurgeAfter: purgeAfter })
+      .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
+    return { transactionId, keptImage };
   });
 }
 
 /** Says a draft is not something to record. It stays, so the same capture is not offered again. */
 export async function dismissDraft(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   const now = new Date().toISOString();
-  await database.db
-    .update(draftTransactions)
-    .set({ status: 'dismissed', resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) })
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+  const resolution = { status: 'dismissed' as const, resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) };
+  await database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: draftTransactions.id })
+      .from(draftTransactions)
+      .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+    if (!row) return;
+    await tx.update(draftTransactions).set(resolution).where(eq(draftTransactions.id, id));
+    // The sightings folded into it go with it.
+    await tx
+      .update(draftTransactions)
+      .set(resolution)
+      .where(and(eq(draftTransactions.mergedInto, id), eq(draftTransactions.status, 'pending')));
+  });
 }
 
 /**
@@ -253,17 +369,27 @@ export async function dismissDraft(database: Database, ws: WorkspaceContext, id:
  * again. The keeping date goes with the resolution, so a reopened draft's payload is not purged under it.
  */
 export async function reopenDraft(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db
-    .update(draftTransactions)
-    .set({ status: 'pending', transactionId: null, resolvedAt: null, rawPurgeAfter: null })
-    .where(
-      and(
-        eq(draftTransactions.workspaceId, ws.workspaceId),
-        eq(draftTransactions.id, id),
-        // Only what was resolved: a pending draft has nothing to take back, and this must not touch its dates.
-        ne(draftTransactions.status, 'pending'),
-      ),
-    );
+  await database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: draftTransactions.id })
+      .from(draftTransactions)
+      .where(
+        and(
+          eq(draftTransactions.workspaceId, ws.workspaceId),
+          eq(draftTransactions.id, id),
+          // Only what was resolved: a pending draft has nothing to take back, and this must not touch its dates.
+          ne(draftTransactions.status, 'pending'),
+        ),
+      );
+    if (!row) return;
+    const reopened = { status: 'pending' as const, transactionId: null, resolvedAt: null, rawPurgeAfter: null };
+    await tx.update(draftTransactions).set(reopened).where(eq(draftTransactions.id, id));
+    // The sightings folded into it come back with it, still folded in.
+    await tx
+      .update(draftTransactions)
+      .set(reopened)
+      .where(and(eq(draftTransactions.mergedInto, id), ne(draftTransactions.status, 'pending')));
+  });
 }
 
 /**

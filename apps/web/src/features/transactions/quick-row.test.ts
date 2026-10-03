@@ -64,7 +64,29 @@ describe('cells', () => {
   });
 
   it('fills cells from a draft, leaving an unreadable date as it came', () => {
-    const draft: DraftRow = { id: 'd1', source: 'csv', status: 'pending', rawPayload: null, occurredOn: '31/02', description: 'APOTEK', amountMinor: 0, currency: 'IDR', accountId: null, categoryAccountId: null, cardId: null, confidence: null, externalRef: null, transactionId: null };
+    const draft: DraftRow = {
+      id: 'd1',
+      source: 'csv',
+      kind: 'expense',
+      status: 'pending',
+      rawPayload: null,
+      occurredOn: '31/02',
+      description: 'APOTEK',
+      amountMinor: 0,
+      currency: 'IDR',
+      accountId: null,
+      toAccountId: null,
+      categoryAccountId: null,
+      cardId: null,
+      sourceId: null,
+      captureIds: [],
+      imageFile: null,
+      reading: null,
+      mergedInto: null,
+      confidence: null,
+      externalRef: null,
+      transactionId: null,
+    };
     expect(quickFromDraft(draft, TODAY)).toEqual({ date: '31/02', description: 'APOTEK', amount: '', accountId: '', cardId: '', categoryId: '' });
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/pwa', () => ({ isNative: () => false }));
 
-import { joinCodeOf, listenForJoinLinks } from './deep-link';
+import { isReviewLink, joinCodeOf, listenForJoinLinks, listenForReviewLinks } from './deep-link';
 
 describe('a join link (spec §8.1, §11)', () => {
   const code = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789-ABCD-EFGH-JKMN-PQRS-TVWX';
@@ -24,6 +24,26 @@ describe('a join link (spec §8.1, §11)', () => {
   it('is not listened for outside the shell', () => {
     const open = vi.fn();
     listenForJoinLinks(open)();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('the link the share sheet opens the app with', () => {
+  it('is cicis://review, however iOS hands it over', () => {
+    expect(isReviewLink('cicis://review')).toBe(true);
+    expect(isReviewLink('CICIS://review/')).toBe(true);
+    expect(isReviewLink(' cicis://review ')).toBe(true);
+  });
+
+  it('is nothing else', () => {
+    expect(isReviewLink('cicis://join/abc')).toBe(false);
+    expect(isReviewLink('cicis://reviews')).toBe(false);
+    expect(isReviewLink('https://example.com/review')).toBe(false);
+  });
+
+  it('is not listened for outside the shell', () => {
+    const open = vi.fn();
+    listenForReviewLinks(open)();
     expect(open).not.toHaveBeenCalled();
   });
 });

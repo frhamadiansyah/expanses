@@ -509,3 +509,9 @@ export {
 export {
   GOLD_BAR_SIZES, type GoldBrand, goldBarSizes, goldBrandOf, goldGainMinor, goldSellGrams, gramsMicro, gramsText, typedGramsMicro,
 } from './assets/gold-trade';
+export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
+export { capturedDayOf, findDateTime } from './capture/date';
+export { fingerprintOf, sameSource } from './capture/fingerprint';
+export { accountHintOf, readCapture } from './capture/read';
+export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
+export { WORDS } from './capture/words';
