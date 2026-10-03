@@ -130,6 +130,9 @@ For each row, in date order, against the card's transactions in the period plus 
    Moving the start replaces the card's opening (dated the day before the statement, owing its previous balance;
    removed when that is zero) and keeps one bridging balance correction on the old start date, so today's balance
    never changes. The bridge is recomputed on every later check of the card and goes when it reaches zero.
+   Corrected in the final review: the bridge is kept whenever the check posts anything before the card's start,
+   whether or not the start moves, so declining the move never changes today's balance either; and a statement
+   older than the card's start cannot be recorded until the summary screenshot with the previous balance is added.
 4. **Result.**
    - The headline balance card: **✓ Reconciled**, or "Differs by Rp X" with the likely cause, e.g. a missing fee
      row or an unmatched flagged transaction.
@@ -139,6 +142,9 @@ For each row, in date order, against the card's transactions in the period plus 
    - **Missing:** drawn like the Cashflow list (S9), with tabs **All** and **Needs a category**. Tapping a row opens
      the category picker the Add form uses; a long-press opens the full Add-style review screen. **Record all N**
      sits at the foot.
+   - Every missing credit, and every payment in the "Payments not tracked" line (which opens its own list), offers
+     **Refund / Card payment**: the reading may take one for the other, and the owner's word moves the row between
+     the missing rows and the payments line (added in the final review). Nothing about it is stored but the posting.
    - **Amount differs:** each row offers **Use statement amount** and **Keep mine**.
    - **Not on this statement:** each row offers **Move to another card**, **Delete** and **Keep**.
    - **Matched:** read-only, saying what each row was linked to.
@@ -211,6 +217,7 @@ For each row, in date order, against the card's transactions in the period plus 
 - The header (name, address, full card number) is never stored. Only rows and the two balances are read into
   memory, and only the transactions the owner records persist.
 - Screenshots are deleted after the check (S6). Statement text is not stored (S8).
+- A shared batch of statement text nobody took is deleted after an hour, on every app start and on the next share.
 
 ## 6. What goes wrong
 
