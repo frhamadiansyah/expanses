@@ -118,7 +118,10 @@ async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null 
 function descriptionOf(capture: RawCapture, source: CaptureSource, reading: Reading, paidByCard: boolean): string {
   const merchant = reading.name?.value?.trim();
   const app = source.label.trim();
-  if (merchant && app && paidByCard) return merchant.toLowerCase().startsWith(app.toLowerCase()) ? merchant : `${app} ${merchant}`;
+  // A screen's label is a name only when it was found (the wallet's name) or given by the owner; the fallback is the
+  // screen's own first line ("Transaction Detail"), which is no app name to put before the merchant.
+  const named = source.keyKind === 'app' || app !== (capture.lines[0]?.text.trim() ?? '');
+  if (merchant && app && named && paidByCard) return merchant.toLowerCase().startsWith(app.toLowerCase()) ? merchant : `${app} ${merchant}`;
   // A picture that read no name still says what it is on its first line.
   return merchant || capture.title?.trim() || capture.lines[0]?.text.trim() || 'Captured payment';
 }

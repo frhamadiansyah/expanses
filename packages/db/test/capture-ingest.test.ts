@@ -580,6 +580,16 @@ describe('the card a screen says paid', () => {
 });
 
 describe('the note a draft is given', () => {
+  it('is the merchant alone when the screen names no app, even when a card paid', async () => {
+    const { database, ws } = await workspace();
+    const anonymous = walletDetail('d-1', 'Lazada Indonesia', 'Rp1.010.000');
+    anonymous.lines = anonymous.lines.filter((l) => !l.text.startsWith('KANTONG'));
+
+    await ingestCaptures(database, ws, [anonymous], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ description: 'Lazada Indonesia' });
+  });
+
   it('is the app, then the merchant, when a card paid', async () => {
     const { database, ws } = await workspace();
 
