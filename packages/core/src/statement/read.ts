@@ -89,18 +89,22 @@ function shiftDays(iso: string, days: number): string {
 /**
  * The date in the statement's period: the printed year when there is one, otherwise the year that puts the day inside
  * the period give or take a week — the end's year first, then the start's, so a December row of a December–January
- * statement lands in December of the start's year.
+ * statement lands in December of the start's year; then the year before the start and the year after the end, so a
+ * December row a few days before a period lying wholly in January lands in the December before it.
  */
 function placeDate(printed: PrintedDate, period: StatementPeriod): string | null {
   if (printed.year !== null) return isoOf(printed.year, printed.month, printed.day);
   const from = shiftDays(period.start, -7);
   const to = shiftDays(period.end, 7);
-  const years = [Number(period.end.slice(0, 4)), Number(period.start.slice(0, 4))];
+  const end = Number(period.end.slice(0, 4));
+  const start = Number(period.start.slice(0, 4));
+  const years = [...new Set([end, start, start - 1, end + 1])];
   for (const year of years) {
     const iso = isoOf(year, printed.month, printed.day);
     if (iso !== null && iso >= from && iso <= to) return iso;
   }
-  for (const year of years) {
+  // Outside the window, the end's year or the start's, as before.
+  for (const year of [end, start]) {
     const iso = isoOf(year, printed.month, printed.day);
     if (iso !== null) return iso;
   }

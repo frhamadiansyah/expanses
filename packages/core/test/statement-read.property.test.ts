@@ -46,4 +46,22 @@ describe('readStatement, over every amount and date it can be handed', () => {
       run,
     );
   });
+
+  it('places a DDMMM date up to a week either side of the period on its own year, across a new year too', () => {
+    const first = Date.UTC(2020, 0, 1);
+    const last = Date.UTC(2035, 11, 31);
+    // Periods starting in the weeks around each new year, where the year is easiest to get wrong.
+    const nearNewYear = fc.integer({ min: 0, max: 15 }).chain((y) => fc.integer({ min: -40, max: 10 }).map((d) => Date.UTC(2020 + y, 0, 1) + d * DAY_MS));
+    const anywhere = fc.integer({ min: 0, max: (last - first) / DAY_MS }).map((d) => first + d * DAY_MS);
+    fc.assert(
+      fc.property(fc.oneof(nearNewYear, anywhere), fc.integer({ min: -7, max: 37 }), (startMs, offset) => {
+        const period = { start: isoOf(startMs), end: isoOf(startMs + 30 * DAY_MS) };
+        const date = new Date(startMs + offset * DAY_MS);
+        const printed = `${String(date.getUTCDate()).padStart(2, '0')}${MONTHS[date.getUTCMonth()]}`;
+        const { rows } = readStatement(oneRow(printed, '55,000'), period, 'IDR');
+        expect(rows[0]?.on).toBe(isoOf(date.getTime()));
+      }),
+      run,
+    );
+  });
 });

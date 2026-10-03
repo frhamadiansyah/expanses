@@ -17,6 +17,12 @@ describe('readStatement, the review focus', () => {
     expect(rows.map((r) => r.on)).toEqual(['2026-12-15', '2027-01-05']);
   });
 
+  it('places a December row of a statement lying wholly in January in the year before', () => {
+    const images = [[line('02JAN', 0.05, 0.1, 0.1), line('31DEC', 0.15, 0.1, 0.1), line('HOTEL NUSA', 0.25, 0.1), line('1,250,000', 0.85, 0.1)]];
+    const { rows } = readStatement(images, { start: '2027-01-02', end: '2027-02-01' }, 'IDR');
+    expect(rows.map((r) => [r.on, r.postedOn])).toEqual([['2026-12-31', '2027-01-02']]);
+  });
+
   it('keeps repeats inside one image, drops the overlap between images', () => {
     const repeat = (y: number) => [line('06MAY', 0.05, y), line('KURASU KISSATEN', 0.25, y), line('113,190', 0.85, y)];
     const a = [...repeat(0.1), ...repeat(0.15)];
