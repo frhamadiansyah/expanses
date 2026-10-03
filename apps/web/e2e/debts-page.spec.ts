@@ -128,10 +128,11 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
 
 test('the renames are in place: Debts for everything owed, Lend & borrow for people', async ({ page }) => {
   await page.goto('/net-worth');
-  // The sections are the corner's `…` now, three rows that are links, each opening a screen of its own.
-  await page.getByRole('button', { name: 'More' }).click();
-  await expect(page.getByRole('menuitem')).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
-  await page.getByRole('menuitem', { name: 'Liabilities' }).click();
+  // Liabilities opens from its total card; the corner's `…` keeps only Buy & sell.
+  // No `…` any more: Buy & sell is a corner link of its own.
+  await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
+  await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Loans', level: 1 })).toHaveCount(0);
