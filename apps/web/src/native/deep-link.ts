@@ -69,3 +69,38 @@ export function listenForReviewLinks(open: () => void): () => void {
     void handle.then((h) => h.remove());
   };
 }
+
+/**
+ * The batch a `cicis://statement/<id>` link names: the share sheet's way of handing over several statement
+ * screenshots it has already read (statement-check S2). Null for any other address, and for an id that is not one
+ * plain name (it becomes a folder name on the phone).
+ */
+export function statementBatchOf(url: string): string | null {
+  const match = /^cicis:\/\/statement\/([^/]+)\/?$/i.exec(url.trim());
+  if (!match) return null;
+  const id = match[1]!;
+  return /^[A-Za-z0-9-]+$/.test(id) ? id : null;
+}
+
+/**
+ * In the shell, opens the card picker for every `cicis://statement/<id>` link — the one the app was launched by, and
+ * each one after while it runs. Returns the way to stop listening. Does nothing in a browser.
+ */
+export function listenForStatementLinks(open: (batchId: string) => void): () => void {
+  if (!isNative()) return () => {};
+  let stopped = false;
+  const handle = Shell.addListener('appUrlOpen', ({ url }) => {
+    const id = statementBatchOf(url);
+    if (id) open(id);
+  });
+  void Shell.getLaunchUrl()
+    .then((launch) => {
+      const id = launch?.url ? statementBatchOf(launch.url) : null;
+      if (id && !stopped) open(id);
+    })
+    .catch(() => undefined);
+  return () => {
+    stopped = true;
+    void handle.then((h) => h.remove());
+  };
+}

@@ -26,6 +26,7 @@ import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CheckStatementPage, checkSearch } from '../features/statement-check/CheckStatementPage';
+import { PickCardPage, sharedStatementSearch } from '../features/statement-check/PickCardPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { CategoryPage } from '../features/categories/CategoryPage';
 import { SetsPage } from '../features/categories/SetsPage';
@@ -226,6 +227,8 @@ const routeTree = rootRoute.addChildren([
   // A card's statement checked from screenshots (statement-check spec §3.4): a screen of its own over the wallet, as
   // Move is over an account. `batch` enters with screenshots the share sheet already read.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/check', component: CheckStatementPage, validateSearch: checkSearch }),
+  // Several statement screenshots shared from Photos, already read: which card they belong to, before the check (S2).
+  createRoute({ getParentRoute: () => rootRoute, path: '/statement/shared', component: PickCardPage, validateSearch: sharedStatementSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   // The ratios, on a screen of their own: Net worth's corner glyph opens it.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/health', component: FinancialHealthPage }),

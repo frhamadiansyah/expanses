@@ -25,6 +25,11 @@ export interface CapturePluginApi {
   deleteCaptureImage(opts: { file: string }): Promise<void>;
   /** The text of a picture handed over as base64, read on the phone; nothing is stored. */
   recognizeImage(opts: { base64: string }): Promise<{ lines: CaptureLine[] }>;
+  /**
+   * The lines of the statement screenshots the share sheet read as one batch, one entry per screenshot in the order
+   * they were shared. The batch is deleted from the phone as it is handed over, so a second call finds nothing.
+   */
+  takeStatementBatch(opts: { batchId: string }): Promise<{ images: { lines: CaptureLine[] }[] }>;
   /** How much is still waiting in the holding area, and how much of it could not be opened. */
   holdingAreaStatus(): Promise<{ pending: number; broken: number }>;
 }
@@ -58,6 +63,11 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
     const lines = import.meta.env.VITE_E2E === '1' ? window.__statementLines?.shift() : undefined;
     if (lines) return { lines };
     throw new Error('Not available here');
+  }
+
+  async takeStatementBatch(_opts: { batchId: string }): Promise<{ images: { lines: CaptureLine[] }[] }> {
+    // The share sheet never writes here, so there is never a batch to take.
+    return { images: [] };
   }
 
   async holdingAreaStatus(): Promise<{ pending: number; broken: number }> {
