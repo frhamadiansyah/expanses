@@ -206,24 +206,68 @@ async function linkedRows(db: Db, ids: readonly string[]): Promise<Set<string>> 
   return new Set(rows.map((r) => r.transactionId));
 }
 
+const dayNumber = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
+/** Days in a period, both ends counted; days two periods share. */
+const daysIn = (p: StatementPeriod) => dayNumber(p.end) - dayNumber(p.start) + 1;
+const daysShared = (a: StatementPeriod, b: StatementPeriod) => Math.min(dayNumber(a.end), dayNumber(b.end)) - Math.max(dayNumber(a.start), dayNumber(b.start)) + 1;
+
 /**
- * The transactions another check of this card already took: each is that statement's row, so it is no candidate for
- * this one. Links of this period's own check stay, so checking the period again finds them again.
+ * Two periods of one card name the same statement when they share more than half of the shorter one's days: dates
+ * typed a few days off and then corrected still name it, while neighbouring statements typed a day into each other
+ * do not.
+ */
+export function sameStatement(a: StatementPeriod, b: StatementPeriod): boolean {
+  return daysShared(a, b) * 2 > Math.min(daysIn(a), daysIn(b));
+}
+
+/** The check already made of this statement, if any: the one with the same dates, else the one sharing most days. */
+async function checkOfStatement(db: Db, cardAccountId: string, period: StatementPeriod) {
+  const checks = await db.select().from(statementChecks).where(eq(statementChecks.cardAccountId, cardAccountId));
+  return checks
+    .filter((c) => sameStatement(period, { start: c.periodStart, end: c.periodEnd }))
+    .sort((a, b) => daysShared(period, { start: b.periodStart, end: b.periodEnd }) - daysShared(period, { start: a.periodStart, end: a.periodEnd }))[0];
+}
+
+/**
+ * The transactions a check of another statement of this card already took: each is that statement's row, so it is
+ * no candidate for this one. Links of this statement's own check stay, even under corrected dates, so checking it
+ * again finds them again.
  */
 async function takenByOtherChecks(db: Db, cardAccountId: string, period: StatementPeriod, ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const rows = await db
-    .select({ transactionId: statementLinks.transactionId })
+    .select({ transactionId: statementLinks.transactionId, start: statementChecks.periodStart, end: statementChecks.periodEnd })
     .from(statementLinks)
     .innerJoin(statementChecks, eq(statementLinks.checkId, statementChecks.id))
-    .where(
-      and(
-        eq(statementChecks.cardAccountId, cardAccountId),
-        inArray(statementLinks.transactionId, [...ids]),
-        sql`NOT (${statementChecks.periodStart} = ${period.start} AND ${statementChecks.periodEnd} = ${period.end})`,
-      ),
-    );
-  return new Set(rows.map((r) => r.transactionId));
+    .where(and(eq(statementChecks.cardAccountId, cardAccountId), inArray(statementLinks.transactionId, [...ids])));
+  return new Set(rows.filter((r) => !sameStatement(period, { start: r.start, end: r.end })).map((r) => r.transactionId));
+}
+
+/**
+ * Each row's key, the same whatever dates the period was typed with: its date, amount and direction, and which of
+ * its alike rows it is. A missing row is recorded with it in its ref; the payments line keeps the keys it sums.
+ */
+function rowKeysOf(rows: readonly StatementRow[]): string[] {
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const key = `${row.on}:${row.amountMinor}:${row.direction}`;
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    return `${key}:${n}`;
+  });
+}
+const rowRefPrefix = (cardAccountId: string) => `statement:${cardAccountId}:`;
+const paymentsRefPrefix = (cardAccountId: string) => `statement-payments:${cardAccountId}:`;
+/** The row key a check's posting was recorded under, from its ref (`statement:{card}:{start}:{key}`). */
+function keyOfRef(ref: string | null | undefined, cardAccountId: string): string | null {
+  if (!ref?.startsWith(rowRefPrefix(cardAccountId))) return null;
+  const parts = ref.slice(rowRefPrefix(cardAccountId).length).split(':');
+  return parts.length === 5 ? parts.slice(1).join(':') : null;
+}
+/** The row keys the payments line sums, from its ref. */
+function keysOfPaymentsRef(ref: string | null | undefined, cardAccountId: string): Set<string> {
+  if (!ref?.startsWith(paymentsRefPrefix(cardAccountId))) return new Set();
+  return new Set(ref.slice(paymentsRefPrefix(cardAccountId).length).split(',').filter((k) => k !== ''));
 }
 
 /** What a recorded transaction is to the card: a charge or a credit, and of which kind. Null when it is not one. */
@@ -293,7 +337,38 @@ export async function prepareStatementCheck(
     refundHints.set(i, looksLikeRefund(row, earlier));
   });
 
-  const { outcomes, flagged } = matchStatement(reading.rows, candidates, { period, trackPayments, refundHints });
+  // The owner's earlier answers for this statement stand: a row a check already recorded is that posting, whatever
+  // kind the reading now takes it for, and a credit the payments line already sums stays in it.
+  const existing = await checkOfStatement(database.db, cardAccountId, period);
+  const keys = rowKeysOf(reading.rows);
+  const refOf = new Map(views.map((v) => [v.id, v.externalRef]));
+  const recordedAs = new Map<string, string>();
+  for (const c of candidates) {
+    const key = c.isDraft ? null : keyOfRef(refOf.get(c.id), cardAccountId);
+    if (key !== null && !recordedAs.has(key)) recordedAs.set(key, c.id);
+  }
+  const fixed = new Map<number, RowOutcome>();
+  keys.forEach((key, i) => {
+    const id = recordedAs.get(key);
+    if (id !== undefined) fixed.set(i, { row: i, status: 'matched', candidateIds: [id] });
+  });
+  const adopted = new Set([...fixed.values()].flatMap((o) => (o.status === 'matched' ? o.candidateIds : [])));
+  const open = reading.rows.map((_, i) => i).filter((i) => !fixed.has(i));
+  const openHints = new Map<number, boolean>();
+  open.forEach((i, j) => {
+    const hint = refundHints.get(i);
+    if (hint !== undefined) openHints.set(j, hint);
+  });
+  const result = matchStatement(open.map((i) => reading.rows[i]!), candidates.filter((c) => !adopted.has(c.id)), { period, trackPayments, refundHints: openHints });
+  const inPaymentsLine = existing ? await paymentsLineKeys(database.db, existing.id, cardAccountId) : new Set<string>();
+  const outcomes: RowOutcome[] = reading.rows.map((row, i) => {
+    const done = fixed.get(i);
+    if (done) return done;
+    const outcome = { ...result.outcomes[open.indexOf(i)]!, row: i };
+    if (outcome.status === 'missing' && row.direction === 'in' && inPaymentsLine.has(keys[i]!)) return { row: i, status: 'payment-untracked' };
+    return outcome;
+  });
+  const flagged = result.flagged;
 
   // Fees & charges and Refunds are made on first use, here, only when a row needs them.
   const made = new Map<string, string>();
@@ -353,10 +428,6 @@ export async function prepareStatementCheck(
   const byCandidate = new Map(candidates.map((c) => [c.id, c]));
   const opening = await openingOfCard(database.db, ws, cardAccountId);
   const startsAfterPeriod = opening !== null && opening.occurredOn > period.start;
-  const [existing] = await database.db
-    .select({ id: statementChecks.id, previousMinor: statementChecks.previousMinor })
-    .from(statementChecks)
-    .where(and(eq(statementChecks.cardAccountId, cardAccountId), eq(statementChecks.periodStart, period.start), eq(statementChecks.periodEnd, period.end)));
 
   return {
     cardAccountId,
@@ -395,6 +466,16 @@ export function fillSameMerchant(rows: CheckDraftRow[], index: number, categoryI
     }
     return r;
   });
+}
+
+/** The row keys the check's standing payments line sums. */
+async function paymentsLineKeys(db: Db, checkId: string, cardAccountId: string): Promise<Set<string>> {
+  const [line] = await db
+    .select({ externalRef: transactions.externalRef })
+    .from(statementLinks)
+    .innerJoin(transactions, eq(statementLinks.transactionId, transactions.id))
+    .where(and(eq(statementLinks.checkId, checkId), eq(statementLinks.kind, 'payments-untracked'), eq(transactions.status, 'posted')));
+  return keysOfPaymentsRef(line?.externalRef, cardAccountId);
 }
 
 /** The statement's card payments that match nothing recorded: one quiet line on the card (§3.6). */
@@ -471,17 +552,12 @@ async function owedAt(tx: Db, ws: WorkspaceContext, cardAccountId: string, day: 
 /** The posting that keeps a moved card's later balance whole (S10), while its history is checked statement by statement. */
 const bridgeRefOf = (cardAccountId: string) => `statement-bridge:${cardAccountId}`;
 
-/** Missing rows are recorded with this ref: the row's date, amount and direction, and which of its alike rows it is. */
-function externalRefsOf(prepared: PreparedCheck): Map<number, string> {
-  const seen = new Map<string, number>();
-  const refs = new Map<number, string>();
-  for (const row of prepared.rows) {
-    const key = `${row.on}:${row.amountMinor}:${row.direction}`;
-    const n = (seen.get(key) ?? 0) + 1;
-    seen.set(key, n);
-    refs.set(row.index, `statement:${prepared.cardAccountId}:${prepared.period.start}:${key}:${n}`);
-  }
-  return refs;
+/** Missing rows are recorded with this ref: the period's start, then the row's key (`rowKeysOf`). */
+function externalRefsOf(prepared: PreparedCheck): { refs: Map<number, string>; keys: Map<number, string> } {
+  const keyList = rowKeysOf(prepared.rows);
+  const keys = new Map(prepared.rows.map((row, i) => [row.index, keyList[i]!]));
+  const refs = new Map([...keys].map(([index, key]) => [index, `${rowRefPrefix(prepared.cardAccountId)}${prepared.period.start}:${key}`]));
+  return { refs, keys };
 }
 
 /**
@@ -515,16 +591,15 @@ export async function recordStatementCheck(
     if (!to) throw new StatementCheckError('NOT_FOUND', 'That card is not in this workspace');
     if (to.currency !== card.currency) throw new StatementCheckError('CURRENCY', `Move it to a ${card.currency} card`);
   }
-  const refs = externalRefsOf(prepared);
+  const { refs, keys } = externalRefsOf(prepared);
 
   return database.transaction(async (tx) => {
     const now = new Date().toISOString();
     const correctionId = await ensureSystemAccountTx(tx, ws, 'balance_correction');
 
-    const [existing] = await tx
-      .select()
-      .from(statementChecks)
-      .where(and(eq(statementChecks.cardAccountId, cardAccountId), eq(statementChecks.periodStart, period.start), eq(statementChecks.periodEnd, period.end)));
+    // The same statement checked again, even under corrected dates, is the same check: its links and its payments
+    // line carry on, and it takes the dates given now.
+    const existing = await checkOfStatement(tx, cardAccountId, period);
     const checkId = existing?.id ?? uuidv7();
     // A re-check without the summary keeps the balances the earlier check read.
     const closingMinor = prepared.closingMinor ?? existing?.closingMinor ?? null;
@@ -589,11 +664,25 @@ export async function recordStatementCheck(
       return (await confirmDraftTx(tx, ws, draftId)).transactionId;
     };
 
+    /** The posting a check already recorded for this row under this period, whatever kind it was recorded as. */
+    const recordedFor = async (row: CheckDraftRow): Promise<string | null> => {
+      const [already] = await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.externalRef, refs.get(row.index)!), eq(transactions.status, 'posted')));
+      return already?.id ?? null;
+    };
     const chosen = new Set<string>();
     const tied = new Set<string>();
+    const untracked: CheckDraftRow[] = [];
     for (const row of prepared.rows) {
       const outcome = row.outcome;
-      if (outcome.status === 'matched') {
+      if (outcome.status === 'payment-untracked') {
+        // A credit the owner recorded as money back stays that: it is not summed into the payments line again.
+        const already = await recordedFor(row);
+        if (already) await link(already, 'recorded');
+        else untracked.push(row);
+      } else if (outcome.status === 'matched') {
         for (const id of outcome.candidateIds) await link(await resolve(id, row), 'matched');
       } else if (outcome.status === 'ask') {
         for (const id of outcome.candidateIds) tied.add(id);
@@ -623,12 +712,9 @@ export async function recordStatementCheck(
         }
       } else if (outcome.status === 'missing') {
         const externalRef = refs.get(row.index)!;
-        const [already] = await tx
-          .select({ id: transactions.id })
-          .from(transactions)
-          .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.externalRef, externalRef), eq(transactions.status, 'posted')));
+        const already = await recordedFor(row);
         if (already) {
-          await link(already.id, 'recorded');
+          await link(already, 'recorded');
           continue;
         }
         const amount = { amountMinor: row.amountMinor, currency: card.currency };
@@ -655,23 +741,28 @@ export async function recordStatementCheck(
 
     // §3.6: the statement's card payments that match nothing recorded, as one quiet balance correction. Counted from
     // the rows, so a credit the owner switched to a card payment is in it.
-    const { untrackedPaymentsCount: count, untrackedPaymentsMinor: total } = untrackedOf(prepared.rows);
+    const { untrackedPaymentsCount: count, untrackedPaymentsMinor: total } = untrackedOf(untracked);
     const description = `${PAYMENTS_NOT_TRACKED_PREFIX}${count} payment${count === 1 ? '' : 's'})`;
+    // The line keeps which rows it sums (their keys, no text), so a re-check keeps a credit the owner put in it there.
+    const paymentsRef = `${paymentsRefPrefix(cardAccountId)}${untracked.map((r) => keys.get(r.index)!).join(',')}`;
     const adjustmentLines = transferLines({ fromAccountId: correctionId, toAccountId: cardAccountId, amountMinor: total, currency: card.currency });
     const priorAdjustment = priorLinks.find((l) => l.kind === 'payments-untracked');
     const [standing] = priorAdjustment
-      ? await tx.select({ status: transactions.status, description: transactions.description }).from(transactions).where(eq(transactions.id, priorAdjustment.transactionId))
+      ? await tx
+          .select({ status: transactions.status, description: transactions.description, externalRef: transactions.externalRef })
+          .from(transactions)
+          .where(eq(transactions.id, priorAdjustment.transactionId))
       : [];
     const standingAmount = standing?.status === 'posted'
       ? (await tx.select({ amountMinor: entries.amountMinor }).from(entries).where(and(eq(entries.transactionId, priorAdjustment!.transactionId), eq(entries.accountId, cardAccountId))))[0]?.amountMinor
       : undefined;
     if (standing?.status === 'posted' && count === 0) {
       await voidTransactionTx(tx, ws, priorAdjustment!.transactionId);
-    } else if (standing?.status === 'posted' && (standingAmount !== total || standing.description !== description)) {
-      const id = await replaceTransactionTx(tx, ws, priorAdjustment!.transactionId, { occurredOn: period.end, description, lines: adjustmentLines, excludedFromReport: true });
+    } else if (standing?.status === 'posted' && (standingAmount !== total || standing.description !== description || standing.externalRef !== paymentsRef)) {
+      const id = await replaceTransactionTx(tx, ws, priorAdjustment!.transactionId, { occurredOn: period.end, description, lines: adjustmentLines, externalRef: paymentsRef, excludedFromReport: true });
       await link(id, 'payments-untracked');
     } else if (standing?.status !== 'posted' && count > 0) {
-      const id = await postTransactionTx(tx, ws, { occurredOn: period.end, description, lines: adjustmentLines, excludedFromReport: true });
+      const id = await postTransactionTx(tx, ws, { occurredOn: period.end, description, lines: adjustmentLines, externalRef: paymentsRef, excludedFromReport: true });
       await link(id, 'payments-untracked');
     }
 
@@ -730,7 +821,7 @@ export async function recordStatementCheck(
     const status = closingMinor === null ? 'open' : differenceMinor === 0 ? 'reconciled' : 'differs';
     await tx
       .update(statementChecks)
-      .set({ closingMinor, previousMinor, status, differenceMinor, checkedAt: now })
+      .set({ periodStart: period.start, periodEnd: period.end, closingMinor, previousMinor, status, differenceMinor, checkedAt: now })
       .where(eq(statementChecks.id, checkId));
     return { checkId, status, differenceMinor };
   });

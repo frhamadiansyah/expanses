@@ -397,6 +397,38 @@ describe('recording a check', () => {
     expect(aprilAgain.rows[0]!.outcome).toMatchObject({ status: 'matched', candidateIds: [kopi] });
   });
 
+  it('checked again with the period’s dates corrected, the statement is the same one: nothing is posted twice', async () => {
+    const h = await household();
+    await h.buy('2026-05-15', 'KOPI SATU', 50_000);
+    const images = [image([['15MAY', 'KOPI SATU', '50,000'], ['20MAY', 'TOKO ALFA', '100,000'], ['25MAY', 'PAYMENT THANK YOU', '20,000CR']], { previous: '0', closing: '130,000' })];
+    const wrong = await h.prepare(images, { start: '2026-05-10', end: '2026-06-10' });
+    await recordStatementCheck(h.database, h.ws, { ...wrong, rows: categorised(wrong.rows, h.groceries) }, NO_DECISIONS);
+    const count = await h.posted();
+    expect((await h.balances())[h.card.id]).toBe(-130_000);
+
+    const corrected = await h.prepare(images);
+    expect(corrected.alreadyChecked).toBe(true);
+    expect(corrected.rows.map((r) => r.outcome.status)).toEqual(['matched', 'matched', 'payment-untracked']);
+    expect(corrected.flagged).toEqual([]);
+    expect(await recordStatementCheck(h.database, h.ws, corrected, NO_DECISIONS)).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    expect(await h.posted()).toBe(count);
+    expect((await h.balances())[h.card.id]).toBe(-130_000);
+    expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ periodStart: MAY.start, periodEnd: MAY.end, status: 'reconciled' }]);
+  });
+
+  it('a neighbouring statement typed a day into the last one is still another statement', async () => {
+    const h = await household();
+    const kopi = await h.buy('2026-05-09', 'KOPI SENJA', 35_000);
+    const april = await h.prepare([image([['09MAY', 'KOPI SENJA', '35,000']])], { start: '2026-04-11', end: '2026-05-10' });
+    await recordStatementCheck(h.database, h.ws, april, NO_DECISIONS);
+    const may = await h.prepare([image([['11MAY', 'KOPI SENJA', '35,000']])], { start: '2026-05-10', end: '2026-06-10' });
+    expect(may.alreadyChecked).toBe(false);
+    expect(may.rows[0]!.outcome).toMatchObject({ status: 'missing', as: 'purchase' });
+    await recordStatementCheck(h.database, h.ws, { ...may, rows: categorised(may.rows, h.groceries) }, NO_DECISIONS);
+    expect((await listStatementChecks(h.database, h.ws, h.card.id)).map((c) => c.periodStart)).toEqual(['2026-05-10', '2026-04-11']);
+    expect((await listTransactions(h.database, h.ws, { id: kopi }))[0]?.status).toBe('posted');
+  });
+
   it('a re-check from screenshots that start a row later posts nothing twice', async () => {
     const h = await household();
     await setTrackPayments(h.database, h.card.id, true);
@@ -460,6 +492,47 @@ describe('recording a check', () => {
     expect(balances[h.card.id]).toBe(-40_000);
     expect(balances[h.groceries]).toBe(100_000);
     expect(balances[prepared.rows[1]!.categoryId!] ?? 0).toBe(0);
+    const lines = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Payments not tracked'));
+    expect(lines.map((t) => t.description)).toEqual(['Payments not tracked (1 payment)']);
+  });
+
+  it('a payment switched to a refund stays a refund on a re-check, counted once', async () => {
+    const h = await household();
+    const images = [image([['12MAY', 'TOKO ALFA', '100,000'], ['14MAY', 'PAYMENT THANK YOU', '60,000CR']], { previous: '0', closing: '40,000' })];
+    const prepared = await h.prepare(images);
+    expect(prepared.rows[1]!.outcome).toMatchObject({ status: 'payment-untracked' });
+    const rows = categorised(setCreditKind(prepared.rows, 1, 'refund', prepared.trackPayments), h.groceries);
+    expect(await recordStatementCheck(h.database, h.ws, withRows(prepared, rows), NO_DECISIONS)).toMatchObject({ status: 'reconciled' });
+    const count = await h.posted();
+
+    const again = await h.prepare(images);
+    expect(again.rows.map((r) => r.outcome.status)).toEqual(['matched', 'matched']);
+    expect(again).toMatchObject({ untrackedPaymentsCount: 0, flagged: [] });
+    expect(await recordStatementCheck(h.database, h.ws, again, NO_DECISIONS)).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    expect(await h.posted()).toBe(count);
+    const balances = await h.balances();
+    expect(balances[h.card.id]).toBe(-40_000);
+    expect(balances[h.groceries]).toBe(40_000);
+  });
+
+  it('a refund switched to a card payment stays in the payments line on a re-check, counted once', async () => {
+    const h = await household();
+    const images = [image([['12MAY', 'TOKO ALFA', '100,000'], ['14MAY', 'SETORAN TUNAI', '60,000CR']], { previous: '0', closing: '40,000' })];
+    const prepared = await h.prepare(images);
+    expect(prepared.rows[1]!.outcome).toMatchObject({ status: 'missing', as: 'refund' });
+    const refunds = prepared.rows[1]!.categoryId!;
+    const rows = categorised(setCreditKind(prepared.rows, 1, 'payment', prepared.trackPayments), h.groceries);
+    expect(await recordStatementCheck(h.database, h.ws, withRows(prepared, rows), NO_DECISIONS)).toMatchObject({ status: 'reconciled' });
+    const count = await h.posted();
+
+    const again = await h.prepare(images);
+    expect(again.rows.map((r) => r.outcome.status)).toEqual(['matched', 'payment-untracked']);
+    expect(again).toMatchObject({ untrackedPaymentsCount: 1, untrackedPaymentsMinor: 60_000, flagged: [] });
+    expect(await recordStatementCheck(h.database, h.ws, again, NO_DECISIONS)).toMatchObject({ status: 'reconciled', differenceMinor: 0 });
+    expect(await h.posted()).toBe(count);
+    const balances = await h.balances();
+    expect(balances[h.card.id]).toBe(-40_000);
+    expect(balances[refunds] ?? 0).toBe(0);
     const lines = (await listTransactions(h.database, h.ws, { accountId: h.card.id })).filter((t) => t.description.startsWith('Payments not tracked'));
     expect(lines.map((t) => t.description)).toEqual(['Payments not tracked (1 payment)']);
   });

@@ -145,6 +145,11 @@ For each row, in date order, against the card's transactions in the period plus 
    - Every missing credit, and every payment in the "Payments not tracked" line (which opens its own list), offers
      **Refund / Card payment**: the reading may take one for the other, and the owner's word moves the row between
      the missing rows and the payments line (added in the final review). Nothing about it is stored but the posting.
+     A re-check keeps that word: a row a check already recorded is that posting whatever the reading now takes it
+     for, and the payments line keeps the keys (date, amount, direction, which alike row; no text) of the rows it sums.
+   - A check of a card whose period shares more than half of an earlier check's days is the same statement: dates
+     corrected after a first check reuse that check, its links and its payments line, and nothing is posted twice.
+     A transaction linked to another statement's check is no candidate (final review, round 2).
    - **Amount differs:** each row offers **Use statement amount** and **Keep mine**.
    - **Not on this statement:** each row offers **Move to another card**, **Delete** and **Keep**.
    - **Matched:** read-only, saying what each row was linked to.
