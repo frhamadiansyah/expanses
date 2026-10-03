@@ -80,13 +80,11 @@ test('by thumb: ＋ opens the chooser, and each row opens its own place', async 
 
 test('by thumb: the sections are behind the corner, and Lend & borrow is not one of them', async ({ page }) => {
   await page.goto('/net-worth');
-  // No strip to hold them any more: the three sections are the corner's `…`, and each row is a link.
-  await page.getByRole('button', { name: 'More' }).tap();
-  const items = page.getByRole('menuitem');
-  await expect(items).toHaveCount(3);
-  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
-  await expect(page.getByRole('menuitem', { name: 'Loans' })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: 'Liabilities' }).tap();
+  // Assets and Liabilities are their total cards; the corner's `…` keeps only Buy & sell.
+  // No `…` any more: Buy & sell is a corner link of its own.
+  await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
+  await page.getByRole('link', { name: 'Liabilities', exact: true }).tap();
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 
   await page.goto('/transactions');
