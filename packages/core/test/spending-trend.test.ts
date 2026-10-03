@@ -56,6 +56,14 @@ describe('spendingTrend', () => {
     expect(trend.bars[10]!.totalMinor).toBeNull();
   });
 
+  it('draws a day still to come when something is already counted on it, as the donut counts it', () => {
+    // A bill paid early is counted on its own out day, after today: the month's ring has it, so its bar does too.
+    const trend = spendingTrend(period('2026-10'), on(['2026-10-05', 450_000], ['2026-10-02', 70_000]), past);
+    expect(trend.bars[4]).toMatchObject({ from: '2026-10-05', totalMinor: 450_000 });
+    expect(trend.bars[5]!.totalMinor).toBeNull();
+    expect(trend.bars.reduce((sum, bar) => sum + (bar.totalMinor ?? 0), 0)).toBe(520_000);
+  });
+
   it('draws all time from the first transaction to today, by month while it is short and by year once it is long', () => {
     const short = spendingTrend(period('all'), on(['2025-11-03', 10]), { today: '2026-10-03', first: '2025-11-03' });
     expect(short.unit).toBe('month');
@@ -138,6 +146,10 @@ describe('spendingComparisons', () => {
     const days = everyDay('2026-06-01', '2026-09-30', 100);
     expect(spendingComparisons(period('2026-09'), days, { today: '2026-10-03', first: '2026-07-01' }).map((c) => c.key)).toEqual(['previous']);
     expect(spendingComparisons(period('2026-09'), days, { today: '2026-10-03', first: '2026-06-01' }).map((c) => c.key)).toEqual(['previous', 'usual']);
+  });
+
+  it('has nothing to compare for a period that has not started', () => {
+    expect(spendingComparisons(period('2026-11'), everyDay('2024-01-01', '2026-10-03', 10), past)).toEqual([]);
   });
 
   it('has nothing to compare for all time or two chosen dates', () => {

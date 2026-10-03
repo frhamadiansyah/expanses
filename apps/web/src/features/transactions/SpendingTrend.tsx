@@ -1,7 +1,7 @@
 import { isoDate, parsePeriod, spendingComparisons, spendingTrend, type TrendBar, type TrendComparison, type TrendUnit, trendWindow, weekOf } from '@expanses/core';
 import { dailyTotalsIn, firstDayOf } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx, Money } from '../../ui';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from '../networth/chart-reading';
@@ -103,19 +103,30 @@ export function TrendBars({
   );
   const { reading, clear, svgProps } = useChartReading(points, WIDTH, { label: `Spending by ${unit}. Tap a bar to read it, or use the arrow keys.`, hover: true });
   const picked = reading ? points.indexOf(reading) : -1;
-  // Folded from anywhere else — another page of the card, a new period — the reading goes with it.
+  /*
+   * The bar last pressed, not the bar being read: a mouse reads whatever it passes over, so "the same bar again" is the
+   * same press again, or a click on any other bar would fold the list.
+   */
+  const pressed = useRef<number | null>(null);
+  // Folded from anywhere else — another page of the card — the reading goes with it. A new period or side is a new
+  // drawing altogether: the card keys this by both.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only the fold is followed
   useEffect(() => {
-    if (!open) clear();
+    if (!open) {
+      clear();
+      pressed.current = null;
+    }
   }, [open]);
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     const at = nearestIndex(points, ((event.clientX - box.left) / box.width) * WIDTH);
-    if (open && at !== null && at === picked) {
+    if (open && at !== null && at === pressed.current) {
       clear();
+      pressed.current = null;
       onFold?.();
       return;
     }
+    pressed.current = at;
     svgProps.onPointerDown(event);
     if (!open) onAsk?.();
   };
@@ -125,7 +136,12 @@ export function TrendBars({
     // The card under it folds its categories on a tap; a tap here is a reading, so it stops before it gets there.
     // biome-ignore lint/a11y/noStaticElementInteractions: only keeps the tap from reaching the card behind
     <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} data-testid="trend-bars">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} {...svgProps} onPointerDown={onPointerDown} aria-expanded={open} className={`block h-auto w-full ${svgProps.className}`}>
+      {/*
+       * Sideways is the deck's: the bars sit on its last page, and a swipe that starts on them must still turn the card
+       * back. The net worth line keeps a drag for itself because nothing under it scrolls sideways; here a drag pans,
+       * and a tap reads.
+       */}
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} {...svgProps} onPointerDown={onPointerDown} className={`block h-auto w-full ${svgProps.className.replace('touch-pan-y', 'touch-pan-x touch-pan-y')}`}>
         {bars.map((bar, index) =>
           bar.totalMinor === null ? null : (
             <rect

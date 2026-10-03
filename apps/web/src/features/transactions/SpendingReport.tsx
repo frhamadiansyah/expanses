@@ -179,7 +179,7 @@ function Ring({
           }
         }}
         aria-expanded={showRows}
-        aria-label={showRows ? 'Hide categories' : 'See all categories'}
+        aria-label={onThird ? (showRows ? 'Hide the comparison and biggest' : 'Show the comparison and biggest') : showRows ? 'Hide categories' : 'See all categories'}
         data-testid={showRows ? 'hide-categories' : 'see-categories'}
         className="block w-full cursor-pointer"
       >
@@ -417,7 +417,8 @@ export function SpendingReport({
               second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
               third={
                 trend ? (
-                  <TrendBars bars={trend.bars} unit={trend.unit} currency={trend.currency} open={showAll} onAsk={() => setShowAll(true)} onFold={() => setShowAll(false)} />
+                  // Keyed by what it draws, so a reading taken on one period or side is not carried onto the next.
+                  <TrendBars key={`${month}:${kind}`} bars={trend.bars} unit={trend.unit} currency={trend.currency} open={showAll} onAsk={() => setShowAll(true)} onFold={() => setShowAll(false)} />
                 ) : (
                   // Held at the bars' own size while the days are read, so the card does not grow when they arrive.
                   <div className="aspect-[400/290] w-full" />

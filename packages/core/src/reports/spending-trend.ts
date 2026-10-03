@@ -24,7 +24,7 @@ export interface TrendBar {
   label: string;
   /** What is written under it: "Mon", "12", "6 Jul", "Sep", "2026". */
   tick: string;
-  /** Null for a bar that has not happened yet, which is not the same as one where nothing was spent. */
+  /** Null for a bar that has not happened yet and has nothing on it, which is not the same as one where nothing was spent. */
   totalMinor: number | null;
   /** The bar today falls in: counted so far, and drawn as unfinished. */
   partial: boolean;
@@ -143,13 +143,16 @@ export function spendingTrend(period: Period, days: readonly DayTotal[], ctx: Tr
   const bars: TrendBar[] = [];
   for (let from = range.from; from <= range.to; ) {
     const to = sooner(unitEnd(unit, from), range.to);
-    const future = from > ctx.today;
+    const total = sumBetween(days, from, to);
+    // A bar still to come is not drawn — unless something is already counted on it, as a bill paid early is counted on
+    // its own day: the donut counts it, so its bar must.
+    const future = from > ctx.today && total === 0;
     bars.push({
       from,
       to,
       ...named(unit, from, to, period.kind === 'week'),
-      totalMinor: future ? null : sumBetween(days, from, sooner(to, ctx.today)),
-      partial: !future && ctx.today < to,
+      totalMinor: future ? null : total,
+      partial: from <= ctx.today && ctx.today < to,
     });
     from = addDays(to, 1);
   }
@@ -188,7 +191,8 @@ function nameOf(kind: Period['kind'], value: string, key: 'previous' | 'year-ago
  */
 export function spendingComparisons(period: Period, days: readonly DayTotal[], ctx: TrendContext): TrendComparison[] {
   const reach = REACH[period.kind];
-  if (!reach || !period.from || !period.to) return [];
+  // A period that has not begun has nothing of its own yet to set against anything.
+  if (!reach || !period.from || !period.to || period.from > ctx.today) return [];
   const running = period.from <= ctx.today && ctx.today < period.to;
   const length = running ? toDay(ctx.today) - toDay(period.from) + 1 : Number.POSITIVE_INFINITY;
   const current = sumBetween(days, period.from, running ? ctx.today : period.to);
