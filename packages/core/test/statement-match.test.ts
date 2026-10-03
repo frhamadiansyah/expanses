@@ -41,7 +41,7 @@ describe('matchStatement', () => {
     const cr = row('2026-05-08', 'PAYMENT', 500_000, { direction: 'in' });
     const payment = cand('p1', '2026-05-12', 500_000, { direction: 'in', kind: 'payment' });
 
-    expect(matchStatement([cr], [payment], OFF).outcomes).toEqual([{ row: 0, status: 'payment-untracked' }]);
+    expect(matchStatement([cr], [], OFF).outcomes).toEqual([{ row: 0, status: 'payment-untracked' }]);
     expect(matchStatement([cr], [payment], ON).outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['p1'] }]);
 
     const split = matchStatement(
@@ -54,6 +54,29 @@ describe('matchStatement', () => {
       { row: 1, status: 'matched', candidateIds: ['p9'] },
     ]);
     expect(split.flagged).toEqual([]);
+  });
+
+  it('with payments not tracked, still matches a payment the owner recorded, and only the rest goes untracked', () => {
+    const rows = [
+      row('2026-05-08', 'PAYMENT', 500_000, { direction: 'in' }),
+      row('2026-05-20', 'PAYMENT', 300_000, { direction: 'in' }),
+      row('2026-05-21', 'PAYMENT', 100_000, { direction: 'in' }),
+      row('2026-05-21', 'PAYMENT', 50_000, { direction: 'in' }),
+    ];
+    const recorded = [
+      cand('p1', '2026-05-12', 500_000, { direction: 'in', kind: 'payment' }),
+      cand('p2', '2026-05-22', 150_000, { direction: 'in', kind: 'payment' }),
+      cand('p3', '2026-05-25', 999_000, { direction: 'in', kind: 'payment' }),
+    ];
+    const result = matchStatement(rows, recorded, OFF);
+    expect(result.outcomes).toEqual([
+      { row: 0, status: 'matched', candidateIds: ['p1'] },
+      { row: 1, status: 'payment-untracked' },
+      { row: 2, status: 'matched', candidateIds: ['p2'] },
+      { row: 3, status: 'matched', candidateIds: ['p2'] },
+    ]);
+    // A recorded payment no row took is still on the card in the period: flagged, as any other.
+    expect(result.flagged).toEqual(['p3']);
   });
 
   it('calls a refund with no recorded refund missing as a refund', () => {

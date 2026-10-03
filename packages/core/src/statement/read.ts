@@ -134,19 +134,20 @@ const MARKERS = [...W.inMarkers, ...W.outMarkers].sort((a, b) => b.length - a.le
 const TRAILING_AMOUNT = new RegExp(`(?:^|\\s)([-+]?)(\\d[\\d.,]*)\\s*(${MARKERS})?$`, 'i');
 
 /** The amount at the end of a row: signed minor units, and where it starts. */
-function trailingAmount(text: string, currency: string): { minor: number; direction: 'in' | 'out'; start: number } | null {
+function trailingAmount(text: string, currency: string): { minor: number; direction: 'in' | 'out'; start: number; bare: boolean } | null {
   const match = TRAILING_AMOUNT.exec(text);
   if (!match) return null;
   const digits = match[2]!;
   const major = parseNumber(digits);
   if (major === null) return null;
-  // A bare one- or two-digit figure is a page number or a count, not money.
-  if (!/[.,]/.test(digits) && digits.length < 3) return null;
+  // A bare one- or two-digit figure: on a row it is a page number or a count, not money; beside a balance's label
+  // (`Previous Balance 0`) it is the balance.
+  const bare = !/[.,]/.test(digits) && digits.length < 3;
   const marker = match[3]?.toLowerCase();
   const sign = match[1];
   const direction = sign === '-' || sign === '+' || (marker !== undefined && W.inMarkers.includes(marker)) ? 'in' : 'out';
   const start = match.index + (match[0].length - match[0].trimStart().length);
-  return { minor: Math.round(major * 10 ** exponentOf(currency)), direction, start };
+  return { minor: Math.round(major * 10 ** exponentOf(currency)), direction, start, bare };
 }
 
 const wordRegex = (words: readonly string[]) => new RegExp(`\\b(?:${words.map(escape).join('|')})\\b`, 'i');
@@ -189,6 +190,7 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
       const description = dates.length > 0 && amount.start >= rest ? text.slice(rest, amount.start).replace(/\s+/g, ' ').trim() : '';
       // A transaction has a date, then a description, then the amount; a lone `12 Mei 2026` is a date, not Rp2.026.
       if (description !== '') {
+        if (amount.bare) continue;
         imageRows.push({
           on: dates[dates.length - 1]!,
           postedOn: dates.length === 2 ? dates[0]! : null,

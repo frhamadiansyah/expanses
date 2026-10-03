@@ -27,6 +27,15 @@ describe('readStatement, the review focus', () => {
     expect(readStatement([a, b], period, 'IDR').rows.map((r) => r.description)).toEqual(['KURASU KISSATEN', 'KURASU KISSATEN', 'TOKO LAIN']);
   });
 
+  it('reads a zero balance as zero, while a bare small figure on a row is still no amount', () => {
+    const images = [[
+      line('Previous Balance', 0.05, 0.1, 0.3), line('0', 0.85, 0.1),
+      line('New Balance', 0.05, 0.15, 0.3), line('0', 0.85, 0.15),
+      line('12MAY', 0.05, 0.2), line('PAGE', 0.25, 0.2), line('2', 0.85, 0.2),
+    ]];
+    expect(readStatement(images, { start: '2026-05-01', end: '2026-05-31' }, 'IDR')).toEqual({ rows: [], closingMinor: 0, previousMinor: 0, emptyImages: [] });
+  });
+
   it('reads a currency with minor digits in its minor units', () => {
     const images = [[line('06/05', 0.05, 0.1), line('BOOK SHOP', 0.25, 0.1), line('1,234.56', 0.85, 0.1)]];
     expect(readStatement(images, { start: '2026-05-01', end: '2026-05-31' }, 'USD').rows[0]?.amountMinor).toBe(123456);

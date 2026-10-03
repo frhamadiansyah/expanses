@@ -39,7 +39,10 @@ export interface MatchResult {
 
 export interface MatchOptions {
   period: StatementPeriod;
-  /** The card's setting: card payments are matched with transfers into the card. */
+  /**
+   * The card's setting. Either way a card payment matches a transfer into the card the owner recorded; what matches
+   * nothing is missing (to record) when on, and `payment-untracked` (summed into one adjustment) when off.
+   */
   trackPayments: boolean;
   /** Row index → the credit looks like a shop's refund (see `looksLikeRefund`). */
   refundHints: ReadonlyMap<number, boolean>;
@@ -80,7 +83,7 @@ function textOverlap(a: string, b: string): number {
   return shared / (wa.size + wb.size - shared);
 }
 
-type Pool = 'purchase' | 'refund' | 'payment' | 'untracked';
+type Pool = 'purchase' | 'refund' | 'payment';
 
 export function matchStatement(rows: readonly StatementRow[], candidates: readonly Candidate[], opts: MatchOptions): MatchResult {
   const used = new Set<string>();
@@ -90,7 +93,7 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     const r = rows[i]!;
     if (r.direction === 'out') return 'purchase';
     if (opts.refundHints.get(i) === true) return 'refund';
-    return opts.trackPayments ? 'payment' : 'untracked';
+    return 'payment';
   };
 
   const windowOf = (pool: Pool): number => (pool === 'payment' ? PAYMENT_WINDOW_DAYS : WINDOW_DAYS);
@@ -114,10 +117,6 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
 
   // Rows in date order; equal dates keep statement order.
   const order = rows.map((_, i) => i).sort((a, b) => dayNumber(rows[a]!.on) - dayNumber(rows[b]!.on) || a - b);
-
-  for (const i of order) {
-    if (poolOf(i) === 'untracked') outcomes.set(i, { row: i, status: 'payment-untracked' });
-  }
 
   // 1. The same amount.
   for (const i of order) {
@@ -143,8 +142,9 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     outcomes.set(i, { row: i, status: 'matched', candidateIds: [best.c.id] });
   }
 
-  // 2. Card payments the bank split over several rows, paid as one transfer.
-  if (opts.trackPayments) {
+  // 2. Card payments the bank split over several rows, paid as one transfer. Even with payments not tracked, a payment
+  // the owner did record is that payment: matched, never counted again in the untracked adjustment.
+  {
     const payments = candidates.filter((c) => c.direction === 'in' && c.kind === 'payment')
       .sort((a, b) => dayNumber(a.on) - dayNumber(b.on));
     for (const c of payments) {
@@ -159,7 +159,8 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
 
   // 3. A near amount: the row differs from what was recorded.
   for (const i of order) {
-    if (outcomes.has(i)) continue;
+    // With payments not tracked, a payment that matches nothing exactly goes to the adjustment, not to a correction.
+    if (outcomes.has(i) || (!opts.trackPayments && poolOf(i) === 'payment')) continue;
     const r = rows[i]!;
     const gap = (c: Candidate) => Math.abs(c.amountMinor - r.amountMinor);
     // The closest amount first; then the date and the text, as for an exact amount.
@@ -176,6 +177,10 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     if (outcomes.has(i)) continue;
     const r = rows[i]!;
     const pool = poolOf(i);
+    if (pool === 'payment' && !opts.trackPayments) {
+      outcomes.set(i, { row: i, status: 'payment-untracked' });
+      continue;
+    }
     const as = r.isFee ? 'fee' : pool === 'refund' ? 'refund' : pool === 'payment' ? 'payment' : 'purchase';
     outcomes.set(i, { row: i, status: 'missing', as });
   }
