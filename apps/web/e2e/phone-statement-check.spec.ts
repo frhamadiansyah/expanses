@@ -95,6 +95,9 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await expect(rows).toHaveCount(3);
 
   // The quiet adjustment lives on the card's statement only, never in the transaction history.
-  await expect(page.getByText('Transaction history')).toBeVisible();
-  await expect(page.getByText(/Payments not tracked/)).toHaveCount(0);
+  // The card's purchases are listed first, so the absences below are read off a filled history, not an empty one.
+  const history = page.getByTestId('transaction-row');
+  await expect(history.first()).toBeVisible();
+  await expect(history.filter({ hasText: /Payments not tracked/ })).toHaveCount(0);
+  await expect(history.filter({ hasText: /PAYMENT - THANK YOU|Card payment/ })).toHaveCount(0);
 });
