@@ -45,7 +45,10 @@ export interface TrendComparison {
 export interface TrendContext {
   /** Today, as YYYY-MM-DD: what has not happened yet is not drawn, and what is happening is compared fairly. */
   today: string;
-  /** The first day anything was recorded, or null when nothing has been. Nothing is compared with a time before it. */
+  /**
+   * The first day this side of the ledger has anything on it — the first money out, or in — or null when it has none.
+   * Nothing is compared with a time before it, and all time starts there.
+   */
   first: string | null;
 }
 

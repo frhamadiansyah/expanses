@@ -1,5 +1,5 @@
 import { isoDate, parsePeriod, spendingComparisons, spendingTrend, type TrendBar, type TrendComparison, type TrendUnit, trendWindow, weekOf } from '@expanses/core';
-import { dailyTotalsIn, firstTransactionDate } from '@expanses/db';
+import { dailyTotalsIn, firstDayOf } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -20,12 +20,17 @@ const TICK_ROOM = 22;
 export function useSpendingTrend(month: string, kind: 'expense' | 'income', excludeEvents: boolean) {
   const { database, ws } = useApp();
   const today = isoDate();
-  const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws) });
+  const events = excludeEvents ? 'without-events' : 'with-events';
+  // Where this side of the ledger starts: nothing is compared with a time before money was going out (or coming in).
+  const first = useQuery({
+    queryKey: ['first-day', ws.workspaceId, ws.bookId ?? null, kind, events],
+    queryFn: () => firstDayOf(database, ws, kind, { excludeEvents, billMonths: true }),
+  });
   const period = parsePeriod(month);
   const ctx = { today, first: first.data ?? null };
   const window = period && first.isSuccess ? trendWindow(period, ctx) : null;
   const daily = useQuery({
-    queryKey: ['daily-totals', ws.workspaceId, ws.bookId ?? null, kind, window?.from, window?.to, excludeEvents ? 'without-events' : 'with-events'],
+    queryKey: ['daily-totals', ws.workspaceId, ws.bookId ?? null, kind, window?.from, window?.to, events],
     enabled: window !== null,
     queryFn: () => dailyTotalsIn(database, ws, kind, window!.from, window!.to, { excludeEvents, billMonths: true }),
   });

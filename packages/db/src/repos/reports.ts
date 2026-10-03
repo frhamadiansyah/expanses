@@ -195,6 +195,28 @@ export async function dailyTotalsIn(
 }
 
 /**
+ * The first day money went out (or came in), read through the same rows as the totals above.
+ *
+ * The bars compare a period only with periods this side was being kept for. An opening balance from years before
+ * the first purchase was recorded says nothing about when the spending started.
+ */
+export async function firstDayOf(
+  database: Database,
+  ws: WorkspaceContext,
+  kind: 'expense' | 'income',
+  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+): Promise<string | null> {
+  const { where, onDate } = await categoryRows(database, ws, kind, '0000-01-01', '9999-12-31', opts);
+  const [row] = await database.db
+    .select({ first: sql<string | null>`min(${onDate})` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(where);
+  return row?.first ?? null;
+}
+
+/**
  * What the month's events cost in total, in the currency the open workspace reads in.
  *
  * The budget leaves this out of its caps, so it has to be shown and subtracted somewhere: money spent

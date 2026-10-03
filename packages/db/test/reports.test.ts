@@ -1,6 +1,6 @@
 import { categoryTree, expenseLines, incomeLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { categoryTotalsBetween, createAccount, dailyTotalsIn, listAccounts, postTransaction, voidTransaction } from '../src/index';
+import { categoryTotalsBetween, createAccount, dailyTotalsIn, firstDayOf, listAccounts, postTransaction, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 describe('categoryTotalsBetween', () => {
@@ -74,5 +74,48 @@ describe('dailyTotalsIn', () => {
     // The days add up to what the donut says the month came to.
     const categories = await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30');
     expect(daily.days.reduce((sum, day) => sum + day.amountMinor, 0)).toBe(categories.reduce((sum, row) => sum + row.amountBaseMinor, 0));
+  });
+});
+
+describe('firstDayOf', () => {
+  it('is the first day money went out, or came in — not the first day anything was recorded', async () => {
+    const { database, ws } = await setupDb();
+    const checking = await createAccount(database, ws, { name: 'Checking', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const visa = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const all = await listAccounts(database, ws);
+    const id = (name: string) => all.find((a) => a.name === name)!.id;
+    // An opening balance years before any spending was kept: not the start of the spending.
+    await postTransaction(database, ws, {
+      occurredOn: '2020-06-18',
+      description: 'Opening balance',
+      lines: [
+        { accountId: checking.id, amountMinor: 5_000_000, currency: 'IDR' },
+        { accountId: visa.id, amountMinor: -5_000_000, currency: 'IDR' },
+      ],
+    });
+    expect(await firstDayOf(database, ws, 'expense')).toBeNull();
+
+    await voidTransaction(
+      database,
+      ws,
+      await postTransaction(database, ws, {
+        occurredOn: '2026-01-02',
+        description: 'Mistake',
+        lines: expenseLines({ categoryAccountId: id('Groceries'), paymentAccountId: visa.id, amountMinor: 1, currency: 'IDR' }),
+      }),
+    );
+    await postTransaction(database, ws, {
+      occurredOn: '2026-01-15',
+      description: 'Superindo',
+      lines: expenseLines({ categoryAccountId: id('Groceries'), paymentAccountId: visa.id, amountMinor: 250_000, currency: 'IDR' }),
+    });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-01-25',
+      description: 'Salary',
+      lines: incomeLines({ incomeAccountId: id('Salary'), depositAccountId: checking.id, amountMinor: 10_000_000, currency: 'IDR' }),
+    });
+
+    expect(await firstDayOf(database, ws, 'expense')).toBe('2026-01-15');
+    expect(await firstDayOf(database, ws, 'income')).toBe('2026-01-25');
   });
 });
