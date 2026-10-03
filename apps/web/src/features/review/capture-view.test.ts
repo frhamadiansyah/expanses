@@ -49,6 +49,7 @@ const reading: Reading & { lines: CaptureLine[] } = {
   type: { value: 'spent', confidence: 80, line: null },
   name: { value: 'TOKO KOPI', confidence: 90, line: 3 },
   accountHint: '1234',
+  paymentMethod: null,
   lines: [line('Pay wallet', 0.02), line('Transaksi Berhasil', 0.06), line('Total Rp38.000', 0.5, 0.04), line('Merchant TOKO KOPI', 0.6)],
 };
 
@@ -124,6 +125,7 @@ describe('the boxes over a picture', () => {
       type: { value: 'spent', confidence: 80, line: null },
       name: { value: 'TOKO KOPI', confidence: 90, line: 3 },
       accountHint: null,
+      paymentMethod: null,
     };
     expect(fieldBoxes(noLines)).toEqual([]);
     expect(fieldBoxes(null)).toEqual([]);
@@ -138,6 +140,7 @@ describe('the answer to "Which account is this?"', () => {
     type: { value: 'topup', confidence: 85, line: null },
     name: null,
     accountHint: null,
+    paymentMethod: null,
   };
 
   it('is where the money left, for a payment', () => {

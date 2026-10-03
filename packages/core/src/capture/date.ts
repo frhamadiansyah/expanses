@@ -74,8 +74,8 @@ const PATTERNS: readonly { source: RegExp; read: (m: RegExpExecArray) => { year:
     }),
   },
   {
-    // 29 Sep 2026 · 29 September 2026, with an optional time after it.
-    source: /(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})(?:[,\s]+(?:pukul\s+|jam\s+|at\s+)?(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp][Mm]))?)?/g,
+    // 29 Sep 2026 · 29 September 2026, with an optional time after it — a bullet between the two is still one stamp.
+    source: /(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})(?:[,\s•·|]+(?:pukul\s+|jam\s+|at\s+)?(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp][Mm]))?)?/g,
     read: (m) => {
       const month = monthOf(m[2] ?? '');
       return month === null ? null : { year: Number(m[3]), month, day: Number(m[1]), time: timeOf(m[4], m[5], m[6]) };
@@ -83,7 +83,7 @@ const PATTERNS: readonly { source: RegExp; read: (m: RegExpExecArray) => { year:
   },
   {
     // Sep 29, 2026, with an optional time after it.
-    source: /([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp][Mm]))?)?/g,
+    source: /([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})(?:[,\s•·|]+(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp][Mm]))?)?/g,
     read: (m) => {
       const month = monthOf(m[1] ?? '');
       return month === null ? null : { year: Number(m[3]), month, day: Number(m[2]), time: timeOf(m[4], m[5], m[6]) };

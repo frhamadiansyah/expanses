@@ -12,6 +12,9 @@ export const EN: WordList = {
   amountLabels: ['total', 'amount', 'grand total', 'total paid'],
   nameLabels: ['merchant', 'recipient', 'payee', 'to account', 'sender', 'store'],
   nameLeadIns: ['to', 'at', 'from'],
+  paymentLabels: ['payment method', 'paid with', 'pay with', 'source of funds', 'funding source', 'card used'],
+  cardWords: ['credit card', 'debit card', 'card'],
+  idLabels: ['id', 'user id', 'phone', 'phone number', 'mobile number'],
   thousand: ['k'],
   million: ['m'],
 };

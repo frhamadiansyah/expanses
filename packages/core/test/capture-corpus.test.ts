@@ -21,6 +21,7 @@ describe('the capture corpus', () => {
     if (expected.name !== undefined) expect(reading.name?.value ?? null).toBe(expected.name);
     if (expected.occurredAt !== undefined) expect(reading.occurredAt?.value ?? null).toBe(expected.occurredAt);
     if (expected.accountHint !== undefined) expect(reading.accountHint).toBe(expected.accountHint);
+    if (expected.paymentLast4 !== undefined) expect(reading.paymentMethod?.last4 ?? null).toBe(expected.paymentLast4);
     if (expected.line !== undefined) expect(reading.amount?.line ?? null).toBe(expected.line);
   });
 });
