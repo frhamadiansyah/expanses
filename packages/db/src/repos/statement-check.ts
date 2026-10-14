@@ -722,12 +722,16 @@ export async function recordStatementCheck(
             ? // Money back: the card is owed less, and the category it was spent under takes it back.
               refundLines({ categoryAccountId: row.categoryId!, paymentAccountId: cardAccountId, ...amount })
             : expenseLines({ categoryAccountId: row.categoryId!, paymentAccountId: cardAccountId, ...amount });
+        // A foreign purchase or refund keeps its own currency and amount beside the charged lines, as one typed by
+        // hand does: points and the tax report read it. A card payment has none.
+        const original = !isPayment && row.original ? { originalCurrency: row.original.currency, originalAmountMinor: row.original.amountMinor } : {};
         const id = await postTransactionTx(tx, ws, {
           occurredOn: row.on,
           description: isPayment ? 'Card payment' : row.description,
           source: 'screen',
           externalRef,
           lines,
+          ...original,
         });
         // The bank's posting date decides the statement it is billed on, as it did for this one.
         if (row.postedOn && row.postedOn > row.on) await tx.insert(cardPostings).values({ transactionId: id, workspaceId: ws.workspaceId, postedOn: row.postedOn });

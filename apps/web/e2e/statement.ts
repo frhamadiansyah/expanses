@@ -15,6 +15,23 @@ export function statementLines(rows: readonly (readonly [on: string, description
   });
 }
 
+/**
+ * A transaction-date-first screenshot: transaction date, posting date, description, amount, each row maybe followed by
+ * its foreign detail line (`(TRY 412.00 x 341.00)`) in the description column.
+ */
+export function twoDateLines(rows: readonly (readonly [on: string, posted: string, description: string, amount: string, detail?: string])[]): CaptureLine[] {
+  return rows.flatMap(([on, posted, description, amount, detail], i) => {
+    const y = 0.1 + i * 0.08;
+    return [
+      line(on, 0.05, y, 0.08),
+      line(posted, 0.15, y, 0.08),
+      line(description, 0.25, y, 0.45),
+      line(amount, 0.8, y, 0.12),
+      ...(detail ? [line(detail, 0.25, y + 0.035, 0.3)] : []),
+    ];
+  });
+}
+
 /** The summary screenshot: a label at the left and its amount at the right, per balance given. */
 export function summaryLines(balances: readonly (readonly [label: string, amount: string])[]): CaptureLine[] {
   return balances.flatMap(([label, amount], i) => {

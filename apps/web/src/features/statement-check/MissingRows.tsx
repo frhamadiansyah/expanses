@@ -8,7 +8,7 @@ import { InsetGroup, SegmentedControl, TextRow } from '../../ui/native';
 import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { DayHeader } from '../transactions/DayHeader';
-import { missingByDay, needsCategory } from './check-model';
+import { missingByDay, needsCategory, originalLabel } from './check-model';
 
 /**
  * The statement's rows missing from cicis, drawn like the Cashflow list (S9): a card per day, the category's circle,
@@ -64,6 +64,7 @@ export function MissingRows({
               const payment = row.outcome.status === 'missing' && row.outcome.as === 'payment';
               const name = nameOf(row.categoryId);
               const source = row.categorySource === 'known' ? 'known · ' : row.categorySource === 'same-merchant' ? 'same merchant · ' : '';
+              const original = originalLabel(row);
               return (
                 <li key={row.index} data-testid="missing-row" className="list-none">
                   <div className="flex items-center gap-1">
@@ -85,8 +86,15 @@ export function MissingRows({
                           {cardName}
                         </span>
                       </span>
-                      <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
-                        {formatMinor(row.amountMinor, currency)}
+                      <span className="shrink-0 text-right">
+                        <span className={cx('tabular block text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                          {formatMinor(row.amountMinor, currency)}
+                        </span>
+                        {original && (
+                          <span data-testid="missing-original" className="tabular block text-[11.5px] leading-[14px] whitespace-nowrap text-[var(--ph-ink-3)]">
+                            {original}
+                          </span>
+                        )}
                       </span>
                     </button>
                     <button

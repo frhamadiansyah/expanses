@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardSection } from './card-section';
-import { screenshotFiles, setStatementImages, statementLines, summaryLines } from './statement';
+import { screenshotFiles, setStatementImages, statementLines, summaryLines, twoDateLines } from './statement';
 
 /*
  * Today is pinned to 15 September 2026 and the card bills on the 10th, so the statement one back from today is
@@ -116,4 +116,28 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await expect(history.first()).toBeVisible();
   await expect(history.filter({ hasText: /Payments not tracked/ })).toHaveCount(0);
   await expect(history.filter({ hasText: /PAYMENT - THANK YOU|Card payment/ })).toHaveCount(0);
+});
+
+test('a foreign purchase missing from cicis shows the amount in its own currency under the charge', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25' });
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardSection(page, 'Activity');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await page.getByTestId('check-statement').click();
+
+  await setStatementImages(page, [
+    twoDateLines([
+      ['15-Aug-26', '17-Aug-26', 'KAFE ORNEK CITY TR', '140,492.00', '(TRY 412.00 x 341.00)'],
+      ['18-Aug-26', '19-Aug-26', 'TOKO ORNEK KOTA ORNEK ID', '50,000.00'],
+    ]),
+  ]);
+  await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));
+  await page.getByRole('button', { name: 'Check 1 screenshot' }).click();
+  await expect(page.getByTestId('count-missing')).toHaveText(/^Missing — record here2›?$/);
+  await page.getByTestId('count-missing').click();
+  const missing = page.getByTestId('missing-row');
+  await expect(missing.filter({ hasText: 'KAFE ORNEK CITY TR' }).getByTestId('missing-original')).toHaveText(/^TRY\s412,00$/);
+  await expect(missing.filter({ hasText: 'TOKO ORNEK KOTA ORNEK ID' }).getByTestId('missing-original')).toHaveCount(0);
 });

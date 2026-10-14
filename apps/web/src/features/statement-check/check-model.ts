@@ -2,6 +2,7 @@
  * What the check screen says about a prepared statement check, worked out without React: the counts, the headline,
  * when Record all may go, and the missing rows laid out by day as the Cashflow list draws them.
  */
+import { currencyInfo } from '@expanses/core';
 import type { CheckDraftRow, PreparedCheck } from '@expanses/db';
 
 export interface CheckCounts {
@@ -111,6 +112,33 @@ export function missingByDay(rows: readonly CheckDraftRow[]): MissingDay[] {
     day.net += r.direction === 'in' ? r.amountMinor : -r.amountMinor;
   }
   return days;
+}
+
+/**
+ * A foreign row's own currency and amount, as its detail line printed them: "TRY 412,00". The code, never a symbol, so
+ * a dollar is never mistaken for another; null when the statement printed none.
+ */
+export function originalLabel(row: CheckDraftRow): string | null {
+  if (!row.original) return null;
+  const { currency, amountMinor } = row.original;
+  const { exponent } = currencyInfo(currency);
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency,
+    currencyDisplay: 'code',
+    minimumFractionDigits: exponent,
+    maximumFractionDigits: exponent,
+  }).format(amountMinor / 10 ** exponent);
+}
+
+/**
+ * A row with the owner's correction of its date or amount. A changed amount drops the original the detail line gave:
+ * the two no longer multiply out, so the row is recorded as the owner typed it. Pure; the row given is not changed.
+ */
+export function corrected(row: CheckDraftRow, patch: { on: string; amountMinor: number }): CheckDraftRow {
+  const next = { ...row, ...patch };
+  if (patch.amountMinor !== row.amountMinor) delete next.original;
+  return next;
 }
 
 /** Days before the period's end a recorded transaction may still be billed on the next statement. */

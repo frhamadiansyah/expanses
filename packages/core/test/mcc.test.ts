@@ -89,6 +89,14 @@ describe('category default MCC', () => {
     expect(categoryDefaultMcc('others', travel, {})).toBe('4722');
   });
 
+  it("gives Travel's Meals the restaurant code, so restaurant rules count it", () => {
+    const travel = [
+      { id: 'travel', parentId: null, systemKey: 'travel' },
+      { id: 'meals', parentId: 'travel', systemKey: 'travel.meals' },
+    ];
+    expect(categoryDefaultMcc('meals', travel, {})).toBe('5812');
+  });
+
   it('keys built-in defaults by default category keys with valid codes', () => {
     for (const [key, mcc] of Object.entries(DEFAULT_CATEGORY_MCCS)) {
       expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
