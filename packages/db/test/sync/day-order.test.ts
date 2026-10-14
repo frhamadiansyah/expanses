@@ -94,4 +94,34 @@ describe('a purchase moved within its day, shared', () => {
     );
     expect(moved).toEqual(['2026-10-13', null]);
   });
+
+  it('a date changed on one phone while the other moves the row converges: the same date and place on both', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(fandri);
+    await home.join(dewi, fandri);
+    const a = await spend(fandri, bookId, 'A');
+    const b = await spend(fandri, bookId, 'B');
+    const c = await spend(fandri, bookId, 'C');
+    await home.settle();
+    await moveTransactionInDay(fandri.database, fandri.ws, a, [a, c, b]);
+    await home.settle();
+
+    // Fandri moves A to the day before; at the same time Dewi, not yet told, moves A to the bottom of the old day.
+    const groceries = await categoryOf(fandri.database, bookId, 'Groceries');
+    const lines = expenseLines({ categoryAccountId: groceries, paymentAccountId: fandri.bank, amountMinor: 10_000, currency: 'IDR' });
+    await replaceTransaction(fandri.database, fandri.ws, a, { occurredOn: '2026-10-13', description: 'A', lines });
+    await pause();
+    const ids = Object.fromEntries((await listTransactions(dewi.database, dewi.ws, { from: DAY, to: DAY })).map((tx) => [tx.description, tx.id]));
+    await moveTransactionInDay(dewi.database, dewi.ws, ids.A!, [ids.C!, ids.B!, ids.A!]);
+    for (let i = 0; i < 3; i += 1) await home.settle();
+
+    const stateOf = async (d: Device) =>
+      (await d.database.db.values<[string, number | null]>(sql`SELECT occurred_on, day_order FROM transactions WHERE status = 'posted' AND description = 'A'`)).map(
+        ([on, order]) => [on, order === null ? null : Number(order)],
+      );
+    expect(await stateOf(fandri)).toEqual(await stateOf(dewi));
+    expect((await stateOf(fandri))[0]![0]).toBe('2026-10-13');
+  });
 });

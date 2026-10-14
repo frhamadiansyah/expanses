@@ -101,6 +101,30 @@ describe('moving a transaction within its day', () => {
     expect((await listTransactions(database, ws)).filter((tx) => tx.description !== 'Opening balance').map((tx) => tx.description)).toEqual(['Later', 'A', 'B', 'Earlier']);
   });
 
+  it('moves a filtered list among the rows it shows, leaving the hidden ones where they were', async () => {
+    const { database, ws, spend, day } = await setup();
+    const a = await spend('A');
+    const b = await spend('B');
+    await moveTransactionInDay(database, ws, a, [a, b]);
+    const u1 = await spend('U1');
+    const u2 = await spend('U2');
+    expect(await day()).toEqual(['U2', 'U1', 'A', 'B']);
+
+    // A list filtered to U1 and U2 alone: U1 dragged above U2. A and B were not on screen and stay below them.
+    await moveTransactionInDay(database, ws, u1, [u1, u2]);
+    expect(await day()).toEqual(['U1', 'U2', 'A', 'B']);
+
+    // Filtered to A and U2 (hidden between them: nothing): A above U2 keeps U1 on top and B at the bottom.
+    await moveTransactionInDay(database, ws, a, [a, u2]);
+    expect(await day()).toEqual(['U1', 'A', 'U2', 'B']);
+  });
+
+  it('migrates transactions with a day_order column', async () => {
+    const { database } = await setup();
+    const columns = await database.db.values<[string, string]>(sql`SELECT name, type FROM pragma_table_info('transactions') WHERE name = 'day_order'`);
+    expect(columns).toEqual([['day_order', 'REAL']]);
+  });
+
   it('refuses a row from another day, and one not in the order it is given', async () => {
     const { database, ws, spend } = await setup();
     const a = await spend('A');

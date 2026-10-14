@@ -601,6 +601,7 @@ async function ledgerInput(
   winners: Record<string, unknown>,
   author: string,
   trust: PaidFromTrust,
+  carriesDayOrder = false,
 ): Promise<{ input: PostTransactionInput; refused: boolean }> {
   const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
@@ -616,8 +617,10 @@ async function ledgerInput(
     input.originalCurrency = state.money.originalCurrency;
     input.originalAmountMinor = state.money.originalAmountMinor;
   }
-  // Not a winner: the ledger carries the row's place on the same day and clears it on a new date, as a local edit does.
-  if ('dayOrder' in winners) input.dayOrder = state.dayOrder ?? null;
+  // The place, whenever the op speaks of it: its own value when it won, and the one already here when it lost — never
+  // the ledger's "a new date clears it", which would leave this row's place out of step with its field clock (a date
+  // changed on one phone while the other moved the row). Only an op from a build without places leaves it to that rule.
+  if ('dayOrder' in winners || carriesDayOrder) input.dayOrder = state.dayOrder ?? null;
   return { input, refused };
 }
 
@@ -667,7 +670,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     known: lineage?.paidFrom ?? null,
     head: lineage?.head ?? null,
   };
-  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust);
+  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields);
   // Final review item 2: the lineage keeps the `paidFrom` in effect here — none when this device refused to land it on
   // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
   const from = refused ? null : state.money.paidFrom;

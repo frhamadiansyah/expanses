@@ -1,4 +1,4 @@
-import { isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { compareWithinDay, isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, getTableColumns, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -462,30 +462,40 @@ export function setTransactionMcc(database: Database, ws: WorkspaceContext, tran
 
 /**
  * Moves one transaction within its day: `order` is that day's rows as they should now read, the moved one among them —
- * the rows a list shows, which may be fewer than the day holds when it is filtered. Writes the moved row alone when its
- * new neighbours already have places (one write, one synced change), else numbers the given rows once. Nothing is
- * reposted: a place in the day is not money.
+ * the rows a list shows, which may be fewer than the day holds when it is filtered. The rows it does not name stay where
+ * they are: the shown rows are put back, in their new order, into the places they already held in the whole day. Writes
+ * the moved row alone when its new neighbours in the whole day already have places (one write, one synced change), else
+ * numbers the day once. Nothing is reposted: a place in the day is not money.
  */
 export function moveTransactionInDay(database: Database, ws: WorkspaceContext, transactionId: string, order: readonly string[]): Promise<void> {
   return database.transaction(async (tx) => {
     const ids = [...new Set(order)];
     if (!ids.includes(transactionId)) throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} is not in the order given`);
-    const found = (
-      await tx.values<[string, string, number | null, string]>(
-        sql`SELECT id, occurred_on, day_order, status FROM transactions WHERE workspace_id = ${ws.workspaceId} AND id IN ${ids}`,
+    const [movedRow] = await tx.values<[string, string]>(
+      sql`SELECT occurred_on, status FROM transactions WHERE workspace_id = ${ws.workspaceId} AND id = ${transactionId}`,
+    );
+    if (!movedRow || movedRow[1] !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
+    const occurredOn = movedRow[0];
+    // The whole day as it reads now (the list's own rule), hidden rows included.
+    const whole = (
+      await tx.values<[string, number | null, string]>(
+        sql`SELECT id, day_order, created_at FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status = 'posted' AND occurred_on = ${occurredOn}`,
       )
-    ).map(([id, occurredOn, dayOrder, status]) => ({ id, occurredOn, dayOrder: dayOrder === null ? null : Number(dayOrder), status }));
-    const byId = new Map(found.map((row) => [row.id, row]));
-    const moved = byId.get(transactionId);
-    if (!moved || moved.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
-    const rows = ids.map((id) => {
-      const row = byId.get(id);
-      if (!row || row.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
+    )
+      .map(([id, dayOrder, createdAt]) => ({ id, dayOrder: dayOrder === null ? null : Number(dayOrder), createdAt }))
+      .sort(compareWithinDay);
+    const at = new Map(whole.map((row, i) => [row.id, i]));
+    for (const id of ids) {
+      if (at.has(id)) continue;
+      const [row] = await tx.values<[string, string]>(sql`SELECT occurred_on, status FROM transactions WHERE workspace_id = ${ws.workspaceId} AND id = ${id}`);
+      if (!row || row[1] !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
       // Moving to another day is changing the date: an edit, not a drag.
-      if (row.occurredOn !== moved.occurredOn) throw new LedgerError('OTHER_DAY', 'A transaction can only be moved within its own day. Change its date to move it to another day.');
-      return row;
-    });
-    for (const write of planDayOrder(rows, transactionId)) {
+      throw new LedgerError('OTHER_DAY', 'A transaction can only be moved within its own day. Change its date to move it to another day.');
+    }
+    const slots = ids.map((id) => at.get(id)!).sort((x, y) => x - y);
+    const next = [...whole];
+    slots.forEach((slot, k) => (next[slot] = whole[at.get(ids[k]!)!]!));
+    for (const write of planDayOrder(next, transactionId)) {
       // Household sharing: a shared purchase's place travels with it (the purchase's `dayOrder`).
       await captureReorderingTx(tx, write.id);
       await tx.run(sql`UPDATE transactions SET day_order = ${write.dayOrder} WHERE id = ${write.id}`);
