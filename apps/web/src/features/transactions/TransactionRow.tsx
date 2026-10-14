@@ -1,5 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
+import { Check } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -47,6 +48,7 @@ export function TransactionRow({
   title,
   className,
   itemProps,
+  select,
 }: {
   row: ListRow;
   accounts: readonly AccountRow[];
@@ -84,6 +86,12 @@ export function TransactionRow({
   className?: string;
   /** Attributes for the row's `<li>`: what a list that can be reordered finds its rows by (`reorderAttrs`). */
   itemProps?: Record<`data-${string}`, string>;
+  /**
+   * Select mode: whether this row is ticked, and what ticking it does. While it is given the row is a choice and
+   * nothing else — no receipt, no swipe, no category circle — so a tap can only ever tick or untick. A row that
+   * cannot be chosen passes no `onToggle`, and shows no tick at all.
+   */
+  select?: { selected: boolean; onToggle?: () => void };
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
   // Money back on a purchase reads as money in: a plus, in green.
@@ -100,9 +108,51 @@ export function TransactionRow({
    * Edit and Delete buttons behind it — on a desktop that same `bg-white` painted over the `<li>`'s
    * `hover:bg-slate-50` and left the tint showing in the gutters alone.
    */
+  /*
+   * The tick, at the row's head: a round one on a phone, as iOS draws a selection, and a plain checkbox column on a
+   * wide screen. A row that cannot be chosen keeps the column's room, so the rows that can still line up.
+   */
+  const tick = select && (
+    select.onToggle ? (
+      phone ? (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={select.selected}
+          aria-label={`Select ${row.description}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            select.onToggle?.();
+          }}
+          className={cx(
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-slate-900',
+            select.selected ? 'bg-[var(--ph-tint)] text-white' : 'ring-[1.5px] ring-slate-300 ring-inset',
+          )}
+        >
+          {select.selected && <Check size={15} strokeWidth={3} aria-hidden />}
+        </button>
+      ) : (
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.description}`}
+          checked={select.selected}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => select.onToggle?.()}
+          className="h-4 w-4 shrink-0 accent-slate-900"
+        />
+      )
+    ) : (
+      <span aria-hidden className={cx('shrink-0', phone ? 'w-6' : 'w-4')} />
+    )
+  );
+  // In select mode a tap on the row's face ticks it; it never opens anything.
+  const faceTap = select ? select.onToggle && (() => select.onToggle?.()) : onOpen && (() => onOpen(row));
+  const refile = select ? undefined : onRecategorise;
+
   const face = (swiped?: { suppressClick: () => boolean }) => (
     <div className={cx('flex items-center gap-3 py-2', swiped && 'bg-white', className)}>
-      {onRecategorise ? (
+      {tick}
+      {refile ? (
         <button
           type="button"
           aria-label={`Category for ${row.description}`}
@@ -111,7 +161,7 @@ export function TransactionRow({
             // The row around it may be clickable too; re-filing is not opening.
             event.stopPropagation();
             if (swiped?.suppressClick()) return;
-            onRecategorise(row);
+            refile(row);
           }}
           className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-slate-900"
         >
@@ -123,12 +173,12 @@ export function TransactionRow({
       <div className="min-w-0 flex-1">
       <button
         type="button"
-        disabled={!onOpen}
-        title={title}
+        disabled={!faceTap}
+        title={select ? undefined : title}
         onClick={(event) => {
           event.stopPropagation();
           if (swiped?.suppressClick()) return;
-          onOpen?.(row);
+          faceTap?.();
         }}
         className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
       >
@@ -169,8 +219,9 @@ export function TransactionRow({
     </div>
   );
 
-  // A phone reaches Edit and Delete by swiping; both stay one gesture away rather than crowding the row.
-  if (phone && (onEdit || onDelete || onDuplicate)) {
+  // A phone reaches Edit and Delete by swiping; both stay one gesture away rather than crowding the row. Not while
+  // selecting: a drag across a list being ticked is a scroll, never an Edit.
+  if (phone && !select && (onEdit || onDelete || onDuplicate)) {
     return (
       <li {...itemProps} className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
@@ -205,13 +256,13 @@ export function TransactionRow({
     <li
       {...itemProps}
       data-testid={testId}
-      title={title}
-      onClick={onOpen ? () => onOpen(row) : undefined}
+      title={select ? undefined : title}
+      onClick={faceTap}
       className={cx(
         'group',
         row.excluded && 'opacity-60',
         row.deleted && 'opacity-50 line-through',
-        onOpen && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50',
+        faceTap && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50',
       )}
     >
       {face()}

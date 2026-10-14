@@ -42,9 +42,8 @@ export function chosenPayment(options: readonly PaymentOption[], draft: FormDraf
 /**
  * Which account — and which card on it — paid: one list, for every screen that asks.
  *
- * It left `TransactionCard` when the edit sheet arrived. The sheet asks the same question of the same
- * `paymentOptions`, and a second copy of this list is a second place for a supplementary card to go missing
- * from — which is exactly the fault this branch has produced six times.
+ * Its own file so every screen that asks asks the same question of the same `paymentOptions`: a second copy of
+ * this list is a second place for a supplementary card to go missing from — a fault produced six times once.
  */
 /** Whether a row is a card — a card on an account, or a credit card account itself — rather than money held. */
 export const isCardOption = (option: PaymentOption, account: AccountRow | undefined): boolean => Boolean(option.cardId) || account?.kind === 'liability';

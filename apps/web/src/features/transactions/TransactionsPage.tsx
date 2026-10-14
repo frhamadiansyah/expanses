@@ -11,12 +11,13 @@ import {
   postTransaction,
   replaceTransaction,
   type SetAsideChoice,
+  tagTransactions,
   type TransactionView,
   uncategorisedTransactionIds,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -31,15 +32,18 @@ import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
+import { useEvents } from '../events/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
-import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
+import { EventSheet } from './EventSheet';
+import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
+import { SelectBar } from './SelectBar';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
@@ -54,12 +58,12 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
-import { canEditInSheet } from './tx-form';
 import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
+import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
@@ -174,6 +178,8 @@ export function TransactionsPage() {
   const [view, setView] = useState<View>(() => search.view ?? rememberedView());
   const chooseView = (next: View) => {
     setView(next);
+    // The table is the editor, with its own cells to click; ticking rows is the list's.
+    if (next === 'table') stopSelecting();
     void navigate({ search: (was: TransactionsSearch) => ({ ...was, view: next }), replace: true });
     try {
       localStorage.setItem(VIEW_KEY, next);
@@ -183,8 +189,17 @@ export function TransactionsPage() {
   };
   /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
-  // The phone's swipe reaches the edit sheet; a desktop's click still edits in place, untouched.
-  const [editSheetTx, setEditSheetTx] = useState<TransactionView | null>(null);
+  /*
+   * Select mode: rows ticked to be put into an event, or taken out of one, all at once — whatever their dates and
+   * categories. While it is on, a row's tap ticks it and does nothing else.
+   */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const [pickingEvent, setPickingEvent] = useState(false);
+  const [tagging, setTagging] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null });
+  /** What the last Add to event or Remove from event did, with the way back. */
+  const [tagToast, setTagToast] = useState<{ text: string; back: () => Promise<void> } | null>(null);
+  const events = useEvents();
   /** A row being edited in place. */
   const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -313,7 +328,7 @@ export function TransactionsPage() {
    * never in a share that ended (read-only) or among deleted rows, which hold no place. A filtered list moves its rows
    * among the ones it shows. Until the write lands, a dropped day keeps the order it was dropped in (`dropped`).
    */
-  const reorderable = view === 'list' && grouping === 'date' && sort.key === 'date' && !filters.showDeleted && !readOnly;
+  const reorderable = view === 'list' && grouping === 'date' && sort.key === 'date' && !filters.showDeleted && !readOnly && !selecting;
   const movable = (row: ListRow) => reorderable && row.kind === 'tx' && !row.deleted && row.tx?.status === 'posted';
   const days = groupByDay(shown).map((day) => {
     const order = dropped[day.date];
@@ -327,6 +342,76 @@ export function TransactionsPage() {
   function reorder(date: string, movedId: string, order: string[]) {
     setDropped((was) => ({ ...was, [date]: order }));
     void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() => setDropped((was) => landed(was, date, order)));
+  }
+
+  /**
+   * Whether a row can be ticked at all: a transaction really recorded, still standing, and this workspace's to change.
+   * The very refusals every way in that writes already carries — no draft, nothing deleted, no opening balance or
+   * balance correction (`isEditable`), no trade, nothing of another workspace (`elsewhereOf`, and not before the
+   * badges say whose a row is), nothing in a share that ended. A row it refuses shows no tick.
+   */
+  const taggable = (row: ListRow) =>
+    row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && !tradeByTransaction.has(row.tx.id) && !readOnly && filingKnown && !elsewhereOf(row.tx.id);
+  // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved.
+  const chosen = rows.filter((row) => selected.has(row.id) && taggable(row));
+  const eventName = (eventId: string) => (events.data ?? []).find((event) => event.id === eventId)?.name;
+
+  function startSelecting() {
+    close();
+    setAdding(false);
+    setConverting(null);
+    setElsewhereId(null);
+    setSelected(new Set());
+    setTagging({ busy: false, error: null });
+    setSelecting(true);
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setSelected(new Set());
+    setPickingEvent(false);
+    setTagging({ busy: false, error: null });
+  }
+
+  function toggle(id: string) {
+    setSelected((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /**
+   * Puts every ticked row into one event, or takes them out of whichever they were in — one write
+   * (`tagTransactions`), whole or not at all. The toast's Undo puts each row back in the event it came from, so a
+   * row moved out of another event by this goes home again rather than nowhere.
+   */
+  async function tagChosen(eventId: string | null) {
+    const moving = rowsToMove(
+      chosen.map((row) => ({ id: row.id, eventId: row.tx!.eventId ?? null })),
+      eventId,
+    );
+    if (moving.length === 0) {
+      stopSelecting();
+      return;
+    }
+    setTagging({ busy: true, error: null });
+    try {
+      await tagTransactions(database, ws, moving.map((row) => row.id), eventId);
+      await invalidate();
+    } catch (e) {
+      setTagging({ busy: false, error: e });
+      return;
+    }
+    stopSelecting();
+    setTagToast({
+      text: movedText(moving, eventId, eventName),
+      back: async () => {
+        for (const [was, ids] of homesOf(moving)) await tagTransactions(database, ws, ids, was);
+        await invalidate();
+      },
+    });
   }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
@@ -578,9 +663,9 @@ export function TransactionsPage() {
         key={row.id}
         data-testid="not-recorded-row"
         tabIndex={0}
-        title="Click to finish"
-        onClick={() => open(row)}
-        onKeyDown={(event) => event.target === event.currentTarget && event.key === 'Enter' && open(row)}
+        title={selecting ? undefined : 'Click to finish'}
+        onClick={() => !selecting && open(row)}
+        onKeyDown={(event) => !selecting && event.target === event.currentTarget && event.key === 'Enter' && open(row)}
         className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 opacity-55 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900"
       >
         <CategoryIcon categoryId={row.categoryId} accounts={accounts} />
@@ -722,6 +807,7 @@ export function TransactionsPage() {
     // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
     // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
     const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
+    const toEdit = () => void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: tx.id } });
     // In a day's own list, by date: the row can be moved within its day.
     const dayIds = !withDate && movable(row) ? movableIds.get(row.date) : undefined;
     const moveBy = (by: -1 | 1) => {
@@ -740,16 +826,18 @@ export function TransactionsPage() {
         // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
         // click — with the note saying where it lives — and only saving it here is refused.
         onOpen={phone ? openReceipt : reachable ? () => open(row) : undefined}
-        // Since Task 9 the swipe opened the in-place editor; on a phone it now opens the edit sheet, which is
-        // the phone's whole affordance for a correction. What the sheet cannot hold falls back to the editor
-        // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
-        // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
-        onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
+        // The swipe's Edit opens the Add screen on this transaction — the same full card for every one of them,
+        // so a correction is never a second screen to learn, and a split, a transfer or a foreign purchase looks
+        // like any other. Back from it lands here again. The desktop never reaches `onEdit` at all —
+        // `TransactionRow` draws the swipe layer only on a phone — and keeps its editor in place.
+        onEdit={clickable ? toEdit : undefined}
         onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
         // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
         // write it already asked for is going out.
         busy={busy === tx.id}
+        // Select mode: the tick, where this row can take one; the row's every other gesture waits until it is over.
+        select={selecting ? { selected: selected.has(tx.id), onToggle: taggable(row) ? () => toggle(tx.id) : undefined } : undefined}
         // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
         onRecategorise={clickable && recategorise.offers(row) && !paidByOther(tx) ? recategorise.start : undefined}
         // Under a category the group already shows the icon, so each row's circle carries its day instead.
@@ -795,7 +883,7 @@ export function TransactionsPage() {
           </>
         }
         trailing={
-          <>
+          selecting ? undefined : <>
             {trade ? (
               <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
                 Buy &amp; sell
@@ -929,6 +1017,12 @@ export function TransactionsPage() {
               {scan.busy ? 'Reading the receipt…' : 'Scan a receipt'}
             </Button>
           )}
+          {/* Ticking rows to put into an event: the list's, so the table — the editor — does not offer it. */}
+          {view === 'list' && !readOnly && (
+            <Button variant="secondary" aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : startSelecting())}>
+              {selecting ? 'Done' : 'Select'}
+            </Button>
+          )}
         </div>
       )}
       {phone && showFilters && (
@@ -968,6 +1062,21 @@ export function TransactionsPage() {
               <span className="flex-1">Lend &amp; borrow</span>
               <span className="text-xs text-slate-500">›</span>
             </Link>
+            {/* Ticking rows, to put a run of them into an event at once — whatever their dates and categories. */}
+            {view === 'list' && !readOnly && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShowFilters(false);
+                  startSelecting();
+                }}
+                className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
+              >
+                <CircleCheck size={17} aria-hidden className="text-slate-500" />
+                <span className="flex-1">Select</span>
+              </button>
+            )}
           </div>
         </>
       )}
@@ -1280,9 +1389,34 @@ export function TransactionsPage() {
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
 
-      {/* The phone's swipe-Edit, once for the screen. Closing it is enough to put it away: the save has already
-          invalidated everything, so the list underneath is redrawn without being told. */}
-      {editSheetTx && <EditSheet tx={editSheetTx} onClose={() => setEditSheetTx(null)} />}
+      {selecting && (
+        <>
+          {/* Room under the last row, so the bar never sits over a row that still has to be ticked. */}
+          <div aria-hidden className="h-36" />
+          <SelectBar
+            count={chosen.length}
+            canRemove={chosen.some((row) => row.tx?.eventId)}
+            busy={tagging.busy}
+            error={tagging.error}
+            onAdd={() => setPickingEvent(true)}
+            onRemove={() => void tagChosen(null)}
+            onCancel={stopSelecting}
+          />
+        </>
+      )}
+      {pickingEvent && <EventSheet title="Add to event" withNone={false} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
+      {tagToast && (
+        <UndoToast
+          text={tagToast.text}
+          onUndo={() => {
+            const back = tagToast.back;
+            setTagToast(null);
+            void back().catch(setError);
+          }}
+          onDone={() => setTagToast(null)}
+        />
+      )}
+
       {asking && (
         <SetAsideSheet
           door={asking.door}

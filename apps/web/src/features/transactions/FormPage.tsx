@@ -46,8 +46,9 @@ const route = getRouteApi('/transactions/$transactionId/edit');
  * Task 10 deleted a route of this name and said why: it was written, nothing ever linked to it, and a surface
  * re-stating the three refusals that no user could reach and no test ran looks like protection and is not. The
  * condition it left behind was "when something needs a route to edit on, it brings the route and the tests with
- * it". The edit sheet's ⋯ is that something — **Open in full form** is what a split, a transfer or anything else
- * the sheet cannot hold is reached by — and `phone-transaction-gestures.spec.ts` walks it.
+ * it". A phone's Edit is that something — the receipt's Edit and the row's swipe both open this, for every kind
+ * of transaction, so a correction is the Add screen again rather than a second screen to learn — and
+ * `phone-transaction-gestures.spec.ts` walks it.
  *
  * The refusals are not re-stated here either. `useChangeable` answers them, and what it refuses is sent to the
  * receipt, which already says in words which workspace to open, or that a trade is corrected on Buy & sell.
@@ -78,7 +79,7 @@ export function EditTransactionRoute() {
     <div className={SCREEN}>
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
           saves. The list is where to land — this address would only 404 into its own redirect. */}
-      <TransactionCard full title="Edit transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
+      <TransactionCard full title="Edit transaction" label="Edit a transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
     </div>
   );
 }

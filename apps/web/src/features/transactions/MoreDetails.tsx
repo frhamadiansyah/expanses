@@ -30,9 +30,8 @@ export interface MissingRate {
  * §4's second card: one row per extra, each showing what it holds and opening its own screen.
  *
  * It takes a draft and gives back a changed one, and knows nothing about where it is drawn — the full card opens
- * it in a sheet, and Task 14's edit sheet opens the very same component with the very same props. One
- * implementation, two ways in: a second copy of these rows is a second place for a field to be dropped, and the
- * four fields this screen holds were dropped in silence once already.
+ * it, whether adding or correcting. One implementation: a second copy of these rows is a second place for a
+ * field to be dropped, and the four fields this screen holds were dropped in silence once already.
  *
  * Which rows appear is `extraRows`'s decision, not this component's, and every row in that list is drawn here.
  * With and Photos were the last two missing: With replaces the card's old single-person "Someone owes part of

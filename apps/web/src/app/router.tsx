@@ -168,7 +168,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
-  // The card again, on one transaction — what the edit sheet's ⋯ reaches for what a sheet cannot hold.
+  // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
   // The Add screen again, started from one transaction: Duplicate on a row's swipe, the receipt and the desktop's editor.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/duplicate', component: DuplicateTransactionRoute }),

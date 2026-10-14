@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { Sheet } from '../../app/Sheet';
 import { useEvents } from '../events/queries';
@@ -11,9 +12,26 @@ import { useEvents } from '../events/queries';
  * `useEvents` is read rather than a second query of its own: an event spans workspaces, and `useEvents` is the one
  * place that knows to read it owner-wide. A local `useQuery(['events', …])` would answer from the same cache key
  * with different rows, and the two screens would then disagree about which events exist.
+ *
+ * The list's select mode opens it too, for "Add to event…": there the choice is only which event, so it is titled for
+ * that and has no "No event" row — taking rows out is the bar's own "Remove from event", beside it.
  */
-export function EventSheet({ value, onPick, onClose }: { value: string; onPick: (eventId: string) => void; onClose: () => void }) {
-  const events = useEvents().data ?? [];
+export function EventSheet({
+  value,
+  onPick,
+  onClose,
+  title = 'Event',
+  withNone = true,
+}: {
+  value: string;
+  onPick: (eventId: string) => void;
+  onClose: () => void;
+  title?: string;
+  /** The "No event" row, for a form whose Event can be cleared. */
+  withNone?: boolean;
+}) {
+  const query = useEvents();
+  const events = query.data ?? [];
   // Newest first: the trip you are on is the one you are recording against, and it is the last one opened.
   const newestFirst = [...events].sort((a, b) => (a.startsOn < b.startsOn ? 1 : a.startsOn > b.startsOn ? -1 : 0));
   const choose = (eventId: string) => {
@@ -21,9 +39,17 @@ export function EventSheet({ value, onPick, onClose }: { value: string; onPick: 
     onClose();
   };
   return (
-    <Sheet grouped title="Event" onClose={onClose}>
+    <Sheet grouped title={title} onClose={onClose}>
+      {!withNone && query.isSuccess && events.length === 0 && (
+        <p className="px-1 text-[15px] text-[var(--ph-ink-3)]">
+          No events yet.{' '}
+          <Link to="/events" className="font-medium text-[var(--ph-tint)]">
+            Make one under Events
+          </Link>
+        </p>
+      )}
       <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]">
-        {[{ id: '', name: 'No event', startsOn: '' }, ...newestFirst].map((event) => (
+        {[...(withNone ? [{ id: '', name: 'No event', startsOn: '' }] : []), ...newestFirst].map((event) => (
           <li key={event.id || 'none'}>
             <button
               type="button"

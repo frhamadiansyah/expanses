@@ -80,11 +80,11 @@ test('a purchase typed with cents posts rounded up, reopens whole, and an edit o
 
   // Reopened, the form shows the whole figure that posted.
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit' });
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
   await expect(edit.getByRole('button', { name: 'Amount', exact: true })).toHaveText('12.501');
   // The amount is left alone and only the note changes: the exact figure is kept.
   await edit.getByLabel('Note').fill('Kopi susu');
-  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await saveButton(edit).click();
   await expect(edit).toHaveCount(0);
 
   await page.goto('/transactions');
@@ -101,7 +101,7 @@ test('a purchase typed with cents posts rounded up, reopens whole, and an edit o
   await page.getByTestId('keypad').getByRole('button', { name: 'C', exact: true }).click();
   await typeOnDock(page, '12502');
   await expect(edit.getByRole('button', { name: 'Amount', exact: true })).toHaveText('12.502');
-  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await saveButton(edit).click();
   await expect(edit).toHaveCount(0);
 
   await page.goto('/transactions');

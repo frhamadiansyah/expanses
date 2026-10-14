@@ -85,19 +85,19 @@ async function openReceipt(page: Page, phone: boolean, description: string) {
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
 }
 
-/** Corrects what a purchase came to, from its receipt: the phone's edit sheet, the desktop's full card. */
+/** Corrects what a purchase came to, from its receipt: the phone's Add screen on it, the desktop's card in a sheet. */
 async function correct(page: Page, phone: boolean, description: string, amount: string) {
   await openReceipt(page, phone, description);
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
   if (phone) {
-    const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
-    await sheet.getByRole('button', { name: 'Amount', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Edit a transaction' });
+    await form.getByRole('button', { name: 'Amount', exact: true }).click();
     const keypad = page.getByTestId('keypad');
     await keypad.getByRole('button', { name: 'C', exact: true }).click();
     for (const digit of amount) await keypad.getByRole('button', { name: digit, exact: true }).click();
     await keypad.getByRole('button', { name: 'DONE' }).click();
-    await sheet.getByRole('button', { name: 'Save' }).click();
-    await expect(sheet).toHaveCount(0);
+    await saveButton(form).click();
+    await expect(form).toHaveCount(0);
   } else {
     const sheet = page.getByRole('dialog', { name: 'Edit transaction' });
     await sheet.getByLabel('Amount', { exact: true }).fill(amount);
