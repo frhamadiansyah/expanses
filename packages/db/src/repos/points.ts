@@ -11,6 +11,7 @@ import {
   type SpendLine,
   type TransferPartner,
   uuidv7,
+  wholeFromHundredths,
 } from '@expanses/core';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -19,6 +20,7 @@ import { accounts } from '../schema';
 import { markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
 import { nonEarningInstallmentTransactionIds } from './installments';
+import { exactExists, exactFits } from './exact-column';
 import { extrasTablesExist } from './transaction-extras';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
@@ -503,14 +505,28 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
  * posting date when one was given, so a purchase billed late counts in the cycle it was billed in — each with its
  * effective MCC. A refund is a negative line. Statement payments have no expense entries and never appear.
  */
+/**
+ * What a purchase line counts as for points: its whole figure, or — typed with cents — the exact figure rounded down,
+ * with the line's sign. 12.500,30 is charged 12.501 and earns on 12.500; its refund takes back on −12.500. Only a line
+ * that is that figure rounded is changed: a purchase typed with cents has one amount.
+ */
+function pointsAmount(amountMinor: number, exact: number | null): number {
+  if (exact === null || !exactFits(amountMinor, exact)) return amountMinor;
+  const floor = wholeFromHundredths(exact, 'down');
+  return amountMinor < 0 ? -floor : floor;
+}
+
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
   // On a database stopped before migration 0048 there is no transaction_flags to join, so every line reads channel
   // as NULL — exactly what a rule that names no channel already ignores.
   const withChannel = await extrasTablesExist(database.db);
   const channelJoin = withChannel ? sql`LEFT JOIN transaction_flags tf ON tf.transaction_id = t.id` : sql``;
   const channelColumn = withChannel ? sql`tf.channel` : sql`NULL`;
-  const rows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null, string | null]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}
+  // The amount as typed with cents (0068): a bank works points out on it rounded down, not on the whole figure charged.
+  const exactColumn = (await exactExists(database.db)) ? sql`t.exact_hundredths` : sql`NULL`;
+  type Row = [string, string, string, string, string, number, string, string | null, string | null, string | null, number | null];
+  const rows = await database.db.values<Row>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
@@ -524,8 +540,8 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     ORDER BY t.occurred_on, t.id, e.id
   `);
   // A purchase of a holding paid by card: the card line itself names the category it would have had.
-  const assetRows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null, string | null]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}
+  const assetRows = await database.db.values<Row>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -545,7 +561,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
   const feeCategories = cardFeeCategoryIds(categories);
   const noPoints = await nonEarningInstallmentTransactionIds(database, ws);
-  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel]) => {
+  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel, exact]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
     return {
       transactionId,
@@ -553,7 +569,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       occurredOn,
       categoryId,
       description,
-      amountMinor: Number(amountMinor),
+      amountMinor: pointsAmount(Number(amountMinor), exact === null ? null : Number(exact)),
       currency,
       originalCurrency,
       mcc,

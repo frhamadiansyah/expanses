@@ -1,7 +1,22 @@
-import { expenseLines, incomeLines } from '@expanses/core';
+import { computeCycleEarn, expenseLines, incomeLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createAccount, createDatabase, createWorkspace, LedgerError, listAccounts, listTransactions, migrate, MIGRATIONS, postTransaction, replaceTransaction } from '../src/index';
+import {
+  cardSpendLines,
+  createAccount,
+  createDatabase,
+  createProgram,
+  createWorkspace,
+  LedgerError,
+  listAccounts,
+  listEarnRules,
+  listTransactions,
+  migrate,
+  MIGRATIONS,
+  postTransaction,
+  replaceTransaction,
+  saveEarnRule,
+} from '../src/index';
 import { createNodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
@@ -104,5 +119,53 @@ describe('a database stopped before 0068', () => {
     } finally {
       executor.close();
     }
+  });
+});
+
+describe('card points on a purchase typed with cents', () => {
+  async function card() {
+    const t = await setupDb();
+    const { database, ws } = t;
+    const cardAccount = await createAccount(database, ws, { name: 'BCA Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const program = await createProgram(database, ws, { cardAccountId: cardAccount.id, name: 'BCA Points', unit: 'points', cycleAnchor: 'statement' });
+    await saveEarnRule(database, ws, program.id, {
+      name: 'Base', priority: 0, stackable: false, match: {}, rateNum: 1, rateDen: 2_500,
+      rounding: 'per_transaction_floor', capSpendMinor: null, capPoints: null, minTransactionMinor: null, validFrom: null, validTo: null,
+    });
+    const groceries = (await listAccounts(database, ws)).find((a) => a.name === 'Groceries')!.id;
+    const lines = (amountMinor: number) => expenseLines({ categoryAccountId: groceries, paymentAccountId: cardAccount.id, amountMinor, currency: 'IDR' });
+    const earned = async () => {
+      const spend = await cardSpendLines(database, ws, cardAccount.id, '2026-10-01', '2026-10-31');
+      const rules = await listEarnRules(database, ws, program.id);
+      return { spend, earn: computeCycleEarn(spend, rules, {}) };
+    };
+    return { ...t, cardAccount, lines, earned };
+  }
+
+  it('are worked out on the exact figure rounded down, while the card is charged the figure rounded up', async () => {
+    const { database, ws, cardAccount, lines, earned } = await card();
+    // 2.499,70 is charged 2.500, which would earn a point at 1 per 2.500; the bank counts 2.499 and gives none.
+    const id = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Bakery', lines: lines(2_500), exactHundredths: 249_970 });
+    const { spend, earn } = await earned();
+    expect(spend.map((l) => l.amountMinor)).toEqual([2_499]);
+    expect(earn.pointsByTransaction[id] ?? 0).toBe(0);
+    const charged = (await listTransactions(database, ws, { id }))[0]!.entries.find((e) => e.accountId === cardAccount.id)!;
+    expect(charged.amountMinor).toBe(-2_500);
+  });
+
+  it('a whole purchase still earns on its whole figure', async () => {
+    const { database, ws, lines, earned } = await card();
+    const id = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Bakery', lines: lines(2_500) });
+    expect((await earned()).earn.pointsByTransaction[id]).toBe(1);
+  });
+
+  it('a refund typed with the same cents takes back what the purchase earned, by the same rounding down', async () => {
+    const { database, ws, lines, earned } = await card();
+    const bought = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Shoes', lines: lines(12_501), exactHundredths: 1_250_030 });
+    const refunded = await postTransaction(database, ws, { occurredOn: '2026-10-15', description: 'Shoes refund', lines: lines(-12_501), exactHundredths: 1_250_030 });
+    const { spend, earn } = await earned();
+    expect(spend.map((l) => l.amountMinor)).toEqual([12_500, -12_500]);
+    expect(earn.pointsByTransaction[bought]).toBe(5);
+    expect(earn.pointsByTransaction[refunded]).toBe(-5);
   });
 });
