@@ -868,6 +868,24 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
 }
 
 /**
+ * Whether a transaction can be repeated from the Add screen: a purchase, an income or a transfer that is still
+ * posted. A trade is repeated on Buy & sell (the caller refuses those), and an opening balance, a correction or
+ * a loan with a person has no Add form to start from.
+ */
+export function canDuplicate(tx: TransactionView): boolean {
+  return isEditable(tx);
+}
+
+/**
+ * A transaction as the start of a new one: every entry field it has (mode, accounts, category or splits, note, the
+ * same date, the event, the currency and its charge), and none of what belongs to the original alone — its
+ * pictures, and the fact of being an edit. Saved from the Add screen, it posts under a new id.
+ */
+export function duplicateDraft(tx: TransactionView, accounts: readonly AccountRow[], bookId = ''): FormDraft {
+  return { ...formFromTransaction(tx, accounts, bookId, []), editing: false, photoIds: [] };
+}
+
+/**
  * What a typed expression settles to, written the way `parseMajor` will read it again — null when it cannot be
  * read at all.
  *

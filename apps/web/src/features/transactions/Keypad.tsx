@@ -31,11 +31,16 @@ export function Keypad({
   currency,
   onChange,
   onClose,
+  replaceFirst = false,
+  onFirstKey,
 }: {
   value: string;
   currency: string;
   onChange: (value: string) => void;
   onClose: () => void;
+  /** The figure shown is a copy to type over: the first digit starts a new figure, an operator carries on from it. */
+  replaceFirst?: boolean;
+  onFirstKey?: () => void;
 }) {
   const phone = usePhone();
 
@@ -47,7 +52,9 @@ export function Keypad({
 
   // Every key, DONE included, goes through the one tested decision. Nothing is worked out here.
   const press = (key: KeypadKey) => {
-    const { text, close } = keypadAction(value, currency, key);
+    const starts = replaceFirst && /^[0-9,]/.test(key);
+    if (replaceFirst) onFirstKey?.();
+    const { text, close } = keypadAction(starts ? '' : value, currency, key);
     if (text !== value) onChange(text);
     if (close) onClose();
   };

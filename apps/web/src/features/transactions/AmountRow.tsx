@@ -84,8 +84,11 @@ function MoneyField({
   onKeypad,
   className,
   placeholder = 'Amount',
+  selectOnOpen = false,
 }: {
   field: MoneyFieldSpec;
+  /** A desktop field takes focus with its text selected on first draw, so typing replaces the figure. */
+  selectOnOpen?: boolean;
   placeholder?: string;
   phone: boolean;
   onChange: (value: string) => void;
@@ -93,6 +96,14 @@ function MoneyField({
   className: string;
 }) {
   const { label, value, currency } = field;
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!selectOnOpen || phone) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+    // Once, on first draw: later renders must not take the focus back from wherever the user has moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   if (phone) {
     return (
       /*
@@ -108,6 +119,7 @@ function MoneyField({
   }
   return (
     <input
+      ref={inputRef}
       aria-label={label}
       inputMode="decimal"
       value={value}
@@ -146,16 +158,21 @@ export function AmountRow({
   accounts,
   set,
   unsure = false,
+  selectOnOpen = false,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
   set: (patch: Partial<FormDraft>) => void;
   /** The figure was read off a capture without certainty: marked on the warning panel, with "check" beside it. */
   unsure?: boolean;
+  /** Opened on a copied figure: a desktop field is selected, a phone's keypad opens and its first digit replaces it. */
+  selectOnOpen?: boolean;
 }) {
   const phone = usePhone();
   const { ws } = useApp();
-  const [keypad, setKeypad] = useState<'amount' | 'charged' | null>(null);
+  const [keypad, setKeypad] = useState<'amount' | 'charged' | null>(phone && selectOnOpen ? 'amount' : null);
+  // The copied figure stands until the first key of the keypad it opened on; then it is the user's own.
+  const [replace, setReplace] = useState(selectOnOpen);
   const [picking, setPicking] = useState(false);
   const account = accounts.find((a) => a.id === draft.moneyId);
   const currency = typedCurrency(draft, accounts);
@@ -263,6 +280,7 @@ export function AmountRow({
               onChange={(amount) => set({ amount })}
               onKeypad={() => toggle('amount')}
               className={fieldBase}
+              selectOnOpen={selectOnOpen}
             />
           </span>
           {fields.charged && (
@@ -322,6 +340,8 @@ export function AmountRow({
         <Keypad
           value={open.value}
           currency={open.currency}
+          replaceFirst={replace && open.which === 'amount'}
+          onFirstKey={() => setReplace(false)}
           onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}
           onClose={() => setKeypad(null)}
         />

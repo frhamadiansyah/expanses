@@ -3,7 +3,7 @@ import { listPhotos, listTransactions, ownerScope, type TransactionPhotoRow } fr
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
-import { Pencil } from 'lucide-react';
+import { Copy, Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -28,7 +28,7 @@ import { EditSheet } from './EditSheet';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
-import { canEditInSheet } from './tx-form';
+import { canDuplicate, canEditInSheet } from './tx-form';
 import { TwoTapDelete } from './TwoTapDelete';
 
 const route = getRouteApi('/transactions/$transactionId');
@@ -162,9 +162,21 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       <div className="mb-2 flex items-center justify-between">
         <BackButton fallback="/transactions" />
         {changeable && (
-          <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
-            <Pencil size={16} aria-hidden />
-          </button>
+          <span className="flex items-center gap-2">
+            <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
+              <Pencil size={16} aria-hidden />
+            </button>
+            {canDuplicate(tx) && (
+              <button
+                type="button"
+                onClick={() => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId } })}
+                aria-label="Duplicate this transaction"
+                className={ROUND}
+              >
+                <Copy size={16} aria-hidden />
+              </button>
+            )}
+          </span>
         )}
       </div>
 

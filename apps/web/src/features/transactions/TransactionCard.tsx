@@ -52,7 +52,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, duplicateDraft, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -145,6 +145,11 @@ export interface CardFinish {
  */
 export function TransactionCard(props: {
   initial?: TransactionView;
+  /**
+   * Start an add from this transaction: every entry field is copied, the amount is selected to be typed over, and
+   * Save posts a new, independent transaction. Never an edit — `initial` is what edits.
+   */
+  duplicateOf?: TransactionView;
   mode?: FormMode;
   /** A new transaction's accounts, filled in before the form opens: the page it was opened from knows them. */
   seed?: { moneyId?: string; toId?: string };
@@ -165,7 +170,7 @@ export function TransactionCard(props: {
   finish?: CardFinish;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
-  const accounts = useAccountsFor(props.initial);
+  const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
   // The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
   // The very same reader the phone's edit sheet uses, and `ready` is its own answer about when it may be read.
   const photos = useTransactionPhotoIds(props.initial?.id ?? null);
@@ -184,6 +189,7 @@ function seedIds(seed: { moneyId?: string; toId?: string } | undefined, accounts
 
 function CardBody({
   initial,
+  duplicateOf,
   mode,
   seed,
   fixedMode,
@@ -198,6 +204,7 @@ function CardBody({
   photoIds,
 }: {
   initial?: TransactionView;
+  duplicateOf?: TransactionView;
   mode?: FormMode;
   seed?: { moneyId?: string; toId?: string };
   fixedMode?: boolean;
@@ -240,7 +247,9 @@ function CardBody({
   const [draft, setDraft] = useState<FormDraft>(() =>
     initial
       ? formFromTransaction(initial, accounts, bookId, photoIds)
-      : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
+      : duplicateOf
+        ? duplicateDraft(duplicateOf, accounts, bookId)
+        : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
   );
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
@@ -801,7 +810,7 @@ function CardBody({
             />
             )}
 
-            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} />
+            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} selectOnOpen={!!duplicateOf} />
 
             {draft.mode === 'transfer' ? (
               /*

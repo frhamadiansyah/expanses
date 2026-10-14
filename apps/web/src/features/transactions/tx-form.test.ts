@@ -8,12 +8,14 @@ import {
   amountFace,
   amountFields,
   billMinor,
+  canDuplicate,
   canEditInSheet,
   chargedIsEstimate,
   currencyShown,
   chargedInNeeded,
   currencyChoosable,
   detailsToggleLabel,
+  duplicateDraft,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -1243,5 +1245,70 @@ describe('currencyShown', () => {
   it('names it once a figure is typed, or once the flag is picked', () => {
     expect(currencyShown({ ...draft, amount: '5', currency: '' })).toBe(true);
     expect(currencyShown({ ...draft, amount: '', currency: 'USD' })).toBe(true);
+  });
+});
+
+describe('a transaction as the start of a new one', () => {
+  const full = view({
+    description: 'Warung Steak',
+    occurredOn: '2026-08-03',
+    eventId: 'ev-1',
+    channel: 'offline',
+    mcc: '5812',
+    cardId: 'card-1',
+    excluded: true,
+    entries: [paid(-400_000), spent('cat-restaurants', 400_000)] as TransactionView['entries'],
+  });
+
+  it('keeps every entry field, the same date and the event, and is an add rather than an edit', () => {
+    const form = duplicateDraft(full, accounts, 'ws-1');
+    expect(form).toMatchObject({
+      mode: 'expense',
+      moneyId: 'acct-card',
+      cardId: 'card-1',
+      categoryId: 'cat-restaurants',
+      amount: '400000',
+      currency: 'IDR',
+      description: 'Warung Steak',
+      occurredOn: '2026-08-03',
+      eventId: 'ev-1',
+      channel: 'offline',
+      mcc: '5812',
+      excluded: true,
+      editing: false,
+      photoIds: [],
+      bookId: 'ws-1',
+    });
+  });
+
+  it('never carries pictures', () => {
+    const form = duplicateDraft(full, accounts);
+    expect(form.photoIds).toEqual([]);
+  });
+
+  it('keeps splits', () => {
+    const form = duplicateDraft(splitPurchase, accounts);
+    expect(form.splits).toEqual([
+      { categoryId: 'cat-restaurants', amount: '250000' },
+      { categoryId: 'cat-groceries', amount: '150000' },
+    ]);
+    expect(form.editing).toBe(false);
+  });
+
+  it('keeps a foreign purchase on its currency with the charge beneath', () => {
+    expect(duplicateDraft(foreignPurchase, accounts)).toMatchObject({ currency: 'CNY', amount: '120.00', chargedAmount: '272400' });
+  });
+
+  it('keeps a transfer between its two accounts', () => {
+    expect(duplicateDraft(transferTx, accounts)).toMatchObject({ mode: 'transfer', moneyId: 'acct-card', toId: 'acct-bank', amount: '500000' });
+  });
+
+  it('posts as a plain new transaction', () => {
+    expect(formToPost(duplicateDraft(full, accounts), accounts)).toMatchObject({ kind: 'post', input: { eventId: 'ev-1', occurredOn: '2026-08-03' } });
+  });
+
+  it('is offered for what is posted and editable, never for a deleted row', () => {
+    expect(canDuplicate(full)).toBe(true);
+    expect(canDuplicate(view({ ...full, status: 'void' }))).toBe(false);
   });
 });
