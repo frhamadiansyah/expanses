@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
+import { cardSection } from './card-section';
 
 /*
  * Decimals on a whole-unit currency (spec 2026-10-14). A card charges a purchase of Rp 12.500,30 as 12.501 and earns
@@ -108,6 +109,41 @@ test('a purchase typed with cents posts rounded up, reopens whole, and an edit o
   await row(page, 'Kopi susu').getByRole('button', { name: /^Groceries/ }).click();
   await expect(page.getByTestId('hero-amount')).toContainText('12.502');
   await expect(pointsEarned(page)).toHaveText(/^(≈ )?1 points?$/);
+});
+
+test('the card shows a purchase typed with cents at what it was charged, and still earns on the exact figure', async ({ page }) => {
+  await cardEarningPer12501(page);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await typeOnDock(page, '12500,30');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'CIMB Octo');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Kopi');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  await page.goto('/cards');
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
+  // Wallet's latest transactions: the charge, 12.501, never the 12.500 the points are worked out on.
+  const latest = page.getByTestId('latest-transactions');
+  await expect(latest).toContainText('12.501');
+  await expect(latest).not.toContainText('12.500');
+
+  await cardSection(page, 'Points');
+  // The cycle's Spend and the purchase's row say what the card was charged ...
+  const spend = page.getByText('Spend', { exact: true }).locator('xpath=following-sibling::span');
+  await expect(spend).toContainText('12.501');
+  await expect(spend).not.toContainText('12.500');
+  const purchase = page.getByTestId('purchase').filter({ hasText: 'Kopi' });
+  await expect(purchase).toContainText('12.501');
+  await expect(purchase).not.toContainText('12.500');
+  // ... while the estimate is still worked out on 12.500: none at 1 per 12.501.
+  await expect(purchase).toContainText(/(^|\D)0 points?/);
 });
 
 test('an income typed with cents posts rounded down', async ({ page }) => {

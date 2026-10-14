@@ -97,7 +97,12 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
     console.warn('Default categories could not be brought up to date; trying again at the next open', error);
   }
   // Then the sets, which a workspace of any age can be missing: they arrive with the feature, not with the workspace.
-  await ensureDefaultCategorySets(database, ws);
+  // Upkeep too: the sets are given in one transaction, so a failure leaves none half-made and the next open tries again.
+  try {
+    await ensureDefaultCategorySets(database, ws);
+  } catch (error) {
+    console.warn('Default category sets could not be added; trying again at the next open', error);
+  }
   // Goals worked out before stages were kept in today's money are stated again once, in every workspace — a workspace
   // switched to later must not keep its double-inflated figures. One workspace failing stops neither the others nor the app.
   for (const each of await listWorkspaces(database)) {

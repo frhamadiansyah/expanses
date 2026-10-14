@@ -23,6 +23,13 @@ describe('purchasesOf', () => {
     const rows = purchasesOf([line('a', 30_000), line('a', 20_000, { entryId: 'a-2', mcc: '5411' }), line('b', 10_000)]);
     expect(rows.map((r) => [r.transactionId, r.amountMinor, r.mcc])).toEqual([['a', 50_000, '5812'], ['b', 10_000, '5812']]);
   });
+
+  it('shows a purchase typed with cents at what the card was charged, never the figure it earns on', () => {
+    // 12.500,30 is charged 12.501 and earns on 12.500: the row says 12.501, and the points still come out at 0.
+    const lines = [line('kopi', 12_501, { earnMinor: 12_500 })];
+    expect(purchasesOf(lines).map((r) => r.amountMinor)).toEqual([12_501]);
+    expect(computeCycleEarn(lines, [{ ...base, rateDen: 12_501 }], {}).pointsByTransaction.kopi ?? 0).toBe(0);
+  });
 });
 
 describe('checkedTotals', () => {

@@ -192,7 +192,8 @@ describe('card points on a purchase typed with cents', () => {
     // 2.499,70 is charged 2.500, which would earn a point at 1 per 2.500; the bank counts 2.499 and gives none.
     const id = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Bakery', lines: lines(2_500), exactHundredths: 249_970 });
     const { spend, earn } = await earned();
-    expect(spend.map((l) => l.amountMinor)).toEqual([2_499]);
+    // The line keeps what the card was charged, for every screen; the figure points are worked out on rides beside it.
+    expect(spend.map((l) => [l.amountMinor, l.earnMinor])).toEqual([[2_500, 2_499]]);
     expect(earn.pointsByTransaction[id] ?? 0).toBe(0);
     const charged = (await listTransactions(database, ws, { id }))[0]!.entries.find((e) => e.accountId === cardAccount.id)!;
     expect(charged.amountMinor).toBe(-2_500);
@@ -213,7 +214,7 @@ describe('card points on a purchase typed with cents', () => {
     });
     // Only a stray write could put one there (the ledger refuses it); points read the lines as charged.
     await database.execScript(`UPDATE transactions SET exact_hundredths = 249970 WHERE id = '${id}'`);
-    expect((await earned()).spend.map((l) => l.amountMinor)).toEqual([2_500, 2_500]);
+    expect((await earned()).spend.map((l) => [l.amountMinor, l.earnMinor])).toEqual([[2_500, undefined], [2_500, undefined]]);
     // The stray figure goes again: the capture run reads every shared purchase against what was sent for it.
     await database.execScript(`UPDATE transactions SET exact_hundredths = NULL WHERE id = '${id}'`);
   });
@@ -221,7 +222,9 @@ describe('card points on a purchase typed with cents', () => {
   it('a whole purchase still earns on its whole figure', async () => {
     const { database, ws, lines, earned } = await card();
     const id = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Bakery', lines: lines(2_500) });
-    expect((await earned()).earn.pointsByTransaction[id]).toBe(1);
+    const { spend, earn } = await earned();
+    expect(earn.pointsByTransaction[id]).toBe(1);
+    expect(spend.map((l) => [l.amountMinor, l.earnMinor])).toEqual([[2_500, undefined]]);
   });
 
   it('a refund typed with the same cents takes back what the purchase earned, by the same rounding down', async () => {
@@ -229,7 +232,7 @@ describe('card points on a purchase typed with cents', () => {
     const bought = await postTransaction(database, ws, { occurredOn: '2026-10-14', description: 'Shoes', lines: lines(12_501), exactHundredths: 1_250_030 });
     const refunded = await postTransaction(database, ws, { occurredOn: '2026-10-15', description: 'Shoes refund', lines: lines(-12_501), exactHundredths: 1_250_030 });
     const { spend, earn } = await earned();
-    expect(spend.map((l) => l.amountMinor)).toEqual([12_500, -12_500]);
+    expect(spend.map((l) => [l.amountMinor, l.earnMinor])).toEqual([[12_501, 12_500], [-12_501, -12_500]]);
     expect(earn.pointsByTransaction[bought]).toBe(5);
     expect(earn.pointsByTransaction[refunded]).toBe(-5);
   });

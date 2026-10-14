@@ -506,15 +506,17 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
  * effective MCC. A refund is a negative line. Statement payments have no expense entries and never appear.
  */
 /**
- * What a purchase line counts as for points: its whole figure, or — typed with cents — the exact figure rounded down,
- * with the line's sign. 12.500,30 is charged 12.501 and earns on 12.500; its refund takes back on −12.500. Only the
- * one category line of a purchase with a single one, rounded from the figure, is changed (exactFitsPosting).
+ * The figure a purchase line earns points on, when it is not the charge: typed with cents, the exact figure rounded
+ * down, with the line's sign. 12.500,30 is charged 12.501 and earns on 12.500; its refund takes back on −12.500. Only
+ * the one category line of a purchase with a single one, rounded from the figure, has one (exactFitsPosting). Null
+ * when the line earns on what it was charged.
  */
-function pointsAmount(amountMinor: number, exact: number | null, categoryLines: number): number {
+function earnFigure(amountMinor: number, exact: number | null, categoryLines: number): number | null {
   // The same fit the ledger holds a posting to: one category line, the figure rounded. This line is that one.
-  if (exact === null || categoryLines !== 1 || !exactFitsPosting([{ amountMinor, kind: 'expense' }], exact)) return amountMinor;
+  if (exact === null || categoryLines !== 1 || !exactFitsPosting([{ amountMinor, kind: 'expense' }], exact)) return null;
   const floor = wholeFromHundredths(exact, 'down');
-  return amountMinor < 0 ? -floor : floor;
+  const signed = amountMinor < 0 ? -floor : floor;
+  return signed === amountMinor ? null : signed;
 }
 
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
@@ -569,13 +571,16 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
   const noPoints = await nonEarningInstallmentTransactionIds(database, ws);
   return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel, exact, categories]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
+    // amountMinor stays what the card was charged — the figure every screen shows; points read earnMinor beside it.
+    const earnMinor = earnFigure(Number(amountMinor), exact === null ? null : Number(exact), Number(categories));
     return {
       transactionId,
       entryId,
       occurredOn,
       categoryId,
       description,
-      amountMinor: pointsAmount(Number(amountMinor), exact === null ? null : Number(exact), Number(categories)),
+      amountMinor: Number(amountMinor),
+      ...(earnMinor === null ? {} : { earnMinor }),
       currency,
       originalCurrency,
       mcc,

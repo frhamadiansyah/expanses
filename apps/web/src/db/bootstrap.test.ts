@@ -146,6 +146,32 @@ describe('openAppDb', () => {
     }
   });
 
+  it('opens even when the default category sets cannot be given, and leaves them for the next open', async () => {
+    const executor = createNodeExecutor();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+      // A workspace without its default sets yet, and no set can be written: the whole of ensureDefaultCategorySets throws.
+      await database.execScript(`CREATE TRIGGER refuse_sets BEFORE INSERT ON category_sets BEGIN SELECT RAISE(ABORT, 'forced'); END;`);
+
+      const app = await openAppDb(database);
+      expect(app.ws.workspaceId).toBe(ws.workspaceId);
+      expect(warn).toHaveBeenCalled();
+      // One transaction: none of them half-made.
+      expect(await listCategorySets(database, ws)).toEqual([]);
+
+      // The next open, with nothing in the way, gives them.
+      await database.execScript('DROP TRIGGER refuse_sets');
+      await openAppDb(database);
+      expect((await listCategorySets(database, ws)).map((set) => set.name)).toEqual(['Holiday', 'Newborn', 'Renovation']);
+    } finally {
+      warn.mockRestore();
+      executor.close();
+    }
+  });
+
   it("opens and keys a rule-4 Uncategorised when adding Travel's new children fails", async () => {
     const executor = createNodeExecutor();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
