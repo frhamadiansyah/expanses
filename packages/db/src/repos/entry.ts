@@ -11,7 +11,8 @@ const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.syst
 const HISTORY_LIMIT = 3000;
 
 /**
- * The category last used for the same merchant, to fill in a typed row before the owner has to.
+ * The category last used for the same merchant, to fill in a typed row before the owner has to: the newest one filed
+ * under the same name (first two words), else the one every note sharing its first word agrees on, else nothing.
  *
  * Learned from the owner's own spending rather than a list shipped with the app, so it knows the
  * warung round the corner as well as any chain, and it follows a change of mind: re-filing Superindo
@@ -54,19 +55,20 @@ export async function guessCategoryFromHistory(
     seen.categories.add(row.categoryId);
     perTransaction.set(row.transactionId, seen);
   }
-  // Map keeps insertion order, and rows arrived newest first. The same name is the best evidence; failing
-  // that, one name that begins with the other's words ("Superindo" and "Superindo Kebayoran").
-  const words = key.split(' ');
-  const startsWith = (longer: string[], shorter: string[]) => shorter.every((word, i) => longer[i] === word);
-  let near: string | null = null;
+  // Map keeps insertion order, and rows arrived newest first. The same name (its first two words) is the best
+  // evidence, and the newest one wins. Failing that, the same first word — but only when every note starting with it
+  // was filed alike: "Grabfood Miroso" under Takeaways makes "Grabfood Ayam Kremes" Takeaways, while a "Gojek Ride"
+  // under Transport and a "Gojek Food" under Takeaways leave "Gojek Martabak" unguessed.
+  const first = key.split(' ')[0]!;
+  const byFirstWord = new Set<string>();
   for (const { description: seenDescription, categories } of perTransaction.values()) {
     if (categories.size !== 1) continue;
     const seen = merchantKey(seenDescription);
-    if (seen === key) return [...categories][0]!;
-    const seenWords = seen.split(' ');
-    if (near === null && seen && (startsWith(seenWords, words) || startsWith(words, seenWords))) near = [...categories][0]!;
+    const category = [...categories][0]!;
+    if (seen === key) return category;
+    if (seen.split(' ')[0] === first) byFirstWord.add(category);
   }
-  return near;
+  return byFirstWord.size === 1 ? [...byFirstWord][0]! : null;
 }
 
 /** A note written before, offered back while a new one is typed, with the category it was last filed under. */

@@ -582,15 +582,17 @@ function CardBody({
   /*
    * Typing the note fills Category with the one that note was last filed under — Expense from spending, Income from
    * income — a quarter of a second after the typing stops. Nothing says where it came from: it reads as a category
-   * chosen. A guess that comes back after the note has changed again is dropped, and clearing the note leaves
-   * Category as it is.
+   * chosen. While it is only the note's guess it follows the note: a new match replaces it, and no match (an emptied
+   * note included) puts the row back to Choose later. Once a category is picked by hand, typing never changes it. A
+   * guess that comes back after the note has changed again is dropped.
    */
   useEffect(() => {
     const typed = draft.description.trim();
-    if (!suggestKind || !typed || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    if (!suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    if (!typed && categorySource.current !== 'auto') return;
     let stale = false;
     const timer = setTimeout(() => {
-      void guessCategoryFromHistory(database, ws, typed, suggestKind).then((guess) => {
+      void (typed ? guessCategoryFromHistory(database, ws, typed, suggestKind) : Promise.resolve(null)).then((guess) => {
         const now = latest.current;
         if (stale || now.description.trim() !== typed || now.mode !== suggestKind) return;
         const next = categoryFromNote(now, guess, categorySource.current);

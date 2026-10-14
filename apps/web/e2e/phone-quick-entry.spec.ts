@@ -106,3 +106,32 @@ test('typing a note fills an empty category with the one that note had last time
   await expect(row(page, 'Kopi Kenangan')).toHaveCount(2);
   for (const each of await row(page, 'Kopi Kenangan').all()) await expect(each).toContainText('Cafe & dessert');
 });
+
+test('a new shop of a known first word is filed where that word always went, follows the note, and a hand pick stays', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Grabfood Miroso', paidWith: 'BCA Tahapan', category: 'Takeaways', amount: '45000' });
+
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  const category = form.getByRole('button', { name: /^Category/ });
+  const note = form.getByLabel('Note');
+  // Pasted in one go.
+  await note.fill('Grabfood Ayam Kremes');
+  await expect(category).toContainText('Takeaways');
+  // Only the note's guess so far, so it follows the note: nothing matches now, and the row is back to Choose later.
+  await note.fill('Toko Baru Sekali');
+  await expect(category).toContainText('Choose later');
+  await note.fill('Grabfood Sate');
+  await expect(category).toContainText('Takeaways');
+
+  // Picked by hand, it is fixed: typing changes nothing.
+  await category.click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await note.fill('Toko Baru Sekali');
+  await page.waitForTimeout(600);
+  await expect(category).toContainText('Restaurants');
+  await note.fill('Grabfood Bakso');
+  await page.waitForTimeout(600);
+  await expect(category).toContainText('Restaurants');
+});
