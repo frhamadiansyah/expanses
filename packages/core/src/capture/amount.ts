@@ -15,8 +15,15 @@ export function exponentOf(currency: string | null): number {
 
 /** One money figure found in a text: what it comes to, what it says it is, and where it was. */
 export interface FoundAmount {
+  /** The figure in minor units, rounded to the nearest unit. */
   minor: number;
   currency: string | null;
+  /**
+   * For a currency with no minor unit (IDR, JPY, KRW), the printed figure in hundredths when its cents are not zero:
+   * `Rp12.500,30` is 1250030 beside a `minor` of 12.500. Absent otherwise. Which way to round it — up for money out,
+   * down for money in — is for whoever knows the direction (the draft), not for the reader of one figure.
+   */
+  exactHundredths?: number;
   /** Index of the currency mark, or of the first digit when the figure carries no mark. */
   start: number;
   /** Index just past the figure. */
@@ -140,6 +147,17 @@ function toMinor(major: number, currency: string | null): number {
 }
 
 /**
+ * The printed figure in hundredths, for a known currency with no minor unit whose cents are not zero; null otherwise.
+ * A figure with no currency mark is left alone: it is scaled once its account says what it is, and its shorthand
+ * (`1,25rb`) makes it whole anyway.
+ */
+function exactOf(major: number, currency: string | null): number | null {
+  if (currency === null || exponentOf(currency) !== 0) return null;
+  const hundredths = Math.round(major * 100);
+  return hundredths % 100 === 0 ? null : hundredths;
+}
+
+/**
  * Every money figure in a text, in the order they were printed.
  *
  * A figure counts when it wears a currency mark or a shorthand (`Rp38.000`, `$12.50`, `50rb`, `1,2jt`). A bare number
@@ -155,7 +173,8 @@ export function findAmounts(text: string, words: WordList): FoundAmount[] {
     const number = numberAt(text, from, words);
     if (number && (mark !== null || number.shorthand)) {
       const currency = mark?.code ?? null;
-      found.push({ minor: toMinor(number.major, currency), currency, start: i, end: number.end });
+      const exact = exactOf(number.major, currency);
+      found.push({ minor: toMinor(number.major, currency), currency, ...(exact === null ? {} : { exactHundredths: exact }), start: i, end: number.end });
       i = number.end;
       continue;
     }

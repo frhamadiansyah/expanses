@@ -1,6 +1,6 @@
 import type { DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { emptyForm, type FormDraft } from '../transactions/tx-form';
+import { DECIMALS_REFUSAL, emptyForm, type FormDraft } from '../transactions/tx-form';
 import { canRecord, corrections, draftPatch, formFromDraft } from './draft-form';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
@@ -162,5 +162,32 @@ describe('corrections', () => {
   it('does not count the same figure written another way as a correction', () => {
     const row = draft();
     expect(corrections(formOf(row, { amount: '38.000' }), row)).toEqual([]);
+  });
+});
+
+describe('cents on a whole-unit currency under review', () => {
+  it('keeps the exact figure the capture read while the amount is left alone', () => {
+    const row = draft({ amountMinor: 12_501, exactHundredths: 1_250_030 });
+    const form = formOf(row);
+    // The whole figure that posts is what the form shows.
+    expect(form.amount).toBe('12501');
+    const patch = draftPatch(form, row);
+    expect(patch.amountMinor).toBe(12_501);
+    // Left out, so `editDraft` keeps the draft's own figure.
+    expect('exactHundredths' in patch).toBe(false);
+    expect(corrections(form, row)).toEqual([]);
+  });
+
+  it('writes a figure typed with cents as the rounded amount and the exact figure: up for money out, down for money in', () => {
+    const row = draft();
+    expect(draftPatch(formOf(row, { amount: '12500.30' }), row)).toMatchObject({ amountMinor: 12_501, exactHundredths: 1_250_030 });
+    expect(draftPatch(formOf(row, { mode: 'income', amount: '12.345,67' }), row)).toMatchObject({ amountMinor: -12_345, exactHundredths: 1_234_567 });
+    expect(canRecord(formOf(row, { amount: '12500.30' }), row)).toBe(true);
+  });
+
+  it('refuses cents on a transfer', () => {
+    const row = draft({ kind: 'transfer', toAccountId: 'wallet', categoryAccountId: null });
+    expect(canRecord(formOf(row, { amount: '12500.30' }), row)).toBe(false);
+    expect(() => draftPatch(formOf(row, { amount: '12500.30' }), row)).toThrow(DECIMALS_REFUSAL);
   });
 });

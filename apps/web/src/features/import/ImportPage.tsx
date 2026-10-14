@@ -130,6 +130,8 @@ export function ImportPage() {
           occurredOn: r.occurredOn,
           description: r.description,
           amountMinor: r.amountMinor,
+          // A rupiah figure with cents: the draft keeps them, and confirming posts them beside the rounded amount.
+          exactHundredths: r.exactHundredths ?? null,
           currency,
           accountId: account.id,
           categoryAccountId: categoryFor(r) || null,
@@ -169,7 +171,14 @@ export function ImportPage() {
       const outcome = await importRows(database, ws, {
         accountId: account.id,
         currency,
-        rows: toImport.map((r) => ({ occurredOn: r.occurredOn, description: r.description, amountMinor: r.amountMinor, externalRef: r.externalRef, categoryAccountId: categoryFor(r) })),
+        rows: toImport.map((r) => ({
+          occurredOn: r.occurredOn,
+          description: r.description,
+          amountMinor: r.amountMinor,
+          exactHundredths: r.exactHundredths ?? null,
+          externalRef: r.externalRef,
+          categoryAccountId: categoryFor(r),
+        })),
         ratesToBaseByDate,
       });
       const skippedByChoice = mapped.rows.length - toImport.length - duplicates.size;

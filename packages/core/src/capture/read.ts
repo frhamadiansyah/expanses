@@ -1,6 +1,6 @@
 import { findAmounts } from './amount';
 import { findDateTime } from './date';
-import type { CaptureLine, Field, MoveType, RawCapture, Reading, Template, WordList } from './types';
+import type { CaptureLine, Field, MoveType, RawCapture, Reading, ReadAmount, Template, WordList } from './types';
 import { WORDS } from './words';
 
 /**
@@ -204,6 +204,7 @@ export function paymentMethodOf(capture: RawCapture, words: WordList = WORDS): P
 interface Figure {
   minor: number;
   currency: string | null;
+  exactHundredths?: number;
   unit: number;
   /** Where it starts inside its unit, so a value can be cut out of the text after it. */
   start: number;
@@ -213,10 +214,18 @@ function figuresOf(units: readonly Unit[], words: WordList): Figure[] {
   const found: Figure[] = [];
   units.forEach((unit, index) => {
     for (const amount of findAmounts(unit.text, words)) {
-      found.push({ minor: amount.minor, currency: amount.currency, unit: index, start: amount.start });
+      const exact = amount.exactHundredths === undefined ? {} : { exactHundredths: amount.exactHundredths };
+      found.push({ minor: amount.minor, currency: amount.currency, ...exact, unit: index, start: amount.start });
     }
   });
   return found;
+}
+
+/** What a figure says as an amount: its minor units, its currency, and its exact figure when it has one. */
+function amountOfFigure(figure: Figure): ReadAmount {
+  const value: ReadAmount = { minor: figure.minor, currency: figure.currency };
+  if (figure.exactHundredths !== undefined) value.exactHundredths = figure.exactHundredths;
+  return value;
 }
 
 /** The first unit whose text contains this label, or null. */
@@ -240,7 +249,7 @@ function inRegion(unit: Unit, template: Template, capture: RawCapture, field: 'a
 }
 
 /** The figure a learned anchor points at: the label's own line, the line under it, or the line inside the region. */
-function amountFromTemplate(units: readonly Unit[], figures: readonly Figure[], capture: RawCapture, template: Template): Field<{ minor: number; currency: string | null }> | null {
+function amountFromTemplate(units: readonly Unit[], figures: readonly Figure[], capture: RawCapture, template: Template): Field<ReadAmount> | null {
   const label = template.amount?.label;
   if (label) {
     const at = unitWith(units, label);
@@ -248,12 +257,12 @@ function amountFromTemplate(units: readonly Unit[], figures: readonly Figure[], 
       const here = figures.find((figure) => figure.unit === at);
       const next = figures.find((figure) => figure.unit === at + 1);
       const found = here ?? next;
-      if (found) return { value: { minor: found.minor, currency: found.currency }, confidence: 95, line: units[found.unit]!.line };
+      if (found) return { value: amountOfFigure(found), confidence: 95, line: units[found.unit]!.line };
     }
   }
   if (template.amount?.region) {
     const inside = figures.find((figure) => inRegion(units[figure.unit]!, template, capture, 'amount'));
-    if (inside) return { value: { minor: inside.minor, currency: inside.currency }, confidence: 95, line: units[inside.unit]!.line };
+    if (inside) return { value: amountOfFigure(inside), confidence: 95, line: units[inside.unit]!.line };
   }
   return null;
 }
@@ -271,15 +280,15 @@ function directedIn(unit: Unit, figure: Figure, words: WordList): boolean {
  * it, because "Top up saldo Rp200.000" is a figure about the balance, not a figure that *is* one. That distinction is
  * the whole reason the top-up case works: the words are the same, the order is not.
  */
-function amountOf(units: readonly Unit[], figures: readonly Figure[], words: WordList): Field<{ minor: number; currency: string | null }> | null {
+function amountOf(units: readonly Unit[], figures: readonly Figure[], words: WordList): Field<ReadAmount> | null {
   const clean = figures.filter((figure) => {
     const unit = units[figure.unit]!;
     if (!hasWord(unit.text, words.balance)) return true;
     return directedIn(unit, figure, words);
   });
   if (clean.length === 0) return null;
-  const field = (figure: Figure, confidence: number): Field<{ minor: number; currency: string | null }> => ({
-    value: { minor: figure.minor, currency: figure.currency },
+  const field = (figure: Figure, confidence: number): Field<ReadAmount> => ({
+    value: amountOfFigure(figure),
     confidence,
     line: units[figure.unit]!.line,
   });
