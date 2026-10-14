@@ -55,12 +55,21 @@ Input: the Vision lines of each image (`CaptureLine[]`: text, box, height — th
 1. **Rows.** Lines are grouped by vertical centre (tolerance about half a line height), then sorted left to right in
    each group. A row is a **statement row** when it holds:
    - one or two dates at the left. Forms: `06MAY`, `06 MAY`, `6 Mei`, `06/05`, `06-05-2026`, in Indonesian and
-     English month names, from the existing date word lists;
+     English month names, from the existing date word lists. A day and a month word may be joined by one separator
+     (`-`, `/`, `.` or a space) used throughout, with a 2- or 4-digit year or none: `05-Mar-26`, `14-OKT`,
+     `05 Mar 2026`. Two digits after a bare space are never a year (`06 MAY 10 PCS`). Numeric dates are DD/MM.
+     (Added after the build, for three more layouts.)
    - an amount at the right end: `3,368,590`, `3.368.590`, `3.368.590,00`, `1,563,849CR`, `-55.000`, `55.000 DB`.
      A trailing **CR** or **K/Kredit**, a leading minus, or "+" means money in; **DB** or no marker means money out.
    - The text between the dates and the amount is the **description**.
-   - With two dates, the first is the posting date and the second the transaction date when printed in that order;
-     the transaction date is the one used for matching.
+   - With two dates, the earlier is the transaction date and the later the posting date, whichever column holds
+     which: a bank never posts before the purchase. The transaction date is the one used for matching.
+     (Corrected after the build: the draft assumed posting date first, which reversed transaction-first layouts.)
+   - A date-less line under a row, `(TRY 412.00 x 341.00)`, is that foreign purchase's detail: the row keeps its
+     original currency and amount (`StatementRow.original`) when the currency is supported, is not the card's, and
+     the amount times the rate is within 0.5% of the charge. A detail that opens a screenshot belongs to the row just
+     above where that screenshot starts. A detail line is never a row. Recording a missing row passes the original
+     to the posting, so it earns as foreign spend.
 2. **Year.** It is taken from the period. Day and month are placed in the period, so a December–January statement
    gets the right year for each row.
 3. **Summary.** In any image, a line with a balance label and an amount is the **closing balance**. Labels come from
@@ -69,15 +78,15 @@ Input: the Vision lines of each image (`CaptureLine[]`: text, box, height — th
 4. **Overlaps.** Images overlap when the owner scrolls. When the end of one image and the start of the next repeat
    the same run of rows (date, description, amount), the repeat is dropped. Two identical rows **inside one image**
    are kept, because they are real repeat purchases.
-5. **Fees.** A row whose description matches fee words (`fee, biaya, materai, stamp duty, interest, bunga, annual,
-   iuran`) is a fee, categorised **Fees & charges**.
+5. **Fees.** A row whose description matches fee words (`fee, biaya, materai, meterai, stamp duty, interest, bunga,
+   annual, iuran, charge`) is a fee, categorised **Fees & charges**.
 6. **Learned layout.** If the owner corrects a row's amount or date, the card remembers which column held it. This
    is the capture template idea, keyed by the card (§3.4 of the transaction-capture spec).
 
 Output: `StatementReading { rows: StatementRow[]; closingMinor: number | null; previousMinor: number | null; emptyImages: number[] }`.
 (Corrected in the build: the screenshots that gave nothing are listed by index as `emptyImages`, which is what
 "Nothing read from screenshot N" needs; the draft's `skipped: string[]` was never built.)
-Each `StatementRow` has `{ on, postedOn, description, amountMinor (positive), direction: 'out'|'in', isFee }`.
+Each `StatementRow` has `{ on, postedOn, description, amountMinor (positive), direction: 'out'|'in', isFee, original? }`.
 Amounts are in the card's currency and IDR has exponent 0.
 
 ### 3.2 Matching (`packages/db`)

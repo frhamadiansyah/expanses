@@ -1,6 +1,6 @@
 import type { CheckDraftRow, PreparedCheck } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canRecordAll, mayBeOnNextStatement, missingByDay, needsCategory, recordLabel, statementMonth, summaryOf, takenByOthers, unchosenTied } from './check-model';
+import { canRecordAll, corrected, mayBeOnNextStatement, missingByDay, needsCategory, originalLabel, recordLabel, statementMonth, summaryOf, takenByOthers, unchosenTied } from './check-model';
 
 let next = 0;
 function row(patch: Partial<CheckDraftRow> & Pick<CheckDraftRow, 'outcome'>): CheckDraftRow {
@@ -181,5 +181,29 @@ describe('copy', () => {
     expect(needsCategory(missing())).toBe(true);
     expect(needsCategory(row({ outcome: { row: 0, status: 'missing', as: 'payment' } }))).toBe(false);
     expect(needsCategory(matched())).toBe(false);
+  });
+});
+
+describe('originalLabel', () => {
+  it('names a foreign row\'s own currency by its code and the amount in it, and nothing for a row without one', () => {
+    expect(originalLabel(missing({ original: { currency: 'TRY', amountMinor: 41_200 } }))).toBe('TRY\u00a0412,00');
+    expect(originalLabel(missing({ original: { currency: 'USD', amountMinor: 2_040 } }))).toBe('USD\u00a020,40');
+    expect(originalLabel(missing({ original: { currency: 'JPY', amountMinor: 1_300 } }))).toBe('JPY\u00a01.300');
+    expect(originalLabel(missing())).toBeNull();
+  });
+});
+
+describe('corrected', () => {
+  const foreign = missing({ amountMinor: 140_492, original: { currency: 'TRY', amountMinor: 41_200 } });
+
+  it('drops the original once the owner changes the amount: it no longer multiplies to it', () => {
+    const fixed = corrected(foreign, { on: '2026-05-07', amountMinor: 141_000 });
+    expect(fixed).toMatchObject({ on: '2026-05-07', amountMinor: 141_000 });
+    expect(fixed.original).toBeUndefined();
+    expect(foreign.original).toEqual({ currency: 'TRY', amountMinor: 41_200 });
+  });
+
+  it('keeps it when only the date is corrected', () => {
+    expect(corrected(foreign, { on: '2026-05-07', amountMinor: 140_492 })).toMatchObject({ on: '2026-05-07', original: { currency: 'TRY', amountMinor: 41_200 } });
   });
 });
