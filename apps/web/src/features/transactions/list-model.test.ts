@@ -277,7 +277,7 @@ describe('billTagOf', () => {
 });
 
 describe('money back and rows waiting for a category', () => {
-  const uncategorised = account('later', 'expense', 'category', { name: 'Uncategorised', systemKey: 'miscellaneous.uncategorised' });
+  const uncategorised = account('later', 'expense', 'category', { name: 'Uncategorised', systemKey: 'uncategorised' });
   const laterIn = account('later-in', 'income', 'category', { name: 'Uncategorised', systemKey: 'income.uncategorised' });
   const withLater = [...accounts, uncategorised, laterIn];
   byId.set(uncategorised.id, uncategorised);

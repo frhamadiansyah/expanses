@@ -3,11 +3,12 @@ import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
-import { bookCategories } from '../schema-books';
+import { bookCategories, books } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
 import { createAccountTx } from './accounts';
+import { uncategorisedIdOf } from './uncategorised';
 
 type AccountRow = typeof accounts.$inferSelect;
 
@@ -32,8 +33,11 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
     // lookup would answer with whichever copy came last — keying, parenting and counting siblings against
     // another workspace's rows, and hanging a category Personal is missing under Business's parent.
     const personalBookId = (await hasBooks(tx)) ? await personalBookIdTx(tx, ws.workspaceId) : null;
+    // Household sync's rule-4 Uncategorised was made with no key before "Choose later" gave it one: key it, so pickers,
+    // budgets and the rows' "?" know it, in every book of the workspace — joined ones included.
+    const keyedUncategorised = await keyUncategorisedRowsTx(tx, ws.workspaceId);
     // A book joined from someone else's share gets its defaults by sync, under the owner's ids (household sharing).
-    if (personalBookId && (await isJoinedBookTx(tx, personalBookId))) return { keyed: [], created: [] };
+    if (personalBookId && (await isJoinedBookTx(tx, personalBookId))) return { keyed: keyedUncategorised, created: [] };
     const personalCategories = personalBookId
       ? new Set(
           (
@@ -46,7 +50,7 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
       : null;
     const rows = personalCategories ? all.filter((row) => personalCategories.has(row.id)) : all;
     const byKey = new Map(rows.flatMap((row) => (row.systemKey ? [[row.systemKey, row] as const] : [])));
-    const keyed: string[] = [];
+    const keyed: string[] = [...keyedUncategorised];
     const created: string[] = [];
     const now = new Date().toISOString();
 
@@ -246,10 +250,17 @@ export async function ensureCategoryByKeyTx(
   return made.id;
 }
 
-/**
- * Where an expense or an income saved without a category is filed (`UNCATEGORISED`): the open book's own, made the
- * first time one is needed and reused after. It sits at the top of its kind's tree, so no parent's budget counts it.
- */
-export async function uncategorisedCategory(database: Database, ws: WorkspaceContext, kind: 'expense' | 'income'): Promise<string> {
-  return database.transaction((tx) => ensureCategoryByKeyTx(tx, ws, UNCATEGORISED[kind]));
+/** Keys each book's rule-4 Uncategorised that has none yet; the keys it gave. */
+async function keyUncategorisedRowsTx(tx: Db, workspaceId: string): Promise<string[]> {
+  if (!(await hasBooks(tx))) return [];
+  const bookIds = (await tx.select({ id: books.id }).from(books).where(eq(books.workspaceId, workspaceId))).map((row) => row.id);
+  const keyed: string[] = [];
+  for (const bookId of bookIds) {
+    const id = await uncategorisedIdOf(bookId, 'expense');
+    const [row] = await tx.select({ systemKey: accounts.systemKey }).from(accounts).where(eq(accounts.id, id));
+    if (!row || row.systemKey !== null) continue;
+    await tx.update(accounts).set({ systemKey: UNCATEGORISED.expense.key }).where(eq(accounts.id, id));
+    keyed.push(UNCATEGORISED.expense.key);
+  }
+  return keyed;
 }

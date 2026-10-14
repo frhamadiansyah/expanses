@@ -3,7 +3,7 @@ import { DEFAULT_CATEGORY_KEYS, isUncategorisedKey, UNCATEGORISED } from '../src
 
 describe('Uncategorised', () => {
   it('has one key per kind, each in its kind’s key family', () => {
-    expect(UNCATEGORISED.expense).toEqual({ key: 'miscellaneous.uncategorised', name: 'Uncategorised', kind: 'expense' });
+    expect(UNCATEGORISED.expense).toEqual({ key: 'uncategorised', name: 'Uncategorised', kind: 'expense' });
     expect(UNCATEGORISED.income).toEqual({ key: 'income.uncategorised', name: 'Uncategorised', kind: 'income' });
   });
 
@@ -13,7 +13,8 @@ describe('Uncategorised', () => {
   });
 
   it('is told apart by its key alone', () => {
-    expect(isUncategorisedKey('miscellaneous.uncategorised')).toBe(true);
+    expect(isUncategorisedKey('uncategorised')).toBe(true);
+    expect(isUncategorisedKey('miscellaneous.uncategorised')).toBe(false);
     expect(isUncategorisedKey('income.uncategorised')).toBe(true);
     expect(isUncategorisedKey('miscellaneous.refunds')).toBe(false);
     expect(isUncategorisedKey(null)).toBe(false);

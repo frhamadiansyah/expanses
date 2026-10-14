@@ -6,6 +6,7 @@ import {
   createAccount,
   createBook,
   listAccounts,
+  uncategorisedTransactionIds,
   nativeBalances,
   postTransaction,
   saveBudget,
@@ -42,7 +43,7 @@ describe('saving now and choosing the category later', () => {
     const made = (await listAccounts(database, ws)).filter((a) => a.systemKey === UNCATEGORISED.expense.key);
     // One category, at the top of the spending tree, named for what it is.
     expect(made).toHaveLength(1);
-    expect(made[0]).toMatchObject({ id: first, kind: 'expense', subtype: 'category', name: 'Uncategorised', parentId: null });
+    expect(made[0]).toMatchObject({ id: first, kind: 'expense', subtype: 'category', name: 'Uncategorised', parentId: null, sortOrder: 999 });
     const totals = await categoryTotalsBetween(database, ws, 'expense', '2026-10-01', '2026-10-31');
     expect(totals.find((row) => row.accountId === first)).toMatchObject({ amountBaseMinor: 40_000, transactions: 2 });
   });
@@ -67,6 +68,19 @@ describe('saving now and choosing the category later', () => {
     const inBusiness = await uncategorisedCategory(database, { ...ws, bookId: business }, 'expense');
     expect(inBusiness).not.toBe(personal);
     expect(await uncategorisedCategory(database, { ...ws, bookId: business }, 'expense')).toBe(inBusiness);
+  });
+
+  it('lists every posted transaction still under Uncategorised, whatever its month, in the open book only', async () => {
+    const { database, ws, bank } = await workspace();
+    const spending = await uncategorisedCategory(database, ws, 'expense');
+    const earning = await uncategorisedCategory(database, ws, 'income');
+    const early = await postTransaction(database, ws, { occurredOn: '2025-01-15', description: 'Long ago', lines: expenseLines({ categoryAccountId: spending, paymentAccountId: bank, amountMinor: 5_000, currency: 'IDR' }) });
+    const now = await postTransaction(database, ws, { occurredOn: '2026-10-03', description: 'Paid back', lines: incomeLines({ incomeAccountId: earning, depositAccountId: bank, amountMinor: 7_000, currency: 'IDR' }) });
+    const filed = (await listAccounts(database, ws)).find((a) => a.kind === 'expense' && a.systemKey === 'food_beverage')!.id;
+    await postTransaction(database, ws, { occurredOn: '2026-10-03', description: 'Lunch', lines: expenseLines({ categoryAccountId: filed, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) });
+    expect((await uncategorisedTransactionIds(database, ws)).sort()).toEqual([early, now].sort());
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    expect(await uncategorisedTransactionIds(database, { ...ws, bookId: business })).toEqual([]);
   });
 
   it('carries no budget', async () => {
