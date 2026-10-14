@@ -27,12 +27,14 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
-import { Card, cx, ErrorBox, InputRow } from '../../ui';
+import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
 import { useEvents } from '../events/queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { fitsEventSet } from '../categories/offered';
+import { useCategorySetMembership } from '../categories/set-queries';
 import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -54,7 +56,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -190,6 +192,11 @@ export function TransactionCard(props: {
   finish?: CardFinish;
   /** Posted by the card, then answered by the caller with the new id: see `CardFollowUp`. */
   followUp?: CardFollowUp;
+  /**
+   * Told when a save begins, before anything is written. An edit voids the transaction it opened, so its screen,
+   * which reads that transaction, has to know the void is its own doing and not a reason to send anyone away.
+   */
+  onSaveStart?: () => void;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -217,6 +224,7 @@ function CardBody({
   onBack,
   finish,
   followUp,
+  onSaveStart,
   accounts: ownAccounts,
   photoIds,
 }: {
@@ -234,6 +242,7 @@ function CardBody({
   onBack?: () => void;
   finish?: CardFinish;
   followUp?: CardFollowUp;
+  onSaveStart?: () => void;
   accounts: AccountRow[];
   photoIds: string[];
 }) {
@@ -283,8 +292,12 @@ function CardBody({
   const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
-  // The id a follow-up has not yet answered: see the first lines of `submit`.
-  const unanswered = useRef<string | null>(null);
+  /*
+   * The payment a follow-up was handed, once it is written: see the first lines of `submit`. The ref is what Save
+   * reads, so a second press can never post a second payment; the flag is what the form draws from it.
+   */
+  const written = useRef<string | null>(null);
+  const [recorded, setRecorded] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const noteId = useId();
@@ -299,6 +312,16 @@ function CardBody({
    */
   const events = useEvents().data ?? [];
   const eventSet = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.setId ?? null) : null;
+  /*
+   * What Category may hold while recording into that set: its own categories, as the picker offers. A category the
+   * form fills by itself — the note's guess, a note suggestion's — is asked the same question, or a renovation's
+   * "Indomaret" lands in the monthly Groceries the set's list never offers. Read through a ref by the guess, which
+   * answers a quarter of a second after the typing and must judge by the Event row as it is then.
+   */
+  const membership = useCategorySetMembership();
+  const fitsSet = (categoryId: string) => fitsEventSet(categoryId, membership.data ?? {}, eventSet);
+  const fitsRef = useRef(fitsSet);
+  fitsRef.current = fitsSet;
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
   const account = byId.get(draft.moneyId);
@@ -414,14 +437,22 @@ function CardBody({
     setBusy(true);
     try {
       if (transferUnknown) return;
+      onSaveStart?.();
       /*
-       * A follow-up that refused after the payment was written (an item deleted on another phone meanwhile): the
-       * payment is there, so Save again only asks the follow-up again. Posting a second time would record one
-       * purchase twice for one press too many.
+       * A payment already written for a follow-up that then refused (an item deleted on another phone meanwhile, or a
+       * failure linking it): Save never posts again — that would record one purchase twice for one press too many.
+       * It asks the follow-up again, or, when the screen no longer has one to ask (the item is gone from the plan),
+       * just leaves. The lists hear about it either way: the app reads them once and keeps them, so a plan not told
+       * would go on showing the item unbought, and buying it a second time is exactly what this guards against.
        */
-      if (followUp && unanswered.current) {
-        await followUp.posted(unanswered.current);
-        unanswered.current = null;
+      const paid = written.current;
+      if (paid) {
+        try {
+          if (followUp) await followUp.posted(paid);
+        } finally {
+          await invalidate();
+        }
+        if (!followUp) onDone();
         return;
       }
       if (finish) {
@@ -488,11 +519,14 @@ function CardBody({
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
       if (followUp && posted) {
-        // The payment is written whatever the follow-up answers, so the lists hear about it either way.
-        unanswered.current = posted;
+        // The payment is written whatever the follow-up answers, so the lists hear about it either way. It stays
+        // written for this form's whole life: a refusal leaves the form open on a payment that already exists.
+        written.current = posted;
         try {
           await followUp.posted(posted);
-          unanswered.current = null;
+        } catch (e) {
+          setRecorded(true);
+          throw e;
         } finally {
           await invalidate();
         }
@@ -638,7 +672,8 @@ function CardBody({
   const pickNote = (suggestion: NoteSuggestion) => {
     // A suggestion picked is a choice: on a form opened on something that exists it still fills an empty Category, as
     // it always has, and the category then stays the owner's.
-    const fill = !!suggestion.categoryId && draft.splits.length === 0 && (prefilled ? !draft.categoryId : categorySource.current !== 'hand');
+    const fill =
+      !!suggestion.categoryId && fitsSet(suggestion.categoryId) && draft.splits.length === 0 && (prefilled ? !draft.categoryId : categorySource.current !== 'hand');
     if (fill && !prefilled) categorySource.current = 'auto';
     setDraft((d) => ({ ...d, description: suggestion.description, ...(fill ? { categoryId: suggestion.categoryId! } : {}) }));
   };
@@ -658,7 +693,7 @@ function CardBody({
       void (typed ? guessCategoryFromHistory(database, ws, typed, suggestKind) : Promise.resolve(null)).then((guess) => {
         const now = latest.current;
         if (stale || now.description.trim() !== typed || now.mode !== suggestKind) return;
-        const next = categoryFromNote(now, guess, categorySource.current);
+        const next = categoryFromNote(now, guess, categorySource.current, fitsRef.current);
         if (next === null) return;
         categorySource.current = next ? 'auto' : null;
         setDraft((d) => ({ ...d, categoryId: next }));
@@ -669,6 +704,17 @@ function CardBody({
       clearTimeout(timer);
     };
   }, [draft.description, suggestKind, database, ws]);
+  /*
+   * The Event row changed — or the events and the sets arrived after the guess — and the set it draws on no longer
+   * offers the category the note filled in: that guess goes, and the row is back to Choose later. A category picked
+   * by hand stays whatever the Event row says; the picker shows what it may be changed to.
+   */
+  useEffect(() => {
+    if (!membership.isSuccess) return;
+    if (!autoCategoryOutOfSet(latest.current.categoryId, categorySource.current, fitsRef.current)) return;
+    categorySource.current = null;
+    setDraft((d) => ({ ...d, categoryId: '' }));
+  }, [eventSet, membership.isSuccess, membership.data, draft.categoryId]);
   const noteRow = (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -734,7 +780,12 @@ function CardBody({
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
       {finish?.header}
-      {followUp?.header}
+      {/*
+        Once the payment is written and only the follow-up is left to answer, the form says so and its fields stop
+        taking changes: Save never writes the payment again, so an edit made now would be one nothing reads.
+      */}
+      {recorded ? <RowHint>{followUp ? 'Payment recorded. Save links it to the item.' : 'Payment recorded.'}</RowHint> : followUp?.header}
+      <fieldset disabled={recorded} className="m-0 flex min-w-0 flex-col gap-[10px] border-0 p-0">
       {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
         {!fixedMode && (
@@ -1061,6 +1112,7 @@ function CardBody({
       >
         {detailsToggleLabel(detailsOpen)}
       </button>
+      </fieldset>
 
       {finish?.footer}
 

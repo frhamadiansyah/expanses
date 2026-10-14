@@ -271,13 +271,28 @@ export type CategorySource = 'hand' | 'auto' | null;
  *
  * A category picked by hand — or one the form opened with (an edit, a duplicate, a capture) — is never touched. Only
  * Expense and Income guess, each from its own tree; a transfer has no category and a split's lines are their own.
+ *
+ * `fits` is what Category may hold right now (`fitsEventSet`): recording into an event that draws on a set, only that
+ * set's categories. A guess outside it counts as no match at all — it does not fill an empty row, and it empties one
+ * only the note had filled — because the history knows where "Indomaret" went last month, not that this spending is
+ * a renovation's.
  */
-export function categoryFromNote(draft: FormDraft, guess: string | null, source: CategorySource): string | null {
+export function categoryFromNote(draft: FormDraft, found: string | null, source: CategorySource, fits: (categoryId: string) => boolean = () => true): string | null {
   if (draft.mode !== 'expense' && draft.mode !== 'income') return null;
   if (draft.splits.length > 0 || source === 'hand') return null;
+  const guess = found && fits(found) ? found : null;
   if (source === 'auto') return guess === draft.categoryId ? null : (guess ?? '');
   if (draft.categoryId) return null;
   return guess;
+}
+
+/**
+ * Whether Category has to be emptied because the Event row changed under it: only a category the note's history
+ * filled ('auto') that the event's set no longer offers. A category picked by hand — or one the form opened with —
+ * is never emptied behind the owner's back; the picker shows what it may be changed to.
+ */
+export function autoCategoryOutOfSet(categoryId: string, source: CategorySource, fits: (categoryId: string) => boolean): boolean {
+  return source === 'auto' && !!categoryId && !fits(categoryId);
 }
 
 /**

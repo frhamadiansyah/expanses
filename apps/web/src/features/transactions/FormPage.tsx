@@ -2,7 +2,7 @@ import { useOpenBookReadOnly } from '../sharing/queries';
 import { linkEventItem, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Card, RowHint } from '../../ui';
@@ -132,17 +132,34 @@ export function EditTransactionRoute() {
   // Only the settled refusals send anyone away. `changeable` is also false while the trades are still being
   // read, and redirecting on that would bounce a perfectly editable transaction out of its own form.
   const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || !isEditable(tx));
+  /*
+   * A save voids the transaction this screen reads, and the refetch after it reads it back void — "refused" — before
+   * the card's way out runs. Redirecting then pushed the receipt of the voided original, and the list on top of it,
+   * so a swipe back landed on a deleted transaction. Once a save has begun the redirect is the card's to make.
+   */
+  const saving = useRef(false);
 
   useEffect(() => {
-    if (refused) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+    if (refused && !saving.current) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
   }, [refused, transactionId]);
 
   if (!tx || !changeable) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
-          saves. The list is where to land — this address would only 404 into its own redirect. */}
-      <TransactionCard full title="Edit transaction" label="Edit a transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
+          saves. The list is where to land — this address would only 404 into its own redirect — and it takes this
+          screen's place in the history, so Back from the list does not open an edit of a transaction now void. */}
+      <TransactionCard
+        full
+        title="Edit transaction"
+        label="Edit a transaction"
+        initial={tx}
+        onBack={back}
+        onSaveStart={() => {
+          saving.current = true;
+        }}
+        onDone={() => void navigate({ to: '/transactions', replace: true })}
+      />
     </div>
   );
 }

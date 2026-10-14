@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { addForm, choosePayment, saveButton } from './add-transaction';
+import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
 import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, fillItem, moneyIn, recordIntoEvent, spend } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
@@ -66,6 +66,62 @@ test('Add spending opens the Add screen with the event filled in, and saving lan
   await recordIntoEvent(page, { description: 'Stroller wheels', amount: '650000' });
   await expect(page.getByTestId('event-total')).toContainText('650.000');
   await expect(page.getByTestId('event-history')).toContainText('Stroller wheels');
+});
+
+/**
+ * The note's history fills Category with where that note went last time — but recording into an event with a set,
+ * Category holds the set's categories only, and the history does not know this spending is the event's. Typed before
+ * Category is touched, "Indomaret" must not come back filed under the monthly Groceries the set's list never offers.
+ */
+test("a note typed into an event's spending does not fill in a category the event's set would not offer", async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Indomaret Bintaro', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '85000' });
+  await addEvent(page, 'Rumah Bintaro', 'Renovation');
+
+  await page.getByRole('button', { name: 'Add spending' }).click();
+  const form = addForm(page);
+  const category = form.getByRole('button', { name: /^Category/ });
+  await form.getByLabel('Note').fill('Indomaret Bintaro');
+  // Longer than the quarter of a second the guess waits for, so a guess that was going to land has landed.
+  await page.waitForTimeout(600);
+  await expect(category).toContainText('Choose later');
+  await expect(category).not.toContainText('Groceries');
+  // The set's own categories are still what the row offers.
+  await category.click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await expect(picker.getByRole('button', { name: 'Flooring & Tiles', exact: true })).toBeVisible();
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+  // The everyday form still guesses as it always has — and choosing the event afterwards takes the guess back.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const everyday = addForm(page);
+  const row = everyday.getByRole('button', { name: /^Category/ });
+  await everyday.getByLabel('Note').fill('Indomaret Bintaro');
+  await expect(row).toContainText('Groceries');
+  await everyday.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('region', { name: 'More details' });
+  await more.getByRole('button', { name: 'Event' }).click();
+  await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Rumah Bintaro' }).click();
+  await expect(more.getByRole('button', { name: 'Event' })).toContainText('Rumah Bintaro');
+  await expect(row).toContainText('Choose later');
+
+  // Picked by hand, a category stays whatever the Event row then says.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const byHand = addForm(page);
+  await byHand.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await byHand.getByRole('button', { name: 'Add more details' }).click();
+  const details = page.getByRole('region', { name: 'More details' });
+  await details.getByRole('button', { name: 'Event' }).click();
+  await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Rumah Bintaro' }).click();
+  await expect(details.getByRole('button', { name: 'Event' })).toContainText('Rumah Bintaro');
+  await page.waitForTimeout(300);
+  await expect(byHand.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
 });
 
 test('a plan is a list of things to buy, and a category is only their sum', async ({ page }) => {

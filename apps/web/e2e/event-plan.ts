@@ -161,10 +161,12 @@ export async function spend(page: Page, description: string, amount: string) {
   await expect(page.getByRole('listitem').filter({ hasText: description }).first()).toBeVisible();
 }
 
-export async function addEvent(page: Page, name: string) {
+/** An event for today. `set` is the category set it draws on, chosen by name; none, and it files under the monthly tree. */
+export async function addEvent(page: Page, name: string, set?: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: 'Add an event' }).click();
   await page.getByLabel('Name', { exact: true }).fill(name);
+  if (set) await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();

@@ -212,6 +212,19 @@ test('Edit — from the receipt or from the swipe — opens the Add screen on th
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
   await expect(row(page, 'Warung Steak Tebet')).toHaveCount(1);
+
+  // Saved from the swipe, the edit leaves nothing behind it in the history: a swipe back from the list is the list
+  // it was opened on, never the receipt of the original the save just voided.
+  await swiped.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await swipeLeft(page, swiped);
+  await swiped.getByRole('button', { name: 'Edit', exact: true }).click();
+  await editForm(page).getByLabel('Note').fill('Warung Steak Kemang');
+  await saveButton(editForm(page)).click();
+  await expect(editForm(page)).toHaveCount(0);
+  await expect(row(page, 'Warung Steak Kemang')).toHaveCount(1);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  await expect(page.getByRole('button', { name: 'Delete this transaction', exact: true })).toHaveCount(0);
 });
 
 /**

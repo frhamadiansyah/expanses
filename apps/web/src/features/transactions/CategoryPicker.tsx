@@ -8,8 +8,9 @@ import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { categoryGroups, offeredCategories } from '../categories/offered';
+import { categoryGroups, offeredCategories, setCategoriesElsewhere } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
+import { useCategoryWorkspaces } from '../workspaces/queries';
 import { useNewCategoryForm } from './NewCategorySheet';
 
 /** One top-level category and what hangs off it — the card the picker draws per root. */
@@ -135,6 +136,9 @@ export function CategoryPicker({
   const [making, setMaking] = useState(false);
   const set = showing === 'expense' ? setId : null;
   const groups = pickerGroups(accounts, showing, membership, inOpenBook, search, set);
+  // An event's set is filed in one workspace's book; opened from another, the list is empty, and says where they are.
+  const workspaceOf = useCategoryWorkspaces();
+  const setElsewhere = groups.length === 0 && !search.trim() ? setCategoriesElsewhere(accounts, membership, set, inOpenBook, workspaceOf) : null;
   // What a new category may be filed under: the monthly tree's roots of the kind it is showing. A category made here
   // is a monthly one whichever list is open — a set is added to on its own page — so its parents are the tree's.
   const parents = pickerGroups(accounts, showing, membership, inOpenBook).map((group) => group.root);
@@ -236,7 +240,11 @@ export function CategoryPicker({
         ))}
         {groups.length === 0 && (
           <p className="px-1 py-3 text-[15px] text-[var(--ph-ink-3)]">
-            {search.trim() ? 'Nothing here by that name.' : 'No categories in this workspace yet.'}
+            {search.trim()
+              ? 'Nothing here by that name.'
+              : setElsewhere
+                ? `This event's categories are in ${setElsewhere}. Open it to record here.`
+                : 'No categories in this workspace yet.'}
           </p>
         )}
 
