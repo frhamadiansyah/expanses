@@ -82,14 +82,13 @@ function CategoryButton({
 }
 
 /**
- * Choosing a category, for every screen that files one: the form's Category row, the edit sheet's, and the
- * list's category gesture.
+ * Choosing a category, for every screen that files one: the form's Category row and the list's category gesture.
  *
  * B7's tree — one card per top-level category, its children indented under it, ⌕ in the header for a search and
  * **＋** in the header makes a new category. Tapping a parent picks the parent: "Food and beverage" is a real answer, not
  * a heading, and a tree that only let leaves be chosen would take that answer away.
  *
- * One component, three ways in. The card, the row and the edit sheet each open this and none of them was
+ * One component, every way in. The card and the row each open this and neither was
  * touched to give them the tree — which is the point: a second picker is a second place for the workspace
  * filter to be forgotten, and forgetting it files one workspace's spending in another.
  *

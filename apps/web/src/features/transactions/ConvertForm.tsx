@@ -8,10 +8,9 @@ import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 /**
  * Turns an expense already recorded into the purchase it really was, keeping its date and amount.
  *
- * A file of its own because three screens open it: the list, the receipt, and the phone's edit sheet behind ⋯.
- * One form, three ways in — a second copy of it would be three places for "what it bought" to drift apart. It
- * left `TransactionsPage` when the edit sheet arrived: the sheet is opened *by* that page, so a form living
- * there and imported back out of it would have made the two modules import each other.
+ * A file of its own because two screens open it: the list (a desktop's row editor) and the receipt, which is
+ * where a phone reaches it. One form, two ways in — a second copy of it would be two places for "what it
+ * bought" to drift apart.
  */
 export function ConvertForm({
   tx,

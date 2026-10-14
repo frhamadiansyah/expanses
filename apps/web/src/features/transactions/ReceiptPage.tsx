@@ -24,11 +24,9 @@ import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
 import { ConvertForm } from './ConvertForm';
-import { EditSheet } from './EditSheet';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
-import { canEditInSheet } from './tx-form';
 import { useDuplicable } from './duplicable';
 import { TwoTapDelete } from './TwoTapDelete';
 
@@ -134,6 +132,14 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
 
   const caption = heroCaption(tx, kind.amountMinor);
 
+  /*
+   * A phone's Edit is the Add screen, opened on this transaction: one full card for every kind of transaction,
+   * so correcting one is never a second screen to learn. Back from it comes here again. A desktop keeps the card
+   * it has always had, in a sheet, in place — a desktop is not a phone with something taken away, and navigating
+   * it off the receipt to a form would be exactly that.
+   */
+  const edit = () => (phone ? void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId } }) : setEditing(true));
+
   async function remove() {
     setError(null);
     setBusy(true);
@@ -165,7 +171,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <BackButton fallback="/transactions" />
         {changeable && (
           <span className="flex items-center gap-2">
-            <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
+            <button type="button" onClick={edit} aria-label="Edit this transaction" className={ROUND}>
               <Pencil size={16} aria-hidden />
             </button>
             {duplicable(tx) && (
@@ -251,7 +257,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
               )}
               {changeable && (
                 <>
-                  <Button variant="ghost" className="min-h-11" onClick={() => setEditing(true)}>
+                  <Button variant="ghost" className="min-h-11" onClick={edit}>
                     Edit
                   </Button>
                   {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. */}
@@ -273,20 +279,12 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         </Sheet>
       )}
 
-      {/*
-        The phone's Edit is the sheet; the desktop's is the card it has always been, in a sheet, in place. A
-        desktop is not a phone with something taken away, and navigating it off the receipt to a form would be
-        exactly that. What the sheet cannot hold — a split, a transfer, a foreign purchase — opens the full card
-        on a phone too, because `canEditInSheet` says so and the fallback is the caller's to choose.
-      */}
-      {editing &&
-        (phone && canEditInSheet(tx) ? (
-          <EditSheet tx={tx} onClose={() => void afterEdit()} />
-        ) : (
-          <Sheet grouped title="Edit transaction" onClose={() => void afterEdit()}>
-            <TransactionCard initial={tx} onDone={() => void afterEdit()} />
-          </Sheet>
-        ))}
+      {/* The desktop's Edit: the card, in a sheet, over the receipt. A phone's Edit went to the Add screen above. */}
+      {editing && (
+        <Sheet grouped title="Edit transaction" onClose={() => void afterEdit()}>
+          <TransactionCard initial={tx} onDone={() => void afterEdit()} />
+        </Sheet>
+      )}
 
       {converting && (
         <Sheet title="This was a purchase" onClose={() => setConverting(false)}>

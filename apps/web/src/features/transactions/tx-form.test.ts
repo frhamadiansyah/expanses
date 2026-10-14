@@ -9,7 +9,6 @@ import {
   amountFields,
   billMinor,
   canDuplicate,
-  canEditInSheet,
   canRefile,
   categoryFromNote,
   categoryLater,
@@ -581,12 +580,6 @@ describe('a bill spread over several categories', () => {
     expect(formToPost({ ...draft, mcc: '5814' }, accounts)).toMatchObject({ kind: 'post', input: { mcc: null } });
   });
 
-  it('says the sheet cannot hold a split, a transfer or a foreign purchase', () => {
-    expect(canEditInSheet(plainExpense)).toBe(true);
-    expect(canEditInSheet(splitPurchase)).toBe(false);
-    expect(canEditInSheet(transferTx)).toBe(false);
-    expect(canEditInSheet(foreignPurchase)).toBe(false);
-  });
 });
 
 describe('what a transaction reads back as', () => {

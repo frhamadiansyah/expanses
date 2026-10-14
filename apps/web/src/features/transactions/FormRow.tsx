@@ -59,7 +59,7 @@ export function RowLead({ children }: { children?: ReactNode }) {
  *
  * Two readings, both from the approved mockup:
  *
- * - `lead="label"` (Add more details, the edit sheet): the label is the title and what it holds sits on the right —
+ * - `lead="label"` (Add more details): the label is the title and what it holds sits on the right —
  *   "Event · Singapore holiday ›".
  * - `lead="value"` (the main card, B2): **what was chosen** is the title and the label is the small caption on the
  *   right — "BCA KrisFlyer · ···· 1467 ›", "Personal · Workspace ›". Empty, the title is `placeholder` in the faint

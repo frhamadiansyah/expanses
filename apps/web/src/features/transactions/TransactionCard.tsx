@@ -176,7 +176,7 @@ export function TransactionCard(props: {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
   // The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
-  // The very same reader the phone's edit sheet uses, and `ready` is its own answer about when it may be read.
+  // `ready` is the reader's own answer about when it may be read.
   const photos = useTransactionPhotoIds(props.initial?.id ?? null);
   // The draft is built from the accounts once, so it must not be built before they are here: `formFromTransaction`
   // reads each account's currency, and a draft seeded from an empty list opens a foreign purchase with no currency.
@@ -990,7 +990,7 @@ function CardBody({
         every mode, and this row used to be drawn in the expense branch alone — so a trade computed two rows
         that nothing drew, and a contract note could not be kept with the purchase it belongs to.
       */}
-      {/* The same component, with the same props, that the edit sheet opens: one implementation of §4's rows. */}
+      {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={finish ? DRAFT_OMITS : undefined} />

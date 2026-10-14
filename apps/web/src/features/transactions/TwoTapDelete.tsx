@@ -9,7 +9,7 @@ import { cx } from '../../ui';
  * again to delete" does not fit in 64 pixels, so the swipe asks "Delete?" and means exactly the same thing.
  */
 const LOOKS = {
-  /** A button among buttons: the receipt's actions, and the edit sheet's ⋯. */
+  /** A button among buttons: the receipt's actions. */
   inline: {
     idle: 'Delete',
     armed: 'Click again to delete',
@@ -32,7 +32,7 @@ export type TwoTapLook = keyof typeof LOOKS;
 /**
  * Deleting asks twice, in place — the same two taps the list and the table already ask for.
  *
- * Its own file because the receipt, the phone's edit sheet and the phone's **swipe** all draw it, and they have
+ * Its own file because the receipt and the phone's **swipe** both draw it, and they have
  * to ask the same question: a second copy is a second chance for one way in to delete on a single tap. The
  * swipe was that second copy, and it did exactly that — it kept `armed` in the row around it, one level above
  * the button, so arming outlived the gesture that made it. Tap Delete, tap the row's face to close it, swipe it

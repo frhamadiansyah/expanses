@@ -35,7 +35,6 @@ import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
-import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
@@ -54,7 +53,6 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
-import { canEditInSheet } from './tx-form';
 import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
@@ -183,8 +181,6 @@ export function TransactionsPage() {
   };
   /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
-  // The phone's swipe reaches the edit sheet; a desktop's click still edits in place, untouched.
-  const [editSheetTx, setEditSheetTx] = useState<TransactionView | null>(null);
   /** A row being edited in place. */
   const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -722,6 +718,7 @@ export function TransactionsPage() {
     // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
     // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
     const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
+    const toEdit = () => void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: tx.id } });
     // In a day's own list, by date: the row can be moved within its day.
     const dayIds = !withDate && movable(row) ? movableIds.get(row.date) : undefined;
     const moveBy = (by: -1 | 1) => {
@@ -740,11 +737,11 @@ export function TransactionsPage() {
         // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
         // click — with the note saying where it lives — and only saving it here is refused.
         onOpen={phone ? openReceipt : reachable ? () => open(row) : undefined}
-        // Since Task 9 the swipe opened the in-place editor; on a phone it now opens the edit sheet, which is
-        // the phone's whole affordance for a correction. What the sheet cannot hold falls back to the editor
-        // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
-        // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
-        onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
+        // The swipe's Edit opens the Add screen on this transaction — the same full card for every one of them,
+        // so a correction is never a second screen to learn, and a split, a transfer or a foreign purchase looks
+        // like any other. Back from it lands here again. The desktop never reaches `onEdit` at all —
+        // `TransactionRow` draws the swipe layer only on a phone — and keeps its editor in place.
+        onEdit={clickable ? toEdit : undefined}
         onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
         // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
@@ -1280,9 +1277,6 @@ export function TransactionsPage() {
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
 
-      {/* The phone's swipe-Edit, once for the screen. Closing it is enough to put it away: the save has already
-          invalidated everything, so the list underneath is redrawn without being told. */}
-      {editSheetTx && <EditSheet tx={editSheetTx} onClose={() => setEditSheetTx(null)} />}
       {asking && (
         <SetAsideSheet
           door={asking.door}

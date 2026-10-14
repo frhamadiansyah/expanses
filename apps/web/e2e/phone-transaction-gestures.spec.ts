@@ -137,20 +137,19 @@ test('a phone refuses what a desktop refuses, and still lets the row be read', a
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
 });
 
+/** The Add screen, opened on one transaction: a phone's Edit, however it was reached. */
+const editForm = (page: Page) => page.getByRole('form', { name: 'Edit a transaction' });
+
 /**
- * Editing on a phone is one sheet, whichever way it is reached — the receipt's Edit and the row's swipe open the
- * very same screen — and the rarer things you can do to a transaction sit behind ⋯ rather than crowding it.
- *
- * The sheet is a **new way in**, so what it opens is what already exists: `MoreDetails` is the card's own
- * component with the card's own props (Event and Photos are there, With is not, because §15.6 does not offer a
- * shared bill on a correction), and Escape closes the innermost thing only, through the one listener `useEscape`
- * keeps. A second copy of either is how this branch has broken itself six times.
+ * Editing on a phone is the Add screen again, whichever way it is reached — the receipt's Edit and the row's swipe
+ * open the very same full card, on its own route — so a correction is never a second screen to learn. The rarer
+ * things done to a transaction are the receipt's own: This was a purchase and Delete stand under its Edit.
  */
-test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ holds the rest', async ({ page }) => {
+test('Edit — from the receipt or from the swipe — opens the Add screen on the transaction', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
-  // Something to convert into, so ⋯ can offer "This was a purchase" at all: the sheet carries the receipt's own
-  // gate, and a conversion with nothing to convert into is a form whose Save can never be pressed.
+  // Something to convert into, so the receipt can offer "This was a purchase" at all: a conversion with nothing
+  // to convert into is a form whose Save can never be pressed.
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
@@ -164,29 +163,32 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   await page.goto('/transactions');
   await record(page, 'Warung Steak', 'Restaurants', '120000');
 
-  // In from the receipt.
+  // In from the receipt, where the rarer actions live.
   await face(page, 'Warung Steak', 'Restaurants').click();
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
+  await expect(page.getByRole('button', { name: 'This was a purchase', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete this transaction', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
-  await sheet.getByLabel('Note').fill('Warung Steak Tebet');
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/edit$/);
+  // The full card, on this transaction: the note it is already carrying proves which one was opened. No sheet.
+  await expect(editForm(page).getByLabel('Note')).toHaveValue('Warung Steak');
+  await expect(page.getByRole('dialog', { name: 'Edit', exact: true })).toHaveCount(0);
+  // Back goes where Edit was opened.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
 
-  // More opens the card's own extras screen, not a second set of them: Event and Photos are on it, and With is
-  // not, because a correction posts through `replaceTransaction` and cannot become a shared bill.
-  await sheet.getByRole('button', { name: 'More', exact: true }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const form = editForm(page);
+  await form.getByLabel('Note').fill('Warung Steak Tebet');
+  // The card's own extras, as on Add: Event and Photos are there.
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('region', { name: 'More details' });
   await expect(more.getByRole('button', { name: 'Event' })).toBeVisible();
   await expect(more.getByRole('button', { name: 'Photos' })).toBeVisible();
-  await expect(more.getByRole('button', { name: 'With', exact: true })).toHaveCount(0);
-  // Escape answers the innermost thing open and nothing else: the extras go, the half-typed edit stays.
-  await page.keyboard.press('Escape');
-  await expect(more).toHaveCount(0);
-  await expect(sheet).toHaveCount(1);
-  await expect(sheet.getByLabel('Note')).toHaveValue('Warung Steak Tebet');
-
-  await sheet.getByRole('button', { name: /^Category/ }).click();
+  await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toHaveCount(0);
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
   // An edit voids the original, so the receipt it belonged to is gone and the list is where the save lands.
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
   const fixed = row(page, 'Warung Steak Tebet');
@@ -196,7 +198,7 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   await page.reload();
   await expect(row(page, 'Warung Steak Tebet')).toContainText('Groceries');
 
-  // In from the swipe: the same sheet, and the rarer actions behind ⋯.
+  // In from the swipe: the same screen.
   const swiped = row(page, 'Warung Steak Tebet');
   // Dragged where it can be dragged. The tab bar is fixed across the foot of the screen, so a row that is
   // technically "in the viewport" can still be under it, and the press lands on the tab bar instead —
@@ -204,29 +206,20 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   await swiped.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await swipeLeft(page, swiped);
   await swiped.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(sheet).toHaveCount(1);
-  await sheet.getByRole('button', { name: 'More actions' }).click();
-  const actions = page.getByRole('dialog', { name: 'More actions' });
-  for (const name of ['Open in full form', 'This was a purchase', 'Delete this transaction']) {
-    await expect(actions.getByRole('button', { name, exact: true })).toBeVisible();
-  }
-  await actions.getByRole('button', { name: 'Open in full form' }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/edit$/);
-  // The full card, on this transaction: the note it is already carrying proves which one was opened.
-  await expect(page.getByLabel('Note')).toHaveValue('Warung Steak Tebet');
+  await expect(editForm(page).getByLabel('Note')).toHaveValue('Warung Steak Tebet');
+  // And Back from it is the list it was swiped on.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  await expect(row(page, 'Warung Steak Tebet')).toHaveCount(1);
 });
 
 /**
- * The combination the sheet cannot hold: a purchase in another currency, corrected from the swipe.
- *
- * `canEditInSheet` refuses three shapes — a split, a transfer and a foreign purchase — because the sheet has
- * one category, one account and one figure, and a foreign purchase carries a second figure it has no row for.
- * A sheet that opened anyway would show the charged figure alone and, on Save, post it as the typed one: the
- * merchant's currency quietly dropped, which is `formToPost`'s original pair thrown away by a screen rather
- * than by the kit. The fallback is the in-place editor the row has always had, so no transaction loses its
- * way in — which is the whole promise a new entry point has to keep.
+ * A purchase in another currency, corrected from the swipe, opens the very same screen as any other — the edit
+ * screen no longer looks different by currency. The full card has a row for each of the two figures, so the
+ * merchant's currency and the charged figure both come back as they were saved.
  */
-test('a foreign purchase falls back to the in-place editor, because the sheet cannot hold it', async ({ page }) => {
+test('a foreign purchase opens the same Add screen, with both of its figures', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openCard(page, { name: 'BCA Visa', owed: '0' });
 
@@ -250,7 +243,7 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  // It really is a foreign purchase, or the fallback below is about an ordinary row.
+  // It really is a foreign purchase, or what follows is about an ordinary row.
   const blue = row(page, 'Blue Bottle');
   await expect(blue).toContainText('US$100,00');
 
@@ -258,20 +251,14 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   await swipeLeft(page, blue);
   await blue.getByRole('button', { name: 'Edit', exact: true }).click();
 
-  // Not the sheet — and not the row editor either: `isQuickEditable` refuses a foreign row for the same reason
-  // the sheet does. What opens is the full card, the one screen with a row for each of the two figures.
-  await expect(page.getByRole('dialog', { name: 'Edit', exact: true })).toHaveCount(0);
+  // The Add screen, as for every other row — not a sheet, and not the row editor.
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/edit$/);
   await expect(page.getByLabel('Row description')).toHaveCount(0);
-  // It opens in the row's own place rather than over it, and says what an edit will leave behind — kept, and not
-  // where to look for it: a phone has no door to the deleted rows.
-  await expect(page.getByText('The original is kept')).toBeVisible();
-  // Both figures are on it, each in its own currency: the pair survived the trip through `formFromTransaction`,
-  // which is the half a sheet showing one figure would have thrown away on its next Save.
-  await expect(page.getByLabel('Note')).toHaveValue('Blue Bottle');
-  // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error. The
-  // row shows a settled figure grouped the way the app writes money, so the exponent is read off the face.
-  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100,00');
-  await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1.600.000');
+  const edit = editForm(page);
+  await expect(edit.getByLabel('Note')).toHaveValue('Blue Bottle');
+  // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error.
+  await expect(edit.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100,00');
+  await expect(edit.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1.600.000');
   // A purchase reopened for correction holds what the bank actually took, so the charged figure is nobody's
   // guess and carries no ≈ — only the code that names it.
   await expect(page.getByText('≈ IDR', { exact: true })).toHaveCount(0);
@@ -279,15 +266,11 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
 });
 
 /**
- * The phone's edit sheet drew the manual-rate row and threw the rate away — an unescapable dead end.
- *
- * `EditSheet.save()` was a line-for-line copy of `TransactionCard.submit()` with the rate block left out, and
- * `draft.manualRate` had exactly one reader in the whole app. So: Save → "Add it under “More”" → open More,
- * type the rate → Save → **the same error, for ever**. The only way out was ⋯ → Open in full form.
- *
- * Both ways in now go through one `ratesForSave`, so what the sheet asks for is what the sheet stores.
+ * The rate typed on a correction is the rate the correction saves. The phone's old edit sheet drew the rate row
+ * and threw the rate away — an unescapable dead end — and a phone now corrects on the full card, whose save goes
+ * through the one `ratesForSave`. This walks that screen the way the dead end was walked.
  */
-test('the rate typed into the edit sheet is the rate the edit sheet saves', async ({ page }) => {
+test('the rate typed on the edit screen is the rate the edit saves', async ({ page }) => {
   // No rate server: what this device has stored is all there is, which is what puts the row on screen at all.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // Mid-month, so the day three back is in the month the list shows: on the 1st to the 3rd it was the month before.
@@ -309,22 +292,20 @@ test('the rate typed into the edit sheet is the rate the edit sheet saves', asyn
   await luckin.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await swipeLeft(page, luckin);
   await luckin.getByRole('button', { name: 'Edit', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
-  await sheet.getByLabel('Date').fill(earlier);
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  // The refusal, and it says where to go — this screen's row is called More, the card's Add more details.
-  await expect(sheet.getByText(`No CNY→IDR rate for ${earlier}. Add it under “More”.`)).toBeVisible();
+  const edit = editForm(page);
+  await edit.getByLabel('Date').fill(earlier);
+  await saveButton(edit).click();
+  // The refusal, and it says where to go.
+  await expect(page.getByText(`No CNY→IDR rate for ${earlier}. Add it under “Add more details”.`)).toBeVisible();
 
   // Go where it says, type the rate, and save again.
-  await sheet.getByRole('button', { name: 'More', exact: true }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
-  await more.getByLabel('Rate: IDR per 1 CNY').fill('2300');
-  await more.getByRole('button', { name: 'Close' }).click();
-  await sheet.getByRole('button', { name: 'Save' }).click();
+  await edit.getByRole('button', { name: 'Add more details' }).click();
+  await page.getByRole('region', { name: 'More details' }).getByLabel('Rate: IDR per 1 CNY').fill('2300');
+  await saveButton(edit).click();
 
-  // It saved. It used to answer with the very same sentence, however many times the rate was typed.
-  await expect(sheet).toHaveCount(0);
-  await expect(page.getByText(`No CNY→IDR rate for ${earlier}`)).toHaveCount(0);
+  // It saved, and landed on the list.
+  await expect(edit).toHaveCount(0);
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
   const corrected = row(page, 'Luckin');
   await expect(corrected).toHaveCount(1);
   await expect(corrected).toContainText('CN¥120,00');
@@ -334,14 +315,10 @@ test('the rate typed into the edit sheet is the rate the edit sheet saves', asyn
 });
 
 /**
- * The phone's edit sheet said a transaction with a receipt had no photos.
- *
- * `formFromTransaction`'s fourth argument is the pictures the transaction already has; the sheet left it off,
- * so `photoIds` defaulted to `[]` and the Photos row read **None** on every correction made from a phone.
- * `movePhotosTx` re-keys the rows regardless, so the picture survived — but a row that states the opposite of
- * the truth is what data loss looks like from the outside, and there was no way to see or remove it from here.
+ * A correction shows the receipt the transaction already has. The phone's old edit sheet said **None** — it left
+ * `formFromTransaction`'s fourth argument off — and the full card a phone now edits on must not.
  */
-test('the edit sheet shows the receipt the transaction already has', async ({ page }) => {
+test('the edit screen shows the receipt the transaction already has', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
@@ -365,9 +342,9 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   await steak.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await swipeLeft(page, steak);
   await steak.getByRole('button', { name: 'Edit', exact: true }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit', exact: true });
-  await edit.getByRole('button', { name: 'More', exact: true }).click();
-  const details = page.getByRole('dialog', { name: 'More details' });
+  const edit = editForm(page);
+  await edit.getByRole('button', { name: 'Add more details' }).click();
+  const details = page.getByRole('region', { name: 'More details' });
 
   // "1 photo", not "None" — and the picture itself is behind the row, to be looked at or taken off.
   await expect(details.getByRole('button', { name: 'Photos' })).toContainText('1 photo');

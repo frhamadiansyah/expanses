@@ -1035,20 +1035,6 @@ export function refiledPost(tx: TransactionView, accounts: readonly AccountRow[]
 }
 
 /**
- * Whether the edit sheet can hold this transaction, or the full form has to open instead.
- *
- * The sheet carries one category, one account and one figure. A split has several categories, a transfer has
- * two money accounts and no category, and a foreign purchase carries a second figure the sheet has no row for.
- */
-export function canEditInSheet(tx: TransactionView): boolean {
-  if (!isEditable(tx)) return false;
-  if (tx.originalCurrency && tx.originalAmountMinor !== null) return false;
-  const c = classify(tx);
-  if (c.type === 'transfer') return false;
-  return c.categoryIds.length === 1;
-}
-
-/**
  * A transaction reopened as a draft: the typed currency is what the merchant charged, when there was one.
  *
  * `photoIds` are the pictures the transaction already has, in the order they were taken. They are a caller's

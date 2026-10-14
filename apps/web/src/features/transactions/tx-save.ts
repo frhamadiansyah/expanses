@@ -21,14 +21,14 @@ export function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): s
  * Everything a save does about **currencies** before it writes anything: the rate the user typed by hand, the
  * rates the posting needs, and the message that asks for one that is missing.
  *
- * One implementation, because the two that existed diverged in the worst possible way. `TransactionCard.submit`
- * read `draft.manualRate`; `EditSheet.save` was a line-for-line copy of it **with the rate block left out** —
- * and `draft.manualRate` had exactly one reader in the whole app. So the phone's edit sheet drew the rate row
- * under More, took the rate, and threw it away: Save said "add it under More", More was where you had just
- * added it, and Save said the same thing again, for ever. The only way out was ⋯ → Open in full form.
+ * One implementation, because two copies diverged in the worst possible way. `TransactionCard.submit` read
+ * `draft.manualRate`; the phone's old edit sheet saved through a line-for-line copy of it **with the rate block
+ * left out** — so it drew the rate row, took the rate, and threw it away: Save said "add it under More", More was
+ * where it had just been added, and Save said the same thing again, for ever. That sheet is gone (a phone edits
+ * on the full card now), and the one implementation stays so a second screen cannot grow a second copy.
  *
- * `where` is the only thing the two callers still differ by — the card's row sits under "Add more details" and
- * the sheet's under "More", and the message has to say which — so that is a parameter rather than a copy.
+ * `where` is what the callers differ by — the card's row sits under "Add more details", a row's under "Edit" —
+ * and the message has to say which, so that is a parameter rather than a copy.
  *
  * Throws with the words the user reads; the caller has already put the pair into `needsRate` by then, which is
  * what puts the rate row on screen (§3.3).
