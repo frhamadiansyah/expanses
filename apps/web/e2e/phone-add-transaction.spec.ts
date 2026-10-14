@@ -464,7 +464,7 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago Syariah');
 });
 
-test('the dock has a decimal comma for dollars, and keeps 00 for rupiah', async ({ page }) => {
+test('the dock has a decimal comma for dollars and for a rupiah single amount, and keeps 00 for a rupiah transfer', async ({ page }) => {
   await addWallet(page);
   await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
   await page.goto('/transactions');
@@ -472,9 +472,18 @@ test('the dock has a decimal comma for dollars, and keeps 00 for rupiah', async 
   const form = addForm(page);
   const keypad = page.getByTestId('keypad');
 
+  // A transfer's figure is whole in rupiah: the dock keeps its 00.
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   await expect(keypad.getByRole('button', { name: '00', exact: true })).toBeVisible();
   await expect(keypad.getByRole('button', { name: ',', exact: true })).toHaveCount(0);
+  await keypad.getByRole('button', { name: 'Close keypad' }).click();
+
+  // An expense's single amount takes cents in rupiah too (spec 2026-10-14): the comma stands where 00 was.
+  await form.getByRole('radio', { name: 'Expense', exact: true }).click();
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await expect(keypad.getByRole('button', { name: ',', exact: true })).toBeVisible();
+  await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
   await keypad.getByRole('button', { name: 'Close keypad' }).click();
 
   await form.getByRole('button', { name: 'Paid with' }).click();
