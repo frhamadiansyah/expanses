@@ -148,6 +148,22 @@ describe('sorting and days', () => {
     expect(sortRows(undated, { key: 'date', dir: 'desc' }).map((row) => row.id)).toEqual(['d2', 'd1', superindo.id]);
   });
 
+  it('keeps a day in the order rows were moved to by hand: unplaced newest first, then placed by place, drafts ahead', () => {
+    const placed = (description: string, dayOrder: number | null, createdAt: string) =>
+      tx('2026-09-20', description, [['groceries', 1000], ['bca', -1000]], { dayOrder, createdAt });
+    const one = placed('One', 2, '2026-09-20T00:00:01Z');
+    const two = placed('Two', 1, '2026-09-20T00:00:02Z');
+    const fresh = placed('Fresh', null, '2026-09-20T00:00:03Z');
+    const older = placed('Older', null, '2026-09-20T00:00:00Z');
+    const day = buildRows([one, two, fresh, older], [draft({ occurredOn: '2026-09-20' })], accounts, cards);
+    expect(sortRows(day, { key: 'date', dir: 'desc' }).map((row) => row.description)).toEqual([expect.anything(), 'Fresh', 'Older', 'Two', 'One']);
+    expect(sortRows(day, { key: 'date', dir: 'desc' })[0]!.kind).toBe('draft');
+    // Oldest day first or newest, a day reads the same way down.
+    expect(sortRows(day, { key: 'date', dir: 'asc' }).filter((row) => row.kind === 'tx').map((row) => row.description)).toEqual(['Fresh', 'Older', 'Two', 'One']);
+    // Sorted by amount, a place in the day means nothing: equal amounts fall back to newest first.
+    expect(sortRows(day, { key: 'amount', dir: 'desc' }).filter((row) => row.kind === 'tx').map((row) => row.description)).toEqual(['Fresh', 'Two', 'One', 'Older']);
+  });
+
   it('sorts by amount across days', () => {
     const sorted = sortRows(filterRows(rows, EMPTY_FILTERS, accounts), { key: 'amount', dir: 'desc' });
     expect(sorted[0]!.id).toBe(salary.id);

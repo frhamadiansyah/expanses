@@ -6,6 +6,7 @@ import {
   editDraft,
   guessCategoryFromHistory,
   listTransactionsIn,
+  moveTransactionInDay,
   ownerScope,
   postTransaction,
   replaceTransaction,
@@ -36,6 +37,7 @@ import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
+import { DayReorder, movedBy, ReorderControls, reorderAttrs } from './DayReorder';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -195,6 +197,8 @@ export function TransactionsPage() {
   const [converting, setConverting] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  /** A day's rows as they were just dropped, by date, while the write that keeps them there goes out. */
+  const [dropped, setDropped] = useState<Record<string, string[]>>({});
   /** A quick row that took promised money, waiting for its question to be answered in a sheet. */
   const [asking, setAsking] = useState<{ door: Door; exclude: string | null; save: (choice: SetAsideChoice | null) => Promise<void>; settle: (saved: boolean) => void } | null>(null);
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) => setFilters((f) => ({ ...f, [key]: value }));
@@ -277,6 +281,31 @@ export function TransactionsPage() {
   const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
+  /*
+   * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
+   * never in a share that ended (read-only) or among deleted rows, which hold no place. A filtered list moves its rows
+   * among the ones it shows. Until the write lands, a dropped day keeps the order it was dropped in (`dropped`).
+   */
+  const reorderable = view === 'list' && grouping === 'date' && sort.key === 'date' && !filters.showDeleted && !readOnly;
+  const movable = (row: ListRow) => reorderable && row.kind === 'tx' && !row.deleted && row.tx?.status === 'posted';
+  const days = groupByDay(shown).map((day) => {
+    const order = dropped[day.date];
+    if (!order) return day;
+    const at = new Map(order.map((id, i) => [id, i]));
+    const moving = day.rows.filter((row) => at.has(row.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+    let next = 0;
+    return { ...day, rows: day.rows.map((row) => (at.has(row.id) ? moving[next++]! : row)) };
+  });
+  const movableIds = new Map(days.map((day) => [day.date, day.rows.filter(movable).map((row) => row.id)]));
+  function reorder(date: string, movedId: string, order: string[]) {
+    setDropped((was) => ({ ...was, [date]: order }));
+    void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() =>
+      setDropped((was) => {
+        const { [date]: _done, ...rest } = was;
+        return rest;
+      }),
+    );
+  }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
@@ -662,12 +691,19 @@ export function TransactionsPage() {
     // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
     // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
     const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
+    // In a day's own list, by date: the row can be moved within its day.
+    const dayIds = !withDate && movable(row) ? movableIds.get(row.date) : undefined;
+    const moveBy = (by: -1 | 1) => {
+      const order = dayIds && movedBy(dayIds, tx.id, by);
+      if (order) reorder(row.date, tx.id, order);
+    };
     return (
       <TransactionRow
         key={tx.id}
         row={row}
         accounts={accounts}
         phone={phone}
+        itemProps={dayIds ? reorderAttrs(tx.id) : undefined}
         title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
         // A phone taps for the receipt and swipes for the rest; a desktop keeps its editor in place, untouched.
         // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
@@ -736,6 +772,8 @@ export function TransactionsPage() {
               clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
             )}
             <ReceiptLink description={row.description} transactionId={tx.id} />
+            {/* A wide screen's way to move it: the ≡ handle, and Move up and Move down without dragging. */}
+            {dayIds && dayIds.length > 1 && !phone && <ReorderControls description={row.description} onMove={moveBy} />}
           </>
         }
       />
@@ -1171,10 +1209,17 @@ export function TransactionsPage() {
                 });
               })()
             ) : (
-              groupByDay(shown).map((day) => (
+              days.map((day) => (
                 <Card key={day.date || 'undated'}>
                   <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
-                  <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
+                  <DayReorder
+                    className="divide-y divide-slate-100"
+                    enabled={(movableIds.get(day.date)?.length ?? 0) > 1}
+                    phone={phone}
+                    onMove={(movedId, order) => reorder(day.date, movedId, order)}
+                  >
+                    {day.rows.map((row) => rowView(row))}
+                  </DayReorder>
                 </Card>
               ))
             )
