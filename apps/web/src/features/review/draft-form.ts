@@ -7,15 +7,20 @@
  * them, the rule for when the ✓ may record, and which fields the owner corrected against what was read: the
  * corrections are what teach a source its layout.
  */
-import { evaluateAmount } from '@expanses/core';
+import { evaluateExact } from '@expanses/core';
 import type { DraftRow, NewDraft } from '@expanses/db';
-import type { FormDraft } from '../transactions/tx-form';
+import { DECIMALS_REFUSAL, decimalsDirection, type FormDraft } from '../transactions/tx-form';
 import { majorText } from './capture-view';
 
-/** What `editDraft` takes: everything the form can change about a draft. */
+/**
+ * What `editDraft` takes: everything the form can change about a draft. The exact figure is optional, and named only
+ * when the figure was typed with cents: left out, `editDraft` keeps the draft's own while the amount, currency and
+ * kind stand, and clears it when any of them changes.
+ */
 export type DraftPatch = Required<
   Pick<NewDraft, 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId' | 'amountMinor' | 'currency' | 'description' | 'occurredOn'>
->;
+> &
+  Pick<NewDraft, 'exactHundredths'>;
 
 /** The form's fields, filled from what was read. Spread over an empty form: it stays an add, not an edit. */
 export function formFromDraft(draft: DraftRow): Partial<FormDraft> {
@@ -37,11 +42,20 @@ export function formFromDraft(draft: DraftRow): Partial<FormDraft> {
 /** The currency the form's figure is read in: the flag, else the one the draft was read in. */
 const currencyOf = (form: FormDraft, draft: Pick<DraftRow, 'currency'>) => form.currency || draft.currency;
 
-/** The form's figure in minor units, or null when it is not a positive amount. */
-function figure(form: FormDraft, draft: Pick<DraftRow, 'currency'>): number | null {
-  const minor = evaluateAmount(form.amount, currencyOf(form, draft));
-  return minor !== null && minor > 0 ? minor : null;
+/**
+ * The form's figure in minor units, with the exact figure of one typed with cents (rounded up for money out, down for
+ * money in, as the Add form does), or null when it is not a positive amount. A transfer takes no cents.
+ */
+function read(form: FormDraft, draft: Pick<DraftRow, 'currency'>): { minor: number; exactHundredths: number | null } | null {
+  const result = evaluateExact(form.amount, currencyOf(form, draft), { fractional: decimalsDirection(form) ?? undefined });
+  return result !== null && result.minor > 0 ? result : null;
 }
+
+const figure = (form: FormDraft, draft: Pick<DraftRow, 'currency'>): number | null => read(form, draft)?.minor ?? null;
+
+/** Whether a figure refused for a tab that takes no cents would have read with them. */
+const centsRefused = (form: FormDraft, draft: Pick<DraftRow, 'currency'>): boolean =>
+  decimalsDirection(form) === null && (evaluateExact(form.amount, currencyOf(form, draft), { fractional: 'up' })?.exactHundredths ?? null) !== null;
 
 /**
  * The form, written back onto the draft before it is confirmed — `confirmDraft` reads the row, so what the owner
@@ -50,8 +64,9 @@ function figure(form: FormDraft, draft: Pick<DraftRow, 'currency'>): number | nu
  */
 export function draftPatch(form: FormDraft, draft: Pick<DraftRow, 'currency' | 'description'>): DraftPatch {
   if (form.mode === 'trade') throw new Error('A capture is recorded as an expense, income or a transfer');
-  const minor = figure(form, draft);
-  if (minor === null) throw new Error('Amount must be greater than zero');
+  const figured = read(form, draft);
+  if (figured === null) throw new Error(centsRefused(form, draft) ? DECIMALS_REFUSAL : 'Amount must be greater than zero');
+  const { minor, exactHundredths } = figured;
   const transfer = form.mode === 'transfer';
   return {
     kind: form.mode,
@@ -64,6 +79,7 @@ export function draftPatch(form: FormDraft, draft: Pick<DraftRow, 'currency' | '
     currency: currencyOf(form, draft),
     description: form.description.trim() || draft.description,
     occurredOn: form.occurredOn,
+    ...(exactHundredths !== null ? { exactHundredths } : {}),
   };
 }
 
