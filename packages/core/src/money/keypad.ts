@@ -76,8 +76,11 @@ export function evaluateAmount(expression: string, currency: string, options: Am
 
 /**
  * What DONE works out, with the exact figure: `minor` is what `evaluateAmount` returns, and `exactHundredths` is the
- * magnitude of the whole expression in hundredths when `fractional` is set, the currency has no minor unit and the
- * result is not a whole number of units; null otherwise.
+ * magnitude of the whole expression in hundredths when `fractional` is set, the currency has no minor unit, a typed
+ * figure has non-zero cents and the result is not a whole number of units; null otherwise.
+ *
+ * With no typed cents the expression is worked out exactly as without `fractional` (to the nearest unit, so
+ * "100÷3" is 33 either way).
  *
  * The operands are summed exactly in hundredths and rounded once, at the end: "12.500,30+0,80" is 12.501,10, so
  * 12.502 rounded up, exact 1250110. A count after × or ÷ is still a whole number, and a quotient is taken to the
@@ -85,16 +88,25 @@ export function evaluateAmount(expression: string, currency: string, options: Am
  */
 export function evaluateExact(expression: string, currency: string, options: AmountOptions = {}): { minor: number; exactHundredths: number | null } | null {
   const direction = options.fractional;
-  if (!direction || currencyInfo(currency).exponent !== 0) {
+  const whole = (): { minor: number; exactHundredths: null } | null => {
     const minor = evaluateAmount(expression, currency, { refund: options.refund });
     return minor === null ? null : { minor, exactHundredths: null };
-  }
-  return signed(expression, options, (normalised) => {
-    const hundredths = combine(normalised, (text) => hundredthsFigure(text, currency));
+  };
+  if (!direction || currencyInfo(currency).exponent !== 0) return whole();
+  let typedCents = false;
+  const exact = signed(expression, options, (normalised) => {
+    const hundredths = combine(normalised, (text) => {
+      const figure = hundredthsFigure(text, currency);
+      if (figure !== null && figure % 100 !== 0) typedCents = true;
+      return figure;
+    });
     if (hundredths === null) return null;
-    const exact = Math.abs(hundredths);
-    return { minor: wholeFromHundredths(hundredths, direction), exactHundredths: exact % 100 === 0 ? null : exact };
+    const magnitude = Math.abs(hundredths);
+    return { minor: wholeFromHundredths(hundredths, direction), exactHundredths: magnitude % 100 === 0 ? null : magnitude };
   });
+  // Only a typed figure with cents makes the expression exact. Without one — "100÷3" — it is worked out as it always
+  // was, to the nearest unit, so a whole expression never rounds differently because decimals were allowed.
+  return typedCents ? exact : whole();
 }
 
 /**

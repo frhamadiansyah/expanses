@@ -147,6 +147,40 @@ describe('decimals on a currency with no minor unit, when the caller allows them
     expect(evaluateAmount('10.00÷3', 'USD', { fractional: 'up' })).toBe(333);
   });
 
+  it('rounds by direction only when a typed figure has cents; a whole expression is worked out as it always was', () => {
+    // 100÷3 has no typed cents: 33 to the nearest rupiah, either way, and no exact figure.
+    expect(evaluateExact('100÷3', 'IDR', { fractional: 'up' })).toEqual({ minor: 33, exactHundredths: null });
+    expect(evaluateAmount('100÷3', 'IDR', { fractional: 'up' })).toBe(33);
+    // 5÷2 is a true half: away from zero, not floored, even for an income.
+    expect(evaluateExact('5÷2', 'IDR', { fractional: 'down' })).toEqual({ minor: 3, exactHundredths: null });
+    expect(evaluateExact('−100÷3', 'IDR', { refund: true, fractional: 'up' })).toEqual({ minor: -33, exactHundredths: null });
+    // A typed fraction anywhere in it, and the whole expression is exact: 100,30÷3 = 33,43 → 34 up.
+    expect(evaluateExact('100,30÷3', 'IDR', { fractional: 'up' })).toEqual({ minor: 34, exactHundredths: 3343 });
+    expect(evaluateExact('100÷3+0,10', 'IDR', { fractional: 'up' })).toEqual({ minor: 34, exactHundredths: 3343 });
+    // Typed ",00" is no fraction.
+    expect(evaluateExact('100,00÷3', 'IDR', { fractional: 'up' })).toEqual({ minor: 33, exactHundredths: null });
+  });
+
+  it('property: an expression with no typed cents gives the same result with fractional as without it', () => {
+    const term = fc.tuple(fc.integer({ min: 0, max: 100_000_000 }), fc.constantFrom('', '×', '÷'), fc.integer({ min: 1, max: 12 }));
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(term, fc.constantFrom('+', '−')), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom('up' as const, 'down' as const),
+        fc.boolean(),
+        fc.boolean(),
+        (terms, direction, refund, lead) => {
+          const body = terms.map(([[n, op, k], sign], i) => `${i === 0 ? '' : sign}${n}${op ? `${op}${k}` : ''}`).join('');
+          const text = refund && lead ? `−${body}` : body;
+          const plain = evaluateAmount(text, 'IDR', { refund });
+          expect(evaluateAmount(text, 'IDR', { refund, fractional: direction })).toBe(plain);
+          expect(evaluateExact(text, 'IDR', { refund, fractional: direction })).toEqual(plain === null ? null : { minor: plain, exactHundredths: null });
+        },
+      ),
+      run,
+    );
+  });
+
   it('property: a single figure reads as parseFractionalMajor reads it', () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 10_000_000_000 }), fc.integer({ min: 0, max: 99 }), fc.boolean(), (whole, cents, up) => {
