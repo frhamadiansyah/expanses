@@ -171,3 +171,25 @@ describe('readCapture', () => {
     });
   });
 });
+
+describe('readCapture on a figure with cents in a currency with no minor unit', () => {
+  it('carries the exact figure on the reading, beside the rounded minor, for the draft to round by direction', () => {
+    const spent = readCapture(notification('Pembayaran Rp12.500,30 ke KOPI KENANGAN berhasil'), WORDS, null);
+    expect(spent.amount?.value).toEqual({ minor: 12_500, currency: 'IDR', exactHundredths: 1_250_030 });
+    const received = readCapture(notification('Dana masuk Rp 12.345,67 dari PT MAJU JAYA'), WORDS, null);
+    expect(received.amount?.value).toEqual({ minor: 12_346, currency: 'IDR', exactHundredths: 1_234_567 });
+  });
+
+  it('carries the exact figure through a learned template too', () => {
+    const lines = image(['Transaksi Berhasil', 'Nilai Kirim', 'Rp12.500,30', 'Biaya layanan', 'Rp250.000']);
+    const reading = readCapture(lines, WORDS, { amount: { label: 'Nilai Kirim', region: null } });
+    expect(reading.amount?.confidence).toBe(95);
+    expect(reading.amount?.value).toEqual({ minor: 12_500, currency: 'IDR', exactHundredths: 1_250_030 });
+  });
+
+  it('adds nothing to a whole figure', () => {
+    const reading = readCapture(notification('Pembayaran Rp38.000 ke KOPI KENANGAN berhasil'), WORDS, null);
+    expect(reading.amount?.value).toStrictEqual({ minor: 38_000, currency: 'IDR' });
+  });
+});
+

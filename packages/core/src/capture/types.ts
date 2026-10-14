@@ -46,10 +46,21 @@ export interface Field<T> {
   line: number | null;
 }
 
+/** A read amount: see `Reading.amount`. */
+export interface ReadAmount {
+  minor: number;
+  currency: string | null;
+  exactHundredths?: number;
+}
+
 /** What one capture says. `skipped` is set when nothing is read at all, and why. */
 export interface Reading {
   skipped: null | 'promo' | 'unreadable';
-  amount: Field<{ minor: number; currency: string | null }> | null;
+  /**
+   * The amount in minor units, rounded to the nearest unit, and — for a currency with no minor unit whose printed
+   * cents are not zero — the exact figure in hundredths. The draft rounds the exact figure by the money's direction.
+   */
+  amount: Field<ReadAmount> | null;
   /** ISO date-time; the date alone when the capture printed no time. */
   occurredAt: Field<string> | null;
   type: Field<MoveType>;

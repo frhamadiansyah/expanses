@@ -1,4 +1,5 @@
-import { parseMajor } from '../money/money';
+import { currencyInfo, isSupportedCurrency } from '../money/currencies';
+import { parseFractionalMajor, parseMajor, type RoundDirection, wholeFromHundredths } from '../money/money';
 
 /** RFC 4180 parsing: quoted fields, escaped quotes, CRLF or LF, leading BOM. Blank lines are dropped. */
 export function parseCsv(text: string, delimiter = ','): string[][] {
@@ -68,6 +69,11 @@ export interface CsvRow {
   description: string;
   /** Positive = money out or card charge; negative = money in, payment, or refund. */
   amountMinor: number;
+  /**
+   * For a currency with no minor unit, the row's figure in hundredths when its cents are not zero (always positive);
+   * `amountMinor` is then that figure rounded up when money went out and down when it came in. Absent otherwise.
+   */
+  exactHundredths?: number;
   externalRef: string;
 }
 
@@ -99,16 +105,49 @@ export function parseCsvDate(value: string, format: CsvDateFormat): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Parses "Rp 1.250.000", "(12.50)", "-1,234.56", "1.234,56 CR" style amounts. */
-export function parseCsvAmount(value: string, currency: string): number | null {
+/**
+ * Parses "Rp 1.250.000", "(12.50)", "-1,234.56", "1.234,56 CR" style amounts.
+ *
+ * With `direction`, a currency with no minor unit also takes cents ("Rp 12.500,30"), rounded that way: 'up' for
+ * money out, 'down' for money in. Without it, cents on such a currency are refused, as they always were.
+ */
+export function parseCsvAmount(value: string, currency: string, direction?: RoundDirection): number | null {
+  if (direction) return parseCsvExact(value, currency, direction)?.minor ?? null;
+  const parts = csvFigure(value);
+  if (parts === null) return null;
+  const minor = parseMajor(parts.cleaned, currency);
+  return parts.negative ? -minor : minor;
+}
+
+/**
+ * Like `parseCsvAmount` with a direction, with the exact figure beside it: for a currency with no minor unit whose
+ * cents are not zero, the magnitude in hundredths (always positive; the sign is on `minor`). Null for an empty cell.
+ */
+export function parseCsvExact(value: string, currency: string, direction: RoundDirection): { minor: number; exactHundredths: number | null } | null {
+  const parts = csvFigure(value);
+  if (parts === null) return null;
+  const { minor, exactHundredths } = parseFractionalMajor(parts.cleaned, currency, direction);
+  return { minor: parts.negative ? -minor : minor, exactHundredths };
+}
+
+/** A CSV cell's digits and separators, and whether it says the money is negative; null for an empty cell. */
+function csvFigure(value: string): { cleaned: string; negative: boolean } | null {
   const v = value.trim();
   if (v === '' || v === '-') return null;
   // Negative: parentheses, a leading minus, a trailing minus after a digit, or a CR marker. "50.000,-" is Indonesian for no decimals.
   const negative = /^\(.*\)$/.test(v) || /^[^0-9]*-/.test(v) || /\d\s*-$/.test(v) || /\bCR\b/i.test(v);
   const cleaned = v.replace(/[^0-9.,]/g, '').replace(/[.,]+$/, '');
   if (!/[0-9]/.test(cleaned)) throw new Error(`"${value}" is not an amount`);
-  const minor = parseMajor(cleaned, currency);
-  return negative ? -minor : minor;
+  return { cleaned, negative };
+}
+
+/** A cell in hundredths, signed: what the row is netted in before it is rounded, for a currency with no minor unit. */
+function csvHundredths(value: string, currency: string): number | null {
+  const parts = csvFigure(value);
+  if (parts === null) return null;
+  const { minor, exactHundredths } = parseFractionalMajor(parts.cleaned, currency, 'down');
+  const magnitude = exactHundredths ?? minor * 100;
+  return parts.negative ? -magnitude : magnitude;
 }
 
 function normalizeDescription(s: string): string {
@@ -128,22 +167,32 @@ export function mapCsvRows(rows: string[][], mapping: CsvMapping, currency: stri
       const cell = (col: number | null) => (col === null ? '' : (cells[col] ?? ''));
       const occurredOn = parseCsvDate(cell(mapping.dateColumn), mapping.dateFormat);
       const description = normalizeDescription(cell(mapping.descriptionColumn));
-      let amountMinor: number;
+      // A currency with no minor unit is read in hundredths, so a row's cents survive until the row is rounded — once,
+      // by its sign: up when money went out, down when it came in.
+      const fractional = isSupportedCurrency(currency) && currencyInfo(currency).exponent === 0;
+      const read = (col: number | null) => (fractional ? csvHundredths(cell(col), currency) : parseCsvAmount(cell(col), currency));
+      let total: number;
       if (mapping.amountColumn !== null) {
-        const amount = parseCsvAmount(cell(mapping.amountColumn), currency);
+        const amount = read(mapping.amountColumn);
         if (amount === null) throw new Error('Amount is empty');
-        amountMinor = mapping.negativeIsOutflow ? -amount : amount;
+        total = mapping.negativeIsOutflow ? -amount : amount;
       } else {
-        const outflow = parseCsvAmount(cell(mapping.outflowColumn), currency);
-        const inflow = parseCsvAmount(cell(mapping.inflowColumn), currency);
+        const outflow = read(mapping.outflowColumn);
+        const inflow = read(mapping.inflowColumn);
         if (outflow === null && inflow === null) throw new Error('Both amount columns are empty');
-        amountMinor = Math.abs(outflow ?? 0) - Math.abs(inflow ?? 0);
+        total = Math.abs(outflow ?? 0) - Math.abs(inflow ?? 0);
+      }
+      let amountMinor = total;
+      let exact: number | null = null;
+      if (fractional) {
+        amountMinor = wholeFromHundredths(total, total > 0 ? 'up' : 'down');
+        exact = Math.abs(total) % 100 === 0 ? null : Math.abs(total);
       }
       if (amountMinor === 0) throw new Error('Amount is zero');
       const key = `${occurredOn}|${amountMinor}|${description.toLowerCase()}`;
       const occurrence = seen.get(key) ?? 0;
       seen.set(key, occurrence + 1);
-      out.push({ rowNumber, occurredOn, description, amountMinor, externalRef: `csv:${refScope}|${key}|${occurrence}` });
+      out.push({ rowNumber, occurredOn, description, amountMinor, ...(exact === null ? {} : { exactHundredths: exact }), externalRef: `csv:${refScope}|${key}|${occurrence}` });
     } catch (error) {
       errors.push({ rowNumber, message: error instanceof Error ? error.message : String(error) });
     }

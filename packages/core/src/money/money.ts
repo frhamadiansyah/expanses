@@ -24,7 +24,50 @@ export function roundHalfAwayFromZero(x: number): number {
  * every other "." or "," is a thousands separator.
  */
 export function parseMajor(input: string, currency: string): number {
+  return parseAtExponent(input, currency, currencyInfo(currency).exponent);
+}
+
+/**
+ * Which way a figure with cents is rounded to a currency that has none: 'up' for money out (an expense, a refund of
+ * one — the card charges the purchase rounded up), 'down' for money in (an income).
+ */
+export type RoundDirection = 'up' | 'down';
+
+/**
+ * An exact figure in hundredths, as whole units rounded `direction`. The magnitude is rounded and the sign kept, so
+ * a refund of 12.500,30 rounded up is −12.501.
+ *
+ * Integer arithmetic only: `n / 100` in floating point can land on the wrong side of a whole number near the top of
+ * the safe range.
+ */
+export function wholeFromHundredths(hundredths: number, direction: RoundDirection): number {
+  assertMinor(hundredths, 'hundredths');
+  const magnitude = Math.abs(hundredths);
+  const cents = magnitude % 100;
+  const floor = (magnitude - cents) / 100;
+  const whole = direction === 'up' && cents !== 0 ? floor + 1 : floor;
+  return hundredths < 0 && whole !== 0 ? -whole : whole;
+}
+
+/**
+ * Like `parseMajor`, but a currency with no minor unit (IDR, JPY, KRW — by exponent, never by name) also takes up to
+ * two decimals: the figure comes back rounded `direction` to whole units, with the exact magnitude in hundredths
+ * beside it when the decimals are not zero (12.500,30 → 12.501 up, 12.500 down, exact 1250030). A whole figure, or
+ * one whose decimals are zero, has no exact figure.
+ *
+ * The separators are read by the same rule as `parseMajor`, so "12.500" is still twelve thousand five hundred. A
+ * currency with decimals of its own is read exactly as `parseMajor` reads it and never has an exact figure.
+ */
+export function parseFractionalMajor(text: string, currency: string, direction: RoundDirection): { minor: number; exactHundredths: number | null } {
   const { exponent } = currencyInfo(currency);
+  if (exponent !== 0) return { minor: parseMajor(text, currency), exactHundredths: null };
+  const hundredths = parseAtExponent(text, currency, 2);
+  const exact = Math.abs(hundredths);
+  return { minor: wholeFromHundredths(hundredths, direction), exactHundredths: exact % 100 === 0 ? null : exact };
+}
+
+/** `parseMajor`'s reading, at a given number of decimals rather than the currency's own. */
+function parseAtExponent(input: string, currency: string, exponent: number): number {
   let s = input.trim().replace(/[\s_]/g, '');
   let negative = false;
   if (s.startsWith('-')) {

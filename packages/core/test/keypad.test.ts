@@ -1,5 +1,6 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { evaluateAmount, parseMajor } from '../src/index';
+import { evaluateAmount, evaluateExact, parseFractionalMajor, parseMajor } from '../src/index';
 
 /*
  * Every figure the keypad reads is read by `parseMajor`, which is separator-agnostic: the last "." or "," followed
@@ -94,5 +95,90 @@ describe('a refund typed with a leading minus', () => {
     expect(evaluateAmount('−0', 'IDR', { refund: true })).toBeNull();
     expect(evaluateAmount('−−5', 'IDR', { refund: true })).toBeNull();
     expect(evaluateAmount('+5', 'IDR', { refund: true })).toBeNull();
+  });
+});
+
+describe('decimals on a currency with no minor unit, when the caller allows them', () => {
+  const run = { numRuns: 300, seed: 20261014 } as const;
+
+  it('sums the operands exactly in hundredths and rounds once, at the end', () => {
+    // 12.500,30 + 0,80 = 12.501,10, rounded once. Rounding each operand first would give 12.500 + 0 = 12.500 for an
+    // income, where the exact sum rounds down to 12.501.
+    expect(evaluateExact('12.500,30+0,80', 'IDR', { fractional: 'up' })).toEqual({ minor: 12_502, exactHundredths: 1_250_110 });
+    expect(evaluateAmount('12.500,30+0,80', 'IDR', { fractional: 'up' })).toBe(12_502);
+    expect(evaluateExact('12.500,30+0,80', 'IDR', { fractional: 'down' })).toEqual({ minor: 12_501, exactHundredths: 1_250_110 });
+    // 0,30 + 0,70 is one whole rupiah: no exact figure, and no rounding to do.
+    expect(evaluateExact('0,30+0,70', 'IDR', { fractional: 'up' })).toEqual({ minor: 1, exactHundredths: null });
+  });
+
+  it('rounds an expense up and an income down', () => {
+    expect(evaluateExact('12.500,30', 'IDR', { fractional: 'up' })).toEqual({ minor: 12_501, exactHundredths: 1_250_030 });
+    expect(evaluateExact('12.345,67', 'IDR', { fractional: 'down' })).toEqual({ minor: 12_345, exactHundredths: 1_234_567 });
+  });
+
+  it('keeps × and ÷ counts whole', () => {
+    expect(evaluateExact('12.500,30×2', 'IDR', { fractional: 'up' })).toEqual({ minor: 25_001, exactHundredths: 2_500_060 });
+    expect(evaluateExact('12.500,30×2,5', 'IDR', { fractional: 'up' })).toBeNull();
+    expect(evaluateExact('100,50÷2', 'IDR', { fractional: 'down' })).toEqual({ minor: 50, exactHundredths: 5025 });
+  });
+
+  it('reads a refund: the minor is negative and rounded up in size, the exact figure is positive', () => {
+    expect(evaluateExact('−12.500,30', 'IDR', { refund: true, fractional: 'up' })).toEqual({ minor: -12_501, exactHundredths: 1_250_030 });
+    expect(evaluateAmount('−12.500,30', 'IDR', { refund: true, fractional: 'up' })).toBe(-12_501);
+    // Without the refund option a leading minus is still refused.
+    expect(evaluateExact('−12.500,30', 'IDR', { fractional: 'up' })).toBeNull();
+  });
+
+  it('gives nothing back when the figure comes to nothing once rounded', () => {
+    expect(evaluateExact('0,30', 'IDR', { fractional: 'down' })).toBeNull();
+    expect(evaluateExact('0,30', 'IDR', { fractional: 'up' })).toEqual({ minor: 1, exactHundredths: 30 });
+    expect(evaluateExact('', 'IDR', { fractional: 'up' })).toBeNull();
+    expect(evaluateExact('12,5+', 'IDR', { fractional: 'up' })).toBeNull();
+  });
+
+  it('still refuses decimals when the option is absent, as it always did', () => {
+    expect(evaluateAmount('12.500,30', 'IDR')).toBeNull();
+    expect(evaluateExact('12.500,30', 'IDR')).toBeNull();
+    expect(evaluateExact('12.500', 'IDR')).toEqual({ minor: 12_500, exactHundredths: null });
+  });
+
+  it('leaves a currency with decimals alone', () => {
+    expect(evaluateExact('10.50+2.25', 'USD', { fractional: 'up' })).toEqual({ minor: 1275, exactHundredths: null });
+    expect(evaluateAmount('10.00÷3', 'USD', { fractional: 'up' })).toBe(333);
+  });
+
+  it('property: a single figure reads as parseFractionalMajor reads it', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 10_000_000_000 }), fc.integer({ min: 0, max: 99 }), fc.boolean(), (whole, cents, up) => {
+        const text = `${String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${String(cents).padStart(2, '0')}`;
+        const direction = up ? 'up' : 'down';
+        expect(evaluateExact(text, 'IDR', { fractional: direction })).toEqual(parseFractionalMajor(text, 'IDR', direction));
+      }),
+      run,
+    );
+  });
+
+  it('property: a sum of decimal operands is the ceiling or floor of the exact total', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 0, max: 1_000_000_000 }), { minLength: 1, maxLength: 5 }), fc.boolean(), (operands, up) => {
+        const text = operands.map((h) => `${Math.floor(h / 100)},${String(h % 100).padStart(2, '0')}`).join('+');
+        const exact = operands.reduce((a, b) => a + b, 0);
+        const minor = up ? Math.ceil(exact / 100) : Math.floor(exact / 100);
+        const result = evaluateExact(text, 'IDR', { fractional: up ? 'up' : 'down' });
+        if (minor <= 0) expect(result).toBeNull();
+        else expect(result).toEqual({ minor, exactHundredths: exact % 100 === 0 ? null : exact });
+      }),
+      run,
+    );
+  });
+
+  it('property: a whole expression gives what evaluateAmount gave without the option, and no exact figure', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 1, max: 1_000_000_000 }), { minLength: 1, maxLength: 4 }), fc.boolean(), (operands, up) => {
+        const text = operands.join('+');
+        expect(evaluateExact(text, 'IDR', { fractional: up ? 'up' : 'down' })).toEqual({ minor: evaluateAmount(text, 'IDR'), exactHundredths: null });
+      }),
+      run,
+    );
   });
 });
