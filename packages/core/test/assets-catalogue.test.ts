@@ -6,6 +6,7 @@ import {
   assetItem,
   CASH_ITEMS,
   cashCodeForSubtype,
+  takesPockets,
   cashItem,
   DEBT_ITEMS,
   debtItem,
@@ -65,6 +66,11 @@ describe('cash and cash equivalents', () => {
     }
     expect(cashItem('time_deposit').behaviour).toMatchObject({ valuedBy: 'deposit' });
     expect(cashItem('bank').behaviour).toMatchObject({ valuedBy: 'balance' });
+  });
+
+  it('lets a current account, a saving one and cash hold pockets, and nothing else', () => {
+    for (const kind of ['bank', 'savings', 'cash']) expect(takesPockets(kind)).toBe(true);
+    for (const kind of ['ewallet', 'fund', 'time_deposit', 'other_cash', 'investment', 'credit_card']) expect(takesPockets(kind)).toBe(false);
   });
 
   it('answers with a default code for any subtype, and falls back to tabungan', () => {
