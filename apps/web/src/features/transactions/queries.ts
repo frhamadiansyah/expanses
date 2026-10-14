@@ -10,7 +10,7 @@ import { isEditable } from './draft';
 /**
  * The pictures one transaction already has, for the draft a correction opens with.
  *
- * **One reader, for both ways into a correction.** The card had this inline and the phone's edit sheet had
+ * **One reader, for every way into a correction.** The card had this inline and the phone's old edit sheet had
  * nothing at all — it left `formFromTransaction`'s fourth argument off, so Photos read "None" on a transaction
  * that plainly had a receipt.
  *

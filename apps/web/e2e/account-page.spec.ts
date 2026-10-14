@@ -95,12 +95,40 @@ test('Spend opens a new transaction already paid with the account', async ({ pag
   await expect(page.getByRole('heading', { name: 'Everyday' })).toBeVisible();
 });
 
-test('cash has nothing to add a currency to', async ({ page }) => {
+test('cash takes a second currency like a bank account: it becomes one with pockets, the lira beside the rupiah', async ({ page }) => {
+  await mockRates(page, { TRY: 480 });
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openMoney(page, 'Pocket cash');
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
-  await expect(page.getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add a currency', exact: true }).click();
+  await setCurrency(page.getByLabel('Currency', { exact: true }), 'TRY');
+  await page.getByLabel('Opening TRY').pressSequentially('1000');
+  await page.getByLabel('Rate: IDR per 1 TRY', { exact: true }).pressSequentially('480');
+  await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByText('2 currencies')).toBeVisible();
+  await expect(page.getByTestId('pocket-IDR')).toContainText('300.000');
+  await expect(page.getByTestId('pocket-TRY')).toContainText('1.000');
+  // Named as every pocket is, and still cash.
+  await page.getByTestId('pocket-TRY').click();
+  await expect(page.getByRole('heading', { name: 'Pocket cash · TRY' })).toBeVisible();
+});
+
+test('a new cash account offers Multi-currency, and a wallet does not', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: /^Cash/ }).click();
+  await expect(page.getByLabel('Multi-currency', { exact: true })).toBeVisible();
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: /^Digital wallet/ }).click();
+  await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Multi-currency', { exact: true })).toHaveCount(0);
+});
+
+test('a wallet still has nothing to add a currency to', async ({ page }) => {
+  await openAccount(page, { subtype: 'ewallet', name: 'Pocket wallet', balance: '300000' });
+  await openMoney(page, 'Pocket wallet');
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Add a currency', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');

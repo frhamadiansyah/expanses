@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEvent, addWallet, expectFigures, fillItem } from './event-plan';
+import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -15,13 +15,8 @@ test.beforeEach(({ page }) => {
 test('planning one category never calls the rest of the trip over plan', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Bali holiday');
-  // Recorded through the event's own card, so it is tagged without needing a category the plan names yet.
-  await page.getByRole('button', { name: 'Add spending' }).click();
-  await page.getByLabel('Description').fill('Hotel Uluwatu');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Food and beverage' });
-  await page.getByLabel('Amount', { exact: true }).fill('9200000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  // Recorded through the event's Add spending, so it is tagged without needing a category the plan names yet.
+  await recordIntoEvent(page, { description: 'Hotel Uluwatu', amount: '9200000' });
   await expect(page.getByTestId('event-total')).toContainText('9.200.000');
 
   // The tickets are planned and nothing else is.
@@ -37,10 +32,7 @@ test('planning one category never calls the rest of the trip over plan', async (
    * difference it leaves is a third figure again, so all three rows under the ring are pinned to their own words.
    */
   await page.getByTestId('plan-item').filter({ hasText: 'Museum tickets' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('3500000');
-  await page.getByLabel('Amount', { exact: true }).fill('3400000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await buyItNow(page, { paid: '3400000' });
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Museum tickets' })).toContainText('3.400.000');
   await page.getByRole('link', { name: 'Back to the event' }).click();
 

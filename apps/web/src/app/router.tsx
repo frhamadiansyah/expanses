@@ -57,6 +57,7 @@ import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
+import { newTransactionSearch } from '../features/transactions/new-search';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { AddHoldingPage } from '../features/investments/AddHoldingPage';
@@ -82,23 +83,6 @@ export interface TransactionsSearch {
   view?: 'list' | 'table';
 }
 
-/**
- * A new transaction opened from somewhere that already knows part of it: an account's own page, whose Spend,
- * Receive and Transfer open the form in that mode with the account filled in. `account` is the Paid with, Received
- * into or From; `to` a transfer's To. Nothing given, the form opens as the tab bar's ＋ opens it.
- */
-export interface NewTransactionSearch {
-  mode?: 'expense' | 'income' | 'transfer';
-  account?: string;
-  to?: string;
-}
-
-const newTransactionSearch = (search: Record<string, unknown>): NewTransactionSearch => ({
-  ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' ? { mode: search.mode } : {}),
-  ...(typeof search.account === 'string' && search.account !== '' ? { account: search.account } : {}),
-  ...(typeof search.to === 'string' && search.to !== '' ? { to: search.to } : {}),
-});
-
 export interface LendBorrowSearch {
   /** One person, when Lend & borrow is opened from their row on Debts. */
   person?: string;
@@ -116,10 +100,8 @@ export interface EventPlanSearch {
   ws?: string;
 }
 
-/** The event screen itself: the same tab, plus the item "Buy it now" arrived from, which seeds the Add spending card. */
-export interface EventSearch extends EventPlanSearch {
-  buy?: string;
-}
+/** The event screen itself: the same tab. "Buy it now" opens the Add screen now, so there is no item to carry here. */
+export type EventSearch = EventPlanSearch;
 
 /** Choosing and reading a receipt: the item being answered is carried through both screens so Cancel knows the way back. */
 export interface EventLinkSearch extends EventPlanSearch {
@@ -129,7 +111,7 @@ export interface EventLinkSearch extends EventPlanSearch {
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: text(search.ws) });
-const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws), buy: text(search.buy) });
+const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws) });
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 /** The Categories list's tab, in the address so the way back from an income category lands on Income. */
@@ -168,7 +150,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
-  // The card again, on one transaction — what the edit sheet's ⋯ reaches for what a sheet cannot hold.
+  // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
   // The Add screen again, started from one transaction: Duplicate on a row's swipe, the receipt and the desktop's editor.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/duplicate', component: DuplicateTransactionRoute }),

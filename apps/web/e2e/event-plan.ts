@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addForm, addTransaction, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
 // in Jakarta it names yesterday and any window built from it excludes what was just recorded.
@@ -161,10 +161,12 @@ export async function spend(page: Page, description: string, amount: string) {
   await expect(page.getByRole('listitem').filter({ hasText: description }).first()).toBeVisible();
 }
 
-export async function addEvent(page: Page, name: string) {
+/** An event for today. `set` is the category set it draws on, chosen by name; none, and it files under the monthly tree. */
+export async function addEvent(page: Page, name: string, set?: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: 'Add an event' }).click();
   await page.getByLabel('Name', { exact: true }).fill(name);
+  if (set) await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();
@@ -213,4 +215,51 @@ export async function planFor(page: Page, category: string, amount: string, opti
   await addItem(page, { name: category, price: amount, category: option });
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await expect(page.getByTestId('open-plan')).toBeVisible();
+}
+
+/**
+ * Records spending into the open event through its Add spending, which opens the ordinary Add screen with the event
+ * already set — and Save comes back to the event it was opened from.
+ *
+ * Paid with is chosen before the figure, because a figure typed with a minus first is money back and the row then
+ * asks where the money went ("Into") rather than what paid. The keypad a phone types on takes digits only, so money
+ * back is a desktop journey.
+ */
+export async function recordIntoEvent(
+  page: Page,
+  tx: { description: string; amount: string; category?: string; paidWith?: string },
+) {
+  const event = page.url();
+  await page.getByRole('button', { name: 'Add spending' }).click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, tx.paidWith ?? 'BCA Tahapan');
+  await openAmount(form);
+  await fillAmount(page, form, tx.amount);
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: tx.category ?? 'Food and beverage', exact: true }).click();
+  await form.getByLabel('Note').fill(tx.description);
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(event);
+}
+
+/**
+ * "Buy it now" on an item's page: the Add screen, filled in from the item, and Save ties the payment to it.
+ *
+ * Only Paid with has to be chosen. `paid` is the receipt's real figure typed over the estimate — cleared first, so a
+ * phone's keypad replaces the estimate rather than typing after it. Returns the form, still open when Save refused.
+ */
+export async function buyItNow(page: Page, options: { paid?: string; paidWith?: string } = {}) {
+  await page.getByRole('button', { name: 'Buy it now' }).click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, options.paidWith ?? 'BCA Tahapan');
+  if (options.paid !== undefined) {
+    await form.getByRole('button', { name: 'Clear amount' }).click();
+    await openAmount(form);
+    await fillAmount(page, form, options.paid);
+  }
+  await saveButton(form).click();
+  return form;
 }

@@ -2,24 +2,16 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { addEvent, addItem, addWallet, expectCover, expectFigures, expectGauge, expectKitFigures, fillItem, moneyIn, spend } from './event-plan';
+import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
+import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, fillItem, moneyIn, recordIntoEvent, spend } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-/** Records spending straight into the open event, which is the only form in the app that can tag as it posts. */
-async function recordInto(page: Page, description: string, amount: string, category = 'Food and beverage') {
-  await page.getByRole('button', { name: 'Add spending' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: category });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByLabel('Description')).toHaveValue('');
-  await page.getByRole('button', { name: 'Done' }).click();
-}
+/** Records spending straight into the open event: its Add spending opens the Add screen with the event set. */
+const recordInto = (page: Page, description: string, amount: string) => recordIntoEvent(page, { description, amount });
 
 /**
  * The ledger as the database actually holds it, taken out through the door a user has: Download backup.
@@ -47,6 +39,90 @@ async function ledgerOf(page: Page): Promise<{ entries: unknown[]; postings: unk
     db.close();
   }
 }
+
+/**
+ * An event's Add spending is the ordinary Add screen, opened with the event already set.
+ *
+ * The event page used to carry a smaller form of its own. Now the corner's ＋ opens the one screen every
+ * transaction is recorded on — Expense, with the Event row filled in and in view — and Back and Save both come back
+ * to the event, where the payment is already tagged: on the ring and in the history without any hunting afterwards.
+ */
+test('Add spending opens the Add screen with the event filled in, and saving lands back on the event', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  const event = page.url();
+
+  await page.getByRole('button', { name: 'Add spending' }).click();
+  await expect(page).toHaveURL(/\/transactions\/new\?event=/);
+  const form = addForm(page);
+  await expect(form.getByRole('radio', { name: 'Expense' })).toBeChecked();
+  await expect(form.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Event', exact: true })).toContainText('Newborn');
+  // Back writes nothing and goes back where it came from.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(event);
+  await expect(page.getByTestId('event-history')).toHaveCount(0);
+
+  // Saved, it comes back to the event with the payment on it.
+  await recordIntoEvent(page, { description: 'Stroller wheels', amount: '650000' });
+  await expect(page.getByTestId('event-total')).toContainText('650.000');
+  await expect(page.getByTestId('event-history')).toContainText('Stroller wheels');
+});
+
+/**
+ * The note's history fills Category with where that note went last time — but recording into an event with a set,
+ * Category holds the set's categories only, and the history does not know this spending is the event's. Typed before
+ * Category is touched, "Indomaret" must not come back filed under the monthly Groceries the set's list never offers.
+ */
+test("a note typed into an event's spending does not fill in a category the event's set would not offer", async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Indomaret Bintaro', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '85000' });
+  await addEvent(page, 'Rumah Bintaro', 'Renovation');
+
+  await page.getByRole('button', { name: 'Add spending' }).click();
+  const form = addForm(page);
+  const category = form.getByRole('button', { name: /^Category/ });
+  await form.getByLabel('Note').fill('Indomaret Bintaro');
+  // Longer than the quarter of a second the guess waits for, so a guess that was going to land has landed.
+  await page.waitForTimeout(600);
+  await expect(category).toContainText('Choose later');
+  await expect(category).not.toContainText('Groceries');
+  // The set's own categories are still what the row offers.
+  await category.click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await expect(picker.getByRole('button', { name: 'Flooring & Tiles', exact: true })).toBeVisible();
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+  // The everyday form still guesses as it always has — and choosing the event afterwards takes the guess back.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const everyday = addForm(page);
+  const row = everyday.getByRole('button', { name: /^Category/ });
+  await everyday.getByLabel('Note').fill('Indomaret Bintaro');
+  await expect(row).toContainText('Groceries');
+  await everyday.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('region', { name: 'More details' });
+  await more.getByRole('button', { name: 'Event' }).click();
+  await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Rumah Bintaro' }).click();
+  await expect(more.getByRole('button', { name: 'Event' })).toContainText('Rumah Bintaro');
+  await expect(row).toContainText('Choose later');
+
+  // Picked by hand, a category stays whatever the Event row then says.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const byHand = addForm(page);
+  await byHand.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await byHand.getByRole('button', { name: 'Add more details' }).click();
+  const details = page.getByRole('region', { name: 'More details' });
+  await details.getByRole('button', { name: 'Event' }).click();
+  await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Rumah Bintaro' }).click();
+  await expect(details.getByRole('button', { name: 'Event' })).toContainText('Rumah Bintaro');
+  await page.waitForTimeout(300);
+  await expect(byHand.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
+});
 
 test('a plan is a list of things to buy, and a category is only their sum', async ({ page }) => {
   await addWallet(page);
@@ -184,12 +260,23 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await addItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
   await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
 
-  // Buy it now: pre-filled from the item, and only the real price changes.
+  // Buy it now: the Add screen, pre-filled from the item — its name, its estimate, its category, the event — and
+  // only what paid and the real price change.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Buy it now' }).click();
-  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
-  await page.getByLabel('Amount', { exact: true }).fill('7200000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const buying = addForm(page);
+  await expect(page.getByRole('heading', { name: 'Buy Crib' })).toBeVisible();
+  await expect(buying).toContainText('Filled in from the estimate');
+  await expect(buying.getByLabel('Note')).toHaveValue('Crib');
+  await expect(buying.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
+  await expect(buying.getByRole('button', { name: /^Category/ })).toContainText('Food and beverage');
+  await expect(buying.getByRole('button', { name: 'Event', exact: true })).toContainText('Newborn');
+  await buying.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Tahapan');
+  await buying.getByLabel('Amount', { exact: true }).fill('7200000');
+  await saveButton(buying).click();
+  // Save lands on the plan, with the item ticked off.
+  await expect(page).toHaveURL(/\/events\/[^/]+\/plan$/);
   const crib = page.getByTestId('plan-item').filter({ hasText: 'Crib' });
   await expect(crib).toContainText('7.200.000');
   await expect(crib).toContainText('−Rp 300.000');
@@ -233,8 +320,7 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
 
   // The crib's own receipt takes the whole of itself, which is what one tick means.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByRole('button', { name: 'Save' }).click();
+  await buyItNow(page);
 
   // So the other item is not offered it: the row is there, said plainly, and is not a link to click.
   await page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' }).getByRole('link').click();
@@ -330,9 +416,7 @@ test('the figures agree with each other', async ({ page }) => {
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Bottle steriliser' }).click();
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByLabel('Amount', { exact: true }).fill('7200000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await buyItNow(page, { paid: '7200000' });
 
   const totals = page.getByTestId('plan-totals');
   await expectKitFigures(totals, {
@@ -428,8 +512,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await page.getByRole('link', { name: 'Add the first item' }).click();
   await fillItem(page, { name: 'Crib', price: '3000000', category: 'Food and beverage' });
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByRole('button', { name: 'Save' }).click();
+  await buyItNow(page);
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await recordInto(page, 'Hampers', '5000000');
@@ -526,9 +609,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
 
   for (const [name, paid] of [['Crib', '7200000'], ['Car seat', '6500000']] as const) {
     await page.getByTestId('plan-item').filter({ hasText: name }).getByRole('link').click();
-    await page.getByRole('button', { name: 'Buy it now' }).click();
-    await page.getByLabel('Amount', { exact: true }).fill(paid);
-    await page.getByRole('button', { name: 'Save' }).click();
+    await buyItNow(page, { paid });
     await expect(page.getByRole('button', { name: `Unlink ${name}` })).toBeVisible();
   }
   await expectKitFigures(page.getByTestId('plan-totals'), {
@@ -586,8 +667,8 @@ test('a purchase can be unticked from either screen, and the item itself removed
  * `planPosting` refuses a zero line (`ZERO_AMOUNT`) before anything is inserted, so the three ledger assertions
  * below could not fail with the guard or without it, and a guard narrowed to `amountMinor === 0` sailed through
  * them. Below nought the line is a perfectly good posting and the refusal comes from the *share*, two writes later
- * — so here, and only here, does reading the ledger on both sides mean anything. The zero case is checked after,
- * for its words; it is the negative case that holds the ledger.
+ * — so here, and only here, does reading the ledger on both sides mean anything. The zero case is checked after:
+ * the Add screen never offers Save for it at all; it is the negative case that holds the ledger.
  */
 test('buying something for nothing is refused before a rupiah is written', async ({ page }) => {
   await addWallet(page);
@@ -603,9 +684,9 @@ test('buying something for nothing is refused before a rupiah is written', async
   await page.getByTestId('event-row').click();
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByLabel('Amount', { exact: true }).fill('-5000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const buying = await buyItNow(page, { paid: '-5000' });
+  // Still on the Add screen, so nothing was carried off to the plan as if the item were bought.
+  await expect(buying).toBeVisible();
   // The screen's own words, not the repository's: `SHARE_RANGE` also says "above nought", so a refusal arriving
   // two writes too late would read almost the same. This sentence is only ever said before anything is posted.
   await expect(page.getByRole('alert')).toContainText('What it cost is a figure above nought');
@@ -616,15 +697,18 @@ test('buying something for nothing is refused before a rupiah is written', async
   expect(after.postings).toEqual(before.postings);
   expect(after.claimed).toBe(0);
 
-  // And nought is refused by the same sentence rather than by the ledger's, which would name lines and not money.
+  // And nought is never offered at all: the Add screen's ✓ stays dimmed for a figure that comes to nothing, the
+  // same as for any other purchase, so there is no Save to refuse.
   await page.goto('/events');
   await page.getByTestId('event-row').click();
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByLabel('Amount', { exact: true }).fill('0');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('alert')).toContainText('What it cost is a figure above nought');
+  await buying.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Tahapan');
+  await buying.getByRole('button', { name: 'Clear amount' }).click();
+  await buying.getByLabel('Amount', { exact: true }).fill('0');
+  await expect(saveButton(buying)).toBeDisabled();
 });
 
 /**

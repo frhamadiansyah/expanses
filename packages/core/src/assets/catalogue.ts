@@ -147,6 +147,16 @@ const CASH_CODE_BY_SUBTYPE: Record<MoneyAccountSubtype, string> = {
   other_cash: '0109',
 };
 
+/**
+ * The money accounts that hold several currencies as pockets (spec §17.1): a current account, a saving one, and
+ * cash — a wallet with the lira left over from a trip is the same wallet, not another account. The one place the
+ * answer lives; the repository's rule and every screen's offer read it. Every pocket keeps its parent's subtype,
+ * so a cash pocket is still reported as cash on the tax report (0101), never as a deposit.
+ */
+export function takesPockets(subtype: string): boolean {
+  return subtype === 'bank' || subtype === 'savings' || subtype === 'cash';
+}
+
 /** The default kas code for any subtype string. Falls back to Tabungan (0102) for anything it does not know. */
 export function cashCodeForSubtype(subtype: string): string {
   return CASH_CODE_BY_SUBTYPE[subtype as MoneyAccountSubtype] ?? '0102';

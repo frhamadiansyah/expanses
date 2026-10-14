@@ -1,4 +1,4 @@
-import { bankMatches, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { bankMatches, takesPockets, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -301,7 +301,7 @@ export function CashAccountForm({
   // The kinds held at an institution, and not a deposit: its terms are per deposit (spec §16.3).
   const fund = item === 'fund';
   // A broker's RDN is one currency at one broker: an account in another currency there is an RDN of its own.
-  const canPocket = asks.includes('bank') && !locked && !fund;
+  const canPocket = takesPockets(item) && !locked && !fund;
   const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   // Where a typed balance could move from: accounts the owner can spend from, in the same currency, newest name order.
   const sources = (useAccounts().data ?? [])

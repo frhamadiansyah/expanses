@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, categoryTotalsBetween, createAccount, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, voidTransaction } from '../src/index';
+import { budgetSheetFor, categoryTotalsBetween, createAccount, createWorkspace, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, tagTransactions, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -347,6 +347,88 @@ describe('the monthly budget', () => {
     expect(after.overCount).toBe(0);
     expect(after.eventSpendingMinor).toBe(5_000_000);
     expect(after.leftOverActualMinor).toBe(before.leftOverActualMinor);
+  });
+});
+
+describe('tagging a selection', () => {
+  const tagOf = async ({ database, ws }: Household, id: string) => (await listTransactions(database, ws, { id, includeVoid: true }))[0]!.eventId;
+
+  it('tags every chosen payment at once, on any date and in any category, and untags them the same way', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    // Outside the window and in a category no item names: the list's selection is not the suggestion's.
+    const early = await spend(context, context.food.id, `${MONTH}-02`, 85_000, 'Bakery');
+    const gift = await spend(context, context.gifts.id, `${MONTH}-20`, 640_000, 'Hampers');
+    const left = await spend(context, context.food.id, `${MONTH}-21`, 47_000, 'Noodles');
+
+    await tagTransactions(context.database, context.ws, [early, gift, gift], id);
+    expect(await tagOf(context, early)).toBe(id);
+    expect(await tagOf(context, gift)).toBe(id);
+    expect(await tagOf(context, left)).toBeNull();
+    expect((await eventPlanFor(context.database, context.ws, id)).spentMinor).toBe(725_000);
+
+    await tagTransactions(context.database, context.ws, [gift], null);
+    expect(await tagOf(context, gift)).toBeNull();
+    expect(await tagOf(context, early)).toBe(id);
+  });
+
+  it('moves a payment from another event, as tagging one at a time does', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    const other = await saveEvent(context.database, context.ws, { name: 'Wedding', ...WINDOW });
+    const gift = await spend(context, context.gifts.id, `${MONTH}-20`, 640_000);
+    await tagTransaction(context.database, context.ws, gift, other);
+
+    await tagTransactions(context.database, context.ws, [gift], id);
+    expect(await tagOf(context, gift)).toBe(id);
+  });
+
+  it('refuses an event that is not this workspace’s, and writes nothing', async () => {
+    const context = await household();
+    const gift = await spend(context, context.gifts.id, `${MONTH}-20`, 640_000);
+    const elsewhere = await createWorkspace(context.database, { name: 'Other', type: 'personal', baseCurrency: 'IDR' });
+    const theirs = await saveEvent(context.database, elsewhere, { name: 'Theirs', ...WINDOW });
+
+    await expect(tagTransactions(context.database, context.ws, [gift], theirs)).rejects.toThrow(/not in this workspace/);
+    await expect(tagTransactions(context.database, context.ws, [gift], 'no-such-event')).rejects.toThrow(/not in this workspace/);
+    expect(await tagOf(context, gift)).toBeNull();
+  });
+
+  it('never touches another workspace’s payment, even when its id is in the selection', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    const elsewhere = await createWorkspace(context.database, { name: 'Other', type: 'personal', baseCurrency: 'IDR' });
+    const theirCash = await createAccount(context.database, elsewhere, { name: 'Cash', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const theirFood = await createAccount(context.database, elsewhere, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+    const theirs = await postTransaction(context.database, elsewhere, {
+      occurredOn: `${MONTH}-20`,
+      description: 'Theirs',
+      lines: [
+        { accountId: theirFood.id, amountMinor: 30_000, currency: 'IDR' },
+        { accountId: theirCash.id, amountMinor: -30_000, currency: 'IDR' },
+      ],
+    });
+    const mine = await spend(context, context.gifts.id, `${MONTH}-20`, 640_000);
+
+    await tagTransactions(context.database, context.ws, [mine, theirs], id);
+    expect(await tagOf(context, mine)).toBe(id);
+    expect((await listTransactions(context.database, elsewhere, { id: theirs }))[0]!.eventId).toBeNull();
+  });
+
+  it('does nothing at all for an empty selection', async () => {
+    const context = await household();
+    await expect(tagTransactions(context.database, context.ws, [], 'no-such-event')).resolves.toBeUndefined();
+  });
+
+  it('tags a selection longer than one slice of the write', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    const ids: string[] = [];
+    for (let i = 0; i < 520; i += 1) ids.push(await spend(context, context.food.id, `${MONTH}-20`, 1_000 + i));
+
+    await tagTransactions(context.database, context.ws, ids, id);
+    const tagged = await context.database.db.values<[number]>(sql`SELECT COUNT(*) FROM transactions WHERE event_id = ${id}`);
+    expect(tagged).toEqual([[520]]);
   });
 });
 

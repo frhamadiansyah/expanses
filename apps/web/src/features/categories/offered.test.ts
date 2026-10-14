@@ -1,6 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { categoryGroups, offeredCategories } from './offered';
+import { categoryGroups, fitsEventSet, offeredCategories, setCategoriesElsewhere } from './offered';
 
 const category = (id: string, name: string, extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind: 'expense', subtype: 'category', name, icon: null, currency: null,
@@ -103,5 +103,46 @@ describe('which workspace’s copy a picker may offer', () => {
       'theirs-food',
       'theirs-restaurants',
     ]);
+  });
+});
+
+describe('a category filled in without the picker, while recording into an event', () => {
+  const membership = { lodging: 'holiday', flights: 'holiday', tiles: 'renovation' };
+
+  it('stands only when it is one of the event set’s own', () => {
+    expect(fitsEventSet('lodging', membership, 'holiday')).toBe(true);
+    // A monthly category — the weekly shop's Groceries — is not offered by the set's list, so it may not stand there.
+    expect(fitsEventSet('groceries', membership, 'holiday')).toBe(false);
+    // Nor another set's.
+    expect(fitsEventSet('tiles', membership, 'holiday')).toBe(false);
+  });
+
+  it('stands whatever it is when the event draws on no set, or there is no event', () => {
+    expect(fitsEventSet('groceries', membership, null)).toBe(true);
+    expect(fitsEventSet('lodging', membership, null)).toBe(true);
+  });
+});
+
+describe('where an event’s set categories are, when the open workspace has none of them', () => {
+  const lodging = category('lodging', 'Lodging');
+  const flights = category('flights', 'Flights');
+  const groceries = category('groceries', 'Groceries');
+  const accounts = [lodging, flights, groceries];
+  const membership = { lodging: 'holiday', flights: 'holiday' };
+  const workspaceOf = (id: string) => (id === 'groceries' ? 'Business' : 'Personal');
+  const openBook = (ids: string[]) => (a: AccountRow) => ids.includes(a.id);
+
+  it('names the workspace that holds them when the open one holds none', () => {
+    expect(setCategoriesElsewhere(accounts, membership, 'holiday', openBook(['groceries']), workspaceOf)).toBe('Personal');
+  });
+
+  it('says nothing when the open workspace holds some of them, or when the set has none, or there is no set', () => {
+    expect(setCategoriesElsewhere(accounts, membership, 'holiday', openBook(['lodging']), workspaceOf)).toBeNull();
+    expect(setCategoriesElsewhere(accounts, membership, 'renovation', openBook(['groceries']), workspaceOf)).toBeNull();
+    expect(setCategoriesElsewhere(accounts, membership, null, openBook([]), workspaceOf)).toBeNull();
+  });
+
+  it('says nothing when no workspace name is known for them', () => {
+    expect(setCategoriesElsewhere(accounts, membership, 'holiday', openBook(['groceries']), () => null)).toBeNull();
   });
 });

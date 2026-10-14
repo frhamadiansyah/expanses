@@ -7,9 +7,9 @@ import {
   amountAfterEnter,
   amountFace,
   amountFields,
+  autoCategoryOutOfSet,
   billMinor,
   canDuplicate,
-  canEditInSheet,
   canRefile,
   categoryFromNote,
   categoryLater,
@@ -581,12 +581,6 @@ describe('a bill spread over several categories', () => {
     expect(formToPost({ ...draft, mcc: '5814' }, accounts)).toMatchObject({ kind: 'post', input: { mcc: null } });
   });
 
-  it('says the sheet cannot hold a split, a transfer or a foreign purchase', () => {
-    expect(canEditInSheet(plainExpense)).toBe(true);
-    expect(canEditInSheet(splitPurchase)).toBe(false);
-    expect(canEditInSheet(transferTx)).toBe(false);
-    expect(canEditInSheet(foreignPurchase)).toBe(false);
-  });
 });
 
 describe('what a transaction reads back as', () => {
@@ -1477,6 +1471,44 @@ describe('Category filled from the note’s history', () => {
   it('guesses nothing for a transfer or a split', () => {
     expect(categoryFromNote({ ...transfer, moneyId: 'acct-bank' }, 'cat-cafe', null)).toBeNull();
     expect(categoryFromNote({ ...empty, splits: [{ categoryId: '', amount: '1' }] }, 'cat-cafe', null)).toBeNull();
+  });
+
+  describe("recording into an event that draws on a set", () => {
+    // The set's own Flooring & Tiles fits; the monthly Groceries the weekly shop went under does not.
+    const fits = (id: string) => id === 'cat-tiles';
+
+    it('does not fill an empty category with one the set would not offer', () => {
+      expect(categoryFromNote(empty, 'cat-groceries', null, fits)).toBeNull();
+      expect(categoryFromNote(empty, 'cat-tiles', null, fits)).toBe('cat-tiles');
+    });
+
+    it('takes back its own earlier guess when the next one is outside the set, as it does when nothing matches', () => {
+      expect(categoryFromNote({ ...empty, categoryId: 'cat-tiles' }, 'cat-groceries', 'auto', fits)).toBe('');
+    });
+
+    it('still never touches a category picked by hand, in the set or out of it', () => {
+      expect(categoryFromNote({ ...empty, categoryId: 'cat-groceries' }, null, 'hand', fits)).toBeNull();
+      expect(categoryFromNote({ ...empty, categoryId: 'cat-groceries' }, 'cat-tiles', 'hand', fits)).toBeNull();
+    });
+  });
+});
+
+describe('the Event row changing under a category', () => {
+  const fits = (id: string) => id === 'cat-tiles';
+
+  it('empties only a guessed category the event’s set does not offer', () => {
+    expect(autoCategoryOutOfSet('cat-groceries', 'auto', fits)).toBe(true);
+    expect(autoCategoryOutOfSet('cat-tiles', 'auto', fits)).toBe(false);
+  });
+
+  it('never empties a category picked by hand or one the form opened with, nor an empty row', () => {
+    expect(autoCategoryOutOfSet('cat-groceries', 'hand', fits)).toBe(false);
+    expect(autoCategoryOutOfSet('cat-groceries', null, fits)).toBe(false);
+    expect(autoCategoryOutOfSet('', 'auto', fits)).toBe(false);
+  });
+
+  it('empties nothing when the event draws on no set', () => {
+    expect(autoCategoryOutOfSet('cat-groceries', 'auto', () => true)).toBe(false);
   });
 });
 

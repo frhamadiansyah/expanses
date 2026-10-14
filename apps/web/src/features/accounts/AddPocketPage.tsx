@@ -1,4 +1,4 @@
-import { CURRENCIES, isoDate } from '@expanses/core';
+import { CURRENCIES, isoDate, takesPockets } from '@expanses/core';
 import { addPocket, makeMultiCurrency, pocketParentIds } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, type RefObject, useEffect, useRef, useState } from 'react';
@@ -55,9 +55,9 @@ export function AddCurrencyForm({
   const accounts = loaded.data ?? [];
   const parent = accounts.find((a) => a.id === accountId);
   const hasPockets = pocketParentIds(accounts).has(accountId);
-  // A plain current or saving account takes a second currency too: it becomes an account with pockets, the
+  // A plain current, saving or cash account takes a second currency too: it becomes an account with pockets, the
   // currency it already holds being the first of them.
-  const plain = Boolean(parent && !hasPockets && !parent.parentId && (parent.subtype === 'bank' || parent.subtype === 'savings'));
+  const plain = Boolean(parent && !hasPockets && !parent.parentId && takesPockets(parent.subtype));
   const taken = new Set(plain ? [parent!.currency] : pocketsOf(accountId, accounts).map((p) => p.currency));
   const offered = CURRENCIES.filter((c) => !taken.has(c.code));
   const [currency, setCurrency] = useState('');

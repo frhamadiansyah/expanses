@@ -209,6 +209,39 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
   };
 }
 
+/**
+ * What a new transaction's opener already knows, filled in before the form opens: an account's page knows the
+ * account, an event's Add spending knows the event, and a plan item's "Buy it now" knows the note, the figure and
+ * the category as well. Ids this device does not hold are dropped (`seeded`); the event is the opener's to check,
+ * because the events are read owner-wide and not from `accounts`.
+ */
+export interface CardSeed {
+  moneyId?: string;
+  toId?: string;
+  eventId?: string;
+  categoryId?: string;
+  description?: string;
+  amount?: string;
+}
+
+/**
+ * The opener's seed as form fields, keeping only ids this device holds: an address typed or kept from another
+ * workspace names nothing, and fills nothing in. A category must also be a spending one — the only kind an opener seeds — so a stray id cannot open Expense on an
+ * account that is not a category at all.
+ */
+export function seeded(seed: CardSeed | undefined, accounts: readonly AccountRow[]): Partial<FormDraft> {
+  const known = (id: string | undefined) => (id && accounts.some((a) => a.id === id) ? id : '');
+  const category = seed?.categoryId && accounts.some((a) => a.id === seed.categoryId && a.kind === 'expense') ? seed.categoryId : '';
+  return {
+    moneyId: known(seed?.moneyId),
+    toId: known(seed?.toId),
+    ...(seed?.eventId ? { eventId: seed.eventId } : {}),
+    ...(category ? { categoryId: category } : {}),
+    ...(seed?.description ? { description: seed.description } : {}),
+    ...(seed?.amount ? { amount: seed.amount } : {}),
+  };
+}
+
 const accountOf = (draft: FormDraft, accounts: readonly AccountRow[]) => accounts.find((a) => a.id === draft.moneyId);
 
 /**
@@ -238,13 +271,28 @@ export type CategorySource = 'hand' | 'auto' | null;
  *
  * A category picked by hand — or one the form opened with (an edit, a duplicate, a capture) — is never touched. Only
  * Expense and Income guess, each from its own tree; a transfer has no category and a split's lines are their own.
+ *
+ * `fits` is what Category may hold right now (`fitsEventSet`): recording into an event that draws on a set, only that
+ * set's categories. A guess outside it counts as no match at all — it does not fill an empty row, and it empties one
+ * only the note had filled — because the history knows where "Indomaret" went last month, not that this spending is
+ * a renovation's.
  */
-export function categoryFromNote(draft: FormDraft, guess: string | null, source: CategorySource): string | null {
+export function categoryFromNote(draft: FormDraft, found: string | null, source: CategorySource, fits: (categoryId: string) => boolean = () => true): string | null {
   if (draft.mode !== 'expense' && draft.mode !== 'income') return null;
   if (draft.splits.length > 0 || source === 'hand') return null;
+  const guess = found && fits(found) ? found : null;
   if (source === 'auto') return guess === draft.categoryId ? null : (guess ?? '');
   if (draft.categoryId) return null;
   return guess;
+}
+
+/**
+ * Whether Category has to be emptied because the Event row changed under it: only a category the note's history
+ * filled ('auto') that the event's set no longer offers. A category picked by hand — or one the form opened with —
+ * is never emptied behind the owner's back; the picker shows what it may be changed to.
+ */
+export function autoCategoryOutOfSet(categoryId: string, source: CategorySource, fits: (categoryId: string) => boolean): boolean {
+  return source === 'auto' && !!categoryId && !fits(categoryId);
 }
 
 /**
@@ -267,7 +315,7 @@ export function refundAllowed(draft: FormDraft): boolean {
 }
 
 /** Money back on a purchase: an expense whose figure was typed with a minus first ("−450.000"). */
-export function isRefund(draft: FormDraft): boolean {
+export function isRefund(draft: Pick<FormDraft, 'mode' | 'amount'>): boolean {
   return draft.mode === 'expense' && MINUS_FIRST.test(draft.amount);
 }
 
@@ -1032,20 +1080,6 @@ export function canRefile(tx: TransactionView): boolean {
  */
 export function refiledPost(tx: TransactionView, accounts: readonly AccountRow[], categoryId: string, bookId = ''): FormPost {
   return formToPost({ ...formFromTransaction(tx, accounts, bookId), categoryId }, accounts);
-}
-
-/**
- * Whether the edit sheet can hold this transaction, or the full form has to open instead.
- *
- * The sheet carries one category, one account and one figure. A split has several categories, a transfer has
- * two money accounts and no category, and a foreign purchase carries a second figure the sheet has no row for.
- */
-export function canEditInSheet(tx: TransactionView): boolean {
-  if (!isEditable(tx)) return false;
-  if (tx.originalCurrency && tx.originalAmountMinor !== null) return false;
-  const c = classify(tx);
-  if (c.type === 'transfer') return false;
-  return c.categoryIds.length === 1;
 }
 
 /**

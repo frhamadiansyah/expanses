@@ -192,13 +192,36 @@ describe('a second currency in a plain account', () => {
     await expect(archiveAccount(database, ws, parent.id)).rejects.toThrow('still has pockets');
   });
 
+  it('turns cash into an account with pockets, takes a second pocket, and files each pocket as cash on the tax report', async () => {
+    const wallet = await openCashAccount(database, ws, { item: 'cash', name: 'Wallet', currency: 'IDR', openingBalanceMinor: 800_000, openedOn: '2026-01-02' });
+    const { parent, pocket } = await makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'TRY', openingBalanceMinor: 300_000, openedOn: '2026-09-30', openingRateToBase: 480 });
+    expect(parent).toMatchObject({ name: 'Wallet', subtype: 'cash', parentId: null });
+    expect(pocket).toMatchObject({ name: 'Wallet · TRY', currency: 'TRY', subtype: 'cash', parentId: parent.id });
+    const eur = await addPocket(database, ws, { parentId: parent.id, currency: 'EUR' });
+    expect(eur).toMatchObject({ name: 'Wallet · EUR', subtype: 'cash', parentId: parent.id, sortOrder: 2 });
+    // Cash files under 0101, never under a bank deposit's 0102, pockets included.
+    const inputs = await coretaxInputsFor(database, ws, 2026);
+    expect(inputs.cash.some((row) => row.accountId === parent.id)).toBe(false);
+    expect(inputs.cash.map((row) => [row.name, row.code, row.currency]).sort()).toEqual([
+      ['Wallet · IDR', '0101', 'IDR'],
+      ['Wallet · TRY', '0101', 'TRY'],
+    ]);
+  });
+
+  it('keeps a pocket the same kind as its parent: a bank account cannot be a pocket of cash', async () => {
+    const wallet = await openCashAccount(database, ws, { item: 'cash', name: 'Wallet', currency: 'IDR' });
+    const { parent } = await makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'TRY' });
+    await expect(createAccount(database, ws, { name: 'Wallet · EUR', kind: 'asset', subtype: 'bank', currency: 'EUR', parentId: parent.id })).rejects.toThrow(/same kind of account/);
+    await expect(createAccount(database, ws, { name: 'Wallet · EUR', kind: 'asset', subtype: 'cash', currency: 'EUR', parentId: parent.id })).resolves.toMatchObject({ subtype: 'cash' });
+  });
+
   it('refuses the same currency, a kind that holds one currency, a pocket, a parent and an archived account — leaving nothing behind', async () => {
     const { bca } = await current();
     const count = async () => (await listAccounts(database, ws, { includeArchived: true })).length;
     const before = await count();
     await expect(makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'IDR' })).rejects.toThrow('already holds IDR');
     const wallet = await openCashAccount(database, ws, { item: 'ewallet', name: 'Wallet', currency: 'IDR' });
-    await expect(makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'USD' })).rejects.toThrow('Only a current or saving account');
+    await expect(makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'USD' })).rejects.toThrow('Only a current account, a saving one or cash');
     const empty = await openCashAccount(database, ws, { item: 'savings', name: 'Spare', currency: 'IDR' });
     await archiveAccount(database, ws, empty.id);
     await expect(makeMultiCurrency(database, ws, { accountId: empty.id, currency: 'USD' })).rejects.toThrow('is archived');

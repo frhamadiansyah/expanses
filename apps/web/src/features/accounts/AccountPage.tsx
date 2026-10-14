@@ -1,4 +1,4 @@
-import { isoDate } from '@expanses/core';
+import { isoDate, takesPockets } from '@expanses/core';
 import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import {
@@ -124,8 +124,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
-  // A plain current or saving account takes another currency from its ⋯; one with pockets from the foot of its list.
-  const takesCurrency = !parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings');
+  // A plain current, saving or cash account takes another currency from its ⋯; one with pockets from the foot of its list.
+  const takesCurrency = !parent && !pockets && takesPockets(account.subtype);
   const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError, onAddCurrency: takesCurrency ? () => setAddingCurrency(true) : undefined });
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 

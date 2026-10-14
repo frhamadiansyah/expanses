@@ -1,15 +1,17 @@
 import { useOpenBookReadOnly } from '../sharing/queries';
-import { listTransactions, ownerScope } from '@expanses/db';
+import { linkEventItem, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
-import { Card } from '../../ui';
+import { Card, RowHint } from '../../ui';
 import { SCREEN } from '../../ui/native';
+import { buyRefusal, buySeed, coverTarget, eventOpening, isNothingLeft } from '../events/buy-item';
+import { useEventPlan, useEvents } from '../events/queries';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
-import { TransactionCard } from './TransactionCard';
+import { type CardFollowUp, TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 
 /**
@@ -21,19 +23,80 @@ import { useDuplicable } from './duplicable';
 const newRoute = getRouteApi('/transactions/new');
 
 export function NewTransactionRoute() {
+  const { database, ws } = useApp();
+  const navigate = useNavigate();
   const back = useBack('/transactions');
   const readOnly = useOpenBookReadOnly();
-  // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither.
-  const { mode, account, to } = newRoute.useSearch();
+  // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
+  // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
+  const { mode, account, to, event, item, ws: tab } = newRoute.useSearch();
+  const events = useEvents();
+  // Owner-wide, as the plan screens read it: the item is the plan's, whichever workspace's tab it was opened from.
+  const plan = useEventPlan(item ? (event ?? null) : null);
+  // The seed is read once, when the card opens, so the card waits for what it is checked against.
+  const waiting = (!!event && events.isPending) || (!!item && plan.isPending);
+  const opening = waiting
+    ? null
+    : eventOpening({ event, item }, events.data ?? [], (plan.data?.lines ?? []).flatMap((line) => line.items));
+  const buying = opening?.item ?? null;
+
+  /*
+   * "Buy it now": the payment is also the item, so Save ties the two together with the id it posted. The payment it
+   * just made is this item and nothing else, so the item takes the whole of it as its share.
+   *
+   * A receipt already spoken for is the one refusal with somewhere to go — ticking an item off claims what is left
+   * of its receipt, so a receipt answering several items is settled on "What it covers" and not by a second tick.
+   * The payment is posted and tagged by now either way, so carrying the user to that screen loses nothing and asks
+   * them for exactly what the app could not know. Both ways out replace this screen, so Back from them does not
+   * open the same purchase again.
+   */
+  const followUp: CardFollowUp | undefined =
+    opening && buying
+      ? {
+          refuse: (draft) => buyRefusal(draft, opening.eventId),
+          posted: async (transactionId) => {
+            try {
+              await linkEventItem(database, ws, buying.id, transactionId);
+            } catch (e) {
+              if (!isNothingLeft(e)) throw e;
+              await navigate({ ...coverTarget(opening.eventId, transactionId, { item: buying.id, ws: tab }), replace: true });
+              return;
+            }
+            await navigate({ to: '/events/$eventId/plan', params: { eventId: opening.eventId }, search: { ws: tab }, replace: true });
+          },
+          header: <RowHint>Filled in from the estimate. Change it to what the receipt really says.</RowHint>,
+        }
+      : undefined;
+
   return (
     <div className={SCREEN}>
       {/*
        * A subpage's bar, as New asset and New debt draw theirs: the circle back, the name centred. Back goes wherever
        * the form was opened from — the tab bar's ＋ works from every screen — and so do Save and Cancel, as the
-       * sheet this page replaced closed onto the screen underneath.
+       * sheet this page replaced closed onto the screen underneath. An event's Add spending is one more opener:
+       * Back and Save land on the event again.
        */}
       {/* A share that ended here takes nothing new (§8.6): the notice above says why, and there is no form to fill. */}
-      {readOnly ? null : <TransactionCard full title="New transaction" label="Add a transaction" mode={mode} seed={{ moneyId: account, toId: to }} onBack={back} onDone={back} />}
+      {readOnly ? null : waiting ? (
+        <Card>Loading…</Card>
+      ) : (
+        <TransactionCard
+          full
+          title={buying ? `Buy ${buying.name}` : 'New transaction'}
+          label="Add a transaction"
+          // Spending into an event is spending: Expense, whatever the address asked.
+          mode={opening ? 'expense' : mode}
+          seed={{
+            moneyId: account,
+            toId: to,
+            ...(opening ? { eventId: opening.eventId } : {}),
+            ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
+          }}
+          followUp={followUp}
+          onBack={back}
+          onDone={back}
+        />
+      )}
     </div>
   );
 }
@@ -46,8 +109,9 @@ const route = getRouteApi('/transactions/$transactionId/edit');
  * Task 10 deleted a route of this name and said why: it was written, nothing ever linked to it, and a surface
  * re-stating the three refusals that no user could reach and no test ran looks like protection and is not. The
  * condition it left behind was "when something needs a route to edit on, it brings the route and the tests with
- * it". The edit sheet's ⋯ is that something — **Open in full form** is what a split, a transfer or anything else
- * the sheet cannot hold is reached by — and `phone-transaction-gestures.spec.ts` walks it.
+ * it". A phone's Edit is that something — the receipt's Edit and the row's swipe both open this, for every kind
+ * of transaction, so a correction is the Add screen again rather than a second screen to learn — and
+ * `phone-transaction-gestures.spec.ts` walks it.
  *
  * The refusals are not re-stated here either. `useChangeable` answers them, and what it refuses is sent to the
  * receipt, which already says in words which workspace to open, or that a trade is corrected on Buy & sell.
@@ -68,17 +132,34 @@ export function EditTransactionRoute() {
   // Only the settled refusals send anyone away. `changeable` is also false while the trades are still being
   // read, and redirecting on that would bounce a perfectly editable transaction out of its own form.
   const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || !isEditable(tx));
+  /*
+   * A save voids the transaction this screen reads, and the refetch after it reads it back void — "refused" — before
+   * the card's way out runs. Redirecting then pushed the receipt of the voided original, and the list on top of it,
+   * so a swipe back landed on a deleted transaction. Once a save has begun the redirect is the card's to make.
+   */
+  const saving = useRef(false);
 
   useEffect(() => {
-    if (refused) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+    if (refused && !saving.current) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
   }, [refused, transactionId]);
 
   if (!tx || !changeable) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
-          saves. The list is where to land — this address would only 404 into its own redirect. */}
-      <TransactionCard full title="Edit transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
+          saves. The list is where to land — this address would only 404 into its own redirect — and it takes this
+          screen's place in the history, so Back from the list does not open an edit of a transaction now void. */}
+      <TransactionCard
+        full
+        title="Edit transaction"
+        label="Edit a transaction"
+        initial={tx}
+        onBack={back}
+        onSaveStart={() => {
+          saving.current = true;
+        }}
+        onDone={() => void navigate({ to: '/transactions', replace: true })}
+      />
     </div>
   );
 }

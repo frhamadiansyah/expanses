@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { capturedDayOf, expenseLines } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { findMatch, makeTransferPair, mergeInto, unmerge } from '../src/capture/match';
@@ -28,7 +28,9 @@ const MINUTE = 60_000;
 
 /** When a capture arrived, read off the phone's own clock — which is what an arriving capture carries. */
 const minutesFromNow = (minutes: number) => new Date(Date.now() + minutes * MINUTE).toISOString();
-const dayOf = (iso: string) => iso.slice(0, 10);
+// The day the app files a capture under — the local one, as `capturedDayOf` reads it. Cutting the UTC string
+// put the typed payment on yesterday whenever the suite ran before seven in the morning in UTC+7.
+const dayOf = capturedDayOf;
 
 async function workspace() {
   current = await setupDb();

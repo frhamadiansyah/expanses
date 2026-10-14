@@ -96,6 +96,33 @@ export async function tagTransaction(database: Database, ws: WorkspaceContext, t
     .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
 }
 
+/**
+ * Says a whole selection of payments belongs to an event, or no longer does — the list's "Add to event…" and
+ * "Remove from event", one action however many rows were ticked.
+ *
+ * `tagTransaction`'s own rule, row for row: the event must be this workspace's (checked once, before anything is
+ * written), and a row is only ever changed inside this workspace. All of it in one db transaction, so a selection
+ * is tagged whole or not at all — never left half in the event because the tenth write failed. `event_id` never
+ * travels between devices (`NEVER_SYNCED_COLUMNS`), which is why neither function has anything to capture.
+ *
+ * Written in slices so a long selection stays under SQLite's limit on bound parameters.
+ */
+export async function tagTransactions(database: Database, ws: WorkspaceContext, transactionIds: readonly string[], eventId: string | null): Promise<void> {
+  const ids = [...new Set(transactionIds)];
+  if (ids.length === 0) return;
+  if (eventId !== null) await eventOf(database, ws, eventId);
+  await database.transaction(async (tx) => {
+    for (let at = 0; at < ids.length; at += TAG_SLICE) {
+      await tx
+        .update(transactions)
+        .set({ eventId })
+        .where(and(eq(transactions.workspaceId, ws.workspaceId), inArray(transactions.id, ids.slice(at, at + TAG_SLICE))));
+    }
+  });
+}
+
+const TAG_SLICE = 500;
+
 export interface EventCandidate {
   transactionId: string;
   occurredOn: string;

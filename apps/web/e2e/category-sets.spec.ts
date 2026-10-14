@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewCap } from './budget';
+import { recordIntoEvent } from './event-plan';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
 // in Jakarta it names yesterday and any window built from it excludes what was just recorded.
@@ -54,12 +55,7 @@ test('a set of your own can be made, added to, and drawn on by an event', async 
 
   // Made here, usable there: the event draws on the set without any of it reaching the monthly tree.
   await addEvent(page, 'Nikahan', 'Wedding');
-  await page.getByRole('button', { name: 'Add spending' }).click();
-  await page.getByLabel('Description').fill('Katering Bu Tuti');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Catering' });
-  await page.getByLabel('Amount', { exact: true }).fill('12000000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await recordIntoEvent(page, { description: 'Katering Bu Tuti', category: 'Catering', amount: '12000000' });
   await expect(page.getByTestId('event-total')).toContainText('12.000.000');
 
   await page.goto('/transactions');
@@ -146,13 +142,9 @@ test('an event records its spending in its own categories, from its own page', a
   await addEvent(page, 'Rumah Bintaro', 'Renovation');
 
   await expect(page.getByText('draws on Renovation')).toBeVisible();
-  await page.getByRole('button', { name: 'Add spending' }).click();
-
-  await page.getByLabel('Description').fill('Keramik lantai');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Flooring & Tiles' });
-  await page.getByLabel('Amount', { exact: true }).fill('7500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  // Add spending opens the Add screen with the event set, and its Category then offers the set in place of the
+  // monthly tree — which is the only way Flooring & Tiles can be chosen at all.
+  await recordIntoEvent(page, { description: 'Keramik lantai', category: 'Flooring & Tiles', amount: '7500000' });
 
   // Tagged to the event as it was written, so the total stands without any hunting afterwards.
   await expect(page.getByTestId('event-total')).toContainText('7.500.000');
@@ -162,12 +154,7 @@ test('an event records its spending in its own categories, from its own page', a
 test('a set stays out of the monthly categories, and its spending out of the monthly caps', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Bayi', 'Newborn');
-  await page.getByRole('button', { name: 'Add spending' }).click();
-  await page.getByLabel('Description').fill('Popok');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Diapering' });
-  await page.getByLabel('Amount', { exact: true }).fill('900000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await recordIntoEvent(page, { description: 'Popok', category: 'Diapering', amount: '900000' });
   await expect(page.getByTestId('event-total')).toContainText('900.000');
 
   // The everyday form offers the monthly tree only: a newborn's categories are not what you file the shop under.

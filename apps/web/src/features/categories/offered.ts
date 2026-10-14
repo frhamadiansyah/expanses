@@ -24,9 +24,16 @@ export function offeredCategories(
   kind: 'expense' | 'income',
   membership: Record<string, unknown>,
   keep: (a: AccountRow) => boolean,
+  /**
+   * One set's categories **in place of** the monthly tree: spending recorded into an event that draws on a set is
+   * recorded in the set's terms, so a renovation is filed under Flooring & Tiles and not under the weekly shop.
+   * The rule the event page's own Add spending form kept, carried to the Add screen with it. Null is the tree.
+   */
+  setId: string | null = null,
 ): AccountRow[] {
   // Uncategorised is where "Choose later" files a transaction, never a category to choose: it is left out of every picker.
-  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && !isUncategorisedKey(a.systemKey) && keep(a));
+  const inScope = (a: AccountRow) => (setId ? membership[a.id] === setId : membership[a.id] === undefined);
+  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && inScope(a) && !isUncategorisedKey(a.systemKey) && keep(a));
 }
 
 /**
@@ -42,4 +49,39 @@ export function categoryGroups(offered: readonly AccountRow[]): { root: AccountR
   return offered
     .filter((a) => a.parentId === null || !ids.has(a.parentId))
     .map((root) => ({ root, children: offered.filter((a) => a.parentId === root.id) }));
+}
+
+/**
+ * Whether a category may stand in Category while the spending is recorded into an event that draws on `setId`: one
+ * of that set's own, as the picker offers then. With no set (null) anything may, so a form recording into an event
+ * with no set — or into none — fills Category exactly as it always has.
+ *
+ * It is the question the picker's `inScope` asks, put for one category the form did not pick through the picker: a
+ * guess from the note's history, or a note suggestion's category. A renovation's Add spending must not quietly file
+ * "Indomaret" under the monthly Groceries because that is where the weekly shop went, when the set's list would never
+ * have offered Groceries at all.
+ */
+export function fitsEventSet(categoryId: string, membership: Record<string, unknown>, setId: string | null): boolean {
+  return !setId || membership[categoryId] === setId;
+}
+
+/**
+ * The workspace an event's set categories are filed in, when the open one holds none of them — so an empty picker
+ * can say where they are instead of looking like a set with nothing in it. Null when the open workspace offers some,
+ * when the set has none at all, or when no workspace name is known for them (one workspace only: nothing to switch).
+ *
+ * A set belongs to one workspace's book (`fileSetCategoryTx`), and a form records into the open book only, so the
+ * picker's `inOpenBook` is right to leave them out; it is the silence that was wrong.
+ */
+export function setCategoriesElsewhere(
+  accounts: readonly AccountRow[],
+  membership: Record<string, unknown>,
+  setId: string | null,
+  inOpenBook: (a: AccountRow) => boolean,
+  workspaceOf: (categoryId: string) => string | null,
+): string | null {
+  if (!setId) return null;
+  const inSet = offeredCategories(accounts, 'expense', membership, () => true, setId);
+  if (inSet.length === 0 || inSet.some(inOpenBook)) return null;
+  return inSet.map((a) => workspaceOf(a.id)).find((name) => !!name) ?? null;
 }
