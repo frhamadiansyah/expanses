@@ -192,13 +192,29 @@ describe('a second currency in a plain account', () => {
     await expect(archiveAccount(database, ws, parent.id)).rejects.toThrow('still has pockets');
   });
 
+  it('takes cash too: one wallet, a pocket per currency, keeping what the plain account held', async () => {
+    const wallet = await openCashAccount(database, ws, { item: 'cash', name: 'Wallet', currency: 'IDR', openingBalanceMinor: 500_000, openedOn: '2026-09-30' });
+    const { parent, pocket } = await makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'TRY', openingBalanceMinor: 4_000, openedOn: '2026-10-01', openingRateToBase: 390 });
+
+    const rows = new Map((await listAccounts(database, ws)).map((a) => [a.id, a]));
+    expect(rows.get(parent.id)).toMatchObject({ name: 'Wallet', subtype: 'cash', parentId: null });
+    expect(rows.get(wallet.id)).toMatchObject({ name: 'Wallet · IDR', currency: 'IDR', parentId: parent.id, sortOrder: 0 });
+    expect(rows.get(pocket.id)).toMatchObject({ name: 'Wallet · TRY', currency: 'TRY', subtype: 'cash', parentId: parent.id, sortOrder: 1 });
+
+    // The rupiah it already held stays on the same account; the lira sit beside it, and the parent is the sum.
+    const balances = await nativeBalances(database, ws);
+    expect([balances[wallet.id], balances[pocket.id], balances[parent.id]]).toEqual([500_000, 4_000, undefined]);
+    // ₺40,00 at 390 rupiah to the lira is Rp 15.600: the exponents differ (TRY 2, IDR 0), so the minor units do not multiply directly.
+    expect((await netWorthAt(database, ws, '2026-10-01', { TRY: 390 })).assetsMinor).toBe(500_000 + 15_600);
+  });
+
   it('refuses the same currency, a kind that holds one currency, a pocket, a parent and an archived account — leaving nothing behind', async () => {
     const { bca } = await current();
     const count = async () => (await listAccounts(database, ws, { includeArchived: true })).length;
     const before = await count();
     await expect(makeMultiCurrency(database, ws, { accountId: bca.id, currency: 'IDR' })).rejects.toThrow('already holds IDR');
     const wallet = await openCashAccount(database, ws, { item: 'ewallet', name: 'Wallet', currency: 'IDR' });
-    await expect(makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'USD' })).rejects.toThrow('Only a current or saving account');
+    await expect(makeMultiCurrency(database, ws, { accountId: wallet.id, currency: 'USD' })).rejects.toThrow('Only a current account, a saving account or cash');
     const empty = await openCashAccount(database, ws, { item: 'savings', name: 'Spare', currency: 'IDR' });
     await archiveAccount(database, ws, empty.id);
     await expect(makeMultiCurrency(database, ws, { accountId: empty.id, currency: 'USD' })).rejects.toThrow('is archived');

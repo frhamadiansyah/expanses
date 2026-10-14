@@ -300,8 +300,10 @@ export function CashAccountForm({
   const foreign = currency !== ws.baseCurrency;
   // The kinds held at an institution, and not a deposit: its terms are per deposit (spec §16.3).
   const fund = item === 'fund';
-  // A broker's RDN is one currency at one broker: an account in another currency there is an RDN of its own.
-  const canPocket = asks.includes('bank') && !locked && !fund;
+  // Cash holds several currencies the way a bank account does — one wallet, a pocket per currency — so it is
+  // offered the switch although it is held at no institution. A broker's RDN is one currency at one broker: an
+  // account in another currency there is an RDN of its own.
+  const canPocket = (asks.includes('bank') || item === 'cash') && !locked && !fund;
   const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   // Where a typed balance could move from: accounts the owner can spend from, in the same currency, newest name order.
   const sources = (useAccounts().data ?? [])

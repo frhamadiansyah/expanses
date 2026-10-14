@@ -124,8 +124,9 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const series = flows.data && balances.isSuccess ? balanceSeries({ todayMinor: minor, today: isoDate(), days: LINE_DAYS, flows: flows.data }) : null;
 
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
-  // A plain current or saving account takes another currency from its ⋯; one with pockets from the foot of its list.
-  const takesCurrency = !parent && !pockets && (account.subtype === 'bank' || account.subtype === 'savings');
+  // A plain current or saving account, or plain cash, takes another currency from its ⋯; one with pockets from the
+  // foot of its list.
+  const takesCurrency = !parent && !pockets && POCKETABLE.includes(account.subtype);
   const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError, onAddCurrency: takesCurrency ? () => setAddingCurrency(true) : undefined });
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
@@ -364,6 +365,9 @@ function usePageMenu(
  * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
  * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
+/** The subtypes whose plain accounts can gain a second currency, as `makeMultiCurrency` allows it. */
+const POCKETABLE: readonly string[] = ['bank', 'savings', 'cash'];
+
 function actionsFor(
   account: AccountRow,
   pockets: AccountRow[] | null,

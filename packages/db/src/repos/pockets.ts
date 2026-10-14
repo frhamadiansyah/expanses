@@ -102,8 +102,14 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
   });
 }
 
-/** The two kinds of money account that hold several currencies (spec §17.1): a current account and a saving one. */
-const POCKETED_SUBTYPES: readonly string[] = ['bank', 'savings'];
+/**
+ * The kinds of money account that hold several currencies (spec §17.1): a current account, a saving one, and cash.
+ *
+ * Cash is here because a wallet physically holds several currencies — lira and rupiah come home in the same
+ * pocket — and one Cash account per currency is a list that grows with every trip. A wallet (e-money) and a
+ * broker's RDN stay out: each is one issuer's balance in one currency.
+ */
+const POCKETED_SUBTYPES: readonly string[] = ['bank', 'savings', 'cash'];
 
 export interface MakeMultiCurrencyInput {
   accountId: string;
@@ -130,7 +136,7 @@ export async function makeMultiCurrency(
   return database.transaction(async (tx) => {
     const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account || account.kind !== 'asset') throw new AccountError('Account not found');
-    if (!POCKETED_SUBTYPES.includes(account.subtype)) throw new AccountError('Only a current or saving account holds more than one currency');
+    if (!POCKETED_SUBTYPES.includes(account.subtype)) throw new AccountError('Only a current account, a saving account or cash holds more than one currency');
     if (account.archivedAt !== null) throw new AccountError(`${account.name} is archived`);
     if (account.parentId !== null) throw new AccountError('A pocket cannot hold pockets of its own');
     const [child] = await tx

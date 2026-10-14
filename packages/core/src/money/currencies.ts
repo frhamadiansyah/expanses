@@ -23,6 +23,7 @@ const LIST: CurrencyInfo[] = [
   { code: 'EUR', exponent: 2, symbol: '€', name: 'Euro', flag: '🇪🇺' },
   { code: 'GBP', exponent: 2, symbol: '£', name: 'British Pound', flag: '🇬🇧' },
   { code: 'KWD', exponent: 3, symbol: 'KD', name: 'Kuwaiti Dinar', flag: '🇰🇼' },
+  { code: 'TRY', exponent: 2, symbol: '₺', name: 'Turkish Lira', flag: '🇹🇷' },
 ];
 
 export const CURRENCIES: readonly CurrencyInfo[] = LIST;

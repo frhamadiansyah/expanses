@@ -105,6 +105,12 @@ readers below are what keeps a parent from being *offered* or *shown* as money.
 `/accounts/new` → a kind of account → the form (`CashAccountForm`). For the kinds of account held at an institution
 (Current account, Saving account, Fund account) and not a time deposit, the form gains one switch:
 
+> **Amended 2026-10-14 (user request).** Cash joins them, and Fund account leaves: a wallet physically holds
+> several currencies — lira and rupiah come home from one trip in the same pocket — while a broker's RDN is one
+> currency at one broker. The rule is no longer "held at an institution" but "can hold more than one currency at
+> once", which is `POCKETED_SUBTYPES = ['bank', 'savings', 'cash']`. Nothing else in this spec changes: cash
+> pockets open, convert, total, archive and report exactly as a bank account's do.
+
 **Holds more than one currency** — *Off for an account that holds one currency. On for one that keeps several
 currencies inside it.* (Country-neutral copy; the mockup's bank names are not shown.)
 
