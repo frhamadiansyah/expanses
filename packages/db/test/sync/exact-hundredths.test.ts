@@ -33,7 +33,10 @@ async function pair(options: { olderDewi?: boolean } = {}) {
   const fandri = await home.device('Fandri');
   const dewi = await home.device('Dewi');
   // A build before 0068: no column to hold the figure. Every door into it reads the column's absence the same way.
-  if (options.olderDewi) await dewi.database.execScript('ALTER TABLE transactions DROP COLUMN exact_hundredths');
+  // The capture run's watch on transactions names the column, as it would not on such a build: it goes first.
+  if (options.olderDewi) {
+    await dewi.database.execScript('DROP TRIGGER IF EXISTS temp.__capture_transactions_upd; ALTER TABLE transactions DROP COLUMN exact_hundredths;');
+  }
   const bookId = await home.share(fandri);
   await home.join(dewi, fandri);
   return { home, fandri, dewi, bookId };

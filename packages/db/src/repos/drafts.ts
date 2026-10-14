@@ -1,8 +1,9 @@
 import { expenseLines, incomeLines, type Reading, transferLines, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { draftTransactions } from '../schema-drafts';
+import { draftExactExists, exactOrNull, isExactFigure } from './exact-column';
 import { existingExternalRefs } from './imports';
 import { ledgerSourceOf, type PostTransactionInput, postTransactionTx, type TransactionSource } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
@@ -28,6 +29,12 @@ export interface DraftRow {
   description: string;
   /** Positive is money out, matching the import convention. */
   amountMinor: number;
+  /**
+   * The figure as read with cents, in a currency with no minor unit (0068): 12.500,30 is 1250030, always positive, and
+   * `amountMinor` is it rounded (up for money out, down for money in). Null for a whole figure. Confirming posts it.
+   * Optional so a row built by hand need not name it; every row `listDrafts` reads carries it.
+   */
+  exactHundredths?: number | null;
   currency: string;
   accountId: string | null;
   /** Where a transfer's money went. Null for anything else. */
@@ -57,6 +64,8 @@ export interface NewDraft {
   occurredOn: string;
   description: string;
   amountMinor: number;
+  /** The figure as read with cents, in hundredths (see `DraftRow.exactHundredths`). */
+  exactHundredths?: number | null;
   currency: string;
   /** Defaults by the sign: money in (negative) is income, money out an expense, as an imported row always meant. */
   kind?: DraftKind;
@@ -83,7 +92,7 @@ const addDays = (isoDate: string, days: number) => {
   return date.toISOString().slice(0, 10);
 };
 
-const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
+const toRow = (row: typeof draftTransactions.$inferSelect & { exactHundredths: number | null }): DraftRow => ({
   id: row.id,
   source: row.source,
   kind: row.kind,
@@ -92,6 +101,7 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
   occurredOn: row.occurredOn,
   description: row.description,
   amountMinor: row.amountMinor,
+  exactHundredths: row.exactHundredths === null ? null : Number(row.exactHundredths),
   currency: row.currency,
   accountId: row.accountId,
   toAccountId: row.toAccountId,
@@ -169,7 +179,24 @@ function insertValues(ws: WorkspaceContext, draft: NewDraft, now: string) {
 export async function createDraft(database: Database, ws: WorkspaceContext, draft: NewDraft): Promise<string> {
   const values = insertValues(ws, draft, new Date().toISOString());
   await database.db.insert(draftTransactions).values(values);
+  await writeDraftExact(database.db, values.id, draft.exactHundredths);
   return values.id;
+}
+
+/**
+ * A draft's figure with cents, written by name beside the row (see exact-column.ts): only a positive figure with cents
+ * is kept, and only where 0068 is.
+ */
+async function writeDraftExact(tx: Db, id: string, exact: number | null | undefined): Promise<void> {
+  if (!isExactFigure(exact) || exact % 100 === 0 || !(await draftExactExists(tx))) return;
+  await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${exact} WHERE id = ${id}`);
+}
+
+/** The figure with cents a draft keeps, or null; null on a database before 0068. */
+async function draftExactOf(tx: Db, id: string): Promise<number | null> {
+  if (!(await draftExactExists(tx))) return null;
+  const [row] = await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM draft_transactions WHERE id = ${id}`);
+  return row?.[0] === null || row?.[0] === undefined ? null : Number(row[0]);
 }
 
 /**
@@ -182,6 +209,7 @@ export async function createDraft(database: Database, ws: WorkspaceContext, draf
 export async function insertDraftRow(tx: Db, ws: WorkspaceContext, draft: NewDraft, now: string): Promise<string> {
   const values = insertValues(ws, draft, now);
   await tx.insert(draftTransactions).values(values);
+  await writeDraftExact(tx, values.id, draft.exactHundredths);
   return values.id;
 }
 
@@ -215,7 +243,9 @@ export async function captureDrafts(
       skipped++;
       continue;
     }
-    await database.db.insert(draftTransactions).values(insertValues(ws, draft, now));
+    const values = insertValues(ws, draft, now);
+    await database.db.insert(draftTransactions).values(values);
+    await writeDraftExact(database.db, values.id, draft.exactHundredths);
     if (draft.externalRef) seen.add(draft.externalRef);
     captured++;
   }
@@ -229,8 +259,9 @@ export async function captureDrafts(
  * again only by Unmerge, which reads its pointer.
  */
 export async function listDrafts(database: Database, ws: WorkspaceContext, status: DraftRow['status'] = 'pending'): Promise<DraftRow[]> {
+  const typed = await draftExactExists(database.db);
   const rows = await database.db
-    .select()
+    .select({ ...getTableColumns(draftTransactions), exactHundredths: typed ? sql<number | null>`exact_hundredths` : sql<null>`NULL` })
     .from(draftTransactions)
     .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, status), isNull(draftTransactions.mergedInto)))
     .orderBy(asc(draftTransactions.occurredOn), asc(draftTransactions.createdAt));
@@ -252,17 +283,39 @@ export async function countPendingDrafts(database: Database, ws: WorkspaceContex
   return Number(row?.count ?? 0);
 }
 
-/** Corrects what was read out of a capture, before it is confirmed. */
+/**
+ * Corrects what was read out of a capture, before it is confirmed.
+ *
+ * The figure read with cents goes with the figure: a patch that changes the amount, its currency or which way it went
+ * and says nothing of `exactHundredths` clears it, as a new whole figure has no cents. One that names it sets it.
+ */
 export async function editDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>,
+  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>,
 ): Promise<void> {
-  await database.db
-    .update(draftTransactions)
-    .set(patch)
-    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+  const { exactHundredths, ...fields } = patch;
+  await database.transaction(async (tx) => {
+    const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
+    const [before] = await tx
+      .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
+      .from(draftTransactions)
+      .where(where);
+    if (!before) return;
+    if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
+    if (!(await draftExactExists(tx))) return;
+    const moved =
+      (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
+      (fields.currency !== undefined && fields.currency !== before.currency) ||
+      (fields.kind !== undefined && fields.kind !== before.kind);
+    if (exactHundredths !== undefined) {
+      const kept = isExactFigure(exactHundredths) && exactHundredths % 100 !== 0 ? exactHundredths : null;
+      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${kept} WHERE id = ${id}`);
+    } else if (moved) {
+      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = NULL WHERE id = ${id}`);
+    }
+  });
 }
 
 /**
@@ -327,6 +380,10 @@ export async function confirmDraftTx(
         ? transferLines({ fromAccountId: draft.accountId, toAccountId: draft.toAccountId!, amountMinor, currency })
         : expenseLines({ categoryAccountId: draft.categoryAccountId!, paymentAccountId: draft.accountId, amountMinor, currency });
 
+  // The figure read with cents, on a single amount only: a transfer stays whole. A figure the amount no longer rounds
+  // from (a merge or a pairing changed it) is not posted: a capture's cents are best read, never refused over.
+  const exactHundredths = draft.kind === 'transfer' ? null : exactOrNull(await draftExactOf(tx, id), lines);
+
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();
   const transactionId = await postTransactionTx(tx, ws, {
@@ -336,6 +393,7 @@ export async function confirmDraftTx(
     externalRef: draft.externalRef,
     cardId: draft.cardId,
     lines,
+    exactHundredths,
     ...opts.extras,
     setAside: opts.setAside ?? null,
   });
