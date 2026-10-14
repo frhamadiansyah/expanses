@@ -20,6 +20,7 @@ describe('category visuals', () => {
   it("draws Travel's Transport, Souvenirs and Others in Travel's colour, each with a glyph of its own", () => {
     expect(categoryVisual('travel.transport', 'travel')).toEqual({ icon: 'train-front', colour: CATEGORY_COLOURS.travel });
     expect(categoryVisual('travel.souvenirs', 'travel')).toEqual({ icon: 'shopping-bag', colour: CATEGORY_COLOURS.travel });
+    expect(categoryVisual('travel.meals', 'travel')).toEqual({ icon: 'utensils', colour: CATEGORY_COLOURS.travel });
     expect(categoryVisual('travel.others', 'travel')).toEqual({ icon: 'luggage', colour: CATEGORY_COLOURS.travel });
   });
 

@@ -182,8 +182,8 @@ describe('openAppDb', () => {
       const book = await personalBook(database, ws);
       // A workspace from before Transport, Souvenirs and Others, holding household sync's unkeyed Uncategorised.
       await database.execScript(`
-        DELETE FROM book_categories WHERE category_account_id IN (SELECT id FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.others'));
-        DELETE FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.others');`);
+        DELETE FROM book_categories WHERE category_account_id IN (SELECT id FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others'));
+        DELETE FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others');`);
       const ruleFour = await uncategorisedIdOf(book.id, 'expense');
       await database.execScript(`
         INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, valuation_mode, sort_order, created_at)
