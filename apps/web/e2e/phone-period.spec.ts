@@ -45,7 +45,8 @@ test('the list narrows by what paid, beside the sort, and a chip takes it off ag
   const menu = page.getByTestId('filters-menu');
   await expect(menu).not.toContainText('Paid with');
   await expect(menu).not.toContainText('Not recorded');
-  await page.getByRole('button', { name: 'Close filters' }).click();
+  // A tap outside the menu, low on the screen: the menu (with Select in it) now reaches past the middle.
+  await page.getByRole('button', { name: 'Close filters' }).click({ position: { x: 12, y: 600 } });
 
   const chips = page.getByTestId('active-filters');
   await expect(chips).toContainText('Paid with BCA Tahapan');

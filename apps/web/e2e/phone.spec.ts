@@ -105,7 +105,8 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: /Not recorded/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close filters' }).click();
+  // A tap outside the menu, low on the screen: the menu (with Select in it) now reaches past the middle.
+  await page.getByRole('button', { name: 'Close filters' }).click({ position: { x: 12, y: 600 } });
 
   // The header's + opens the same form the tab bar's does.
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
