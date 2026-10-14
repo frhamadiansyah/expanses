@@ -57,3 +57,14 @@ describe('explainCycle', () => {
     expect(explainCycle(context([line('a', 60_000, null), line('b', 40_000, null)], [rule()]), 4)).toEqual([{ kind: 'rounding', points: -1 }]);
   });
 });
+
+describe('a purchase typed with cents', () => {
+  it('is explained on the figure it earns on, not the one it was charged', () => {
+    // Charged 20.001, earned on 20.000: the stackable rule from 20.001 never applies, so as a restaurant (5812) it
+    // earns the base point alone — the 1 the bank gave. On the charged figure it would earn 2 and nothing would fit.
+    const plain = rule({ match: { excludeMccs: ['5814'] } });
+    const from20001 = rule({ id: 'extra', stackable: true, minTransactionMinor: 20_001, match: { mccs: ['5812'] } });
+    const exact = line('dinner', 20_001, '5814', { earnMinor: 20_000 });
+    expect(explainTransaction(context([exact], [plain, from20001]), 'dinner', 1)).toEqual([{ kind: 'mcc', transactionId: 'dinner', mcc: '5812', pointsWith: 1, moves: 1 }]);
+  });
+});

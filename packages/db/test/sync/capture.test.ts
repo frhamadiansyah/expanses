@@ -344,12 +344,14 @@ describe('capture: purchases', () => {
           },
           // Never moved within its day (0067).
           dayOrder: null,
+          // A whole amount: no figure typed with cents (0068).
+          exactHundredths: null,
         },
       },
     ]);
     expect(await lineageRow(database, id)).toEqual({ bookId: book.id, head: id, paidBy: 'member-me', paidLabel: 'BCA Tahapan' });
     const hlc = (await outboxChangeSets(database))[0]!.hlc;
-    for (const field of ['occurredOn', 'description', 'channel', 'excluded', 'bill', 'money', 'dayOrder']) {
+    for (const field of ['occurredOn', 'description', 'channel', 'excluded', 'bill', 'money', 'dayOrder', 'exactHundredths']) {
       expect(await fieldClock(database, 'purchase', id, field)).toBe(hlc);
     }
   });

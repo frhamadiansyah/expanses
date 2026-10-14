@@ -11,6 +11,7 @@ import {
   type SpendLine,
   type TransferPartner,
   uuidv7,
+  wholeFromHundredths,
 } from '@expanses/core';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -19,6 +20,7 @@ import { accounts } from '../schema';
 import { markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
 import { nonEarningInstallmentTransactionIds } from './installments';
+import { exactExists, exactFitsPosting } from './exact-column';
 import { extrasTablesExist } from './transaction-extras';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
@@ -503,14 +505,36 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
  * posting date when one was given, so a purchase billed late counts in the cycle it was billed in — each with its
  * effective MCC. A refund is a negative line. Statement payments have no expense entries and never appear.
  */
+/**
+ * The figure a purchase line earns points on, when it is not the charge: typed with cents, the exact figure rounded
+ * down, with the line's sign. 12.500,30 is charged 12.501 and earns on 12.500; its refund takes back on −12.500. Only
+ * the one category line of a purchase with a single one, rounded from the figure, has one (exactFitsPosting). Null
+ * when the line earns on what it was charged.
+ */
+function earnFigure(amountMinor: number, exact: number | null, categoryLines: number): number | null {
+  // The same fit the ledger holds a posting to: one category line, the figure rounded. This line is that one.
+  if (exact === null || categoryLines !== 1 || !exactFitsPosting([{ amountMinor, kind: 'expense' }], exact)) return null;
+  const floor = wholeFromHundredths(exact, 'down');
+  const signed = amountMinor < 0 ? -floor : floor;
+  return signed === amountMinor ? null : signed;
+}
+
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
   // On a database stopped before migration 0048 there is no transaction_flags to join, so every line reads channel
   // as NULL — exactly what a rule that names no channel already ignores.
   const withChannel = await extrasTablesExist(database.db);
   const channelJoin = withChannel ? sql`LEFT JOIN transaction_flags tf ON tf.transaction_id = t.id` : sql``;
   const channelColumn = withChannel ? sql`tf.channel` : sql`NULL`;
-  const rows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null, string | null]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}
+  // The amount as typed with cents (0068): a bank works points out on it rounded down, not on the whole figure charged.
+  // With it, how many category lines the purchase has: the figure belongs to a purchase with exactly one.
+  const hasExact = await exactExists(database.db);
+  const exactColumn = hasExact ? sql`t.exact_hundredths` : sql`NULL`;
+  const categoryLines = hasExact
+    ? sql`(SELECT count(*) FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))`
+    : sql`0`;
+  type Row = [string, string, string, string, string, number, string, string | null, string | null, string | null, number | null, number];
+  const rows = await database.db.values<Row>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
@@ -524,8 +548,8 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     ORDER BY t.occurred_on, t.id, e.id
   `);
   // A purchase of a holding paid by card: the card line itself names the category it would have had.
-  const assetRows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null, string | null]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}
+  const assetRows = await database.db.values<Row>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -545,8 +569,10 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
   const feeCategories = cardFeeCategoryIds(categories);
   const noPoints = await nonEarningInstallmentTransactionIds(database, ws);
-  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel]) => {
+  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel, exact, categories]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
+    // amountMinor stays what the card was charged — the figure every screen shows; points read earnMinor beside it.
+    const earnMinor = earnFigure(Number(amountMinor), exact === null ? null : Number(exact), Number(categories));
     return {
       transactionId,
       entryId,
@@ -554,6 +580,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       categoryId,
       description,
       amountMinor: Number(amountMinor),
+      ...(earnMinor === null ? {} : { earnMinor }),
       currency,
       originalCurrency,
       mcc,

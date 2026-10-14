@@ -1,4 +1,4 @@
-import { computeCycleEarn, type CycleBonus, type EarnOptions, type EarnRule, matchesSpend, ruleMatches, type SpendLine } from './earn';
+import { computeCycleEarn, type CycleBonus, earnAmount, type EarnOptions, type EarnRule, matchesSpend, ruleMatches, type SpendLine } from './earn';
 
 export interface CycleContext {
   lines: SpendLine[];
@@ -29,7 +29,7 @@ function signature(context: CycleContext, lines: readonly SpendLine[]): string {
   const bonuses = context.options.bonuses ?? [];
   return lines
     .map((line) =>
-      [...context.rules.map((rule) => ruleMatches(rule, line, context.ancestors, line.amountMinor, billingCurrency)), ...bonuses.map((bonus) => matchesSpend(bonus.match, line, context.ancestors, billingCurrency))]
+      [...context.rules.map((rule) => ruleMatches(rule, line, context.ancestors, earnAmount(line), billingCurrency)), ...bonuses.map((bonus) => matchesSpend(bonus.match, line, context.ancestors, billingCurrency))]
         .map((matches) => (matches ? '1' : '0'))
         .join(''),
     )
@@ -80,13 +80,13 @@ export function explainCycle(context: CycleContext, actualPoints: number, limit 
   const base = earnFor(context);
   const gap = tenths(actualPoints) - tenths(base.totalPoints);
   if (gap === 0) return [];
-  const purchases = [...new Set(context.lines.filter((line) => line.amountMinor > 0).map((line) => line.transactionId))];
+  const purchases = [...new Set(context.lines.filter((line) => earnAmount(line) > 0).map((line) => line.transactionId))];
 
   const ranked: { suggestion: Suggestion; closer: number; amount: number }[] = [];
   for (const transactionId of purchases) {
     const lines = context.lines.filter((line) => line.transactionId === transactionId);
     if (!lines.every(guessed)) continue;
-    const amount = lines.reduce((sum, line) => sum + line.amountMinor, 0);
+    const amount = lines.reduce((sum, line) => sum + earnAmount(line), 0);
     let best: { suggestion: Suggestion; closer: number; amount: number } | null = null;
     for (const [mcc] of [...candidatesBySignature(context, transactionId, lines).values()].sort((a, b) => a[0]!.localeCompare(b[0]!))) {
       if (!mcc) continue;
@@ -106,8 +106,8 @@ export function explainCycle(context: CycleContext, actualPoints: number, limit 
   for (const bonus of context.options.bonuses ?? []) {
     const eligible = base.eligibleSpendByBonus[bonus.id] ?? 0;
     const refunded = context.lines
-      .filter((line) => line.amountMinor < 0 && matchesSpend(bonus.match, line, context.ancestors, billingCurrency))
-      .reduce((sum, line) => sum - line.amountMinor, 0);
+      .filter((line) => earnAmount(line) < 0 && matchesSpend(bonus.match, line, context.ancestors, billingCurrency))
+      .reduce((sum, line) => sum - earnAmount(line), 0);
     for (const tier of bonus.tiers) {
       if (Math.abs(gap) !== tier.bonus * 10) continue;
       if (Math.abs(eligible - tier.minSpendMinor) <= Math.max(Math.ceil(tier.minSpendMinor / 100), refunded)) {

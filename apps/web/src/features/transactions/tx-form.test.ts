@@ -17,6 +17,7 @@ import {
   currencyShown,
   chargedInNeeded,
   currencyChoosable,
+  DECIMALS_REFUSAL,
   detailsToggleLabel,
   duplicateDraft,
   emptyForm,
@@ -39,6 +40,7 @@ import {
   refiledPost,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
+  splitCentsRefusal,
   splitTotalMinor,
   suggestedRate,
   typedCurrency,
@@ -747,14 +749,15 @@ describe('which currency each money field is read in', () => {
     // figure can disagree about its scale — CNY has two decimals and IDR none, so a swap here is a 100x error.
     const fields = amountFields(foreign, accounts, 'IDR');
     expect(fields.amount).toEqual({ which: 'amount', label: 'Amount', value: '120', currency: 'CNY' });
-    expect(fields.charged).toEqual({ which: 'charged', label: 'Charged in IDR', value: '272400', currency: 'IDR' });
+    // The charged figure is the one that posts, so it is the one that takes cents on a whole-unit currency.
+    expect(fields.charged).toEqual({ which: 'charged', label: 'Charged in IDR', value: '272400', currency: 'IDR', fractional: 'up' });
     // And what each field says it is worth is what the kit's one reader makes of it, at that scale.
     expect(evaluateAmount(fields.amount.value, fields.amount.currency)).toBe(12_000);
     expect(evaluateAmount(fields.charged!.value, fields.charged!.currency)).toBe(272_400);
   });
 
   it('offers no charged field when the figure is typed in the account’s own currency', () => {
-    expect(amountFields(draft, accounts, 'IDR')).toEqual({ amount: { which: 'amount', label: 'Amount', value: '120000', currency: 'IDR' }, charged: null });
+    expect(amountFields(draft, accounts, 'IDR')).toEqual({ amount: { which: 'amount', label: 'Amount', value: '120000', currency: 'IDR', fractional: 'up' }, charged: null });
     // A USD account typed in USD: still one field, and still read in USD rather than in the workspace's base.
     expect(amountFields({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10.50' }, accounts, 'IDR').amount.currency).toBe('USD');
   });
@@ -1153,8 +1156,9 @@ describe('arithmetic typed into a figure the save reads', () => {
     expect(() => formToPost({ ...draft, amount: '0' }, accounts)).toThrow('Amount must be greater than zero');
     // A minus first is a refund on an expense (see "a refund typed with a minus"); anywhere else it is still refused.
     expect(() => formToPost({ ...draft, mode: 'income', amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
-    // A decimal figure on a zero-exponent account still says which currency refused it and why.
-    expect(() => formToPost({ ...foreign, chargedAmount: '272400.50' }, accounts)).toThrow('IDR allows 0 decimal places');
+    // A decimal figure on a zero-exponent account, where cents have no place, says where they go. (The charged row of
+    // a foreign purchase is the figure that posts, so it takes them: see "cents typed on a whole-unit currency".)
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-bank', amount: '1600000.50' }, accounts)).toThrow(DECIMALS_REFUSAL);
   });
 });
 
@@ -1512,5 +1516,232 @@ describe('re-filing from the row’s circle', () => {
     expect(canRefile(splitPurchase)).toBe(false);
     expect(canRefile(transferTx)).toBe(false);
     expect(canRefile({ ...plainExpense, status: 'void' } as TransactionView)).toBe(false);
+  });
+});
+
+/*
+ * Decimals on a currency with no minor unit (spec 2026-10-14). The single amount of an expense, a refund or an income
+ * takes up to two decimals: it posts rounded — up for money out, down for money in — with the exact figure beside it.
+ * Every other money field stays whole, and says so in words.
+ */
+describe('cents typed on a whole-unit currency', () => {
+  const posted = (form: FormDraft) => {
+    const post = formToPost(form, accounts);
+    if (post.kind !== 'post') throw new Error(`expected a post, got ${post.kind}`);
+    return post.input;
+  };
+  const debit = (input: ReturnType<typeof posted>) => input.lines.filter((l) => l.amountMinor > 0).reduce((s, l) => s + l.amountMinor, 0);
+
+  it('posts an expense rounded up, with the exact figure', () => {
+    const input = posted({ ...draft, amount: '12.500,30' });
+    expect(input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 12_501, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_250_030);
+  });
+
+  it('posts an income rounded down, with the exact figure', () => {
+    const input = posted({ ...draft, mode: 'income', amount: '12.345,67' });
+    expect(input.lines).toEqual(incomeLines({ incomeAccountId: 'cat-restaurants', depositAccountId: 'acct-bank', amountMinor: 12_345, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_234_567);
+  });
+
+  it('posts a refund as money back rounded up, the same as the charge it returns', () => {
+    const input = posted({ ...draft, amount: '-12.500,30' });
+    expect(input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 12_501, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_250_030);
+  });
+
+  it('adds cents up exactly before rounding once', () => {
+    const input = posted({ ...draft, amount: '12.500,30+0,80' });
+    expect(debit(input)).toBe(12_502);
+    expect(input.exactHundredths).toBe(1_250_110);
+  });
+
+  it('leaves a whole figure, and a whole expression, exactly as before', () => {
+    expect('exactHundredths' in posted(draft)).toBe(false);
+    const third = posted({ ...draft, amount: '100÷3' });
+    expect(debit(third)).toBe(33);
+    expect('exactHundredths' in third).toBe(false);
+    // Zero cents are no cents.
+    expect('exactHundredths' in posted({ ...draft, amount: '12.500,00' })).toBe(false);
+  });
+
+  it('refuses cents on a split row, and on an amount spread over splits', () => {
+    const split: FormDraft = { ...draft, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '100.000,50' }, { categoryId: 'cat-groceries', amount: '50000' }] };
+    expect(() => formToPost(split, accounts)).toThrow(DECIMALS_REFUSAL);
+    const whole = { ...split, splits: [{ categoryId: 'cat-restaurants', amount: '100000' }, { categoryId: 'cat-groceries', amount: '50000' }] };
+    expect(() => formToPost({ ...whole, amount: '150.000,50' }, accounts)).toThrow(DECIMALS_REFUSAL);
+  });
+
+  it('says so on the Split sheet while a row holds cents, before Save is reached', () => {
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000,50' }, { categoryId: '', amount: '' }], 'IDR')).toBe(DECIMALS_REFUSAL);
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000' }, { categoryId: '', amount: '5' }], 'IDR')).toBeNull();
+    // A currency with cents of its own takes them on a split as it always did.
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '10,50' }], 'USD')).toBeNull();
+  });
+
+  it('refuses cents on a transfer, its received figure and a shared bill', () => {
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-bank', amount: '500.000,50' }, accounts)).toThrow(DECIMALS_REFUSAL);
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-usd', toId: 'acct-bank', amount: '10', toAmount: '160.000,50' }, withExchange)).toThrow(DECIMALS_REFUSAL);
+    const shared: FormDraft = { ...draft, amount: '90.000,30', with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true };
+    expect(() => formToPost(shared, accounts)).toThrow(DECIMALS_REFUSAL);
+  });
+
+  it('puts the cents of a foreign purchase on the amount charged, and keeps the typed figure to its own rules', () => {
+    const input = posted({ ...foreign, chargedAmount: '272.400,30' });
+    expect(debit(input)).toBe(272_401);
+    expect(input.exactHundredths).toBe(27_240_030);
+    expect(input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000 });
+    // JPY has no minor unit either, but the typed foreign figure is not the one that posts: it stays whole.
+    expect(() => formToPost({ ...foreign, currency: 'JPY', amount: '1.000,50' }, accounts)).toThrow(/JPY allows 0 decimal places/);
+  });
+
+  it('says an income whose cents round down to nothing must be greater than zero', () => {
+    expect(() => formToPost({ ...draft, mode: 'income', amount: '0,50' }, accounts)).toThrow('Amount must be greater than zero');
+  });
+
+  it('never gives a currency with cents an exact figure', () => {
+    const input = posted({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10,50' });
+    expect(debit(input)).toBe(1_050);
+    expect('exactHundredths' in input).toBe(false);
+  });
+
+  describe('a decimal purchase reopened', () => {
+    const decimal = view({ exactHundredths: 1_250_030, entries: [paid(-12_501), spent('cat-restaurants', 12_501)] as TransactionView['entries'] });
+
+    it('shows the whole figure that posted, never the cents', () => {
+      expect(formFromTransaction(decimal, accounts).amount).toBe('12501');
+    });
+
+    it('keeps the exact figure when the amount is left alone', () => {
+      const input = posted({ ...formFromTransaction(decimal, accounts), description: 'Note only' });
+      // Left out, so the ledger carries the stored figure.
+      expect('exactHundredths' in input).toBe(false);
+      expect(debit(input)).toBe(12_501);
+    });
+
+    it('replaces it with the new figure when the amount is retyped with cents', () => {
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13.000,50' }).exactHundredths).toBe(1_300_050);
+    });
+
+    it('clears it when the amount is retyped to another whole figure', () => {
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13000' })).toMatchObject({ exactHundredths: null });
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '12.502' })).toMatchObject({ exactHundredths: null });
+    });
+
+    it('keeps it when the same amount is written another way, since the amount has not changed', () => {
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12.501' })).toBe(false);
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12500+1' })).toBe(false);
+    });
+
+    it('keeps it through a visit to the Transfer tab and back, which blanks the flag but not the money', () => {
+      const opened = formFromTransaction(decimal, accounts);
+      // What `chooseMode` does: Transfer offers no flag, so the currency and the charged row are blanked.
+      const there: FormDraft = { ...opened, mode: 'transfer', currency: '', chargedAmount: '', splits: [], categoryId: '' };
+      const back: FormDraft = { ...there, mode: 'expense', categoryId: 'cat-restaurants' };
+      expect('exactHundredths' in posted(back)).toBe(false);
+      // A Duplicate taken there and back still copies the figure with its amount.
+      const copy = duplicateDraft(decimal, accounts);
+      expect(posted({ ...copy, currency: '', chargedAmount: '' }).exactHundredths).toBe(1_250_030);
+    });
+
+    it('clears a foreign purchase’s figure when it moves to an account in another whole-unit currency', () => {
+      const withYen = [...accounts, { id: 'acct-jpy', name: 'Suica', kind: 'asset', subtype: 'cash', currency: 'JPY' }] as AccountRow[];
+      const abroad = view({
+        exactHundredths: 27_240_030,
+        originalCurrency: 'CNY',
+        originalAmountMinor: 12_000,
+        entries: [paid(-272_401), spent('cat-restaurants', 272_401)] as TransactionView['entries'],
+      });
+      const opened = formFromTransaction(abroad, withYen);
+      expect('exactHundredths' in posted({ ...opened, description: 'Note only' })).toBe(false);
+      const moved = formToPost({ ...opened, moneyId: 'acct-jpy' }, withYen);
+      expect(moved.kind).toBe('post');
+      expect(moved.input).toMatchObject({ exactHundredths: null });
+    });
+
+    it('clears it when the transaction becomes an income, a split or a transfer', () => {
+      const opened = formFromTransaction(decimal, accounts);
+      expect(posted({ ...opened, mode: 'income' })).toMatchObject({ exactHundredths: null });
+      const split = { ...opened, splits: [{ categoryId: 'cat-restaurants', amount: '10000' }, { categoryId: 'cat-groceries', amount: '2501' }] };
+      expect(posted(split)).toMatchObject({ exactHundredths: null });
+      expect(posted({ ...opened, mode: 'transfer', toId: 'acct-bank' })).toMatchObject({ exactHundredths: null });
+    });
+
+    it('keeps it through a re-file from the row’s circle', () => {
+      const post = refiledPost(decimal, accounts, 'cat-groceries');
+      expect(post.kind).toBe('post');
+      expect('exactHundredths' in (post.input as object)).toBe(false);
+    });
+
+    it('is copied by Duplicate with its amount, and recomputed when the amount is retyped', () => {
+      const copy = duplicateDraft(decimal, accounts);
+      expect(copy.amount).toBe('12501');
+      expect(posted(copy).exactHundredths).toBe(1_250_030);
+      expect('exactHundredths' in posted({ ...copy, amount: '20000' })).toBe(false);
+      expect(posted({ ...copy, amount: '20.000,25' }).exactHundredths).toBe(2_000_025);
+    });
+
+    it('keeps an income’s figure through Duplicate, rounded down as it posted', () => {
+      const income = view({
+        exactHundredths: 1_234_567,
+        entries: [{ ...paid(12_345), accountId: 'acct-bank', accountKind: 'asset' }, { ...spent('cat-salary', -12_345), accountKind: 'income' }] as TransactionView['entries'],
+      });
+      const input = posted(duplicateDraft(income, accounts));
+      expect(debit(input)).toBe(12_345);
+      expect(input.exactHundredths).toBe(1_234_567);
+    });
+  });
+
+  describe('which fields take cents', () => {
+    it('lets the single amount of an expense, a refund and an income take them, each rounded its own way', () => {
+      expect(amountFields(draft, accounts, 'IDR').amount.fractional).toBe('up');
+      expect(amountFields({ ...draft, amount: '-5000' }, accounts, 'IDR').amount.fractional).toBe('up');
+      expect(amountFields({ ...draft, mode: 'income' }, accounts, 'IDR').amount.fractional).toBe('down');
+    });
+
+    it('keeps a transfer, a split, a shared bill and a currency with cents whole', () => {
+      expect(amountFields({ ...transfer, moneyId: 'acct-bank' }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, splits: [{ categoryId: 'cat-restaurants', amount: '' }] }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, with: [{ debtAccountId: '', name: 'Andi', amount: '' }] }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, moneyId: 'acct-usd', currency: 'USD' }, accounts, 'IDR').amount.fractional).toBeUndefined();
+    });
+
+    it('moves the allowance to the amount charged on a foreign purchase', () => {
+      const fields = amountFields(foreign, accounts, 'IDR');
+      expect(fields.amount.fractional).toBeUndefined();
+      expect(fields.charged!.fractional).toBe('up');
+    });
+  });
+
+  describe('typing cents', () => {
+    it('gives the dock a comma in place of 00 only where the field takes cents', () => {
+      expect(keypadKeys('IDR', 'up')).toContain(',');
+      expect(keypadKeys('IDR', 'up')).not.toContain('00');
+      expect(keypadKeys('IDR', 'down')).toHaveLength(KEYPAD_KEYS.length);
+      expect(keypadKeys('IDR')).toEqual(KEYPAD_KEYS);
+      expect(keypadKeys('USD', 'up')).toEqual(keypadKeys('USD'));
+    });
+
+    it('keeps the cents through DONE and shows them while the form is open', () => {
+      let text = '';
+      for (const key of ['1', '2', '5', '0', '0', ',', '3', '0'] as const) text = keypadAction(text, 'IDR', key, false, 'up').text;
+      expect(text).toBe('12500,30');
+      const done = keypadAction(text, 'IDR', 'DONE', false, 'up');
+      expect(done).toEqual({ text: '12500.30', close: true });
+      expect(amountFace(done.text, 'IDR', false, 'up')).toBe('12.500,30');
+      // The settled text reads back to itself, so DONE twice changes nothing.
+      expect(amountAfterDone(done.text, 'IDR', false, 'up')).toEqual({ text: '12500.30', close: true });
+    });
+
+    it('works an expression with cents out exactly, and a refund keeps its minus', () => {
+      expect(amountAfterEnter('12.500,30+0,80', 'IDR', false, 'up')).toEqual({ text: '12501.10', submit: false });
+      expect(amountAfterDone('-12.500,30', 'IDR', true, 'up')).toEqual({ text: '-12500.30', close: true });
+      expect(amountFace('-12500.30', 'IDR', true, 'up')).toBe('−12.500,30');
+    });
+
+    it('settles a whole figure as before, and leaves cents alone where the field takes none', () => {
+      expect(amountAfterDone('85000+15000', 'IDR', false, 'up')).toEqual({ text: '100000', close: true });
+      expect(amountAfterDone('12500,30', 'IDR')).toEqual({ text: '12500,30', close: false });
+    });
   });
 });

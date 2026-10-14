@@ -26,11 +26,14 @@ export {
   formatMinor,
   minorToMajorString,
   MoneyError,
+  parseFractionalMajor,
   parseMajor,
   parseRate,
+  type RoundDirection,
   roundHalfAwayFromZero,
+  wholeFromHundredths,
 } from './money/money';
-export { evaluateAmount } from './money/keypad';
+export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
 export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {
@@ -99,6 +102,7 @@ export {
   type Rounding,
   type RuleMatch,
   dayOfWeek,
+  earnAmount,
   matchesSpend,
   nextBonusTier,
   ruleMatches,
@@ -136,6 +140,7 @@ export {
   parseCsv,
   parseCsvAmount,
   parseCsvDate,
+  parseCsvExact,
 } from './import/csv';
 export {
   formatPriceMicro,
@@ -517,7 +522,7 @@ export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
 export { capturedDayOf, findDateTime } from './capture/date';
 export { appNameOfScreen, fingerprintOf, sameSource } from './capture/fingerprint';
 export { accountHintOf, namesCard, paymentMethodOf, readCapture } from './capture/read';
-export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type Reading, type Template, type WordList } from './capture/types';
+export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type ReadAmount, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
 export { merchantKeyOf, readStatement } from './statement/read';

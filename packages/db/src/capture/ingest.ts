@@ -9,7 +9,7 @@
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { capturedDayOf, exponentOf, namesCard, readCapture, type RawCapture, type Reading, uuidv7, WORDS } from '@expanses/core';
+import { capturedDayOf, exponentOf, namesCard, readCapture, type RawCapture, type Reading, uuidv7, wholeFromHundredths, WORDS } from '@expanses/core';
 import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -165,7 +165,18 @@ export async function planDraft(
   const currency = reading.amount?.value.currency ?? account?.currency ?? workspace.baseCurrency;
   // A figure that wore no currency was read in whole units; the account (or the workspace) says how to scale it.
   const read = reading.amount?.value ?? null;
-  const amountMinor = read === null ? 0 : read.currency === null ? read.minor * 10 ** exponentOf(currency) : read.minor;
+  // A figure printed with cents in a currency with no minor unit (Rp12.500,30) is rounded the way the money went: up
+  // when it left, down when it arrived — a refund included, as money in — and its cents are kept beside it. Read from a
+  // picture or a message, so the best reading, never more.
+  const exact = read?.exactHundredths ?? null;
+  const amountMinor =
+    read === null
+      ? 0
+      : exact !== null
+        ? wholeFromHundredths(exact, directionOf(type) === 'out' ? 'up' : 'down')
+        : read.currency === null
+          ? read.minor * 10 ** exponentOf(currency)
+          : read.minor;
   const printed = reading.occurredAt?.value ?? null;
 
   return {
@@ -178,6 +189,7 @@ export async function planDraft(
       description: descriptionOf(capture, source, reading, paidByCard),
       // Leaving is positive, arriving is negative: the one convention every other draft already keeps.
       amountMinor: directionOf(type) === 'out' ? amountMinor : -amountMinor,
+      exactHundredths: exact,
       currency,
       accountId: type === 'topup' ? (card?.id ?? null) : (account?.id ?? null),
       toAccountId: type === 'topup' ? (learned?.id ?? null) : null,

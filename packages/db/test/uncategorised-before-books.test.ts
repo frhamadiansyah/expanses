@@ -29,6 +29,17 @@ describe('Uncategorised in a Personal book from before books', () => {
     expect(await uncategorisedCategory(database, ws, 'income')).not.toBe(id);
   });
 
+  it('names a book id that is not a uuid the same way for ever', async () => {
+    // Literal on purpose: these ids are already on devices, so the namespace they are worked out under can never move.
+    expect(await uncategorisedIdOf('book-0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', 'expense')).toBe('a74c8bf2-0c19-5434-a4d0-52df3923775c');
+    expect(await uncategorisedIdOf('book-0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', 'income')).toBe('1725d12e-caff-514e-a9e4-62cef80c996c');
+  });
+
+  it('keeps the id a uuid without dashes has always had', async () => {
+    const bookId = '0199a1b2c3d47e5f8a9b0c1d2e3f4a5b';
+    expect(await uncategorisedIdOf(bookId, 'expense')).toBe(await uuidv5(bookId, 'uncategorised'));
+  });
+
   it('keeps the id a book with a uuid id has always had', async () => {
     const bookId = '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
     expect(await uncategorisedIdOf(bookId, 'expense')).toBe(await uuidv5(bookId, 'uncategorised'));

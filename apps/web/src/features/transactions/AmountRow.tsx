@@ -100,7 +100,7 @@ function MoneyField({
   onKeypad: () => void;
   className: string;
 }) {
-  const { label, value, currency } = field;
+  const { label, value, currency, fractional } = field;
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!selectOnOpen || phone) return;
@@ -118,7 +118,7 @@ function MoneyField({
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
       <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'flex items-center self-stretch text-left')}>
-        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency, refund) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
+        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
       </button>
     );
   }
@@ -130,13 +130,13 @@ function MoneyField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onBlur={() => {
-        const { text } = amountAfterEnter(value, currency, refund);
+        const { text } = amountAfterEnter(value, currency, refund, fractional);
         if (text !== value) onChange(text);
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter') return;
         // Enter evaluates; it does not also save. A second Enter, on a field that no longer changes, submits.
-        const { text, submit } = amountAfterEnter(value, currency, refund);
+        const { text, submit } = amountAfterEnter(value, currency, refund, fractional);
         if (text !== value) onChange(text);
         if (!submit) e.preventDefault();
       }}
@@ -359,6 +359,7 @@ export function AmountRow({
         <Keypad
           value={open.value}
           currency={open.currency}
+          fractional={open.fractional}
           replaceFirst={replace && open.which === 'amount'}
           onFirstKey={() => setReplace(false)}
           onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}

@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
+import type { RoundDirection } from '@expanses/core';
 import { type KeypadKey, keypadAction, keypadKeys } from './tx-form';
 
 /**
@@ -34,9 +35,12 @@ export function Keypad({
   replaceFirst = false,
   onFirstKey,
   refund = false,
+  fractional,
 }: {
   value: string;
   currency: string;
+  /** The field takes cents on a whole-unit currency (`MoneyFieldSpec.fractional`): the dock offers its comma. */
+  fractional?: RoundDirection;
   /** A minus typed first may make the figure a refund: DONE then works it out as money back. */
   refund?: boolean;
   onChange: (value: string) => void;
@@ -57,7 +61,7 @@ export function Keypad({
   const press = (key: KeypadKey) => {
     const starts = replaceFirst && /^[0-9,]/.test(key);
     if (replaceFirst) onFirstKey?.();
-    const { text, close } = keypadAction(starts ? '' : value, currency, key, refund);
+    const { text, close } = keypadAction(starts ? '' : value, currency, key, refund, fractional);
     if (text !== value) onChange(text);
     if (close) onClose();
   };
@@ -85,7 +89,7 @@ export function Keypad({
           </button>
         </div>
         <div className="grid grid-cols-4 gap-[5px]">
-          {keypadKeys(currency).map((key) => (
+          {keypadKeys(currency, fractional).map((key) => (
             <button
               key={key}
               type="button"

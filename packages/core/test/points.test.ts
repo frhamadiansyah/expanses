@@ -159,3 +159,41 @@ describe('review fixes: points caps and whole transactions', () => {
     expect(computeCycleEarn(split([400_000, 200_000]), [rule({ id: 'min', rateDen: 1000, minTransactionMinor: 500_000 })], ancestors).totalPoints).toBe(600);
   });
 });
+
+describe('a purchase typed with cents: charged whole, earned on the exact figure rounded down', () => {
+  // Rp 12.500,30 is charged 12.501; the bank counts 12.500 for points.
+  const cents = (amountMinor: number, earnMinor: number, occurredOn = '2026-09-01', description = 'shop'): SpendLine => ({ ...line('groceries', amountMinor, occurredOn, description), earnMinor });
+
+  it('earns on earnMinor when the line has one, and on amountMinor when it does not', () => {
+    const per12501 = [rule({ id: 'base', rateDen: 12_501 })];
+    const exact = cents(12_501, 12_500);
+    expect(computeCycleEarn([exact], per12501, ancestors).pointsByTransaction[exact.transactionId] ?? 0).toBe(0);
+    const whole = line('groceries', 12_501);
+    expect(computeCycleEarn([whole], per12501, ancestors).pointsByTransaction[whole.transactionId]).toBe(1);
+  });
+
+  it('judges a minimum purchase, a spend cap and the unearned spend on the same figure points are worked out on', () => {
+    expect(computeCycleEarn([cents(12_501, 12_500)], [rule({ id: 'min', rateDen: 2_500, minTransactionMinor: 12_501 })], ancestors).totalPoints).toBe(0);
+    const capped = computeCycleEarn([cents(12_501, 12_500)], [rule({ id: 'cap', rateDen: 2_500, capSpendMinor: 20_000 })], ancestors);
+    expect(capped.spendByRule.cap).toBe(12_500);
+    expect(capped.unearnedSpendMinor).toBe(0);
+    expect(computeCycleEarn([cents(12_501, 12_500)], [rule({ id: 'none', match: { categoryIds: ['fuel'] } })], ancestors).unearnedSpendMinor).toBe(12_500);
+  });
+
+  it('takes a refund back on its own exact figure, and counts a bonus on the exact figures', () => {
+    const bought = cents(12_501, 12_500, '2026-09-01', 'Shoes');
+    const refund = cents(-12_501, -12_500, '2026-09-02', 'Shoes');
+    const earn = computeCycleEarn([bought, refund], [rule({ id: 'base' })], ancestors, {
+      bonuses: [{ id: 'b', key: 'b', name: 'Bonus', tiers: [{ minSpendMinor: 12_501, bonus: 10 }], match: {}, validFrom: null, validTo: null }],
+    });
+    expect(earn.pointsByTransaction[bought.transactionId]).toBe(5);
+    expect(earn.pointsByTransaction[refund.transactionId]).toBe(-5);
+    expect(computeCycleEarn([bought], [], ancestors, { bonuses: [{ id: 'b', key: 'b', name: 'Bonus', tiers: [{ minSpendMinor: 12_501, bonus: 10 }], match: {}, validFrom: null, validTo: null }] }).totalPoints).toBe(0);
+  });
+
+  it('leaves amountMinor, the figure charged, on the lines it was given', () => {
+    const exact = cents(12_501, 12_500);
+    computeCycleEarn([exact], [rule({ id: 'base' })], ancestors);
+    expect(exact.amountMinor).toBe(12_501);
+  });
+});
