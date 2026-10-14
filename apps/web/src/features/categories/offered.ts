@@ -24,9 +24,16 @@ export function offeredCategories(
   kind: 'expense' | 'income',
   membership: Record<string, unknown>,
   keep: (a: AccountRow) => boolean,
+  /**
+   * One set's categories **in place of** the monthly tree: spending recorded into an event that draws on a set is
+   * recorded in the set's terms, so a renovation is filed under Flooring & Tiles and not under the weekly shop.
+   * The rule the event page's own Add spending form kept, carried to the Add screen with it. Null is the tree.
+   */
+  setId: string | null = null,
 ): AccountRow[] {
   // Uncategorised is where "Choose later" files a transaction, never a category to choose: it is left out of every picker.
-  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && !isUncategorisedKey(a.systemKey) && keep(a));
+  const inScope = (a: AccountRow) => (setId ? membership[a.id] === setId : membership[a.id] === undefined);
+  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && inScope(a) && !isUncategorisedKey(a.systemKey) && keep(a));
 }
 
 /**

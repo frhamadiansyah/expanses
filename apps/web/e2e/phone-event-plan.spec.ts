@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { expectCover, expectKitFigures, fillItem, TODAY } from './event-plan';
+import { buyItNow, expectCover, expectKitFigures, fillItem, TODAY } from './event-plan';
 import { addTransaction } from './add-transaction';
 
 /*
@@ -115,14 +115,11 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await noSideways(page, 'an event with a plan');
   await page.getByRole('link', { name: 'See the whole plan' }).click();
 
-  // Buying: the item's page, then the event's own card filled in from the estimate, with the real price typed over it.
+  // Buying: the item's page, then the Add screen filled in from the estimate, with the real price typed over it.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await bigEnough(page.getByRole('link', { name: 'Edit' }), 'the item’s Edit');
   await noSideways(page, 'an item');
-  await page.getByRole('button', { name: 'Buy it now' }).click();
-  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
-  await page.getByLabel('Amount', { exact: true }).fill('7200000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await buyItNow(page, { paid: '7200000' });
 
   // Ticked, at what it really cost, with the difference beside it.
   const crib = page.getByTestId('plan-item').filter({ hasText: 'Crib' });

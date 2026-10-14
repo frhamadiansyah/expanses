@@ -1,19 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { planFor, TODAY } from './event-plan';
+import { planFor, recordIntoEvent, TODAY } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-async function record(page: Page, description: string, category: string, amount: string) {
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: category });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByLabel('Description')).toHaveValue('');
-}
+/** Add spending opens the Add screen with the event set; a set's own categories are what its Category offers. */
+const record = (page: Page, description: string, category: string, amount: string) => recordIntoEvent(page, { description, category, amount });
 
 test('an event reads like Cashflow: where it went, and a swipe to what it planned', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '90000000' });
@@ -30,10 +24,8 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   await planFor(page, 'Flights', '4500000');
   await planFor(page, 'Lodging', '3000000');
 
-  await page.getByRole('button', { name: 'Add spending' }).click();
   await record(page, 'Garuda', 'Flights', '4280000');
   await record(page, 'Hotel', 'Lodging', '3900000');
-  await page.getByRole('button', { name: 'Add spending' }).click();
 
   // No Expense and Income, and no arrows: an event is spending, and the list is one tap back.
   const sheet = page.getByTestId('event-sheet');
