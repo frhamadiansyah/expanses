@@ -10,7 +10,7 @@ import { SCREEN } from '../../ui/native';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { TransactionCard } from './TransactionCard';
-import { canDuplicate } from './tx-form';
+import { useDuplicable } from './duplicable';
 
 /**
  * `/transactions/new` — the card as a screen.
@@ -103,13 +103,14 @@ export function DuplicateTransactionRoute() {
   });
   const tx = receipt.data ?? null;
   const { changeable, elsewhere, isTrade } = useChangeable(tx);
-  const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || !canDuplicate(tx));
+  const duplicable = useDuplicable(tx ? [tx] : []);
+  const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || (duplicable.ready && !duplicable(tx)));
 
   useEffect(() => {
     if (refused) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
   }, [refused, transactionId]);
 
-  if (!tx || !changeable) return <Card>Loading…</Card>;
+  if (!tx || !changeable || !duplicable.ready || !duplicable(tx)) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
       <TransactionCard full title="Duplicate" label="Duplicate a transaction" duplicateOf={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />

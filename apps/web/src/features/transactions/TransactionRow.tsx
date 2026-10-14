@@ -168,17 +168,17 @@ export function TransactionRow({
       <li className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
           enabled
-          reveal={(onDuplicate ? 1 : 0) * 74 + (onEdit ? 74 : 0) + (onDelete ? 74 : 0)}
+          reveal={(onDuplicate ? 64 : 0) + (onEdit ? 64 : 0) + (onDelete ? 64 : 0)}
           testId={testId}
           leftAction={
             <>
               {onDuplicate && (
-                <button type="button" onClick={() => onDuplicate(row)} title={`Duplicate ${row.description}`} className="w-[74px] bg-blue-600 text-sm font-semibold text-white">
+                <button type="button" onClick={() => onDuplicate(row)} title={`Duplicate ${row.description}`} className="w-[64px] bg-blue-600 text-[13px] font-semibold text-white">
                   Duplicate
                 </button>
               )}
               {onEdit && (
-                <button type="button" onClick={() => onEdit(row)} title={`Edit ${row.description}`} className="w-[74px] bg-slate-600 text-sm font-semibold text-white">
+                <button type="button" onClick={() => onEdit(row)} title={`Edit ${row.description}`} className="w-[64px] bg-slate-600 text-[13px] font-semibold text-white">
                   Edit
                 </button>
               )}

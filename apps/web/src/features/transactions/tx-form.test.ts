@@ -1295,8 +1295,23 @@ describe('a transaction as the start of a new one', () => {
     expect(form.editing).toBe(false);
   });
 
-  it('keeps a foreign purchase on its currency with the charge beneath', () => {
-    expect(duplicateDraft(foreignPurchase, accounts)).toMatchObject({ currency: 'CNY', amount: '120.00', chargedAmount: '272400' });
+  it('keeps a foreign purchase on its currency but not its charge, so the day\'s estimate follows the new amount', () => {
+    const form = duplicateDraft(foreignPurchase, accounts);
+    expect(form).toMatchObject({ currency: 'CNY', amount: '120.00', chargedAmount: '' });
+    // The row starts as the estimate's (AmountRow reads a non-empty charge as the user's own): retyping re-estimates.
+    let charged = form.chargedAmount;
+    const typeAmount = (amount: string) => {
+      const estimate = estimatedCharge({ amount, currency: 'CNY', accountCurrency: 'IDR', rate: 2270 });
+      charged = prefilledCharge({ estimate, charged, touched: form.chargedAmount.trim() !== '' }) ?? charged;
+    };
+    typeAmount('120');
+    expect(charged).toBe('272400');
+    typeAmount('200');
+    expect(charged).toBe('454000');
+  });
+
+  it('does not inherit the set-aside link', () => {
+    expect(duplicateDraft(view({ ...full, goalId: 'goal-1' } as Partial<TransactionView>), accounts).goalId).toBe('');
   });
 
   it('keeps a transfer between its two accounts', () => {
@@ -1307,8 +1322,30 @@ describe('a transaction as the start of a new one', () => {
     expect(formToPost(duplicateDraft(full, accounts), accounts)).toMatchObject({ kind: 'post', input: { eventId: 'ev-1', occurredOn: '2026-08-03' } });
   });
 
-  it('is offered for what is posted and editable, never for a deleted row', () => {
-    expect(canDuplicate(full)).toBe(true);
-    expect(canDuplicate(view({ ...full, status: 'void' }))).toBe(false);
+  describe('canDuplicate', () => {
+    const known = new Set(['acct-bank', 'acct-card', 'cat-restaurants']);
+    const ctx = { known, payer: null, memberTransfer: false };
+
+    it('is offered for what is posted and editable, never for a deleted row', () => {
+      expect(canDuplicate(full, ctx)).toBe(true);
+      expect(canDuplicate(view({ ...full, status: 'void' }), ctx)).toBe(false);
+    });
+
+    it('is refused for a purchase another member paid, however that is known', () => {
+      // Against their placeholder: the money account is not one this device lists.
+      expect(canDuplicate(full, { ...ctx, known: new Set(['acct-bank']) })).toBe(false);
+      // By the payers query: someone else's.
+      expect(canDuplicate(full, { ...ctx, payer: { mine: false } })).toBe(false);
+      expect(canDuplicate(full, { ...ctx, payer: { mine: true } })).toBe(true);
+    });
+
+    it('is refused for a transfer with a partner', () => {
+      expect(canDuplicate(transferTx, ctx)).toBe(true);
+      expect(canDuplicate(transferTx, { ...ctx, memberTransfer: true })).toBe(false);
+    });
+
+    it('waits for the accounts rather than guessing', () => {
+      expect(canDuplicate(full, { ...ctx, known: new Set() })).toBe(false);
+    });
   });
 });

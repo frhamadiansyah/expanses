@@ -51,7 +51,8 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
-import { canDuplicate, canEditInSheet } from './tx-form';
+import { canEditInSheet } from './tx-form';
+import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -243,6 +244,7 @@ export function TransactionsPage() {
    * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer. Decided from
    * the row and the accounts first, so it holds before the payers query answers (fix round 1).
    */
+  const duplicable = useDuplicable(recorded);
   const knownAccounts = new Set(accounts.map((account) => account.id));
   const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
   const paidByOther = (tx: TransactionView) => {
@@ -566,7 +568,7 @@ export function TransactionsPage() {
       </button>
     );
     // The same refusals as Edit: a trade, a row of another workspace or of a partner's payment is not repeated from here.
-    const mayDuplicate = canDuplicate(tx) && !tradeByTransaction.has(tx.id) && !readOnly && filingKnown && !elsewhereOf(tx.id) && !paidByOther(tx);
+    const mayDuplicate = duplicable(tx) && !tradeByTransaction.has(tx.id) && !readOnly && filingKnown && !elsewhereOf(tx.id);
     const toDuplicate = () => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: tx.id } });
     const duplicateButton = mayDuplicate && (
       <button type="button" onClick={toDuplicate} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
@@ -762,6 +764,7 @@ export function TransactionsPage() {
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
+    canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),
     duplicate: (id) => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: id } }),
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),

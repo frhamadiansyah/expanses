@@ -28,7 +28,8 @@ import { EditSheet } from './EditSheet';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
-import { canDuplicate, canEditInSheet } from './tx-form';
+import { canEditInSheet } from './tx-form';
+import { useDuplicable } from './duplicable';
 import { TwoTapDelete } from './TwoTapDelete';
 
 const route = getRouteApi('/transactions/$transactionId');
@@ -86,6 +87,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
   // A purchase in a shared workspace (spec §11): who paid, and with what, as the payer's device named it.
   const payerOf = usePurchasePayers(tx ? [tx.id] : [], true);
+  const duplicable = useDuplicable(tx ? [tx] : []);
   const urls = usePhotoUrls(photoRows.data ?? []);
   /*
    * The three refusals, asked once for the whole app rather than copied onto every way in: a trade is
@@ -166,7 +168,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
               <Pencil size={16} aria-hidden />
             </button>
-            {canDuplicate(tx) && (
+            {duplicable(tx) && (
               <button
                 type="button"
                 onClick={() => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId } })}
