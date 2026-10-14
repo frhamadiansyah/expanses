@@ -53,7 +53,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { categoryFromNote, categoryLater, type CategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -250,7 +250,8 @@ function CardBody({
    * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
    * by hand: the note's history only ever fills a category nobody chose, and only follows one it filled itself.
    */
-  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : null);
+  const prefilled = !!initial || !!finish;
+  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled));
   const latest = useRef(draft);
   latest.current = draft;
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
@@ -368,7 +369,7 @@ function CardBody({
    */
   useEffect(() => {
     if (draft.bookId === bookId) return;
-    categorySource.current = null;
+    if (!prefilled) categorySource.current = null;
     setDraft((d) => ({ ...d, bookId, categoryId: '', splits: [] }));
   }, [bookId, draft.bookId]);
 
@@ -455,7 +456,7 @@ function CardBody({
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   // Money back lands in the account it was paid with, so the row says where it goes.
-  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : isRefund(draft) ? 'Into' : 'Paid with';
+  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
   // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never
@@ -551,7 +552,8 @@ function CardBody({
       // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
       // one question about that, asked here too rather than restated.
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
-      categorySource.current = null;
+      // A new transaction starts its guessing again on another tab; one that already exists never guesses.
+      if (!prefilled) categorySource.current = null;
       return set({ mode: value, categoryId: '', splits: [], ...flag });
     }
     const first = choices.buys[0]!;
@@ -575,8 +577,10 @@ function CardBody({
   const suggestKind = draft.mode === 'expense' || draft.mode === 'income' ? draft.mode : null;
   const categoryNameOf = (id: string) => accounts.find((a) => a.id === id)?.name;
   const pickNote = (suggestion: NoteSuggestion) => {
-    const fill = suggestion.categoryId && categorySource.current !== 'hand' && draft.splits.length === 0;
-    if (fill) categorySource.current = 'auto';
+    // A suggestion picked is a choice: on a form opened on something that exists it still fills an empty Category, as
+    // it always has, and the category then stays the owner's.
+    const fill = !!suggestion.categoryId && draft.splits.length === 0 && (prefilled ? !draft.categoryId : categorySource.current !== 'hand');
+    if (fill && !prefilled) categorySource.current = 'auto';
     setDraft((d) => ({ ...d, description: suggestion.description, ...(fill ? { categoryId: suggestion.categoryId! } : {}) }));
   };
   /*
@@ -588,7 +592,7 @@ function CardBody({
    */
   useEffect(() => {
     const typed = draft.description.trim();
-    if (!suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    if (prefilled || !suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
     if (!typed && categorySource.current !== 'auto') return;
     let stale = false;
     const timer = setTimeout(() => {
@@ -835,7 +839,7 @@ function CardBody({
             />
             )}
 
-            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} />
+            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} noRefund={!!finish} />
 
             {draft.mode === 'transfer' ? (
               /*

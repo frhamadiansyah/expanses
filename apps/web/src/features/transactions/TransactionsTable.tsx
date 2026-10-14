@@ -220,7 +220,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   // Money back on a purchase reads as money in.
   const sign = row.refund ? '+' : row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
   const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
-  const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
+  const why = row.refund ? 'a refund' : row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);
   // The form behind "Open in form" saves like any other edit, so it waits for the filing too.

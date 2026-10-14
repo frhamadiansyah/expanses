@@ -151,10 +151,13 @@ export function AmountRow({
   accounts,
   set,
   unsure = false,
+  noRefund = false,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
   set: (patch: Partial<FormDraft>) => void;
+  /** No minus-for-refund here: a capture under review is confirmed by its own rule, not posted as a refund. */
+  noRefund?: boolean;
   /** The figure was read off a capture without certainty: marked on the warning panel, with "check" beside it. */
   unsure?: boolean;
 }) {
@@ -174,8 +177,8 @@ export function AmountRow({
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
   // Money back: a minus typed first on an expense. The figure turns the green of money coming in, and says where to.
-  const refundable = refundAllowed(draft);
-  const refund = isRefund(draft);
+  const refundable = !noRefund && refundAllowed(draft);
+  const refund = !noRefund && isRefund(draft);
   const { rate } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
 
   /*

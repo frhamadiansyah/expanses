@@ -220,6 +220,14 @@ export function categoryFromNote(draft: FormDraft, guess: string | null, source:
   return guess;
 }
 
+/**
+ * Who Category starts out filled by. A form opened on something that already exists — an edit, a duplicate, a capture
+ * under review — is the owner's own, category or not: the note's history only ever helps a new, empty transaction.
+ */
+export function initialCategorySource(prefilled: boolean): CategorySource {
+  return prefilled ? 'hand' : null;
+}
+
 /** A figure that starts with a minus. */
 const MINUS_FIRST = /^\s*[-−–]/;
 
@@ -852,6 +860,28 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       ...paidFromHint(draft),
     },
   };
+}
+
+/**
+ * Whether the row's category circle can re-file this transaction: one category and one money account — a purchase,
+ * a refund, an income, foreign or not — still posted and still the forms' to edit.
+ */
+export function canRefile(tx: TransactionView): boolean {
+  if (!isEditable(tx)) return false;
+  const c = classify(tx);
+  if (c.type !== 'expense' && c.type !== 'income') return false;
+  const categories = tx.entries.filter((e) => e.accountKind === c.type);
+  const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
+  return categories.length === 1 && money.length === 1 && tx.entries.length === 2;
+}
+
+/**
+ * The transaction again with only its category swapped, through the edit path itself: read back as the form would
+ * open it, the category changed, and posted as the form would save it — so a refund's sign, a foreign purchase's
+ * original pair, the card and the MCC all go through untouched.
+ */
+export function refiledPost(tx: TransactionView, accounts: readonly AccountRow[], categoryId: string, bookId = ''): FormPost {
+  return formToPost({ ...formFromTransaction(tx, accounts, bookId), categoryId }, accounts);
 }
 
 /**

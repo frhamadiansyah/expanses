@@ -9,6 +9,7 @@ import {
   amountFields,
   billMinor,
   canEditInSheet,
+  canRefile,
   categoryFromNote,
   categoryLater,
   chargedIsEstimate,
@@ -23,6 +24,7 @@ import {
   type FormDraft,
   formFromTransaction,
   formToPost,
+  initialCategorySource,
   isRefund,
   KEYPAD_KEYS,
   keypadAction,
@@ -32,6 +34,7 @@ import {
   prefilledCharge,
   rateDateFor,
   receivedField,
+  refiledPost,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
   splitTotalMinor,
@@ -1356,8 +1359,54 @@ describe('Category filled from the note’s history', () => {
     expect(categoryFromNote(filled, null, 'auto')).toBe('');
   });
 
+  it('never guesses on a form opened on something that exists: an edit, a duplicate, a capture under review', () => {
+    // A capture with no category yet, opened for review: prefilled, so the note's history leaves Category alone.
+    const capture = { ...empty, description: 'Kopi Kenangan' };
+    expect(categoryFromNote(capture, 'cat-cafe', initialCategorySource(true))).toBeNull();
+    expect(categoryFromNote(capture, 'cat-cafe', initialCategorySource(false))).toBe('cat-cafe');
+  });
+
   it('guesses nothing for a transfer or a split', () => {
     expect(categoryFromNote({ ...transfer, moneyId: 'acct-bank' }, 'cat-cafe', null)).toBeNull();
     expect(categoryFromNote({ ...empty, splits: [{ categoryId: '', amount: '1' }] }, 'cat-cafe', null)).toBeNull();
+  });
+});
+
+describe('re-filing from the row’s circle', () => {
+  const salaryCat = { id: 'cat-salary', name: 'Salary', kind: 'income', subtype: 'category', currency: null } as AccountRow;
+  const laterIn = { id: 'cat-later-in', name: 'Uncategorised', kind: 'income', subtype: 'category', currency: null, systemKey: 'income.uncategorised' } as AccountRow;
+  const more = [...accounts, salaryCat, laterIn];
+
+  it('swaps only the category of a refund: it stays money back', () => {
+    const back = view({ entries: [paid(450_000), spent('cat-restaurants', -450_000)] as TransactionView['entries'] });
+    expect(canRefile(back)).toBe(true);
+    const post = refiledPost(back, more, 'cat-groceries', 'ws-1');
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-groceries', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('keeps a foreign purchase’s original pair, its card and its MCC', () => {
+    const abroad = { ...foreignPurchase, mcc: '5812', cardId: 'card-1' } as TransactionView;
+    expect(canRefile(abroad)).toBe(true);
+    const post = refiledPost(abroad, more, 'cat-groceries', 'ws-1');
+    expect(post.kind === 'post' && post.input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000, mcc: '5812', cardId: 'card-1' });
+    expect(post.kind === 'post' && post.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-groceries', paymentAccountId: 'acct-card', amountMinor: 272_400, currency: 'IDR' }));
+  });
+
+  it('files income waiting under Uncategorised as Salary', () => {
+    const paidBack = view({
+      entries: [
+        { accountId: 'acct-bank', accountKind: 'asset', accountName: 'BCA Tahapan', amountMinor: 70_000, amountBaseMinor: 70_000, currency: 'IDR' },
+        { accountId: 'cat-later-in', accountKind: 'income', accountName: 'Uncategorised', amountMinor: -70_000, amountBaseMinor: -70_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    expect(canRefile(paidBack)).toBe(true);
+    const post = refiledPost(paidBack, more, 'cat-salary', 'ws-1');
+    expect(post.kind === 'post' && post.input.lines).toEqual(incomeLines({ incomeAccountId: 'cat-salary', depositAccountId: 'acct-bank', amountMinor: 70_000, currency: 'IDR' }));
+  });
+
+  it('is not offered for a split, a transfer or anything not posted', () => {
+    expect(canRefile(splitPurchase)).toBe(false);
+    expect(canRefile(transferTx)).toBe(false);
+    expect(canRefile({ ...plainExpense, status: 'void' } as TransactionView)).toBe(false);
   });
 });

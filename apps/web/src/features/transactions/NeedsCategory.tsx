@@ -15,7 +15,7 @@ export function NeedsCategory({ count, onShow }: { count: number; onShow: () => 
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">Uncategorised</span>
-        <span className="block truncate text-xs text-slate-500">{count} need a category</span>
+        <span className="block truncate text-xs text-slate-500">{count} {count === 1 ? 'needs' : 'need'} a category</span>
       </span>
       <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
     </button>

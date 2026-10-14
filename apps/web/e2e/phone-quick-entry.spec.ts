@@ -23,28 +23,35 @@ test('an expense saved with its category left for later waits under Uncategorise
   // No category chosen: the row offers to choose it later, and the ✓ saves anyway.
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Choose later');
   await form.getByLabel('Note').fill('Mystery stall');
+  // Last year: out of the month on show, and still counted.
+  await form.getByLabel('Date').fill('2025-06-15');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
+
+  // The box above the history counts every one, whatever the period on show.
+  await expect(row(page, 'Mystery stall')).toHaveCount(0);
+  const waiting = page.getByTestId('needs-category-card');
+  await expect(waiting).toContainText('1 needs a category');
+  // Tapping the line lists all of them.
+  await waiting.click();
+  await expect(page.getByTestId('active-filters')).toContainText('Needs a category');
+  await expect(page.getByTestId('transaction-row')).toHaveCount(1);
 
   // The row wears the amber question and says what it is filed under.
   const mystery = row(page, 'Mystery stall');
   await expect(mystery).toContainText('Uncategorised');
   await expect(mystery.locator('[data-testid="category-mark"][data-unknown]')).toHaveCount(1);
 
-  // The box above the history counts it, and tapping the line shows just those.
-  const waiting = page.getByTestId('needs-category-card');
-  await expect(waiting).toContainText('1 need a category');
-  await waiting.click();
-  await expect(page.getByTestId('active-filters')).toContainText('Needs a category');
-  await expect(page.getByTestId('transaction-row')).toHaveCount(1);
-
   // The row's circle fixes the category; Uncategorised is never one of the choices.
   await page.getByRole('button', { name: 'Category for Mystery stall' }).click();
   const picker = page.getByRole('dialog', { name: 'Category for Mystery stall' });
   await expect(picker.getByRole('button', { name: 'Uncategorised', exact: true })).toHaveCount(0);
   await picker.getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Moved to Restaurants' })).toBeVisible();
+  // None left: the line goes, and so do the filter and the All period it opened.
   await expect(page.getByTestId('needs-category-card')).toHaveCount(0);
-  await expect(row(page, 'Mystery stall')).toContainText('Restaurants');
+  await expect(page.getByTestId('active-filters')).toHaveCount(0);
+  await expect(row(page, 'Mystery stall')).toHaveCount(0);
 });
 
 test('a refund typed with a minus nets the category it went back under: the car rental', async ({ page }) => {
@@ -80,6 +87,14 @@ test('a refund typed with a minus nets the category it went back under: the car 
   // By category, Ride hailing spent 550.000, not 1.000.000, and nothing of it is income.
   await page.getByRole('button', { name: 'Categories', exact: true }).click();
   await expect(page.getByText('550.000').first()).toBeVisible();
+
+  // Re-filed from its circle, it is still money back: only the category changed.
+  await page.getByRole('button', { name: 'Days', exact: true }).click();
+  await page.getByRole('button', { name: 'Category for Deposit back' }).click();
+  await page.getByRole('dialog', { name: 'Category for Deposit back' }).getByRole('button', { name: 'Fuel cost', exact: true }).click();
+  await expect(row(page, 'Deposit back')).toContainText('Fuel cost');
+  await expect(row(page, 'Deposit back')).toContainText('+Rp');
+  await expect(row(page, 'Deposit back')).toContainText('Refund');
 });
 
 test('typing a note fills an empty category with the one that note had last time, and ✓ saves under it', async ({ page }) => {
