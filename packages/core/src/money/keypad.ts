@@ -28,9 +28,28 @@ function count(text: string): number | null {
  *
  * Null when it cannot be read or comes to nothing or less, so the amount row keeps whatever it had and the keypad
  * stays open. Rounded once at the end, so 100÷3 three times over is still the bill.
+ *
+ * `refund` lets an expense's figure start with a minus: money back, returned as a negative figure. Only the very
+ * first character may be that minus, the expression after it is worked out as usual ("−500000+50000" is −450.000),
+ * and it must come to less than nothing — a minus that works out to a purchase is not read. Income, a transfer and
+ * a split line never pass it, so a leading minus there is refused as it always was.
  */
-export function evaluateAmount(expression: string, currency: string): number | null {
+export function evaluateAmount(expression: string, currency: string, options: { refund?: boolean } = {}): number | null {
   const normalised = expression.replace(/[×xX]/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-').replace(/\s+/g, '');
+  if (options.refund && normalised.startsWith('-')) {
+    const rest = normalised.slice(1);
+    // "−" alone, "−−5" and "−+5" are not a refund of anything.
+    if (!rest || /^[+\-*/]/.test(rest)) return null;
+    // Read as nought less the rest: the minus belongs to the first figure, and what follows is ordinary arithmetic.
+    const minor = evaluateTotal(`0-${rest}`, currency);
+    return minor !== null && minor < 0 ? minor : null;
+  }
+  const minor = evaluateTotal(normalised, currency);
+  return minor !== null && minor > 0 ? minor : null;
+}
+
+/** The expression's total in minor units, rounded once, whatever its sign; null when it cannot be read. */
+function evaluateTotal(normalised: string, currency: string): number | null {
   if (!normalised || /^[+\-*/]/.test(normalised) || /[+\-*/]$/.test(normalised)) return null;
   const parts = normalised.split(/([+\-*/])/);
   const values: number[] = [];
@@ -60,5 +79,5 @@ export function evaluateAmount(expression: string, currency: string): number | n
   let total = values[0] ?? 0;
   for (const [index, operator] of adds.entries()) total = operator === '-' ? total - values[index + 1]! : total + values[index + 1]!;
   const minor = roundHalfAwayFromZero(total);
-  return minor > 0 && Number.isSafeInteger(minor) ? minor : null;
+  return Number.isSafeInteger(minor) ? minor : null;
 }

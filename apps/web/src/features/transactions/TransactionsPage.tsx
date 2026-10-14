@@ -6,17 +6,19 @@ import {
   editDraft,
   guessCategoryFromHistory,
   listTransactionsIn,
+  moveTransactionInDay,
   ownerScope,
   postTransaction,
   replaceTransaction,
   type SetAsideChoice,
   type TransactionView,
+  uncategorisedTransactionIds,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
@@ -36,6 +38,7 @@ import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
+import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -52,6 +55,7 @@ import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
 import { canEditInSheet } from './tx-form';
+import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -195,6 +199,8 @@ export function TransactionsPage() {
   const [converting, setConverting] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  /** A day's rows as they were just dropped, by date, while the write that keeps them there goes out. */
+  const [dropped, setDropped] = useState<Record<string, string[]>>({});
   /** A quick row that took promised money, waiting for its question to be answered in a sheet. */
   const [asking, setAsking] = useState<{ door: Door; exclude: string | null; save: (choice: SetAsideChoice | null) => Promise<void>; settle: (saved: boolean) => void } | null>(null);
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) => setFilters((f) => ({ ...f, [key]: value }));
@@ -243,6 +249,7 @@ export function TransactionsPage() {
    * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer. Decided from
    * the row and the accounts first, so it holds before the payers query answers (fix round 1).
    */
+  const duplicable = useDuplicable(recorded);
   const knownAccounts = new Set(accounts.map((account) => account.id));
   const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
   const paidByOther = (tx: TransactionView) => {
@@ -275,8 +282,52 @@ export function TransactionsPage() {
    * the work in progress that editor exists for.
    */
   const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards);
+  /*
+   * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
+   * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
+   */
+  const waiting = useQuery({
+    queryKey: ['uncategorised-ids', ws.workspaceId, ws.bookId ?? null, ownerWide],
+    queryFn: () => uncategorisedTransactionIds(database, listWs),
+  });
+  const needCategoryCount = waiting.data?.length ?? 0;
+  const periodBefore = useRef<string | undefined>(undefined);
+  const showNeedsCategory = () => {
+    periodBefore.current = search.month;
+    setFilter('needsCategory', true);
+    setSearch({ month: 'all' });
+  };
+  const hideNeedsCategory = () => {
+    setFilter('needsCategory', false);
+    setSearch({ month: periodBefore.current });
+  };
+  const needsCategoryShown = waiting.isSuccess && filters.needsCategory === true;
+  useEffect(() => {
+    if (needsCategoryShown && needCategoryCount === 0) hideNeedsCategory();
+    // `hideNeedsCategory` is rebuilt every render; what decides is the count reaching nought while the filter is on.
+  }, [needsCategoryShown, needCategoryCount]);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
+  /*
+   * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
+   * never in a share that ended (read-only) or among deleted rows, which hold no place. A filtered list moves its rows
+   * among the ones it shows. Until the write lands, a dropped day keeps the order it was dropped in (`dropped`).
+   */
+  const reorderable = view === 'list' && grouping === 'date' && sort.key === 'date' && !filters.showDeleted && !readOnly;
+  const movable = (row: ListRow) => reorderable && row.kind === 'tx' && !row.deleted && row.tx?.status === 'posted';
+  const days = groupByDay(shown).map((day) => {
+    const order = dropped[day.date];
+    if (!order) return day;
+    const at = new Map(order.map((id, i) => [id, i]));
+    const moving = day.rows.filter((row) => at.has(row.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+    let next = 0;
+    return { ...day, rows: day.rows.map((row) => (at.has(row.id) ? moving[next++]! : row)) };
+  });
+  const movableIds = new Map(days.map((day) => [day.date, day.rows.filter(movable).map((row) => row.id)]));
+  function reorder(date: string, movedId: string, order: string[]) {
+    setDropped((was) => ({ ...was, [date]: order }));
+    void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() => setDropped((was) => landed(was, date, order)));
+  }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
@@ -314,7 +365,7 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
@@ -565,6 +616,14 @@ export function TransactionsPage() {
         This was a purchase
       </button>
     );
+    // The same refusals as Edit: a trade, a row of another workspace or of a partner's payment is not repeated from here.
+    const mayDuplicate = duplicable(tx) && !tradeByTransaction.has(tx.id) && !readOnly && filingKnown && !elsewhereOf(tx.id);
+    const toDuplicate = () => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: tx.id } });
+    const duplicateButton = mayDuplicate && (
+      <button type="button" onClick={toDuplicate} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+        Duplicate
+      </button>
+    );
     const deleteButton = twoTap(tx.id, 'Delete this transaction', 'Click again to delete', () => deleteTransaction(database, ws, tx.id));
     if (editing?.kind === 'tx' && editing.id === tx.id) {
       const { needs } = readQuick(editing.values, accounts, today, ws.baseCurrency);
@@ -606,6 +665,7 @@ export function TransactionsPage() {
                 Open in form
               </button>
               {purchaseButton}
+              {duplicateButton}
               {deleteButton}
             </>,
           )}
@@ -616,7 +676,7 @@ export function TransactionsPage() {
       return (
         <li key={tx.id} className="py-2">
           <TransactionCard initial={tx} onDone={close} />
-          {editHint(<>{keptSentence}</>, <>{purchaseButton}{deleteButton}</>)}
+          {editHint(<>{keptSentence}</>, <>{purchaseButton}{duplicateButton}{deleteButton}</>)}
         </li>
       );
     }
@@ -662,12 +722,19 @@ export function TransactionsPage() {
     // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
     // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
     const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
+    // In a day's own list, by date: the row can be moved within its day.
+    const dayIds = !withDate && movable(row) ? movableIds.get(row.date) : undefined;
+    const moveBy = (by: -1 | 1) => {
+      const order = dayIds && movedBy(dayIds, tx.id, by);
+      if (order) reorder(row.date, tx.id, order);
+    };
     return (
       <TransactionRow
         key={tx.id}
         row={row}
         accounts={accounts}
         phone={phone}
+        itemProps={dayIds ? reorderAttrs(tx.id) : undefined}
         title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
         // A phone taps for the receipt and swipes for the rest; a desktop keeps its editor in place, untouched.
         // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
@@ -678,6 +745,7 @@ export function TransactionsPage() {
         // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
         // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
         onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
+        onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
         // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
         // write it already asked for is going out.
@@ -736,6 +804,10 @@ export function TransactionsPage() {
               clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
             )}
             <ReceiptLink description={row.description} transactionId={tx.id} />
+            {/* A wide screen's way to move it: the ≡ handle, and Move up and Move down without dragging. */}
+            {dayIds && dayIds.length > 1 && !phone && (
+              <ReorderControls description={row.description} onMove={moveBy} first={dayIds[0] === tx.id} last={dayIds[dayIds.length - 1] === tx.id} />
+            )}
           </>
         }
       />
@@ -752,6 +824,8 @@ export function TransactionsPage() {
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
+    canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),
+    duplicate: (id) => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: id } }),
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
@@ -1028,7 +1102,13 @@ export function TransactionsPage() {
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
       <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
       {/* The month's bills and the queue, between the chart and the history: neither is a transaction. */}
-      {!inCategory && chartShown && <WaitingBox today={today} drafts={pending} />}
+      {!inCategory && chartShown && (
+        <WaitingBox
+          today={today}
+          drafts={pending}
+          needsCategory={{ count: needCategoryCount, onShow: showNeedsCategory }}
+        />
+      )}
       {view === 'table' ? (
         <>
         {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
@@ -1057,9 +1137,12 @@ export function TransactionsPage() {
             ))}
 
           {/* What ⋯ has narrowed the list to, each with its own way out. */}
-          {phone && paidPicked && (
+          {((phone && paidPicked) || filters.needsCategory) && (
             <div className="flex flex-wrap gap-2" data-testid="active-filters">
-              <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
+              {phone && paidPicked && (
+                <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
+              )}
+              {filters.needsCategory && <FilterChip label="Needs a category" clearLabel="Clear needs a category" onClear={hideNeedsCategory} />}
             </div>
           )}
           {shown.length > 0 && (
@@ -1137,7 +1220,8 @@ export function TransactionsPage() {
                 // Gathering by category answers "what did the money go on", so it answers it for one
                 // direction at a time: the chart's own choice of money out or money in.
                 const groups = groupByCategory(shown.filter((row) => row.type === kind));
-                const whole = groups.reduce((sum, group) => sum + Math.abs(group.totalMinor), 0);
+                // Signed: a category whose refunds outweigh what it spent comes to less than nothing, and takes that off the whole.
+                const whole = groups.reduce((sum, group) => sum + group.totalMinor, 0);
                 return groups.map((group) => {
                   const key = group.id ?? group.name;
                   const open = openCategory === key;
@@ -1158,9 +1242,10 @@ export function TransactionsPage() {
                           </span>
                         </span>
                         <span className="text-right">
-                          <Money minor={Math.abs(group.totalMinor)} currency={listCurrency} className="block text-sm font-semibold" />
+                          {/* Less than nothing is money back on the whole: green, as money in. */}
+                          <Money minor={group.totalMinor} currency={listCurrency} className={cx('block text-sm font-semibold', group.totalMinor < 0 && 'text-emerald-700')} />
                           {whole > 0 && group.totalMinor !== 0 && (
-                            <span className="block text-xs text-slate-500">{Math.round((Math.abs(group.totalMinor) / whole) * 100)}%</span>
+                            <span className="block text-xs text-slate-500">{Math.round((group.totalMinor / whole) * 100)}%</span>
                           )}
                         </span>
                         <ChevronDown size={16} aria-hidden className={cx('shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
@@ -1171,12 +1256,22 @@ export function TransactionsPage() {
                 });
               })()
             ) : (
-              groupByDay(shown).map((day) => (
+              // One scope around every day: its one touch listener keeps a lifted row's drag from scrolling the page.
+              <ReorderScope enabled={phone && reorderable} className="space-y-4">
+              {days.map((day) => (
                 <Card key={day.date || 'undated'}>
                   <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
-                  <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
+                  <DayReorder
+                    className="divide-y divide-slate-100"
+                    enabled={(movableIds.get(day.date)?.length ?? 0) > 1}
+                    phone={phone}
+                    onMove={(movedId, order) => reorder(day.date, movedId, order)}
+                  >
+                    {day.rows.map((row) => rowView(row))}
+                  </DayReorder>
                 </Card>
-              ))
+              ))}
+              </ReorderScope>
             )
           )}
         </>

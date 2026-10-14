@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor, uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, isUncategorisedKey, perMonthMinor, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -61,11 +61,13 @@ function assertWholeMinor(amountMinor: number): void {
  */
 export async function spendingCategoryRefusal(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK' | null> {
   const [account] = await db
-    .select({ kind: accounts.kind, subtype: accounts.subtype })
+    .select({ kind: accounts.kind, subtype: accounts.subtype, systemKey: accounts.systemKey })
     .from(accounts)
     .where(and(eq(accounts.id, categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!account) return 'NOT_FOUND';
   if (account.subtype !== 'category' || account.kind !== 'expense') return 'NOT_A_CATEGORY';
+  // Uncategorised only holds what waits for a category: a cap on it would budget for not choosing one.
+  if (isUncategorisedKey(account.systemKey)) return 'NOT_A_CATEGORY';
   return (await otherBook(db, ws, categoryAccountId)) ? 'OTHER_BOOK' : null;
 }
 

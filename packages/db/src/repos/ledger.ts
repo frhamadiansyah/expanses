@@ -1,5 +1,5 @@
-import { isMcc, isSupportedCurrency, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { compareWithinDay, isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { and, desc, eq, getTableColumns, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
@@ -7,9 +7,10 @@ import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
-import { captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
+import { captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
+import { dayOrderExists } from './day-order-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
@@ -53,7 +54,7 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -90,6 +91,12 @@ export interface PostTransactionInput {
   excludedFromReport?: boolean;
   /** The event this belongs to. The column exists already; only the form is new. */
   eventId?: string | null;
+  /**
+   * Its place within its day, when moved there by hand (0067). A new posting leaves it null, so it lands on top of its
+   * day. On `replaceTransaction`, undefined carries the original's while the date stays the same and clears it when the
+   * date changes; a value (sync's apply) is written as given.
+   */
+  dayOrder?: number | null;
   /** Photo rows written before the transaction had an id. */
   photoIds?: string[];
   /**
@@ -215,6 +222,10 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     templateId: input.templateId ?? null,
     createdAt: new Date().toISOString(),
   });
+  // Unplaced unless told (an edit on the same day, or a shared purchase's place arriving): see day-order-column.ts.
+  if (input.dayOrder !== undefined && input.dayOrder !== null && (await dayOrderExists(tx))) {
+    await tx.run(sql`UPDATE transactions SET day_order = ${input.dayOrder} WHERE id = ${id}`);
+  }
   await tx.insert(entries).values(
     planned.map((p) => ({
       id: uuidv7(),
@@ -328,9 +339,11 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
       eventId: transactions.eventId,
       templateId: transactions.templateId,
       goalId: transactions.goalId,
+      occurredOn: transactions.occurredOn,
     })
     .from(transactions)
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+  const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [settles] = (await billTablesExist(tx))
     ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
     : [];
@@ -406,6 +419,8 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
     // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
     ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
+    // A correction keeps its place in its day; moved to another day it goes to the top of that one.
+    ...(input.dayOrder === undefined ? { dayOrder: original && original.occurredOn === input.occurredOn ? (placed?.[0] ?? null) : null } : {}),
     setAside,
   });
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
@@ -442,6 +457,50 @@ export function setTransactionMcc(database: Database, ws: WorkspaceContext, tran
     if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
     await tx.update(transactions).set({ mcc }).where(eq(transactions.id, transactionId));
     await audit(tx, ws, 'set_mcc', transactionId, { mcc });
+  });
+}
+
+/**
+ * Moves one transaction within its day: `order` is that day's rows as they should now read, the moved one among them —
+ * the rows a list shows, which may be fewer than the day holds when it is filtered. The rows it does not name stay where
+ * they are: the shown rows are put back, in their new order, into the places they already held in the whole day. Writes
+ * the moved row alone when its new neighbours in the whole day already have places (one write, one synced change), else
+ * numbers the day once. Nothing is reposted: a place in the day is not money.
+ */
+export function moveTransactionInDay(database: Database, ws: WorkspaceContext, transactionId: string, order: readonly string[]): Promise<void> {
+  return database.transaction(async (tx) => {
+    const ids = [...new Set(order)];
+    if (!ids.includes(transactionId)) throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} is not in the order given`);
+    const [movedRow] = await tx.values<[string, string]>(
+      sql`SELECT occurred_on, status FROM transactions WHERE workspace_id = ${ws.workspaceId} AND id = ${transactionId}`,
+    );
+    if (!movedRow || movedRow[1] !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
+    const occurredOn = movedRow[0];
+    // The whole day as it reads now (the list's own rule), hidden rows included.
+    const whole = (
+      await tx.values<[string, number | null, string]>(
+        sql`SELECT id, day_order, created_at FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status = 'posted' AND occurred_on = ${occurredOn}`,
+      )
+    )
+      .map(([id, dayOrder, createdAt]) => ({ id, dayOrder: dayOrder === null ? null : Number(dayOrder), createdAt }))
+      .sort(compareWithinDay);
+    const at = new Map(whole.map((row, i) => [row.id, i]));
+    for (const id of ids) {
+      if (at.has(id)) continue;
+      const [row] = await tx.values<[string, string]>(sql`SELECT occurred_on, status FROM transactions WHERE workspace_id = ${ws.workspaceId} AND id = ${id}`);
+      if (!row || row[1] !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
+      // Moving to another day is changing the date: an edit, not a drag.
+      throw new LedgerError('OTHER_DAY', 'A transaction can only be moved within its own day. Change its date to move it to another day.');
+    }
+    const slots = ids.map((id) => at.get(id)!).sort((x, y) => x - y);
+    const next = [...whole];
+    slots.forEach((slot, k) => (next[slot] = whole[at.get(ids[k]!)!]!));
+    for (const write of planDayOrder(next, transactionId)) {
+      // Household sharing: a shared purchase's place travels with it (the purchase's `dayOrder`).
+      await captureReorderingTx(tx, write.id);
+      await tx.run(sql`UPDATE transactions SET day_order = ${write.dayOrder} WHERE id = ${write.id}`);
+      await audit(tx, ws, 'reorder', write.id, { dayOrder: write.dayOrder });
+    }
   });
 }
 
@@ -498,6 +557,11 @@ export interface TransactionView {
   channel?: 'online' | 'offline' | null;
   excluded?: boolean;
   photoCount?: number;
+  /**
+   * Its place within its day when moved there by hand, or null (0067): what the list sorts a day by. Optional so a
+   * view built by hand need not name it.
+   */
+  dayOrder?: number | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -551,11 +615,14 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   if (bookId) {
     conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${bookId})`);
   }
+  // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
+  // stopped before 0067 has no places: every day reads newest first, as it always did.
+  const placed = await dayOrderExists(database.db);
   const txs = await database.db
-    .select()
+    .select({ ...getTableColumns(transactions), dayOrder: placed ? sql<number | null>`day_order` : sql<null>`NULL` })
     .from(transactions)
     .where(and(...conds))
-    .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+    .orderBy(...(placed ? [desc(transactions.occurredOn), sql`day_order IS NOT NULL`, sql`day_order`, desc(transactions.createdAt)] : [desc(transactions.occurredOn), desc(transactions.createdAt)]))
     .limit(opts.limit ?? 500);
   if (txs.length === 0) return [];
 
@@ -617,6 +684,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     channel: extras?.get(t.id)?.channel ?? null,
     excluded: extras?.get(t.id)?.excluded ?? false,
     photoCount: extras?.get(t.id)?.photoCount ?? 0,
+    dayOrder: t.dayOrder === null ? null : Number(t.dayOrder),
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

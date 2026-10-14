@@ -297,3 +297,17 @@ describe('the word between a share and a bill', () => {
     expect(heroCaption(noMoney, 100_000)).toBeNull();
   });
 });
+
+describe('money back on a purchase', () => {
+  it('says it is a refund, and its total is money in', () => {
+    const back = dinner({
+      entries: [
+        { accountId: 'acct-card', accountKind: 'liability', amountMinor: 450_000, amountBaseMinor: 450_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: -450_000, amountBaseMinor: -450_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    const lines = receiptLines({ tx: back, accounts, cards: [card], currency: 'IDR', points: null, owed: [] });
+    expect(valueOf(lines, 'Refund')).toBe('Money back');
+    expect(valueOf(lines, 'Total')).toBe('+Rp 450.000');
+  });
+});

@@ -1,4 +1,4 @@
-import { type BudgetSheet, budgetSheet, monthRange } from '@expanses/core';
+import { type BudgetSheet, budgetSheet, isUncategorisedKey, monthRange } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -53,7 +53,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   // workspace to ask when none is open (or before migration 0042) — so the old behaviour, events held apart.
   const countEvents = narrowToBook ? ((await listBooks(database, ws)).find((book) => book.id === ws.bookId)?.countEventsInBudget ?? false) : false;
   const categories = await database.db
-    .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name })
+    .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name, systemKey: accounts.systemKey })
     .from(accounts)
     // The monthly sheet speaks for the monthly tree: a set's categories are an event's business, not a cap's.
     .where(
@@ -89,10 +89,14 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   const money = await bookMoneyFor(database, ws);
   const asOfMonthEnd = (amountMinor: number) => (money.converts ? (money.convert(amountMinor, ws.baseCurrency, to) ?? 0) : amountMinor);
 
+  // Uncategorised carries no cap and has no line here (it is a wait for a category, not a category); what is in it
+  // still counts as spent.
+  const unfiled = new Set(categories.filter((category) => isUncategorisedKey(category.systemKey)).map((category) => category.id));
   const sheet = budgetSheet({
     month,
-    categories,
-    amounts: amounts.rows,
+    categories: categories.filter((category) => !unfiled.has(category.id)),
+    amounts: amounts.rows.filter((row) => !unfiled.has(row.accountId)),
+    unfiledMinor: amounts.rows.filter((row) => unfiled.has(row.accountId)).reduce((sum, row) => sum + row.amountBaseMinor, 0),
     caps: budgets.map((row) => ({ categoryId: row.categoryAccountId, amountMinor: row.amountMinor })),
     incomePlanMinor: income.amountMinor,
     incomeActualMinor: flows.incomeMinor,

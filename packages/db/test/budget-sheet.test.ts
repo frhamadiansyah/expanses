@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, postTransaction, saveBudget, saveCategoryNeed, saveExpectedIncome, saveGoal, schema } from '../src/index';
+import { budgetSheetFor, createAccount, postTransaction, saveBudget, saveCategoryNeed, saveExpectedIncome, saveGoal, schema, uncategorisedCategory } from '../src/index';
 import { setupDb } from './helpers';
 import type { Database } from '../src/index';
 import type { WorkspaceContext } from '../src/index';
@@ -111,5 +111,24 @@ describe('the assembled sheet', () => {
 
     expect(sheet.leftOverPlanMinor).toBe(25_000_000 - 300_000 - sheet.debtPaymentsPlanMinor - sheet.savingsPlanMinor);
     expect(sheet.leftOverActualMinor).toBe(20_000_000 - 500_000 - sheet.debtPaymentsActualMinor - sheet.savingsActualMinor);
+  });
+});
+
+describe('Uncategorised on the sheet', () => {
+  it('has no line to cap, and what is in it still counts as spent', async () => {
+    const { database, ws, bca } = await workspaceWithSpending();
+    const later = await uncategorisedCategory(database, ws, 'expense');
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-12',
+      description: 'Something',
+      lines: [
+        { accountId: later, amountMinor: 75_000, currency: 'IDR' },
+        { accountId: bca.id, amountMinor: -75_000, currency: 'IDR' },
+      ],
+    });
+    const sheet = await budgetSheetFor(database, ws, MONTH);
+    const all = (rows: typeof sheet.lines): string[] => rows.flatMap((row) => [row.id, ...all(row.children)]);
+    expect(all(sheet.lines)).not.toContain(later);
+    expect(sheet.spendingActualMinor).toBe(575_000);
   });
 });

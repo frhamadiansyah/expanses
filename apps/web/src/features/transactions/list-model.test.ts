@@ -148,6 +148,22 @@ describe('sorting and days', () => {
     expect(sortRows(undated, { key: 'date', dir: 'desc' }).map((row) => row.id)).toEqual(['d2', 'd1', superindo.id]);
   });
 
+  it('keeps a day in the order rows were moved to by hand: unplaced newest first, then placed by place, drafts ahead', () => {
+    const placed = (description: string, dayOrder: number | null, createdAt: string) =>
+      tx('2026-09-20', description, [['groceries', 1000], ['bca', -1000]], { dayOrder, createdAt });
+    const one = placed('One', 2, '2026-09-20T00:00:01Z');
+    const two = placed('Two', 1, '2026-09-20T00:00:02Z');
+    const fresh = placed('Fresh', null, '2026-09-20T00:00:03Z');
+    const older = placed('Older', null, '2026-09-20T00:00:00Z');
+    const day = buildRows([one, two, fresh, older], [draft({ occurredOn: '2026-09-20' })], accounts, cards);
+    expect(sortRows(day, { key: 'date', dir: 'desc' }).map((row) => row.description)).toEqual([expect.anything(), 'Fresh', 'Older', 'Two', 'One']);
+    expect(sortRows(day, { key: 'date', dir: 'desc' })[0]!.kind).toBe('draft');
+    // Oldest day first or newest, a day reads the same way down.
+    expect(sortRows(day, { key: 'date', dir: 'asc' }).filter((row) => row.kind === 'tx').map((row) => row.description)).toEqual(['Fresh', 'Older', 'Two', 'One']);
+    // Sorted by amount, a place in the day means nothing: equal amounts fall back to newest first.
+    expect(sortRows(day, { key: 'amount', dir: 'desc' }).filter((row) => row.kind === 'tx').map((row) => row.description)).toEqual(['Fresh', 'Two', 'One', 'Older']);
+  });
+
   it('sorts by amount across days', () => {
     const sorted = sortRows(filterRows(rows, EMPTY_FILTERS, accounts), { key: 'amount', dir: 'desc' });
     expect(sorted[0]!.id).toBe(salary.id);
@@ -273,5 +289,33 @@ describe('billTagOf', () => {
     expect(billTagOf(tx('2026-09-03', 'Rent', food, { billMonth: '2026-09' }))).toBeNull();
     expect(billTagOf(tx('2026-09-03', 'Coffee', food, { billMonth: null }))).toBeNull();
     expect(billTagOf(tx('2026-09-03', 'Coffee', food))).toBeNull();
+  });
+});
+
+describe('money back and rows waiting for a category', () => {
+  const uncategorised = account('later', 'expense', 'category', { name: 'Uncategorised', systemKey: 'uncategorised' });
+  const laterIn = account('later-in', 'income', 'category', { name: 'Uncategorised', systemKey: 'income.uncategorised' });
+  const withLater = [...accounts, uncategorised, laterIn];
+  byId.set(uncategorised.id, uncategorised);
+  byId.set(laterIn.id, laterIn);
+
+  it('reads a refund as money back: a negative spend that nets the day and the totals', () => {
+    const rental = tx('2026-09-12', 'Car rental', [['electronics', 1_000_000], ['octo', -1_000_000]]);
+    const back = tx('2026-09-12', 'Deposit back', [['octo', 450_000], ['electronics', -450_000]]);
+    const built = buildRows([rental, back], [], accounts, cards);
+    const refund = built.find((row) => row.id === back.id)!;
+    expect(refund).toMatchObject({ type: 'expense', refund: true, amountMinor: -450_000, spentMinor: -450_000, earnedMinor: 0 });
+    expect(built.find((row) => row.id === rental.id)!.refund).toBeFalsy();
+    expect(totals(built)).toEqual({ count: 2, spentMinor: 550_000, incomeMinor: 0 });
+    expect(dayTotal(built)).toBe(-550_000);
+  });
+
+  it('marks what was saved under Uncategorised, and the filter keeps only those', () => {
+    const later = tx('2026-09-12', 'Something', [['later', 25_000], ['bca', -25_000]]);
+    const laterIncome = tx('2026-09-12', 'Paid back', [['bca', 70_000], ['later-in', -70_000]]);
+    const built = buildRows([later, laterIncome, superindo], [], withLater, cards);
+    expect(built.filter((row) => row.needsCategory).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
+    expect(filterRows(built, { ...EMPTY_FILTERS, needsCategory: true }, withLater).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
+    expect(filterRows(built, EMPTY_FILTERS, withLater)).toHaveLength(3);
   });
 });

@@ -1,3 +1,4 @@
+import { isUncategorisedKey } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 
 /**
@@ -24,7 +25,8 @@ export function offeredCategories(
   membership: Record<string, unknown>,
   keep: (a: AccountRow) => boolean,
 ): AccountRow[] {
-  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && keep(a));
+  // Uncategorised is where "Choose later" files a transaction, never a category to choose: it is left out of every picker.
+  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && !isUncategorisedKey(a.systemKey) && keep(a));
 }
 
 /**

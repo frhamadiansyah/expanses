@@ -375,6 +375,8 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
         'transactions.original_amount_minor',
       ],
       void: ['transactions.status'],
+      // Its place within its day, moved there by hand (0067): written in place, never reposted, by apply.
+      dayOrder: ['transactions.day_order'],
     },
     linkColumns: [
       'transactions.id',

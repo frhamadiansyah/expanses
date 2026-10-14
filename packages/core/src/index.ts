@@ -1,6 +1,7 @@
 export { uuidv7 } from './ids';
 export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
 export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
+export { isUncategorisedKey, UNCATEGORISED } from './categories/uncategorised';
 export { CATEGORY_COLOURS, CATEGORY_ICONS, CATEGORY_PALETTE, categoryVisual, isPaletteColour, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
 export {
   type CategoryOption,
@@ -41,11 +42,13 @@ export {
   type PostingLine,
 } from './ledger/types';
 export { planPosting } from './ledger/posting';
+export { compareWithinDay, type DayOrdered, type DayOrderWrite, planDayOrder } from './ledger/day-order';
 export {
   exchangeLines,
   expenseLines,
   incomeLines,
   openingBalanceLines,
+  refundLines,
   splitExpenseLines,
   transferLines,
 } from './ledger/lines';

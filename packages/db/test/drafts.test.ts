@@ -149,12 +149,15 @@ describe('what the source said', () => {
     const [pending] = await listDrafts(database, ws);
     await confirmDraft(database, ws, pending!.id);
 
+    // The keeping date counts from the day the draft is confirmed, which is the real today.
+    const daysFromToday = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
     // Nothing to purge while the date is ahead: a mis-parse can still be read back.
-    expect(await purgeExpiredPayloads(database, ws, '2026-09-20')).toBe(0);
+    expect(await purgeExpiredPayloads(database, ws, daysFromToday(1))).toBe(0);
     expect((await listDrafts(database, ws, 'confirmed'))[0]!.rawPayload).toBe('09/09/2026,SUPERINDO,250000');
 
     // A kept bank email is a liability, so it goes and the record of the draft remains.
-    expect(await purgeExpiredPayloads(database, ws, '2027-01-01')).toBe(1);
+    expect(await purgeExpiredPayloads(database, ws, daysFromToday(120))).toBe(1);
     const [confirmed] = await listDrafts(database, ws, 'confirmed');
     expect(confirmed!.rawPayload).toBeNull();
     expect(confirmed!.description).toBe('SUPERINDO');

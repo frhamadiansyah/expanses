@@ -76,7 +76,11 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
   // on a row left open closes it and does nothing else, and the next swipe has to ask from the start. It did
   // not — `armed` was kept in the row *around* the button, so it outlived the swipe that set it and the second
   // swipe opened reading "Delete?". One tap then voided the transaction, with no second question anywhere.
-  await face(page, 'Warung Steak', 'Restaurants').click();
+  // Three buttons stand open (Duplicate, Edit, Delete) and the face slides left, so only its right end is on screen.
+  // That end is still the face: a tap on it closes the row and does nothing else.
+  const openFace = face(page, 'Warung Steak', 'Restaurants');
+  const openBox = (await openFace.boundingBox())!;
+  await openFace.click({ position: { x: openBox.width - 6, y: openBox.height / 2 } });
   await expect(steak.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   // The row slides shut over 150ms; swiping into that animation drags a row that is still moving.
   await page.waitForTimeout(400);
