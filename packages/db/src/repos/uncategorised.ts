@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { withCapture } from '../sync/capture';
-import { uuidv5 } from '../sync/uuidv5';
+import { namespaceOf, uuidv5 } from '../sync/uuidv5';
 import { hasBooks, personalBookIdTx } from './books';
 
 /** Where an Uncategorised row is drawn: last of its kind's top level. */
@@ -13,10 +13,11 @@ const UNCATEGORISED_SORT = 999;
 /**
  * The id Uncategorised has in a book (or, before books, a workspace): the same on every device without any device
  * telling the others. The expense one is household sync's rule-4 category, `uuidv5(bookId, 'uncategorised')`, so the
- * two are one row; income has a name of its own.
+ * two are one row; income has a name of its own. A book id that is not a uuid (0042's `'book-' + workspace id`) is
+ * named through `namespaceOf`, so a Personal book from before books has one too.
  */
-export function uncategorisedIdOf(bookOrWorkspaceId: string, kind: 'expense' | 'income'): Promise<string> {
-  return uuidv5(bookOrWorkspaceId, kind === 'expense' ? 'uncategorised' : 'uncategorised:income');
+export async function uncategorisedIdOf(bookOrWorkspaceId: string, kind: 'expense' | 'income'): Promise<string> {
+  return uuidv5(await namespaceOf(bookOrWorkspaceId), kind === 'expense' ? 'uncategorised' : 'uncategorised:income');
 }
 
 /**
