@@ -30,7 +30,7 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'expense', key: 'gift_giving', name: 'Gift giving', children: children('gift_giving', [['birthday', 'Birthday'], ['relatives', 'Relatives'], ['wedding', 'Wedding'], ['newborn', 'Newborn'], ['funeral', 'Funeral'], ['celebration', 'Celebration']]) },
   { kind: 'expense', key: 'government_taxes', name: 'Government & taxes', children: children('government_taxes', [['estimated_tax', 'Estimated tax'], ['land_building_tax', 'Land & building tax'], ['motor_vehicle_tax', 'Motor vehicle tax']]) },
   { kind: 'expense', key: 'miscellaneous', name: 'Miscellaneous', children: children('miscellaneous', [['postal_service', 'Postal service'], ['professional_fee', 'Professional fee'], ['fine_penalty', 'Fine/penalty'], ['documentation', 'Documentation'], ['interest', 'Interest'], ['fees_charges', 'Fees & charges'], ['membership_fee', 'Membership fee']]) },
-  { kind: 'expense', key: 'travel', name: 'Travel', children: children('travel', [['flights', 'Flights'], ['hotels', 'Hotels'], ['activities', 'Activities']]) },
+  { kind: 'expense', key: 'travel', name: 'Travel', children: children('travel', [['flights', 'Flights'], ['hotels', 'Hotels'], ['activities', 'Activities'], ['transport', 'Transport'], ['souvenirs', 'Souvenirs'], ['others', 'Others']]) },
   { kind: 'expense', key: 'business', name: 'Business & Invoices' },
   { kind: 'income', key: 'income.salary', name: 'Salary' },
   { kind: 'income', key: 'income.bonus', name: 'Bonus' },
@@ -94,4 +94,6 @@ export const DEFAULT_CATEGORY_MCCS: Readonly<Record<string, string>> = {
   'travel.activities': '7999',
   'travel.flights': '4511',
   'travel.hotels': '7011',
+  'travel.souvenirs': '5947',
+  'travel.transport': '4111',
 };
