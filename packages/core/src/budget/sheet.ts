@@ -60,6 +60,11 @@ export interface BudgetSheetInput {
   eventsInCaps: boolean;
   /** Each category's resolved need. A category missing here counts as essential, as an unmarked one does. */
   needs?: Readonly<Record<string, CategoryNeed>>;
+  /**
+   * Spending with no line of its own — what waits under Uncategorised, which no cap is set on. It is no category's,
+   * but it did leave the account: it counts in what was spent and what is left, as essential until it is filed.
+   */
+  unfiledMinor?: number;
 }
 
 export interface BudgetSheet {
@@ -138,7 +143,7 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
   };
   walk(lines, false);
 
-  const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0);
+  const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0) + (input.unfiledMinor ?? 0);
   // Signed, category by category, over exactly the categories the lines were built from; essential is the rest,
   // so the two always add back to what was spent.
   const lifestyleActualMinor = input.categories.reduce(

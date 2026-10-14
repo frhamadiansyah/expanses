@@ -32,4 +32,16 @@ describe('findAmounts, over every figure it can be handed', () => {
       run,
     );
   });
+
+  it('keeps the exact rupiah figure in hundredths when the cents are not zero, and the minor stays the nearest rupiah', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000_000_000 }), fc.integer({ min: 0, max: 99 }), (rupiah, cents) => {
+        const [found] = findAmounts(`Rp${grouped(String(rupiah))},${String(cents).padStart(2, '0')}`, WORDS);
+        const hundredths = rupiah * 100 + cents;
+        expect(found?.exactHundredths).toBe(cents === 0 ? undefined : hundredths);
+        expect(found?.minor).toBe(cents >= 50 ? rupiah + 1 : rupiah);
+      }),
+      run,
+    );
+  });
 });

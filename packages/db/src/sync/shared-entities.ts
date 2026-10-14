@@ -375,6 +375,11 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
         'transactions.original_amount_minor',
       ],
       void: ['transactions.status'],
+      // Its place within its day, moved there by hand (0067): written in place, never reposted, by apply.
+      dayOrder: ['transactions.day_order'],
+      // The amount as typed with cents (0068), beside the whole one: written in place when it is all that changed. Not
+      // money: an older build ignores it, and every balance reads the lines.
+      exactHundredths: ['transactions.exact_hundredths'],
     },
     linkColumns: [
       'transactions.id',

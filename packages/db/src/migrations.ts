@@ -64,6 +64,8 @@ import brokerFees from '../migrations/0063_broker_fees.sql?raw';
 import billPauses from '../migrations/0064_bill_pauses.sql?raw';
 import transactionCapture from '../migrations/0065_transaction_capture.sql?raw';
 import statementChecks from '../migrations/0066_statement_checks.sql?raw';
+import dayOrder from '../migrations/0067_day_order.sql?raw';
+import exactHundredths from '../migrations/0068_exact_hundredths.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -138,6 +140,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 64, name: 'bill_pauses', sql: billPauses },
   { version: 65, name: 'transaction_capture', sql: transactionCapture },
   { version: 66, name: 'statement_checks', sql: statementChecks },
+  { version: 67, name: 'day_order', sql: dayOrder },
+  { version: 68, name: 'exact_hundredths', sql: exactHundredths },
 ];
 
 /** The highest version this build of the app knows how to produce. */

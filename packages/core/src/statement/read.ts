@@ -1,4 +1,5 @@
 import { exponentOf, parseNumber } from '../capture/amount';
+import { isSupportedCurrency } from '../money/currencies';
 import type { CaptureLine } from '../capture/types';
 import type { StatementPeriod, StatementReading, StatementRow } from './types';
 import { STATEMENT_WORDS } from './words';
@@ -45,19 +46,41 @@ interface PrintedDate {
   shape: 'word' | 'numeric';
 }
 
-/** `06MAY`, `06 MAY`, `6 Mei`, `12 Mei 2026`, `10JUN2026`. */
-const WORD_DATE = /^(\d{1,2})\s?([A-Za-z]{3,})(?:\s?(\d{4}))?(?=\s|$)/;
+const escapeClass = (c: string) => c.replace(/[\]\\^-]/g, '\\$&');
+/** The marks that may join a date's parts, a space aside: `-`, `/`, `.`. */
+const JOINING_MARKS = W.dateSeparators.filter((c) => c.trim() !== '');
+/** A day, then one separator or none, then a word: `06MAY`, `06 MAY`, `6 Mei`, `05-Mar`, `14-OKT`, `8/Agu`. */
+const WORD_DATE_HEAD = new RegExp(`^(\\d{1,2})([${W.dateSeparators.map(escapeClass).join('')}]?)([A-Za-z]{3,})`);
 /** `06/05`, `06-05-2026`, `06/05/26`. */
 const NUMBER_DATE = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?=\s|$)/;
+const ends = (text: string, at: number) => at === text.length || /\s/.test(text[at]!);
+
+/**
+ * The year after a word date's month, where `at` is just past the month. After a joining mark (`05-Mar-26`) it is that
+ * same mark and two or four digits. After a space or nothing it is four digits, a space apart or not (`12 Mei 2026`,
+ * `10JUN2026`): two digits after a bare space are the description's (`06 MAY 10 PCS`).
+ */
+function wordYearAt(text: string, at: number, separator: string): { year: number; end: number } | null {
+  const rest = text.slice(at);
+  const year = JOINING_MARKS.includes(separator)
+    ? new RegExp(`^${separator.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(\\d{4}|\\d{2})`).exec(rest)
+    : /^\s?(\d{4})/.exec(rest);
+  if (!year || !ends(text, at + year[0].length)) return null;
+  const digits = year[1]!;
+  return { year: Number(digits.length === 2 ? `20${digits}` : digits), end: at + year[0].length };
+}
 
 function dateAt(text: string): PrintedDate | null {
-  const word = WORD_DATE.exec(text);
+  const word = WORD_DATE_HEAD.exec(text);
   if (word) {
     // The whole word must be a month — `MAY`, `Mei`, `August` — so a shop called `3 MAYxxx` is not the 3rd of May.
-    const name = word[2]!.toLowerCase();
+    const name = word[3]!.toLowerCase();
     const month = W.months[name] ?? W.monthNames[name];
+    const at = word[0].length;
     if (month !== undefined) {
-      return { day: Number(word[1]), month, year: word[3] === undefined ? null : Number(word[3]), length: word[0].length, shape: 'word' };
+      const year = wordYearAt(text, at, word[2]!);
+      if (year) return { day: Number(word[1]), month, year: year.year, length: year.end, shape: 'word' };
+      if (ends(text, at)) return { day: Number(word[1]), month, year: null, length: at, shape: 'word' };
     }
   }
   const num = NUMBER_DATE.exec(text);
@@ -80,35 +103,32 @@ function isoOf(year: number, month: number, day: number): string | null {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
-function shiftDays(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
+const DAY_MS = 86_400_000;
+/** The most days a bank posts a purchase after it happened; a later "posting date" is a misread. */
+const MAX_POSTING_LAG_DAYS = 60;
+const dayNumber = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
 
 /**
- * The date in the statement's period: the printed year when there is one, otherwise the year that puts the day inside
- * the period give or take a week — the end's year first, then the start's, so a December row of a December–January
- * statement lands in December of the start's year; then the year before the start and the year after the end, so a
- * December row a few days before a period lying wholly in January lands in the December before it.
+ * The date in the statement's period: the printed year when there is one, otherwise the year that puts the day
+ * nearest the period — inside it when it can, so a December row of a December–January statement lands in December of
+ * the start's year, and a December row before a period lying wholly in January lands in the December before it,
+ * never a year ahead. Of two years equally near, the earlier: a statement lists what has happened.
  */
 function placeDate(printed: PrintedDate, period: StatementPeriod): string | null {
   if (printed.year !== null) return isoOf(printed.year, printed.month, printed.day);
-  const from = shiftDays(period.start, -7);
-  const to = shiftDays(period.end, 7);
+  const from = dayNumber(period.start);
+  const to = dayNumber(period.end);
   const end = Number(period.end.slice(0, 4));
   const start = Number(period.start.slice(0, 4));
-  const years = [...new Set([end, start, start - 1, end + 1])];
-  for (const year of years) {
+  let best: { iso: string; distance: number } | null = null;
+  for (let year = start - 1; year <= end + 1; year += 1) {
     const iso = isoOf(year, printed.month, printed.day);
-    if (iso !== null && iso >= from && iso <= to) return iso;
+    if (iso === null) continue;
+    const day = dayNumber(iso);
+    const distance = day < from ? from - day : day > to ? day - to : 0;
+    if (best === null || distance < best.distance) best = { iso, distance };
   }
-  // Outside the window, the end's year or the start's, as before.
-  for (const year of [end, start]) {
-    const iso = isoOf(year, printed.month, printed.day);
-    if (iso !== null) return iso;
-  }
-  return null;
+  return best?.iso ?? null;
 }
 
 /**
@@ -159,6 +179,51 @@ const FEE = wordRegex(W.fee);
 const PREVIOUS = wordRegex(W.previous);
 const CLOSING = wordRegex(W.closing);
 
+/** A foreign purchase's detail line, as printed: not yet known to belong to any row. */
+interface ForeignDetail {
+  currency: string;
+  original: number;
+  rate: number;
+  direction: 'in' | 'out';
+}
+
+/** The detail line a text is (`words.ts`'s `foreignDetail`), or null. */
+function foreignDetailOf(text: string): ForeignDetail | null {
+  const groups = W.foreignDetail.exec(text)?.groups;
+  if (!groups) return null;
+  const original = parseNumber(groups.amount!);
+  const rate = parseNumber(groups.rate!);
+  if (original === null || rate === null || original <= 0 || rate <= 0) return null;
+  const marker = groups.marker?.toLowerCase();
+  if (marker !== undefined && !W.inMarkers.includes(marker) && !W.outMarkers.includes(marker)) return null;
+  const direction = marker !== undefined && W.inMarkers.includes(marker) ? 'in' : 'out';
+  return { currency: groups.currency!.toUpperCase(), original, rate, direction };
+}
+
+/** How far the charged amount may be from the original times the printed rate: a bank rounds the rate it prints. */
+const DETAIL_TOLERANCE = 0.005;
+
+/**
+ * The row's original currency and amount from a detail line, or null when they do not belong together: a currency the
+ * app does not know or the card's own, a credit beside a charge, or figures that do not multiply to the charge.
+ */
+function originalOf(row: StatementRow, detail: ForeignDetail, currency: string): StatementRow['original'] | null {
+  if (!isSupportedCurrency(detail.currency) || detail.currency === currency.toUpperCase()) return null;
+  if (detail.direction !== row.direction) return null;
+  const charged = row.amountMinor / 10 ** exponentOf(currency);
+  if (charged <= 0 || Math.abs(charged - detail.original * detail.rate) / charged > DETAIL_TOLERANCE) return null;
+  const amountMinor = Math.round(detail.original * 10 ** exponentOf(detail.currency));
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return null;
+  return { currency: detail.currency, amountMinor };
+}
+
+/** Gives a row the detail line's original when it has none yet and the two belong together. */
+function attach(row: StatementRow | undefined, detail: ForeignDetail, currency: string): void {
+  if (!row || row.original) return;
+  const original = originalOf(row, detail, currency);
+  if (original) row.original = original;
+}
+
 /** Two rows are the same printed row: what the overlap between screenshots compares. */
 const sameRow = (a: StatementRow, b: StatementRow) =>
   a.on === b.on && a.description === b.description && a.amountMinor === b.amountMinor && a.direction === b.direction;
@@ -187,7 +252,16 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
   images.forEach((lines, image) => {
     const imageRows: StatementRow[] = [];
     let balanceFound = false;
+    /** A detail line above the image's first row: the end of a row on the screenshot before. */
+    let openingDetail: ForeignDetail | null = null;
     for (const text of rowsOf(lines)) {
+      // A foreign purchase's detail line belongs to the row read before it, even across a page's footer and headings.
+      const detail = foreignDetailOf(text);
+      if (detail) {
+        if (imageRows.length > 0) attach(imageRows[imageRows.length - 1], detail, currency);
+        else openingDetail ??= detail;
+        continue;
+      }
       const amount = trailingAmount(text, currency);
       if (amount === null) continue;
       const { dates, rest } = leadingDates(text, period);
@@ -195,9 +269,13 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
       // A transaction has a date, then a description, then the amount; a lone `12 Mei 2026` is a date, not Rp2.026.
       if (description !== '') {
         if (amount.bare) continue;
+        // A bank never posts before the purchase: of two dates, the earlier is the transaction's, whichever column.
+        // A posting date months after it is a misread, not a posting: it is dropped.
+        const [on, posted] = [...dates].sort();
+        const postedOn = dates.length === 2 && dayNumber(posted!) - dayNumber(on!) <= MAX_POSTING_LAG_DAYS ? posted! : null;
         imageRows.push({
-          on: dates[dates.length - 1]!,
-          postedOn: dates.length === 2 ? dates[0]! : null,
+          on: on!,
+          postedOn,
           description,
           amountMinor: amount.minor,
           direction: amount.direction,
@@ -217,10 +295,21 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
       }
     }
     if (imageRows.length === 0) {
-      if (!balanceFound) emptyImages.push(image);
+      // A screenshot of only a detail line (and headings) ends the row above it: it read something, so it is not empty.
+      if (openingDetail) attach(previousImageRows[previousImageRows.length - 1], openingDetail, currency);
+      else if (!balanceFound) emptyImages.push(image);
       return;
     }
-    rows.push(...imageRows.slice(overlapOf(previousImageRows, imageRows)));
+    const overlap = overlapOf(previousImageRows, imageRows);
+    // The opening detail belongs to the row just above where this screenshot starts: the one before the repeated run.
+    if (openingDetail) attach(previousImageRows[previousImageRows.length - overlap - 1], openingDetail, currency);
+    // A repeated row keeps a detail only the repeat shows (the first screenshot cut it off), and the repeat stands for
+    // the row kept, so the next screenshot's opening detail reaches the row that is read.
+    previousImageRows.slice(previousImageRows.length - overlap).forEach((kept, i) => {
+      if (!kept.original && imageRows[i]!.original) kept.original = imageRows[i]!.original;
+      imageRows[i] = kept;
+    });
+    rows.push(...imageRows.slice(overlap));
     previousImageRows = imageRows;
   });
 

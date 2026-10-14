@@ -56,7 +56,7 @@ import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
-import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
+import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { AddHoldingPage } from '../features/investments/AddHoldingPage';
@@ -170,6 +170,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — what the edit sheet's ⋯ reaches for what a sheet cannot hold.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
+  // The Add screen again, started from one transaction: Duplicate on a row's swipe, the receipt and the desktop's editor.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/duplicate', component: DuplicateTransactionRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
   createRoute({
     getParentRoute: () => rootRoute,

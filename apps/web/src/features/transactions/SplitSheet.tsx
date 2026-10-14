@@ -3,7 +3,7 @@ import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
 import { X } from 'lucide-react';
 import { CategoryOptions } from '../cards/options';
-import { type FormDraft, type SplitRow, splitTotalMinor } from './tx-form';
+import { type FormDraft, splitCentsRefusal, type SplitRow, splitTotalMinor } from './tx-form';
 
 /**
  * "None", or "2 splits · Total Rp 85.000" — what the Split row says without being opened.
@@ -42,6 +42,7 @@ export function SplitSheet({
   onClose: () => void;
 }) {
   const splits = draft.splits;
+  const refusal = splitCentsRefusal(splits, currency);
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
   return (
     <Sheet grouped title="Split" onClose={onClose}>
@@ -92,6 +93,11 @@ export function SplitSheet({
           )}
         </div>
       </div>
+      {refusal && (
+        <p role="alert" className="px-[13px] pt-2 text-[12.5px] leading-4 text-[var(--ph-warn)]">
+          {refusal}
+        </p>
+      )}
     </Sheet>
   );
 }

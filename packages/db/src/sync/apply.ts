@@ -5,6 +5,9 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
+import { dayOrderExists } from '../repos/day-order-column';
+import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
+import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -28,7 +31,6 @@ import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './sha
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
-import { uuidv5 } from './uuidv5';
 
 /*
  * Apply and merge (household-sharing spec §7). The pull loop reads the relay's log from this device's cursor, and
@@ -182,17 +184,12 @@ async function isPlaceholder(tx: Db, accountId: string): Promise<boolean> {
   return (await tx.values(sql`SELECT 1 FROM book_member_accounts WHERE account_id = ${accountId}`)).length > 0;
 }
 
-/** The book's Uncategorised expense category (rule 4): the same id on every device, made on demand. */
-export async function uncategorisedTx(tx: Db, ctx: BookContext): Promise<string> {
-  const id = await uuidv5(ctx.bookId, 'uncategorised');
-  const [found] = await tx.values(sql`SELECT 1 FROM accounts WHERE id = ${id}`);
-  if (!found) {
-    await tx.run(sql`
-      INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, icon, currency, system_key, sort_order, archived_at, created_at)
-      VALUES (${id}, ${ctx.ws.workspaceId}, NULL, 'expense', 'category', 'Uncategorised', NULL, NULL, NULL, 999, NULL, ${new Date().toISOString()})`);
-    await tx.run(sql`INSERT INTO book_categories (category_account_id, workspace_id, book_id) VALUES (${id}, ${ctx.ws.workspaceId}, ${ctx.bookId})`);
-  }
-  return id;
+/**
+ * The book's Uncategorised expense category (rule 4): the same id on every device, made on demand — the very row
+ * "Choose later" files into (`ensureUncategorisedRowTx`), so the two can never make two.
+ */
+export function uncategorisedTx(tx: Db, ctx: BookContext): Promise<string> {
+  return ensureUncategorisedRowTx(tx, ctx.ws.workspaceId, ctx.bookId, 'expense');
 }
 
 /* -------------------------------------------------------------- row entities */
@@ -600,6 +597,8 @@ async function ledgerInput(
   winners: Record<string, unknown>,
   author: string,
   trust: PaidFromTrust,
+  carriesDayOrder = false,
+  carriesExact = false,
 ): Promise<{ input: PostTransactionInput; refused: boolean }> {
   const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
@@ -615,11 +614,35 @@ async function ledgerInput(
     input.originalCurrency = state.money.originalCurrency;
     input.originalAmountMinor = state.money.originalAmountMinor;
   }
+  // The place, whenever the op speaks of it: its own value when it won, and the one already here when it lost — never
+  // the ledger's "a new date clears it", which would leave this row's place out of step with its field clock (a date
+  // changed on one phone while the other moved the row). Only an op from a build without places leaves it to that rule.
+  if ('dayOrder' in winners || carriesDayOrder) input.dayOrder = state.dayOrder ?? null;
+  // The figure typed with cents, the same way: whenever the op speaks of it, as it now reads, so a new amount that lost
+  // to it keeps the figure only when it still rounds to it. An op from a build without it leaves it to the ledger, which
+  // keeps it while the amount stays. Never money: the lines above are posted whatever it says.
+  if ('exactHundredths' in winners || carriesExact) input.exactHundredths = await exactForLinesTx(tx, state.exactHundredths, lines);
   return { input, refused };
 }
 
 async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, won: ReadonlyMap<string, { hlc: string }>): Promise<void> {
   for (const [field, { hlc }] of won) await setClock(tx, ctx, 'purchase', lineageId, field, hlc);
+}
+
+/**
+ * Whether every winning field of a purchase op is one written in place — its place in the day (0067), its figure typed
+ * with cents (0068) — and this database has the column for each. A database without one reposts the purchase as it
+ * was, which changes no money.
+ */
+async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<boolean> {
+  const fields = Object.keys(winners);
+  if (fields.length === 0) return false;
+  for (const field of fields) {
+    if (field === 'dayOrder' && (await dayOrderExists(tx))) continue;
+    if (field === 'exactHundredths' && (await exactExists(tx))) continue;
+    return false;
+  }
+  return true;
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -648,6 +671,22 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
+  if (lineage && (await inPlaceOnly(tx, winners))) {
+    // Moved within its day, or its figure typed with cents corrected, and nothing else: written in place, as the
+    // author's device did. Reposting would mint a new row for a change that is not money.
+    if ('dayOrder' in winners) {
+      const value = winners.dayOrder;
+      await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
+    }
+    if ('exactHundredths' in winners) {
+      // Judged against the lines here, as a repost judges it: a figure the amount no longer rounds from (a new amount
+      // that reached this phone first) is none, whichever order the two changes arrive in.
+      const value = await exactForTransactionTx(tx, winners.exactHundredths, lineage.head!);
+      await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
+    }
+    await recordPurchaseClocks(tx, ctx, op.id, won);
+    return true;
+  }
   const current = lineage ? await projectPurchase(tx, lineage.head!, ctx.memberId, lineage) : null;
   const state = { ...(current ?? {}), ...winners } as PurchaseFields;
   state.money = { ...state.money, paidFrom: carriedPaidFrom(state.money.paidFrom) };
@@ -656,7 +695,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     known: lineage?.paidFrom ?? null,
     head: lineage?.head ?? null,
   };
-  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust);
+  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields, 'exactHundredths' in op.fields);
   // Final review item 2: the lineage keeps the `paidFrom` in effect here — none when this device refused to land it on
   // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
   const from = refused ? null : state.money.paidFrom;

@@ -1,5 +1,6 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { detectDelimiter, mapCsvRows, parseCsv, parseCsvAmount, parseCsvDate } from '../src/import/csv';
+import { detectDelimiter, mapCsvRows, parseCsv, parseCsvAmount, parseCsvDate, parseCsvExact } from '../src/index';
 
 describe('parseCsv', () => {
   it('handles quotes, escaped quotes, CRLF, BOM, and blank lines', () => {
@@ -65,3 +66,70 @@ describe('review fixes: CSV amounts and refs', () => {
     expect(b).not.toBe(a);
   });
 });
+
+describe('CSV amounts with cents on a currency with no minor unit', () => {
+  const run = { numRuns: 300, seed: 20261014 } as const;
+  const card = { hasHeader: false, dateColumn: 0, dateFormat: 'YYYY-MM-DD' as const, descriptionColumn: 1, amountColumn: 2, negativeIsOutflow: false, outflowColumn: null, inflowColumn: null };
+
+  it('parseCsvAmount still refuses cents without a direction, and rounds by it when given one', () => {
+    expect(() => parseCsvAmount('Rp 12.500,30', 'IDR')).toThrow();
+    expect(parseCsvAmount('Rp 12.500,30', 'IDR', 'up')).toBe(12_501);
+    expect(parseCsvAmount('Rp 12.500,30', 'IDR', 'down')).toBe(12_500);
+    expect(parseCsvAmount('(12.500,30)', 'IDR', 'up')).toBe(-12_501);
+    expect(parseCsvAmount('12.500,30 CR', 'IDR', 'down')).toBe(-12_500);
+    expect(parseCsvAmount('', 'IDR', 'up')).toBeNull();
+  });
+
+  it('parseCsvExact gives the rounded figure and the exact one, positive whatever the sign', () => {
+    expect(parseCsvExact('Rp 12.500,30', 'IDR', 'up')).toEqual({ minor: 12_501, exactHundredths: 1_250_030 });
+    expect(parseCsvExact('-12.345,67', 'IDR', 'down')).toEqual({ minor: -12_345, exactHundredths: 1_234_567 });
+    expect(parseCsvExact('1,250,000.00', 'IDR', 'up')).toEqual({ minor: 1_250_000, exactHundredths: null });
+    expect(parseCsvExact('50.000,-', 'IDR', 'up')).toEqual({ minor: 50_000, exactHundredths: null });
+    expect(parseCsvExact('(12.50)', 'USD', 'up')).toEqual({ minor: -1250, exactHundredths: null });
+    expect(parseCsvExact(' ', 'IDR', 'up')).toBeNull();
+    expect(() => parseCsvExact('Rp', 'IDR', 'up')).toThrow('is not an amount');
+  });
+
+  it('property: parseCsvExact rounds the exact figure up or down', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000_000_000 }), fc.integer({ min: 0, max: 99 }), fc.boolean(), (rupiah, cents, up) => {
+        const exact = rupiah * 100 + cents;
+        const result = parseCsvExact(`Rp ${rupiah},${String(cents).padStart(2, '0')}`, 'IDR', up ? 'up' : 'down');
+        expect(result).toEqual({ minor: up ? Math.ceil(exact / 100) : Math.floor(exact / 100), exactHundredths: cents === 0 ? null : exact });
+      }),
+      run,
+    );
+  });
+
+  it('mapCsvRows rounds a charge up and money in down, and keeps the exact figure on the row', () => {
+    const rows = parseCsv('2026-10-01;Kopi;12.500,30\n2026-10-02;Refund;-12.345,67\n2026-10-03;Toko;38000\n', ';');
+    const result = mapCsvRows(rows, card, 'IDR', 'card');
+    expect(result.errors).toEqual([]);
+    expect(result.rows.map((r) => [r.amountMinor, r.exactHundredths])).toEqual([
+      [12_501, 1_250_030],
+      [-12_345, 1_234_567],
+      [38_000, undefined],
+    ]);
+    expect('exactHundredths' in result.rows[2]!).toBe(false);
+  });
+
+  it('mapCsvRows follows the sign the mapping gives, and nets two columns exactly before rounding', () => {
+    const bank = parseCsv('01/10/2026;ATM;12.500,30;\n02/10/2026;Salary;;12.345,67\n03/10/2026;Both;100,30;0,50\n', ';');
+    const columns = { ...card, dateFormat: 'DD/MM/YYYY' as const, amountColumn: null, negativeIsOutflow: true, outflowColumn: 2, inflowColumn: 3 };
+    expect(mapCsvRows(bank, columns, 'IDR', 'bank').rows.map((r) => [r.amountMinor, r.exactHundredths])).toEqual([
+      [12_501, 1_250_030],
+      [-12_345, 1_234_567],
+      [100, 9_980],
+    ]);
+    const signed = parseCsv('2026-10-01;Kopi;-12.500,30\n', ';');
+    expect(mapCsvRows(signed, { ...card, negativeIsOutflow: true }, 'IDR', 'bank').rows.map((r) => [r.amountMinor, r.exactHundredths])).toEqual([[12_501, 1_250_030]]);
+  });
+
+  it('mapCsvRows leaves a currency with decimals as it was', () => {
+    const rows = parseCsv('2026-10-01;Coffee;4.50\n', ';');
+    expect(mapCsvRows(rows, card, 'USD', 'card').rows).toEqual([
+      { rowNumber: 1, occurredOn: '2026-10-01', description: 'Coffee', amountMinor: 450, externalRef: 'csv:card|2026-10-01|450|coffee|0' },
+    ]);
+  });
+});
+

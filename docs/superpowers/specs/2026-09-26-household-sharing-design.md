@@ -803,8 +803,11 @@ the purchase then reads it as void like everyone else.
 2. **Money is one atom.** `money` is one field; a replacement posts every line of the winner.
 3. **Void wins.** A lineage with no head accepts nothing more. For every other entity, a tombstone does the same.
 4. **Structure never destroys money.** If a `line`'s `categoryId` is tombstoned or unknown locally, the line is
-   posted against the book's **Uncategorised** expense category — `id = uuidv5(bookId, 'uncategorised')`, created
-   on demand, identical on every device.
+   posted against the book's **Uncategorised** expense category — `id = uuidv5(namespaceOf(bookId), 'uncategorised')`,
+   created on demand, identical on every device. `namespaceOf` (`sync/uuidv5.ts`) is the book id itself when it is a
+   uuid; a book id that is not one — the Personal book migration 0042 named `'book-' || workspace_id` — is first named
+   under a fixed namespace, so it too gives the same id everywhere. Built-in categories added on open (Travel's
+   Transport, Souvenirs and Others) are named the same way: `uuidv5(namespaceOf(bookId), 'category:' || key)`.
 5. **Two ids are two purchases.** Nothing merges lineages. Two devices correcting the same purchase offline produce
    two `money` values for **one** lineage; the later wins and the purchase is counted once.
 6. **Idempotent.** An entry at or below `applied_seq` is skipped; a change-set applied again wins no field.

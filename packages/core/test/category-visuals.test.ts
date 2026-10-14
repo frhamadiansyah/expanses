@@ -17,6 +17,13 @@ describe('category visuals', () => {
     expect(categoryVisual('income.salary', 'income.salary').colour).toBe(CATEGORY_COLOURS.income);
   });
 
+  it("draws Travel's Transport, Souvenirs and Others in Travel's colour, each with a glyph of its own", () => {
+    expect(categoryVisual('travel.transport', 'travel')).toEqual({ icon: 'train-front', colour: CATEGORY_COLOURS.travel });
+    expect(categoryVisual('travel.souvenirs', 'travel')).toEqual({ icon: 'shopping-bag', colour: CATEGORY_COLOURS.travel });
+    expect(categoryVisual('travel.meals', 'travel')).toEqual({ icon: 'utensils', colour: CATEGORY_COLOURS.travel });
+    expect(categoryVisual('travel.others', 'travel')).toEqual({ icon: 'luggage', colour: CATEGORY_COLOURS.travel });
+  });
+
   it('lends a category the owner made its parent look', () => {
     expect(categoryVisual(null, 'household')).toEqual({ icon: 'house', colour: CATEGORY_COLOURS.household });
     expect(categoryVisual(null, null)).toEqual(UNKNOWN_VISUAL);

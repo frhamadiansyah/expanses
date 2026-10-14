@@ -10,6 +10,7 @@ import { SCREEN } from '../../ui/native';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { TransactionCard } from './TransactionCard';
+import { useDuplicable } from './duplicable';
 
 /**
  * `/transactions/new` — the card as a screen.
@@ -78,6 +79,41 @@ export function EditTransactionRoute() {
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
           saves. The list is where to land — this address would only 404 into its own redirect. */}
       <TransactionCard full title="Edit transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
+    </div>
+  );
+}
+
+const duplicateRoute = getRouteApi('/transactions/$transactionId/duplicate');
+
+/**
+ * `/transactions/$transactionId/duplicate` — the Add screen, started from one transaction.
+ *
+ * It asks `useChangeable` the very same question the edit route asks, so a trade, an opening balance, a deleted
+ * row and a purchase filed in another workspace are sent to the receipt rather than copied. Saving posts a new
+ * transaction and leaves the original alone, so Back and Save both land on the list.
+ */
+export function DuplicateTransactionRoute() {
+  const { transactionId } = duplicateRoute.useParams();
+  const { database, ws } = useApp();
+  const navigate = useNavigate();
+  const back = useBack('/transactions');
+  const receipt = useQuery({
+    queryKey: ['receipt', ws.workspaceId, transactionId],
+    queryFn: async () => (await listTransactions(database, ownerScope(ws), { id: transactionId, includeVoid: true }))[0] ?? null,
+  });
+  const tx = receipt.data ?? null;
+  const { changeable, elsewhere, isTrade } = useChangeable(tx);
+  const duplicable = useDuplicable(tx ? [tx] : []);
+  const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || (duplicable.ready && !duplicable(tx)));
+
+  useEffect(() => {
+    if (refused) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+  }, [refused, transactionId]);
+
+  if (!tx || !changeable || !duplicable.ready || !duplicable(tx)) return <Card>Loading…</Card>;
+  return (
+    <div className={SCREEN}>
+      <TransactionCard full title="Duplicate" label="Duplicate a transaction" duplicateOf={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
     </div>
   );
 }

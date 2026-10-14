@@ -4,6 +4,7 @@ import {
   currencyInfo,
   equalShares,
   evaluateAmount,
+  evaluateExact,
   exchangeLines,
   expenseLines,
   incomeLines,
@@ -11,6 +12,8 @@ import {
   minorToMajorString,
   parseMajor,
   type PostingLine,
+  refundLines,
+  type RoundDirection,
   splitExpenseLines,
   transferLines,
   yourShare,
@@ -19,6 +22,7 @@ import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
+import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
 
@@ -79,6 +83,30 @@ export interface FormDraft {
    * and `toId` is unused) or came from (`side: 'from'`, From names it and `moneyId` is unused); null or absent — none.
    */
   partner?: PartnerItem | null;
+  /**
+   * The figure as the form was opened on a transaction (an edit, or a Duplicate of one), with the exact figure of an
+   * amount once typed with cents. While the amount reads as it opened, the save leaves the stored figure alone (an
+   * edit) or copies it (a Duplicate); once the amount, the charged row, the currency or the tab changes, the save
+   * says what the new figure is instead — never this one, which no longer describes it. Absent on a new form.
+   */
+  opened?: OpenedFigure;
+}
+
+/**
+ * What `FormDraft.opened` holds: the figure as read when the form opened — the tab, the amount and the charged figure
+ * in whole minor units (null where a row is empty), the currencies they are read in, and the exact hundredths (null
+ * when whole). Readings rather than texts, so "12501" and "12.501" are the same amount, and currencies as resolved
+ * rather than as the flag holds them, so a tab that blanks the flag and gives it back changes nothing.
+ */
+export interface OpenedFigure {
+  mode: FormMode;
+  amountMinor: number | null;
+  chargedMinor: number | null;
+  /** The currency the amount row is read in (`typedCurrency`). */
+  typedCurrency: string;
+  /** The paying account's own currency: what the posting is in. */
+  settledCurrency: string;
+  exactHundredths: number | null;
 }
 
 /** A partner's shared item one side of a transfer names (§7.2), with the currency the transfer must then be in. */
@@ -184,6 +212,66 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
 const accountOf = (draft: FormDraft, accounts: readonly AccountRow[]) => accounts.find((a) => a.id === draft.moneyId);
 
 /**
+ * Whether this draft may be saved with its category left for later, and so which kind's Uncategorised it is filed
+ * under — null when it has its category, or when a category has to be chosen now: a transfer has none, every line
+ * of a split names its own, and a bill shared with someone files your share under the one category chosen for it.
+ */
+export function categoryLater(draft: FormDraft): 'expense' | 'income' | null {
+  if (draft.categoryId) return null;
+  if (draft.mode === 'income') return 'income';
+  if (draft.mode !== 'expense' || draft.splits.length > 0) return null;
+  if (peopleOn(draft).length > 0 && !draft.editing) return null;
+  return 'expense';
+}
+
+/** The draft with "Choose later" answered: filed under `uncategorisedId` when its category was left for later. */
+export function withCategoryLater(draft: FormDraft, uncategorisedId: string): FormDraft {
+  return categoryLater(draft) ? { ...draft, categoryId: uncategorisedId } : draft;
+}
+
+/** Who filled Category: chosen by hand (or opened already holding one), filled from the note's history, or nobody yet. */
+export type CategorySource = 'hand' | 'auto' | null;
+
+/**
+ * What the note's history does to Category once a guess comes back: the category to fill in, '' to empty one that was
+ * only filled from an earlier note this one no longer matches, or null to leave Category exactly as it is.
+ *
+ * A category picked by hand — or one the form opened with (an edit, a duplicate, a capture) — is never touched. Only
+ * Expense and Income guess, each from its own tree; a transfer has no category and a split's lines are their own.
+ */
+export function categoryFromNote(draft: FormDraft, guess: string | null, source: CategorySource): string | null {
+  if (draft.mode !== 'expense' && draft.mode !== 'income') return null;
+  if (draft.splits.length > 0 || source === 'hand') return null;
+  if (source === 'auto') return guess === draft.categoryId ? null : (guess ?? '');
+  if (draft.categoryId) return null;
+  return guess;
+}
+
+/**
+ * Who Category starts out filled by. A form opened on something that already exists — an edit, a duplicate, a capture
+ * under review — is the owner's own, category or not: the note's history only ever helps a new, empty transaction.
+ */
+export function initialCategorySource(prefilled: boolean): CategorySource {
+  return prefilled ? 'hand' : null;
+}
+
+/** A figure that starts with a minus. */
+const MINUS_FIRST = /^\s*[-−–]/;
+
+/**
+ * Whether a minus typed first may make this figure a refund: an expense's one figure. Not income or a transfer,
+ * not a split by category (every line is spending), not a bill shared with someone.
+ */
+export function refundAllowed(draft: FormDraft): boolean {
+  return draft.mode === 'expense' && draft.splits.length === 0 && (draft.editing || peopleOn(draft).length === 0);
+}
+
+/** Money back on a purchase: an expense whose figure was typed with a minus first ("−450.000"). */
+export function isRefund(draft: FormDraft): boolean {
+  return draft.mode === 'expense' && MINUS_FIRST.test(draft.amount);
+}
+
+/**
  * Whether a figure on this screen may be typed in a currency of its own.
  *
  * **A transfer may not.** Moving your own money has no merchant and no card conversion: the figure that leaves
@@ -235,7 +323,32 @@ export interface MoneyFieldSpec {
   value: string;
   /** Never empty: the workspace's own currency stands in until an account is chosen. */
   currency: string;
+  /**
+   * Set only on the one field that may take cents in a currency with no minor unit (`decimalsDirection`): the way
+   * they are rounded to the whole figure that posts. The dock offers its comma on this field, and the field's reader
+   * keeps the cents on screen until the save. Absent everywhere else, which stays whole.
+   */
+  fractional?: RoundDirection;
 }
+
+/** The words a figure with cents is refused in, on any money field of a whole-unit currency but the single amount. */
+export const DECIMALS_REFUSAL = 'Decimals go on a single amount only';
+
+/**
+ * Which way cents typed on this draft's single amount are rounded — up for money out (an expense, and a refund of
+ * one, which gives back a charge that was rounded up), down for money in — or null when the draft has no single
+ * amount to take them: a transfer, a trade, a split by category, a bill shared with someone.
+ */
+export function decimalsDirection(draft: FormDraft): RoundDirection | null {
+  if (draft.mode === 'income') return 'down';
+  if (draft.mode !== 'expense' || draft.splits.length > 0) return null;
+  if (peopleOn(draft).length > 0 && !draft.editing) return null;
+  return 'up';
+}
+
+/** The allowance for one field, by exponent: a currency with cents of its own already takes them, as it always did. */
+const fractionalIn = (direction: RoundDirection | null, currency: string): { fractional?: RoundDirection } =>
+  direction && currencyInfo(currency).exponent === 0 ? { fractional: direction } : {};
 
 /**
  * The amount row's money fields, each carrying the currency it is read in.
@@ -251,11 +364,15 @@ export interface MoneyFieldSpec {
  */
 export function amountFields(draft: FormDraft, accounts: readonly AccountRow[], baseCurrency: string): { amount: MoneyFieldSpec; charged: MoneyFieldSpec | null } {
   const settled = accountOf(draft, accounts)?.currency ?? '';
+  const direction = decimalsDirection(draft);
   const amount: MoneyFieldSpec = { which: 'amount', label: 'Amount', value: draft.amount, currency: typedCurrency(draft, accounts) || baseCurrency };
-  if (!chargedInNeeded(draft, accounts)) return { amount, charged: null };
+  if (!chargedInNeeded(draft, accounts)) return { amount: { ...amount, ...fractionalIn(direction, amount.currency) }, charged: null };
+  // A foreign purchase: the cents go on what the account was charged, which is what posts. The figure typed in the
+  // merchant's currency keeps that currency's own rules.
+  const chargedCurrency = settled || baseCurrency;
   return {
     amount,
-    charged: { which: 'charged', label: `Charged in ${settled}`, value: draft.chargedAmount, currency: settled || baseCurrency },
+    charged: { which: 'charged', label: `Charged in ${settled}`, value: draft.chargedAmount, currency: chargedCurrency, ...fractionalIn(direction, chargedCurrency) },
   };
 }
 
@@ -377,28 +494,64 @@ export function extraRows(
 }
 
 /**
- * A typed figure the save will act on, in minor units — read by **the kit's one reader**, `evaluateAmount`.
+ * A whole typed figure the save will act on, in minor units — read by **the kit's one reader**, `evaluateExact`
+ * (`evaluateAmount` with the exact figure beside it), through `figureOf`.
  *
  * `parseMajor` alone cannot read `50000+10000`. The amount row accepts it, the keypad computes it, the Split
  * sheet added it up and printed "Total Rp 95.000", the With sheet divided it — and then Save refused the very
  * figure the screen had just totalled, with `Invalid amount: "50000+10000"`. The screen's arithmetic and the
  * save's were two arithmetics; there is one now, and it is this one.
  *
- * When `evaluateAmount` cannot read the figure, `parseMajor` is asked for the words: "IDR allows 0 decimal
- * places" says far more than a flat refusal, and a figure it reads perfectly well was simply zero or less.
+ * When the figure cannot be read, `parseMajor` is asked for the words: "allows 0 decimal places" says far more
+ * than a flat refusal, and a figure it reads perfectly well was simply zero or less. Cents on a whole-unit currency
+ * are the exception: this field does not take them, and `DECIMALS_REFUSAL` says which one does.
  *
  * The one refusal `parseMajor` has no words for is the empty box, and it is the commonest way here: it
  * answers `Invalid amount: ""`, which is the kit talking to itself with the user reading over its shoulder.
- * That case is worded here; every other message is still `parseMajor`'s own, unchanged.
+ * That case is worded here.
  */
 function positive(value: string, currency: string, label: string): number {
-  const minor = evaluateAmount(value, currency);
-  if (minor === null) {
-    if (!value.trim()) throw new Error(`${label} is empty — type a figure`);
-    parseMajor(value, currency);
-    throw new Error(`${label} must be greater than zero`);
+  return figureOf(value, currency, label, {}).minor;
+}
+
+/**
+ * Whether a figure that cannot be read whole would read with cents — so it can be refused in words that say where
+ * cents go, rather than with "IDR allows 0 decimal places", which says nothing about the one field that takes them.
+ */
+function hasCents(value: string, currency: string, refund: boolean): boolean {
+  try {
+    return (evaluateExact(value, currency, { refund, fractional: 'up' })?.exactHundredths ?? null) !== null;
+  } catch {
+    return false;
   }
-  return minor;
+}
+
+/**
+ * Any typed figure the save acts on, as the positive amount it comes to and — on the one field that takes cents
+ * (`fractional`) — their exact hundredths, null when there are none.
+ *
+ * `refund`: a minus typed first is the refund's sign, so the figure is read with the refund allowance; a figure
+ * typed without one (a charged row filled in plain) reads as is. `wholeOnly: 'own'` keeps a field to its own
+ * currency's rules and words — the merchant's figure on a foreign purchase, which is not the figure that posts.
+ */
+function figureOf(
+  value: string,
+  currency: string,
+  label: string,
+  { refund = false, fractional, wholeOnly = 'refuse' }: { refund?: boolean; fractional?: RoundDirection; wholeOnly?: 'refuse' | 'own' },
+): { minor: number; exactHundredths: number | null } {
+  const read = evaluateExact(value, currency, { refund, fractional });
+  if (read !== null) return { minor: Math.abs(read.minor), exactHundredths: read.exactHundredths };
+  const rest = refund ? value.replace(MINUS_FIRST, '') : value;
+  if (!rest.trim()) throw new Error(`${label} is empty — type a figure`);
+  if (hasCents(value, currency, refund)) {
+    if (!fractional && wholeOnly === 'refuse') throw new Error(DECIMALS_REFUSAL);
+    // Taken with cents, it was read: it came to nothing once rounded (an income of 0,50 rounds down to 0). Asking
+    // `parseMajor` here would answer "IDR allows 0 decimal places" on the one field that allows them.
+    if (fractional) throw new Error(refund ? `${label} must come to money back` : `${label} must be greater than zero`);
+  }
+  parseMajor(rest, currency);
+  throw new Error(refund ? `${label} must come to money back` : `${label} must be greater than zero`);
 }
 
 /**
@@ -440,6 +593,16 @@ export function splitTotalMinor(splits: readonly SplitRow[], currency: string): 
 }
 
 /**
+ * What the Split sheet says while a row holds cents on a whole-unit currency — `DECIMALS_REFUSAL`, the words Save
+ * refuses it with — or null. On a phone the ✓ is greyed while the draft would be refused, so the reason has to be
+ * on the sheet where the row is typed, not only behind a button that cannot be pressed.
+ */
+export function splitCentsRefusal(splits: readonly SplitRow[], currency: string): string | null {
+  const cents = splits.some((row) => row.amount.trim() !== '' && evaluateAmount(row.amount, currency) === null && hasCents(row.amount, currency, false));
+  return cents ? DECIMALS_REFUSAL : null;
+}
+
+/**
  * The figure a shared bill is divided from, read in the paying account's own currency — null when there is
  * nothing readable to divide yet.
  *
@@ -474,25 +637,34 @@ function amounts(
   account: AccountRow,
   typed: string,
   splitTotalMinor: number | null,
-): { amountMinor: number; originalCurrency: string | null; originalAmountMinor: number | null } {
+): { amountMinor: number; exactHundredths: number | null; originalCurrency: string | null; originalAmountMinor: number | null } {
   const settled = account.currency!;
   if (splitTotalMinor !== null) {
     // `splitRowsOf` has already refused a split typed in another currency, so the figure here is in `settled`.
     // The kit's one reader, not a second weaker one. `parseMajor` cannot read `250000+150000`, which the amount
     // row is built to accept, so a sum that agrees perfectly well was refused with a raw `MoneyError`.
     if (draft.amount.trim() && evaluateAmount(draft.amount, settled) !== splitTotalMinor) {
+      // Cents spread over several categories have no line to round onto: said where they go, not as a mismatch.
+      if (hasCents(draft.amount, settled, false)) throw new Error(DECIMALS_REFUSAL);
       throw new Error('The splits must add up to the amount');
     }
-    return { amountMinor: splitTotalMinor, originalCurrency: null, originalAmountMinor: null };
+    return { amountMinor: splitTotalMinor, exactHundredths: null, originalCurrency: null, originalAmountMinor: null };
   }
+  // A refund's figures are the money that came back, positive: its sign is in the lines (`refundLines`).
+  const refund = isRefund(draft);
+  // Cents on a whole-unit currency go on the figure that posts, and only on a draft with a single amount.
+  const fractional = decimalsDirection(draft) ?? undefined;
   if (!typed || typed === settled) {
-    return { amountMinor: positive(draft.amount, settled, 'Amount'), originalCurrency: null, originalAmountMinor: null };
+    const { minor, exactHundredths } = figureOf(draft.amount, settled, 'Amount', { refund, fractional });
+    return { amountMinor: minor, exactHundredths, originalCurrency: null, originalAmountMinor: null };
   }
   if (!draft.chargedAmount.trim()) throw new Error(`Enter the amount charged in ${settled}`);
+  const charged = figureOf(draft.chargedAmount, settled, `Amount charged in ${settled}`, { refund, fractional });
   return {
-    amountMinor: positive(draft.chargedAmount, settled, `Amount charged in ${settled}`),
+    amountMinor: charged.minor,
+    exactHundredths: charged.exactHundredths,
     originalCurrency: typed,
-    originalAmountMinor: positive(draft.amount, typed, 'Amount'),
+    originalAmountMinor: figureOf(draft.amount, typed, 'Amount', { refund, wholeOnly: 'own' }).minor,
   };
 }
 
@@ -530,6 +702,7 @@ function expenseOrIncomeLines(
   }
   if (splits) return splitExpenseLines({ paymentAccountId: account.id, currency, splits });
   if (!draft.categoryId) throw new Error('Choose a category');
+  if (isRefund(draft)) return refundLines({ categoryAccountId: draft.categoryId, paymentAccountId: account.id, amountMinor, currency });
   return expenseLines({ categoryAccountId: draft.categoryId, paymentAccountId: account.id, amountMinor, currency });
 }
 
@@ -700,6 +873,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         excludedFromReport: draft.excluded,
         eventId: draft.eventId || null,
         photoIds: draft.photoIds,
+        // A transfer never takes cents: an expense or income corrected into one leaves its exact figure behind.
+        ...exactField(draft, accounts, null),
       },
     };
   }
@@ -718,11 +893,17 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     if (refusal) throw new Error(refusal);
   }
 
+  // Money back goes back under one category, from the one account it was paid with.
+  if (isRefund(draft)) {
+    if (draft.splits.length > 0) throw new Error('A refund goes back under one category: remove the splits');
+    if (peopleOn(draft).length > 0 && !draft.editing) throw new Error('A refund cannot be shared: remove the people');
+  }
+
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
   const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
   const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
-  const { amountMinor, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
+  const { amountMinor, exactHundredths, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
 
   if (draft.mode === 'expense' && draft.with.length > 0 && !draft.editing) {
     if (!draft.categoryId) throw new Error('Choose a category');
@@ -773,8 +954,84 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       photoIds: draft.photoIds,
       // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
       ...paidFromHint(draft),
+      ...exactField(draft, accounts, exactHundredths),
     },
   };
+}
+
+/** The figure on a draft, read as `OpenedFigure` records it. */
+function figureNow(draft: FormDraft, accounts: readonly AccountRow[]): Omit<OpenedFigure, 'exactHundredths'> {
+  const typed = typedCurrency(draft, accounts);
+  const settled = accountOf(draft, accounts)?.currency ?? '';
+  // A minus is allowed on both sides of the comparison alike: the tab is compared too, so a refund only ever meets a refund.
+  const read = (text: string, currency: string) => (text.trim() && currency ? evaluateAmount(text, currency, { refund: true }) : null);
+  return {
+    mode: draft.mode,
+    amountMinor: read(draft.amount, typed),
+    chargedMinor: read(draft.chargedAmount, settled),
+    typedCurrency: typed,
+    settledCurrency: settled,
+  };
+}
+
+/**
+ * Whether the money still reads as the form opened on it: the same tab, the same amount and charged figure, in the
+ * same currencies, paid from an account in the same currency, and no split. An amount that cannot be read whole (one
+ * typed with cents, or half typed) is never the same.
+ */
+function figureAsOpened(draft: FormDraft, opened: OpenedFigure, accounts: readonly AccountRow[]): boolean {
+  const now = figureNow(draft, accounts);
+  return (
+    draft.splits.length === 0 &&
+    now.amountMinor !== null &&
+    now.mode === opened.mode &&
+    now.amountMinor === opened.amountMinor &&
+    now.chargedMinor === opened.chargedMinor &&
+    now.typedCurrency === opened.typedCurrency &&
+    now.settledCurrency === opened.settledCurrency
+  );
+}
+
+/**
+ * The exact figure a save sends with its posting (the ledger's `exactHundredths`), or nothing.
+ *
+ * - The figure as it opened: an edit leaves the field out, so the ledger carries the stored figure (a note-only edit,
+ *   a re-file from the row's circle); a Duplicate copies it with the amount it belongs to.
+ * - Typed with cents: that figure.
+ * - Anything else on an edit — retyped whole, moved to another tab, spread over a split, made a transfer — an
+ *   explicit null, because the stored figure no longer describes the amount and the ledger refuses one that does
+ *   not fit. A new transaction typed whole sends nothing, as it always did.
+ */
+function exactField(draft: FormDraft, accounts: readonly AccountRow[], typed: number | null): { exactHundredths?: number | null } {
+  const opened = draft.opened;
+  if (opened && typed === null && figureAsOpened(draft, opened, accounts)) {
+    if (draft.editing || opened.exactHundredths === null) return {};
+    return { exactHundredths: opened.exactHundredths };
+  }
+  if (typed !== null) return { exactHundredths: typed };
+  return draft.editing ? { exactHundredths: null } : {};
+}
+
+/**
+ * Whether the row's category circle can re-file this transaction: one category and one money account — a purchase,
+ * a refund, an income, foreign or not — still posted and still the forms' to edit.
+ */
+export function canRefile(tx: TransactionView): boolean {
+  if (!isEditable(tx)) return false;
+  const c = classify(tx);
+  if (c.type !== 'expense' && c.type !== 'income') return false;
+  const categories = tx.entries.filter((e) => e.accountKind === c.type);
+  const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
+  return categories.length === 1 && money.length === 1 && tx.entries.length === 2;
+}
+
+/**
+ * The transaction again with only its category swapped, through the edit path itself: read back as the form would
+ * open it, the category changed, and posted as the form would save it — so a refund's sign, a foreign purchase's
+ * original pair, the card and the MCC all go through untouched.
+ */
+export function refiledPost(tx: TransactionView, accounts: readonly AccountRow[], categoryId: string, bookId = ''): FormPost {
+  return formToPost({ ...formFromTransaction(tx, accounts, bookId), categoryId }, accounts);
 }
 
 /**
@@ -831,10 +1088,12 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     if (!tx.originalCurrency || tx.originalAmountMinor === null) {
       return { currency: settled, amount: minorToMajorString(amountMinor, settled), chargedAmount: '' };
     }
+    // A refund reopens with its minus on the typed figure, the one place a refund is said.
+    const sign = amountMinor < 0 ? '-' : '';
     return {
       currency: tx.originalCurrency,
-      amount: minorToMajorString(tx.originalAmountMinor, tx.originalCurrency),
-      chargedAmount: minorToMajorString(amountMinor, settled),
+      amount: sign + minorToMajorString(tx.originalAmountMinor, tx.originalCurrency),
+      chargedAmount: minorToMajorString(Math.abs(amountMinor), settled),
     };
   };
 
@@ -842,21 +1101,23 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     const payment = money[0]!;
     const category = tx.entries.filter((e) => e.accountKind === c.type);
     if (c.type === 'expense' && category.length > 1) {
-      return {
+      return withOpened({
         ...base,
         moneyId: payment.accountId,
         currency: settledOf(payment),
         splits: category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency) })),
-      };
+      }, tx, accounts);
     }
     const only = category[0]!;
     const total = c.type === 'expense' ? only.amountMinor : -only.amountMinor;
-    return { ...base, mode: c.type, moneyId: payment.accountId, categoryId: only.accountId, ...foreign(payment, total) };
+    // The whole figure that posted (B2): cents are shown only while they are being typed. The exact figure, when the
+    // amount was typed with them, rides along with the texts it belongs to, so a save that leaves them alone keeps it.
+    return withOpened({ ...base, mode: c.type, moneyId: payment.accountId, categoryId: only.accountId, ...foreign(payment, total) }, tx, accounts);
   }
 
   const from = money.find((e) => e.amountMinor < 0);
   const to = money.find((e) => e.amountMinor > 0);
-  return {
+  return withOpened({
     ...base,
     mode: 'transfer',
     moneyId: from?.accountId ?? '',
@@ -864,7 +1125,47 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     currency: from ? settledOf(from) : '',
     amount: from ? minorToMajorString(-from.amountMinor, from.currency) : '',
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
-  };
+  }, tx, accounts);
+}
+
+/** A reopened draft with the figure it opened on (`FormDraft.opened`). */
+function withOpened(form: FormDraft, tx: TransactionView, accounts: readonly AccountRow[]): FormDraft {
+  return { ...form, opened: { ...figureNow(form, accounts), exactHundredths: tx.exactHundredths ?? null } };
+}
+
+/** What `canDuplicate` needs beyond the transaction: facts the caller reads from the accounts, the payers and the transfers. */
+export interface DuplicateContext {
+  /** The ids of the accounts this device lists; empty means "not read yet", and nothing is offered until it is. */
+  known: ReadonlySet<string>;
+  /** Who paid, for a purchase in a shared workspace; null when it is not one. */
+  payer: { mine: boolean } | null;
+  /** Whether the transaction is this phone's side of a transfer with a partner. */
+  memberTransfer: boolean;
+}
+
+/**
+ * Whether a transaction can be repeated from the Add screen: a purchase, an income or a transfer that is still
+ * posted and entirely this person's own. Not another member's purchase (posted against their placeholder, which the
+ * Add form never offers), not a transfer with a partner (it is recorded once in the group's log and copied here as
+ * a plain transfer it would no longer be), and not what `isEditable` refuses. A trade or a purchase filed in
+ * another workspace is the caller's refusal (`useChangeable`), as it is for Edit.
+ */
+export function canDuplicate(tx: TransactionView, context: DuplicateContext): boolean {
+  if (!isEditable(tx) || context.known.size === 0) return false;
+  if (postedAgainstPlaceholder(tx, context.known)) return false;
+  if (context.payer && !context.payer.mine) return false;
+  return !context.memberTransfer;
+}
+
+/**
+ * A transaction as the start of a new one: every entry field it has (mode, accounts, category or splits, note, the
+ * same date, the event, the currency), and none of what belongs to the original alone — its pictures, the fact of
+ * being an edit, the set-aside link (`goalId`, whose choice is not copied either) and the old charge. A foreign
+ * purchase keeps its currency but starts with the charge empty, so the day's rate estimates it again and follows the
+ * new amount; a kept charge reads as typed by the user and would post the new amount with the old charge.
+ */
+export function duplicateDraft(tx: TransactionView, accounts: readonly AccountRow[], bookId = ''): FormDraft {
+  return { ...formFromTransaction(tx, accounts, bookId, []), editing: false, photoIds: [], goalId: '', chargedAmount: '' };
 }
 
 /**
@@ -875,10 +1176,16 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
  * phone's DONE all come through here, so the keypad cannot drift into a second, weaker arithmetic of its own:
  * a copy of these two lines is exactly how a 100x error lives on a path no test walks.
  */
-export function settledAmount(value: string, currency: string): string | null {
-  const minor = evaluateAmount(value, currency);
-  return minor === null ? null : minorToMajorString(minor, currency);
+export function settledAmount(value: string, currency: string, refund = false, fractional?: RoundDirection): string | null {
+  const read = evaluateExact(value, currency, { refund, fractional });
+  if (read === null) return null;
+  // Cents on a whole-unit currency stay on screen until the save, written in hundredths the same reader reads back
+  // to the same figure ("12500.30"): the save rounds them, never DONE.
+  return read.exactHundredths === null ? minorToMajorString(read.minor, currency) : hundredthsText(read.exactHundredths, read.minor < 0);
 }
+
+/** An exact figure in hundredths as the field's text: "12500.30", with a minus for a refund. */
+const hundredthsText = (exact: number, negative: boolean) => `${negative ? '-' : ''}${Math.floor(exact / 100)}.${String(exact % 100).padStart(2, '0')}`;
 
 /**
  * The desktop amount field's Enter: work the expression out, and hold the save back until it stops changing.
@@ -887,8 +1194,8 @@ export function settledAmount(value: string, currency: string): string | null {
  * makes on the phone, and lets the form submit so a plainly typed figure is never trapped behind an Enter that
  * does nothing.
  */
-export function amountAfterEnter(value: string, currency: string): { text: string; submit: boolean } {
-  const text = settledAmount(value, currency);
+export function amountAfterEnter(value: string, currency: string, refund = false, fractional?: RoundDirection): { text: string; submit: boolean } {
+  const text = settledAmount(value, currency, refund, fractional);
   if (text === null) return { text: value, submit: true };
   return { text, submit: text === value };
 }
@@ -900,8 +1207,8 @@ export function amountAfterEnter(value: string, currency: string): { text: strin
  * `close` is not `amountAfterEnter`'s `submit`: a figure already in its final form — `100000` — must still
  * close the dock, where on a desktop the same figure means "nothing changed, so let the form save".
  */
-export function amountAfterDone(value: string, currency: string): { text: string; close: boolean } {
-  const text = settledAmount(value, currency);
+export function amountAfterDone(value: string, currency: string, refund = false, fractional?: RoundDirection): { text: string; close: boolean } {
+  const text = settledAmount(value, currency, refund, fractional);
   return text === null ? { text: value, close: false } : { text, close: true };
 }
 
@@ -914,12 +1221,15 @@ export function amountAfterDone(value: string, currency: string): { text: string
  * typed ("120000+35000"), or anything that cannot be read, is shown exactly as it stands, so the keypad never
  * shows a figure other than the one it is holding.
  */
-export function amountFace(value: string, currency: string): string {
-  if (value === '' || !currency || settledAmount(value, currency) !== value) return value;
-  const minor = evaluateAmount(value, currency);
-  if (minor === null) return value;
-  const { exponent } = currencyInfo(currency);
-  return new Intl.NumberFormat('id-ID', { minimumFractionDigits: exponent, maximumFractionDigits: exponent }).format(minor / 10 ** exponent);
+export function amountFace(value: string, currency: string, refund = false, fractional?: RoundDirection): string {
+  if (value === '' || !currency || settledAmount(value, currency, refund, fractional) !== value) return value;
+  const read = evaluateExact(value, currency, { refund, fractional });
+  if (read === null) return value;
+  // A figure with cents on a whole-unit currency is drawn with them, as typed: they are on screen until the save.
+  const [magnitude, exponent] = read.exactHundredths === null ? [Math.abs(read.minor), currencyInfo(currency).exponent] : [read.exactHundredths, 2];
+  // A refund is written with a true minus, the way the keypad's key draws it.
+  const face = new Intl.NumberFormat('id-ID', { minimumFractionDigits: exponent, maximumFractionDigits: exponent }).format(magnitude / 10 ** exponent);
+  return read.minor < 0 ? `−${face}` : face;
 }
 
 /** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
@@ -929,11 +1239,12 @@ export type KeypadKey = (typeof KEYPAD_KEYS)[number] | ',';
 
 /**
  * The dock's keys for one currency. A currency with cents — dollars, euros — trades the 00 key for a decimal comma,
- * the separator the app writes amounts with; one without (the rupiah, by product decision) keeps 00, which is how
- * rupiah amounts are typed.
+ * the separator the app writes amounts with; one without (the rupiah) keeps 00, which is how rupiah amounts are
+ * typed — except on the one field that takes cents (`MoneyFieldSpec.fractional`), the single amount, where the
+ * comma is how a charge of 12.500,30 is typed at all.
  */
-export function keypadKeys(currency: string): readonly KeypadKey[] {
-  return currencyInfo(currency).exponent > 0 ? KEYPAD_KEYS.map((key) => (key === '00' ? ',' : key)) : KEYPAD_KEYS;
+export function keypadKeys(currency: string, fractional?: RoundDirection): readonly KeypadKey[] {
+  return currencyInfo(currency).exponent > 0 || fractional ? KEYPAD_KEYS.map((key) => (key === '00' ? ',' : key)) : KEYPAD_KEYS;
 }
 
 /** What one key does to the typed text. DONE is not here; `amountAfterDone` is what DONE does. */
@@ -956,8 +1267,8 @@ export function keypadPress(value: string, key: Exclude<KeypadKey, 'DONE'>): str
  * it holds one call. A keypad that decides anything for itself is a second money path, and a second money path
  * is where a 100x error sits untested for as long as nobody mounts it.
  */
-export function keypadAction(value: string, currency: string, key: KeypadKey): { text: string; close: boolean } {
-  if (key === 'DONE') return amountAfterDone(value, currency);
+export function keypadAction(value: string, currency: string, key: KeypadKey, refund = false, fractional?: RoundDirection): { text: string; close: boolean } {
+  if (key === 'DONE') return amountAfterDone(value, currency, refund, fractional);
   return { text: keypadPress(value, key), close: false };
 }
 

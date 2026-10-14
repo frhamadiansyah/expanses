@@ -13,6 +13,24 @@ export function expenseLines(p: {
   ];
 }
 
+/**
+ * Money back on a purchase: the reverse of `expenseLines`. The category is credited, so what it spent nets down,
+ * and the account paid with is debited — a card is owed less, a bank account holds more. `amountMinor` is the
+ * refund as a positive figure.
+ */
+export function refundLines(p: {
+  categoryAccountId: string;
+  paymentAccountId: string;
+  amountMinor: number;
+  currency: string;
+  memo?: string | null;
+}): PostingLine[] {
+  return [
+    { accountId: p.paymentAccountId, amountMinor: p.amountMinor, currency: p.currency },
+    { accountId: p.categoryAccountId, amountMinor: -p.amountMinor, currency: p.currency, memo: p.memo ?? null },
+  ];
+}
+
 export function splitExpenseLines(p: {
   paymentAccountId: string;
   currency: string;

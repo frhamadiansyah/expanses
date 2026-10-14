@@ -18,6 +18,7 @@ import {
   openingBalanceLines,
   type PostingLine,
   readStatement,
+  refundLines,
   type RowOutcome,
   type StatementPeriod,
   type StatementRow,
@@ -31,9 +32,8 @@ import { accounts, entries, transactions } from '../schema';
 import { cardPostings } from '../schema-cards';
 import { draftTransactions } from '../schema-drafts';
 import { cardStatementSettings, type StatementLinkKind, statementChecks, statementLinks } from '../schema-statements';
-import { withCapture } from '../sync/capture';
-import { createAccountTx, ensureSystemAccountTx, systemAccountId } from './accounts';
-import { categoryIdsByKeyTx } from './categories';
+import { ensureSystemAccountTx, systemAccountId } from './accounts';
+import { ensureCategoryByKeyTx } from './categories';
 import { confirmDraftTx, listDrafts } from './drafts';
 import { guessCategoryFromHistory } from './entry';
 import { listTransactions, nativeBalancesTx, postTransactionTx, replaceTransactionTx, type TransactionView, voidTransactionTx } from './ledger';
@@ -187,13 +187,9 @@ async function cardOf(db: Db, ws: WorkspaceContext, cardAccountId: string): Prom
  * A category by its key, made under Miscellaneous the first time a check needs it (§3.3). Looked up as the posting
  * will file it: the book's own copy, else the oldest.
  */
-async function categoryByKeyTx(tx: Db, ws: WorkspaceContext, spec: { key: string; name: string }): Promise<string> {
-  const byKey = await categoryIdsByKeyTx(tx, ws);
-  const found = byKey[spec.key];
-  if (found) return found;
-  const made = await createAccountTx(tx, ws, { kind: 'expense', subtype: 'category', name: spec.name, currency: null, parentId: byKey[MISCELLANEOUS_KEY] ?? null });
-  await withCapture(tx, { entity: 'category', id: made.id }, () => tx.update(accounts).set({ systemKey: spec.key }).where(eq(accounts.id, made.id)));
-  return made.id;
+/** Fees & charges or Refunds, the open book's own, made under Miscellaneous the first time a row needs it. */
+function categoryByKeyTx(tx: Db, ws: WorkspaceContext, spec: { key: string; name: string }): Promise<string> {
+  return ensureCategoryByKeyTx(tx, ws, { ...spec, kind: 'expense', parentKey: MISCELLANEOUS_KEY });
 }
 
 /** The transactions checks posted or linked as statement rows: they stay candidates, whatever they post against. */
@@ -724,14 +720,18 @@ export async function recordStatementCheck(
             transferLines({ fromAccountId: correctionId, toAccountId: cardAccountId, ...amount })
           : outcome.as === 'refund'
             ? // Money back: the card is owed less, and the category it was spent under takes it back.
-              expenseLines({ categoryAccountId: cardAccountId, paymentAccountId: row.categoryId!, ...amount })
+              refundLines({ categoryAccountId: row.categoryId!, paymentAccountId: cardAccountId, ...amount })
             : expenseLines({ categoryAccountId: row.categoryId!, paymentAccountId: cardAccountId, ...amount });
+        // A foreign purchase or refund keeps its own currency and amount beside the charged lines, as one typed by
+        // hand does: points and the tax report read it. A card payment has none.
+        const original = !isPayment && row.original ? { originalCurrency: row.original.currency, originalAmountMinor: row.original.amountMinor } : {};
         const id = await postTransactionTx(tx, ws, {
           occurredOn: row.on,
           description: isPayment ? 'Card payment' : row.description,
           source: 'screen',
           externalRef,
           lines,
+          ...original,
         });
         // The bank's posting date decides the statement it is billed on, as it did for this one.
         if (row.postedOn && row.postedOn > row.on) await tx.insert(cardPostings).values({ transactionId: id, workspaceId: ws.workspaceId, postedOn: row.postedOn });

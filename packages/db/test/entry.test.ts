@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, incomeLines } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   addCard,
@@ -14,6 +14,7 @@ import {
   noteMatches,
   noteSuggestions,
   postTransaction,
+  uncategorisedCategory,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -112,6 +113,86 @@ describe('guessing a category from history', () => {
     });
 
     expect(await guessCategoryFromHistory(t.database, t.ws, 'Lotte Mart')).toBe(t.key('household.groceries'));
+  });
+});
+
+describe('guessing a category from history, by kind', () => {
+  it('guesses income from income and spending from spending, never across', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-25',
+      description: 'Acme payroll',
+      lines: incomeLines({ incomeAccountId: t.key('income.salary'), depositAccountId: bank, amountMinor: 9_000_000, currency: 'IDR' }),
+    });
+    await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-26',
+      description: 'Kopi Kenangan',
+      lines: expenseLines({ categoryAccountId: t.key('food_beverage.cafe_dessert'), paymentAccountId: bank, amountMinor: 30_000, currency: 'IDR' }),
+    });
+
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Acme payroll', 'income')).toBe(t.key('income.salary'));
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Acme payroll', 'expense')).toBeNull();
+    // Spending is still the default, as the desktop table has always asked for it.
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Kopi Kenangan')).toBe(t.key('food_beverage.cafe_dessert'));
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Kopi Kenangan', 'income')).toBeNull();
+  });
+
+  it('never guesses Uncategorised: a note saved for later says nothing about its category', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-20',
+      description: 'Kopi Kenangan',
+      lines: expenseLines({ categoryAccountId: t.key('food_beverage.cafe_dessert'), paymentAccountId: bank, amountMinor: 30_000, currency: 'IDR' }),
+    });
+    const later = await uncategorisedCategory(t.database, t.ws, 'expense');
+    await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-27',
+      description: 'Kopi Kenangan',
+      lines: expenseLines({ categoryAccountId: later, paymentAccountId: bank, amountMinor: 30_000, currency: 'IDR' }),
+    });
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Kopi Kenangan')).toBe(t.key('food_beverage.cafe_dessert'));
+  });
+});
+
+describe('guessing by the first word, only when it agrees', () => {
+  async function spend(t: Awaited<ReturnType<typeof workspace>>, bank: string, occurredOn: string, description: string, categoryKey: string) {
+    await postTransaction(t.database, t.ws, {
+      occurredOn,
+      description,
+      lines: expenseLines({ categoryAccountId: t.key(categoryKey), paymentAccountId: bank, amountMinor: 50_000, currency: 'IDR' }),
+    });
+  }
+
+  it('files a new shop of a known first word where every one before it went: Grabfood', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await spend(t, bank, '2026-09-01', 'Grabfood Miroso', 'food_beverage.takeaways');
+    // Pasted in full, and typed partly.
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabfood Ayam Kremes')).toBe(t.key('food_beverage.takeaways'));
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabfood Ay')).toBe(t.key('food_beverage.takeaways'));
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabfood')).toBe(t.key('food_beverage.takeaways'));
+  });
+
+  it('guesses nothing when the first word’s notes were filed in different places: Gojek', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await spend(t, bank, '2026-09-01', 'Gojek Ride', 'transportation.ride_hailing');
+    await spend(t, bank, '2026-09-02', 'Gojek Food', 'food_beverage.takeaways');
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Gojek Martabak')).toBeNull();
+    // The same two words still answer, whatever the first word's other notes say.
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Gojek Ride to work')).toBe(t.key('transportation.ride_hailing'));
+  });
+
+  it('puts the same two words ahead of the first word', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await spend(t, bank, '2026-09-01', 'Grabfood Miroso', 'household.groceries');
+    await spend(t, bank, '2026-09-02', 'Grabfood Bakmi', 'food_beverage.takeaways');
+    await spend(t, bank, '2026-09-03', 'Grabfood Bakmi', 'food_beverage.takeaways');
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabfood Miroso')).toBe(t.key('household.groceries'));
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabfood Sate')).toBeNull();
   });
 });
 

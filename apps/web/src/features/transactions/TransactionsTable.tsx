@@ -25,6 +25,10 @@ export interface TableHandlers {
   saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
   dismissDraft: (id: string) => Promise<boolean>;
   deleteRecorded: (id: string) => Promise<boolean>;
+  /** Whether this row may be copied into a new one: the one rule the swipe, the receipt and the route share. */
+  canDuplicate: (tx: TransactionView) => boolean;
+  /** Opens the Add screen on a copy of this row. */
+  duplicate: (id: string) => void;
   /** The full form, for a row too involved to edit as cells. */
   renderForm: (tx: TransactionView, onDone: () => void) => ReactNode;
   tradeIds: ReadonlySet<string>;
@@ -217,9 +221,10 @@ function BillTag({ text }: { text: string }) {
 function LockedRow({ row, today, handlers }: { row: ListRow; today: string; handlers: TableHandlers }) {
   const [form, setForm] = useState(false);
   const tx = row.tx!;
-  const sign = row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
+  // Money back on a purchase reads as money in.
+  const sign = row.refund ? '+' : row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
   const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
-  const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
+  const why = row.refund ? 'a refund' : row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);
   // The form behind "Open in form" saves like any other edit, so it waits for the filing too.
@@ -236,9 +241,9 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
             </span>
           )}
         </span>
-        <span className={cx('tabular truncate px-2 text-right font-medium', row.type === 'income' && 'text-emerald-700', kind && 'text-slate-500')}>
+        <span className={cx('tabular truncate px-2 text-right font-medium', (row.type === 'income' || row.refund) && 'text-emerald-700', kind && 'text-slate-500')}>
           {sign}
-          {formatMinor(row.amountMinor, row.currency)}
+          {formatMinor(Math.abs(row.amountMinor), row.currency)}
         </span>
         <span className="truncate px-2 text-slate-600">
           {handlers.payerOf?.(tx.id) ? (
@@ -272,7 +277,12 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
       {form && (
         <div className="space-y-1 px-2 pb-3">
           {handlers.renderForm(tx, () => setForm(false))}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-1">
+            {!handlers.tradeIds.has(tx.id) && handlers.canDuplicate(tx) && (
+              <button type="button" onClick={() => handlers.duplicate(tx.id)} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                Duplicate
+              </button>
+            )}
             <TwoTap busy={handlers.busy === tx.id} label="Delete" onConfirm={() => void handlers.deleteRecorded(tx.id)} />
           </div>
         </div>

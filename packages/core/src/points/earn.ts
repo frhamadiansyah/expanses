@@ -74,7 +74,14 @@ export interface SpendLine {
   occurredOn: string;
   categoryId: string;
   description: string;
+  /** What the card was charged for this line: the figure every screen shows. */
   amountMinor: number;
+  /**
+   * The figure points are worked out on, when it differs from the charge: a purchase typed with cents is charged its
+   * whole figure rounded up and earns on its exact figure rounded down (12.500,30 is charged 12.501, earns on 12.500).
+   * Every rule test, cap, floor and bonus reads this figure, never the charge. Absent means the charge.
+   */
+  earnMinor?: number;
   currency: string;
   /** Currency the purchase was made in when it differs from the billed currency, e.g. SGD billed as IDR. */
   originalCurrency: string | null;
@@ -148,6 +155,11 @@ export function dayOfWeek(isoDate: string): number {
   return new Date(`${isoDate}T00:00:00Z`).getUTCDay();
 }
 
+/** The figure a line earns on: its exact figure rounded down when it has one, otherwise what it was charged. */
+export function earnAmount(line: Pick<SpendLine, 'amountMinor' | 'earnMinor'>): number {
+  return line.earnMinor ?? line.amountMinor;
+}
+
 export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency = 'IDR'): boolean {
   if (line.cardFee) return false;
   const chain = [line.categoryId, ...(ancestors[line.categoryId] ?? [])];
@@ -172,7 +184,7 @@ export function ruleMatches(
   rule: EarnRule,
   line: SpendLine,
   ancestors: Record<string, string[]>,
-  transactionTotalMinor: number = line.amountMinor,
+  transactionTotalMinor: number = earnAmount(line),
   billingCurrency = 'IDR',
 ): boolean {
   if (!withinWindow(line.occurredOn, rule.validFrom, rule.validTo)) return false;
@@ -194,8 +206,11 @@ export function nextBonusTier(bonus: CycleBonus, eligibleSpendMinor: number): Bo
  * bonus is valid at the end of the cycle. Refunds deduct afterwards, floored at zero per rule and per bonus.
  * Recomputing the cycle makes voids, edits, and backdating correct.
  */
-export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestors: Record<string, string[]>, options: EarnOptions = {}): CycleEarn {
+export function computeCycleEarn(given: SpendLine[], rules: EarnRule[], ancestors: Record<string, string[]>, options: EarnOptions = {}): CycleEarn {
   const billingCurrency = options.billingCurrency ?? 'IDR';
+  // Everything below works on the figure each line earns on, so a cents purchase is tested, capped and floored on its
+  // exact figure rounded down. The caller's lines keep the charge for display.
+  const lines = given.map((line) => (line.earnMinor === undefined ? line : { ...line, amountMinor: line.earnMinor }));
   const ordered = [...lines].sort(
     (a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId) || a.entryId.localeCompare(b.entryId),
   );

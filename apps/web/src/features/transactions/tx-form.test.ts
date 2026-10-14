@@ -1,4 +1,4 @@
-import { evaluateAmount, expenseLines, incomeLines, isoDate, parseMajor, splitExpenseLines } from '@expanses/core';
+import { evaluateAmount, expenseLines, incomeLines, isoDate, parseMajor, refundLines, splitExpenseLines } from '@expanses/core';
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { doorOfForm } from '../goals/set-aside-question';
@@ -8,12 +8,18 @@ import {
   amountFace,
   amountFields,
   billMinor,
+  canDuplicate,
   canEditInSheet,
+  canRefile,
+  categoryFromNote,
+  categoryLater,
   chargedIsEstimate,
   currencyShown,
   chargedInNeeded,
   currencyChoosable,
+  DECIMALS_REFUSAL,
   detailsToggleLabel,
+  duplicateDraft,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -21,6 +27,8 @@ import {
   type FormDraft,
   formFromTransaction,
   formToPost,
+  initialCategorySource,
+  isRefund,
   KEYPAD_KEYS,
   keypadAction,
   keypadKeys,
@@ -29,11 +37,14 @@ import {
   prefilledCharge,
   rateDateFor,
   receivedField,
+  refiledPost,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
+  splitCentsRefusal,
   splitTotalMinor,
   suggestedRate,
   typedCurrency,
+  withCategoryLater,
   withShares,
 } from './tx-form';
 
@@ -738,14 +749,15 @@ describe('which currency each money field is read in', () => {
     // figure can disagree about its scale — CNY has two decimals and IDR none, so a swap here is a 100x error.
     const fields = amountFields(foreign, accounts, 'IDR');
     expect(fields.amount).toEqual({ which: 'amount', label: 'Amount', value: '120', currency: 'CNY' });
-    expect(fields.charged).toEqual({ which: 'charged', label: 'Charged in IDR', value: '272400', currency: 'IDR' });
+    // The charged figure is the one that posts, so it is the one that takes cents on a whole-unit currency.
+    expect(fields.charged).toEqual({ which: 'charged', label: 'Charged in IDR', value: '272400', currency: 'IDR', fractional: 'up' });
     // And what each field says it is worth is what the kit's one reader makes of it, at that scale.
     expect(evaluateAmount(fields.amount.value, fields.amount.currency)).toBe(12_000);
     expect(evaluateAmount(fields.charged!.value, fields.charged!.currency)).toBe(272_400);
   });
 
   it('offers no charged field when the figure is typed in the account’s own currency', () => {
-    expect(amountFields(draft, accounts, 'IDR')).toEqual({ amount: { which: 'amount', label: 'Amount', value: '120000', currency: 'IDR' }, charged: null });
+    expect(amountFields(draft, accounts, 'IDR')).toEqual({ amount: { which: 'amount', label: 'Amount', value: '120000', currency: 'IDR', fractional: 'up' }, charged: null });
     // A USD account typed in USD: still one field, and still read in USD rather than in the workspace's base.
     expect(amountFields({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10.50' }, accounts, 'IDR').amount.currency).toBe('USD');
   });
@@ -1142,9 +1154,11 @@ describe('arithmetic typed into a figure the save reads', () => {
       'Received amount is empty — type a figure',
     );
     expect(() => formToPost({ ...draft, amount: '0' }, accounts)).toThrow('Amount must be greater than zero');
-    expect(() => formToPost({ ...draft, amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
-    // A decimal figure on a zero-exponent account still says which currency refused it and why.
-    expect(() => formToPost({ ...foreign, chargedAmount: '272400.50' }, accounts)).toThrow('IDR allows 0 decimal places');
+    // A minus first is a refund on an expense (see "a refund typed with a minus"); anywhere else it is still refused.
+    expect(() => formToPost({ ...draft, mode: 'income', amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
+    // A decimal figure on a zero-exponent account, where cents have no place, says where they go. (The charged row of
+    // a foreign purchase is the figure that posts, so it takes them: see "cents typed on a whole-unit currency".)
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-bank', amount: '1600000.50' }, accounts)).toThrow(DECIMALS_REFUSAL);
   });
 });
 
@@ -1243,5 +1257,491 @@ describe('currencyShown', () => {
   it('names it once a figure is typed, or once the flag is picked', () => {
     expect(currencyShown({ ...draft, amount: '5', currency: '' })).toBe(true);
     expect(currencyShown({ ...draft, amount: '', currency: 'USD' })).toBe(true);
+  });
+});
+
+describe('a transaction as the start of a new one', () => {
+  const full = view({
+    description: 'Warung Steak',
+    occurredOn: '2026-08-03',
+    eventId: 'ev-1',
+    channel: 'offline',
+    mcc: '5812',
+    cardId: 'card-1',
+    excluded: true,
+    entries: [paid(-400_000), spent('cat-restaurants', 400_000)] as TransactionView['entries'],
+  });
+
+  it('keeps every entry field, the same date and the event, and is an add rather than an edit', () => {
+    const form = duplicateDraft(full, accounts, 'ws-1');
+    expect(form).toMatchObject({
+      mode: 'expense',
+      moneyId: 'acct-card',
+      cardId: 'card-1',
+      categoryId: 'cat-restaurants',
+      amount: '400000',
+      currency: 'IDR',
+      description: 'Warung Steak',
+      occurredOn: '2026-08-03',
+      eventId: 'ev-1',
+      channel: 'offline',
+      mcc: '5812',
+      excluded: true,
+      editing: false,
+      photoIds: [],
+      bookId: 'ws-1',
+    });
+  });
+
+  it('never carries pictures', () => {
+    const form = duplicateDraft(full, accounts);
+    expect(form.photoIds).toEqual([]);
+  });
+
+  it('keeps splits', () => {
+    const form = duplicateDraft(splitPurchase, accounts);
+    expect(form.splits).toEqual([
+      { categoryId: 'cat-restaurants', amount: '250000' },
+      { categoryId: 'cat-groceries', amount: '150000' },
+    ]);
+    expect(form.editing).toBe(false);
+  });
+
+  it('keeps a foreign purchase on its currency but not its charge, so the day\'s estimate follows the new amount', () => {
+    const form = duplicateDraft(foreignPurchase, accounts);
+    expect(form).toMatchObject({ currency: 'CNY', amount: '120.00', chargedAmount: '' });
+    // The row starts as the estimate's (AmountRow reads a non-empty charge as the user's own): retyping re-estimates.
+    let charged = form.chargedAmount;
+    const typeAmount = (amount: string) => {
+      const estimate = estimatedCharge({ amount, currency: 'CNY', accountCurrency: 'IDR', rate: 2270 });
+      charged = prefilledCharge({ estimate, charged, touched: form.chargedAmount.trim() !== '' }) ?? charged;
+    };
+    typeAmount('120');
+    expect(charged).toBe('272400');
+    typeAmount('200');
+    expect(charged).toBe('454000');
+  });
+
+  it('does not inherit the set-aside link', () => {
+    expect(duplicateDraft(view({ ...full, goalId: 'goal-1' } as Partial<TransactionView>), accounts).goalId).toBe('');
+  });
+
+  it('keeps a transfer between its two accounts', () => {
+    expect(duplicateDraft(transferTx, accounts)).toMatchObject({ mode: 'transfer', moneyId: 'acct-card', toId: 'acct-bank', amount: '500000' });
+  });
+
+  it('posts as a plain new transaction', () => {
+    expect(formToPost(duplicateDraft(full, accounts), accounts)).toMatchObject({ kind: 'post', input: { eventId: 'ev-1', occurredOn: '2026-08-03' } });
+  });
+
+  describe('canDuplicate', () => {
+    const known = new Set(['acct-bank', 'acct-card', 'cat-restaurants']);
+    const ctx = { known, payer: null, memberTransfer: false };
+
+    it('is offered for what is posted and editable, never for a deleted row', () => {
+      expect(canDuplicate(full, ctx)).toBe(true);
+      expect(canDuplicate(view({ ...full, status: 'void' }), ctx)).toBe(false);
+    });
+
+    it('is refused for a purchase another member paid, however that is known', () => {
+      // Against their placeholder: the money account is not one this device lists.
+      expect(canDuplicate(full, { ...ctx, known: new Set(['acct-bank']) })).toBe(false);
+      // By the payers query: someone else's.
+      expect(canDuplicate(full, { ...ctx, payer: { mine: false } })).toBe(false);
+      expect(canDuplicate(full, { ...ctx, payer: { mine: true } })).toBe(true);
+    });
+
+    it('is refused for a transfer with a partner', () => {
+      expect(canDuplicate(transferTx, ctx)).toBe(true);
+      expect(canDuplicate(transferTx, { ...ctx, memberTransfer: true })).toBe(false);
+    });
+
+    it('waits for the accounts rather than guessing', () => {
+      expect(canDuplicate(full, { ...ctx, known: new Set() })).toBe(false);
+    });
+  });
+});
+
+describe('saving now and choosing the category later', () => {
+  const later = { ...draft, categoryId: '' };
+
+  it('lets an expense or an income go without a category, filed under the kind’s Uncategorised', () => {
+    expect(categoryLater(later)).toBe('expense');
+    expect(categoryLater({ ...later, mode: 'income' })).toBe('income');
+    const post = formToPost(withCategoryLater(later, 'cat-later'), accounts);
+    expect(post.kind === 'post' && post.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-later', paymentAccountId: 'acct-bank', amountMinor: 120_000, currency: 'IDR' }));
+  });
+
+  it('asks nothing of a draft that already has its category', () => {
+    expect(categoryLater(draft)).toBeNull();
+    expect(withCategoryLater(draft, 'cat-later')).toBe(draft);
+  });
+
+  it('still wants a category on every split line, on a shared bill, and is no answer for a transfer', () => {
+    const split = { ...later, amount: '', splits: [{ categoryId: '', amount: '120000' }] };
+    expect(categoryLater(split)).toBeNull();
+    expect(() => formToPost(withCategoryLater(split, 'cat-later'), accounts)).toThrow('Choose a category for split 1');
+    const shared = { ...later, with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true };
+    expect(categoryLater(shared)).toBeNull();
+    expect(() => formToPost(withCategoryLater(shared, 'cat-later'), accounts)).toThrow('Choose a category');
+    expect(categoryLater({ ...transfer, moneyId: 'acct-bank' })).toBeNull();
+  });
+
+  it('is still refused without a category when nothing answers for later', () => {
+    expect(() => formToPost(later, accounts)).toThrow('Choose a category');
+  });
+});
+
+describe('a refund typed with a minus', () => {
+  // The car rental: rent and deposit went on the card; the deposit came back less the toll.
+  const refund: FormDraft = { ...draft, moneyId: 'acct-card', amount: '-450000', description: 'Deposit back' };
+
+  it('is an expense whose figure starts with a minus', () => {
+    expect(isRefund(refund)).toBe(true);
+    expect(isRefund({ ...refund, amount: '−450000' })).toBe(true);
+    expect(isRefund(draft)).toBe(false);
+    expect(isRefund({ ...refund, mode: 'income' })).toBe(false);
+  });
+
+  it('posts the reverse of the purchase: the card is owed less and the category takes it back', () => {
+    const post = formToPost(refund, accounts);
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('works out an expression after the minus, on the keypad and on Save', () => {
+    expect(keypadAction('−500000+50000', 'IDR', 'DONE', true)).toEqual({ text: '-450000', close: true });
+    // Without a refund allowed — income, transfer, a split line — DONE leaves it as typed, as before.
+    expect(keypadAction('−500000+50000', 'IDR', 'DONE')).toEqual({ text: '−500000+50000', close: false });
+    const post = formToPost({ ...refund, amount: '−500000+50000' }, accounts);
+    expect(post.kind === 'post' && post.input.lines[0]).toEqual({ accountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' });
+    expect(amountFace('-450000', 'IDR', true)).toBe('−450.000');
+  });
+
+  it('is refused in Income, on split lines and on a shared bill', () => {
+    expect(() => formToPost({ ...refund, mode: 'income' }, accounts)).toThrow('Amount must be greater than zero');
+    expect(() => formToPost({ ...refund, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '-450000' }] }, accounts)).toThrow('Split 1 amount must be greater than zero');
+    expect(() => formToPost({ ...refund, splits: [{ categoryId: 'cat-restaurants', amount: '450000' }] }, accounts)).toThrow('A refund goes back under one category');
+    expect(() => formToPost({ ...refund, with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true }, accounts)).toThrow('A refund cannot be shared');
+  });
+
+  it('reopens with the minus in place, in Expense, and saves as a purchase once the minus is gone', () => {
+    const back = view({ entries: [paid(450_000), spent('cat-restaurants', -450_000)] as TransactionView['entries'] });
+    const reopened = formFromTransaction(back, accounts, 'ws-1');
+    expect(reopened).toMatchObject({ mode: 'expense', amount: '-450000', categoryId: 'cat-restaurants', moneyId: 'acct-card' });
+    expect(isRefund(reopened)).toBe(true);
+    const purchase = formToPost({ ...reopened, amount: '450000' }, accounts);
+    expect(purchase.kind === 'post' && purchase.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('keeps a foreign refund’s original figure positive, with the sign on the lines', () => {
+    const abroad: FormDraft = { ...refund, moneyId: 'acct-bank', currency: 'CNY', amount: '-120', chargedAmount: '272400' };
+    const post = formToPost(abroad, accounts);
+    expect(post.kind === 'post' && post.input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000 });
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 272_400, currency: 'IDR' }));
+    const reopened = formFromTransaction(view({ originalCurrency: 'CNY', originalAmountMinor: 12_000, entries: [{ ...paid(272_400), accountId: 'acct-bank' }, spent('cat-restaurants', -272_400)] as TransactionView['entries'] }), accounts, 'ws-1');
+    expect(reopened).toMatchObject({ currency: 'CNY', amount: '-120.00', chargedAmount: '272400' });
+  });
+});
+
+describe('Category filled from the note’s history', () => {
+  const empty = { ...draft, categoryId: '' };
+
+  it('fills an empty category nobody chose', () => {
+    expect(categoryFromNote(empty, 'cat-cafe', null)).toBe('cat-cafe');
+    expect(categoryFromNote({ ...empty, mode: 'income' }, 'cat-salary', null)).toBe('cat-salary');
+    // No match: Category stays empty, so the row still offers Choose later.
+    expect(categoryFromNote(empty, null, null)).toBeNull();
+  });
+
+  it('never replaces a category picked by hand, or one the form opened with', () => {
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, 'cat-cafe', 'hand')).toBeNull();
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, 'cat-cafe', null)).toBeNull();
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, null, 'hand')).toBeNull();
+  });
+
+  it('follows the note while the category is only its own guess', () => {
+    const filled = { ...empty, categoryId: 'cat-cafe' };
+    expect(categoryFromNote(filled, 'cat-cafe', 'auto')).toBeNull();
+    expect(categoryFromNote(filled, 'cat-restaurants', 'auto')).toBe('cat-restaurants');
+    // A note that no longer matches anything takes its own guess back.
+    expect(categoryFromNote(filled, null, 'auto')).toBe('');
+  });
+
+  it('never guesses on a form opened on something that exists: an edit, a duplicate, a capture under review', () => {
+    // A capture with no category yet, opened for review: prefilled, so the note's history leaves Category alone.
+    const capture = { ...empty, description: 'Kopi Kenangan' };
+    expect(categoryFromNote(capture, 'cat-cafe', initialCategorySource(true))).toBeNull();
+    expect(categoryFromNote(capture, 'cat-cafe', initialCategorySource(false))).toBe('cat-cafe');
+  });
+
+  it('guesses nothing for a transfer or a split', () => {
+    expect(categoryFromNote({ ...transfer, moneyId: 'acct-bank' }, 'cat-cafe', null)).toBeNull();
+    expect(categoryFromNote({ ...empty, splits: [{ categoryId: '', amount: '1' }] }, 'cat-cafe', null)).toBeNull();
+  });
+});
+
+describe('re-filing from the row’s circle', () => {
+  const salaryCat = { id: 'cat-salary', name: 'Salary', kind: 'income', subtype: 'category', currency: null } as AccountRow;
+  const laterIn = { id: 'cat-later-in', name: 'Uncategorised', kind: 'income', subtype: 'category', currency: null, systemKey: 'income.uncategorised' } as AccountRow;
+  const more = [...accounts, salaryCat, laterIn];
+
+  it('swaps only the category of a refund: it stays money back', () => {
+    const back = view({ entries: [paid(450_000), spent('cat-restaurants', -450_000)] as TransactionView['entries'] });
+    expect(canRefile(back)).toBe(true);
+    const post = refiledPost(back, more, 'cat-groceries', 'ws-1');
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-groceries', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('keeps a foreign purchase’s original pair, its card and its MCC', () => {
+    const abroad = { ...foreignPurchase, mcc: '5812', cardId: 'card-1' } as TransactionView;
+    expect(canRefile(abroad)).toBe(true);
+    const post = refiledPost(abroad, more, 'cat-groceries', 'ws-1');
+    expect(post.kind === 'post' && post.input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000, mcc: '5812', cardId: 'card-1' });
+    expect(post.kind === 'post' && post.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-groceries', paymentAccountId: 'acct-card', amountMinor: 272_400, currency: 'IDR' }));
+  });
+
+  it('files income waiting under Uncategorised as Salary', () => {
+    const paidBack = view({
+      entries: [
+        { accountId: 'acct-bank', accountKind: 'asset', accountName: 'BCA Tahapan', amountMinor: 70_000, amountBaseMinor: 70_000, currency: 'IDR' },
+        { accountId: 'cat-later-in', accountKind: 'income', accountName: 'Uncategorised', amountMinor: -70_000, amountBaseMinor: -70_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    expect(canRefile(paidBack)).toBe(true);
+    const post = refiledPost(paidBack, more, 'cat-salary', 'ws-1');
+    expect(post.kind === 'post' && post.input.lines).toEqual(incomeLines({ incomeAccountId: 'cat-salary', depositAccountId: 'acct-bank', amountMinor: 70_000, currency: 'IDR' }));
+  });
+
+  it('is not offered for a split, a transfer or anything not posted', () => {
+    expect(canRefile(splitPurchase)).toBe(false);
+    expect(canRefile(transferTx)).toBe(false);
+    expect(canRefile({ ...plainExpense, status: 'void' } as TransactionView)).toBe(false);
+  });
+});
+
+/*
+ * Decimals on a currency with no minor unit (spec 2026-10-14). The single amount of an expense, a refund or an income
+ * takes up to two decimals: it posts rounded — up for money out, down for money in — with the exact figure beside it.
+ * Every other money field stays whole, and says so in words.
+ */
+describe('cents typed on a whole-unit currency', () => {
+  const posted = (form: FormDraft) => {
+    const post = formToPost(form, accounts);
+    if (post.kind !== 'post') throw new Error(`expected a post, got ${post.kind}`);
+    return post.input;
+  };
+  const debit = (input: ReturnType<typeof posted>) => input.lines.filter((l) => l.amountMinor > 0).reduce((s, l) => s + l.amountMinor, 0);
+
+  it('posts an expense rounded up, with the exact figure', () => {
+    const input = posted({ ...draft, amount: '12.500,30' });
+    expect(input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 12_501, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_250_030);
+  });
+
+  it('posts an income rounded down, with the exact figure', () => {
+    const input = posted({ ...draft, mode: 'income', amount: '12.345,67' });
+    expect(input.lines).toEqual(incomeLines({ incomeAccountId: 'cat-restaurants', depositAccountId: 'acct-bank', amountMinor: 12_345, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_234_567);
+  });
+
+  it('posts a refund as money back rounded up, the same as the charge it returns', () => {
+    const input = posted({ ...draft, amount: '-12.500,30' });
+    expect(input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 12_501, currency: 'IDR' }));
+    expect(input.exactHundredths).toBe(1_250_030);
+  });
+
+  it('adds cents up exactly before rounding once', () => {
+    const input = posted({ ...draft, amount: '12.500,30+0,80' });
+    expect(debit(input)).toBe(12_502);
+    expect(input.exactHundredths).toBe(1_250_110);
+  });
+
+  it('leaves a whole figure, and a whole expression, exactly as before', () => {
+    expect('exactHundredths' in posted(draft)).toBe(false);
+    const third = posted({ ...draft, amount: '100÷3' });
+    expect(debit(third)).toBe(33);
+    expect('exactHundredths' in third).toBe(false);
+    // Zero cents are no cents.
+    expect('exactHundredths' in posted({ ...draft, amount: '12.500,00' })).toBe(false);
+  });
+
+  it('refuses cents on a split row, and on an amount spread over splits', () => {
+    const split: FormDraft = { ...draft, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '100.000,50' }, { categoryId: 'cat-groceries', amount: '50000' }] };
+    expect(() => formToPost(split, accounts)).toThrow(DECIMALS_REFUSAL);
+    const whole = { ...split, splits: [{ categoryId: 'cat-restaurants', amount: '100000' }, { categoryId: 'cat-groceries', amount: '50000' }] };
+    expect(() => formToPost({ ...whole, amount: '150.000,50' }, accounts)).toThrow(DECIMALS_REFUSAL);
+  });
+
+  it('says so on the Split sheet while a row holds cents, before Save is reached', () => {
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000,50' }, { categoryId: '', amount: '' }], 'IDR')).toBe(DECIMALS_REFUSAL);
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000' }, { categoryId: '', amount: '5' }], 'IDR')).toBeNull();
+    // A currency with cents of its own takes them on a split as it always did.
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '10,50' }], 'USD')).toBeNull();
+  });
+
+  it('refuses cents on a transfer, its received figure and a shared bill', () => {
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-bank', amount: '500.000,50' }, accounts)).toThrow(DECIMALS_REFUSAL);
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-usd', toId: 'acct-bank', amount: '10', toAmount: '160.000,50' }, withExchange)).toThrow(DECIMALS_REFUSAL);
+    const shared: FormDraft = { ...draft, amount: '90.000,30', with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true };
+    expect(() => formToPost(shared, accounts)).toThrow(DECIMALS_REFUSAL);
+  });
+
+  it('puts the cents of a foreign purchase on the amount charged, and keeps the typed figure to its own rules', () => {
+    const input = posted({ ...foreign, chargedAmount: '272.400,30' });
+    expect(debit(input)).toBe(272_401);
+    expect(input.exactHundredths).toBe(27_240_030);
+    expect(input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000 });
+    // JPY has no minor unit either, but the typed foreign figure is not the one that posts: it stays whole.
+    expect(() => formToPost({ ...foreign, currency: 'JPY', amount: '1.000,50' }, accounts)).toThrow(/JPY allows 0 decimal places/);
+  });
+
+  it('says an income whose cents round down to nothing must be greater than zero', () => {
+    expect(() => formToPost({ ...draft, mode: 'income', amount: '0,50' }, accounts)).toThrow('Amount must be greater than zero');
+  });
+
+  it('never gives a currency with cents an exact figure', () => {
+    const input = posted({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10,50' });
+    expect(debit(input)).toBe(1_050);
+    expect('exactHundredths' in input).toBe(false);
+  });
+
+  describe('a decimal purchase reopened', () => {
+    const decimal = view({ exactHundredths: 1_250_030, entries: [paid(-12_501), spent('cat-restaurants', 12_501)] as TransactionView['entries'] });
+
+    it('shows the whole figure that posted, never the cents', () => {
+      expect(formFromTransaction(decimal, accounts).amount).toBe('12501');
+    });
+
+    it('keeps the exact figure when the amount is left alone', () => {
+      const input = posted({ ...formFromTransaction(decimal, accounts), description: 'Note only' });
+      // Left out, so the ledger carries the stored figure.
+      expect('exactHundredths' in input).toBe(false);
+      expect(debit(input)).toBe(12_501);
+    });
+
+    it('replaces it with the new figure when the amount is retyped with cents', () => {
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13.000,50' }).exactHundredths).toBe(1_300_050);
+    });
+
+    it('clears it when the amount is retyped to another whole figure', () => {
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13000' })).toMatchObject({ exactHundredths: null });
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '12.502' })).toMatchObject({ exactHundredths: null });
+    });
+
+    it('keeps it when the same amount is written another way, since the amount has not changed', () => {
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12.501' })).toBe(false);
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12500+1' })).toBe(false);
+    });
+
+    it('keeps it through a visit to the Transfer tab and back, which blanks the flag but not the money', () => {
+      const opened = formFromTransaction(decimal, accounts);
+      // What `chooseMode` does: Transfer offers no flag, so the currency and the charged row are blanked.
+      const there: FormDraft = { ...opened, mode: 'transfer', currency: '', chargedAmount: '', splits: [], categoryId: '' };
+      const back: FormDraft = { ...there, mode: 'expense', categoryId: 'cat-restaurants' };
+      expect('exactHundredths' in posted(back)).toBe(false);
+      // A Duplicate taken there and back still copies the figure with its amount.
+      const copy = duplicateDraft(decimal, accounts);
+      expect(posted({ ...copy, currency: '', chargedAmount: '' }).exactHundredths).toBe(1_250_030);
+    });
+
+    it('clears a foreign purchase’s figure when it moves to an account in another whole-unit currency', () => {
+      const withYen = [...accounts, { id: 'acct-jpy', name: 'Suica', kind: 'asset', subtype: 'cash', currency: 'JPY' }] as AccountRow[];
+      const abroad = view({
+        exactHundredths: 27_240_030,
+        originalCurrency: 'CNY',
+        originalAmountMinor: 12_000,
+        entries: [paid(-272_401), spent('cat-restaurants', 272_401)] as TransactionView['entries'],
+      });
+      const opened = formFromTransaction(abroad, withYen);
+      expect('exactHundredths' in posted({ ...opened, description: 'Note only' })).toBe(false);
+      const moved = formToPost({ ...opened, moneyId: 'acct-jpy' }, withYen);
+      expect(moved.kind).toBe('post');
+      expect(moved.input).toMatchObject({ exactHundredths: null });
+    });
+
+    it('clears it when the transaction becomes an income, a split or a transfer', () => {
+      const opened = formFromTransaction(decimal, accounts);
+      expect(posted({ ...opened, mode: 'income' })).toMatchObject({ exactHundredths: null });
+      const split = { ...opened, splits: [{ categoryId: 'cat-restaurants', amount: '10000' }, { categoryId: 'cat-groceries', amount: '2501' }] };
+      expect(posted(split)).toMatchObject({ exactHundredths: null });
+      expect(posted({ ...opened, mode: 'transfer', toId: 'acct-bank' })).toMatchObject({ exactHundredths: null });
+    });
+
+    it('keeps it through a re-file from the row’s circle', () => {
+      const post = refiledPost(decimal, accounts, 'cat-groceries');
+      expect(post.kind).toBe('post');
+      expect('exactHundredths' in (post.input as object)).toBe(false);
+    });
+
+    it('is copied by Duplicate with its amount, and recomputed when the amount is retyped', () => {
+      const copy = duplicateDraft(decimal, accounts);
+      expect(copy.amount).toBe('12501');
+      expect(posted(copy).exactHundredths).toBe(1_250_030);
+      expect('exactHundredths' in posted({ ...copy, amount: '20000' })).toBe(false);
+      expect(posted({ ...copy, amount: '20.000,25' }).exactHundredths).toBe(2_000_025);
+    });
+
+    it('keeps an income’s figure through Duplicate, rounded down as it posted', () => {
+      const income = view({
+        exactHundredths: 1_234_567,
+        entries: [{ ...paid(12_345), accountId: 'acct-bank', accountKind: 'asset' }, { ...spent('cat-salary', -12_345), accountKind: 'income' }] as TransactionView['entries'],
+      });
+      const input = posted(duplicateDraft(income, accounts));
+      expect(debit(input)).toBe(12_345);
+      expect(input.exactHundredths).toBe(1_234_567);
+    });
+  });
+
+  describe('which fields take cents', () => {
+    it('lets the single amount of an expense, a refund and an income take them, each rounded its own way', () => {
+      expect(amountFields(draft, accounts, 'IDR').amount.fractional).toBe('up');
+      expect(amountFields({ ...draft, amount: '-5000' }, accounts, 'IDR').amount.fractional).toBe('up');
+      expect(amountFields({ ...draft, mode: 'income' }, accounts, 'IDR').amount.fractional).toBe('down');
+    });
+
+    it('keeps a transfer, a split, a shared bill and a currency with cents whole', () => {
+      expect(amountFields({ ...transfer, moneyId: 'acct-bank' }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, splits: [{ categoryId: 'cat-restaurants', amount: '' }] }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, with: [{ debtAccountId: '', name: 'Andi', amount: '' }] }, accounts, 'IDR').amount.fractional).toBeUndefined();
+      expect(amountFields({ ...draft, moneyId: 'acct-usd', currency: 'USD' }, accounts, 'IDR').amount.fractional).toBeUndefined();
+    });
+
+    it('moves the allowance to the amount charged on a foreign purchase', () => {
+      const fields = amountFields(foreign, accounts, 'IDR');
+      expect(fields.amount.fractional).toBeUndefined();
+      expect(fields.charged!.fractional).toBe('up');
+    });
+  });
+
+  describe('typing cents', () => {
+    it('gives the dock a comma in place of 00 only where the field takes cents', () => {
+      expect(keypadKeys('IDR', 'up')).toContain(',');
+      expect(keypadKeys('IDR', 'up')).not.toContain('00');
+      expect(keypadKeys('IDR', 'down')).toHaveLength(KEYPAD_KEYS.length);
+      expect(keypadKeys('IDR')).toEqual(KEYPAD_KEYS);
+      expect(keypadKeys('USD', 'up')).toEqual(keypadKeys('USD'));
+    });
+
+    it('keeps the cents through DONE and shows them while the form is open', () => {
+      let text = '';
+      for (const key of ['1', '2', '5', '0', '0', ',', '3', '0'] as const) text = keypadAction(text, 'IDR', key, false, 'up').text;
+      expect(text).toBe('12500,30');
+      const done = keypadAction(text, 'IDR', 'DONE', false, 'up');
+      expect(done).toEqual({ text: '12500.30', close: true });
+      expect(amountFace(done.text, 'IDR', false, 'up')).toBe('12.500,30');
+      // The settled text reads back to itself, so DONE twice changes nothing.
+      expect(amountAfterDone(done.text, 'IDR', false, 'up')).toEqual({ text: '12500.30', close: true });
+    });
+
+    it('works an expression with cents out exactly, and a refund keeps its minus', () => {
+      expect(amountAfterEnter('12.500,30+0,80', 'IDR', false, 'up')).toEqual({ text: '12501.10', submit: false });
+      expect(amountAfterDone('-12.500,30', 'IDR', true, 'up')).toEqual({ text: '-12500.30', close: true });
+      expect(amountFace('-12500.30', 'IDR', true, 'up')).toBe('−12.500,30');
+    });
+
+    it('settles a whole figure as before, and leaves cents alone where the field takes none', () => {
+      expect(amountAfterDone('85000+15000', 'IDR', false, 'up')).toEqual({ text: '100000', close: true });
+      expect(amountAfterDone('12500,30', 'IDR')).toEqual({ text: '12500,30', close: false });
+    });
   });
 });
