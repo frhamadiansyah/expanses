@@ -27,6 +27,10 @@ test('a row moves up and down its day without dragging, or by its handle, and ke
   await page.getByRole('button', { name: 'Move Alpha up' }).click();
   await expect.poll(() => order(page)).toEqual(['Alpha', 'Charlie', 'Bravo']);
   await expect(page.getByLabel('Row amount (IDR)')).toHaveCount(0);
+  // The top row cannot go up (the bottom one of the day, the opening balance, cannot go down).
+  await expect(page.getByRole('button', { name: 'Move Alpha up' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Move .* down$/ }).last()).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Move Alpha down' })).toBeEnabled();
   await page.getByRole('button', { name: 'Move Charlie down' }).click();
   await expect.poll(() => order(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
 

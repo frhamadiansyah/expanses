@@ -37,7 +37,7 @@ import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
-import { DayReorder, movedBy, ReorderControls, reorderAttrs } from './DayReorder';
+import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -299,12 +299,7 @@ export function TransactionsPage() {
   const movableIds = new Map(days.map((day) => [day.date, day.rows.filter(movable).map((row) => row.id)]));
   function reorder(date: string, movedId: string, order: string[]) {
     setDropped((was) => ({ ...was, [date]: order }));
-    void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() =>
-      setDropped((was) => {
-        const { [date]: _done, ...rest } = was;
-        return rest;
-      }),
-    );
+    void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() => setDropped((was) => landed(was, date, order)));
   }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
@@ -773,7 +768,9 @@ export function TransactionsPage() {
             )}
             <ReceiptLink description={row.description} transactionId={tx.id} />
             {/* A wide screen's way to move it: the ≡ handle, and Move up and Move down without dragging. */}
-            {dayIds && dayIds.length > 1 && !phone && <ReorderControls description={row.description} onMove={moveBy} />}
+            {dayIds && dayIds.length > 1 && !phone && (
+              <ReorderControls description={row.description} onMove={moveBy} first={dayIds[0] === tx.id} last={dayIds[dayIds.length - 1] === tx.id} />
+            )}
           </>
         }
       />
@@ -1209,7 +1206,9 @@ export function TransactionsPage() {
                 });
               })()
             ) : (
-              days.map((day) => (
+              // One scope around every day: its one touch listener keeps a lifted row's drag from scrolling the page.
+              <ReorderScope enabled={phone && reorderable} className="space-y-4">
+              {days.map((day) => (
                 <Card key={day.date || 'undated'}>
                   <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
                   <DayReorder
@@ -1221,7 +1220,8 @@ export function TransactionsPage() {
                     {day.rows.map((row) => rowView(row))}
                   </DayReorder>
                 </Card>
-              ))
+              ))}
+              </ReorderScope>
             )
           )}
         </>

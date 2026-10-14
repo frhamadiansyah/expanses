@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef } from 'react';
+import { createContext, type PointerEvent as ReactPointerEvent, type ReactNode, useContext, useEffect, useRef } from 'react';
 import { cx } from '../../ui';
 
 /**
@@ -31,6 +31,47 @@ export function movedBy(ids: readonly string[], id: string, by: -1 | 1): string[
   next.splice(from, 1);
   next.splice(to, 0, id);
   return next;
+}
+
+/** Whether a row in the scope is lifted right now: what the scope's one touch listener reads. */
+const Lifted = createContext<{ current: boolean }>({ current: false });
+
+/**
+ * Around every day of a list that can be reordered: the ONE touch listener that keeps a held finger from scrolling the
+ * page while a row is lifted. React's touch listeners are passive, so it is the element's own, and it is on from the
+ * start — a phone decides at the touch's start whether anything may cancel its scroll. One listener on the days'
+ * container rather than one per day, and nothing above or around the list, so the rest of the page scrolls exactly as
+ * before; it does nothing unless a row is lifted.
+ */
+export function ReorderScope({ enabled, className, children }: { enabled: boolean; className?: string; children: ReactNode }) {
+  const scope = useRef<HTMLDivElement>(null);
+  const lifted = useRef(false);
+  useEffect(() => {
+    const el = scope.current;
+    if (!el || !enabled) return;
+    const block = (event: TouchEvent) => {
+      if (lifted.current && event.cancelable) event.preventDefault();
+    };
+    el.addEventListener('touchmove', block, { passive: false });
+    return () => el.removeEventListener('touchmove', block);
+  }, [enabled]);
+  return (
+    <Lifted.Provider value={lifted}>
+      <div ref={scope} className={className}>
+        {children}
+      </div>
+    </Lifted.Provider>
+  );
+}
+
+/**
+ * The dropped orders once `order`'s write for `date` has landed: that day's entry goes only while it is still this
+ * order — a second drop on the same day, made while the first was writing, holds its own and is that one's to clear.
+ */
+export function landed(was: Readonly<Record<string, string[]>>, date: string, order: string[]): Record<string, string[]> {
+  if (was[date] !== order) return was as Record<string, string[]>;
+  const { [date]: _done, ...rest } = was;
+  return rest;
 }
 
 /** What a movable row carries, so the list finds it. Spread onto the row's `<li>`. */
@@ -74,6 +115,7 @@ export function DayReorder({
   const press = useRef<{ pointerId: number; x: number; y: number; timer: number; item: HTMLElement } | null>(null);
   const drag = useRef<Drag | null>(null);
   const droppedAt = useRef(0);
+  const lifted = useContext(Lifted);
 
   const cancelPress = () => {
     if (press.current) window.clearTimeout(press.current.timer);
@@ -135,6 +177,7 @@ export function DayReorder({
     moved.el.style.background = 'var(--ph-surface)';
     moved.el.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.18)';
     moved.el.style.transform = still ? '' : 'scale(1.02)';
+    lifted.current = true;
     if (phone) navigator.vibrate?.(10);
   };
 
@@ -160,6 +203,7 @@ export function DayReorder({
     const d = drag.current;
     drag.current = null;
     if (!d) return;
+    lifted.current = false;
     droppedAt.current = Date.now();
     if (d.to === d.from) {
       settle(d.items, true);
@@ -178,6 +222,7 @@ export function DayReorder({
     const d = drag.current;
     drag.current = null;
     if (!d) return;
+    lifted.current = false;
     try {
       list.current?.releasePointerCapture(d.pointerId);
     } catch {
@@ -188,20 +233,6 @@ export function DayReorder({
 
   useEffect(() => abandon, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /*
-   * A held finger no longer scrolls the page: the move is the row's. React's touch listeners are passive, so this one
-   * is the list's own — and on it from the start, not added at the lift, because a phone decides at the touch's start
-   * whether anything may cancel its scroll. It does nothing unless a row is lifted.
-   */
-  useEffect(() => {
-    const ul = list.current;
-    if (!ul || !enabled || !phone) return;
-    const block = (event: TouchEvent) => {
-      if (drag.current && event.cancelable) event.preventDefault();
-    };
-    ul.addEventListener('touchmove', block, { passive: false });
-    return () => ul.removeEventListener('touchmove', block);
-  }, [enabled, phone]);
 
   const start = (event: ReactPointerEvent<HTMLUListElement>) => {
     if (!enabled || event.button !== 0 || drag.current) return;
@@ -281,15 +312,26 @@ export function DayReorder({
  * A wide screen's way to move a row: the ≡ handle to drag (or, focused, ↑ and ↓), and Move up and Move down for
  * anyone who would rather not drag. Shown on the row's hover or focus, like its pencil.
  */
-export function ReorderControls({ description, onMove }: { description: string; onMove: (by: -1 | 1) => void }) {
-  const button = 'rounded p-0.5 text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 group-hover:opacity-100 focus-visible:outline-2 focus-visible:outline-slate-900';
+export function ReorderControls({
+  description,
+  onMove,
+  first,
+  last,
+}: {
+  description: string;
+  onMove: (by: -1 | 1) => void;
+  /** The day's top row cannot go up, nor its bottom row down. */
+  first: boolean;
+  last: boolean;
+}) {
+  const button = 'rounded p-0.5 text-slate-400 disabled:cursor-default disabled:text-slate-200 disabled:hover:bg-transparent opacity-0 hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 group-hover:opacity-100 focus-visible:outline-2 focus-visible:outline-slate-900';
   return (
     // Its own clicks are never the row's: the row's click opens the editor.
     <span className="hidden shrink-0 items-center gap-0.5 md:flex" onClick={(event) => event.stopPropagation()}>
-      <button type="button" className={button} title="Move up" aria-label={`Move ${description} up`} onClick={() => onMove(-1)}>
+      <button type="button" className={button} title="Move up" aria-label={`Move ${description} up`} disabled={first} onClick={() => onMove(-1)}>
         <ChevronUp size={16} aria-hidden />
       </button>
-      <button type="button" className={button} title="Move down" aria-label={`Move ${description} down`} onClick={() => onMove(1)}>
+      <button type="button" className={button} title="Move down" aria-label={`Move ${description} down`} disabled={last} onClick={() => onMove(1)}>
         <ChevronDown size={16} aria-hidden />
       </button>
       <button
