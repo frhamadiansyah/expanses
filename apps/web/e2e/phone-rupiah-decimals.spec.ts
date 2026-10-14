@@ -91,6 +91,23 @@ test('a purchase typed with cents posts rounded up, reopens whole, and an edit o
   await row(page, 'Kopi susu').getByRole('button', { name: /^Groceries/ }).click();
   await expect(page.getByTestId('hero-amount')).toContainText('12.501');
   await expect(pointsEarned(page)).toHaveText(/^(≈ )?0 points?$/);
+
+  // The positive control: retyped to another whole amount, the exact figure goes, and the points follow the charge.
+  // (Retyping the same 12.501 would keep it: the amount has not changed.)
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  await expect(edit.getByRole('button', { name: 'Amount', exact: true })).toHaveText('12.501');
+  await edit.getByRole('button', { name: 'Amount', exact: true }).click();
+  await page.getByTestId('keypad').getByRole('button', { name: 'C', exact: true }).click();
+  await typeOnDock(page, '12502');
+  await expect(edit.getByRole('button', { name: 'Amount', exact: true })).toHaveText('12.502');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await expect(row(page, 'Kopi susu')).toContainText('12.502');
+  await row(page, 'Kopi susu').getByRole('button', { name: /^Groceries/ }).click();
+  await expect(page.getByTestId('hero-amount')).toContainText('12.502');
+  await expect(pointsEarned(page)).toHaveText(/^(≈ )?1 points?$/);
 });
 
 test('an income typed with cents posts rounded down', async ({ page }) => {
