@@ -2,6 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { dayOrderExists } from '../repos/day-order-column';
+import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
 import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
@@ -159,6 +160,11 @@ export interface PurchaseFields {
    * none, and the receiver keeps what it has (an edit on the same day carries it, a new date clears it).
    */
   dayOrder?: number | null;
+  /**
+   * The amount as typed with cents, in hundredths, or null (0068). Optional for the same reason: an op from a device
+   * without it carries none, and the receiver keeps what it has while the amount stays (an edit to a new amount clears it).
+   */
+  exactHundredths?: number | null;
 }
 
 export interface PurchaseMoney {
@@ -921,11 +927,13 @@ async function postedHeadOf(tx: Db, touch: LineageTouch): Promise<string | null>
  */
 export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: KnownPayer | null, hint?: PaidFrom | null): Promise<PurchaseFields | null> {
   const placed = await dayOrderExists(tx);
-  const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null, number | null]>(
-    sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id, ${placed ? sql`day_order` : sql`NULL`} FROM transactions WHERE id = ${transactionId}`,
+  const typed = await exactExists(tx);
+  const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null, number | null, number | null]>(
+    sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id, ${placed ? sql`day_order` : sql`NULL`},
+          ${typed ? sql`exact_hundredths` : sql`NULL`} FROM transactions WHERE id = ${transactionId}`,
   );
   if (!row) return null;
-  const [occurredOn, description, templateId, originalCurrency, originalAmountMinor, cardId, dayOrder] = row;
+  const [occurredOn, description, templateId, originalCurrency, originalAmountMinor, cardId, dayOrder, exact] = row;
   const [flags] = await tx.values<[string | null, number]>(sql`SELECT channel, excluded FROM transaction_flags WHERE transaction_id = ${transactionId}`);
   const [payment] = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
   const entryRows = await tx.values<[string, number, string, number, string | null, string, string, string | null]>(sql`
@@ -1003,6 +1011,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     },
     // Only where 0067 is: a database before it sends no place, as a device before it would not.
     ...(placed ? { dayOrder: dayOrder === null ? null : Number(dayOrder) } : {}),
+    // Likewise only where 0068 is.
+    ...(typed ? { exactHundredths: exact === null ? null : Number(exact) } : {}),
   };
 }
 

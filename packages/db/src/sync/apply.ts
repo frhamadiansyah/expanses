@@ -6,6 +6,7 @@ import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTr
 import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
+import { exactExists, exactOrNull, isExactFigure } from '../repos/exact-column';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
@@ -597,6 +598,7 @@ async function ledgerInput(
   author: string,
   trust: PaidFromTrust,
   carriesDayOrder = false,
+  carriesExact = false,
 ): Promise<{ input: PostTransactionInput; refused: boolean }> {
   const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
@@ -616,11 +618,31 @@ async function ledgerInput(
   // the ledger's "a new date clears it", which would leave this row's place out of step with its field clock (a date
   // changed on one phone while the other moved the row). Only an op from a build without places leaves it to that rule.
   if ('dayOrder' in winners || carriesDayOrder) input.dayOrder = state.dayOrder ?? null;
+  // The figure typed with cents, the same way: whenever the op speaks of it, as it now reads, so a new amount that lost
+  // to it keeps the figure only when it still rounds to it. An op from a build without it leaves it to the ledger, which
+  // keeps it while the amount stays. Never money: the lines above are posted whatever it says.
+  if ('exactHundredths' in winners || carriesExact) input.exactHundredths = exactOrNull(state.exactHundredths, lines);
   return { input, refused };
 }
 
 async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, won: ReadonlyMap<string, { hlc: string }>): Promise<void> {
   for (const [field, { hlc }] of won) await setClock(tx, ctx, 'purchase', lineageId, field, hlc);
+}
+
+/**
+ * Whether every winning field of a purchase op is one written in place — its place in the day (0067), its figure typed
+ * with cents (0068) — and this database has the column for each. A database without one reposts the purchase as it
+ * was, which changes no money.
+ */
+async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<boolean> {
+  const fields = Object.keys(winners);
+  if (fields.length === 0) return false;
+  for (const field of fields) {
+    if (field === 'dayOrder' && (await dayOrderExists(tx))) continue;
+    if (field === 'exactHundredths' && (await exactExists(tx))) continue;
+    return false;
+  }
+  return true;
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -649,11 +671,17 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
-  if (lineage && Object.keys(winners).every((field) => field === 'dayOrder') && (await dayOrderExists(tx))) {
-    // Moved within its day, and nothing else: written in place, as the author's device did. Reposting would mint a new
-    // row for a change that is not money.
-    const value = winners.dayOrder;
-    await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
+  if (lineage && (await inPlaceOnly(tx, winners))) {
+    // Moved within its day, or its figure typed with cents corrected, and nothing else: written in place, as the
+    // author's device did. Reposting would mint a new row for a change that is not money.
+    if ('dayOrder' in winners) {
+      const value = winners.dayOrder;
+      await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
+    }
+    if ('exactHundredths' in winners) {
+      const value = winners.exactHundredths;
+      await tx.run(sql`UPDATE transactions SET exact_hundredths = ${isExactFigure(value) && value % 100 !== 0 ? value : null} WHERE id = ${lineage.head!}`);
+    }
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
@@ -665,7 +693,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     known: lineage?.paidFrom ?? null,
     head: lineage?.head ?? null,
   };
-  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields);
+  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields, 'exactHundredths' in op.fields);
   // Final review item 2: the lineage keeps the `paidFrom` in effect here — none when this device refused to land it on
   // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
   const from = refused ? null : state.money.paidFrom;
