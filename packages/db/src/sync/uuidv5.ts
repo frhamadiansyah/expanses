@@ -10,7 +10,8 @@ function parseUuid(uuid: string): Uint8Array {
   return Uint8Array.from({ length: 16 }, (_, i) => Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16));
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Whatever `parseUuid` takes — with dashes, without, or with them anywhere — so an id that named before still does. */
+const isUuid = (id: string) => /^[0-9a-f]{32}$/i.test(id.replace(/-/g, ''));
 
 /**
  * Where ids that are not uuids are named from. Fixed for ever: an id worked out under it is already on devices.
@@ -23,7 +24,7 @@ const NON_UUID_NAMESPACE = 'b3f9d6a2-5c1e-4f87-9a0d-6e2c4b8f1a73';
  * gives the same namespace on every device.
  */
 export async function namespaceOf(id: string): Promise<string> {
-  return UUID.test(id) ? id : uuidv5(NON_UUID_NAMESPACE, id);
+  return isUuid(id) ? id : uuidv5(NON_UUID_NAMESPACE, id);
 }
 
 export async function uuidv5(namespace: string, name: string): Promise<string> {

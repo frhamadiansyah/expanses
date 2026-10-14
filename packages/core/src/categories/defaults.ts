@@ -95,5 +95,4 @@ export const DEFAULT_CATEGORY_MCCS: Readonly<Record<string, string>> = {
   'travel.flights': '4511',
   'travel.hotels': '7011',
   'travel.souvenirs': '5947',
-  'travel.transport': '4111',
 };

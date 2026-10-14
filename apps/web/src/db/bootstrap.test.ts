@@ -17,10 +17,11 @@ import {
   MemoryKeyStore,
   migrate,
   personalBook,
+  uncategorisedIdOf,
 } from '@expanses/db';
 import { sql } from 'drizzle-orm';
 import { createNodeExecutor } from '@expanses/db/node';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type AppDb, bootstrap, openAppDb } from './bootstrap';
 import type { OpenResult } from './open';
 
@@ -119,6 +120,63 @@ describe('openAppDb', () => {
       expect((await listSharedBooks(database)).map((b) => b.state)).toEqual(['needs_invite']);
       expect(await database.db.values(sql`SELECT value FROM settings WHERE key = 'sync.device'`)).toEqual([]);
     } finally {
+      executor.close();
+    }
+  });
+
+  it('opens even when the default-category upkeep fails, and leaves it for the next open', async () => {
+    const executor = createNodeExecutor();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+      // Categories from before keys, and no key can be written: the whole of ensureCategoryKeys throws.
+      await database.execScript(`UPDATE accounts SET system_key = NULL WHERE subtype = 'category'`);
+      await database.execScript(`CREATE TRIGGER refuse_keys BEFORE UPDATE OF system_key ON accounts BEGIN SELECT RAISE(ABORT, 'forced'); END;`);
+
+      const app = await openAppDb(database);
+      expect(app.ws.workspaceId).toBe(ws.workspaceId);
+      expect(warn).toHaveBeenCalled();
+      // The open after carried on past it: the sets were still given.
+      expect((await listCategorySets(database, ws)).map((set) => set.name)).toEqual(['Holiday', 'Newborn', 'Renovation']);
+    } finally {
+      warn.mockRestore();
+      executor.close();
+    }
+  });
+
+  it("opens and keys a rule-4 Uncategorised when adding Travel's new children fails", async () => {
+    const executor = createNodeExecutor();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+      const book = await personalBook(database, ws);
+      // A workspace from before Transport, Souvenirs and Others, holding household sync's unkeyed Uncategorised.
+      await database.execScript(`
+        DELETE FROM book_categories WHERE category_account_id IN (SELECT id FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.others'));
+        DELETE FROM accounts WHERE system_key IN ('travel.transport', 'travel.souvenirs', 'travel.others');`);
+      const ruleFour = await uncategorisedIdOf(book.id, 'expense');
+      await database.execScript(`
+        INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, valuation_mode, sort_order, created_at)
+          VALUES ('${ruleFour}', '${ws.workspaceId}', NULL, 'expense', 'category', 'Uncategorised', 'derived', 999, '2026-10-01T00:00:00Z');
+        INSERT INTO book_categories (category_account_id, workspace_id, book_id) VALUES ('${ruleFour}', '${ws.workspaceId}', '${book.id}');
+        CREATE TRIGGER refuse_travel BEFORE INSERT ON accounts WHEN NEW.system_key LIKE 'travel.%' BEGIN SELECT RAISE(ABORT, 'forced'); END;`);
+
+      await openAppDb(database);
+      const accounts = await listAccounts(database, ws);
+      expect(accounts.find((a) => a.id === ruleFour)?.systemKey).toBe('uncategorised');
+      expect(accounts.filter((a) => a.systemKey === 'travel.transport')).toEqual([]);
+      expect(warn).toHaveBeenCalled();
+
+      // The next open, with nothing in the way, adds them.
+      await database.execScript('DROP TRIGGER refuse_travel');
+      await openAppDb(database);
+      expect((await listAccounts(database, ws)).filter((a) => a.systemKey === 'travel.transport')).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
       executor.close();
     }
   });

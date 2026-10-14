@@ -1,6 +1,6 @@
 import { DEFAULT_CATEGORIES } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   archiveBook,
   contextOf,
@@ -13,6 +13,7 @@ import {
   migrate,
   MIGRATIONS,
   personalBook,
+  uncategorisedIdOf,
 } from '../src/index';
 import { defaultCategoryIdOf } from '../src/repos/categories';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
@@ -200,6 +201,62 @@ describe('Travel sub-categories', () => {
     await database.execScript(`UPDATE accounts SET name = 'Holidays' WHERE system_key = 'travel'`);
     expect((await ensureCategoryKeys(database, ws)).created).toEqual([...ADDED]);
     expect(travelChildren(await categoriesOf(database, book.id)).slice(3)).toEqual(ADDED.map((key, i) => [key, ['Transport', 'Souvenirs', 'Others'][i]]));
+  });
+});
+
+describe('Travel sub-categories when adding them goes wrong', () => {
+  it('skip the one book that failed, keep the rest of the open, and try that book again at the next open', async () => {
+    const db = await setupDb();
+    executor = db.executor;
+    const { database, ws } = db;
+    const personal = await personalBook(database, ws);
+    await asBeforeTheUpgrade(database);
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    // Household sync's rule-4 Uncategorised, made without a key: the open keys it whatever happens to the Travel pass.
+    const ruleFour = await uncategorisedIdOf(personal.id, 'expense');
+    await database.execScript(`
+      INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, valuation_mode, sort_order, created_at)
+        VALUES ('${ruleFour}', '${ws.workspaceId}', NULL, 'expense', 'category', 'Uncategorised', 'derived', 999, '2026-10-01T00:00:00Z');
+      INSERT INTO book_categories (category_account_id, workspace_id, book_id) VALUES ('${ruleFour}', '${ws.workspaceId}', '${personal.id}');`);
+    // Business's Souvenirs cannot be written: its Transport, made first in the same book, must not stay behind alone.
+    const failing = await defaultCategoryIdOf(business, 'travel.souvenirs');
+    await database.execScript(`CREATE TRIGGER refuse_souvenirs BEFORE INSERT ON accounts WHEN NEW.id = '${failing}' BEGIN SELECT RAISE(ABORT, 'forced'); END;`);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const result = await ensureCategoryKeys(database, ws);
+      expect(result.created).toEqual([...ADDED]);
+      expect(result.keyed).toContain('uncategorised');
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+    expect((await categoriesOf(database, personal.id)).filter((row) => ADDED.includes(row.key as (typeof ADDED)[number]))).toHaveLength(3);
+    expect((await categoriesOf(database, personal.id)).find((row) => row.id === ruleFour)?.key).toBe('uncategorised');
+    expect((await categoriesOf(database, business)).filter((row) => ADDED.includes(row.key as (typeof ADDED)[number]))).toEqual([]);
+
+    await database.execScript('DROP TRIGGER refuse_souvenirs');
+    expect((await ensureCategoryKeys(database, ws)).created).toEqual([...ADDED]);
+    expect((await categoriesOf(database, business)).filter((row) => ADDED.includes(row.key as (typeof ADDED)[number]))).toHaveLength(3);
+  });
+
+  it('still reach the books of this device when the first open book is one it joined', async () => {
+    const db = await setupDb();
+    executor = db.executor;
+    const { database, ws } = db;
+    const personal = await personalBook(database, ws);
+    await asBeforeTheUpgrade(database);
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    // Personal put away by hand and a joined book listed first: the open's "Personal" is then the joined book.
+    await database.execScript(`
+      UPDATE books SET archived_at = ${ARCHIVED} WHERE id = '${personal.id}';
+      INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, created_at)
+        VALUES ('joined-book', '${ws.workspaceId}', 'Home', 'shared', 'IDR', 0, -1, '2026-10-01T00:00:00Z');
+      INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at)
+        VALUES ('joined-book', 'relay-joined', 1, 'member-joined', 'needs_invite', '2026-10-01T00:00:00Z');`);
+
+    expect((await ensureCategoryKeys(database, ws)).created).toEqual([...ADDED]);
+    expect((await categoriesOf(database, business)).filter((row) => ADDED.includes(row.key as (typeof ADDED)[number]))).toHaveLength(3);
+    expect(await categoriesOf(database, 'joined-book')).toEqual([]);
   });
 });
 

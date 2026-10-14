@@ -26,6 +26,15 @@ const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government_taxes.es
  * a default parent later (`ADDED_CHILDREN`) go into every book that holds the parent, not only Personal.
  */
 export async function ensureCategoryKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {
+  const result = await ensurePersonalKeys(database, ws);
+  // After that has committed, each book in a transaction of its own: one that fails is skipped until the next open,
+  // and neither the keys above nor the other books are lost with it. Run whatever Personal turned out to be — a joined
+  // book standing in for Personal must not keep this device's own books from theirs.
+  const added = await ensureAddedChildren(database, ws.workspaceId);
+  return { keyed: [...result.keyed, ...added.keyed], created: [...result.created, ...added.created] };
+}
+
+async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {
   return database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {
     const all: AccountRow[] = await tx
       .select()
@@ -103,8 +112,7 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
         await ensure(child.key, child.name, category.kind, parent.id, parent.archivedAt === null);
       }
     }
-    const added = await ensureAddedChildrenTx(tx, ws.workspaceId, now);
-    return { keyed: [...keyed, ...added.keyed], created: [...created, ...added.created] };
+    return { keyed, created };
   }));
 }
 
@@ -122,7 +130,8 @@ export async function defaultCategoryIdOf(bookOrWorkspaceId: string, key: string
   return uuidv5(await namespaceOf(bookOrWorkspaceId), `category:${key}`);
 }
 
-const sameName = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+// Not toLocaleLowerCase: under a Turkish locale 'I' would lower to a dotless ı, and the same name would not match.
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /**
  * The books this device writes defaults into: open ones of the workspace, less a book it joined (its categories
@@ -139,69 +148,95 @@ async function ownOpenBooksTx(tx: Db, workspaceId: string): Promise<string[]> {
 }
 
 /**
- * Adds `ADDED_CHILDREN` under each book's own keyed parent, once. Idempotent; runs on app open inside
- * `ensureCategoryKeys`. A book whose parent is archived, or that has no keyed parent, gets nothing. A child the owner
- * already made under that parent with the same name (any case, archived or not) is given the key instead of a second
- * row being made beside it. A key already in the book — archived, renamed or moved — is never made again.
+ * Adds `ADDED_CHILDREN` under each book's own keyed parent, once. Idempotent; runs on app open from
+ * `ensureCategoryKeys`, one transaction per book. A book that fails is left as it was, said in the console, and tried
+ * again at the next open — the open itself always carries on.
  */
-async function ensureAddedChildrenTx(tx: Db, workspaceId: string, now: string): Promise<{ keyed: string[]; created: string[] }> {
+async function ensureAddedChildren(database: Database, workspaceId: string): Promise<{ keyed: string[]; created: string[] }> {
   const keyed: string[] = [];
   const created: string[] = [];
-  const withBooks = await hasBooks(tx);
-  const scopes: (string | null)[] = withBooks ? await ownOpenBooksTx(tx, workspaceId) : [null];
+  let scopes: (string | null)[];
+  try {
+    scopes = (await hasBooks(database.db)) ? await ownOpenBooksTx(database.db, workspaceId) : [null];
+  } catch (error) {
+    console.warn('The built-in categories could not be checked; trying again at the next open', error);
+    return { keyed, created };
+  }
+  const now = new Date().toISOString();
   for (const bookId of scopes) {
-    const rows: AccountRow[] = await tx
-      .select()
-      .from(accounts)
-      .where(
-        and(
-          eq(accounts.workspaceId, workspaceId),
-          eq(accounts.subtype, 'category'),
-          NOT_IN_A_SET,
-          ...(bookId ? [sql`${accounts.id} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})`] : []),
-        ),
-      )
-      .orderBy(asc(accounts.createdAt), asc(accounts.id));
-    const byKey = new Map<string, AccountRow>();
-    for (const row of rows) if (row.systemKey && !byKey.has(row.systemKey)) byKey.set(row.systemKey, row);
-
-    for (const key of ADDED_CHILDREN) {
-      if (byKey.has(key)) continue;
-      const spec = DEFAULT_BY_KEY.get(key)!;
-      const parent = spec.parentKey ? byKey.get(spec.parentKey) : undefined;
-      if (!parent || parent.archivedAt !== null || parent.kind !== spec.kind) continue;
-      const own = rows.find((row) => row.systemKey === null && row.parentId === parent.id && row.kind === spec.kind && sameName(row.name, spec.name));
-      if (own) {
-        await tx.update(accounts).set({ systemKey: key }).where(eq(accounts.id, own.id));
-        own.systemKey = key;
-        byKey.set(key, own);
-        keyed.push(key);
-        continue;
-      }
-      const id = await defaultCategoryIdOf(bookId ?? workspaceId, key);
-      // Already here under that id but no longer in this book with its key: it was put somewhere on purpose.
-      if ((await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id))).length > 0) continue;
-      const row: AccountRow = {
-        id,
-        workspaceId,
-        parentId: parent.id,
-        kind: spec.kind,
-        subtype: 'category',
-        name: spec.name,
-        icon: null,
-        currency: null,
-        valuationMode: 'derived',
-        systemKey: key,
-        sortOrder: Math.max(-1, ...rows.filter((sibling) => sibling.parentId === parent.id).map((sibling) => sibling.sortOrder)) + 1,
-        archivedAt: null,
-        createdAt: now,
-      };
-      await tx.insert(accounts).values(row);
-      if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: id, workspaceId, bookId });
-      rows.push(row);
-      byKey.set(key, row);
-      created.push(key);
+    try {
+      const done = await database.transaction((tx) =>
+        withCapture(tx, bookId ? { entity: 'category', bookId } : { entity: 'category' }, () => ensureAddedChildrenTx(tx, workspaceId, bookId, now)),
+      );
+      keyed.push(...done.keyed);
+      created.push(...done.created);
+    } catch (error) {
+      console.warn(`The built-in categories could not be added to book ${bookId ?? workspaceId}; trying again at the next open`, error);
     }
+  }
+  return { keyed, created };
+}
+
+/**
+ * One book's (or, before books, the workspace's) `ADDED_CHILDREN`. A book whose parent is archived, or that has no
+ * keyed parent, gets nothing. A child the owner already made under that parent with the same name (any case, archived
+ * or not) is given the key instead of a second row being made beside it. A key already in the book — archived,
+ * renamed or moved — is never made again.
+ */
+async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string | null, now: string): Promise<{ keyed: string[]; created: string[] }> {
+  const keyed: string[] = [];
+  const created: string[] = [];
+  const rows: AccountRow[] = await tx
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.workspaceId, workspaceId),
+        eq(accounts.subtype, 'category'),
+        NOT_IN_A_SET,
+        ...(bookId ? [sql`${accounts.id} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})`] : []),
+      ),
+    )
+    .orderBy(asc(accounts.createdAt), asc(accounts.id));
+  const byKey = new Map<string, AccountRow>();
+  for (const row of rows) if (row.systemKey && !byKey.has(row.systemKey)) byKey.set(row.systemKey, row);
+
+  for (const key of ADDED_CHILDREN) {
+    if (byKey.has(key)) continue;
+    const spec = DEFAULT_BY_KEY.get(key)!;
+    const parent = spec.parentKey ? byKey.get(spec.parentKey) : undefined;
+    if (!parent || parent.archivedAt !== null || parent.kind !== spec.kind) continue;
+    const own = rows.find((row) => row.systemKey === null && row.parentId === parent.id && row.kind === spec.kind && sameName(row.name, spec.name));
+    if (own) {
+      await tx.update(accounts).set({ systemKey: key }).where(eq(accounts.id, own.id));
+      own.systemKey = key;
+      byKey.set(key, own);
+      keyed.push(key);
+      continue;
+    }
+    const id = await defaultCategoryIdOf(bookId ?? workspaceId, key);
+    // Already here under that id but no longer in this book with its key: it was put somewhere on purpose.
+    if ((await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id))).length > 0) continue;
+    const row: AccountRow = {
+      id,
+      workspaceId,
+      parentId: parent.id,
+      kind: spec.kind,
+      subtype: 'category',
+      name: spec.name,
+      icon: null,
+      currency: null,
+      valuationMode: 'derived',
+      systemKey: key,
+      sortOrder: Math.max(-1, ...rows.filter((sibling) => sibling.parentId === parent.id).map((sibling) => sibling.sortOrder)) + 1,
+      archivedAt: null,
+      createdAt: now,
+    };
+    await tx.insert(accounts).values(row);
+    if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: id, workspaceId, bookId });
+    rows.push(row);
+    byKey.set(key, row);
+    created.push(key);
   }
   return { keyed, created };
 }
