@@ -52,6 +52,7 @@ import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
 import { canEditInSheet } from './tx-form';
+import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -243,6 +244,7 @@ export function TransactionsPage() {
    * offers as a Paid with. Such a purchase is corrected in the full form, which keeps them as its payer. Decided from
    * the row and the accounts first, so it holds before the payers query answers (fix round 1).
    */
+  const duplicable = useDuplicable(recorded);
   const knownAccounts = new Set(accounts.map((account) => account.id));
   const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
   const paidByOther = (tx: TransactionView) => {
@@ -565,6 +567,14 @@ export function TransactionsPage() {
         This was a purchase
       </button>
     );
+    // The same refusals as Edit: a trade, a row of another workspace or of a partner's payment is not repeated from here.
+    const mayDuplicate = duplicable(tx) && !tradeByTransaction.has(tx.id) && !readOnly && filingKnown && !elsewhereOf(tx.id);
+    const toDuplicate = () => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: tx.id } });
+    const duplicateButton = mayDuplicate && (
+      <button type="button" onClick={toDuplicate} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+        Duplicate
+      </button>
+    );
     const deleteButton = twoTap(tx.id, 'Delete this transaction', 'Click again to delete', () => deleteTransaction(database, ws, tx.id));
     if (editing?.kind === 'tx' && editing.id === tx.id) {
       const { needs } = readQuick(editing.values, accounts, today, ws.baseCurrency);
@@ -606,6 +616,7 @@ export function TransactionsPage() {
                 Open in form
               </button>
               {purchaseButton}
+              {duplicateButton}
               {deleteButton}
             </>,
           )}
@@ -616,7 +627,7 @@ export function TransactionsPage() {
       return (
         <li key={tx.id} className="py-2">
           <TransactionCard initial={tx} onDone={close} />
-          {editHint(<>{keptSentence}</>, <>{purchaseButton}{deleteButton}</>)}
+          {editHint(<>{keptSentence}</>, <>{purchaseButton}{duplicateButton}{deleteButton}</>)}
         </li>
       );
     }
@@ -678,6 +689,7 @@ export function TransactionsPage() {
         // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
         // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
         onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
+        onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
         // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
         // write it already asked for is going out.
@@ -752,6 +764,8 @@ export function TransactionsPage() {
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
+    canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),
+    duplicate: (id) => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: id } }),
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,

@@ -38,6 +38,7 @@ export function TransactionRow({
   trailing,
   onOpen,
   onEdit,
+  onDuplicate,
   onDelete,
   onRecategorise,
   phone,
@@ -68,6 +69,8 @@ export function TransactionRow({
   onOpen?: (row: ListRow) => void;
   /** What the swipe's Edit calls. No Edit is offered when this is absent. */
   onEdit?: (row: ListRow) => void;
+  /** What the swipe's Duplicate calls. No Duplicate is offered when this is absent. */
+  onDuplicate?: (row: ListRow) => void;
   /** What the swipe's Delete calls, once it has been asked twice. No Delete is offered when this is absent. */
   onDelete?: (row: ListRow) => void;
   /** Tapping the category circle. Absent on a row that may not be re-filed, which leaves a plain circle. */
@@ -160,17 +163,22 @@ export function TransactionRow({
   );
 
   // A phone reaches Edit and Delete by swiping; both stay one gesture away rather than crowding the row.
-  if (phone && (onEdit || onDelete)) {
+  if (phone && (onEdit || onDelete || onDuplicate)) {
     return (
       <li className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
           enabled
-          reveal={148}
+          reveal={(onDuplicate ? 64 : 0) + (onEdit ? 64 : 0) + (onDelete ? 64 : 0)}
           testId={testId}
           leftAction={
             <>
+              {onDuplicate && (
+                <button type="button" onClick={() => onDuplicate(row)} title={`Duplicate ${row.description}`} className="w-[64px] bg-blue-600 text-[13px] font-semibold text-white">
+                  Duplicate
+                </button>
+              )}
               {onEdit && (
-                <button type="button" onClick={() => onEdit(row)} title={`Edit ${row.description}`} className="w-[74px] bg-slate-600 text-sm font-semibold text-white">
+                <button type="button" onClick={() => onEdit(row)} title={`Edit ${row.description}`} className="w-[64px] bg-slate-600 text-[13px] font-semibold text-white">
                   Edit
                 </button>
               )}

@@ -8,12 +8,14 @@ import {
   amountFace,
   amountFields,
   billMinor,
+  canDuplicate,
   canEditInSheet,
   chargedIsEstimate,
   currencyShown,
   chargedInNeeded,
   currencyChoosable,
   detailsToggleLabel,
+  duplicateDraft,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -1243,5 +1245,107 @@ describe('currencyShown', () => {
   it('names it once a figure is typed, or once the flag is picked', () => {
     expect(currencyShown({ ...draft, amount: '5', currency: '' })).toBe(true);
     expect(currencyShown({ ...draft, amount: '', currency: 'USD' })).toBe(true);
+  });
+});
+
+describe('a transaction as the start of a new one', () => {
+  const full = view({
+    description: 'Warung Steak',
+    occurredOn: '2026-08-03',
+    eventId: 'ev-1',
+    channel: 'offline',
+    mcc: '5812',
+    cardId: 'card-1',
+    excluded: true,
+    entries: [paid(-400_000), spent('cat-restaurants', 400_000)] as TransactionView['entries'],
+  });
+
+  it('keeps every entry field, the same date and the event, and is an add rather than an edit', () => {
+    const form = duplicateDraft(full, accounts, 'ws-1');
+    expect(form).toMatchObject({
+      mode: 'expense',
+      moneyId: 'acct-card',
+      cardId: 'card-1',
+      categoryId: 'cat-restaurants',
+      amount: '400000',
+      currency: 'IDR',
+      description: 'Warung Steak',
+      occurredOn: '2026-08-03',
+      eventId: 'ev-1',
+      channel: 'offline',
+      mcc: '5812',
+      excluded: true,
+      editing: false,
+      photoIds: [],
+      bookId: 'ws-1',
+    });
+  });
+
+  it('never carries pictures', () => {
+    const form = duplicateDraft(full, accounts);
+    expect(form.photoIds).toEqual([]);
+  });
+
+  it('keeps splits', () => {
+    const form = duplicateDraft(splitPurchase, accounts);
+    expect(form.splits).toEqual([
+      { categoryId: 'cat-restaurants', amount: '250000' },
+      { categoryId: 'cat-groceries', amount: '150000' },
+    ]);
+    expect(form.editing).toBe(false);
+  });
+
+  it('keeps a foreign purchase on its currency but not its charge, so the day\'s estimate follows the new amount', () => {
+    const form = duplicateDraft(foreignPurchase, accounts);
+    expect(form).toMatchObject({ currency: 'CNY', amount: '120.00', chargedAmount: '' });
+    // The row starts as the estimate's (AmountRow reads a non-empty charge as the user's own): retyping re-estimates.
+    let charged = form.chargedAmount;
+    const typeAmount = (amount: string) => {
+      const estimate = estimatedCharge({ amount, currency: 'CNY', accountCurrency: 'IDR', rate: 2270 });
+      charged = prefilledCharge({ estimate, charged, touched: form.chargedAmount.trim() !== '' }) ?? charged;
+    };
+    typeAmount('120');
+    expect(charged).toBe('272400');
+    typeAmount('200');
+    expect(charged).toBe('454000');
+  });
+
+  it('does not inherit the set-aside link', () => {
+    expect(duplicateDraft(view({ ...full, goalId: 'goal-1' } as Partial<TransactionView>), accounts).goalId).toBe('');
+  });
+
+  it('keeps a transfer between its two accounts', () => {
+    expect(duplicateDraft(transferTx, accounts)).toMatchObject({ mode: 'transfer', moneyId: 'acct-card', toId: 'acct-bank', amount: '500000' });
+  });
+
+  it('posts as a plain new transaction', () => {
+    expect(formToPost(duplicateDraft(full, accounts), accounts)).toMatchObject({ kind: 'post', input: { eventId: 'ev-1', occurredOn: '2026-08-03' } });
+  });
+
+  describe('canDuplicate', () => {
+    const known = new Set(['acct-bank', 'acct-card', 'cat-restaurants']);
+    const ctx = { known, payer: null, memberTransfer: false };
+
+    it('is offered for what is posted and editable, never for a deleted row', () => {
+      expect(canDuplicate(full, ctx)).toBe(true);
+      expect(canDuplicate(view({ ...full, status: 'void' }), ctx)).toBe(false);
+    });
+
+    it('is refused for a purchase another member paid, however that is known', () => {
+      // Against their placeholder: the money account is not one this device lists.
+      expect(canDuplicate(full, { ...ctx, known: new Set(['acct-bank']) })).toBe(false);
+      // By the payers query: someone else's.
+      expect(canDuplicate(full, { ...ctx, payer: { mine: false } })).toBe(false);
+      expect(canDuplicate(full, { ...ctx, payer: { mine: true } })).toBe(true);
+    });
+
+    it('is refused for a transfer with a partner', () => {
+      expect(canDuplicate(transferTx, ctx)).toBe(true);
+      expect(canDuplicate(transferTx, { ...ctx, memberTransfer: true })).toBe(false);
+    });
+
+    it('waits for the accounts rather than guessing', () => {
+      expect(canDuplicate(full, { ...ctx, known: new Set() })).toBe(false);
+    });
   });
 });

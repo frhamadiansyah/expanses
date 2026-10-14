@@ -19,6 +19,7 @@ import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
+import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
 
@@ -865,6 +866,41 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     amount: from ? minorToMajorString(-from.amountMinor, from.currency) : '',
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
   };
+}
+
+/** What `canDuplicate` needs beyond the transaction: facts the caller reads from the accounts, the payers and the transfers. */
+export interface DuplicateContext {
+  /** The ids of the accounts this device lists; empty means "not read yet", and nothing is offered until it is. */
+  known: ReadonlySet<string>;
+  /** Who paid, for a purchase in a shared workspace; null when it is not one. */
+  payer: { mine: boolean } | null;
+  /** Whether the transaction is this phone's side of a transfer with a partner. */
+  memberTransfer: boolean;
+}
+
+/**
+ * Whether a transaction can be repeated from the Add screen: a purchase, an income or a transfer that is still
+ * posted and entirely this person's own. Not another member's purchase (posted against their placeholder, which the
+ * Add form never offers), not a transfer with a partner (it is recorded once in the group's log and copied here as
+ * a plain transfer it would no longer be), and not what `isEditable` refuses. A trade or a purchase filed in
+ * another workspace is the caller's refusal (`useChangeable`), as it is for Edit.
+ */
+export function canDuplicate(tx: TransactionView, context: DuplicateContext): boolean {
+  if (!isEditable(tx) || context.known.size === 0) return false;
+  if (postedAgainstPlaceholder(tx, context.known)) return false;
+  if (context.payer && !context.payer.mine) return false;
+  return !context.memberTransfer;
+}
+
+/**
+ * A transaction as the start of a new one: every entry field it has (mode, accounts, category or splits, note, the
+ * same date, the event, the currency), and none of what belongs to the original alone — its pictures, the fact of
+ * being an edit, the set-aside link (`goalId`, whose choice is not copied either) and the old charge. A foreign
+ * purchase keeps its currency but starts with the charge empty, so the day's rate estimates it again and follows the
+ * new amount; a kept charge reads as typed by the user and would post the new amount with the old charge.
+ */
+export function duplicateDraft(tx: TransactionView, accounts: readonly AccountRow[], bookId = ''): FormDraft {
+  return { ...formFromTransaction(tx, accounts, bookId, []), editing: false, photoIds: [], goalId: '', chargedAmount: '' };
 }
 
 /**

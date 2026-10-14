@@ -25,6 +25,10 @@ export interface TableHandlers {
   saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
   dismissDraft: (id: string) => Promise<boolean>;
   deleteRecorded: (id: string) => Promise<boolean>;
+  /** Whether this row may be copied into a new one: the one rule the swipe, the receipt and the route share. */
+  canDuplicate: (tx: TransactionView) => boolean;
+  /** Opens the Add screen on a copy of this row. */
+  duplicate: (id: string) => void;
   /** The full form, for a row too involved to edit as cells. */
   renderForm: (tx: TransactionView, onDone: () => void) => ReactNode;
   tradeIds: ReadonlySet<string>;
@@ -272,7 +276,12 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
       {form && (
         <div className="space-y-1 px-2 pb-3">
           {handlers.renderForm(tx, () => setForm(false))}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-1">
+            {!handlers.tradeIds.has(tx.id) && handlers.canDuplicate(tx) && (
+              <button type="button" onClick={() => handlers.duplicate(tx.id)} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                Duplicate
+              </button>
+            )}
             <TwoTap busy={handlers.busy === tx.id} label="Delete" onConfirm={() => void handlers.deleteRecorded(tx.id)} />
           </div>
         </div>

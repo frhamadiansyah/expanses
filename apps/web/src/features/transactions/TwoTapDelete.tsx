@@ -6,7 +6,7 @@ import { cx } from '../../ui';
  *
  * The guards are the same three everywhere, which is the whole point of this file. What differs between a
  * button standing in a column and a block revealed by a swipe is how much room there is to ask in: "Click
- * again to delete" does not fit in 74 pixels, so the swipe asks "Delete?" and means exactly the same thing.
+ * again to delete" does not fit in 64 pixels, so the swipe asks "Delete?" and means exactly the same thing.
  */
 const LOOKS = {
   /** A button among buttons: the receipt's actions, and the edit sheet's ⋯. */
@@ -23,7 +23,7 @@ const LOOKS = {
     armed: 'Delete?',
     // Named by what is written on it, so "Delete" and "Delete?" are what a reader and a spec both see.
     name: () => undefined,
-    className: () => 'w-[74px] bg-red-700 text-sm font-semibold text-white disabled:opacity-60',
+    className: () => 'w-[64px] bg-red-700 text-[13px] font-semibold text-white disabled:opacity-60',
   },
 } as const;
 
