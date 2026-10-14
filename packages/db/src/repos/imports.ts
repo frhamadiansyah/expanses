@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { transactions } from '../schema';
+import { exactOrNull } from './exact-column';
 import { postTransactionTx } from './ledger';
 
 export interface ImportRow {
@@ -10,6 +11,11 @@ export interface ImportRow {
   description: string;
   /** Positive = money out of the account or card charge; negative = money in, payment, or refund. */
   amountMinor: number;
+  /**
+   * For a currency with no minor unit, the row's figure with cents in hundredths (always positive), as `mapCsvRows`
+   * reads it; `amountMinor` is then that figure rounded by the row's sign. Absent or null for a whole figure.
+   */
+  exactHundredths?: number | null;
   externalRef: string;
   /** Expense or income category the other side posts to. */
   categoryAccountId: string;
@@ -53,6 +59,8 @@ export async function importRows(
         source: 'csv',
         externalRef: row.externalRef,
         lines,
+        // A statement's cents are kept only while the row's amount rounds from them: an import never fails over them.
+        exactHundredths: exactOrNull(row.exactHundredths, lines),
         ratesToBase: input.ratesToBaseByDate?.[row.occurredOn] ?? {},
       });
       existing.add(row.externalRef);
