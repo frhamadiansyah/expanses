@@ -5,3 +5,7 @@
 -- (`exactHundredths`). A draft read from a capture or a statement keeps its own until it is confirmed.
 ALTER TABLE transactions ADD COLUMN exact_hundredths INTEGER;
 ALTER TABLE draft_transactions ADD COLUMN exact_hundredths INTEGER;
+-- A phone without the column could still win a purchase's `exactHundredths` and keep its clock, with nowhere to put the
+-- figure. Those clocks are forgotten, so the next figure sent for the purchase (carried or new) is taken.
+DELETE FROM sync_field_clocks WHERE entity = 'purchase' AND field = 'exactHundredths';
+DELETE FROM sync_kept_clocks WHERE entity = 'purchase' AND field = 'exactHundredths';

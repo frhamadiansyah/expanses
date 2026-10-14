@@ -79,6 +79,30 @@ describe('a shared purchase typed with cents', () => {
     expect(await purchase(fandri)).toMatchObject({ description: 'Bakery, two loaves', amount: 12_501, exact: 1_250_030 });
   });
 
+  it('a new amount on one phone while the other retypes the figure converges: the figure no longer fits, on both', async () => {
+    const { home, fandri, dewi, bookId } = await pair();
+    const id = await postTransaction(fandri.database, fandri.ws, { occurredOn: DAY, description: 'Bakery', lines: await linesOf(fandri, bookId, 12_501), exactHundredths: 1_250_030 });
+    await home.settle();
+
+    // Dewi makes it 13.000; Fandri, not yet told, retypes the figure as 12.500,80 (still 12.501), after her.
+    await pause();
+    const theirs = await purchase(dewi);
+    const lines = (await listTransactions(dewi.database, dewi.ws, { id: theirs.id }))[0]!.entries.map((e) => ({
+      accountId: e.accountId,
+      amountMinor: Math.sign(e.amountMinor) * 13_000,
+      currency: e.currency,
+    }));
+    await replaceTransaction(dewi.database, dewi.ws, theirs.id, { occurredOn: DAY, description: 'Bakery', lines });
+    await pause();
+    await replaceTransaction(fandri.database, fandri.ws, id, { occurredOn: DAY, description: 'Bakery', lines: await linesOf(fandri, bookId, 12_501), exactHundredths: 1_250_080 });
+    for (let i = 0; i < 3; i += 1) await home.settle();
+
+    const fandris = await purchase(fandri);
+    const dewis = await purchase(dewi);
+    expect({ amount: fandris.amount, exact: fandris.exact }).toEqual({ amount: 13_000, exact: null });
+    expect({ amount: dewis.amount, exact: dewis.exact }).toEqual({ amount: 13_000, exact: null });
+  });
+
   it('an op from a build without the field changes nothing about it while the amount stays, and clears it when the amount changes', async () => {
     const { home, fandri, dewi, bookId } = await pair();
     const id = await postTransaction(fandri.database, fandri.ws, { occurredOn: DAY, description: 'Bakery', lines: await linesOf(fandri, bookId, 12_501), exactHundredths: 1_250_030 });

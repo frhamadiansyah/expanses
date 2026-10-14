@@ -11,7 +11,7 @@ import { captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom }
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { dayOrderExists } from './day-order-column';
-import { debitTotal, exactExists, exactFitsLines, isExactFigure } from './exact-column';
+import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
@@ -100,8 +100,10 @@ export interface PostTransactionInput {
   dayOrder?: number | null;
   /**
    * The amount as typed with cents, in a currency with no minor unit (0068): 12.500,30 is 1250030, in hundredths of
-   * the currency unit, always positive. The lines carry the whole figure (12.501 for money out, 12.500 for money in),
-   * and one of them must be this figure rounded. Null or absent when the amount was whole; a figure whose cents are
+   * the currency unit, always positive. It is in the lines' own currency, the one charged — never `originalCurrency`,
+   * the purchase's currency before the issuer converted it. The lines carry the whole figure (12.501 for money out,
+   * 12.500 for money in): the posting must have exactly one expense or income line, and it must be this figure rounded,
+   * else INVALID_EXACT. Null or absent when the amount was whole; a figure whose cents are
    * zero is stored as null. On `replaceTransaction`, undefined carries the original's while the edit moves the same
    * money (its debit lines add up to what they did) and clears it when the amount changes; a value, or null, is
    * written as given.
@@ -186,9 +188,6 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   if (exact !== null && !isExactFigure(exact)) {
     throw new LedgerError('INVALID_EXACT', `An exact amount is a positive whole number of hundredths, got ${exact}`);
   }
-  if (exact !== null && !exactFitsLines(input.lines, exact)) {
-    throw new LedgerError('INVALID_EXACT', `The amount does not round from the exact figure ${exact / 100}`);
-  }
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
@@ -208,6 +207,13 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   if (parentOf.length > 0) {
     const name = found.find((a) => a.id === parentOf[0]!.parentId)?.name ?? 'That account';
     throw new LedgerError('POCKET_PARENT', `${name} holds no money of its own. Choose one of its pockets.`);
+  }
+  // A figure typed with cents goes on a single amount: one expense or income line, which is that figure rounded.
+  if (exact !== null) {
+    const kindOf = new Map(found.map((a) => [a.id, a.kind]));
+    if (!exactFitsPosting(input.lines.map((line) => ({ amountMinor: line.amountMinor, kind: kindOf.get(line.accountId) ?? '' })), exact)) {
+      throw new LedgerError('INVALID_EXACT', `A figure with cents goes on a single expense or income amount rounded from it (${exact / 100})`);
+    }
   }
   const planned = planPosting({
     baseCurrency: ws.baseCurrency,
@@ -445,7 +451,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.dayOrder === undefined ? { dayOrder: original && original.occurredOn === input.occurredOn ? (placed?.[0] ?? null) : null } : {}),
     // The figure typed with cents stays while the edit moves the same money (a new note, date or category); a new
     // amount is a new figure, which a correction that does not say what it was typed as has not got.
-    ...(input.exactHundredths === undefined ? { exactHundredths: carriedExact(typed?.[0] ?? null, oldLines, input.lines) } : {}),
+    ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
@@ -471,11 +477,18 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   return replacement;
 }
 
-/** The original's exact figure, when an edit that does not mention it still moves the same money; else none. */
-function carriedExact(exact: number | null, oldLines: readonly { amountMinor: number }[], lines: readonly { amountMinor: number }[]): number | null {
-  if (exact === null) return null;
-  const value = Number(exact);
-  return debitTotal(oldLines) === debitTotal(lines) && exactFitsLines(lines, value) ? value : null;
+/**
+ * The original's exact figure, when an edit that does not mention it still moves the same money and still has the one
+ * category line it belongs to (not a split, not a transfer); else none.
+ */
+async function carriedExactTx(
+  tx: Db,
+  exact: number | null,
+  oldLines: readonly { amountMinor: number }[],
+  lines: readonly { accountId: string; amountMinor: number }[],
+): Promise<number | null> {
+  if (exact === null || debitTotal(oldLines) !== debitTotal(lines)) return null;
+  return exactForLinesTx(tx, Number(exact), lines);
 }
 
 /** Sets or clears a purchase's typed MCC in place: merchant metadata, not amounts, so nothing is reposted. */

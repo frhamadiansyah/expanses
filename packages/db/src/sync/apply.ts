@@ -6,7 +6,7 @@ import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTr
 import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
-import { exactExists, exactOrNull, isExactFigure } from '../repos/exact-column';
+import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
@@ -621,7 +621,7 @@ async function ledgerInput(
   // The figure typed with cents, the same way: whenever the op speaks of it, as it now reads, so a new amount that lost
   // to it keeps the figure only when it still rounds to it. An op from a build without it leaves it to the ledger, which
   // keeps it while the amount stays. Never money: the lines above are posted whatever it says.
-  if ('exactHundredths' in winners || carriesExact) input.exactHundredths = exactOrNull(state.exactHundredths, lines);
+  if ('exactHundredths' in winners || carriesExact) input.exactHundredths = await exactForLinesTx(tx, state.exactHundredths, lines);
   return { input, refused };
 }
 
@@ -679,8 +679,10 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
       await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
     }
     if ('exactHundredths' in winners) {
-      const value = winners.exactHundredths;
-      await tx.run(sql`UPDATE transactions SET exact_hundredths = ${isExactFigure(value) && value % 100 !== 0 ? value : null} WHERE id = ${lineage.head!}`);
+      // Judged against the lines here, as a repost judges it: a figure the amount no longer rounds from (a new amount
+      // that reached this phone first) is none, whichever order the two changes arrive in.
+      const value = await exactForTransactionTx(tx, winners.exactHundredths, lineage.head!);
+      await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
     }
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;

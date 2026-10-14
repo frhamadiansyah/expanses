@@ -45,9 +45,20 @@ export function exactFits(magnitude: number, exact: number): boolean {
   return whole === floor || whole === (exact % 100 === 0 ? floor : floor + 1);
 }
 
-/** Whether some line of a posting is that exact figure, rounded: a purchase typed with cents has one amount. */
-export function exactFitsLines(lines: readonly { amountMinor: number }[], exact: number): boolean {
-  return lines.some((line) => exactFits(line.amountMinor, exact));
+/** A posting line with the kind of account it is on: what decides which line a figure with cents belongs to. */
+export interface KindedLine {
+  amountMinor: number;
+  kind: string;
+}
+
+/**
+ * Whether a posting can carry this exact figure: it has exactly one category line (an expense or an income) and that
+ * line is the figure rounded. Decimals go on a single amount only, so a split, a transfer or a card payment never fits,
+ * whatever its money side says.
+ */
+export function exactFitsPosting(lines: readonly KindedLine[], exact: number): boolean {
+  const category = lines.filter((line) => line.kind === 'expense' || line.kind === 'income');
+  return category.length === 1 && exactFits(category[0]!.amountMinor, exact);
 }
 
 /** The money a posting moves, as an edit compares it: what its debit lines add up to. */
@@ -56,11 +67,37 @@ export function debitTotal(lines: readonly { amountMinor: number }[]): number {
 }
 
 /**
- * What a figure that arrived from elsewhere (a peer, a capture) can be stored as against these lines: itself when it is
- * a positive figure with cents that rounds to one of them, else nothing. Never refused: a stray figure must not cost a
- * posting its money.
+ * What a figure that did not come from the person typing it (one carried through an edit, sent by a peer, read from a
+ * capture or a statement) can be stored as against these lines: itself when it is a positive figure with cents that
+ * fits the posting, else nothing. Never refused: a stray figure must not cost a posting its money.
  */
-export function exactOrNull(value: unknown, lines: readonly { amountMinor: number }[]): number | null {
+export function exactOrNull(value: unknown, lines: readonly KindedLine[]): number | null {
   if (!isExactFigure(value) || value % 100 === 0) return null;
-  return exactFitsLines(lines, value) ? value : null;
+  return exactFitsPosting(lines, value) ? value : null;
+}
+
+/** Posting lines with the kind of the account each is on. */
+export async function kindedLinesTx(db: Db, lines: readonly { accountId: string; amountMinor: number }[]): Promise<KindedLine[]> {
+  const ids = [...new Set(lines.map((line) => line.accountId))];
+  const kinds = new Map<string, string>();
+  for (const id of ids) {
+    const [row] = await db.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${id}`);
+    if (row) kinds.set(id, row[0]);
+  }
+  return lines.map((line) => ({ amountMinor: line.amountMinor, kind: kinds.get(line.accountId) ?? '' }));
+}
+
+/** `exactOrNull` for posting lines that name their accounts. */
+export async function exactForLinesTx(db: Db, value: unknown, lines: readonly { accountId: string; amountMinor: number }[]): Promise<number | null> {
+  if (!isExactFigure(value) || value % 100 === 0) return null;
+  return exactOrNull(value, await kindedLinesTx(db, lines));
+}
+
+/** `exactOrNull` against a posted transaction's own lines. */
+export async function exactForTransactionTx(db: Db, value: unknown, transactionId: string): Promise<number | null> {
+  if (!isExactFigure(value) || value % 100 === 0) return null;
+  const rows = await db.values<[number, string]>(
+    sql`SELECT e.amount_minor, a.kind FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`,
+  );
+  return exactOrNull(value, rows.map(([amountMinor, kind]) => ({ amountMinor: Number(amountMinor), kind })));
 }

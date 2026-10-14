@@ -3,7 +3,7 @@ import { and, asc, eq, getTableColumns, inArray, isNotNull, isNull, lte, ne, sql
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { draftTransactions } from '../schema-drafts';
-import { draftExactExists, exactOrNull, isExactFigure } from './exact-column';
+import { draftExactExists, exactForLinesTx, isExactFigure } from './exact-column';
 import { existingExternalRefs } from './imports';
 import { ledgerSourceOf, type PostTransactionInput, postTransactionTx, type TransactionSource } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
@@ -382,7 +382,7 @@ export async function confirmDraftTx(
 
   // The figure read with cents, on a single amount only: a transfer stays whole. A figure the amount no longer rounds
   // from (a merge or a pairing changed it) is not posted: a capture's cents are best read, never refused over.
-  const exactHundredths = draft.kind === 'transfer' ? null : exactOrNull(await draftExactOf(tx, id), lines);
+  const exactHundredths = draft.kind === 'transfer' ? null : await exactForLinesTx(tx, await draftExactOf(tx, id), lines);
 
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();

@@ -3,7 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { transactions } from '../schema';
-import { exactOrNull } from './exact-column';
+import { exactForLinesTx } from './exact-column';
 import { postTransactionTx } from './ledger';
 
 export interface ImportRow {
@@ -60,7 +60,7 @@ export async function importRows(
         externalRef: row.externalRef,
         lines,
         // A statement's cents are kept only while the row's amount rounds from them: an import never fails over them.
-        exactHundredths: exactOrNull(row.exactHundredths, lines),
+        exactHundredths: await exactForLinesTx(tx, row.exactHundredths, lines),
         ratesToBase: input.ratesToBaseByDate?.[row.occurredOn] ?? {},
       });
       existing.add(row.externalRef);

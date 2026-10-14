@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
+import { exactForTransactionTx } from '../../src/repos/exact-column';
 import { viewMember } from '../../src/sync/authority';
 import { configureCapture, projectPurchase } from '../../src/sync/capture';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
@@ -369,6 +370,10 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
         const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
         if (!carrier) continue;
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        // A figure typed with cents is kept only while the purchase's one category line rounds from it (0068): a new
+        // amount from a peer that reached this phone after the figure leaves none, on every phone alike (apply.ts
+        // judges both the in-place write and the repost against the lines). Not a miss.
+        if (field === 'exactHundredths' && projected[field] === null && (await exactForTransactionTx(database.db, said, expected)) === null) continue;
         if (JSON.stringify(said) !== JSON.stringify(projected[field])) misses.push(`purchase ${lineageId}: ${field} reads ${JSON.stringify(projected[field])} but the outbox says ${JSON.stringify(said)}`);
       }
     }
