@@ -1,8 +1,11 @@
-import { merchantKey } from '@expanses/core';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { merchantKey, UNCATEGORISED } from '@expanses/core';
+import { and, desc, eq, isNull, notInArray, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
+
+/** Filed under Uncategorised: saved with its category left for later, so no evidence of one. */
+const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.systemKey, [UNCATEGORISED.expense.key, UNCATEGORISED.income.key]));
 
 /** How far back to look for a merchant already seen. Enough for a year of daily spending. */
 const HISTORY_LIMIT = 3000;
@@ -14,8 +17,16 @@ const HISTORY_LIMIT = 3000;
  * warung round the corner as well as any chain, and it follows a change of mind: re-filing Superindo
  * from Groceries to Supplies makes Supplies the next guess. A purchase split across categories says
  * nothing about any one of them, so it is skipped.
+ *
+ * `kind` says which tree to guess from: spending for a purchase (the default), income for money received. What was
+ * saved under Uncategorised is no evidence of a category, so it is never guessed.
  */
-export async function guessCategoryFromHistory(database: Database, ws: WorkspaceContext, description: string): Promise<string | null> {
+export async function guessCategoryFromHistory(
+  database: Database,
+  ws: WorkspaceContext,
+  description: string,
+  kind: 'expense' | 'income' = 'expense',
+): Promise<string | null> {
   const key = merchantKey(description);
   if (!key) return null;
   const rows = await database.db
@@ -27,7 +38,8 @@ export async function guessCategoryFromHistory(database: Database, ws: Workspace
       and(
         eq(entries.workspaceId, ws.workspaceId),
         eq(transactions.status, 'posted'),
-        eq(accounts.kind, 'expense'),
+        eq(accounts.kind, kind),
+        notUncategorised,
         // A guess is offered to a form that records into one workspace, so it may only offer that workspace's
         // categories: anything else the posting would refuse a moment later.
         ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
@@ -90,6 +102,7 @@ async function filedHistory(database: Database, ws: WorkspaceContext, kind: 'exp
         eq(entries.workspaceId, ws.workspaceId),
         eq(transactions.status, 'posted'),
         eq(accounts.kind, kind),
+        notUncategorised,
         ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
       ),
     )

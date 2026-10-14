@@ -202,6 +202,24 @@ export function withCategoryLater(draft: FormDraft, uncategorisedId: string): Fo
   return categoryLater(draft) ? { ...draft, categoryId: uncategorisedId } : draft;
 }
 
+/** Who filled Category: chosen by hand (or opened already holding one), filled from the note's history, or nobody yet. */
+export type CategorySource = 'hand' | 'auto' | null;
+
+/**
+ * What the note's history does to Category once a guess comes back: the category to fill in, '' to empty one that was
+ * only filled from an earlier note this one no longer matches, or null to leave Category exactly as it is.
+ *
+ * A category picked by hand — or one the form opened with (an edit, a duplicate, a capture) — is never touched. Only
+ * Expense and Income guess, each from its own tree; a transfer has no category and a split's lines are their own.
+ */
+export function categoryFromNote(draft: FormDraft, guess: string | null, source: CategorySource): string | null {
+  if (draft.mode !== 'expense' && draft.mode !== 'income') return null;
+  if (draft.splits.length > 0 || source === 'hand') return null;
+  if (source === 'auto') return guess === draft.categoryId ? null : (guess ?? '');
+  if (draft.categoryId) return null;
+  return guess;
+}
+
 /** A figure that starts with a minus. */
 const MINUS_FIRST = /^\s*[-−–]/;
 

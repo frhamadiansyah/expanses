@@ -9,6 +9,7 @@ import {
   amountFields,
   billMinor,
   canEditInSheet,
+  categoryFromNote,
   categoryLater,
   chargedIsEstimate,
   currencyShown,
@@ -1328,5 +1329,35 @@ describe('a refund typed with a minus', () => {
     expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 272_400, currency: 'IDR' }));
     const reopened = formFromTransaction(view({ originalCurrency: 'CNY', originalAmountMinor: 12_000, entries: [{ ...paid(272_400), accountId: 'acct-bank' }, spent('cat-restaurants', -272_400)] as TransactionView['entries'] }), accounts, 'ws-1');
     expect(reopened).toMatchObject({ currency: 'CNY', amount: '-120.00', chargedAmount: '272400' });
+  });
+});
+
+describe('Category filled from the note’s history', () => {
+  const empty = { ...draft, categoryId: '' };
+
+  it('fills an empty category nobody chose', () => {
+    expect(categoryFromNote(empty, 'cat-cafe', null)).toBe('cat-cafe');
+    expect(categoryFromNote({ ...empty, mode: 'income' }, 'cat-salary', null)).toBe('cat-salary');
+    // No match: Category stays empty, so the row still offers Choose later.
+    expect(categoryFromNote(empty, null, null)).toBeNull();
+  });
+
+  it('never replaces a category picked by hand, or one the form opened with', () => {
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, 'cat-cafe', 'hand')).toBeNull();
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, 'cat-cafe', null)).toBeNull();
+    expect(categoryFromNote({ ...empty, categoryId: 'cat-restaurants' }, null, 'hand')).toBeNull();
+  });
+
+  it('follows the note while the category is only its own guess', () => {
+    const filled = { ...empty, categoryId: 'cat-cafe' };
+    expect(categoryFromNote(filled, 'cat-cafe', 'auto')).toBeNull();
+    expect(categoryFromNote(filled, 'cat-restaurants', 'auto')).toBe('cat-restaurants');
+    // A note that no longer matches anything takes its own guess back.
+    expect(categoryFromNote(filled, null, 'auto')).toBe('');
+  });
+
+  it('guesses nothing for a transfer or a split', () => {
+    expect(categoryFromNote({ ...transfer, moneyId: 'acct-bank' }, 'cat-cafe', null)).toBeNull();
+    expect(categoryFromNote({ ...empty, splits: [{ categoryId: '', amount: '1' }] }, 'cat-cafe', null)).toBeNull();
   });
 });

@@ -5,8 +5,8 @@ import {
   editMemberTransfer,
   itemIdOf,
   listAccounts,
+  guessCategoryFromHistory,
   memberTransfersOf,
-  noteCategory,
   paidFromAccount,
   type PaidWithItem,
   type SetAsideChoice,
@@ -53,7 +53,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { categoryLater, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { categoryFromNote, categoryLater, type CategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -246,6 +246,13 @@ function CardBody({
       ? formFromTransaction(initial, accounts, bookId, photoIds)
       : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
   );
+  /*
+   * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
+   * by hand: the note's history only ever fills a category nobody chose, and only follows one it filled itself.
+   */
+  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : null);
+  const latest = useRef(draft);
+  latest.current = draft;
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -361,6 +368,7 @@ function CardBody({
    */
   useEffect(() => {
     if (draft.bookId === bookId) return;
+    categorySource.current = null;
     setDraft((d) => ({ ...d, bookId, categoryId: '', splits: [] }));
   }, [bookId, draft.bookId]);
 
@@ -543,6 +551,7 @@ function CardBody({
       // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
       // one question about that, asked here too rather than restated.
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
+      categorySource.current = null;
       return set({ mode: value, categoryId: '', splits: [], ...flag });
     }
     const first = choices.buys[0]!;
@@ -565,20 +574,36 @@ function CardBody({
   const [noteFocused, setNoteFocused] = useState(false);
   const suggestKind = draft.mode === 'expense' || draft.mode === 'income' ? draft.mode : null;
   const categoryNameOf = (id: string) => accounts.find((a) => a.id === id)?.name;
-  const pickNote = (suggestion: NoteSuggestion) =>
-    setDraft((d) => ({
-      ...d,
-      description: suggestion.description,
-      ...(suggestion.categoryId && !d.categoryId && d.splits.length === 0 ? { categoryId: suggestion.categoryId } : {}),
-    }));
-  // A note typed out in full without a tap still brings its category, when leaving Note finds Category empty.
-  const fillCategoryFromNote = () => {
-    const typed = draft.description.trim();
-    if (!suggestKind || !typed || draft.categoryId || draft.splits.length > 0) return;
-    void noteCategory(database, ws, typed, suggestKind).then((categoryId) => {
-      if (categoryId) setDraft((d) => (d.categoryId || d.splits.length > 0 || d.description.trim() !== typed ? d : { ...d, categoryId }));
-    });
+  const pickNote = (suggestion: NoteSuggestion) => {
+    const fill = suggestion.categoryId && categorySource.current !== 'hand' && draft.splits.length === 0;
+    if (fill) categorySource.current = 'auto';
+    setDraft((d) => ({ ...d, description: suggestion.description, ...(fill ? { categoryId: suggestion.categoryId! } : {}) }));
   };
+  /*
+   * Typing the note fills Category with the one that note was last filed under — Expense from spending, Income from
+   * income — a quarter of a second after the typing stops. Nothing says where it came from: it reads as a category
+   * chosen. A guess that comes back after the note has changed again is dropped, and clearing the note leaves
+   * Category as it is.
+   */
+  useEffect(() => {
+    const typed = draft.description.trim();
+    if (!suggestKind || !typed || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      void guessCategoryFromHistory(database, ws, typed, suggestKind).then((guess) => {
+        const now = latest.current;
+        if (stale || now.description.trim() !== typed || now.mode !== suggestKind) return;
+        const next = categoryFromNote(now, guess, categorySource.current);
+        if (next === null) return;
+        categorySource.current = next ? 'auto' : null;
+        setDraft((d) => ({ ...d, categoryId: next }));
+      });
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [draft.description, suggestKind, database, ws]);
   const noteRow = (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -593,10 +618,7 @@ function CardBody({
           value={draft.description}
           onChange={(e) => set({ description: e.target.value })}
           onFocus={() => setNoteFocused(true)}
-          onBlur={() => {
-            setNoteFocused(false);
-            fillCategoryFromNote();
-          }}
+          onBlur={() => setNoteFocused(false)}
           placeholder="Note"
           className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
         />
@@ -1141,7 +1163,10 @@ function CardBody({
         <CategoryPicker
           kind={draft.mode === 'income' ? 'income' : 'expense'}
           value={draft.categoryId}
-          onPick={(categoryId) => set({ categoryId })}
+          onPick={(categoryId) => {
+            categorySource.current = 'hand';
+            set({ categoryId });
+          }}
           onClose={() => setSheet(null)}
         />
       )}

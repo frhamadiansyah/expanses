@@ -81,3 +81,28 @@ test('a refund typed with a minus nets the category it went back under: the car 
   await page.getByRole('button', { name: 'Categories', exact: true }).click();
   await expect(page.getByText('550.000').first()).toBeVisible();
 });
+
+test('typing a note fills an empty category with the one that note had last time, and ✓ saves under it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Cafe & dessert', amount: '30000' });
+
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await openAmount(form);
+  const keypad = page.getByTestId('keypad');
+  for (const key of '32000') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Tahapan');
+  const category = form.getByRole('button', { name: /^Category/ });
+  await expect(category).toContainText('Choose later');
+  await form.getByLabel('Note').fill('Kopi Kenangan');
+  // Filled from history, and drawn exactly as a category chosen by hand: no marker says where it came from.
+  await expect(category).toContainText('Cafe & dessert');
+  await expect(category).not.toContainText(/history/i);
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(row(page, 'Kopi Kenangan')).toHaveCount(2);
+  for (const each of await row(page, 'Kopi Kenangan').all()) await expect(each).toContainText('Cafe & dessert');
+});
