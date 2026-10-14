@@ -11,6 +11,7 @@ import { captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom }
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { dayOrderExists } from './day-order-column';
+import { debitTotal, exactExists, exactFitsLines, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
@@ -54,7 +55,7 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -97,6 +98,15 @@ export interface PostTransactionInput {
    * date changes; a value (sync's apply) is written as given.
    */
   dayOrder?: number | null;
+  /**
+   * The amount as typed with cents, in a currency with no minor unit (0068): 12.500,30 is 1250030, in hundredths of
+   * the currency unit, always positive. The lines carry the whole figure (12.501 for money out, 12.500 for money in),
+   * and one of them must be this figure rounded. Null or absent when the amount was whole; a figure whose cents are
+   * zero is stored as null. On `replaceTransaction`, undefined carries the original's while the edit moves the same
+   * money (its debit lines add up to what they did) and clears it when the amount changes; a value, or null, is
+   * written as given.
+   */
+  exactHundredths?: number | null;
   /** Photo rows written before the transaction had an id. */
   photoIds?: string[];
   /**
@@ -172,6 +182,13 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   if (input.billMonth != null && !BILL_MONTH.test(input.billMonth)) {
     throw new LedgerError('INVALID_BILL_MONTH', `A bill month is YYYY-MM, got "${input.billMonth}"`);
   }
+  const exact = input.exactHundredths ?? null;
+  if (exact !== null && !isExactFigure(exact)) {
+    throw new LedgerError('INVALID_EXACT', `An exact amount is a positive whole number of hundredths, got ${exact}`);
+  }
+  if (exact !== null && !exactFitsLines(input.lines, exact)) {
+    throw new LedgerError('INVALID_EXACT', `The amount does not round from the exact figure ${exact / 100}`);
+  }
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
@@ -225,6 +242,10 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // Unplaced unless told (an edit on the same day, or a shared purchase's place arriving): see day-order-column.ts.
   if (input.dayOrder !== undefined && input.dayOrder !== null && (await dayOrderExists(tx))) {
     await tx.run(sql`UPDATE transactions SET day_order = ${input.dayOrder} WHERE id = ${id}`);
+  }
+  // The figure typed with cents, kept beside the whole one (see exact-column.ts); a whole figure keeps nothing.
+  if (exact !== null && exact % 100 !== 0 && (await exactExists(tx))) {
+    await tx.run(sql`UPDATE transactions SET exact_hundredths = ${exact} WHERE id = ${id}`);
   }
   await tx.insert(entries).values(
     planned.map((p) => ({
@@ -344,6 +365,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     .from(transactions)
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
+  const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
   const [settles] = (await billTablesExist(tx))
     ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
     : [];
@@ -421,6 +443,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
     // A correction keeps its place in its day; moved to another day it goes to the top of that one.
     ...(input.dayOrder === undefined ? { dayOrder: original && original.occurredOn === input.occurredOn ? (placed?.[0] ?? null) : null } : {}),
+    // The figure typed with cents stays while the edit moves the same money (a new note, date or category); a new
+    // amount is a new figure, which a correction that does not say what it was typed as has not got.
+    ...(input.exactHundredths === undefined ? { exactHundredths: carriedExact(typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
@@ -444,6 +469,13 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // A deposit event it posted stays done, and its log takes the edited figures.
   await followDepositEventTx(tx, ws, id, replacement);
   return replacement;
+}
+
+/** The original's exact figure, when an edit that does not mention it still moves the same money; else none. */
+function carriedExact(exact: number | null, oldLines: readonly { amountMinor: number }[], lines: readonly { amountMinor: number }[]): number | null {
+  if (exact === null) return null;
+  const value = Number(exact);
+  return debitTotal(oldLines) === debitTotal(lines) && exactFitsLines(lines, value) ? value : null;
 }
 
 /** Sets or clears a purchase's typed MCC in place: merchant metadata, not amounts, so nothing is reposted. */
@@ -562,6 +594,12 @@ export interface TransactionView {
    * view built by hand need not name it.
    */
   dayOrder?: number | null;
+  /**
+   * The amount as typed with cents, in hundredths, when it had any (0068); null otherwise. Never shown: every screen
+   * reads the whole figure on the lines. What card points are worked out from, and what an edit that keeps the amount
+   * passes back. Optional so a view built by hand need not name it; every view read from the ledger carries it.
+   */
+  exactHundredths?: number | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -618,8 +656,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
   // stopped before 0067 has no places: every day reads newest first, as it always did.
   const placed = await dayOrderExists(database.db);
+  const typed = await exactExists(database.db);
   const txs = await database.db
-    .select({ ...getTableColumns(transactions), dayOrder: placed ? sql<number | null>`day_order` : sql<null>`NULL` })
+    .select({
+      ...getTableColumns(transactions),
+      dayOrder: placed ? sql<number | null>`day_order` : sql<null>`NULL`,
+      exactHundredths: typed ? sql<number | null>`exact_hundredths` : sql<null>`NULL`,
+    })
     .from(transactions)
     .where(and(...conds))
     .orderBy(...(placed ? [desc(transactions.occurredOn), sql`day_order IS NOT NULL`, sql`day_order`, desc(transactions.createdAt)] : [desc(transactions.occurredOn), desc(transactions.createdAt)]))
@@ -685,6 +728,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     excluded: extras?.get(t.id)?.excluded ?? false,
     photoCount: extras?.get(t.id)?.photoCount ?? 0,
     dayOrder: t.dayOrder === null ? null : Number(t.dayOrder),
+    exactHundredths: t.exactHundredths === null ? null : Number(t.exactHundredths),
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));
