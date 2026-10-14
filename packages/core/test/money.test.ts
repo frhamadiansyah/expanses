@@ -22,6 +22,13 @@ describe('currencies', () => {
   it('rejects unknown codes', () => {
     expect(() => currencyInfo('XXX')).toThrow(UnknownCurrencyError);
   });
+  it('knows the Turkish lira at two decimals', () => {
+    expect(currencyInfo('TRY')).toEqual({ code: 'TRY', exponent: 2, symbol: '₺', name: 'Turkish Lira', flag: '🇹🇷' });
+    expect(parseMajor('1.234,56', 'TRY')).toBe(123456);
+    expect(parseMajor('450', 'TRY')).toBe(45000);
+    expect(minorToMajorString(123456, 'TRY')).toBe('1234.56');
+    expect(nbsp(formatMinor(123456, 'TRY'))).toMatch(/1\.234,56/);
+  });
 });
 
 describe('roundHalfAwayFromZero', () => {
