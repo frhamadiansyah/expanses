@@ -97,7 +97,7 @@ function purchaseTables(entity: PurchaseEntity): Map<string, { txColumn: string;
   return out;
 }
 
-function purchaseDdl(entity: PurchaseEntity, bookId: string): string {
+function purchaseDdl(entity: PurchaseEntity, bookId: string, columnsOf: ReadonlyMap<string, ReadonlySet<string>>): string {
   const parts: string[] = [];
   const when = watching(bookId);
   for (const [table, { txColumn, fieldOf }] of purchaseTables(entity)) {
@@ -105,7 +105,8 @@ function purchaseDdl(entity: PurchaseEntity, bookId: string): string {
       `INSERT INTO __writes (tbl, key, op, cols, old, mark) VALUES ('${table}', ${row}.${txColumn}, '${op}', ${cols}, NULL, ${MARK});`;
     const name = `__capture_${table}`;
     parts.push(`CREATE TEMP TRIGGER IF NOT EXISTS ${name}_ins AFTER INSERT ON main.${table} WHEN ${when} BEGIN ${record('NEW', 'insert', "'*'")} END;`);
-    const columns = [...fieldOf.keys()];
+    // A database stopped at an older version has not got every synced column yet (0067's day_order, say).
+    const columns = [...fieldOf.keys()].filter((column) => columnsOf.get(table)?.has(column) ?? true);
     if (columns.length) {
       parts.push(
         `CREATE TEMP TRIGGER IF NOT EXISTS ${name}_upd AFTER UPDATE OF ${columns.join(', ')} ON main.${table} WHEN ${when} AND (${changed(columns)}) BEGIN ${record('NEW', 'update', changedNames(columns))} END;`,
@@ -126,9 +127,17 @@ export async function installCaptureTriggers(database: Database, bookId: string)
   ];
   // A test that stops its database at an older version (a migration test) has no table yet for a later entity.
   const tables = new Set((await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(([name]) => name));
+  const columnsOf = new Map<string, Set<string>>();
+  for (const entity of SHARED_ENTITIES) {
+    if (entity.kind !== 'purchase') continue;
+    for (const table of entity.tables) {
+      if (!tables.has(table)) continue;
+      columnsOf.set(table, new Set((await database.db.values<[string]>(sql`SELECT name FROM pragma_table_info(${table})`)).map(([name]) => name)));
+    }
+  }
   for (const entity of SHARED_ENTITIES) {
     if (entity.kind === 'row' && !tables.has(entity.table)) continue;
-    ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId));
+    ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId, columnsOf));
   }
   await database.execScript(ddl.join('\n'));
 }

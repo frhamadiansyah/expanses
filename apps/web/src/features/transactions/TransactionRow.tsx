@@ -45,6 +45,7 @@ export function TransactionRow({
   busy,
   title,
   className,
+  itemProps,
 }: {
   row: ListRow;
   accounts: readonly AccountRow[];
@@ -80,6 +81,8 @@ export function TransactionRow({
   busy?: boolean;
   title?: string;
   className?: string;
+  /** Attributes for the row's `<li>`: what a list that can be reordered finds its rows by (`reorderAttrs`). */
+  itemProps?: Record<`data-${string}`, string>;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
   const money = formatMinor(amountMinor ?? row.amountMinor, currency ?? row.currency);
@@ -165,7 +168,7 @@ export function TransactionRow({
   // A phone reaches Edit and Delete by swiping; both stay one gesture away rather than crowding the row.
   if (phone && (onEdit || onDelete || onDuplicate)) {
     return (
-      <li className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
+      <li {...itemProps} className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
           enabled
           reveal={(onDuplicate ? 64 : 0) + (onEdit ? 64 : 0) + (onDelete ? 64 : 0)}
@@ -196,6 +199,7 @@ export function TransactionRow({
 
   return (
     <li
+      {...itemProps}
       data-testid={testId}
       title={title}
       onClick={onOpen ? () => onOpen(row) : undefined}

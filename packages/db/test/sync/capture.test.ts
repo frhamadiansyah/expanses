@@ -342,12 +342,14 @@ describe('capture: purchases', () => {
             // Joint net worth §5.3: not paid from a shared item (task 7).
             paidFrom: null,
           },
+          // Never moved within its day (0067).
+          dayOrder: null,
         },
       },
     ]);
     expect(await lineageRow(database, id)).toEqual({ bookId: book.id, head: id, paidBy: 'member-me', paidLabel: 'BCA Tahapan' });
     const hlc = (await outboxChangeSets(database))[0]!.hlc;
-    for (const field of ['occurredOn', 'description', 'channel', 'excluded', 'bill', 'money']) {
+    for (const field of ['occurredOn', 'description', 'channel', 'excluded', 'bill', 'money', 'dayOrder']) {
       expect(await fieldClock(database, 'purchase', id, field)).toBe(hlc);
     }
   });

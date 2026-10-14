@@ -1,4 +1,4 @@
-import { dayNet, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { classify } from './classify';
 
@@ -214,7 +214,10 @@ export function sortRows(rows: readonly ListRow[], sort: Sort): ListRow[] {
     (a, b) =>
       (sort.key === 'amount' ? a.amountMinor - b.amountMinor : dateOf(a).localeCompare(dateOf(b))) * dir ||
       (a.kind === b.kind ? 0 : a.kind === 'draft' ? -1 : 1) ||
-      (b.tx?.createdAt ?? '').localeCompare(a.tx?.createdAt ?? ''),
+      // By date, a day reads in the order its rows were moved to by hand, whichever way the days run (the db's rule).
+      (sort.key === 'date' && a.tx && b.tx
+        ? compareWithinDay(a.tx, b.tx)
+        : (b.tx?.createdAt ?? '').localeCompare(a.tx?.createdAt ?? '')),
   );
 }
 

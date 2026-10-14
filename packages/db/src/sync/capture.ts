@@ -1,6 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
+import { dayOrderExists } from '../repos/day-order-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
 import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
@@ -153,6 +154,11 @@ export interface PurchaseFields {
   excluded: number;
   bill: { templateId: string; billMonth: string | null } | null;
   money: PurchaseMoney;
+  /**
+   * Its place within its day when moved there by hand, or null (0067). Optional: an op from a device without it carries
+   * none, and the receiver keeps what it has (an edit on the same day carries it, a new date clears it).
+   */
+  dayOrder?: number | null;
 }
 
 export interface PurchaseMoney {
@@ -914,11 +920,12 @@ async function postedHeadOf(tx: Db, touch: LineageTouch): Promise<string | null>
  * as paid by this member, from their own shared item when the account is one (Task 9 ruling), else from nothing.
  */
 export async function projectPurchase(tx: Db, transactionId: string, memberId: string, known: KnownPayer | null, hint?: PaidFrom | null): Promise<PurchaseFields | null> {
-  const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null]>(
-    sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id FROM transactions WHERE id = ${transactionId}`,
+  const placed = await dayOrderExists(tx);
+  const [row] = await tx.values<[string, string, string | null, string | null, number | null, string | null, number | null]>(
+    sql`SELECT occurred_on, description, template_id, original_currency, original_amount_minor, card_id, ${placed ? sql`day_order` : sql`NULL`} FROM transactions WHERE id = ${transactionId}`,
   );
   if (!row) return null;
-  const [occurredOn, description, templateId, originalCurrency, originalAmountMinor, cardId] = row;
+  const [occurredOn, description, templateId, originalCurrency, originalAmountMinor, cardId, dayOrder] = row;
   const [flags] = await tx.values<[string | null, number]>(sql`SELECT channel, excluded FROM transaction_flags WHERE transaction_id = ${transactionId}`);
   const [payment] = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
   const entryRows = await tx.values<[string, number, string, number, string | null, string, string, string | null]>(sql`
@@ -994,6 +1001,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
       paidLabel,
       paidFrom,
     },
+    // Only where 0067 is: a database before it sends no place, as a device before it would not.
+    ...(placed ? { dayOrder: dayOrder === null ? null : Number(dayOrder) } : {}),
   };
 }
 
@@ -1110,6 +1119,22 @@ export async function captureVoidingTx(tx: Db, transactionId: string): Promise<v
   const bookId = await bookOfTransaction(tx, transactionId);
   if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId); // §8.6
   if (books.length === 0) return;
+  const lineageId = await lineageOfTransaction(tx, transactionId);
+  const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
+  if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
+/**
+ * The ledger's reorder door (`moveTransactionInDay`), called before a row's place in its day changes: a shared
+ * purchase's place travels as its `dayOrder`. Not money, so no summary is marked dirty. A book no longer shared is
+ * read-only (§8.6), but a place in a list is this device's view of it: it is kept here and sent nowhere.
+ */
+export async function captureReorderingTx(tx: Db, transactionId: string): Promise<void> {
+  const session = sessionOf(tx);
+  if (!session) return;
+  const books = await session.sharedBooks();
+  if (books.length === 0) return;
+  const bookId = await bookOfTransaction(tx, transactionId);
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
   if (inShared) await session.touchLineage(lineageId, transactionId);

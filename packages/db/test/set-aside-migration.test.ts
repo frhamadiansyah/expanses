@@ -36,7 +36,8 @@ describe('migration 0050', () => {
     const columnsOf = async (table: string) => older.db.values(sql.raw(`PRAGMA table_info(${table})`));
     const before = await Promise.all(tables.map(columnsOf));
 
-    await migrate(older);
+    // 0050 itself, not every migration after it: a later one may add a column of its own (0067 day_order does).
+    await migrate(older, MIGRATIONS.filter((m) => m.version <= 50));
 
     const after = await Promise.all(tables.map(columnsOf));
     expect(after).toEqual(before);

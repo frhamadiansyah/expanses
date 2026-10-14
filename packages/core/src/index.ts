@@ -41,6 +41,7 @@ export {
   type PostingLine,
 } from './ledger/types';
 export { planPosting } from './ledger/posting';
+export { compareWithinDay, type DayOrdered, type DayOrderWrite, planDayOrder } from './ledger/day-order';
 export {
   exchangeLines,
   expenseLines,
