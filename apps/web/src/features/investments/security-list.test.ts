@@ -45,5 +45,6 @@ describe('useSecurityList', () => {
     const keys = client.getQueryCache().findAll().map((q) => q.queryKey);
     expect(keys).toContainEqual(['security-list', 'us', false]);
     expect(keys).toContainEqual(['security-list', 'idx', true]);
-  });
+    // The first import of the queries module pulls in most of the app, which can outlast the default 5s.
+  }, 30_000);
 });
