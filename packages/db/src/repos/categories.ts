@@ -120,7 +120,13 @@ async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Pro
  * Children a default parent gained after workspaces already held it, in the order they are added. Every book whose
  * own keyed parent is open gets them — not only Personal — because they belong wherever their siblings are.
  */
-const ADDED_CHILDREN: readonly string[] = ['travel.transport', 'travel.souvenirs', 'travel.others'];
+const ADDED_CHILDREN: readonly string[] = ['travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others'];
+
+/**
+ * A child that belongs before a sibling an earlier build already added, where appending it would put it after. It takes
+ * that sibling's place and the sibling moves to the end; both values follow from the book's own rows, so phones agree.
+ */
+const PLACED_BEFORE: Readonly<Record<string, string>> = { 'travel.meals': 'travel.others' };
 
 /**
  * The id a default category added on open has in one book (or, before books, one workspace): the same on every
@@ -217,6 +223,14 @@ async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string
     const id = await defaultCategoryIdOf(bookId ?? workspaceId, key);
     // Already here under that id but no longer in this book with its key: it was put somewhere on purpose.
     if ((await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id))).length > 0) continue;
+    const before = PLACED_BEFORE[key] ? byKey.get(PLACED_BEFORE[key]!) : undefined;
+    const end = Math.max(-1, ...rows.filter((sibling) => sibling.parentId === parent.id).map((sibling) => sibling.sortOrder)) + 1;
+    let sortOrder = end;
+    if (before && before.parentId === parent.id) {
+      sortOrder = before.sortOrder;
+      await tx.update(accounts).set({ sortOrder: end }).where(eq(accounts.id, before.id));
+      before.sortOrder = end;
+    }
     const row: AccountRow = {
       id,
       workspaceId,
@@ -228,7 +242,7 @@ async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string
       currency: null,
       valuationMode: 'derived',
       systemKey: key,
-      sortOrder: Math.max(-1, ...rows.filter((sibling) => sibling.parentId === parent.id).map((sibling) => sibling.sortOrder)) + 1,
+      sortOrder,
       archivedAt: null,
       createdAt: now,
     };

@@ -5,15 +5,15 @@ import { defaultCategoryIdOf } from '../../src/repos/categories';
 import { Household, type Device } from './household';
 
 /*
- * Travel's Transport, Souvenirs and Others reaching a shared book: each phone upgrades on its own day, and the book
+ * Travel's Transport, Souvenirs, Meals and Others reaching a shared book: each phone upgrades on its own day, and the book
  * ends with one row of each on every phone — the owner's phone adds them and sync carries them, a joined phone never
  * makes copies of its own, and the id is worked out from the book alike everywhere.
  */
 
-const ADDED = ['travel.transport', 'travel.souvenirs', 'travel.others'] as const;
+const ADDED = ['travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others'] as const;
 const keys = ADDED.map((key) => `'${key}'`).join(', ');
 
-/** Takes the three out of every book on one phone, as the phone held them before the upgrade. Not captured. */
+/** Takes the four out of every book on one phone, as the phone held them before the upgrade. Not captured. */
 async function asBeforeTheUpgrade(d: Device): Promise<void> {
   await d.database.execScript(`
     DELETE FROM book_categories WHERE category_account_id IN (SELECT id FROM accounts WHERE system_key IN (${keys}));
@@ -50,7 +50,7 @@ describe('Travel sub-categories in a shared book', () => {
   it('end as one row each on both phones when the joined phone upgrades first', async () => {
     const { home, fandri, dewi, bookId } = await upgradedHousehold();
 
-    // Dewi's phone upgrades and opens: her own Personal gets the three, the joined book waits for the owner's.
+    // Dewi's phone upgrades and opens: her own Personal gets the four, the joined book waits for the owner's.
     await ensureCategoryKeys(dewi.database, dewi.ws);
     expect(await rowsIn(dewi, bookId)).toEqual([]);
     const dewiPersonal = await personalBook(dewi.database, dewi.ws);

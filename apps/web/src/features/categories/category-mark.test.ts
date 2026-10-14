@@ -22,11 +22,12 @@ describe('categoryMark colour', () => {
   });
 });
 
-describe("Travel's Transport, Souvenirs and Others", () => {
+describe("Travel's Transport, Souvenirs, Meals and Others", () => {
   const accounts = [
     row('travel', null, 'travel'),
     row('transport', 'travel', 'travel.transport'),
     row('souvenirs', 'travel', 'travel.souvenirs'),
+    row('meals', 'travel', 'travel.meals'),
     row('others', 'travel', 'travel.others'),
   ];
 
@@ -34,6 +35,7 @@ describe("Travel's Transport, Souvenirs and Others", () => {
     expect(categoryMark('transport', accounts)).toMatchObject({ colour: CATEGORY_COLOURS.travel });
     expect(categoryMark('transport', accounts).Glyph.displayName).toBe('TrainFront');
     expect(categoryMark('souvenirs', accounts).Glyph.displayName).toBe('ShoppingBag');
+    expect(categoryMark('meals', accounts).Glyph.displayName).toBe('Utensils');
     expect(categoryMark('others', accounts).Glyph.displayName).toBe('Luggage');
     expect(categoryMark('others', accounts, { travel: '#16a34a' }).colour).toBe('#16a34a');
   });
