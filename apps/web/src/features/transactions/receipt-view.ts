@@ -105,7 +105,11 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
   // bill, and the chart's treatment of it changes nothing about what the bank will ask for.
-  if (paid) lines.push({ label: 'Total', value: formatMinor(Math.abs(paid.amountMinor), currency) });
+  // Money back on a purchase: its category was credited. Said so, and its total reads as money in.
+  const spent = tx.entries.filter((entry) => entry.accountKind === 'expense');
+  const refund = spent.length > 0 && spent.reduce((sum, entry) => sum + entry.amountMinor, 0) < 0;
+  if (refund) lines.push({ label: 'Refund', value: 'Money back' });
+  if (paid) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
   if (points) lines.push({ label: 'Points earned', value: pointsText(points), tone: 'points' });
   if (owed.length > 0) {
     const total = owed.reduce((sum, person) => sum + person.totalMinor, 0);

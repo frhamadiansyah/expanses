@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { type AccountRow, replaceTransaction } from '@expanses/db';
+import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -10,7 +10,8 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
-import { isQuickEditable, quickFromTransaction, quickToInput, type QuickValues, readQuick } from './quick-row';
+import { canRefile, emptyForm, refiledPost } from './tx-form';
+import { ratesForSave } from './tx-save';
 import { TwoTapDelete } from './TwoTapDelete';
 
 /**
@@ -85,8 +86,10 @@ export function TransactionRow({
   itemProps?: Record<`data-${string}`, string>;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  const money = formatMinor(amountMinor ?? row.amountMinor, currency ?? row.currency);
-  const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
+  // Money back on a purchase reads as money in: a plus, in green.
+  const shownMinor = amountMinor ?? row.amountMinor;
+  const money = row.refund ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
+  const sign = row.refund ? 1 : row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
 
   const circle = (
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
@@ -133,6 +136,7 @@ export function TransactionRow({
           {label ?? (row.categoryName || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
           {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
           {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
+          {row.refund && <span className="ml-2 rounded bg-[var(--ph-tint-panel)] px-1.5 text-xs font-normal text-[var(--ph-tint-ink)]">Refund</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
@@ -238,24 +242,27 @@ export function useRecategorise(): {
   const [picking, setPicking] = useState<ListRow | null>(null);
   const [toast, setToast] = useState<{ text: string; back: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const today = isoDate();
-
-  // Only a plain purchase: a split, a transfer, an opening balance or a price in another currency cannot be
-  // re-filed by picking one category, which is exactly what the list and the table already refuse to edit in place.
-  const offers = (row: ListRow) => row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && isQuickEditable(row.tx);
+  // One category and one account: a purchase, a refund or an income, foreign or not. A split, a transfer or an
+  // opening balance cannot be re-filed by picking one category.
+  const offers = (row: ListRow) => row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && canRefile(row.tx);
 
   /**
-   * The purchase again, filed under another category — and the id of what that left behind.
+   * The transaction again, filed under another category — and the id of what that left behind. Only the category is
+   * swapped, through the edit path (`refiledPost`), so a refund stays money back and a foreign purchase keeps what the
+   * merchant charged, its card and its MCC.
    *
    * An edit voids the original and posts a replacement, so the way back is not "re-file that row": that row is
-   * void now. Undo re-files the *replacement*, with the same cells it went in with and the category it had.
+   * void now. Undo re-files the *replacement*, read as the original was, with the category it had.
    */
-  async function fileAs(id: string, values: QuickValues, categoryId: string): Promise<string> {
-    const { read } = readQuick({ ...values, categoryId }, accounts, today, ws.baseCurrency);
-    if (!read) throw new Error('This purchase cannot be re-filed from the list. Open it to edit it.');
-    const rates = await resolveRates(read.currency === ws.baseCurrency ? [] : [read.currency], read.occurredOn);
-    if (rates.missing.length > 0) throw new Error(`No ${rates.missing[0]}→${ws.baseCurrency} rate for ${read.occurredOn}.`);
-    const replacement = await replaceTransaction(database, ws, id, { ...quickToInput(read, accounts), ratesToBase: rates.rates });
+  async function fileAs(tx: TransactionView, categoryId: string): Promise<string> {
+    const post = refiledPost(tx, accounts, categoryId, ws.bookId ?? '');
+    if (post.kind !== 'post') throw new Error('This transaction cannot be re-filed from the list. Open it to edit it.');
+    const draft = { ...emptyForm(ws.bookId ?? '', tx.occurredOn), occurredOn: tx.occurredOn };
+    const ratesToBase = await ratesForSave({
+      database, ws, draft, post, accounts, rateDate: tx.occurredOn > isoDate() ? isoDate() : tx.occurredOn, needsRate: null, resolveRates,
+      onMissing: () => undefined, where: 'Edit',
+    });
+    const replacement = await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase });
     await invalidate();
     return replacement;
   }
@@ -280,22 +287,22 @@ export function useRecategorise(): {
       <>
         {picking && (
           <CategoryPicker
-            kind="expense"
-            // Re-filing posts through `expenseLines`: income is not a place a purchase can be moved to.
+            kind={picking.type === 'income' ? 'income' : 'expense'}
+            // Only the category is swapped: a purchase stays spending and an income stays income.
             lockKind
             title={`Category for ${picking.description}`}
             value={picking.categoryId ?? undefined}
             onPick={(categoryId) => {
               const tx = picking.tx!;
               const was = picking.categoryId;
-              const values = quickFromTransaction(tx, today);
               const name = accounts.find((account) => account.id === categoryId)?.name ?? 'that category';
               void run(async () => {
-                const moved = await fileAs(tx.id, values, categoryId);
+                const moved = await fileAs(tx, categoryId);
                 setToast({
                   text: `Moved to ${name}`,
+                  // The replacement is the original with its category swapped, so it is read as the original was.
                   back: async () => {
-                    if (was) await fileAs(moved, values, was);
+                    if (was) await fileAs({ ...tx, id: moved }, was);
                   },
                 });
               });

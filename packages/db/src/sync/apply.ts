@@ -6,6 +6,7 @@ import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTr
 import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
+import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -29,7 +30,6 @@ import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './sha
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
-import { uuidv5 } from './uuidv5';
 
 /*
  * Apply and merge (household-sharing spec §7). The pull loop reads the relay's log from this device's cursor, and
@@ -183,17 +183,12 @@ async function isPlaceholder(tx: Db, accountId: string): Promise<boolean> {
   return (await tx.values(sql`SELECT 1 FROM book_member_accounts WHERE account_id = ${accountId}`)).length > 0;
 }
 
-/** The book's Uncategorised expense category (rule 4): the same id on every device, made on demand. */
-export async function uncategorisedTx(tx: Db, ctx: BookContext): Promise<string> {
-  const id = await uuidv5(ctx.bookId, 'uncategorised');
-  const [found] = await tx.values(sql`SELECT 1 FROM accounts WHERE id = ${id}`);
-  if (!found) {
-    await tx.run(sql`
-      INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, icon, currency, system_key, sort_order, archived_at, created_at)
-      VALUES (${id}, ${ctx.ws.workspaceId}, NULL, 'expense', 'category', 'Uncategorised', NULL, NULL, NULL, 999, NULL, ${new Date().toISOString()})`);
-    await tx.run(sql`INSERT INTO book_categories (category_account_id, workspace_id, book_id) VALUES (${id}, ${ctx.ws.workspaceId}, ${ctx.bookId})`);
-  }
-  return id;
+/**
+ * The book's Uncategorised expense category (rule 4): the same id on every device, made on demand — the very row
+ * "Choose later" files into (`ensureUncategorisedRowTx`), so the two can never make two.
+ */
+export function uncategorisedTx(tx: Db, ctx: BookContext): Promise<string> {
+  return ensureUncategorisedRowTx(tx, ctx.ws.workspaceId, ctx.bookId, 'expense');
 }
 
 /* -------------------------------------------------------------- row entities */

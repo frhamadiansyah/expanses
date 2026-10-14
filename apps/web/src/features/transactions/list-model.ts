@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { classify } from './classify';
 
@@ -50,6 +50,10 @@ export interface ListRow {
   excluded: boolean;
   /** What a draft still needs before it can be recorded. Always empty for a recorded row. */
   needs: string[];
+  /** Money back on a purchase: an expense whose category took money back (a negative `amountMinor`). */
+  refund?: boolean;
+  /** Saved with its category left for later, so it is filed under Uncategorised until one is chosen. */
+  needsCategory?: boolean;
   tx?: TransactionView;
   draft?: DraftRow;
 }
@@ -65,9 +69,11 @@ export interface ListFilters {
   month: string;
   showDeleted: boolean;
   onlyDrafts: boolean;
+  /** Only what was saved under Uncategorised and still waits for a category. */
+  needsCategory?: boolean;
 }
 
-export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all', month: 'all', showDeleted: false, onlyDrafts: false };
+export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all', month: 'all', showDeleted: false, onlyDrafts: false, needsCategory: false };
 
 export interface Sort {
   key: 'date' | 'amount';
@@ -114,7 +120,8 @@ export function buildRows(
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
     const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
-    const baseOf = (kind: 'expense' | 'income') => Math.abs(tx.entries.filter((e) => e.accountKind === kind).reduce((sum, e) => sum + e.amountBaseMinor, 0));
+    // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
+    const baseOf = (kind: 'expense' | 'income') => (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
     return {
       kind: 'tx',
       id: tx.id,
@@ -137,6 +144,8 @@ export function buildRows(
       deleted: tx.status === 'void',
       excluded: tx.excluded ?? false,
       needs: [],
+      refund: c.type === 'expense' && c.amountMinor < 0,
+      needsCategory: c.categoryIds.some((id) => isUncategorisedKey(byId.get(id)?.systemKey)),
       tx,
     };
   });
@@ -197,6 +206,7 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     if (f.type === 'income' && row.type !== 'income') return false;
     if (f.type === 'transfer' && !['transfer', 'debt', 'opening', 'correction'].includes(row.type)) return false;
     if (f.cat && !withinCategory(row.categoryId, f.cat, byId)) return false;
+    if (f.needsCategory && !row.needsCategory) return false;
     if (f.paid.startsWith('card:') && row.cardId !== f.paid.slice(5)) return false;
     if (f.paid.startsWith('acct:') && !row.accountIds.includes(f.paid.slice(5))) return false;
     return matchesSearch(

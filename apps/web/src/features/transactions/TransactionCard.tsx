@@ -5,8 +5,8 @@ import {
   editMemberTransfer,
   itemIdOf,
   listAccounts,
+  guessCategoryFromHistory,
   memberTransfersOf,
-  noteCategory,
   paidFromAccount,
   type PaidWithItem,
   type SetAsideChoice,
@@ -18,6 +18,7 @@ import {
   saveMerchantMcc,
   splitBill,
   type TransactionView,
+  uncategorisedCategory,
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -52,7 +53,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, duplicateDraft, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -78,6 +79,9 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { 
     </>
   );
 }
+
+/** Stands in for Uncategorised while the ✓ asks whether the form would post; Save files under the real one. */
+const CATEGORY_LATER = '\u0000category-later';
 
 /** What a draft cannot carry to the ledger: `confirmDraft` posts one category, paid by one account. */
 const DRAFT_OMITS: readonly ExtraRow[] = ['split', 'with'];
@@ -251,6 +255,14 @@ function CardBody({
         ? duplicateDraft(duplicateOf, accounts, bookId)
         : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
   );
+  /*
+   * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
+   * by hand: the note's history only ever fills a category nobody chose, and only follows one it filled itself.
+   */
+  const prefilled = !!initial || !!finish || !!duplicateOf;
+  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled));
+  const latest = useRef(draft);
+  latest.current = draft;
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -366,6 +378,7 @@ function CardBody({
    */
   useEffect(() => {
     if (draft.bookId === bookId) return;
+    if (!prefilled) categorySource.current = null;
     setDraft((d) => ({ ...d, bookId, categoryId: '', splits: [] }));
   }, [bookId, draft.bookId]);
 
@@ -405,7 +418,11 @@ function CardBody({
         onDone();
         return;
       }
-      const post = formToPost(draft, accounts);
+      // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
+      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
+      const later = categoryLater(draft);
+      const filed = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const post = formToPost(filed, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
         // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the
@@ -421,14 +438,14 @@ function CardBody({
         // one place both ways into a save go through. The rate field lives under Add more details and only
         // there (§3.3), so that is the name this screen gives it.
         const ratesToBase = await ratesForSave({
-          database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+          database, ws, draft: filed, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
         // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
         if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
         else await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
-        const memory = formToMemory(draft, accounts);
+        const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
       await invalidate();
@@ -447,7 +464,8 @@ function CardBody({
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
-  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
+  // Money back lands in the account it was paid with, so the row says where it goes.
+  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
   // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never
@@ -474,7 +492,8 @@ function CardBody({
     if (busy || !setAside.ready || transferUnknown) return false;
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
-      else formToPost(draft, accounts);
+      // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
+      else formToPost(finish ? draft : withCategoryLater(draft, CATEGORY_LATER), accounts);
       return finish?.canSubmit?.(draft) ?? true;
     } catch {
       return false;
@@ -542,6 +561,8 @@ function CardBody({
       // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
       // one question about that, asked here too rather than restated.
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
+      // A new transaction starts its guessing again on another tab; one that already exists never guesses.
+      if (!prefilled) categorySource.current = null;
       return set({ mode: value, categoryId: '', splits: [], ...flag });
     }
     const first = choices.buys[0]!;
@@ -564,20 +585,40 @@ function CardBody({
   const [noteFocused, setNoteFocused] = useState(false);
   const suggestKind = draft.mode === 'expense' || draft.mode === 'income' ? draft.mode : null;
   const categoryNameOf = (id: string) => accounts.find((a) => a.id === id)?.name;
-  const pickNote = (suggestion: NoteSuggestion) =>
-    setDraft((d) => ({
-      ...d,
-      description: suggestion.description,
-      ...(suggestion.categoryId && !d.categoryId && d.splits.length === 0 ? { categoryId: suggestion.categoryId } : {}),
-    }));
-  // A note typed out in full without a tap still brings its category, when leaving Note finds Category empty.
-  const fillCategoryFromNote = () => {
-    const typed = draft.description.trim();
-    if (!suggestKind || !typed || draft.categoryId || draft.splits.length > 0) return;
-    void noteCategory(database, ws, typed, suggestKind).then((categoryId) => {
-      if (categoryId) setDraft((d) => (d.categoryId || d.splits.length > 0 || d.description.trim() !== typed ? d : { ...d, categoryId }));
-    });
+  const pickNote = (suggestion: NoteSuggestion) => {
+    // A suggestion picked is a choice: on a form opened on something that exists it still fills an empty Category, as
+    // it always has, and the category then stays the owner's.
+    const fill = !!suggestion.categoryId && draft.splits.length === 0 && (prefilled ? !draft.categoryId : categorySource.current !== 'hand');
+    if (fill && !prefilled) categorySource.current = 'auto';
+    setDraft((d) => ({ ...d, description: suggestion.description, ...(fill ? { categoryId: suggestion.categoryId! } : {}) }));
   };
+  /*
+   * Typing the note fills Category with the one that note was last filed under — Expense from spending, Income from
+   * income — a quarter of a second after the typing stops. Nothing says where it came from: it reads as a category
+   * chosen. While it is only the note's guess it follows the note: a new match replaces it, and no match (an emptied
+   * note included) puts the row back to Choose later. Once a category is picked by hand, typing never changes it. A
+   * guess that comes back after the note has changed again is dropped.
+   */
+  useEffect(() => {
+    const typed = draft.description.trim();
+    if (prefilled || !suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    if (!typed && categorySource.current !== 'auto') return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      void (typed ? guessCategoryFromHistory(database, ws, typed, suggestKind) : Promise.resolve(null)).then((guess) => {
+        const now = latest.current;
+        if (stale || now.description.trim() !== typed || now.mode !== suggestKind) return;
+        const next = categoryFromNote(now, guess, categorySource.current);
+        if (next === null) return;
+        categorySource.current = next ? 'auto' : null;
+        setDraft((d) => ({ ...d, categoryId: next }));
+      });
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [draft.description, suggestKind, database, ws]);
   const noteRow = (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -592,10 +633,7 @@ function CardBody({
           value={draft.description}
           onChange={(e) => set({ description: e.target.value })}
           onFocus={() => setNoteFocused(true)}
-          onBlur={() => {
-            setNoteFocused(false);
-            fillCategoryFromNote();
-          }}
+          onBlur={() => setNoteFocused(false)}
           placeholder="Note"
           className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
         />
@@ -810,7 +848,7 @@ function CardBody({
             />
             )}
 
-            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} selectOnOpen={!!duplicateOf} />
+            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} selectOnOpen={!!duplicateOf} noRefund={!!finish} />
 
             {draft.mode === 'transfer' ? (
               /*
@@ -840,7 +878,7 @@ function CardBody({
                 <FormRow
                   lead="value"
                   label="Category"
-                  placeholder="Select category"
+                  placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
                   icon={categoryLead}
                   value={categoryName}
                   caption=""
@@ -1140,7 +1178,10 @@ function CardBody({
         <CategoryPicker
           kind={draft.mode === 'income' ? 'income' : 'expense'}
           value={draft.categoryId}
-          onPick={(categoryId) => set({ categoryId })}
+          onPick={(categoryId) => {
+            categorySource.current = 'hand';
+            set({ categoryId });
+          }}
           onClose={() => setSheet(null)}
         />
       )}

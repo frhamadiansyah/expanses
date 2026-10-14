@@ -33,9 +33,12 @@ export function Keypad({
   onClose,
   replaceFirst = false,
   onFirstKey,
+  refund = false,
 }: {
   value: string;
   currency: string;
+  /** A minus typed first may make the figure a refund: DONE then works it out as money back. */
+  refund?: boolean;
   onChange: (value: string) => void;
   onClose: () => void;
   /** The figure shown is a copy to type over: the first digit starts a new figure, an operator carries on from it. */
@@ -54,7 +57,7 @@ export function Keypad({
   const press = (key: KeypadKey) => {
     const starts = replaceFirst && /^[0-9,]/.test(key);
     if (replaceFirst) onFirstKey?.();
-    const { text, close } = keypadAction(starts ? '' : value, currency, key);
+    const { text, close } = keypadAction(starts ? '' : value, currency, key, refund);
     if (text !== value) onChange(text);
     if (close) onClose();
   };

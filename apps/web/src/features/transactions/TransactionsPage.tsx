@@ -12,12 +12,13 @@ import {
   replaceTransaction,
   type SetAsideChoice,
   type TransactionView,
+  uncategorisedTransactionIds,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
@@ -281,6 +282,30 @@ export function TransactionsPage() {
    * the work in progress that editor exists for.
    */
   const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards);
+  /*
+   * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
+   * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
+   */
+  const waiting = useQuery({
+    queryKey: ['uncategorised-ids', ws.workspaceId, ws.bookId ?? null, ownerWide],
+    queryFn: () => uncategorisedTransactionIds(database, listWs),
+  });
+  const needCategoryCount = waiting.data?.length ?? 0;
+  const periodBefore = useRef<string | undefined>(undefined);
+  const showNeedsCategory = () => {
+    periodBefore.current = search.month;
+    setFilter('needsCategory', true);
+    setSearch({ month: 'all' });
+  };
+  const hideNeedsCategory = () => {
+    setFilter('needsCategory', false);
+    setSearch({ month: periodBefore.current });
+  };
+  const needsCategoryShown = waiting.isSuccess && filters.needsCategory === true;
+  useEffect(() => {
+    if (needsCategoryShown && needCategoryCount === 0) hideNeedsCategory();
+    // `hideNeedsCategory` is rebuilt every render; what decides is the count reaching nought while the filter is on.
+  }, [needsCategoryShown, needCategoryCount]);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
   /*
@@ -340,7 +365,7 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
@@ -1077,7 +1102,13 @@ export function TransactionsPage() {
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
       <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
       {/* The month's bills and the queue, between the chart and the history: neither is a transaction. */}
-      {!inCategory && chartShown && <WaitingBox today={today} drafts={pending} />}
+      {!inCategory && chartShown && (
+        <WaitingBox
+          today={today}
+          drafts={pending}
+          needsCategory={{ count: needCategoryCount, onShow: showNeedsCategory }}
+        />
+      )}
       {view === 'table' ? (
         <>
         {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
@@ -1106,9 +1137,12 @@ export function TransactionsPage() {
             ))}
 
           {/* What ⋯ has narrowed the list to, each with its own way out. */}
-          {phone && paidPicked && (
+          {((phone && paidPicked) || filters.needsCategory) && (
             <div className="flex flex-wrap gap-2" data-testid="active-filters">
-              <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
+              {phone && paidPicked && (
+                <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
+              )}
+              {filters.needsCategory && <FilterChip label="Needs a category" clearLabel="Clear needs a category" onClear={hideNeedsCategory} />}
             </div>
           )}
           {shown.length > 0 && (
@@ -1186,7 +1220,8 @@ export function TransactionsPage() {
                 // Gathering by category answers "what did the money go on", so it answers it for one
                 // direction at a time: the chart's own choice of money out or money in.
                 const groups = groupByCategory(shown.filter((row) => row.type === kind));
-                const whole = groups.reduce((sum, group) => sum + Math.abs(group.totalMinor), 0);
+                // Signed: a category whose refunds outweigh what it spent comes to less than nothing, and takes that off the whole.
+                const whole = groups.reduce((sum, group) => sum + group.totalMinor, 0);
                 return groups.map((group) => {
                   const key = group.id ?? group.name;
                   const open = openCategory === key;
@@ -1207,9 +1242,10 @@ export function TransactionsPage() {
                           </span>
                         </span>
                         <span className="text-right">
-                          <Money minor={Math.abs(group.totalMinor)} currency={listCurrency} className="block text-sm font-semibold" />
+                          {/* Less than nothing is money back on the whole: green, as money in. */}
+                          <Money minor={group.totalMinor} currency={listCurrency} className={cx('block text-sm font-semibold', group.totalMinor < 0 && 'text-emerald-700')} />
                           {whole > 0 && group.totalMinor !== 0 && (
-                            <span className="block text-xs text-slate-500">{Math.round((Math.abs(group.totalMinor) / whole) * 100)}%</span>
+                            <span className="block text-xs text-slate-500">{Math.round((group.totalMinor / whole) * 100)}%</span>
                           )}
                         </span>
                         <ChevronDown size={16} aria-hidden className={cx('shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />

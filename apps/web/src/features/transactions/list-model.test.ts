@@ -291,3 +291,31 @@ describe('billTagOf', () => {
     expect(billTagOf(tx('2026-09-03', 'Coffee', food))).toBeNull();
   });
 });
+
+describe('money back and rows waiting for a category', () => {
+  const uncategorised = account('later', 'expense', 'category', { name: 'Uncategorised', systemKey: 'uncategorised' });
+  const laterIn = account('later-in', 'income', 'category', { name: 'Uncategorised', systemKey: 'income.uncategorised' });
+  const withLater = [...accounts, uncategorised, laterIn];
+  byId.set(uncategorised.id, uncategorised);
+  byId.set(laterIn.id, laterIn);
+
+  it('reads a refund as money back: a negative spend that nets the day and the totals', () => {
+    const rental = tx('2026-09-12', 'Car rental', [['electronics', 1_000_000], ['octo', -1_000_000]]);
+    const back = tx('2026-09-12', 'Deposit back', [['octo', 450_000], ['electronics', -450_000]]);
+    const built = buildRows([rental, back], [], accounts, cards);
+    const refund = built.find((row) => row.id === back.id)!;
+    expect(refund).toMatchObject({ type: 'expense', refund: true, amountMinor: -450_000, spentMinor: -450_000, earnedMinor: 0 });
+    expect(built.find((row) => row.id === rental.id)!.refund).toBeFalsy();
+    expect(totals(built)).toEqual({ count: 2, spentMinor: 550_000, incomeMinor: 0 });
+    expect(dayTotal(built)).toBe(-550_000);
+  });
+
+  it('marks what was saved under Uncategorised, and the filter keeps only those', () => {
+    const later = tx('2026-09-12', 'Something', [['later', 25_000], ['bca', -25_000]]);
+    const laterIncome = tx('2026-09-12', 'Paid back', [['bca', 70_000], ['later-in', -70_000]]);
+    const built = buildRows([later, laterIncome, superindo], [], withLater, cards);
+    expect(built.filter((row) => row.needsCategory).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
+    expect(filterRows(built, { ...EMPTY_FILTERS, needsCategory: true }, withLater).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
+    expect(filterRows(built, EMPTY_FILTERS, withLater)).toHaveLength(3);
+  });
+});

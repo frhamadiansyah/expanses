@@ -7,6 +7,7 @@ import {
   openingBalanceLines,
   planPosting,
   PostingError,
+  refundLines,
   splitExpenseLines,
   transferLines,
 } from '../src/index';
@@ -198,5 +199,25 @@ describe('planPosting: a line that carries its own base figure (household sharin
       { accountId: 'thbCash', amountMinor: -100, currency: 'THB', amountBaseMinor: -440 },
     ]);
     expect(planned[0]!.fxRateToBase).toBeCloseTo(4.4 * 100, 6);
+  });
+});
+
+describe('refundLines', () => {
+  it('is the reverse of an expense: the category takes it back and the card is owed less', () => {
+    const lines = refundLines({ categoryAccountId: 'groceries', paymentAccountId: 'visa', amountMinor: 450000, currency: 'IDR' });
+    expect(lines).toEqual([
+      { accountId: 'visa', amountMinor: 450000, currency: 'IDR' },
+      { accountId: 'groceries', amountMinor: -450000, currency: 'IDR', memo: null },
+    ]);
+    // It balances, as every posting must.
+    expect(plan(lines).reduce((sum, e) => sum + e.amountMinor, 0)).toBe(0);
+  });
+
+  it('nets against the purchase it gives money back on', () => {
+    const spent = expenseLines({ categoryAccountId: 'groceries', paymentAccountId: 'visa', amountMinor: 1_000_000, currency: 'IDR' });
+    const back = refundLines({ categoryAccountId: 'groceries', paymentAccountId: 'visa', amountMinor: 450_000, currency: 'IDR' });
+    const net = (id: string) => [...spent, ...back].filter((l) => l.accountId === id).reduce((s, l) => s + l.amountMinor, 0);
+    expect(net('groceries')).toBe(550_000);
+    expect(net('visa')).toBe(-550_000);
   });
 });

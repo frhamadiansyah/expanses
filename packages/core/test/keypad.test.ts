@@ -67,3 +67,32 @@ describe('what DONE works out', () => {
     expect(evaluateAmount('0', 'IDR')).toBeNull();
   });
 });
+
+describe('a refund typed with a leading minus', () => {
+  it('reads a leading minus as a refund only when the caller allows one', () => {
+    expect(evaluateAmount('−450000', 'IDR', { refund: true })).toBe(-450_000);
+    expect(evaluateAmount('-450.000', 'IDR', { refund: true })).toBe(-450_000);
+    // Without the option a leading minus is refused, as before: Income, Transfer and split lines.
+    expect(evaluateAmount('−450000', 'IDR')).toBeNull();
+    expect(evaluateAmount('−450000', 'IDR', { refund: false })).toBeNull();
+  });
+
+  it('works out an expression after the minus', () => {
+    // Deposit 500.000 back less the 50.000 toll: −450.000.
+    expect(evaluateAmount('−500000+50000', 'IDR', { refund: true })).toBe(-450_000);
+    expect(evaluateAmount('−10.50×2', 'USD', { refund: true })).toBe(-2100);
+  });
+
+  it('still reads a plain figure as a purchase when refunds are allowed', () => {
+    expect(evaluateAmount('450000', 'IDR', { refund: true })).toBe(450_000);
+    expect(evaluateAmount('100000−25000', 'IDR', { refund: true })).toBe(75_000);
+  });
+
+  it('refuses a minus that does not come to money back, and a bare minus', () => {
+    expect(evaluateAmount('−100+500', 'IDR', { refund: true })).toBeNull();
+    expect(evaluateAmount('−', 'IDR', { refund: true })).toBeNull();
+    expect(evaluateAmount('−0', 'IDR', { refund: true })).toBeNull();
+    expect(evaluateAmount('−−5', 'IDR', { refund: true })).toBeNull();
+    expect(evaluateAmount('+5', 'IDR', { refund: true })).toBeNull();
+  });
+});

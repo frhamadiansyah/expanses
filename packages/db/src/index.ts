@@ -23,6 +23,7 @@ export * from './repos/pockets';
 export * from './repos/deposit-terms';
 export * from './repos/deposit-automation';
 export * from './repos/categories';
+export { uncategorisedCategory, uncategorisedIdOf, uncategorisedTransactionIds } from './repos/uncategorised';
 export * from './repos/category-looks';
 export * as categoryColoursSchema from './schema-category-colours';
 export * from './repos/mcc';
