@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORIES, uuidv7 } from '@expanses/core';
+import { DEFAULT_CATEGORIES, UNCATEGORISED, uuidv7 } from '@expanses/core';
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -7,6 +7,7 @@ import { bookCategories } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
+import { createAccountTx } from './accounts';
 
 type AccountRow = typeof accounts.$inferSelect;
 
@@ -214,3 +215,41 @@ export async function categoryIdsByKeyAllTx(db: Db, ws: WorkspaceContext): Promi
 /** Active categories that carry a default key, for mapping catalogue category keys to account ids. */
 export const categoryIdsByKey = (database: Database, ws: WorkspaceContext) => categoryIdsByKeyTx(database.db, ws);
 export const categoryIdsByKeyAll = (database: Database, ws: WorkspaceContext) => categoryIdsByKeyAllTx(database.db, ws);
+
+/**
+ * The open book's category for `spec.key`, made on first use when the book has none: under the category keyed
+ * `parentKey` when one is named and the book holds it, else at the top of its kind's tree. Only the book's own copy
+ * counts — `categoryIdsByKeyTx`'s fallback to another book's would file this book's money in that one.
+ *
+ * The one ensure-by-key for categories made the first time something needs them: a statement check's Fees & charges
+ * and Refunds, and Uncategorised for a transaction saved with its category left for later.
+ */
+export async function ensureCategoryByKeyTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  spec: { key: string; name: string; kind: 'expense' | 'income'; parentKey?: string | null },
+): Promise<string> {
+  const all = await categoryIdsByKeyAllTx(tx, ws);
+  const books = await hasBooks(tx);
+  const bookId = books ? (ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId))) : null;
+  const inBook = bookId
+    ? new Set(
+        (await tx.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId))).map((row) => row.id),
+      )
+    : null;
+  const own = (key: string) => (all[key] ?? []).find((id) => !inBook || inBook.has(id));
+  const found = own(spec.key);
+  if (found) return found;
+  const parentId = spec.parentKey ? (own(spec.parentKey) ?? null) : null;
+  const made = await createAccountTx(tx, ws, { kind: spec.kind, subtype: 'category', name: spec.name, currency: null, parentId });
+  await withCapture(tx, { entity: 'category', id: made.id }, () => tx.update(accounts).set({ systemKey: spec.key }).where(eq(accounts.id, made.id)));
+  return made.id;
+}
+
+/**
+ * Where an expense or an income saved without a category is filed (`UNCATEGORISED`): the open book's own, made the
+ * first time one is needed and reused after. It sits at the top of its kind's tree, so no parent's budget counts it.
+ */
+export async function uncategorisedCategory(database: Database, ws: WorkspaceContext, kind: 'expense' | 'income'): Promise<string> {
+  return database.transaction((tx) => ensureCategoryByKeyTx(tx, ws, UNCATEGORISED[kind]));
+}

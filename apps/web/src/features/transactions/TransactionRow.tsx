@@ -79,8 +79,10 @@ export function TransactionRow({
   className?: string;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  const money = formatMinor(amountMinor ?? row.amountMinor, currency ?? row.currency);
-  const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
+  // Money back on a purchase reads as money in: a plus, in green.
+  const shownMinor = amountMinor ?? row.amountMinor;
+  const money = row.refund ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
+  const sign = row.refund ? 1 : row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
 
   const circle = (
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
@@ -127,6 +129,7 @@ export function TransactionRow({
           {label ?? (row.categoryName || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
           {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
           {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
+          {row.refund && <span className="ml-2 rounded bg-[var(--ph-tint-panel)] px-1.5 text-xs font-normal text-[var(--ph-tint-ink)]">Refund</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (

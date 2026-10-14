@@ -18,6 +18,7 @@ import {
   saveMerchantMcc,
   splitBill,
   type TransactionView,
+  uncategorisedCategory,
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -52,7 +53,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { categoryLater, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -78,6 +79,9 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { 
     </>
   );
 }
+
+/** Stands in for Uncategorised while the ✓ asks whether the form would post; Save files under the real one. */
+const CATEGORY_LATER = '\u0000category-later';
 
 /** What a draft cannot carry to the ledger: `confirmDraft` posts one category, paid by one account. */
 const DRAFT_OMITS: readonly ExtraRow[] = ['split', 'with'];
@@ -396,7 +400,11 @@ function CardBody({
         onDone();
         return;
       }
-      const post = formToPost(draft, accounts);
+      // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
+      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
+      const later = categoryLater(draft);
+      const filed = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const post = formToPost(filed, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
         // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the
@@ -412,14 +420,14 @@ function CardBody({
         // one place both ways into a save go through. The rate field lives under Add more details and only
         // there (§3.3), so that is the name this screen gives it.
         const ratesToBase = await ratesForSave({
-          database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+          database, ws, draft: filed, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
         // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
         if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
         else await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
-        const memory = formToMemory(draft, accounts);
+        const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
       await invalidate();
@@ -438,7 +446,8 @@ function CardBody({
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
-  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
+  // Money back lands in the account it was paid with, so the row says where it goes.
+  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : isRefund(draft) ? 'Into' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
   // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never
@@ -465,7 +474,8 @@ function CardBody({
     if (busy || !setAside.ready || transferUnknown) return false;
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
-      else formToPost(draft, accounts);
+      // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
+      else formToPost(finish ? draft : withCategoryLater(draft, CATEGORY_LATER), accounts);
       return finish?.canSubmit?.(draft) ?? true;
     } catch {
       return false;
@@ -831,7 +841,7 @@ function CardBody({
                 <FormRow
                   lead="value"
                   label="Category"
-                  placeholder="Select category"
+                  placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
                   icon={categoryLead}
                   value={categoryName}
                   caption=""

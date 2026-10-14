@@ -217,7 +217,8 @@ function BillTag({ text }: { text: string }) {
 function LockedRow({ row, today, handlers }: { row: ListRow; today: string; handlers: TableHandlers }) {
   const [form, setForm] = useState(false);
   const tx = row.tx!;
-  const sign = row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
+  // Money back on a purchase reads as money in.
+  const sign = row.refund ? '+' : row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
   const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
   const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
@@ -236,9 +237,9 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
             </span>
           )}
         </span>
-        <span className={cx('tabular truncate px-2 text-right font-medium', row.type === 'income' && 'text-emerald-700', kind && 'text-slate-500')}>
+        <span className={cx('tabular truncate px-2 text-right font-medium', (row.type === 'income' || row.refund) && 'text-emerald-700', kind && 'text-slate-500')}>
           {sign}
-          {formatMinor(row.amountMinor, row.currency)}
+          {formatMinor(Math.abs(row.amountMinor), row.currency)}
         </span>
         <span className="truncate px-2 text-slate-600">
           {handlers.payerOf?.(tx.id) ? (

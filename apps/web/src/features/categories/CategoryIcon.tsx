@@ -1,4 +1,4 @@
-import { categoryVisual, TRANSFER_VISUAL, UNKNOWN_VISUAL } from '@expanses/core';
+import { categoryVisual, isUncategorisedKey, TRANSFER_VISUAL, UNKNOWN_VISUAL } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import {
   ArrowLeftRight, Baby, BadgePercent, Banknote, Bath, Bed, Beer, Bike, Blocks, Book, BookOpen, Brain, Briefcase, Brush, Building, Building2, Bus,
@@ -107,6 +107,8 @@ export function CategoryIcon({
 }) {
   const colours = useCategoryColours().data;
   const { key, rootKey, rootId } = categoryKeys(categoryId, accounts);
+  // Filed under Uncategorised: the same amber question a capture waiting for its category wears.
+  if (!transfer && !label && isUncategorisedKey(key)) return <UnknownCategoryMark size={size} title={title} />;
   const chosen = categoryId ? accounts.find((a) => a.id === categoryId)?.icon : null;
   const computed = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
   const base = transfer ? computed : { ...computed, colour: tintOf(rootId, colours, computed.colour) };
@@ -133,14 +135,17 @@ export function CategoryIcon({
  * No category yet: the unknown mark in the warning tone, because it is a question still to answer. Every list that
  * holds rows waiting for a category — Review's captures, a statement check's missing rows — draws this one.
  */
-export function UnknownCategoryMark() {
+export function UnknownCategoryMark({ size = 'md', title }: { size?: keyof typeof SIZES; title?: string } = {}) {
+  const { box, glyph } = SIZES[size];
   return (
     <span
       data-testid="category-mark"
-      aria-hidden
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]"
+      data-unknown=""
+      title={title}
+      aria-hidden={title ? undefined : true}
+      className={`inline-flex ${box} shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]`}
     >
-      <CircleHelp size={18} strokeWidth={2.2} />
+      <CircleHelp size={glyph} strokeWidth={2.2} />
     </span>
   );
 }

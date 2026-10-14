@@ -20,8 +20,10 @@ import {
   currencyFlag,
   estimatedCharge,
   type FormDraft,
+  isRefund,
   type MoneyFieldSpec,
   prefilledCharge,
+  refundAllowed,
   suggestedRate,
   typedCurrency,
 } from './tx-form';
@@ -84,9 +86,12 @@ function MoneyField({
   onKeypad,
   className,
   placeholder = 'Amount',
+  refund = false,
 }: {
   field: MoneyFieldSpec;
   placeholder?: string;
+  /** A minus typed first may make this figure a refund (`refundAllowed`). */
+  refund?: boolean;
   phone: boolean;
   onChange: (value: string) => void;
   onKeypad: () => void;
@@ -102,7 +107,7 @@ function MoneyField({
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
       <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'flex items-center self-stretch text-left')}>
-        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
+        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency, refund) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
       </button>
     );
   }
@@ -113,13 +118,13 @@ function MoneyField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onBlur={() => {
-        const { text } = amountAfterEnter(value, currency);
+        const { text } = amountAfterEnter(value, currency, refund);
         if (text !== value) onChange(text);
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter') return;
         // Enter evaluates; it does not also save. A second Enter, on a field that no longer changes, submits.
-        const { text, submit } = amountAfterEnter(value, currency);
+        const { text, submit } = amountAfterEnter(value, currency, refund);
         if (text !== value) onChange(text);
         if (!submit) e.preventDefault();
       }}
@@ -168,6 +173,9 @@ export function AmountRow({
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
+  // Money back: a minus typed first on an expense. The figure turns the green of money coming in, and says where to.
+  const refundable = refundAllowed(draft);
+  const refund = isRefund(draft);
   const { rate } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
 
   /*
@@ -262,7 +270,8 @@ export function AmountRow({
               phone={phone}
               onChange={(amount) => set({ amount })}
               onKeypad={() => toggle('amount')}
-              className={fieldBase}
+              className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
+              refund={refundable}
             />
           </span>
           {fields.charged && (
@@ -281,8 +290,9 @@ export function AmountRow({
                   phone={phone}
                   onChange={setCharged}
                   onKeypad={() => toggle('charged')}
-                  className={fieldBase}
+                  className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
                   placeholder="0"
+                  refund={refund}
                 />
               </span>
             </>
@@ -301,6 +311,12 @@ export function AmountRow({
           )}
         </span>
       </div>
+
+      {refund && (
+        <p data-testid="refund-caption" className="pb-[6px] pl-[48px] text-[12.5px] leading-4 text-[var(--ph-tint)]">
+          Refund: money back to {account?.name ?? 'the account'}
+        </p>
+      )}
 
       {picking && (
         <CurrencySheet
@@ -323,6 +339,7 @@ export function AmountRow({
           value={open.value}
           currency={open.currency}
           onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}
+          refund={open.which === 'amount' ? refundable : refund}
           onClose={() => setKeypad(null)}
         />
       )}

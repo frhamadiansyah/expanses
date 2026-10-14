@@ -1,4 +1,4 @@
-import { evaluateAmount, expenseLines, incomeLines, isoDate, parseMajor, splitExpenseLines } from '@expanses/core';
+import { evaluateAmount, expenseLines, incomeLines, isoDate, parseMajor, refundLines, splitExpenseLines } from '@expanses/core';
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { doorOfForm } from '../goals/set-aside-question';
@@ -9,6 +9,7 @@ import {
   amountFields,
   billMinor,
   canEditInSheet,
+  categoryLater,
   chargedIsEstimate,
   currencyShown,
   chargedInNeeded,
@@ -21,6 +22,7 @@ import {
   type FormDraft,
   formFromTransaction,
   formToPost,
+  isRefund,
   KEYPAD_KEYS,
   keypadAction,
   keypadKeys,
@@ -34,6 +36,7 @@ import {
   splitTotalMinor,
   suggestedRate,
   typedCurrency,
+  withCategoryLater,
   withShares,
 } from './tx-form';
 
@@ -1142,7 +1145,8 @@ describe('arithmetic typed into a figure the save reads', () => {
       'Received amount is empty — type a figure',
     );
     expect(() => formToPost({ ...draft, amount: '0' }, accounts)).toThrow('Amount must be greater than zero');
-    expect(() => formToPost({ ...draft, amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
+    // A minus first is a refund on an expense (see "a refund typed with a minus"); anywhere else it is still refused.
+    expect(() => formToPost({ ...draft, mode: 'income', amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
     // A decimal figure on a zero-exponent account still says which currency refused it and why.
     expect(() => formToPost({ ...foreign, chargedAmount: '272400.50' }, accounts)).toThrow('IDR allows 0 decimal places');
   });
@@ -1243,5 +1247,86 @@ describe('currencyShown', () => {
   it('names it once a figure is typed, or once the flag is picked', () => {
     expect(currencyShown({ ...draft, amount: '5', currency: '' })).toBe(true);
     expect(currencyShown({ ...draft, amount: '', currency: 'USD' })).toBe(true);
+  });
+});
+
+describe('saving now and choosing the category later', () => {
+  const later = { ...draft, categoryId: '' };
+
+  it('lets an expense or an income go without a category, filed under the kind’s Uncategorised', () => {
+    expect(categoryLater(later)).toBe('expense');
+    expect(categoryLater({ ...later, mode: 'income' })).toBe('income');
+    const post = formToPost(withCategoryLater(later, 'cat-later'), accounts);
+    expect(post.kind === 'post' && post.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-later', paymentAccountId: 'acct-bank', amountMinor: 120_000, currency: 'IDR' }));
+  });
+
+  it('asks nothing of a draft that already has its category', () => {
+    expect(categoryLater(draft)).toBeNull();
+    expect(withCategoryLater(draft, 'cat-later')).toBe(draft);
+  });
+
+  it('still wants a category on every split line, on a shared bill, and is no answer for a transfer', () => {
+    const split = { ...later, amount: '', splits: [{ categoryId: '', amount: '120000' }] };
+    expect(categoryLater(split)).toBeNull();
+    expect(() => formToPost(withCategoryLater(split, 'cat-later'), accounts)).toThrow('Choose a category for split 1');
+    const shared = { ...later, with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true };
+    expect(categoryLater(shared)).toBeNull();
+    expect(() => formToPost(withCategoryLater(shared, 'cat-later'), accounts)).toThrow('Choose a category');
+    expect(categoryLater({ ...transfer, moneyId: 'acct-bank' })).toBeNull();
+  });
+
+  it('is still refused without a category when nothing answers for later', () => {
+    expect(() => formToPost(later, accounts)).toThrow('Choose a category');
+  });
+});
+
+describe('a refund typed with a minus', () => {
+  // The car rental: rent and deposit went on the card; the deposit came back less the toll.
+  const refund: FormDraft = { ...draft, moneyId: 'acct-card', amount: '-450000', description: 'Deposit back' };
+
+  it('is an expense whose figure starts with a minus', () => {
+    expect(isRefund(refund)).toBe(true);
+    expect(isRefund({ ...refund, amount: '−450000' })).toBe(true);
+    expect(isRefund(draft)).toBe(false);
+    expect(isRefund({ ...refund, mode: 'income' })).toBe(false);
+  });
+
+  it('posts the reverse of the purchase: the card is owed less and the category takes it back', () => {
+    const post = formToPost(refund, accounts);
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('works out an expression after the minus, on the keypad and on Save', () => {
+    expect(keypadAction('−500000+50000', 'IDR', 'DONE', true)).toEqual({ text: '-450000', close: true });
+    // Without a refund allowed — income, transfer, a split line — DONE leaves it as typed, as before.
+    expect(keypadAction('−500000+50000', 'IDR', 'DONE')).toEqual({ text: '−500000+50000', close: false });
+    const post = formToPost({ ...refund, amount: '−500000+50000' }, accounts);
+    expect(post.kind === 'post' && post.input.lines[0]).toEqual({ accountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' });
+    expect(amountFace('-450000', 'IDR', true)).toBe('−450.000');
+  });
+
+  it('is refused in Income, on split lines and on a shared bill', () => {
+    expect(() => formToPost({ ...refund, mode: 'income' }, accounts)).toThrow('Amount must be greater than zero');
+    expect(() => formToPost({ ...refund, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '-450000' }] }, accounts)).toThrow('Split 1 amount must be greater than zero');
+    expect(() => formToPost({ ...refund, splits: [{ categoryId: 'cat-restaurants', amount: '450000' }] }, accounts)).toThrow('A refund goes back under one category');
+    expect(() => formToPost({ ...refund, with: [{ debtAccountId: '', name: 'Andi', amount: '' }], withEqually: true }, accounts)).toThrow('A refund cannot be shared');
+  });
+
+  it('reopens with the minus in place, in Expense, and saves as a purchase once the minus is gone', () => {
+    const back = view({ entries: [paid(450_000), spent('cat-restaurants', -450_000)] as TransactionView['entries'] });
+    const reopened = formFromTransaction(back, accounts, 'ws-1');
+    expect(reopened).toMatchObject({ mode: 'expense', amount: '-450000', categoryId: 'cat-restaurants', moneyId: 'acct-card' });
+    expect(isRefund(reopened)).toBe(true);
+    const purchase = formToPost({ ...reopened, amount: '450000' }, accounts);
+    expect(purchase.kind === 'post' && purchase.input.lines).toEqual(expenseLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-card', amountMinor: 450_000, currency: 'IDR' }));
+  });
+
+  it('keeps a foreign refund’s original figure positive, with the sign on the lines', () => {
+    const abroad: FormDraft = { ...refund, moneyId: 'acct-bank', currency: 'CNY', amount: '-120', chargedAmount: '272400' };
+    const post = formToPost(abroad, accounts);
+    expect(post.kind === 'post' && post.input).toMatchObject({ originalCurrency: 'CNY', originalAmountMinor: 12_000 });
+    expect(post.kind === 'post' && post.input.lines).toEqual(refundLines({ categoryAccountId: 'cat-restaurants', paymentAccountId: 'acct-bank', amountMinor: 272_400, currency: 'IDR' }));
+    const reopened = formFromTransaction(view({ originalCurrency: 'CNY', originalAmountMinor: 12_000, entries: [{ ...paid(272_400), accountId: 'acct-bank' }, spent('cat-restaurants', -272_400)] as TransactionView['entries'] }), accounts, 'ws-1');
+    expect(reopened).toMatchObject({ currency: 'CNY', amount: '-120.00', chargedAmount: '272400' });
   });
 });

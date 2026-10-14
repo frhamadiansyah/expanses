@@ -31,9 +31,12 @@ export function Keypad({
   currency,
   onChange,
   onClose,
+  refund = false,
 }: {
   value: string;
   currency: string;
+  /** A minus typed first may make the figure a refund: DONE then works it out as money back. */
+  refund?: boolean;
   onChange: (value: string) => void;
   onClose: () => void;
 }) {
@@ -47,7 +50,7 @@ export function Keypad({
 
   // Every key, DONE included, goes through the one tested decision. Nothing is worked out here.
   const press = (key: KeypadKey) => {
-    const { text, close } = keypadAction(value, currency, key);
+    const { text, close } = keypadAction(value, currency, key, refund);
     if (text !== value) onChange(text);
     if (close) onClose();
   };

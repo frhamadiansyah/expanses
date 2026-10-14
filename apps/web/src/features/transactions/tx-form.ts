@@ -11,6 +11,7 @@ import {
   minorToMajorString,
   parseMajor,
   type PostingLine,
+  refundLines,
   splitExpenseLines,
   transferLines,
   yourShare,
@@ -182,6 +183,40 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
 }
 
 const accountOf = (draft: FormDraft, accounts: readonly AccountRow[]) => accounts.find((a) => a.id === draft.moneyId);
+
+/**
+ * Whether this draft may be saved with its category left for later, and so which kind's Uncategorised it is filed
+ * under — null when it has its category, or when a category has to be chosen now: a transfer has none, every line
+ * of a split names its own, and a bill shared with someone files your share under the one category chosen for it.
+ */
+export function categoryLater(draft: FormDraft): 'expense' | 'income' | null {
+  if (draft.categoryId) return null;
+  if (draft.mode === 'income') return 'income';
+  if (draft.mode !== 'expense' || draft.splits.length > 0) return null;
+  if (peopleOn(draft).length > 0 && !draft.editing) return null;
+  return 'expense';
+}
+
+/** The draft with "Choose later" answered: filed under `uncategorisedId` when its category was left for later. */
+export function withCategoryLater(draft: FormDraft, uncategorisedId: string): FormDraft {
+  return categoryLater(draft) ? { ...draft, categoryId: uncategorisedId } : draft;
+}
+
+/** A figure that starts with a minus. */
+const MINUS_FIRST = /^\s*[-−–]/;
+
+/**
+ * Whether a minus typed first may make this figure a refund: an expense's one figure. Not income or a transfer,
+ * not a split by category (every line is spending), not a bill shared with someone.
+ */
+export function refundAllowed(draft: FormDraft): boolean {
+  return draft.mode === 'expense' && draft.splits.length === 0 && (draft.editing || peopleOn(draft).length === 0);
+}
+
+/** Money back on a purchase: an expense whose figure was typed with a minus first ("−450.000"). */
+export function isRefund(draft: FormDraft): boolean {
+  return draft.mode === 'expense' && MINUS_FIRST.test(draft.amount);
+}
 
 /**
  * Whether a figure on this screen may be typed in a currency of its own.
@@ -402,6 +437,21 @@ function positive(value: string, currency: string, label: string): number {
 }
 
 /**
+ * A refund's figure, as the positive amount that came back. A minus typed first is the refund's sign, so it is read
+ * with `evaluateAmount`'s refund allowance; a figure typed without one (a charged row filled in plain) reads as is.
+ */
+function refundFigure(value: string, currency: string, label: string): number {
+  const minor = evaluateAmount(value, currency, { refund: true });
+  if (minor === null) {
+    const rest = value.replace(MINUS_FIRST, '');
+    if (!rest.trim()) throw new Error(`${label} is empty — type a figure`);
+    parseMajor(rest, currency);
+    throw new Error(`${label} must come to money back`);
+  }
+  return Math.abs(minor);
+}
+
+/**
  * A split by category, read once. The lines are built from these rows and the total is their sum, so the split
  * is parsed in one place rather than once for the lines and once for the figure that posts.
  *
@@ -485,14 +535,16 @@ function amounts(
     }
     return { amountMinor: splitTotalMinor, originalCurrency: null, originalAmountMinor: null };
   }
+  // A refund's figures are the money that came back, positive: its sign is in the lines (`refundLines`).
+  const read = isRefund(draft) ? refundFigure : positive;
   if (!typed || typed === settled) {
-    return { amountMinor: positive(draft.amount, settled, 'Amount'), originalCurrency: null, originalAmountMinor: null };
+    return { amountMinor: read(draft.amount, settled, 'Amount'), originalCurrency: null, originalAmountMinor: null };
   }
   if (!draft.chargedAmount.trim()) throw new Error(`Enter the amount charged in ${settled}`);
   return {
-    amountMinor: positive(draft.chargedAmount, settled, `Amount charged in ${settled}`),
+    amountMinor: read(draft.chargedAmount, settled, `Amount charged in ${settled}`),
     originalCurrency: typed,
-    originalAmountMinor: positive(draft.amount, typed, 'Amount'),
+    originalAmountMinor: read(draft.amount, typed, 'Amount'),
   };
 }
 
@@ -530,6 +582,7 @@ function expenseOrIncomeLines(
   }
   if (splits) return splitExpenseLines({ paymentAccountId: account.id, currency, splits });
   if (!draft.categoryId) throw new Error('Choose a category');
+  if (isRefund(draft)) return refundLines({ categoryAccountId: draft.categoryId, paymentAccountId: account.id, amountMinor, currency });
   return expenseLines({ categoryAccountId: draft.categoryId, paymentAccountId: account.id, amountMinor, currency });
 }
 
@@ -718,6 +771,12 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     if (refusal) throw new Error(refusal);
   }
 
+  // Money back goes back under one category, from the one account it was paid with.
+  if (isRefund(draft)) {
+    if (draft.splits.length > 0) throw new Error('A refund goes back under one category: remove the splits');
+    if (peopleOn(draft).length > 0 && !draft.editing) throw new Error('A refund cannot be shared: remove the people');
+  }
+
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
   const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
@@ -831,10 +890,12 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     if (!tx.originalCurrency || tx.originalAmountMinor === null) {
       return { currency: settled, amount: minorToMajorString(amountMinor, settled), chargedAmount: '' };
     }
+    // A refund reopens with its minus on the typed figure, the one place a refund is said.
+    const sign = amountMinor < 0 ? '-' : '';
     return {
       currency: tx.originalCurrency,
-      amount: minorToMajorString(tx.originalAmountMinor, tx.originalCurrency),
-      chargedAmount: minorToMajorString(amountMinor, settled),
+      amount: sign + minorToMajorString(tx.originalAmountMinor, tx.originalCurrency),
+      chargedAmount: minorToMajorString(Math.abs(amountMinor), settled),
     };
   };
 
@@ -875,8 +936,8 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
  * phone's DONE all come through here, so the keypad cannot drift into a second, weaker arithmetic of its own:
  * a copy of these two lines is exactly how a 100x error lives on a path no test walks.
  */
-export function settledAmount(value: string, currency: string): string | null {
-  const minor = evaluateAmount(value, currency);
+export function settledAmount(value: string, currency: string, refund = false): string | null {
+  const minor = evaluateAmount(value, currency, { refund });
   return minor === null ? null : minorToMajorString(minor, currency);
 }
 
@@ -887,8 +948,8 @@ export function settledAmount(value: string, currency: string): string | null {
  * makes on the phone, and lets the form submit so a plainly typed figure is never trapped behind an Enter that
  * does nothing.
  */
-export function amountAfterEnter(value: string, currency: string): { text: string; submit: boolean } {
-  const text = settledAmount(value, currency);
+export function amountAfterEnter(value: string, currency: string, refund = false): { text: string; submit: boolean } {
+  const text = settledAmount(value, currency, refund);
   if (text === null) return { text: value, submit: true };
   return { text, submit: text === value };
 }
@@ -900,8 +961,8 @@ export function amountAfterEnter(value: string, currency: string): { text: strin
  * `close` is not `amountAfterEnter`'s `submit`: a figure already in its final form — `100000` — must still
  * close the dock, where on a desktop the same figure means "nothing changed, so let the form save".
  */
-export function amountAfterDone(value: string, currency: string): { text: string; close: boolean } {
-  const text = settledAmount(value, currency);
+export function amountAfterDone(value: string, currency: string, refund = false): { text: string; close: boolean } {
+  const text = settledAmount(value, currency, refund);
   return text === null ? { text: value, close: false } : { text, close: true };
 }
 
@@ -914,12 +975,14 @@ export function amountAfterDone(value: string, currency: string): { text: string
  * typed ("120000+35000"), or anything that cannot be read, is shown exactly as it stands, so the keypad never
  * shows a figure other than the one it is holding.
  */
-export function amountFace(value: string, currency: string): string {
-  if (value === '' || !currency || settledAmount(value, currency) !== value) return value;
-  const minor = evaluateAmount(value, currency);
+export function amountFace(value: string, currency: string, refund = false): string {
+  if (value === '' || !currency || settledAmount(value, currency, refund) !== value) return value;
+  const minor = evaluateAmount(value, currency, { refund });
   if (minor === null) return value;
   const { exponent } = currencyInfo(currency);
-  return new Intl.NumberFormat('id-ID', { minimumFractionDigits: exponent, maximumFractionDigits: exponent }).format(minor / 10 ** exponent);
+  // A refund is written with a true minus, the way the keypad's key draws it.
+  const face = new Intl.NumberFormat('id-ID', { minimumFractionDigits: exponent, maximumFractionDigits: exponent }).format(Math.abs(minor) / 10 ** exponent);
+  return minor < 0 ? `−${face}` : face;
 }
 
 /** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
@@ -956,8 +1019,8 @@ export function keypadPress(value: string, key: Exclude<KeypadKey, 'DONE'>): str
  * it holds one call. A keypad that decides anything for itself is a second money path, and a second money path
  * is where a 100x error sits untested for as long as nobody mounts it.
  */
-export function keypadAction(value: string, currency: string, key: KeypadKey): { text: string; close: boolean } {
-  if (key === 'DONE') return amountAfterDone(value, currency);
+export function keypadAction(value: string, currency: string, key: KeypadKey, refund = false): { text: string; close: boolean } {
+  if (key === 'DONE') return amountAfterDone(value, currency, refund);
   return { text: keypadPress(value, key), close: false };
 }
 
