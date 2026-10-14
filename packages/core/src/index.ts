@@ -213,6 +213,7 @@ export {
   assetItem,
   CASH_ITEMS,
   cashCodeForSubtype,
+  takesPockets,
   cashItem,
   DEBT_ITEMS,
   debtItem,

@@ -1,4 +1,4 @@
-import { cashItem, type MoneyAccountSubtype } from '@expanses/core';
+import { cashItem, type MoneyAccountSubtype, takesPockets } from '@expanses/core';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -102,9 +102,6 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
   });
 }
 
-/** The two kinds of money account that hold several currencies (spec §17.1): a current account and a saving one. */
-const POCKETED_SUBTYPES: readonly string[] = ['bank', 'savings'];
-
 export interface MakeMultiCurrencyInput {
   accountId: string;
   currency: string;
@@ -114,7 +111,7 @@ export interface MakeMultiCurrencyInput {
 }
 
 /**
- * A second currency in a plain current or saving account: the account becomes one with pockets.
+ * A second currency in a plain current, saving or cash account: the account becomes one with pockets.
  *
  * The account itself becomes the first pocket — same id, same entries, set-asides, bills, cards and goals — so
  * nothing already recorded changes what it means; only its name gains the currency, as every pocket's does. A new
@@ -130,7 +127,7 @@ export async function makeMultiCurrency(
   return database.transaction(async (tx) => {
     const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account || account.kind !== 'asset') throw new AccountError('Account not found');
-    if (!POCKETED_SUBTYPES.includes(account.subtype)) throw new AccountError('Only a current or saving account holds more than one currency');
+    if (!takesPockets(account.subtype)) throw new AccountError('Only a current account, a saving one or cash holds more than one currency');
     if (account.archivedAt !== null) throw new AccountError(`${account.name} is archived`);
     if (account.parentId !== null) throw new AccountError('A pocket cannot hold pockets of its own');
     const [child] = await tx
