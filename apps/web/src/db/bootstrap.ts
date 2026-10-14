@@ -89,8 +89,13 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
     [workspace] = await listWorkspaces(database);
   }
   const ws = contextOf(workspace!);
-  // Keys first, so catalogue exclusions map to categories when linked programs re-apply.
-  await ensureCategoryKeys(database, ws);
+  // Keys first, so catalogue exclusions map to categories when linked programs re-apply. Upkeep, not the open: a
+  // failure here leaves the categories as they were until the next open, and the app opens all the same.
+  try {
+    await ensureCategoryKeys(database, ws);
+  } catch (error) {
+    console.warn('Default categories could not be brought up to date; trying again at the next open', error);
+  }
   // Then the sets, which a workspace of any age can be missing: they arrive with the feature, not with the workspace.
   await ensureDefaultCategorySets(database, ws);
   // Goals worked out before stages were kept in today's money are stated again once, in every workspace — a workspace
