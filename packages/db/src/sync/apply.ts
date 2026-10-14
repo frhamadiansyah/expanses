@@ -5,6 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '../repos/category-delete';
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
+import { dayOrderExists } from '../repos/day-order-column';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -615,6 +616,8 @@ async function ledgerInput(
     input.originalCurrency = state.money.originalCurrency;
     input.originalAmountMinor = state.money.originalAmountMinor;
   }
+  // Not a winner: the ledger carries the row's place on the same day and clears it on a new date, as a local edit does.
+  if ('dayOrder' in winners) input.dayOrder = state.dayOrder ?? null;
   return { input, refused };
 }
 
@@ -645,6 +648,14 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   if (winners.void) {
     await voidTransactionTx(tx, ctx.ws, lineage!.head!, {}, changeSet.member);
     await tx.run(sql`UPDATE sync_lineage SET head_transaction_id = NULL WHERE lineage_id = ${op.id}`);
+    await recordPurchaseClocks(tx, ctx, op.id, won);
+    return true;
+  }
+  if (lineage && Object.keys(winners).every((field) => field === 'dayOrder') && (await dayOrderExists(tx))) {
+    // Moved within its day, and nothing else: written in place, as the author's device did. Reposting would mint a new
+    // row for a change that is not money.
+    const value = winners.dayOrder;
+    await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }

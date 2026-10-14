@@ -61,6 +61,7 @@ export const transactions = sqliteTable('transactions', {
   goalId: text('goal_id'),
   /** The recurring bill this payment settled, when it was recorded from one. */
   templateId: text('template_id'),
+  // day_order (0067), a row's place within its day, is deliberately not declared here: see repos/day-order-column.ts.
   createdAt: text('created_at').notNull(),
 });
 
