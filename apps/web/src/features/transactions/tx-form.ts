@@ -580,6 +580,16 @@ export function splitTotalMinor(splits: readonly SplitRow[], currency: string): 
 }
 
 /**
+ * What the Split sheet says while a row holds cents on a whole-unit currency — `DECIMALS_REFUSAL`, the words Save
+ * refuses it with — or null. On a phone the ✓ is greyed while the draft would be refused, so the reason has to be
+ * on the sheet where the row is typed, not only behind a button that cannot be pressed.
+ */
+export function splitCentsRefusal(splits: readonly SplitRow[], currency: string): string | null {
+  const cents = splits.some((row) => row.amount.trim() !== '' && evaluateAmount(row.amount, currency) === null && hasCents(row.amount, currency, false));
+  return cents ? DECIMALS_REFUSAL : null;
+}
+
+/**
  * The figure a shared bill is divided from, read in the paying account's own currency — null when there is
  * nothing readable to divide yet.
  *

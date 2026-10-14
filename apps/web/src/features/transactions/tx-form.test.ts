@@ -40,6 +40,7 @@ import {
   refiledPost,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
+  splitCentsRefusal,
   splitTotalMinor,
   suggestedRate,
   typedCurrency,
@@ -1569,6 +1570,13 @@ describe('cents typed on a whole-unit currency', () => {
     expect(() => formToPost(split, accounts)).toThrow(DECIMALS_REFUSAL);
     const whole = { ...split, splits: [{ categoryId: 'cat-restaurants', amount: '100000' }, { categoryId: 'cat-groceries', amount: '50000' }] };
     expect(() => formToPost({ ...whole, amount: '150.000,50' }, accounts)).toThrow(DECIMALS_REFUSAL);
+  });
+
+  it('says so on the Split sheet while a row holds cents, before Save is reached', () => {
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000,50' }, { categoryId: '', amount: '' }], 'IDR')).toBe(DECIMALS_REFUSAL);
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '100.000' }, { categoryId: '', amount: '5' }], 'IDR')).toBeNull();
+    // A currency with cents of its own takes them on a split as it always did.
+    expect(splitCentsRefusal([{ categoryId: 'cat-restaurants', amount: '10,50' }], 'USD')).toBeNull();
   });
 
   it('refuses cents on a transfer, its received figure and a shared bill', () => {
