@@ -209,6 +209,39 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
   };
 }
 
+/**
+ * What a new transaction's opener already knows, filled in before the form opens: an account's page knows the
+ * account, an event's Add spending knows the event, and a plan item's "Buy it now" knows the note, the figure and
+ * the category as well. Ids this device does not hold are dropped (`seeded`); the event is the opener's to check,
+ * because the events are read owner-wide and not from `accounts`.
+ */
+export interface CardSeed {
+  moneyId?: string;
+  toId?: string;
+  eventId?: string;
+  categoryId?: string;
+  description?: string;
+  amount?: string;
+}
+
+/**
+ * The opener's seed as form fields, keeping only ids this device holds: an address typed or kept from another
+ * workspace names nothing, and fills nothing in. A category must also be a spending one — the only kind an opener seeds — so a stray id cannot open Expense on an
+ * account that is not a category at all.
+ */
+export function seeded(seed: CardSeed | undefined, accounts: readonly AccountRow[]): Partial<FormDraft> {
+  const known = (id: string | undefined) => (id && accounts.some((a) => a.id === id) ? id : '');
+  const category = seed?.categoryId && accounts.some((a) => a.id === seed.categoryId && a.kind === 'expense') ? seed.categoryId : '';
+  return {
+    moneyId: known(seed?.moneyId),
+    toId: known(seed?.toId),
+    ...(seed?.eventId ? { eventId: seed.eventId } : {}),
+    ...(category ? { categoryId: category } : {}),
+    ...(seed?.description ? { description: seed.description } : {}),
+    ...(seed?.amount ? { amount: seed.amount } : {}),
+  };
+}
+
 const accountOf = (draft: FormDraft, accounts: readonly AccountRow[]) => accounts.find((a) => a.id === draft.moneyId);
 
 /**
@@ -267,7 +300,7 @@ export function refundAllowed(draft: FormDraft): boolean {
 }
 
 /** Money back on a purchase: an expense whose figure was typed with a minus first ("−450.000"). */
-export function isRefund(draft: FormDraft): boolean {
+export function isRefund(draft: Pick<FormDraft, 'mode' | 'amount'>): boolean {
   return draft.mode === 'expense' && MINUS_FIRST.test(draft.amount);
 }
 

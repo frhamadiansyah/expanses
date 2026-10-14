@@ -1,11 +1,11 @@
 import { EventError } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { buyTarget, coverTarget, isNothingLeft } from './buy-item';
+import { addSpendingTarget, buyTarget, coverTarget, isNothingLeft } from './buy-item';
 
 /*
  * The one refusal a screen routes rather than prints.
  *
- * `EventDetailPage.record()` posts the payment, tags it, and then asks the item to claim it. When the receipt is
+ * The Add screen's "Buy it now" follow-up (`NewTransactionRoute`) posts the payment, tagged, and then asks the item to claim it. When the receipt is
  * already spoken for the repository answers `NOTHING_LEFT`, and the screen must carry the user to "What it covers"
  * with the item in hand instead of showing them a sentence. Everything else it must rethrow, or a real failure —
  * a share out of range, a category that is not a category — would vanish into a navigation.
@@ -61,16 +61,22 @@ describe('the refusal the screen can route', () => {
     expect(coverTarget('e1', 't1').params).toMatchObject({ transactionId: 't1' });
   });
 
-  it('opens the event’s own card to buy the item, and names the item it is buying', () => {
-    // The item rides in `buy`, which is the one key `EventDetailPage` opens its card from; as `item` it would land
-    // on the event with the card shut, and as a path segment it would not be that route at all.
-    expect(href(buyTarget('e1', 'i1'))).toBe('/events/e1?buy=i1');
+  it('opens the Add screen to buy the item, naming the event, the item and the tab the plan was read in', () => {
+    // The Add screen reads `event` and `item` (`newTransactionSearch`); as `buy` on the event page they would land
+    // on a page that no longer has a form to open.
+    expect(href(buyTarget('e1', 'i1', 'b1'))).toBe('/transactions/new?event=e1&item=i1&ws=b1');
+    // The whole trip: no tab in the address rather than `ws=undefined`, which would be read as a workspace id.
+    expect(href(buyTarget('e1', 'i1'))).toBe('/transactions/new?event=e1&item=i1');
+  });
+
+  it('opens the Add screen on the event for Add spending, with nothing else filled in', () => {
+    expect(href(addSpendingTarget('e1'))).toBe('/transactions/new?event=e1');
   });
 
   it('puts ids into the address rather than pasting them into it', () => {
     // Ids are opaque. One carrying a slash or a space would otherwise invent path segments of its own, which is how
     // a link to an item becomes a link to a route nobody wrote.
-    expect(href(buyTarget('e/1', 'i 1'))).toBe('/events/e%2F1?buy=i+1');
+    expect(href(buyTarget('e/1', 'i 1'))).toBe('/transactions/new?event=e%2F1&item=i+1');
     expect(href(coverTarget('e 1', 't/1'))).toBe('/events/e%201/plan/link/t%2F1');
   });
 });

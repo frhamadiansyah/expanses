@@ -30,6 +30,7 @@ import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookS
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
+import { useEvents } from '../events/queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
@@ -53,7 +54,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, sharedPaymentOf, transferFigure } from './tx-form';
+import { categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -137,6 +138,21 @@ export interface CardFinish {
 }
 
 /**
+ * A save that answers something more than the ledger — "Buy it now", whose payment is also the item it bought.
+ *
+ * The card stays an add and posts as it always does; this only asks one question before anything is written and
+ * hands over the id afterwards. `refuse` is asked first, so a draft the follow-up could not use leaves no
+ * transaction behind. `posted` is handed the new transaction's id once it is written, and takes the screen's way out
+ * itself in place of `onDone`, because where to go next is part of its answer. A throw from it is shown on the card.
+ */
+export interface CardFollowUp {
+  refuse: (draft: FormDraft) => string | null;
+  posted: (transactionId: string) => Promise<void>;
+  /** Drawn above the card's tabs: what the form was filled from. */
+  header?: ReactNode;
+}
+
+/**
  * Add Transaction, as one card.
  *
  * It replaces the old `TransactionForm` wholesale, so it has to carry everything that form carried: it is the
@@ -155,8 +171,8 @@ export function TransactionCard(props: {
    */
   duplicateOf?: TransactionView;
   mode?: FormMode;
-  /** A new transaction's accounts, filled in before the form opens: the page it was opened from knows them. */
-  seed?: { moneyId?: string; toId?: string };
+  /** A new transaction's fields, filled in before the form opens: the page it was opened from knows them. */
+  seed?: CardSeed;
   /** Opened for one kind only (Spend, Receive, Transfer on an account): no tabs, the sheet's title says which. */
   fixedMode?: boolean;
   /**
@@ -172,6 +188,8 @@ export function TransactionCard(props: {
   onBack?: () => void;
   /** Opened on something already half-read, saved by the caller: see `CardFinish`. */
   finish?: CardFinish;
+  /** Posted by the card, then answered by the caller with the new id: see `CardFollowUp`. */
+  followUp?: CardFollowUp;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -183,12 +201,6 @@ export function TransactionCard(props: {
   // The same holds for the photo rows: a draft seeded before they arrive opens an edit with none of them.
   if (!accounts.isSuccess || !photos.ready) return <Card>Loading…</Card>;
   return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
-}
-
-/** Only ids this device holds: an address typed or kept from another workspace names nothing, and fills nothing in. */
-function seedIds(seed: { moneyId?: string; toId?: string } | undefined, accounts: readonly AccountRow[]): Partial<FormDraft> {
-  const known = (id: string | undefined) => (id && accounts.some((a) => a.id === id) ? id : '');
-  return { moneyId: known(seed?.moneyId), toId: known(seed?.toId) };
 }
 
 function CardBody({
@@ -204,13 +216,14 @@ function CardBody({
   title,
   onBack,
   finish,
+  followUp,
   accounts: ownAccounts,
   photoIds,
 }: {
   initial?: TransactionView;
   duplicateOf?: TransactionView;
   mode?: FormMode;
-  seed?: { moneyId?: string; toId?: string };
+  seed?: CardSeed;
   fixedMode?: boolean;
   headerSave?: { formId: string; onReady: (ready: boolean) => void };
   onDone: () => void;
@@ -220,6 +233,7 @@ function CardBody({
   title?: string;
   onBack?: () => void;
   finish?: CardFinish;
+  followUp?: CardFollowUp;
   accounts: AccountRow[];
   photoIds: string[];
 }) {
@@ -253,7 +267,7 @@ function CardBody({
       ? formFromTransaction(initial, accounts, bookId, photoIds)
       : duplicateOf
         ? duplicateDraft(duplicateOf, accounts, bookId)
-        : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seedIds(seed, accounts), ...finish?.prefill },
+        : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seeded(seed, accounts), ...finish?.prefill },
   );
   /*
    * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
@@ -265,9 +279,12 @@ function CardBody({
   latest.current = draft;
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
+  const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
+  // The id a follow-up has not yet answered: see the first lines of `submit`.
+  const unanswered = useRef<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const noteId = useId();
@@ -275,6 +292,13 @@ function CardBody({
   const set = (patch: Partial<FormDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const setPurchase = (patch: Partial<PurchaseDraft>) => setDraft((d) => ({ ...d, purchase: { ...d.purchase, ...patch } }));
 
+  /*
+   * The set the chosen event draws on, if any: Category then offers that set's categories in place of the monthly
+   * tree, as the event page's own Add spending form did before it opened this screen instead. Read off the Event
+   * row, so it follows the row however it was set — by the address an event opened this screen with, or by hand.
+   */
+  const events = useEvents().data ?? [];
+  const eventSet = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.setId ?? null) : null;
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
   const account = byId.get(draft.moneyId);
@@ -390,6 +414,16 @@ function CardBody({
     setBusy(true);
     try {
       if (transferUnknown) return;
+      /*
+       * A follow-up that refused after the payment was written (an item deleted on another phone meanwhile): the
+       * payment is there, so Save again only asks the follow-up again. Posting a second time would record one
+       * purchase twice for one press too many.
+       */
+      if (followUp && unanswered.current) {
+        await followUp.posted(unanswered.current);
+        unanswered.current = null;
+        return;
+      }
       if (finish) {
         await finish.onSubmit(draft, setAside.choice);
         await invalidate();
@@ -418,11 +452,15 @@ function CardBody({
         onDone();
         return;
       }
+      // Before anything is written — Uncategorised included, which the next line may create.
+      const refusal = followUp?.refuse(draft);
+      if (refusal) throw new Error(refusal);
       // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
       // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
       const later = categoryLater(draft);
       const filed = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
       const post = formToPost(filed, accounts);
+      let posted: string | null = null;
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
         // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the
@@ -441,12 +479,24 @@ function CardBody({
           database, ws, draft: filed, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
         // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
-        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        // The new id is kept from the two that make a purchase, for a follow-up that answers something with it.
+        if (post.kind === 'split') posted = (await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice })).transactionId;
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
-        else await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
+      }
+      if (followUp && posted) {
+        // The payment is written whatever the follow-up answers, so the lists hear about it either way.
+        unanswered.current = posted;
+        try {
+          await followUp.posted(posted);
+          unanswered.current = null;
+        } finally {
+          await invalidate();
+        }
+        return;
       }
       await invalidate();
       onDone();
@@ -684,6 +734,7 @@ function CardBody({
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
       {finish?.header}
+      {followUp?.header}
       {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
         {!fixedMode && (
@@ -1178,6 +1229,7 @@ function CardBody({
         <CategoryPicker
           kind={draft.mode === 'income' ? 'income' : 'expense'}
           value={draft.categoryId}
+          setId={eventSet}
           onPick={(categoryId) => {
             categorySource.current = 'hand';
             set({ categoryId });

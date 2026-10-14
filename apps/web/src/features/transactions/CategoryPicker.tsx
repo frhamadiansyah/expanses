@@ -36,8 +36,10 @@ export function pickerGroups(
   membership: Record<string, unknown>,
   inOpenBook: (a: AccountRow) => boolean,
   search = '',
+  /** An event's set, offered in place of the monthly tree (`offeredCategories`). */
+  setId: string | null = null,
 ): PickerGroup[] {
-  const offered = offeredCategories(accounts, kind, membership, inOpenBook);
+  const offered = offeredCategories(accounts, kind, membership, inOpenBook, setId);
   const wanted = search.trim().toLowerCase();
   const matching = wanted ? offered.filter((a) => categoryPath(accounts, a.id).toLowerCase().includes(wanted)) : offered;
   return categoryGroups(matching);
@@ -100,6 +102,7 @@ export function CategoryPicker({
   lockKind = false,
   title = 'Select category',
   value,
+  setId = null,
   onPick,
   onClose,
 }: {
@@ -114,6 +117,11 @@ export function CategoryPicker({
   /** What the sheet is called. The list's gesture names the purchase being re-filed; a form just picks one. */
   title?: string;
   value?: string;
+  /**
+   * The set of the event the spending is being recorded into, when it draws on one: its categories are offered in
+   * place of the monthly tree, for spending only — no set holds income.
+   */
+  setId?: string | null;
   onPick: (categoryId: string) => void;
   onClose: () => void;
 }) {
@@ -125,8 +133,10 @@ export function CategoryPicker({
   // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
   const [finding, setFinding] = useState(false);
   const [making, setMaking] = useState(false);
-  const groups = pickerGroups(accounts, showing, membership, inOpenBook, search);
-  // What a new category may be filed under: the roots this picker itself offers, of the kind it is showing.
+  const set = showing === 'expense' ? setId : null;
+  const groups = pickerGroups(accounts, showing, membership, inOpenBook, search, set);
+  // What a new category may be filed under: the monthly tree's roots of the kind it is showing. A category made here
+  // is a monthly one whichever list is open — a set is added to on its own page — so its parents are the tree's.
   const parents = pickerGroups(accounts, showing, membership, inOpenBook).map((group) => group.root);
 
   const choose = (categoryId: string) => {

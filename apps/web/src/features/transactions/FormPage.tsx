@@ -1,15 +1,17 @@
 import { useOpenBookReadOnly } from '../sharing/queries';
-import { listTransactions, ownerScope } from '@expanses/db';
+import { linkEventItem, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
-import { Card } from '../../ui';
+import { Card, RowHint } from '../../ui';
 import { SCREEN } from '../../ui/native';
+import { buyRefusal, buySeed, coverTarget, eventOpening, isNothingLeft } from '../events/buy-item';
+import { useEventPlan, useEvents } from '../events/queries';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
-import { TransactionCard } from './TransactionCard';
+import { type CardFollowUp, TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 
 /**
@@ -21,19 +23,80 @@ import { useDuplicable } from './duplicable';
 const newRoute = getRouteApi('/transactions/new');
 
 export function NewTransactionRoute() {
+  const { database, ws } = useApp();
+  const navigate = useNavigate();
   const back = useBack('/transactions');
   const readOnly = useOpenBookReadOnly();
-  // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither.
-  const { mode, account, to } = newRoute.useSearch();
+  // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
+  // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
+  const { mode, account, to, event, item, ws: tab } = newRoute.useSearch();
+  const events = useEvents();
+  // Owner-wide, as the plan screens read it: the item is the plan's, whichever workspace's tab it was opened from.
+  const plan = useEventPlan(item ? (event ?? null) : null);
+  // The seed is read once, when the card opens, so the card waits for what it is checked against.
+  const waiting = (!!event && events.isPending) || (!!item && plan.isPending);
+  const opening = waiting
+    ? null
+    : eventOpening({ event, item }, events.data ?? [], (plan.data?.lines ?? []).flatMap((line) => line.items));
+  const buying = opening?.item ?? null;
+
+  /*
+   * "Buy it now": the payment is also the item, so Save ties the two together with the id it posted. The payment it
+   * just made is this item and nothing else, so the item takes the whole of it as its share.
+   *
+   * A receipt already spoken for is the one refusal with somewhere to go — ticking an item off claims what is left
+   * of its receipt, so a receipt answering several items is settled on "What it covers" and not by a second tick.
+   * The payment is posted and tagged by now either way, so carrying the user to that screen loses nothing and asks
+   * them for exactly what the app could not know. Both ways out replace this screen, so Back from them does not
+   * open the same purchase again.
+   */
+  const followUp: CardFollowUp | undefined =
+    opening && buying
+      ? {
+          refuse: (draft) => buyRefusal(draft, opening.eventId),
+          posted: async (transactionId) => {
+            try {
+              await linkEventItem(database, ws, buying.id, transactionId);
+            } catch (e) {
+              if (!isNothingLeft(e)) throw e;
+              await navigate({ ...coverTarget(opening.eventId, transactionId, { item: buying.id, ws: tab }), replace: true });
+              return;
+            }
+            await navigate({ to: '/events/$eventId/plan', params: { eventId: opening.eventId }, search: { ws: tab }, replace: true });
+          },
+          header: <RowHint>Filled in from the estimate. Change it to what the receipt really says.</RowHint>,
+        }
+      : undefined;
+
   return (
     <div className={SCREEN}>
       {/*
        * A subpage's bar, as New asset and New debt draw theirs: the circle back, the name centred. Back goes wherever
        * the form was opened from — the tab bar's ＋ works from every screen — and so do Save and Cancel, as the
-       * sheet this page replaced closed onto the screen underneath.
+       * sheet this page replaced closed onto the screen underneath. An event's Add spending is one more opener:
+       * Back and Save land on the event again.
        */}
       {/* A share that ended here takes nothing new (§8.6): the notice above says why, and there is no form to fill. */}
-      {readOnly ? null : <TransactionCard full title="New transaction" label="Add a transaction" mode={mode} seed={{ moneyId: account, toId: to }} onBack={back} onDone={back} />}
+      {readOnly ? null : waiting ? (
+        <Card>Loading…</Card>
+      ) : (
+        <TransactionCard
+          full
+          title={buying ? `Buy ${buying.name}` : 'New transaction'}
+          label="Add a transaction"
+          // Spending into an event is spending: Expense, whatever the address asked.
+          mode={opening ? 'expense' : mode}
+          seed={{
+            moneyId: account,
+            toId: to,
+            ...(opening ? { eventId: opening.eventId } : {}),
+            ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
+          }}
+          followUp={followUp}
+          onBack={back}
+          onDone={back}
+        />
+      )}
     </div>
   );
 }

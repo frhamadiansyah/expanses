@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openCard } from './accounts';
+import { addForm, choosePayment, saveButton } from './add-transaction';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
@@ -377,19 +378,25 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
 
+  // Add spending is the Add screen with the event set, so it asks the question the Add screen always asks.
   await page.getByRole('button', { name: 'Add spending' }).click();
-  await page.getByLabel('Description').pressSequentially('Hampers');
-  await page.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Food and beverage' });
-  await page.getByLabel('Amount', { exact: true }).pressSequentially('6800000');
+  const form = addForm(page);
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'Jenius');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Food and beverage', exact: true }).click();
+  await form.getByLabel('Note').pressSequentially('Hampers');
+  await typeAmount(page, form, '6800000');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  const save = page.getByRole('button', { name: 'Save', exact: true });
+  const save = saveButton(form);
   await expect(save).toBeDisabled();
-  await enterWaitsForTheQuestion(page, page.getByLabel('Amount', { exact: true }));
-  await expect(page.getByLabel('Description')).toHaveValue('Hampers');
+  await enterWaitsForTheQuestion(page, form.getByLabel('Amount', { exact: true }));
+  await expect(form.getByLabel('Note')).toHaveValue('Hampers');
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
-  await expect(page.getByLabel('Description')).toHaveValue('');
+  // Saved, it is back on the event it was opened from.
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
   await expectRecordedOnce(page, /Hampers/);

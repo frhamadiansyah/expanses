@@ -153,7 +153,7 @@ export function ItemPage() {
                  * ticking an item off claims what is *left* of a receipt, a shopping trip that answered three items
                  * goes that way, through the screen where the three shares are typed together.
                  */}
-                <InsetRow title="Buy it now" onClick={() => void navigate(buyTarget(eventId, item.id))} chevron />
+                <InsetRow title="Buy it now" onClick={() => void navigate(buyTarget(eventId, item.id, tab))} chevron />
                 <InsetRow title="Link a purchase" to="/events/$eventId/plan/link" params={{ eventId }} search={{ ws: tab, item: item.id }} />
               </InsetGroup>
             )}
