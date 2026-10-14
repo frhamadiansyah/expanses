@@ -92,12 +92,20 @@ export interface FormDraft {
   opened?: OpenedFigure;
 }
 
-/** What `FormDraft.opened` holds: the texts the figure opened with, and its exact hundredths (null when whole). */
+/**
+ * What `FormDraft.opened` holds: the figure as read when the form opened — the tab, the amount and the charged figure
+ * in whole minor units (null where a row is empty), the currencies they are read in, and the exact hundredths (null
+ * when whole). Readings rather than texts, so "12501" and "12.501" are the same amount, and currencies as resolved
+ * rather than as the flag holds them, so a tab that blanks the flag and gives it back changes nothing.
+ */
 export interface OpenedFigure {
   mode: FormMode;
-  amount: string;
-  chargedAmount: string;
-  currency: string;
+  amountMinor: number | null;
+  chargedMinor: number | null;
+  /** The currency the amount row is read in (`typedCurrency`). */
+  typedCurrency: string;
+  /** The paying account's own currency: what the posting is in. */
+  settledCurrency: string;
   exactHundredths: number | null;
 }
 
@@ -536,7 +544,12 @@ function figureOf(
   if (read !== null) return { minor: Math.abs(read.minor), exactHundredths: read.exactHundredths };
   const rest = refund ? value.replace(MINUS_FIRST, '') : value;
   if (!rest.trim()) throw new Error(`${label} is empty — type a figure`);
-  if (!fractional && wholeOnly === 'refuse' && hasCents(value, currency, refund)) throw new Error(DECIMALS_REFUSAL);
+  if (hasCents(value, currency, refund)) {
+    if (!fractional && wholeOnly === 'refuse') throw new Error(DECIMALS_REFUSAL);
+    // Taken with cents, it was read: it came to nothing once rounded (an income of 0,50 rounds down to 0). Asking
+    // `parseMajor` here would answer "IDR allows 0 decimal places" on the one field that allows them.
+    if (fractional) throw new Error(refund ? `${label} must come to money back` : `${label} must be greater than zero`);
+  }
   parseMajor(rest, currency);
   throw new Error(refund ? `${label} must come to money back` : `${label} must be greater than zero`);
 }
@@ -861,7 +874,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         eventId: draft.eventId || null,
         photoIds: draft.photoIds,
         // A transfer never takes cents: an expense or income corrected into one leaves its exact figure behind.
-        ...exactField(draft, null),
+        ...exactField(draft, accounts, null),
       },
     };
   }
@@ -941,19 +954,41 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       photoIds: draft.photoIds,
       // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
       ...paidFromHint(draft),
-      ...exactField(draft, exactHundredths),
+      ...exactField(draft, accounts, exactHundredths),
     },
   };
 }
 
-/** Whether the figure still reads as the form opened on it: the same tab, texts and currency, and no split. */
-function figureAsOpened(draft: FormDraft, opened: OpenedFigure): boolean {
+/** The figure on a draft, read as `OpenedFigure` records it. */
+function figureNow(draft: FormDraft, accounts: readonly AccountRow[]): Omit<OpenedFigure, 'exactHundredths'> {
+  const typed = typedCurrency(draft, accounts);
+  const settled = accountOf(draft, accounts)?.currency ?? '';
+  // A minus is allowed on both sides of the comparison alike: the tab is compared too, so a refund only ever meets a refund.
+  const read = (text: string, currency: string) => (text.trim() && currency ? evaluateAmount(text, currency, { refund: true }) : null);
+  return {
+    mode: draft.mode,
+    amountMinor: read(draft.amount, typed),
+    chargedMinor: read(draft.chargedAmount, settled),
+    typedCurrency: typed,
+    settledCurrency: settled,
+  };
+}
+
+/**
+ * Whether the money still reads as the form opened on it: the same tab, the same amount and charged figure, in the
+ * same currencies, paid from an account in the same currency, and no split. An amount that cannot be read whole (one
+ * typed with cents, or half typed) is never the same.
+ */
+function figureAsOpened(draft: FormDraft, opened: OpenedFigure, accounts: readonly AccountRow[]): boolean {
+  const now = figureNow(draft, accounts);
   return (
-    draft.mode === opened.mode &&
-    draft.amount === opened.amount &&
-    draft.chargedAmount === opened.chargedAmount &&
-    draft.currency === opened.currency &&
-    draft.splits.length === 0
+    draft.splits.length === 0 &&
+    now.amountMinor !== null &&
+    now.mode === opened.mode &&
+    now.amountMinor === opened.amountMinor &&
+    now.chargedMinor === opened.chargedMinor &&
+    now.typedCurrency === opened.typedCurrency &&
+    now.settledCurrency === opened.settledCurrency
   );
 }
 
@@ -967,9 +1002,9 @@ function figureAsOpened(draft: FormDraft, opened: OpenedFigure): boolean {
  *   explicit null, because the stored figure no longer describes the amount and the ledger refuses one that does
  *   not fit. A new transaction typed whole sends nothing, as it always did.
  */
-function exactField(draft: FormDraft, typed: number | null): { exactHundredths?: number | null } {
+function exactField(draft: FormDraft, accounts: readonly AccountRow[], typed: number | null): { exactHundredths?: number | null } {
   const opened = draft.opened;
-  if (opened && figureAsOpened(draft, opened)) {
+  if (opened && typed === null && figureAsOpened(draft, opened, accounts)) {
     if (draft.editing || opened.exactHundredths === null) return {};
     return { exactHundredths: opened.exactHundredths };
   }
@@ -1071,13 +1106,13 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
         moneyId: payment.accountId,
         currency: settledOf(payment),
         splits: category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency) })),
-      }, tx);
+      }, tx, accounts);
     }
     const only = category[0]!;
     const total = c.type === 'expense' ? only.amountMinor : -only.amountMinor;
     // The whole figure that posted (B2): cents are shown only while they are being typed. The exact figure, when the
     // amount was typed with them, rides along with the texts it belongs to, so a save that leaves them alone keeps it.
-    return withOpened({ ...base, mode: c.type, moneyId: payment.accountId, categoryId: only.accountId, ...foreign(payment, total) }, tx);
+    return withOpened({ ...base, mode: c.type, moneyId: payment.accountId, categoryId: only.accountId, ...foreign(payment, total) }, tx, accounts);
   }
 
   const from = money.find((e) => e.amountMinor < 0);
@@ -1090,13 +1125,12 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     currency: from ? settledOf(from) : '',
     amount: from ? minorToMajorString(-from.amountMinor, from.currency) : '',
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
-  }, tx);
+  }, tx, accounts);
 }
 
 /** A reopened draft with the figure it opened on (`FormDraft.opened`). */
-function withOpened(form: FormDraft, tx: TransactionView): FormDraft {
-  const { mode, amount, chargedAmount, currency } = form;
-  return { ...form, opened: { mode, amount, chargedAmount, currency, exactHundredths: tx.exactHundredths ?? null } };
+function withOpened(form: FormDraft, tx: TransactionView, accounts: readonly AccountRow[]): FormDraft {
+  return { ...form, opened: { ...figureNow(form, accounts), exactHundredths: tx.exactHundredths ?? null } };
 }
 
 /** What `canDuplicate` needs beyond the transaction: facts the caller reads from the accounts, the payers and the transfers. */

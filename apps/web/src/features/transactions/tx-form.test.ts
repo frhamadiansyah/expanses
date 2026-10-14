@@ -1595,6 +1595,10 @@ describe('cents typed on a whole-unit currency', () => {
     expect(() => formToPost({ ...foreign, currency: 'JPY', amount: '1.000,50' }, accounts)).toThrow(/JPY allows 0 decimal places/);
   });
 
+  it('says an income whose cents round down to nothing must be greater than zero', () => {
+    expect(() => formToPost({ ...draft, mode: 'income', amount: '0,50' }, accounts)).toThrow('Amount must be greater than zero');
+  });
+
   it('never gives a currency with cents an exact figure', () => {
     const input = posted({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10,50' });
     expect(debit(input)).toBe(1_050);
@@ -1619,9 +1623,40 @@ describe('cents typed on a whole-unit currency', () => {
       expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13.000,50' }).exactHundredths).toBe(1_300_050);
     });
 
-    it('clears it when the amount is retyped whole, even to the same whole figure written another way', () => {
+    it('clears it when the amount is retyped to another whole figure', () => {
       expect(posted({ ...formFromTransaction(decimal, accounts), amount: '13000' })).toMatchObject({ exactHundredths: null });
-      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '12.501' })).toMatchObject({ exactHundredths: null });
+      expect(posted({ ...formFromTransaction(decimal, accounts), amount: '12.502' })).toMatchObject({ exactHundredths: null });
+    });
+
+    it('keeps it when the same amount is written another way, since the amount has not changed', () => {
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12.501' })).toBe(false);
+      expect('exactHundredths' in posted({ ...formFromTransaction(decimal, accounts), amount: '12500+1' })).toBe(false);
+    });
+
+    it('keeps it through a visit to the Transfer tab and back, which blanks the flag but not the money', () => {
+      const opened = formFromTransaction(decimal, accounts);
+      // What `chooseMode` does: Transfer offers no flag, so the currency and the charged row are blanked.
+      const there: FormDraft = { ...opened, mode: 'transfer', currency: '', chargedAmount: '', splits: [], categoryId: '' };
+      const back: FormDraft = { ...there, mode: 'expense', categoryId: 'cat-restaurants' };
+      expect('exactHundredths' in posted(back)).toBe(false);
+      // A Duplicate taken there and back still copies the figure with its amount.
+      const copy = duplicateDraft(decimal, accounts);
+      expect(posted({ ...copy, currency: '', chargedAmount: '' }).exactHundredths).toBe(1_250_030);
+    });
+
+    it('clears a foreign purchase’s figure when it moves to an account in another whole-unit currency', () => {
+      const withYen = [...accounts, { id: 'acct-jpy', name: 'Suica', kind: 'asset', subtype: 'cash', currency: 'JPY' }] as AccountRow[];
+      const abroad = view({
+        exactHundredths: 27_240_030,
+        originalCurrency: 'CNY',
+        originalAmountMinor: 12_000,
+        entries: [paid(-272_401), spent('cat-restaurants', 272_401)] as TransactionView['entries'],
+      });
+      const opened = formFromTransaction(abroad, withYen);
+      expect('exactHundredths' in posted({ ...opened, description: 'Note only' })).toBe(false);
+      const moved = formToPost({ ...opened, moneyId: 'acct-jpy' }, withYen);
+      expect(moved.kind).toBe('post');
+      expect(moved.input).toMatchObject({ exactHundredths: null });
     });
 
     it('clears it when the transaction becomes an income, a split or a transfer', () => {
