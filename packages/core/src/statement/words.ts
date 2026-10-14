@@ -26,12 +26,28 @@ export interface StatementWords {
    * end of a description so two branches of one shop read as one merchant.
    */
   trailingPlaces: string[];
+  /**
+   * What may join a printed date's day, month word and year: `05-Mar-26`, `05/Mar/26`, `05.Mar.26`, `05 Mar 2026`. One
+   * date uses one of them throughout. A two-digit year counts only after one of these marks, never after a bare space,
+   * so `06 MAY 10 PCS` stays the 6th of May and a description.
+   */
+  dateSeparators: string[];
+  /**
+   * The line a statement prints under a foreign purchase: the currency, the amount in it (with a credit marker on money
+   * back) and the rate, as `(TRY 412.00 x 341.00)` or `(CNY 2.070,00 X 2.410,00)`: each number in either convention,
+   * read by the amount parser, which decides the decimal mark by the last group. Either bracket may be lost in
+   * reading. Named groups: `currency`, `amount`, `marker` (checked against `inMarkers` and `outMarkers`) and `rate`.
+   */
+  foreignDetail: RegExp;
 }
 
 export const STATEMENT_WORDS: StatementWords = {
   closing: ['new balance', 'closing balance', 'saldo akhir', 'tagihan baru', 'total tagihan', 'outstanding', 'current balance'],
   previous: ['previous balance', 'saldo sebelumnya', 'tagihan sebelumnya', 'last statement balance'],
-  fee: ['fee', 'biaya', 'materai', 'stamp duty', 'interest', 'biaya bunga', 'bunga kartu', 'annual', 'iuran', 'late charge', 'denda'],
+  fee: [
+    'fee', 'biaya', 'materai', 'meterai', 'stamp duty', 'interest', 'biaya bunga', 'bunga kartu', 'annual', 'iuran', 'late charge',
+    'charge', 'denda',
+  ],
   paymentWords: ['payment', 'pembayaran', 'terima kasih', 'thank you', 'autodebet', 'autodebit', 'autopay', 'transfer'],
   inMarkers: ['cr', 'k', 'kredit', 'credit'],
   outMarkers: ['db', 'd', 'debit'],
@@ -46,6 +62,10 @@ export const STATEMENT_WORDS: StatementWords = {
   },
   trailingPlaces: [
     'id', 'idn', 'jkt', 'jakarta', 'jakarta slt', 'jakarta selat', 'jakarta pusat', 'jakarta barat', 'jakarta timur',
-    'jakarta utara', 'tangerang', 'tangerang kab', 'bandung', 'surabaya', 'bali', 'sg', 'my', 'us',
+    'jakarta utara', 'jakarta sela', 'jakarta selatan', 'tangerang', 'tangerang kab', 'bandung', 'surabaya', 'bali',
+    // Country codes, two and three letters, as a card network appends them.
+    'sg', 'sgp', 'my', 'us', 'usa', 'tr', 'tur', 'cn', 'chn', 'jp', 'jpn',
   ],
+  dateSeparators: ['-', '/', '.', ' '],
+  foreignDetail: /^\(?\s*(?<currency>[A-Za-z]{3})\s*(?<amount>\d[\d.,]*)\s*(?<marker>[A-Za-z]{1,6})?\s*[xX×*@]\s*(?<rate>\d[\d.,]*)\s*\)?$/,
 };

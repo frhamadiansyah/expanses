@@ -28,7 +28,7 @@ import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
-import { canRecordAll, needsCategory, recordLabel, statementMonth } from './check-model';
+import { canRecordAll, corrected, needsCategory, recordLabel, statementMonth } from './check-model';
 import { MissingRows } from './MissingRows';
 
 /** `/cards/$cardId/check?start&end&batch`: the period when the card page knows it, and lines already read (S2). */
@@ -332,7 +332,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           cardName={card.name}
           accounts={accounts}
           onPick={(index, categoryId) => setRows((was) => fillSameMerchant(was, index, categoryId))}
-          onCorrect={(index, patch) => setRows((was) => was.map((r) => (r.index === index ? { ...r, ...patch } : r)))}
+          onCorrect={(index, patch) => setRows((was) => was.map((r) => (r.index === index ? corrected(r, patch) : r)))}
           onKind={onKind}
           footer={footer}
         />

@@ -149,6 +149,34 @@ describe('recording a check', () => {
     expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ id: result.checkId, periodStart: MAY.start, periodEnd: MAY.end, closingMinor: 200_000, previousMinor: 0, status: 'reconciled' }]);
   });
 
+  it('records a missing foreign purchase and its foreign refund with the original currency and amount the detail line gives', async () => {
+    const h = await household();
+    // Two-date rows, transaction date first, each with its detail line underneath; the refund's carries CR too.
+    const at = (y: number) => [
+      line('15-May-26', 0.05, y, 0.08), line('17-May-26', 0.15, y, 0.08),
+    ];
+    const prepared = await h.prepare([[
+      ...at(0.1), line('KAFE ORNEK CITY TR', 0.25, 0.1, 0.4), line('140,492.00', 0.8, 0.1, 0.1),
+      line('(TRY 412.00 x 341.00)', 0.25, 0.13, 0.3),
+      ...at(0.16), line('ARAC KIRALAMA ORNEK TR', 0.25, 0.16, 0.4), line('28,552.00', 0.8, 0.16, 0.1), line('CR', 0.92, 0.16, 0.03),
+      line('(TRY 83.00CR x 344.00)', 0.25, 0.19, 0.3),
+      ...at(0.22), line('TOKO ORNEK KOTA ORNEK ID', 0.25, 0.22, 0.4), line('50,000.00', 0.8, 0.22, 0.1),
+    ]]);
+    expect(prepared.rows.map((r) => [r.description, r.outcome, r.original ?? null])).toEqual([
+      ['KAFE ORNEK CITY TR', { row: 0, status: 'missing', as: 'purchase' }, { currency: 'TRY', amountMinor: 41_200 }],
+      ['ARAC KIRALAMA ORNEK TR', { row: 1, status: 'missing', as: 'refund' }, { currency: 'TRY', amountMinor: 8_300 }],
+      ['TOKO ORNEK KOTA ORNEK ID', { row: 2, status: 'missing', as: 'purchase' }, null],
+    ]);
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+    const txs = await listTransactions(h.database, h.ws, { accountId: h.card.id });
+    const of = (description: string) => txs.find((t) => t.description === description)!;
+    // The lines stay the charged rupiah; the original rides beside them, so the purchase earns as foreign spend.
+    expect(of('KAFE ORNEK CITY TR')).toMatchObject({ occurredOn: '2026-05-15', originalCurrency: 'TRY', originalAmountMinor: 41_200 });
+    expect(of('KAFE ORNEK CITY TR').entries.find((e) => e.accountId === h.card.id)?.amountMinor).toBe(-140_492);
+    expect(of('ARAC KIRALAMA ORNEK TR')).toMatchObject({ originalCurrency: 'TRY', originalAmountMinor: 8_300 });
+    expect(of('TOKO ORNEK KOTA ORNEK ID')).toMatchObject({ originalCurrency: null, originalAmountMinor: null });
+  });
+
   it('says by how much it differs when cicis closes elsewhere', async () => {
     const h = await household();
     const prepared = await h.prepare([statement('250,000')]);
