@@ -128,4 +128,26 @@ describe('what apply skips, and what it refuses to', () => {
     await expect(dewi.engine.syncOnce(bookId)).rejects.toMatchObject({ cause: { code: expect.stringMatching(/UNIQUE/) } });
     expect(await cursor(dewi, bookId)).toBe(before);
   });
+
+  it('a share whose basis the schema does not know is skipped, not applied', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const db = await import('../../src/index');
+    await db.saveBudget(fandri.database, db.inBook(fandri.ws, bookId), { categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), amountMinor: 100_000 });
+    await home.settle();
+    const [[budgetId]] = (await dewi.database.db.values<[string]>(sql`SELECT id FROM budgets`)) as [[string]];
+    const seq = await appendOps(home, fandri, [{ entity: 'budget_share', id: budgetId, op: 'upsert', fields: { basis: 'salary', shareBp: 100 } }]);
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped.map((s) => [s.seq, s.entity])).toEqual([[seq, 'budget_share']]);
+  });
+
+  it('a share set on one device is the same share on the other', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const db = await import('../../src/index');
+    await db.saveBudget(fandri.database, db.inBook(fandri.ws, bookId), { categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), amountMinor: 100_000 });
+    await home.settle();
+    const [[budgetId]] = (await dewi.database.db.values<[string]>(sql`SELECT id FROM budgets`)) as [[string]];
+    await appendOps(home, fandri, [{ entity: 'budget_share', id: budgetId, op: 'upsert', fields: { basis: 'take-home', shareBp: 1500 } }]);
+    await dewi.engine.syncOnce(bookId);
+    expect(await dewi.database.db.values(sql`SELECT basis, share_bp FROM budget_shares WHERE budget_id = ${budgetId}`)).toEqual([['take-home', 1500]]);
+  });
 });

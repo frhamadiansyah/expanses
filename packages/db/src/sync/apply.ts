@@ -8,6 +8,7 @@ import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
+import { budgetSharesExist } from '../repos/share-tables';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -207,6 +208,7 @@ const PARENTS: Record<string, { table: string; from: 'field' | 'key'; name: stri
   budget: { table: 'accounts', from: 'field', name: 'categoryAccountId' },
   budget_override: { table: 'budgets', from: 'field', name: 'budgetId' },
   budget_frequency: { table: 'budgets', from: 'key', name: 'budget_id' },
+  budget_share: { table: 'budgets', from: 'key', name: 'budget_id' },
   bill: { table: 'accounts', from: 'field', name: 'categoryAccountId' },
   bill_window: { table: 'expense_templates', from: 'key', name: 'template_id' },
   bill_skip: { table: 'expense_templates', from: 'key', name: 'template_id' },
@@ -228,6 +230,7 @@ async function rowExists(tx: Db, entity: RowEntity, where: SQL): Promise<boolean
 async function deleteRow(tx: Db, entity: RowEntity, where: SQL, key: Record<string, string>): Promise<void> {
   if (entity.entity === 'budget') {
     await tx.run(sql`DELETE FROM budget_frequencies WHERE budget_id = ${key.id}`);
+    if (await budgetSharesExist(tx)) await tx.run(sql`DELETE FROM budget_shares WHERE budget_id = ${key.id}`);
     await tx.run(sql`DELETE FROM budget_overrides WHERE budget_id = ${key.id}`);
   }
   if (entity.entity === 'category') await removeCategorySettingsTx(tx, key.id!);

@@ -150,7 +150,7 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
     ops.push(...(await rows('device')).filter((op) => op.id === self));
   }
   ops.push(...parentsFirst(await rows('category')), ...(await rows('category_need')), ...(await rows('category_colour')));
-  ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_override')));
+  ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_share')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
   ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')), ...(await rows('bill_pause')));
 
