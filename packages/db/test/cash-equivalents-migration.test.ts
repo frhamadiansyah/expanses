@@ -102,7 +102,7 @@ describe('migration 0047', () => {
     const after = await accountsSchema();
     expect(shapeApartFromSubtypes(after.ddl)).toBe(shapeApartFromSubtypes(before.ddl));
     expect(allowedSubtypes(before.ddl)).not.toContain('time_deposit');
-    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'other_cash', 'time_deposit'].sort());
+    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'event_balance', 'other_cash', 'time_deposit'].sort());
     for (const clause of ['REFERENCES workspaces(id)', 'REFERENCES accounts(id)', 'id TEXT PRIMARY KEY']) {
       expect(flat(after.ddl)).toContain(clause);
     }

@@ -48,6 +48,8 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   payable: 'Payables',
   category: 'Category',
   equity: 'Equity',
+  // A shared event's trip balance (shared events §5): made by the event, never offered by a picker.
+  event_balance: 'Trip balance',
 };
 
 /**
