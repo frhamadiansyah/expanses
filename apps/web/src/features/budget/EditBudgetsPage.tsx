@@ -81,7 +81,7 @@ export function EditBudgetsPage() {
     }
     try {
       setBusy(true);
-      await saveBudgets(database, ws, changes);
+      await saveBudgets(database, ws, changes, month);
       await invalidate();
       back();
     } catch (e) {

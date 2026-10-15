@@ -230,7 +230,7 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
       case 'budget': {
         const category = at(await pool(d, bookId), step.category);
         if (!category) return false;
-        if (step.remove) await removeBudget(database, ws, category);
+        if (step.remove) await removeBudget(database, ws, category, MONTHS[0]!);
         else await saveBudget(database, ws, { categoryAccountId: category, amountMinor: step.amount * 100_000, frequency: step.frequency });
         return true;
       }

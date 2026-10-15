@@ -10,7 +10,7 @@ import { bareFigure } from '../networth/debt-rows';
 import { FREQUENCY_WORDS, perMonthPreview } from './frequency-form';
 import { FigureRow } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { type ShareBase, toAmount, toPercent } from './share-form';
+import { type Dependant, keptWarning, type ShareBase, toAmount, toPercent } from './share-form';
 
 /**
  * What is typed into the Cap row to begin with: this month's own figure when it has one, else the plan as it was typed
@@ -51,7 +51,7 @@ export function CapSheet({
   /** What a % typed here is of: the parent's budget, or this month's take-home. */
   base: ShareBase;
   /** Children that are a % of this budget: removing it keeps each at its figure, as an amount. */
-  dependants: readonly { name: string; minor: number }[];
+  dependants: readonly Dependant[];
   month: string;
   /** The open workspace's own currency, which a cap is typed and parsed in. */
   currency: string;
@@ -149,14 +149,13 @@ export function CapSheet({
     setError(null);
     // A child that is a % of this budget has nothing to be a share of once it goes: it keeps its figure, as an amount.
     if (dependants.length > 0 && !(thisMonthOnly && row?.overridden)) {
-      const kept = dependants.map((child) => `${child.name} keeps ${formatMinor(child.minor, currency)} a month`).join('; ');
-      if (!window.confirm(`${kept}. Remove this budget?`)) return;
+      if (!window.confirm(keptWarning(dependants, currency))) return;
     }
     try {
       setBusy(true);
       // With Just this month on, only this month's own figure goes, and the plan stands.
       if (thisMonthOnly && row?.overridden) await clearBudgetOverride(database, ws, categoryId, month);
-      else await removeBudget(database, ws, categoryId);
+      else await removeBudget(database, ws, categoryId, month);
       await invalidate();
       onClose();
     } catch (e) {

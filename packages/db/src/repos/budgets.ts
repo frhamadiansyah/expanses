@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isoDate, isUncategorisedKey, monthOf, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isUncategorisedKey, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -179,9 +179,12 @@ async function assertParentsCapped(tx: Tx, ws: WorkspaceContext, inputs: readonl
   }
 }
 
-/** Each category's plan this month, resolved: what a %-child keeps when the parent it was a share of goes. */
-async function planFiguresNow(database: Database, ws: WorkspaceContext): Promise<Map<string, number>> {
-  return new Map((await listBudgets(database, ws, monthOf(isoDate()))).map((row) => [row.categoryAccountId, row.planMinor]));
+/**
+ * Each category's plan in `month`, resolved: what a %-child keeps when the parent it was a share of goes. The month is
+ * the one on screen, so the figure kept is the one the warning named; a month's own figure (an override) never is.
+ */
+async function planFiguresOf(database: Database, ws: WorkspaceContext, month: string): Promise<Map<string, number>> {
+  return new Map((await listBudgets(database, ws, month)).map((row) => [row.categoryAccountId, row.planMinor]));
 }
 
 /**
@@ -237,9 +240,10 @@ export async function saveBudget(database: Database, ws: WorkspaceContext, input
   });
 }
 
-/** Removes the budget and every override that only made sense against it. */
-export async function removeBudget(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
-  const figures = await planFiguresNow(database, ws);
+/** Removes the budget and every override that only made sense against it; its %-children keep their plan in `month`. */
+export async function removeBudget(database: Database, ws: WorkspaceContext, categoryAccountId: string, month: string): Promise<void> {
+  assertMonth(month);
+  const figures = await planFiguresOf(database, ws, month);
   await database.transaction((tx) => deleteBudget(tx, ws, categoryAccountId, figures));
 }
 
@@ -250,9 +254,11 @@ export interface BudgetChanges {
 
 /**
  * Every budget the Edit budgets screen changed, written together: each row is checked before anything is written, so
- * one refusal leaves every budget as it was. A refusal names its category.
+ * one refusal leaves every budget as it was. A refusal names its category. A removed parent's %-children keep their
+ * plan in `month`, the month the screen shows.
  */
-export async function saveBudgets(database: Database, ws: WorkspaceContext, changes: BudgetChanges): Promise<void> {
+export async function saveBudgets(database: Database, ws: WorkspaceContext, changes: BudgetChanges, month: string): Promise<void> {
+  assertMonth(month);
   const checked: { input: SaveBudgetInput; monthly: { monthlyMinor: number; frequency: BudgetFrequency } }[] = [];
   for (const input of changes.save) {
     try {
@@ -266,7 +272,7 @@ export async function saveBudgets(database: Database, ws: WorkspaceContext, chan
   }
   if (checked.length === 0 && changes.remove.length === 0) return;
   const now = new Date().toISOString();
-  const figures = changes.remove.length > 0 ? await planFiguresNow(database, ws) : new Map<string, number>();
+  const figures = changes.remove.length > 0 ? await planFiguresOf(database, ws, month) : new Map<string, number>();
   await database.transaction(async (tx) => {
     for (const categoryAccountId of changes.remove) await deleteBudget(tx, ws, categoryAccountId, figures);
     for (const { input, monthly } of checked) await writeBudget(tx, ws, input, monthly, now);

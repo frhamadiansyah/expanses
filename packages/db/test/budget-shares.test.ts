@@ -89,7 +89,7 @@ describe('saving a share', () => {
         { categoryAccountId: food.id, amountMinor: 2_000_000 },
       ],
       remove: [],
-    });
+    }, '2026-10');
     expect(capOf(await listBudgets(database, ws, '2026-10'), groceries.id).amountMinor).toBe(800_000);
   });
 
@@ -98,7 +98,28 @@ describe('saving a share', () => {
     await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 2_000_000 });
     await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 800_000, share: { basis: 'parent', bp: 4000 } });
 
-    await removeBudget(database, ws, food.id);
+    await removeBudget(database, ws, food.id, '2026-10');
     expect(capOf(await listBudgets(database, ws, '2026-10'), groceries.id)).toMatchObject({ amountMinor: 800_000, share: null });
+  });
+
+  it('keeps a removed parent’s %-children at their plan figure for the month being viewed, never that month’s own figure', async () => {
+    const { database, ws, food, groceries } = await withTree();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 3_000_000, share: { basis: 'take-home', bp: 3000 } });
+    await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 1_200_000, share: { basis: 'parent', bp: 4000 } });
+    await setIncomeOverride(database, ws, { month: '2027-03', amountMinor: 20_000_000 });
+    await setBudgetOverride(database, ws, { categoryAccountId: groceries.id, month: '2027-03', amountMinor: 5_000_000 });
+
+    await removeBudget(database, ws, food.id, '2027-03');
+    expect(capOf(await listBudgets(database, ws, '2027-04'), groceries.id)).toMatchObject({ amountMinor: 2_400_000, share: null });
+  });
+
+  it('keeps the %-children of a parent removed with Edit budgets at their plan figure for the month being viewed', async () => {
+    const { database, ws, food, groceries } = await withTree();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 3_000_000, share: { basis: 'take-home', bp: 3000 } });
+    await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 1_200_000, share: { basis: 'parent', bp: 4000 } });
+    await setIncomeOverride(database, ws, { month: '2027-03', amountMinor: 20_000_000 });
+
+    await saveBudgets(database, ws, { save: [], remove: [food.id] }, '2027-03');
+    expect(capOf(await listBudgets(database, ws, '2027-04'), groceries.id)).toMatchObject({ amountMinor: 2_400_000, share: null });
   });
 });

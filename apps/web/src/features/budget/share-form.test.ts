@@ -1,8 +1,19 @@
 import type { BudgetLine } from '@expanses/core';
+import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { shareBaseOf, toAmount, toPercent } from './share-form';
+import { dependantsOf, keptWarning, shareBaseOf, toAmount, toPercent } from './share-form';
 
 const line = (id: string, name: string, capMinor: number | null, children: BudgetLine[] = []): BudgetLine => ({ id, name, ownMinor: 0, totalMinor: 0, capMinor, overMinor: 0, children });
+const stored = (categoryAccountId: string, planMinor: number, amountMinor: number, share: BudgetRow['share']): BudgetRow => ({
+  id: `b-${categoryAccountId}`,
+  categoryAccountId,
+  planMinor,
+  amountMinor,
+  overridden: amountMinor !== planMinor,
+  frequency: 'monthly',
+  amountAsSetMinor: planMinor,
+  share,
+});
 
 describe('shareBaseOf', () => {
   it('is the parent’s budget when the parent has one, and take-home otherwise', () => {
@@ -26,5 +37,14 @@ describe('toPercent and toAmount', () => {
     expect(toPercent('', base, 'IDR')).toBe('');
     expect(toAmount('abc', base, 'IDR')).toBe('');
     expect(toPercent('500.000', { ...base, minor: 0 }, 'IDR')).toBe('');
+  });
+});
+
+describe('dependantsOf', () => {
+  it('names each %-child of the budget with its plan figure for the month, not that month’s own figure', () => {
+    const lines = [line('food', 'Food', 2_000_000, [line('groceries', 'Groceries', 950_000), line('coffee', 'Coffee', 300_000)])];
+    const budgets = [stored('food', 2_000_000, 2_000_000, null), stored('groceries', 800_000, 950_000, { basis: 'parent', bp: 4000 }), stored('coffee', 300_000, 300_000, null)];
+    expect(dependantsOf(lines, budgets, 'food')).toEqual([{ name: 'Groceries', minor: 800_000 }]);
+    expect(keptWarning(dependantsOf(lines, budgets, 'food'), 'IDR')).toMatch(/^Groceries keeps Rp\s800\.000 a month\. Remove this budget\?$/);
   });
 });

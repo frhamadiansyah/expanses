@@ -203,7 +203,7 @@ describe('capture: rows edited in place', () => {
     ]);
 
     await clearOutbox(database);
-    await removeBudget(database, ws, groceries.id);
+    await removeBudget(database, ws, groceries.id, '2026-10');
     expect(await outboxOps(database)).toEqual([
       { entity: 'budget', id: budgetId, op: 'delete' },
       { entity: 'budget_frequency', id: budgetId, op: 'delete' },
@@ -220,7 +220,7 @@ describe('capture: rows edited in place', () => {
     expect(await outboxOps(database)).toContainEqual({ entity: 'budget_share', id: budgetId, op: 'upsert', fields: { basis: 'take-home', shareBp: 1000 } });
 
     await clearOutbox(database);
-    await removeBudget(database, ws, groceries.id);
+    await removeBudget(database, ws, groceries.id, '2026-10');
     expect(await outboxOps(database)).toContainEqual({ entity: 'budget_share', id: budgetId, op: 'delete' });
   });
 
