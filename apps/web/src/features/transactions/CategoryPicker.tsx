@@ -1,17 +1,19 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Check } from 'lucide-react';
+import { Check, Shapes } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { SearchPill, SegmentedControl } from '../../ui/native';
-import { CategoryIcon } from '../categories/CategoryIcon';
+import { CategoryIcon, ICONS } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories, setCategoriesElsewhere } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
+import { RowGlyph } from './FormRow';
 import { useNewCategoryForm } from './NewCategorySheet';
+import { useShareCategoryIds } from './queries';
 
 /** One top-level category and what hangs off it — the card the picker draws per root. */
 export interface PickerGroup {
@@ -44,6 +46,55 @@ export function pickerGroups(
   const wanted = search.trim().toLowerCase();
   const matching = wanted ? offered.filter((a) => categoryPath(accounts, a.id).toLowerCase().includes(wanted)) : offered;
   return categoryGroups(matching);
+}
+
+/** A shared event's own category (shared events §6): the event's list, not a workspace's tree. */
+export interface EventCategoryChoice {
+  categoryId: string;
+  name: string;
+  icon: string | null;
+  archived: boolean;
+}
+
+/** The drawing an event category was given, from the same bundled set the tree's categories draw from. */
+export function EventCategoryGlyph({ icon }: { icon: string | null }) {
+  const Icon = (icon ? ICONS[icon] : undefined) ?? Shapes;
+  return (
+    <RowGlyph>
+      <Icon size={15} />
+    </RowGlyph>
+  );
+}
+
+/**
+ * The picker in a shared event: one card of the event's categories, "No category" first — an expense may have none,
+ * and is then filed under the event's own "Shared spending". No tabs (no event holds income), no New category and no
+ * Manage categories: an event's categories are its people's, kept on the event, never a workspace's tree.
+ */
+function EventCategoryList({ categories, value, onPick }: { categories: readonly EventCategoryChoice[]; value: string; onPick: (categoryId: string) => void }) {
+  // One already on the expense stays offered after it is archived, so the row never reads blank; nothing else archived.
+  const offered = categories.filter((c) => !c.archived || c.categoryId === value);
+  const row = (categoryId: string, name: string, icon: string | null) => (
+    <button
+      key={categoryId || 'none'}
+      type="button"
+      aria-current={categoryId === value ? 'true' : undefined}
+      onClick={() => onPick(categoryId)}
+      className="ph-focus-inset relative flex w-full items-center gap-3 pl-[14px] text-left active:bg-[var(--ph-fill)]"
+    >
+      <EventCategoryGlyph icon={icon} />
+      <span className="ph-row-body flex min-h-[46px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
+        <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{name}</span>
+        {categoryId === value && <Check size={18} aria-hidden className="shrink-0 text-[var(--ph-tint)]" />}
+      </span>
+    </button>
+  );
+  return (
+    <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1 [&>*+*>.ph-row-body]:border-t-[0.5px] [&>*+*>.ph-row-body]:border-[var(--ph-hair)]">
+      {row('', 'No category', null)}
+      {offered.map((c) => row(c.categoryId, c.name, c.icon))}
+    </div>
+  );
 }
 
 /** One row of the tree: the icon, the name, and the whole path as its `title`. */
@@ -104,6 +155,7 @@ export function CategoryPicker({
   title = 'Select category',
   value,
   setId = null,
+  eventCategories,
   onPick,
   onClose,
 }: {
@@ -123,12 +175,21 @@ export function CategoryPicker({
    * place of the monthly tree, for spending only — no set holds income.
    */
   setId?: string | null;
+  /** A shared event's categories, offered in place of every workspace category (shared events §6, R14). */
+  eventCategories?: readonly EventCategoryChoice[];
   onPick: (categoryId: string) => void;
   onClose: () => void;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
-  const inOpenBook = useInOpenBook();
+  const inBook = useInOpenBook();
+  /*
+   * A shared event's own copies of its categories (`event_category_accounts`) are expense accounts filed in no book.
+   * The open book's list already leaves them out once it is read; this keeps them out before it is, and with no book
+   * open, so a trip's "Dinners" is never offered as one of this workspace's categories.
+   */
+  const shareIds = useShareCategoryIds();
+  const inOpenBook = (a: AccountRow) => inBook(a) && !shareIds.has(a.id);
   const [showing, setShowing] = useState<'expense' | 'income'>(kind);
   const [search, setSearch] = useState('');
   // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
@@ -163,6 +224,14 @@ export function CategoryPicker({
       label="Search categories"
     />
   );
+
+  if (eventCategories) {
+    return (
+      <Sheet grouped tall title={title} onClose={onClose}>
+        <EventCategoryList categories={eventCategories} value={value ?? ''} onPick={choose} />
+      </Sheet>
+    );
+  }
 
   // One sheet for the list and for New category, so moving between them keeps whatever detent it was left at.
   const stepBack = () => setMaking(false);

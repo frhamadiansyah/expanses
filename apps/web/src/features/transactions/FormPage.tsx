@@ -1,16 +1,19 @@
 import { useOpenBookReadOnly } from '../sharing/queries';
-import { linkEventItem, listTransactions, ownerScope } from '@expanses/db';
+import { minorToMajorString } from '@expanses/core';
+import { eventPostingOf, linkEventItem, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Card, RowHint } from '../../ui';
-import { SCREEN } from '../../ui/native';
+import { PushedTitle, SCREEN } from '../../ui/native';
 import { buyRefusal, buySeed, coverTarget, eventOpening, isNothingLeft } from '../events/buy-item';
 import { useEventPlan, useEvents } from '../events/queries';
+import { useSharedEventPlan, useSharedEventView } from '../events/shared-queries';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
+import { SharedExpenseCard } from './SharedExpenseCard';
 import { type CardFollowUp, TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 
@@ -29,8 +32,15 @@ export function NewTransactionRoute() {
   const readOnly = useOpenBookReadOnly();
   // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
   // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
-  const { mode, account, to, event, item, ws: tab } = newRoute.useSearch();
+  const { mode, account, to, event, item, expense, ws: tab } = newRoute.useSearch();
   const events = useEvents();
+  /*
+   * A shared event is recorded on its own card (shared events §6, R14): Paid by, Split, its categories, its rate. Read
+   * before anything is drawn, because which card opens is the answer; an event that is not shared reads null here and
+   * opens the workspace card exactly as before (D10). Its plan is the shared plan, for "Buy it now".
+   */
+  const shared = useSharedEventView(event ?? null);
+  const sharedPlan = useSharedEventPlan(event && item && shared.data ? event : null);
   // Owner-wide, as the plan screens read it: the item is the plan's, whichever workspace's tab it was opened from.
   const plan = useEventPlan(item ? (event ?? null) : null);
   // The seed is read once, when the card opens, so the card waits for what it is checked against.
@@ -67,6 +77,40 @@ export function NewTransactionRoute() {
           header: <RowHint>Filled in from the estimate. Change it to what the receipt really says.</RowHint>,
         }
       : undefined;
+
+  if (event && (shared.isPending || (item && shared.data && sharedPlan.isPending))) {
+    return (
+      <div className={SCREEN}>
+        <Card>Loading…</Card>
+      </div>
+    );
+  }
+  if (event && shared.data) {
+    const view = shared.data;
+    // Save and Back land on the event, which is where a shared expense is read; Save takes this screen's place.
+    const toEvent = () => void navigate({ to: '/events/$eventId', params: { eventId: event }, replace: true });
+    const bought = item ? (sharedPlan.data?.lines ?? []).flatMap((line) => line.items).find((row) => row.id === item) : undefined;
+    // An expense deleted meanwhile — on this phone or another — is not opened as a new one: it says so, and Back leaves.
+    if (expense && !view.expenses.some((e) => e.expenseId === expense && !e.voided)) {
+      return (
+        <div className={SCREEN}>
+          <PushedTitle title="Edit transaction" back="Back" onBack={back} />
+          <Card>That expense was deleted.</Card>
+        </div>
+      );
+    }
+    return (
+      <div className={SCREEN}>
+        <SharedExpenseCard
+          view={view}
+          {...(expense ? { expenseId: expense } : {})}
+          {...(bought ? { itemId: bought.id, title: `Buy ${bought.name}`, seed: { note: bought.name, amount: minorToMajorString(bought.estimateMinor, view.currency), categoryId: bought.categoryId } } : {})}
+          onBack={back}
+          onDone={toEvent}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={SCREEN}>
@@ -129,6 +173,21 @@ export function EditTransactionRoute() {
   });
   const tx = receipt.data ?? null;
   const { changeable, elsewhere, isTrade } = useChangeable(tx);
+  /*
+   * A transaction a shared event put here follows its record (shared events §5): it is changed on the event's own card,
+   * never as a transaction of its own — the ledger refuses that (EVENT_POSTING). The swipe's Edit lands here as the
+   * receipt's does, so both are sent on: an expense to its card, a settle-up to its event.
+   */
+  const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) });
+  useEffect(() => {
+    const record = fromEvent.data;
+    if (!record) return;
+    void navigate(
+      record.kind === 'expense'
+        ? { to: '/transactions/new', search: { event: record.eventId, expense: record.recordId }, replace: true }
+        : { to: '/events/$eventId', params: { eventId: record.eventId }, replace: true },
+    );
+  }, [fromEvent.data]);
   // Only the settled refusals send anyone away. `changeable` is also false while the trades are still being
   // read, and redirecting on that would bounce a perfectly editable transaction out of its own form.
   const refused = receipt.isSuccess && (!tx || elsewhere !== null || isTrade || !isEditable(tx));
@@ -143,7 +202,7 @@ export function EditTransactionRoute() {
     if (refused && !saving.current) void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
   }, [refused, transactionId]);
 
-  if (!tx || !changeable) return <Card>Loading…</Card>;
+  if (!tx || !changeable || !fromEvent.isSuccess || fromEvent.data) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it

@@ -6,11 +6,14 @@ import {
   editDraft,
   guessCategoryFromHistory,
   listTransactionsIn,
+  moveIntoSharedEvent,
   moveTransactionInDay,
   ownerScope,
   postTransaction,
   replaceTransaction,
+  type AccountRow,
   type SetAsideChoice,
+  sharedEventOf,
   tagTransactions,
   type TransactionView,
   uncategorisedTransactionIds,
@@ -33,6 +36,7 @@ import { formatPoints } from '../cards/useCardPoints';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
@@ -41,6 +45,7 @@ import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
+import { keptText, moveHint } from './shared-move';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
@@ -53,6 +58,7 @@ import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
+import { useShareCategoryIds } from './queries';
 import { WaitingBox } from './WaitingBox';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
@@ -133,7 +139,10 @@ export function TransactionsPage() {
   const month = search.month ?? monthOf(isoDate());
   const accounts = useAccounts().data ?? [];
   // Category pickers and filters on this page read the open book; money accounts are every book's.
-  const inOpenBook = useInOpenBook();
+  const inBook = useInOpenBook();
+  // A shared event's own copies of its categories are filed in no book; kept out even before the book's list is read.
+  const shareIds = useShareCategoryIds();
+  const inOpenBook = (a: AccountRow) => inBook(a) && !shareIds.has(a.id);
   // And no picker on this page offers a set category: they belong to an event (§6). The row editor's cell used
   // to, because it went through a second filter that had no membership test.
   const membership = useCategorySetMembership().data ?? {};
@@ -355,6 +364,8 @@ export function TransactionsPage() {
   // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved.
   const chosen = rows.filter((row) => selected.has(row.id) && taggable(row));
   const eventName = (eventId: string) => (events.data ?? []).find((event) => event.id === eventId)?.name;
+  // The shared events among them: Add to event moves rows into one rather than tagging them (shared events §6).
+  const sharedSummaries = useSharedEventSummaries().data ?? {};
 
   function startSelecting() {
     close();
@@ -388,6 +399,38 @@ export function TransactionsPage() {
    * row moved out of another event by this goes home again rather than nowhere.
    */
   async function tagChosen(eventId: string | null) {
+    /*
+     * Into a shared event the rows move: they leave this workspace and become this person's own expenses there,
+     * keeping their card, MCC, photos and points (§6, D2). It is asked first, in the words the Event row uses, because
+     * a move is not a tag a toast can take back. A row the move keeps (a refund, a split bill, a transfer) stays
+     * ticked, with the reason, so what is left on screen is exactly what did not go.
+     */
+    const shared = eventId ? sharedSummaries[eventId] : undefined;
+    if (eventId && shared) {
+      if (!window.confirm(moveHint(eventName(eventId) ?? 'the event', shared.sharedWith))) return;
+      setTagging({ busy: true, error: null });
+      try {
+        // The day's rates every move needs: each purchase's currencies and the event's, through the base.
+        const target = await sharedEventOf(database, ownerScope(ws), eventId);
+        for (const row of chosen) {
+          const tx = row.tx!;
+          const currencies = [target?.currency, tx.originalCurrency, ...tx.entries.map((e) => e.currency)].filter((c): c is string => !!c);
+          await resolveRates([...new Set(currencies)], tx.occurredOn).catch(() => undefined);
+        }
+        const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, chosen.map((row) => row.id));
+        await invalidate();
+        if (kept.length === 0) {
+          stopSelecting();
+          return;
+        }
+        setPickingEvent(false);
+        setSelected(new Set(kept.map((row) => row.transactionId)));
+        setTagging({ busy: false, error: new Error(keptText(kept)) });
+      } catch (e) {
+        setTagging({ busy: false, error: e });
+      }
+      return;
+    }
     const moving = rowsToMove(
       chosen.map((row) => ({ id: row.id, eventId: row.tx!.eventId ?? null })),
       eventId,
