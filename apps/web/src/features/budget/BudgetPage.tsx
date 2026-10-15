@@ -1,25 +1,24 @@
 import { addMonths, formatMinor, isoDate, monthOf } from '@expanses/core';
-import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Plus, Scale, Target } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Scale, Target } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInOpenBook } from '../../lib/queries';
+import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
-import { useCategorySetMembership } from '../categories/set-queries';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budget-rows';
 import { daysLeft, findLine, planSplit, spendingView } from './budget-view';
 import { MonthSheet, NoBudgetSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
-import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
+import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
 type Tab = 'spending' | 'plan';
-type Open = { kind: 'cap'; id: string | null } | { kind: 'take-home' } | { kind: 'split' } | { kind: 'month' } | { kind: 'no-budget' } | null;
+type Open = { kind: 'cap'; id: string } | { kind: 'take-home' } | { kind: 'split' } | { kind: 'month' } | { kind: 'no-budget' } | null;
 
 /** ‹ October 2026 ›, as Cashflow steps its months. */
 function MonthPicker({ month, onMonth }: { month: string; onMonth: (month: string) => void }) {
@@ -75,10 +74,6 @@ export function BudgetPage() {
 
   const accounts = useAccounts().data ?? [];
   const markOf = useCategoryMarks(accounts);
-  const membership = useCategorySetMembership().data ?? {};
-  // Caps are for the monthly tree, and the open book's: an event plans its set on its own page.
-  const inOpenBook = useInOpenBook();
-  const categories = accounts.filter((account) => account.kind === 'expense' && membership[account.id] === undefined && inOpenBook(account));
   const sheetQuery = useBudgetSheet(month);
   const sheet = sheetQuery.data;
   const budgets = useBudgets(month).data ?? [];
@@ -90,20 +85,12 @@ export function BudgetPage() {
   const planReady = useBooks().isSuccess;
   const currency = sheet?.currency ?? planCurrency;
 
-  // Roots first, each followed by its children, so the choice reads like the tree.
-  const options = categories
-    .filter((account) => !categories.some((parent) => parent.id === account.parentId))
-    .flatMap((root) => [
-      { id: root.id, label: root.name },
-      ...categories.filter((child) => child.parentId === root.id).map((child) => ({ id: child.id, label: `— ${child.name}` })),
-    ]);
-
   const view = sheet ? spendingView(sheet.lines) : null;
-  const openCap = (id: string | null) => setOpen({ kind: 'cap', id });
+  const history = useSpendingHistory(month, currency);
+  const openCap = (id: string) => setOpen({ kind: 'cap', id });
   const close = () => setOpen(null);
 
   const menu: CornerAction[] = [
-    { key: 'add', label: 'Add a budget', glyph: <Plus size={18} aria-hidden />, run: () => openCap(null) },
     { key: 'split', label: 'Essential and lifestyle', glyph: <Scale size={18} aria-hidden />, run: () => setOpen({ kind: 'split' }), disabled: !sheet },
     { key: 'month', label: 'Month so far', glyph: <CalendarDays size={18} aria-hidden />, run: () => setOpen({ kind: 'month' }), disabled: !sheet },
   ];
@@ -153,7 +140,7 @@ export function BudgetPage() {
 
           <InsetGroup header="Budgeted">
             {view.budgeted.length === 0 ? (
-              <InsetRow title={<span className="font-normal text-[var(--ph-tint)]">Add a budget</span>} chevron={false} onClick={() => openCap(null)} label="Add a budget" />
+              <InsetRow title={<span className="font-normal text-[var(--ph-tint)]">Add a budget</span>} chevron={false} onClick={() => undefined} label="Add a budget" />
             ) : (
               view.budgeted.flatMap((entry, index) => {
                 if (entry.kind === 'line') {
@@ -289,15 +276,16 @@ export function BudgetPage() {
         </>
       )}
 
-      {open?.kind === 'cap' && (
+      {open?.kind === 'cap' && sheet && (
         <CapSheet
-          key={open.id ?? 'new'}
+          key={open.id}
           categoryId={open.id}
-          options={options}
+          name={findLine(sheet.lines, open.id)?.name ?? 'Budget'}
+          history={history?.get(open.id) ?? null}
           month={month}
           currency={planCurrency}
           ready={planReady}
-          lineOf={(id) => (sheet ? findLine(sheet.lines, id) : undefined)}
+          lineOf={(id) => findLine(sheet.lines, id)}
           rowOf={(id) => budgets.find((row) => row.categoryAccountId === id)}
           committed={committed}
           onClose={close}
