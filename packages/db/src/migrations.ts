@@ -69,6 +69,7 @@ import exactHundredths from '../migrations/0068_exact_hundredths.sql?raw';
 import sharedEvents from '../migrations/0069_shared_events.sql?raw';
 import budgetShares from '../migrations/0070_budget_shares.sql?raw';
 import withdrawalRate from '../migrations/0071_withdrawal_rate.sql?raw';
+import purchaseOnlyCard from '../migrations/0072_purchase_only_card.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -148,6 +149,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 69, name: 'shared_events', sql: sharedEvents },
   { version: 70, name: 'budget_shares', sql: budgetShares },
   { version: 71, name: 'withdrawal_rate', sql: withdrawalRate },
+  { version: 72, name: 'purchase_only_card', sql: purchaseOnlyCard },
 ];
 
 /** The highest version this build of the app knows how to produce. */
