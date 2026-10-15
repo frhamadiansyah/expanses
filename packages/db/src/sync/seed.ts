@@ -36,7 +36,13 @@ export type SharingErrorCode =
   // Joint net worth's group log (task 4): the workspace already has a net-worth group this device is not in; a member
   // still in the group (never answered 'left', a device still in the workspace) is not removed by another.
   | 'GROUP_EXISTS'
-  | 'NOT_LEFT';
+  | 'NOT_LEFT'
+  // Shared events (shared events §7): a name already claimed, a build too old to join, a balance not settled, the last
+  // person with the app.
+  | 'NAME_TAKEN'
+  | 'APP_OUTDATED'
+  | 'NOT_SETTLED'
+  | 'LAST_MEMBER';
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;
