@@ -163,14 +163,15 @@ describe('an archived goal is history (G2-M1)', () => {
 });
 
 describe('a goal\'s own move out of a foreign account is valued in base, floored (I2)', () => {
-  it('US$100,02 of a US$123,45 transfer at 16.235 is Rp 1.623.824 taken back, not 1.623.825', async () => {
+  it('US$100,02 of a US$123,45 transfer is its share of what the dollars cost, taken back', async () => {
     const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 50_000, openedOn: '2026-01-01', openingRateToBase: 16_000 });
     const ibkr = await createAccount(database, ws, { name: 'IBKR cash', kind: 'asset', subtype: 'bank', currency: 'USD' });
     await saveEarmark(database, ws, { goalId: umrahId, accountId: wise.id, amountMinor: 10_002 });
     await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'To IBKR', amountMinor: 12_345, fromAccountId: wise.id, toAccountId: ibkr.id, goalId: umrahId, ratesToBase: { USD: 16_235 } });
-    // What left Wise is 12.345 × 162,35 = 2.004.210,75 → Rp 2.004.211 in base; the goal's own US$100,02 of it is
-    // 10.002 × 2.004.211 ÷ 12.345 = 1.623.824,90 — floored. The arrival (+2.004.211) less it is the month's new money.
-    expect((await goalContributionsFor(database, ws, '2026-07'))[umrahId]).toBe(2_004_211 - 1_623_824);
+    // withdrawal rate §3, R14: the move carries its dollars' cost, 12.345 × 160 = Rp 1.975.200 (was 2.004.211 at the day's
+    // 16.235); the goal's own US$100,02 of it is 10.002 × 1.975.200 ÷ 12.345 = 1.600.320 (was 1.623.824,90, floored).
+    // The arrival (+1.975.200) less it is the month's new money.
+    expect((await goalContributionsFor(database, ws, '2026-07'))[umrahId]).toBe(1_975_200 - 1_600_320);
   });
 });
 
