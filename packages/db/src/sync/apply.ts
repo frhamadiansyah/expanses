@@ -14,6 +14,7 @@ import {
   AuthorityError,
   authorMemberOf,
   decideOpsTx,
+  eventBookWorkspaceOf,
   groupLogWorkspaceOf,
   NO_REVIVE,
   viewMember,
@@ -21,6 +22,7 @@ import {
   recordRemovalTx,
   removalRefusal,
   removedInView,
+  settleEventCurrencyTx,
   viewDevice,
   wasRefused,
 } from './authority';
@@ -66,6 +68,18 @@ export async function bookContextTx(tx: Db, bookId: string): Promise<BookContext
       SELECT b.workspace_id, w.base_currency, b.base_currency, s.member_id
       FROM nw_group_books g JOIN books b ON b.id = g.book_id JOIN workspaces w ON w.id = b.workspace_id JOIN shared_books s ON s.book_id = g.group_book_id
       WHERE g.group_book_id = ${bookId}`);
+  }
+  if (!row) {
+    // A shared event's relay book (shared events §3) has no `books` row either: it is held in the workspace this phone
+    // recorded when it shared or joined the event (`event_books`), in that workspace's currency.
+    try {
+      [row] = await tx.values<[string, string, string, string]>(sql`
+        SELECT e.workspace_id, w.base_currency, w.base_currency, s.member_id
+        FROM event_books e JOIN workspaces w ON w.id = e.workspace_id JOIN shared_books s ON s.book_id = e.book_id
+        WHERE e.book_id = ${bookId}`);
+    } catch {
+      // a database from before migration 0069
+    }
   }
   if (!row) throw new Error(`Book ${bookId} is not shared on this device`);
   const [workspaceId, baseCurrency, currency, memberId] = row;
@@ -958,6 +972,8 @@ export async function pullAndApply(
   const self = sealer.deviceId;
   // A net-worth group log admits by the linked workspace's pins (joint-net-worth §4): the workspace it belongs to.
   const groupWorkspace = await groupLogWorkspaceOf(database.db, bookId);
+  // A shared event's book: every member an owner (shared events §3), as in a group log, but admitted by invite terms.
+  const eventLog = (await eventBookWorkspaceOf(database.db, bookId)) !== null;
   let since = await cursorOf(database, bookId);
   let applied = 0;
   const held: HeldOps = new Map();
@@ -1056,7 +1072,7 @@ export async function pullAndApply(
               if (changeSet) {
                 run.decisions = applyingDecisions = await decideOpsTx(
                   tx,
-                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own, groupLog: groupWorkspace !== null },
+                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own, groupLog: groupWorkspace !== null, everyMemberOwns: eventLog },
                   changeSet.ops,
                 );
                 // A rejoin's pull (§8.7, N2) notes what the log says, as the view took it, for what it sends after.
@@ -1071,6 +1087,8 @@ export async function pullAndApply(
                   // …and whatever of our member edits the log did not take is put back to what it did (fix round 3).
                   const members = new Set(changeSet.ops.filter((op) => op.entity === 'member').map((op) => op.id));
                   if (members.size) await reconcileMembersTx(tx, await bookContextTx(tx, bookId), members, changeSet);
+                  // R8: a currency change of this phone's own the log stripped is put back to the log's currency.
+                  if (eventLog && changeSet.ops.some((op) => op.entity === 'shared_event')) await settleEventCurrencyTx(tx, bookId);
                 }
               }
               if (entry.kind === 'removal') {

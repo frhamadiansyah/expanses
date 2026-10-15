@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Db } from '../database';
+import { EVENT_ENTITIES, eventWriteRefusal } from './events/authority';
 import { termsSigningBytes } from './invite';
 import { deviceIdOf, verifySignature } from './relay-signing';
 import { entityOf, parseOpId, type RowEntity } from './shared-entities';
@@ -170,6 +171,19 @@ export async function groupLogWorkspaceOf(tx: Db, bookId: string): Promise<strin
 }
 
 /**
+ * The workspace this phone holds a shared event's relay book in (shared events §3), or null for any other book. From
+ * `event_books`, which only this phone writes, when it shares or joins the event.
+ */
+export async function eventBookWorkspaceOf(tx: Db, bookId: string): Promise<string | null> {
+  try {
+    const [row] = await tx.values<[string]>(sql`SELECT workspace_id FROM event_books WHERE book_id = ${bookId}`);
+    return row?.[0] ?? null;
+  } catch {
+    return null; // a database from before migration 0069 has no event books
+  }
+}
+
+/**
  * §8.2 (C3): a device the view does not know yet is admitted when its entry is the book's first (its creator's seed),
  * or carries invite terms an owner device of this book signed, introducing a member the terms allow, and no other device
  * used the invite. On admission the device enters the view. Returns why not, or null.
@@ -245,6 +259,11 @@ export interface DecideContext {
    * may admit a device or remove a member who left (§6) — so a member's own introduction may make itself an owner.
    */
   groupLog?: boolean;
+  /**
+   * The book is a shared event's (shared events §3): every member is an owner — any of them may invite or remove — so a
+   * member's own introduction may make itself an owner, as in a group log.
+   */
+  everyMemberOwns?: boolean;
 }
 
 /**
@@ -282,6 +301,12 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   }
   if (op.entity === 'member') return decideMember(tx, ctx, op);
   const entity = entityOf(op.entity);
+  // Shared events (rulings R1–R3, R8): a peer's op is judged against the stored row by the one predicate capture used
+  // on its author's phone; every entry, this phone's own included, moves the currency mark in log order.
+  if (EVENT_ENTITIES.has(op.entity) && entity.kind === 'row') {
+    if (!ctx.own) await decideEventRow(tx, bookId, author, entity, op);
+    return noteEventLogTx(tx, bookId, op);
+  }
   if (entity.kind === 'row' && entity.writer && !ctx.own) return decideRowWriter(tx, bookId, author, entity, op);
   if (entity.kind === 'row' && WRITE_ONCE_ROWS.has(entity.entity)) {
     if (!ctx.own) return decideWriteOnce(tx, bookId, entity, op);
@@ -524,7 +549,7 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   const remakes = view === null || (view.deleted && hlc > view.rowHlc && (owner || ownIntroduction));
   let decided: Extract<Op, { op: 'upsert' }> = op;
   if (named.includes('role') && 'role' in op.fields) {
-    const introducedAs = op.fields.role === 'member' || (ctx.groupLog === true && op.fields.role === 'owner');
+    const introducedAs = op.fields.role === 'member' || ((ctx.groupLog === true || ctx.everyMemberOwns === true) && op.fields.role === 'owner');
     if (!owner && !(ownIntroduction && introducedAs)) throw new AuthorityError('only an owner writes a role');
     if (lastOwner && op.fields.role !== 'owner' && hlc > view!.roleHlc) throw new AuthorityError('the last owner cannot be made a member');
   } else if (!owner && 'role' in op.fields) {
@@ -551,4 +576,46 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
     }
   }
   return decided;
+}
+
+/** A peer's op on a shared event's row (shared events §3): judged against the row stored here and the author's member. */
+async function decideEventRow(tx: Db, bookId: string, author: string, entity: RowEntity, op: Op): Promise<void> {
+  const key = parseOpId(entity, op.id);
+  const stored = await storedRowOf(tx, entity, bookId, key);
+  const member = await authorMemberOf(tx, bookId, author);
+  const after = op.op === 'delete' ? null : { ...(stored ?? {}), ...op.fields };
+  const why = eventWriteRefusal(entity.entity, stored, after, key, member);
+  if (why) throw new AuthorityError(why);
+}
+
+/**
+ * Ruling R8, in log order: the first expense the log takes locks the event's currency, on every phone at the same entry;
+ * a currency named by a later `shared_event` op is stripped from it. Before the lock, the log's currency is kept here,
+ * so a phone whose own change was stripped can be put back to it (`settleEventCurrencyTx`).
+ */
+async function noteEventLogTx(tx: Db, bookId: string, op: Op): Promise<Op> {
+  if (op.op !== 'upsert') return op;
+  if (op.entity === 'event_expense') {
+    await tx.run(sql`INSERT INTO event_log_currency (book_id, currency, locked) VALUES (${bookId}, '', 1) ON CONFLICT (book_id) DO UPDATE SET locked = 1`);
+    return op;
+  }
+  if (op.entity !== 'shared_event' || !('currency' in op.fields)) return op;
+  const [mark] = await tx.values<[string, number]>(sql`SELECT currency, locked FROM event_log_currency WHERE book_id = ${bookId}`);
+  // Once locked, the currency goes from every shared_event op, not only one that names it changed: the row is keyed by
+  // its book, so it travels whole (`isRevivable`) and a currency it merely carries, with that field's own clock, could
+  // otherwise still win the per-field merge.
+  if (mark && Number(mark[1]) === 1) return without(op, ['currency']);
+  const changed = op.changed ?? Object.keys(op.fields);
+  if (!changed.includes('currency')) return op;
+  await tx.run(sql`
+    INSERT INTO event_log_currency (book_id, currency, locked) VALUES (${bookId}, ${String(op.fields.currency)}, 0)
+    ON CONFLICT (book_id) DO UPDATE SET currency = excluded.currency`);
+  return op;
+}
+
+/** Puts this phone's own currency back to the log's when the log stripped it (R8). Nothing is emitted. */
+export async function settleEventCurrencyTx(tx: Db, bookId: string): Promise<void> {
+  const [mark] = await tx.values<[string, number]>(sql`SELECT currency, locked FROM event_log_currency WHERE book_id = ${bookId}`);
+  if (!mark || Number(mark[1]) !== 1 || mark[0] === '') return;
+  await tx.run(sql`UPDATE shared_events SET currency = ${mark[0]} WHERE book_id = ${bookId} AND currency <> ${mark[0]}`);
 }

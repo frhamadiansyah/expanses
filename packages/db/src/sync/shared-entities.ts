@@ -348,6 +348,110 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     // `from.owner` and `to.owner`.
     writer: () => 'either-party',
   },
+  /*
+   * Shared events (shared events spec §3): the seven entities of an event's own relay book — a shared_books row with no
+   * books row, as the net-worth group log is, tied to no workspace. book_id is that book's local id, written on insert;
+   * each record's own id is `id`, so a deleted category or item never comes back (rule 3). Who may write what is
+   * `events/authority.ts`'s, judged from the op, the stored row and the author alone (rulings R1–R3): none has a
+   * `writer` here.
+   */
+  {
+    kind: 'row',
+    entity: 'shared_event',
+    table: 'shared_events',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['book_id'],
+    fields: { name: 'name', startsOn: 'starts_on', endsOn: 'ends_on', currency: 'currency', finishedAt: 'finished_at' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'event_person',
+    table: 'event_people',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: { name: 'name', memberId: 'member_id', removedAt: 'removed_at' },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'event_category',
+    table: 'event_categories',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: { name: 'name', icon: 'icon', sortOrder: 'sort_order', archivedAt: 'archived_at' },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'event_expense',
+    table: 'event_expenses',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: {
+      occurredOn: 'occurred_on',
+      amountMinor: 'amount_minor',
+      currency: 'currency',
+      rateToEvent: 'rate_to_event',
+      payerPersonId: 'payer_person_id',
+      // Ruling R2: null for money paid outside the app, else the payer's member — who alone writes this row.
+      payerMemberId: 'payer_member_id',
+      voidedAt: 'voided_at',
+    },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'event_expense_detail',
+    table: 'event_expense_details',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: { note: 'note', categoryId: 'category_id', splitMode: 'split_mode', splitJson: 'split_json', recordedBy: 'recorded_by', updatedBy: 'updated_by' },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'event_settlement',
+    table: 'event_settlements',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: {
+      occurredOn: 'occurred_on',
+      fromPersonId: 'from_person_id',
+      toPersonId: 'to_person_id',
+      fromMemberId: 'from_member_id',
+      toMemberId: 'to_member_id',
+      amountMinor: 'amount_minor',
+      voidedAt: 'voided_at',
+    },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'event_item',
+    table: 'event_items_shared',
+    scopeRule: "book_id = bookId (the event's relay book)",
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: {
+      name: 'name',
+      quantity: 'quantity',
+      unitPriceMinor: 'unit_price_minor',
+      categoryId: 'category_id',
+      link: 'link',
+      note: 'note',
+      expenseId: 'expense_id',
+      shareMinor: 'share_minor',
+      sortOrder: 'sort_order',
+    },
+    localOnInsert: ['book_id'],
+  },
   {
     kind: 'purchase',
     entity: 'purchase',
@@ -437,6 +541,14 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   nw_items: ['book_id'],
   nw_pending: ['book_id'],
   member_transfers: ['book_id'],
+  // Shared events (migration 0069): book_id is the event book's local id, written on insert. shared_events is keyed
+  // by it, so every one of its columns travels or is the key.
+  event_people: ['book_id'],
+  event_categories: ['book_id'],
+  event_expenses: ['book_id'],
+  event_expense_details: ['book_id'],
+  event_settlements: ['book_id'],
+  event_items_shared: ['book_id'],
 };
 
 export function entityOf(name: string): SharedEntity {
