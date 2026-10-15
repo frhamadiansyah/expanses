@@ -58,6 +58,8 @@ import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
+import { TransferRates } from './TransferRates';
+import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
@@ -892,6 +894,8 @@ function CardBody({
             )}
 
             <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} selectOnOpen={!!duplicateOf} noRefund={!!finish} />
+            {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
+            {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
             {draft.mode === 'transfer' ? (
               /*
@@ -1022,6 +1026,9 @@ function CardBody({
           )}
         </FormRows>
       )}
+
+      {/* Withdrawal rate §7, R15: the Rate against the market, and out of foreign cash its cost and gain or loss. */}
+      {draft.mode === 'transfer' && crossCurrency && <TransferRates draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
       {/*
         §4's rows, every one of them, behind one way in — B2's green "Add more details" under the card. The card

@@ -311,3 +311,48 @@ describe('money back on a purchase', () => {
     expect(valueOf(lines, 'Total')).toBe('+Rp 450.000');
   });
 });
+
+describe('a spend from foreign cash (withdrawal rate §7)', () => {
+  const lira = [
+    { id: 'acct-lira', name: 'Lira cash', kind: 'asset', subtype: 'cash', currency: 'TRY' },
+    { id: 'cat-restaurants', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null },
+  ] as AccountRow[];
+  const meal = {
+    id: 'tx-lira',
+    occurredOn: '2026-11-13',
+    description: 'Fish by the harbour',
+    status: 'posted',
+    cardId: null,
+    entries: [
+      { accountId: 'acct-lira', accountKind: 'asset', amountMinor: -45_000, amountBaseMinor: -236_250, currency: 'TRY' },
+      { accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 45_000, amountBaseMinor: 236_250, currency: 'TRY' },
+    ],
+  } as TransactionView;
+  const used = (uses: { lotId: string; lotDate: string }[], uncoveredMinor = 0) => ({
+    accountId: 'acct-lira',
+    currency: 'TRY',
+    minor: 45_000,
+    costBaseMinor: 236_250,
+    uncoveredMinor,
+    ratePerUnit: 525,
+    uses: uses.map((use) => ({ ...use, minor: 45_000 / uses.length, costBaseMinor: 236_250 / uses.length })),
+  });
+
+  it('says what it cost at the withdrawal rate, and which withdrawal it came from', () => {
+    const lines = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: used([{ lotId: 'w1', lotDate: '2026-11-12' }]), today: '2026-11-20' });
+    expect(valueOf(lines, 'Cost')).toBe('≈ Rp 236.250 at the withdrawal rate (525)');
+    expect(valueOf(lines, 'Withdrawn')).toBe('From the 12 Nov withdrawal');
+  });
+
+  it('values a past spend’s uncovered part at the day’s rate, never today’s (final review M2)', () => {
+    const lines = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: used([{ lotId: 'w1', lotDate: '2026-11-12' }], 15_000), today: '2027-03-02' });
+    expect(valueOf(lines, 'Cost')).toBe('≈ Rp 236.250 · ₺ 150 at the day’s rate (no withdrawal recorded)');
+  });
+
+  it('counts two withdrawals, and says nothing for money that was not foreign', () => {
+    const two = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: used([{ lotId: 'w1', lotDate: '2026-11-02' }, { lotId: 'w2', lotDate: '2026-11-09' }]), today: '2026-11-20' });
+    expect(valueOf(two, 'Withdrawn')).toBe('From 2 withdrawals');
+    const none = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: null });
+    expect(none.map((line) => line.label)).not.toContain('Cost');
+  });
+});

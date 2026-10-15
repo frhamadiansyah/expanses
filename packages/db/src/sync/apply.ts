@@ -7,6 +7,7 @@ import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
+import { markForeignDirtyTx } from '../repos/fx-pending';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
@@ -569,16 +570,21 @@ async function postingLines(
 
   const accountOwner = money.paidFrom?.owner ?? money.paidBy;
   let cardId: string | null | undefined;
+  const headBase = new Map<object, number>();
   const own =
     money.paidBy === ctx.memberId && accountOwner === ctx.memberId && head
       ? (
-          await tx.values<[string, number, string, string | null, string | null]>(sql`
-            SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id
+          await tx.values<[string, number, string, string | null, string | null, number]>(sql`
+            SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id, e.amount_base_minor
             FROM entries e JOIN accounts a ON a.id = e.account_id
             WHERE e.transaction_id = ${head} AND a.kind NOT IN ('income', 'expense')
               AND e.account_id NOT IN (SELECT account_id FROM book_member_accounts)
             ORDER BY e.rowid`)
-        ).map(([accountId, amountMinor, currency, memo, spendCategoryId]) => ({ accountId, amountMinor: Number(amountMinor), currency, memo, spendCategoryId }))
+        ).map(([accountId, amountMinor, currency, memo, spendCategoryId, amountBaseMinor]) => {
+          const entry = { accountId, amountMinor: Number(amountMinor), currency, memo, spendCategoryId };
+          headBase.set(entry, Number(amountBaseMinor));
+          return entry;
+        })
       : [];
 
   for (const [currency, sum] of perCurrency) {
@@ -605,6 +611,18 @@ async function postingLines(
       largest.amountMinor += diff;
     }
     for (const entry of mine) if (entry.amountMinor !== 0) lines.push(entry);
+  }
+  // This member's own lines in a currency no category line speaks of, that already add up to nothing in it: the other
+  // leg of an exchange (lira out, lira onto the exchange account), which a purchase never carries — it carries category
+  // lines only. Withdrawal rate R8 files an exchange with its gain or loss pair in Personal, so a shared Personal book
+  // sends it as a purchase; rebuilt from the category lines alone, a partner's note edit dropped the lira side here and
+  // put the money back in the pocket (final review I3). Kept as they are. A currency whose own lines do not balance
+  // is one a category line left; it goes as it always did.
+  for (const currency of new Set(own.map((entry) => entry.currency))) {
+    if (perCurrency.has(currency)) continue;
+    const rest = own.filter((entry) => entry.currency === currency && entry.amountMinor !== 0);
+    // With the figures they hold here, which need no rate of the day (and which the recalculation then owns).
+    if (rest.length > 0 && rest.reduce((sum, entry) => sum + entry.amountMinor, 0) === 0) lines.push(...rest.map((entry) => ({ ...entry, amountBaseMinor: headBase.get(entry)! })));
   }
   return { lines, ratesToBase, cardId, refused };
 }
@@ -701,6 +719,9 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     if ('dayOrder' in winners) {
       const value = winners.dayOrder;
       await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
+      // Withdrawal rate R13: a new place in the day reorders a foreign account's outflows. Capture is paused here, so
+      // the account waits in the queue and is recalculated after the sync (R9).
+      await markForeignDirtyTx(tx, ctx.ws, lineage.head!);
     }
     if ('exactHundredths' in winners) {
       // Judged against the lines here, as a repost judges it: a figure the amount no longer rounds from (a new amount

@@ -1,4 +1,4 @@
-import { isoDate, takesPockets } from '@expanses/core';
+import { isFxLotAccount, isoDate, takesPockets } from '@expanses/core';
 import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import {
@@ -51,6 +51,7 @@ import { TransactionCard } from '../transactions/TransactionCard';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { AddCurrencyForm } from './AddPocketPage';
+import { WithdrawalsLeft } from './WithdrawalsLeft';
 import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
@@ -198,6 +199,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
       <SetAsidePanel accountId={account.id} />
+      {/* Withdrawal rate §7: what the foreign money held cost, and the withdrawals still in it. */}
+      {!pockets && isFxLotAccount(account, ws.baseCurrency) && <WithdrawalsLeft account={account} balanceMinor={minor} rates={rates.data} />}
 
       {pockets ? (
         <PocketList pockets={pockets} held={held} onAdd={() => setAddingCurrency(true)} />

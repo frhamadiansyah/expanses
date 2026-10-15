@@ -35,3 +35,44 @@ describe('a balance correction', () => {
     expect(row).toMatchObject({ type: 'correction', amountMinor: 20_000, spentMinor: 0, earnedMinor: 0, baseMinor: 0 });
   });
 });
+
+describe('an exchange with its gain or loss (withdrawal rate R8)', () => {
+  it('is still a transfer, out of the pocket and into the bank', () => {
+    const entry = (id: string, accountKind: 'asset' | 'expense' | 'equity', amountMinor: number, currency: string, accountSystemKey: string | null = null, accountName = id) => ({
+      id,
+      accountId: id,
+      accountName,
+      accountKind,
+      accountSystemKey,
+      amountMinor,
+      currency,
+      fxRateToBase: 1,
+      amountBaseMinor: amountMinor,
+      memo: null,
+      spendCategoryId: null,
+    });
+    const tx: TransactionView = {
+      id: 'back',
+      occurredOn: '2026-11-20',
+      description: 'Back to rupiah',
+      source: 'manual',
+      status: 'posted',
+      externalRef: null,
+      originalCurrency: null,
+      originalAmountMinor: null,
+      mcc: null,
+      cardId: null,
+      goalId: null,
+      createdAt: '2026-11-20T00:00:00Z',
+      entries: [
+        entry('lira', 'asset', -50_000, 'TRY', null, 'Lira cash'),
+        entry('fx', 'equity', 50_000, 'TRY', 'currency_exchange'),
+        entry('bank', 'asset', 250_000, 'IDR', null, 'Rupiah current'),
+        entry('fx', 'equity', -250_000, 'IDR', 'currency_exchange'),
+        entry('loss', 'expense', 12_500, 'IDR', 'expense.exchange_loss', 'Exchange loss'),
+        entry('fx', 'equity', -12_500, 'IDR', 'currency_exchange'),
+      ],
+    };
+    expect(classify(tx)).toMatchObject({ type: 'transfer', amountMinor: 250_000, currency: 'IDR', categoryIds: [], moneyAccountNames: ['Lira cash', 'Rupiah current'] });
+  });
+});
