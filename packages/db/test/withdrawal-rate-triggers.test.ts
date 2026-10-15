@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { exchangeLines, expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   coretaxInputsFor,
   createAccount,
@@ -171,6 +171,32 @@ describe('the queue (Review Focus 5, R18)', () => {
     });
     expect(await recalcPendingForeign(t.database, { limit: 1 })).toEqual({ done: 1, left: 2 });
     expect(await recalcPendingForeign(t.database)).toEqual({ done: 2, left: 0 });
+  });
+
+  it('an account whose recalculation fails stays queued, is tried once in the run, and the rest still drain', async () => {
+    const t = await trip();
+    const euros = (await createAccount(t.database, t.ws, { name: 'Euro cash', kind: 'asset', subtype: 'cash', currency: 'EUR' })).id;
+    const paused = (input: ReturnType<typeof t.withdrawal>) => t.database.transaction((tx) => withCapturePaused(tx, () => postTransactionTx(tx, t.ws, input)));
+    await paused(t.withdrawal('2026-11-02', 5_250_000, 1_000_000));
+    await paused(t.dinner('2026-11-03', 45_000));
+    const meal = (await t.database.db.values<[string]>(sql`SELECT id FROM transactions WHERE description = 'Dinner'`))[0]![0];
+    await t.database.transaction((tx) => queueForeignRecalcTx(tx, euros, null));
+    // The lira's recalculation fails on its first write of a lot use, as a full disk or a bug in one account would;
+    // the lira is first in the queue, so a drain that went back to it would never reach the euros (or never end).
+    await t.database.db.run(sql`CREATE TEMP TRIGGER fail_lira BEFORE INSERT ON fx_lot_uses WHEN NEW.account_id = ${sql.raw(`'${t.lira}'`)} BEGIN SELECT RAISE(ABORT, 'disk full'); END`);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(await recalcPendingForeign(t.database)).toEqual({ done: 1, left: 1 });
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+    // Its own write rolled back with it: still queued, from where it was, and the dinner keeps its posted figure.
+    expect(await t.database.db.values(sql`SELECT account_id, from_date FROM fx_recalc_pending`)).toEqual([[t.lira, '2026-11-02']]);
+    expect(await t.liraBase(meal)).toBe(-230_400);
+    await t.database.db.run(sql`DROP TRIGGER fail_lira`);
+    expect(await recalcPendingForeign(t.database)).toEqual({ done: 1, left: 0 });
+    expect(await t.liraBase(meal)).toBe(-236_250);
   });
 
   it('net worth and the tax report read the same before and after the recalculation (§8, D6)', async () => {
