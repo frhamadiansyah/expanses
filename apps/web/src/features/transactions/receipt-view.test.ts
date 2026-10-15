@@ -221,6 +221,15 @@ describe('the figures a receipt has to get right', () => {
     expect(valueOf(lines, 'Paid with')).toBe('BCA KrisFlyer ···· 9021');
   });
 
+  it('names a card since removed by its digits, and says it was removed', () => {
+    const removed: CardRow = { ...card, archived: true };
+    const lines = receiptLines({ tx: dinner(), accounts, cards: [removed], currency: 'IDR', points: null, owed: [] });
+    expect(valueOf(lines, 'Paid with')).toBe('BCA KrisFlyer ···· 1467 · removed card');
+    // A card still in use, read from the same list, says nothing of the kind.
+    const kept = receiptLines({ tx: dinner(), accounts, cards: [{ ...card, archived: false }], currency: 'IDR', points: null, owed: [] });
+    expect(valueOf(kept, 'Paid with')).toBe('BCA KrisFlyer ···· 1467');
+  });
+
   it('names the goal a transfer funds, because the list already does', () => {
     const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], goalName: 'Umrah' });
     expect(valueOf(lines, 'For goal')).toBe('Umrah');

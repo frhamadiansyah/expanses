@@ -3,7 +3,7 @@ import { useId, useState } from 'react';
 import { cx } from '../../ui';
 import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
 import type { MoneyAccountSubtype, PaymentOption } from '@expanses/core';
-import type { AccountRow, PaidWithItem } from '@expanses/db';
+import type { AccountRow, CardRow, PaidWithItem } from '@expanses/db';
 import { Sheet, SheetSearchButton } from '../../app/Sheet';
 import { NewCardForm } from '../ownables/AddDebtPage';
 import { CashAccountForm } from '../ownables/CashAccountForm';
@@ -37,6 +37,28 @@ export function chosenPayment(options: readonly PaymentOption[], draft: FormDraf
   if (placeholders.has(draft.moneyId)) return placeholderLabel(options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
   const found = options.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   return found ? paymentLabel(found) : (options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
+}
+
+/**
+ * The row a purchase's own account and card stand on: the row naming that card, else the account's own row when it names
+ * no card — an account with one card in use is one row, and a purchase saved naming that card is on it. A purchase on a
+ * card since removed stands on none: another card on the same account is not what paid.
+ */
+export function pickedPayment(options: readonly PaymentOption[], accountId: string, cardId: string): PaymentOption | undefined {
+  return (
+    options.find((option) => option.accountId === accountId && (option.cardId ?? '') === cardId) ??
+    options.find((option) => option.accountId === accountId && !option.cardId)
+  );
+}
+
+/**
+ * What Paid with reads on an older purchase made on a card since removed: the account, and the card's digits with
+ * "removed card". It is the purchase's value, shown as it is, and never offered for another purchase.
+ */
+export function removedCardPayment(cards: readonly CardRow[], accounts: readonly AccountRow[], accountId: string, cardId: string): { value: string; caption: string } | null {
+  const card = cardId ? cards.find((row) => row.id === cardId && row.accountId === accountId && row.archived) : undefined;
+  if (!card) return null;
+  return { value: accounts.find((account) => account.id === accountId)?.name ?? '', caption: `···· ${card.last4 ?? '????'} · removed card` };
 }
 
 /**
@@ -213,8 +235,7 @@ export function PaymentSheet({
   // The row already in Paid with: its icon sits in a filled circle, so the currencies stay where they are.
   const picked = shared?.chosenItemId
     ? undefined
-    : (options.find((option) => option.accountId === chosenAccountId && (option.cardId ?? '') === chosenCardId)
-      ?? options.find((option) => option.accountId === chosenAccountId));
+    : pickedPayment(options, chosenAccountId, chosenCardId);
 
   const row = (option: PaymentOption) => {
     const account = accounts.find((a) => a.id === option.accountId);

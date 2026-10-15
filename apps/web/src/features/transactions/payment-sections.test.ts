@@ -1,7 +1,7 @@
 import type { PaymentOption } from '@expanses/core';
-import type { AccountRow } from '@expanses/db';
+import type { AccountRow, CardRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { openingPaymentTab, paymentSections } from './PaymentSheet';
+import { openingPaymentTab, paymentSections, pickedPayment, removedCardPayment } from './PaymentSheet';
 
 const account = (id: string, kind: string, currency = 'IDR') => ({ id, kind, currency }) as AccountRow;
 const accounts = [account('bca', 'asset'), account('wise', 'asset', 'USD'), account('krisflyer', 'liability'), account('bonvoy', 'liability')];
@@ -39,5 +39,36 @@ describe('the Paid with tabs', () => {
     expect(openingPaymentTab(options, accounts, 'krisflyer', '')).toBe('cards');
     expect(openingPaymentTab(options, accounts, 'bca', '')).toBe('accounts');
     expect(openingPaymentTab(options, accounts, '', '')).toBe('accounts');
+  });
+});
+
+describe('the row Paid with marks as chosen', () => {
+  it('is the row the purchase names, or the one row of an account whose purchase names its only card', () => {
+    expect(pickedPayment(options, 'bonvoy', 'c2')?.last4).toBe('7788');
+    // One card in use: the account is one row naming no card, and a purchase saved naming that card is on it.
+    expect(pickedPayment(options, 'krisflyer', 'k1')?.accountName).toBe('BCA KrisFlyer');
+    expect(pickedPayment(options, 'bca', '')?.accountName).toBe('BCA Tahapan');
+  });
+
+  it('is none for a purchase made on a card since removed, rather than another card on the account', () => {
+    expect(pickedPayment(options, 'bonvoy', 'c-old')).toBeUndefined();
+  });
+});
+
+describe('Paid with on a purchase made on a card since removed', () => {
+  const cards: CardRow[] = [
+    { id: 'c-old', accountId: 'bonvoy', last4: '1467', holderName: null, isPrimary: true, archived: true },
+    { id: 'c1', accountId: 'bonvoy', last4: '5521', holderName: null, isPrimary: false, archived: false },
+  ];
+  const named = [...accounts.slice(0, 3), { ...account('bonvoy', 'liability'), name: 'Mandiri Bonvoy' }];
+
+  it('reads as the account, with the removed card’s digits and that it was removed', () => {
+    expect(removedCardPayment(cards, named, 'bonvoy', 'c-old')).toEqual({ value: 'Mandiri Bonvoy', caption: '···· 1467 · removed card' });
+  });
+
+  it('says nothing for a card still in use, no card, or a card on another account', () => {
+    expect(removedCardPayment(cards, named, 'bonvoy', 'c1')).toBeNull();
+    expect(removedCardPayment(cards, named, 'bonvoy', '')).toBeNull();
+    expect(removedCardPayment(cards, named, 'krisflyer', 'c-old')).toBeNull();
   });
 });

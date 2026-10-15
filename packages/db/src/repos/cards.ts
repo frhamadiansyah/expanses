@@ -22,6 +22,8 @@ export interface CardRow {
   last4: string | null;
   holderName: string | null;
   isPrimary: boolean;
+  /** Put away: listed only when `listCards` is asked `withArchived`, for what an older row named. */
+  archived?: boolean;
 }
 
 export interface CardIdentityRow {
@@ -55,19 +57,31 @@ export async function listIssuers(database: Database, ws: WorkspaceContext): Pro
   return [...new Set(rows.flatMap((row) => (row.issuer ? [row.issuer] : [])))].sort();
 }
 
-export async function listCards(database: Database, ws: WorkspaceContext, accountId?: string): Promise<CardRow[]> {
+/**
+ * The cards in a workspace, or on one account. Removed (archived) cards are left out unless asked for `withArchived`:
+ * what pays is chosen from cards in use, but an older purchase that names a removed card still reads that card.
+ */
+export async function listCards(database: Database, ws: WorkspaceContext, accountId?: string, options: { withArchived?: boolean } = {}): Promise<CardRow[]> {
   const rows = await database.db
     .select()
     .from(cards)
     .where(
       and(
         eq(cards.workspaceId, ws.workspaceId),
-        isNull(cards.archivedAt),
+        ...(options.withArchived ? [] : [isNull(cards.archivedAt)]),
         ...(accountId ? [eq(cards.accountId, accountId)] : []),
       ),
     )
     .orderBy(asc(cards.isPrimary), asc(cards.createdAt));
-  return rows.map((row) => ({ id: row.id, accountId: row.accountId, last4: row.last4, holderName: row.holderName, isPrimary: row.isPrimary === 1 }));
+  return rows.map((row) => ({
+    id: row.id,
+    accountId: row.accountId,
+    last4: row.last4,
+    holderName: row.holderName,
+    isPrimary: row.isPrimary === 1,
+    // Said only when archived cards were asked for: everywhere else every card listed is in use.
+    ...(options.withArchived ? { archived: row.archivedAt !== null } : {}),
+  }));
 }
 
 /**

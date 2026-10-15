@@ -98,6 +98,23 @@ describe('the plastic on an account', () => {
     }
   });
 
+  it('lists a removed card, marked as removed, only when asked for removed cards too', async () => {
+    const { database, ws, card } = await workspace();
+    const octo = await card('Octo Card', 'CIMB Niaga');
+    const old = await addCard(database, ws, { accountId: octo.id, last4: '1467', isPrimary: true });
+    const fresh = await addCard(database, ws, { accountId: octo.id, last4: '7781' });
+    await archiveCard(database, ws, old);
+
+    // Every list a purchase is paid from leaves it out, and says nothing of removal: every card it lists is in use.
+    expect(await listCards(database, ws, octo.id)).toEqual([{ id: fresh, accountId: octo.id, last4: '7781', holderName: null, isPrimary: false }]);
+    // An older purchase that names it still has its digits to show.
+    const all = await listCards(database, ws, octo.id, { withArchived: true });
+    expect(all.map((row) => [row.last4, row.archived]).sort()).toEqual([
+      ['1467', true],
+      ['7781', false],
+    ]);
+  });
+
   it('offers the issuers the workspace already uses', async () => {
     const { database, ws, card } = await workspace();
     await card('Mandiri Marriott Bonvoy', 'Mandiri');

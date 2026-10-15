@@ -151,6 +151,44 @@ test('a card whose primary was removed and a primary and a supplementary added a
   expect([...offered].sort()).toEqual(['BCA KrisFlyer ···· 4410', 'BCA KrisFlyer ···· 7723']);
 });
 
+test('a purchase on the account’s only card keeps that card once it is removed, and reads it as a removed card', async ({ page }) => {
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
+    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Last 4 digits').fill('1467');
+  });
+  // One card, so Paid with offers the account as one row; the purchase is saved on that card all the same.
+  await addTransaction(page, { description: 'Bakmi GM', paidWith: 'BCA KrisFlyer', category: 'Groceries', amount: '75000' });
+
+  // A supplementary added, and the old primary removed.
+  await page.goto('/cards');
+  await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
+  await page.getByLabel('Last 4 digits').fill('8802');
+  await page.getByLabel('Whose card').fill('Spouse');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Remove card ending 1467' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(1);
+
+  await page.goto('/transactions');
+  await page.getByRole('link', { name: 'Receipt for Bakmi GM' }).click();
+  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KrisFlyer ···· 1467 · removed card');
+
+  // Edit shows it as the purchase's value, and never offers it for another.
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Edit transaction' });
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('···· 1467 · removed card');
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer', exact: true })).toBeVisible();
+  const offered = await sheet
+    .locator('ul > li button')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
+  expect(offered).toEqual(['BCA KrisFlyer']);
+  // Nothing in the list is marked as chosen: the card that paid is not among them.
+  await expect(sheet.locator('[aria-current="true"]')).toHaveCount(0);
+});
+
 test('/transactions/new opens the empty card rather than a receipt for a transaction called "new"', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank');
   await page.goto('/transactions/new');
