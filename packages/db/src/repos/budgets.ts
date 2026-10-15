@@ -1,12 +1,15 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, isUncategorisedKey, perMonthMinor, uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isUncategorisedKey, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { accounts } from '../schema';
-import { budgetOverrides, budgets } from '../schema-budget';
+import { budgetOverrides, budgets, budgetShares } from '../schema-budget';
 import { budgetFrequencies } from '../schema-health';
 import { bookOfCategory, hasBooks } from './books';
 import { healthTablesExist } from './health-tables';
+import { budgetSharesExist } from './share-tables';
+import { getBudgetIncome } from './budget-settings';
+import { bookMoneyFor } from './book-currency';
 import { withCapture } from '../sync/capture';
 
 export class BudgetError extends Error {
@@ -37,7 +40,7 @@ export interface SetOverrideInput {
 export interface BudgetRow {
   id: string;
   categoryAccountId: string;
-  /** What the plan says, as a monthly figure. */
+  /** What the plan says, as a monthly figure — for a %, resolved against this month's take-home or parent. */
   planMinor: number;
   /** What this month asks for: the override when there is one, otherwise the plan. */
   amountMinor: number;
@@ -45,6 +48,8 @@ export interface BudgetRow {
   /** The unit the plan was typed in, and the amount as typed. Monthly, and the plan itself, when set monthly. */
   frequency: BudgetFrequency;
   amountAsSetMinor: number;
+  /** Set as a % of take-home or of its parent; null for an amount. */
+  share: BudgetShare | null;
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -273,17 +278,43 @@ export async function listBudgets(database: Database, ws: WorkspaceContext, mont
         .where(eq(budgetFrequencies.workspaceId, ws.workspaceId))
     : [];
   const unitOf = new Map(units.map((row) => [row.budgetId, row]));
+  const shares = (await budgetSharesExist(database.db))
+    ? await database.db
+        .select({ budgetId: budgetShares.budgetId, basis: budgetShares.basis, shareBp: budgetShares.shareBp })
+        .from(budgetShares)
+        .where(eq(budgetShares.workspaceId, ws.workspaceId))
+    : [];
+  const shareOf = new Map(shares.map((row) => [row.budgetId, { basis: row.basis, bp: row.shareBp } satisfies BudgetShare]));
+
+  // Only a month with a share in it needs the take-home and the tree; every other month reads as it always has.
+  let resolved: ReturnType<typeof resolveCaps> | null = null;
+  if (rows.some((row) => shareOf.has(row.id))) {
+    const [income, money, parents] = await Promise.all([
+      getBudgetIncome(database, ws, month),
+      bookMoneyFor(database, ws),
+      database.db.select({ id: accounts.id, parentId: accounts.parentId }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId)),
+    ]);
+    const parentOf = new Map(parents.map((row) => [row.id, row.parentId]));
+    resolved = resolveCaps(
+      rows.map((row) => ({ categoryId: row.categoryAccountId, planMinor: row.amountMinor, overrideMinor: overrideOf.get(row.id) ?? null, share: shareOf.get(row.id) ?? null })),
+      (id) => parentOf.get(id) ?? null,
+      income.amountMinor,
+      money.currency,
+    );
+  }
 
   return rows.map((row) => {
     const override = overrideOf.get(row.id);
+    const figure = resolved?.get(row.categoryAccountId);
     return {
       id: row.id,
       categoryAccountId: row.categoryAccountId,
-      planMinor: row.amountMinor,
-      amountMinor: override ?? row.amountMinor,
+      planMinor: figure?.planMinor ?? row.amountMinor,
+      amountMinor: figure?.amountMinor ?? override ?? row.amountMinor,
       overridden: override !== undefined,
       frequency: unitOf.get(row.id)?.frequency ?? 'monthly',
       amountAsSetMinor: unitOf.get(row.id)?.amountAsSetMinor ?? row.amountMinor,
+      share: shareOf.get(row.id) ?? null,
     };
   });
 }

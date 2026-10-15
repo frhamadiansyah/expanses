@@ -14,6 +14,7 @@ const budget = (categoryAccountId: string, amountAsSetMinor: number, frequency: 
   overridden: false,
   frequency,
   amountAsSetMinor,
+  share: null,
 });
 
 const lines = [line('t', 'Transport', [line('fuel', 'Fuel'), line('ride', 'Ride hailing')]), line('fun', 'Entertainment')];
