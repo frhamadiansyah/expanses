@@ -1,21 +1,20 @@
 import { ownerScope, type PreviewedInvite } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
 import { eventDates } from '../events/EventsPage';
 import { joinChoices } from './join-event';
+import { sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
 /**
  * "Join Coast week" (shared events §6): the event, who invited, and who is joining — a name nobody has claimed ("I'm
  * Budi") or a new one. A same-person invite (a new phone) joins as that person, with nothing to choose.
  */
-export function JoinEvent({ code, preview }: { code: string; preview: PreviewedInvite }) {
+export function JoinEvent({ code, preview, onJoined }: { code: string; preview: PreviewedInvite; onJoined: (eventId: string) => void | Promise<void> }) {
   const event = preview.event!;
   const { ws, sync } = useApp();
-  const navigate = useNavigate();
   const choices = joinChoices(event);
   const same = preview.terms.sameMember;
   const [choice, setChoice] = useState(choices[0]!.key);
@@ -32,9 +31,10 @@ export function JoinEvent({ code, preview }: { code: string; preview: PreviewedI
     try {
       const joiningAs = same ? (preview.memberName ?? '') : picked.personId ? picked.name : name.trim();
       const { eventId } = await sync.joinEvent(code, { ws: ownerScope(ws), personId: same ? null : picked.personId, name: joiningAs, deviceName: thisDeviceName() });
-      await navigate({ to: '/events/$eventId', params: { eventId } });
+      // Where it goes next is the host's: the switcher's sheet closes before the page opens, the join page just opens it.
+      await onJoined(eventId);
     } catch (failure) {
-      setError(failure);
+      setError(sayError(failure));
     } finally {
       setBusy(false);
     }

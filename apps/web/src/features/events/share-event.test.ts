@@ -1,6 +1,6 @@
 import type { CreatedInvite, MoveRefusal } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { freshShare, runShare } from './share-event';
+import { type ConversionSteps, finishConversion, freshShare, needsFinishing, runShare } from './share-event';
 
 const invite = { code: 'x' } as unknown as CreatedInvite;
 const steps = (log: string[], over: Partial<Parameters<typeof runShare>[1]> = {}) => ({
@@ -36,5 +36,39 @@ describe('sharing an existing event (§6)', () => {
     await runShare(progress, steps(log, { invite: async () => { throw new Error('offline'); } })).catch(() => undefined);
     await runShare(progress, steps(log));
     expect(log.filter((l) => l === 'convert')).toHaveLength(1);
+  });
+});
+
+describe('finishing a share cut short (I9)', () => {
+  const left = { remaining: 0, localItems: 0, sharedItems: 0, setWithoutCategories: false };
+  const conversion = (log: string[], over: Partial<ConversionSteps> = {}): ConversionSteps => ({
+    sharedItemCount: async () => 0,
+    derivedIds: async () => new Set(['t-moved']),
+    tagged: async () => ['t-moved', 't-left', 't-transfer'],
+    convert: async () => (log.push('convert'), [{ transactionId: 't-moved', why: 'Already in a shared event' }]),
+    move: async (ids) => (log.push(`move ${ids.join(',')}`), [{ transactionId: 't-transfer', why: 'Only a purchase from one account under one category moves into a shared event' }]),
+    ...over,
+  });
+
+  it('runs the whole conversion while the shared plan is empty, leaving out what had already moved', async () => {
+    const log: string[] = [];
+    expect(await finishConversion(conversion(log))).toEqual([]);
+    expect(log).toEqual(['convert']);
+  });
+
+  it('never copies the plan again once an item is on it: only what is still in a workspace moves', async () => {
+    const log: string[] = [];
+    const kept = await finishConversion(conversion(log, { sharedItemCount: async () => 2 }));
+    expect(log).toEqual(['move t-left,t-transfer']);
+    expect(kept.map((k) => k.transactionId)).toEqual(['t-transfer']);
+  });
+
+  it('is offered while something was left behind, and not once marked done', () => {
+    expect(needsFinishing(left, false)).toBe(false);
+    expect(needsFinishing({ ...left, remaining: 1 }, false)).toBe(true);
+    expect(needsFinishing({ ...left, localItems: 3 }, false)).toBe(true);
+    expect(needsFinishing({ ...left, localItems: 3, sharedItems: 3 }, false)).toBe(false);
+    expect(needsFinishing({ ...left, setWithoutCategories: true }, false)).toBe(true);
+    expect(needsFinishing({ ...left, remaining: 1 }, true)).toBe(false);
   });
 });

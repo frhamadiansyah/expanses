@@ -1,5 +1,5 @@
-import { CURRENCIES, isoDate } from '@expanses/core';
-import { convertEventToShared, type CreatedInvite, type EventRow, listTransactions, type MoveRefusal, ownerScope } from '@expanses/db';
+import { CURRENCIES } from '@expanses/core';
+import { type CreatedInvite, type EventRow, type MoveRefusal, ownerScope } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -7,7 +7,9 @@ import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from '../sharing/InviteCard';
-import { freshShare, runShare } from './share-event';
+import { finishConversion, freshShare, markConversionDone, runShare } from './share-event';
+import { conversionSteps, fetchConversionRates } from './shared-queries';
+import { sayError } from '../sharing/sharing-copy';
 import { thisDeviceName } from '../sharing/SharingSection';
 
 /**
@@ -38,11 +40,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
     setBusy(true);
     setError(null);
     try {
-      const tagged = await listTransactions(database, ownerScope(ws), { eventId: event.id, limit: 5_000 });
-      for (const day of new Set([isoDate(), ...tagged.map((t) => t.occurredOn)])) {
-        const currencies = new Set([currency, ...tagged.filter((t) => t.occurredOn === day).flatMap((t) => [t.originalCurrency, ...t.entries.map((x) => x.currency)])]);
-        await resolveRates([...currencies].filter((c): c is string => !!c && c !== ws.baseCurrency), day).catch(() => undefined);
-      }
+      await fetchConversionRates(database, ws, event.id, currency, resolveRates);
       const result = await runShare(progress.current, {
         share: async () =>
           (
@@ -54,13 +52,18 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
               names: names.split(',').map((n) => n.trim()).filter(Boolean),
             })
           ).bookId,
-        convert: async () => (await convertEventToShared(database, ownerScope(ws), event.id)).kept,
+        // Safe to run again (I9): a retry after a conversion cut short part-way never copies the plan twice.
+        convert: async () => {
+          const kept = await finishConversion(conversionSteps(database, ws, event.id));
+          markConversionDone(event.id);
+          return kept;
+        },
         invite: (bookId) => sync.eventInvite(bookId, name),
       });
       if (result) setDone(result);
       await invalidate();
     } catch (failure) {
-      setError(failure);
+      setError(sayError(failure));
     } finally {
       tapped.current = false;
       setBusy(false);

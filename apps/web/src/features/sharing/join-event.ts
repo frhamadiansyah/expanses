@@ -10,3 +10,8 @@ export function joinChoices(event: EventInviteDetails): { key: string; label: st
     { key: 'new', label: 'Someone new', personId: null, name: '' },
   ];
 }
+
+/** The join screen's title: "Join Coast week" for an event's invite, else the workspace join it has always been. */
+export function joinTitle(preview: Pick<PreviewedInvite, 'event'> | null): string {
+  return preview?.event ? `Join ${preview.event.name}` : 'Join a workspace';
+}

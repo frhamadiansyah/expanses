@@ -13,8 +13,25 @@ export function headerLine(view: SharedEventView): string {
   return `Spent ${formatMinor(view.spentMinor, view.currency)} · ${possessive(view.myName)} share ${formatMinor(view.myShareMinor, view.currency)}`;
 }
 
+/** "Shared with 2 people"; right after sharing with no names yet there is nobody to count, and it says so. */
 export function sharedWithText(count: number): string {
+  if (count === 0) return 'Shared, nobody else in it yet';
   return `Shared with ${count} ${count === 1 ? 'person' : 'people'}`;
+}
+
+/**
+ * What can still be done on the page. `readOnly`: this phone's person is no longer in the event (left, or removed) —
+ * the event is kept here to read, and every write is refused by the repositories, so none is offered. `locked`: that,
+ * or the event is Done — the writes refused with FINISHED are not offered either; only Reopen is.
+ */
+export function pageLocks(view: Pick<SharedEventView, 'state' | 'finishedAt'>): { readOnly: boolean; locked: boolean } {
+  const readOnly = view.state !== 'active';
+  return { readOnly, locked: readOnly || view.finishedAt !== null };
+}
+
+/** The notice a page no longer shared here carries, in place of every action it had. */
+export function readOnlyLine(view: Pick<SharedEventView, 'name' | 'myName'>): string {
+  return `${view.myName} is no longer in ${view.name}. What was recorded is kept here, read-only.`;
 }
 
 function postingFlags(posting: SharedExpenseView['posting'], view: SharedEventView): string[] {
@@ -63,6 +80,67 @@ export function waitingLine(view: SharedEventView): string | null {
   const count = view.waiting.filter((w) => w.reason === 'choose-account').length;
   if (count === 0) return null;
   return `${count} ${count === 1 ? 'record is' : 'records are'} not in ${possessive(view.myName)} books yet`;
+}
+
+/**
+ * Whether this phone may delete a settle-up (ruling R11: a wrong one is deleted and recorded again). §3's writer rule
+ * for settlements, which `voidSettlement` enforces again: the person who paid or the person who received it, or anyone
+ * when neither of them has the app.
+ */
+export function settlementDeletable(s: SharedSettlementView, view: Pick<SharedEventView, 'people'>): boolean {
+  if (s.voided) return false;
+  if (s.mine) return true;
+  return !view.people.some((p) => p.hasApp && (p.personId === s.fromPersonId || p.personId === s.toPersonId));
+}
+
+/** One record waiting for an account (R6), as the Take over sheet lists it: what it was, and which way the money went. */
+export interface TakeOverRow {
+  recordId: string;
+  title: string;
+  amount: string;
+  /** "From" for what this person paid; "Into" for a settle-up this person received. */
+  direction: 'From' | 'Into';
+}
+
+export function takeOverRows(view: SharedEventView): TakeOverRow[] {
+  const rows: TakeOverRow[] = [];
+  for (const w of view.waiting) {
+    if (w.reason !== 'choose-account') continue;
+    const expense = view.expenses.find((e) => e.expenseId === w.recordId);
+    if (expense) {
+      rows.push({ recordId: w.recordId, title: expense.note ?? expense.categoryName ?? 'Shared spending', amount: formatMinor(expense.amountMinor, expense.currency), direction: 'From' });
+      continue;
+    }
+    const settlement = view.settlements.find((s) => s.settlementId === w.recordId);
+    if (settlement) {
+      rows.push({
+        recordId: w.recordId,
+        title: `${settlement.fromName} paid ${settlement.toName}`,
+        amount: formatMinor(settlement.amountMinor, view.currency),
+        direction: settlement.toPersonId === view.me ? 'Into' : 'From',
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * The account each waiting record is taken over with: its own pick, else the last account picked on the sheet (so one
+ * pick covers the common case of everything from one purse). Null while a record has neither.
+ */
+export function takeOverChoice(recordId: string, picks: Readonly<Record<string, string>>, lastPicked: string): string | null {
+  return picks[recordId] || lastPicked || null;
+}
+
+/** The records grouped by the account they are taken over with: one `takeOverRecords` call per account. */
+export function takeOverBatches(rows: readonly TakeOverRow[], picks: Readonly<Record<string, string>>, lastPicked: string): { accountId: string; recordIds: string[] }[] {
+  const batches = new Map<string, string[]>();
+  for (const row of rows) {
+    const accountId = takeOverChoice(row.recordId, picks, lastPicked);
+    if (!accountId) throw new Error(`Choose an account for ${row.title}`);
+    batches.set(accountId, [...(batches.get(accountId) ?? []), row.recordId]);
+  }
+  return [...batches].map(([accountId, recordIds]) => ({ accountId, recordIds }));
 }
 
 /** The accounts money can be paid from or into on this event: everyday money and cards, still open. */
