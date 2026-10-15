@@ -33,6 +33,7 @@ import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
+import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
 /*
@@ -1194,6 +1195,15 @@ export async function pullAndApply(
                   for (const [i, decision] of run.decisions.entries()) {
                     // decision.message already reads "AUTHORITY: ..." (authority.ts): recorded as-is, matching guarded()'s format.
                     if (decision instanceof AuthorityError) await refuse(changeSet.ops[i]!.entity, changeSet.ops[i]!.id, decision.message);
+                  }
+                  // I3: an own write to an event row the log refused (a friend's takeover took it first) goes back to
+                  // what the log has, and the record's lines here follow it, as on every other phone.
+                  if (eventLog) {
+                    for (const [i, decision] of run.decisions.entries()) {
+                      const op = changeSet.ops[i]!;
+                      if (!(decision instanceof AuthorityError) || !EVENT_ENTITIES.has(op.entity)) continue;
+                      if (await restoreRefusedOwnEventOpTx(tx, bookId, op, changeSet.hlc)) await followEventGuarded(tx, bookId, op.entity, op.id, null);
+                    }
                   }
                   // …and whatever of our member edits the log did not take is put back to what it did (fix round 3).
                   const members = new Set(changeSet.ops.filter((op) => op.entity === 'member').map((op) => op.id));

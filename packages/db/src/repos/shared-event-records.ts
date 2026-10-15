@@ -1,4 +1,4 @@
-import { type ExpenseRecord, parseSplitJson, type SettlementRecord } from '@expanses/core';
+import { type ExpenseRecord, expenseInEvent, MoneyError, parseSplitJson, type SettlementRecord, SharedEventError } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Db } from '../database';
@@ -145,21 +145,52 @@ export async function settlementRecordTx(db: Db, bookId: string, id: string): Pr
   return row ? settlementOf(row) : null;
 }
 
-/** Every record of the event here, oldest first, ties by id: the order every phone reads them in. */
-export async function eventRecordsTx(db: Db, bookId: string): Promise<{ expenses: StoredExpense[]; settlements: StoredSettlement[]; people: StoredPerson[] }> {
+/** An expense whose split this phone cannot read, with an empty split in its place and why. */
+export interface UnparsedExpense {
+  expense: StoredExpense;
+  reason: string;
+}
+
+/**
+ * Why an expense cannot be added up in the event currency (final review I2), or null when it can: a split that does not
+ * add up to the amount (a friend's by-amount split racing the payer's new amount, both legal), a rate that is not one,
+ * a rate other than 1 in the event currency. Such a record is left out of every figure and shown to be fixed; it never
+ * takes the event page, the Debts page, Leave or Remove down with it.
+ */
+export function expenseReadIssue(expense: StoredExpense, eventCurrency: string): string | null {
+  try {
+    expenseInEvent(expense, eventCurrency);
+    return null;
+  } catch (error) {
+    if (error instanceof SharedEventError || error instanceof MoneyError) return error.message;
+    throw error;
+  }
+}
+
+/**
+ * Every record of the event here, oldest first, ties by id: the order every phone reads them in. An expense whose split
+ * cannot be read at all is in `unparsed` (with an empty split), never silently dropped: it still names its payer, and
+ * the page shows it to be fixed (I2).
+ */
+export async function eventRecordsTx(
+  db: Db,
+  bookId: string,
+): Promise<{ expenses: StoredExpense[]; unparsed: UnparsedExpense[]; settlements: StoredSettlement[]; people: StoredPerson[] }> {
   const expenses: StoredExpense[] = [];
+  const unparsed: UnparsedExpense[] = [];
   for (const row of await db.values<ExpenseValues>(sql`${expenseSelect} WHERE x.book_id = ${bookId} ORDER BY x.occurred_on, x.id`)) {
     try {
       expenses.push(expenseOf(row));
-    } catch {
-      // A split this phone cannot read is left out of the figures rather than failing the whole event.
+    } catch (error) {
+      if (!(error instanceof SharedEventError)) throw error;
+      unparsed.push({ expense: { ...expenseOf([...row.slice(0, 10), 'equal', '[]', ...row.slice(12)] as ExpenseValues) }, reason: error.message });
     }
   }
   const settlements = (await db.values<SettlementValues>(sql`${settlementSelect} WHERE book_id = ${bookId} ORDER BY occurred_on, id`)).map(settlementOf);
   const people = (
     await db.values<[string, string, string | null, string | null]>(sql`SELECT id, name, member_id, removed_at FROM event_people WHERE book_id = ${bookId} ORDER BY name, id`)
   ).map(([personId, name, memberId, removedAt]) => ({ personId, name, memberId, removedAt }));
-  return { expenses, settlements, people };
+  return { expenses, unparsed, settlements, people };
 }
 
 /**

@@ -100,6 +100,14 @@ function forgedExpense(s: Setup, id: string, fields: { occurredOn: string; rateT
   ];
 }
 
+/** A currency change written as the screen would, but past its refusal: a stale view, or an older build. */
+async function currencyPastTheScreen(d: Device, currency: string): Promise<void> {
+  const [book] = await d.database.db.values<[string]>(sql`SELECT book_id FROM event_books`);
+  await d.database.transaction((tx) =>
+    withCapture(tx, { entity: 'shared_event', id: book![0], bookId: book![0] }, () => tx.run(sql`UPDATE shared_events SET currency = ${currency} WHERE book_id = ${book![0]}`)),
+  );
+}
+
 const posting = async (p: Phone, bookId: string, recordId: string) =>
   (await p.device.database.db.values<[string | null, string | null]>(sql`SELECT transaction_id, unposted FROM event_postings WHERE book_id = ${bookId} AND record_id = ${recordId}`))[0];
 
@@ -212,7 +220,9 @@ describe('three phones, one event', () => {
     const s = await coastWeek();
     await dinner(s);
     await s.rina.device.engine.syncOnce(s.trip.bookId);
-    await setSharedEventCurrency(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, 'EUR');
+    // The screen refuses it now that Rina's phone is in (I1); a stale or older build writes it past the screen.
+    await expect(setSharedEventCurrency(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, 'EUR')).rejects.toThrow('fixed once someone else has joined');
+    await currencyPastTheScreen(s.andi.device, 'EUR');
     await s.trip.settle([s.andi.device, s.rina.device]);
     for (const p of [s.rina, s.andi]) {
       expect(await p.device.database.db.values(sql`SELECT currency FROM shared_events WHERE book_id = ${s.trip.bookId}`)).toEqual([['TRY']]);
@@ -249,31 +259,24 @@ describe('what apply does with records it cannot post, and the edges between pho
     expect(await s.tripBalance(s.rina)).toBe(-30_000);
   });
 
-  it('two currency changes before any expense end in the log’s order on every phone, even when the clocks say otherwise (R8)', async () => {
+  it('once a second phone is in, a currency change is stripped in log order on every phone, expense or none (I1)', async () => {
     const s = await coastWeek();
-    // Rina's change is made first (the older clock) but reaches the relay last; Andi's newer one is the log's first.
-    await setSharedEventCurrency(s.rina.device.database, ownerScope(s.rina.device.ws), s.rina.eventId, 'EUR');
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    await setSharedEventCurrency(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, 'USD');
-    await s.andi.device.engine.syncOnce(s.trip.bookId);
-    await s.trip.settle([s.rina.device, s.andi.device]);
-    for (const p of [s.rina, s.andi]) {
-      expect(await p.device.database.db.values(sql`SELECT currency FROM shared_events WHERE book_id = ${s.trip.bookId}`)).toEqual([['EUR']]);
-      expect(await p.device.database.db.values(sql`SELECT currency FROM event_log_currency WHERE book_id = ${s.trip.bookId}`)).toEqual([['EUR']]);
-      expect(await p.device.database.db.values(sql`SELECT a.currency FROM event_books b JOIN accounts a ON a.id = b.balance_account_id WHERE b.book_id = ${s.trip.bookId}`)).toEqual([['EUR']]);
-    }
-    // The first expense locks what every phone already holds: Andi's phone records in it, and both read it alike.
-    await recordSharedExpense(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, {
-      occurredOn: '2026-10-08', amountMinor: 4_000, currency: 'EUR', rateToEvent: '1', payerPersonId: s.andi.person,
-      paidFrom: { accountId: s.andi.euro, chargedMinor: null }, split: { mode: 'equal', people: [s.rina.person, s.andi.person] }, categoryId: null, note: 'Ferry',
+    // Rina switches to euros on a phone that has not heard Andi joined; Andi, on lira, records a taxi in rupiah at a
+    // rate to lira. Before the fix the log took Rina's change and read Andi's lira rate as euros (about 35 times over).
+    await currencyPastTheScreen(s.rina.device, 'EUR');
+    const taxi = await recordSharedExpense(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, {
+      occurredOn: '2026-10-08', amountMinor: 280_000, currency: 'IDR', rateToEvent: '0.0018', payerPersonId: s.andi.person,
+      paidFrom: { accountId: s.andi.device.bank, chargedMinor: null }, split: { mode: 'equal', people: [s.rina.person, s.andi.person] }, categoryId: null, note: 'Taxi',
     });
+    await s.rina.device.engine.syncOnce(s.trip.bookId);
     await s.trip.settle([s.rina.device, s.andi.device]);
     for (const p of [s.rina, s.andi]) {
-      expect((await eventBookTx(p.device.database.db, s.trip.bookId))!.currency).toBe('EUR');
-      expect(await p.device.database.db.values(sql`SELECT currency FROM shared_events WHERE book_id = ${s.trip.bookId}`)).toEqual([['EUR']]);
+      expect(await p.device.database.db.values(sql`SELECT currency FROM shared_events WHERE book_id = ${s.trip.bookId}`)).toEqual([['TRY']]);
+      expect(await p.device.database.db.values(sql`SELECT a.currency FROM event_books b JOIN accounts a ON a.id = b.balance_account_id WHERE b.book_id = ${s.trip.bookId}`)).toEqual([['TRY']]);
+      expect((await s.view(p)).expenses.find((e) => e.expenseId === taxi)!.eventAmountMinor).toBe(50_400);
     }
-    expect(await s.tripBalance(s.rina)).toBe(-2_000);
-    expect(await s.tripBalance(s.andi)).toBe(2_000);
+    expect(await s.tripBalance(s.rina)).toBe(-25_200);
+    expect(await s.tripBalance(s.andi)).toBe(25_200);
   });
 
   it('a person renamed on another phone renames the settle-ups that name them, on every phone', async () => {
@@ -347,6 +350,9 @@ describe('what apply does with records it cannot post, and the edges between pho
     restored.engine = new SyncEngine(restored.database, restored.transport, restored.keys, undefined, { appVersion: '0.4.0' });
     expect(await restored.engine.checkRestore()).toContain(s.trip.bookId);
     const transactionsBefore = await restored.database.db.values<[number]>(sql`SELECT count(*) FROM transactions`);
+    // The lost phone is removed first (C2): only then does an invite made by someone else link a phone as Andi.
+    await s.rina.device.engine.removeDevice(s.trip.bookId, s.andi.device.deviceId);
+    await s.rina.device.engine.syncOnce(s.trip.bookId);
     const { code } = await s.rina.device.engine.createEventInvite(s.trip.bookId, { inviterName: 'Rina', forPersonId: s.andi.person });
     await restored.engine.joinEvent(code, { ws: restored.ws, personId: null, name: 'Andi', deviceName: 'Andi’s restored phone' });
     await s.trip.settle([s.rina.device, restored]);
@@ -364,6 +370,50 @@ describe('what apply does with records it cannot post, and the edges between pho
     expect((await nativeBalances(restored.database, ownerScope(restored.ws)))[restored.bank]).toBe(-336_000);
     expect(await s.tripBalance(phone)).toBe(30_000 - 141_750 - 4_000);
     expect(boatId).toBeTruthy();
+  });
+
+  it('Budi takes over what Rina paid for him a moment before Andi, offline, deletes it: Andi’s own phone puts it back, as every phone has it (I3)', async () => {
+    const s = await coastWeek();
+    const budiPerson = await s.personNamed(s.rina, 'Budi');
+    // Rina records the boat Budi paid (Budi has no app yet): anyone's to change.
+    const boatId = await recordSharedExpense(s.rina.device.database, ownerScope(s.rina.device.ws), s.rina.eventId, {
+      occurredOn: '2026-10-08', amountMinor: 30_000, currency: 'TRY', rateToEvent: '1', payerPersonId: budiPerson,
+      paidFrom: null, split: { mode: 'equal', people: [s.rina.person, s.andi.person, budiPerson] }, categoryId: null, note: 'Boat',
+    });
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    await s.trip.join(s.budiDevice, s.rina.device, 'Budi');
+    const budi = await s.phone(s.budiDevice);
+    await s.trip.settle([s.rina.device, budi.device]);
+    // Budi takes it over into his own bank; that reaches the log first.
+    await takeOverRecords(budi.device.database, ownerScope(budi.device.ws), budi.eventId, { accountId: budi.device.bank, recordIds: [boatId] });
+    await budi.device.engine.syncOnce(s.trip.bookId);
+    // Andi, who has not heard of it, deletes the boat: allowed on his phone, refused by the log (only Budi now).
+    await voidSharedExpense(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, boatId);
+    await s.trip.settle([s.andi.device, s.rina.device, budi.device]);
+    for (const p of [s.rina, s.andi, budi]) {
+      const boat = (await s.view(p)).expenses.find((e) => e.expenseId === boatId)!;
+      expect(boat.voided).toBe(false);
+      expect(boat.payerHasAccount).toBe(true);
+    }
+    expect(await s.andi.device.database.db.values(sql`SELECT error FROM sync_skipped WHERE book_id = ${s.trip.bookId} AND entity = 'event_expense' AND id = ${boatId}`)).toEqual([
+      ['AUTHORITY: only the person whose money it is changes it'],
+    ]);
+    // Andi's share is back in his books, and every phone reads the same balances and payments.
+    expect(await s.tripBalance(s.andi)).toBe((await s.view(s.andi)).people.find((x) => x.isMe)!.balanceMinor);
+    expect(await s.tripBalance(s.andi)).toBe(-10_000);
+    expect((await s.view(s.andi)).people).toEqual((await s.view(s.rina)).people.map((x) => ({ ...x, isMe: x.personId === s.andi.person })));
+    expect((await s.view(s.andi)).payments).toEqual((await s.view(budi)).payments);
+  });
+
+  it('a workspace row sent in the event’s log is refused on every phone, never written into a workspace (I4)', async () => {
+    const s = await coastWeek();
+    const before = await s.rina.device.database.db.values(sql`SELECT count(*) FROM accounts`);
+    await forge(s, s.andi.device, s.andi.person, { entity: 'category', id: 'forged-category', op: 'upsert', fields: { name: 'Planted', kind: 'expense', parentId: null } });
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    expect(await s.rina.device.database.db.values(sql`SELECT entity, id, error FROM sync_skipped WHERE book_id = ${s.trip.bookId}`)).toEqual([
+      ['category', 'forged-category', "AUTHORITY: category inside a shared event's book"],
+    ]);
+    expect(await s.rina.device.database.db.values(sql`SELECT count(*) FROM accounts`)).toEqual(before);
   });
 
   it('a peer’s rate that cannot be read never crashes the leave and remove checks: that record is not counted, and its people stay', async () => {

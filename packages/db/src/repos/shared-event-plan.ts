@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { withCapture } from '../sync/capture';
 import { tidyLink } from './event-items';
-import { eventBookOfEventTx, eventRecordsTx } from './shared-event-records';
+import { eventBookOfEventTx, eventRecordsTx, expenseReadIssue } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 
 /*
@@ -90,8 +90,9 @@ export async function sharedEventPlan(database: Database, ws: WorkspaceContext, 
       note,
       purchase: expenseId && shareMinor !== null ? { transactionId: expenseId, shareMinor: Number(shareMinor) } : null,
     })),
+    // One that cannot be added up (I2) is in no figure here either, as on the event page.
     actuals: expenses
-      .filter((e) => !e.voided)
+      .filter((e) => !e.voided && expenseReadIssue(e, book.currency) === null)
       .map((e) => ({ transactionId: e.id, occurredOn: e.occurredOn, description: e.note ?? 'Shared spending', categoryId: e.categoryId ?? '', amountBaseMinor: expenseInEvent(e, book.currency).paidMinor })),
     categoryNames: Object.fromEntries(categories),
   });

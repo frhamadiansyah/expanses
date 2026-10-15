@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import type { ChangeSet } from '../sync/types';
 import type { EventUnposted } from './shared-event-postings';
-import { type EventBookRow, eventBookOfEventTx, eventRecordsTx } from './shared-event-records';
+import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseReadIssue } from './shared-event-records';
 
 /*
  * What the screens read of a shared event (shared events §6, §7). Figures are in the event currency unless a field
@@ -73,6 +73,12 @@ export interface SharedExpenseView {
   /** Its amount, currency, rate, date and delete are another member's alone. */
   payerOnly: boolean;
   posting: RecordPostingView | null;
+  /**
+   * Why it cannot be added up, when it cannot (I2): a split that does not add up to the amount, a rate that is not one.
+   * Left out of every figure here and on every phone; the person who may change it opens it and fixes it. Always set
+   * by `sharedEventView`; optional only so a screen's hand-made view need not name it.
+   */
+  unreadable?: string | null;
 }
 
 export interface SharedSettlementView {
@@ -117,6 +123,8 @@ export interface SharedEventView {
   waiting: { recordId: string; kind: 'expense' | 'settlement'; reason: EventUnposted }[];
   /** The currency can no longer change: something is spent. */
   currencyLocked: boolean;
+  /** The records left out of the figures because they cannot be added up, and why (I2). Always set by `sharedEventView`. */
+  unreadable?: { recordId: string; reason: string }[];
 }
 
 /** The record ids whose ops still wait in this phone's outbox for the event's book. */
@@ -151,9 +159,19 @@ const named = (payments: SuggestedPayment[], names: Map<string, string>): NamedP
   payments.map((p) => ({ fromPersonId: p.fromPersonId, fromName: names.get(p.fromPersonId) ?? 'Someone', toPersonId: p.toPersonId, toName: names.get(p.toPersonId) ?? 'Someone', amountMinor: p.amountMinor }));
 
 async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
-  const { expenses, settlements, people } = await eventRecordsTx(db, book.bookId);
+  const { expenses: parsed, unparsed, settlements, people } = await eventRecordsTx(db, book.bookId);
+  // I2: every expense is on the page; one that cannot be added up says why and counts in no figure, so one bad record
+  // (a split edit racing an amount edit, a peer's rate that is not one) never takes the whole event down.
+  const issues = new Map<string, string>();
+  for (const e of parsed) {
+    const why = e.voided ? null : expenseReadIssue(e, book.currency);
+    if (why) issues.set(e.id, why);
+  }
+  for (const { expense, reason } of unparsed) if (!expense.voided) issues.set(expense.id, reason);
+  const expenses = [...parsed, ...unparsed.map((u) => u.expense)].sort((a, b) => (a.occurredOn === b.occurredOn ? (a.id < b.id ? -1 : 1) : a.occurredOn < b.occurredOn ? -1 : 1));
+  const counted = parsed.filter((e) => !e.voided && !issues.has(e.id));
   const names = new Map(people.map((p) => [p.personId, p.name]));
-  const owed = balances(expenses, settlements, book.currency, people.map((p) => p.personId));
+  const owed = balances(counted, settlements, book.currency, people.map((p) => p.personId));
   const unsent = await unsentIdsTx(db, book.bookId);
   const postings = await postingsTx(db, book.bookId, names);
   const categories = (
@@ -163,10 +181,12 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
   let spentMinor = 0;
   let myShareMinor = 0;
   const expenseViews: SharedExpenseView[] = expenses.map((e) => {
-    const { paidMinor } = expenseInEvent(e, book.currency);
-    const mine = sharesOf(e).find((s) => s.personId === book.me)?.minor ?? 0;
+    const unreadable = issues.get(e.id) ?? null;
+    const readable = unreadable === null && !e.voided;
+    const { paidMinor } = readable ? expenseInEvent(e, book.currency) : { paidMinor: 0 };
+    const mine = readable ? (sharesOf(e).find((s) => s.personId === book.me)?.minor ?? 0) : 0;
     const mineInEvent = mine === 0 ? 0 : toEvent(mine, e.currency, e.rateToEvent, book.currency);
-    if (!e.voided) {
+    if (readable) {
       spentMinor += paidMinor;
       myShareMinor += mineInEvent;
     }
@@ -184,13 +204,14 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
       categoryName: e.categoryId ? (categoryName.get(e.categoryId) ?? null) : null,
       note: e.note,
       split: e.split,
-      splitText: splitText(e.split),
+      splitText: unparsed.some((u) => u.expense.id === e.id) ? 'Split not readable' : splitText(e.split),
       myShareMinor: mine,
       myShareEventMinor: mineInEvent,
       voided: e.voided,
       unsent: unsent.has(e.id),
       payerOnly: e.payerMemberId !== null && e.payerMemberId !== book.me,
       posting: postings.get(e.id) ?? null,
+      unreadable,
     };
   });
   const settlementViews: SharedSettlementView[] = settlements.map((s) => ({
@@ -228,7 +249,9 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
     myShareMinor,
     payments: named(fewestPayments(owed), names),
     waiting,
+    // Any expense row locks it, readable or not, as `setSharedEventCurrency` counts them (M1).
     currencyLocked: expenses.length > 0,
+    unreadable: [...issues].map(([recordId, reason]) => ({ recordId, reason })),
   };
 }
 
@@ -263,26 +286,35 @@ export interface EventBalanceRow {
   eventId: string;
   name: string;
   currency: string;
-  /** The trip balance in this phone's books: positive, the group owes this person. */
+  /** This person's balance from the event's records, as its Balances line reads: positive, the group owes this person. */
   balanceMinor: number;
   /** The suggested payments this person is in. */
   payments: NamedPayment[];
+  /** Records not in this phone's books yet (an account to choose, a rate to wait for): the trip balance here differs by them. */
+  waitingCount?: number;
 }
 
-/** The Debts page's trips (spec §5): each shared event with a balance here or a payment this person is in. */
+/**
+ * The Debts page's trips (spec §5): each shared event with a balance here or a payment this person is in. The balance
+ * and the payments come from one source, the records, as the event page reads them: the trip-balance account trails
+ * them while anything waits (a name claimed late, a rate not fetched yet), and the row would contradict itself ("Budi
+ * −₺300 · Andi pays Budi ₺500"). Net worth keeps reading the account. One event that cannot be read is left out, never
+ * the whole list (I2).
+ */
 export async function eventBalanceRows(database: Database, ws: WorkspaceContext): Promise<EventBalanceRow[]> {
   const out: EventBalanceRow[] = [];
   const events = await database.db.values<[string]>(sql`SELECT event_id FROM event_books WHERE workspace_id = ${ws.workspaceId}`).catch(() => []);
   for (const [eventId] of events) {
-    const book = await eventBookOfEventTx(database.db, eventId);
-    if (!book) continue;
-    const view = await viewOfTx(database.db, book);
-    const [held] = await database.db.values<[number]>(sql`
-      SELECT coalesce(sum(e.amount_minor), 0) FROM entries e JOIN transactions t ON t.id = e.transaction_id
-      WHERE e.account_id = ${book.balanceAccountId} AND t.status = 'posted'`);
-    const payments = view.payments.filter((p) => p.fromPersonId === book.me || p.toPersonId === book.me);
-    const balanceMinor = Number(held?.[0] ?? 0);
-    if (balanceMinor !== 0 || payments.length > 0) out.push({ eventId, name: book.name, currency: book.currency, balanceMinor, payments });
+    try {
+      const book = await eventBookOfEventTx(database.db, eventId);
+      if (!book) continue;
+      const view = await viewOfTx(database.db, book);
+      const payments = view.payments.filter((p) => p.fromPersonId === book.me || p.toPersonId === book.me);
+      const balanceMinor = view.people.find((p) => p.isMe)?.balanceMinor ?? 0;
+      if (balanceMinor !== 0 || payments.length > 0) out.push({ eventId, name: book.name, currency: book.currency, balanceMinor, payments, waitingCount: view.waiting.length });
+    } catch (error) {
+      console.warn(`Debts: the shared event ${eventId} could not be read`, error);
+    }
   }
   return out;
 }

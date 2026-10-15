@@ -14,6 +14,7 @@ import { committedByCategory } from './expense-templates';
 import { periodFlows } from './flows';
 import { goalPlansFor } from './goal-funding';
 import { categoryTotalsIn, eventSpendingBetween } from './reports';
+import { eventOnlyExists, notShareCategory } from './event-only';
 
 export interface BudgetSheetResult extends BudgetSheet {
   /** True when this month's income is a bonus-month figure rather than the plan. */
@@ -52,6 +53,8 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   // Whether this workspace's caps are meant to feel an event is the workspace's own decision, and there is no
   // workspace to ask when none is open (or before migration 0042) — so the old behaviour, events held apart.
   const countEvents = narrowToBook ? ((await listBooks(database, ws)).find((book) => book.id === ws.bookId)?.countEventsInBudget ?? false) : false;
+  // Unnarrowed, the tree would take in a shared event's local copies of its categories (M7): they are no cap's.
+  const shareCategories = !narrowToBook && (await eventOnlyExists(database.db));
   const categories = await database.db
     .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name, systemKey: accounts.systemKey })
     .from(accounts)
@@ -63,6 +66,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
         NOT_IN_A_SET,
         // …and for one workspace's tree when one is open: a Business sheet is about Business categories.
         ...(narrowToBook ? [sql`${accounts.id} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+        ...(shareCategories ? [notShareCategory(accounts.id)] : []),
       ),
     );
 

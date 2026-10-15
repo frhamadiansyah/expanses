@@ -3,6 +3,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { withCapture } from '../sync/capture';
+import { secondDeviceInTx } from '../sync/authority';
 import { followEventOpTx, postEventRecordTx, rateToBaseTx, recordsReadingTx, setPaidFromTx } from './shared-event-postings';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseRecordTx, settlementRecordTx, type StoredExpense } from './shared-event-records';
 
@@ -173,7 +174,11 @@ export interface SharedExpensePatch {
 }
 
 async function liveExpenseTx(tx: Db, book: EventBookRow, expenseId: string): Promise<StoredExpense> {
-  const record = await expenseRecordTx(tx, book.bookId, expenseId);
+  // A split that cannot be read is opened with none, so it can be fixed by giving it one (I2).
+  const record = await expenseRecordTx(tx, book.bookId, expenseId).catch(async (error: unknown) => {
+    if (!(error instanceof SharedEventError)) throw error;
+    return (await eventRecordsTx(tx, book.bookId)).unparsed.find((u) => u.expense.id === expenseId)?.expense ?? null;
+  });
   if (!record || record.voided) throw invalid('That expense was deleted');
   return record;
 }
@@ -317,7 +322,9 @@ async function convertedTx(tx: Db, book: EventBookRow, minor: number, from: stri
  */
 export async function takeOverRecords(database: Database, ws: WorkspaceContext, eventId: string, input: { accountId: string; recordIds: readonly string[] }): Promise<void> {
   await database.transaction(async (tx) => {
-    const book = await openSharedEventTx(tx, ws, eventId);
+    // M3: also on a Done event. A takeover changes no shared figure (who paid, how much, who shares it all stay); it
+    // only puts this person's own payment into this person's own books, which a name claimed after Done still needs.
+    const book = await openSharedEventTx(tx, ws, eventId, true);
     const own = await accountCurrencyTx(tx, ws, input.accountId);
     for (const recordId of input.recordIds) {
       const expense = await expenseRecordTx(tx, book.bookId, recordId);
@@ -394,8 +401,12 @@ export async function renameEventPerson(database: Database, ws: WorkspaceContext
  * holds them as an unsettled one does — said plainly, so leaving is refused too.
  */
 export async function personRefusalTx(db: Db, book: EventBookRow, personId: string): Promise<SharedEventDbError | null> {
-  const { expenses, settlements, people } = await eventRecordsTx(db, book.bookId);
+  const { expenses, unparsed, settlements, people } = await eventRecordsTx(db, book.bookId);
   const name = people.find((p) => p.personId === personId)?.name ?? 'This person';
+  // A split that cannot be read at all could name anyone: nobody's balance is known until it is fixed (I2).
+  if (unparsed.some((u) => !u.expense.voided)) {
+    return new SharedEventDbError('NOT_SETTLED', `${name}'s balance cannot be worked out yet: an expense in ${book.name} cannot be read here`);
+  }
   const inSplit = (split: SplitInput) => (split.mode === 'equal' ? split.people.includes(personId) : split.shares.some((s) => s.personId === personId));
   const countable = (e: StoredExpense) => {
     try {
@@ -445,6 +456,9 @@ export async function setSharedEventCurrency(database: Database, ws: WorkspaceCo
     if (!isSupportedCurrency(currency)) throw invalid(`Unsupported currency ${currency}`);
     const [spent] = await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} LIMIT 1`);
     if (spent) throw invalid(`${book.name}'s currency is fixed once something is spent`);
+    // I1: once another phone is in, a change could cross an expense that phone records on the old currency. The log
+    // strips such a change on every phone (`noteEventLogTx`); this says so before it is made.
+    if (await secondDeviceInTx(tx, book.bookId)) throw invalid(`${book.name}'s currency is fixed once someone else has joined`);
     await writeEventTx(tx, book, sql`currency = ${currency}`);
   });
 }

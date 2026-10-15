@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { Db } from '../database';
 import { EVENT_ENTITIES, eventWriteRefusal } from './events/authority';
+import { eventLogRowTx, noteEventLogOpTx } from './events/log-rows';
 import { termsSigningBytes } from './invite';
 import { deviceIdOf, verifySignature } from './relay-signing';
 import { entityOf, parseOpId, type RowEntity } from './shared-entities';
@@ -211,14 +212,17 @@ export async function introductionRefusal(tx: Db, bookId: string, author: string
     if (!terms) return refuse('without an owner’s invite');
     const owners = await viewOwnerDevices(tx, bookId);
     const bytes = termsSigningBytes(bookId, terms);
-    let signed = false;
+    const signers: string[] = [];
     for (const owner of owners) {
       const [row] = await tx.values<[string]>(sql`SELECT sign_jwk FROM book_devices WHERE book_id = ${bookId} AND device_id = ${owner}`);
-      if (row && (await verifySignature(JSON.parse(row[0]) as JsonWebKey, bytes, terms.sig))) signed = true;
+      if (row && (await verifySignature(JSON.parse(row[0]) as JsonWebKey, bytes, terms.sig))) signers.push(owner);
     }
-    if (!signed) return refuse('whose invite no owner signed');
+    if (signers.length === 0) return refuse('whose invite no owner signed');
     if (terms.sameMember) {
       if (memberId !== terms.memberId) return refuse('as a member the invite does not name');
+      if ((await eventBookWorkspaceOf(tx, bookId)) !== null && !(await mayLinkAsMemberTx(tx, bookId, memberId, signers))) {
+        return refuse('as a member who still has a phone in, on an invite another member signed');
+      }
     } else if (await viewMember(tx, bookId, memberId)) {
       return refuse('as a member who already exists');
     }
@@ -228,6 +232,20 @@ export async function introductionRefusal(tx: Db, bookId: string, author: string
   }
   await tx.run(sql`INSERT INTO sync_authority_devices (book_id, device_id, member_id, removed_seq, added_seq) VALUES (${bookId}, ${author}, ${memberId}, NULL, ${seq})`);
   return null;
+}
+
+/**
+ * Final review C2. In a shared event every member is an owner (`everyMemberOwns`), so any member could sign an invite
+ * "for Andi's new phone", open it on a phone of their own and act as Andi: change the amount of a dinner paid from
+ * Andi's bank, void his settle-ups, take over his records. A phone linked as an existing member is therefore admitted
+ * only on an invite one of that member's own devices signed (Andi linking his own phone), or once the member has no
+ * device left in the view (the lost phone removed first, which every phone sees in the log). Both are facts of the
+ * authority view at this point of the log, so every phone decides alike.
+ */
+export async function mayLinkAsMemberTx(tx: Db, bookId: string, memberId: string, signers: readonly string[]): Promise<boolean> {
+  for (const signer of signers) if ((await viewDevice(tx, bookId, signer))?.memberId === memberId) return true;
+  const still = await tx.values(sql`SELECT 1 FROM sync_authority_devices WHERE book_id = ${bookId} AND member_id = ${memberId} AND removed_seq IS NULL LIMIT 1`);
+  return still.length === 0;
 }
 
 const DEVICE_FIXED = ['signJwk', 'agreeJwk', 'memberId', 'addedAt'];
@@ -272,8 +290,12 @@ export interface DecideContext {
  */
 export async function decideOpsTx(tx: Db, ctx: DecideContext, ops: readonly Op[]): Promise<(Op | AuthorityError)[]> {
   const out: (Op | AuthorityError)[] = [];
+  // Read once per entry: whether this book is a shared event's is a fact of this phone's own `event_books`, the same on
+  // every phone that holds the book (a joiner writes it before its first pull).
+  const eventBook = (await eventBookWorkspaceOf(tx, ctx.bookId)) !== null;
   for (const op of ops) {
     try {
+      refuseOutOfItsBook(op, eventBook);
       out.push(await decideOp(tx, ctx, op));
     } catch (error) {
       if (error instanceof AuthorityError) out.push(error);
@@ -281,6 +303,20 @@ export async function decideOpsTx(tx: Db, ctx: DecideContext, ops: readonly Op[]
     }
   }
   return out;
+}
+
+/**
+ * Final review I4: an op belongs to the kind of log it arrives in. A shared event's book holds the event's rows (and
+ * its devices and members), nothing else: a friend's phone, buggy or modified, sending a `purchase` or a `category` in
+ * an event's log would otherwise be applied into this phone's workspace (the book context resolves to it), by someone
+ * this phone shares no workspace with. The other way, an event's row in a workspace's or a group's log would be written
+ * under a book that is not an event's. `refuseWrongLog` keeps this phone's own writes in their book; this keeps peers'.
+ */
+function refuseOutOfItsBook(op: Op, eventBook: boolean): void {
+  if (op.entity === 'device' || op.entity === 'member') return;
+  const eventRow = EVENT_ENTITIES.has(op.entity);
+  if (eventBook && !eventRow) throw new AuthorityError(`${op.entity} inside a shared event's book`);
+  if (!eventBook && eventRow) throw new AuthorityError(`${op.entity} outside a shared event's book`);
 }
 
 async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
@@ -303,9 +339,13 @@ async function decideOp(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   const entity = entityOf(op.entity);
   // Shared events (rulings R1–R3, R8): a peer's op is judged against the stored row by the one predicate capture used
   // on its author's phone; every entry, this phone's own included, moves the currency mark in log order.
+  // I3: this phone's own entries are judged too — against the row as the log has it (`eventLogRowTx`), never the row
+  // stored here, which already holds this phone's own writes — and what the log takes is kept for the next decision.
   if (EVENT_ENTITIES.has(op.entity) && entity.kind === 'row') {
-    if (!ctx.own) await decideEventRow(tx, bookId, author, entity, op);
-    return noteEventLogTx(tx, bookId, op);
+    await decideEventRow(tx, bookId, author, entity, op);
+    const decided = await noteEventLogTx(tx, bookId, op);
+    await noteEventLogOpTx(tx, bookId, decided, ctx.hlc);
+    return decided;
   }
   if (entity.kind === 'row' && entity.writer && !ctx.own) return decideRowWriter(tx, bookId, author, entity, op);
   if (entity.kind === 'row' && WRITE_ONCE_ROWS.has(entity.entity)) {
@@ -581,7 +621,9 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
 /** A peer's op on a shared event's row (shared events §3): judged against the row stored here and the author's member. */
 async function decideEventRow(tx: Db, bookId: string, author: string, entity: RowEntity, op: Op): Promise<void> {
   const key = parseOpId(entity, op.id);
-  const stored = await storedRowOf(tx, entity, bookId, key);
+  // The row as the log made it, for every phone alike; a book followed before this was kept has only its stored row.
+  const logged = await eventLogRowTx(tx, bookId, entity.entity, op.id);
+  const stored = logged ? logged.values : await storedRowOf(tx, entity, bookId, key);
   const member = await authorMemberOf(tx, bookId, author);
   const after = op.op === 'delete' ? null : { ...(stored ?? {}), ...op.fields };
   const why = eventWriteRefusal(entity.entity, stored, after, key, member);
@@ -605,12 +647,27 @@ async function noteEventLogTx(tx: Db, bookId: string, op: Op): Promise<Op> {
   // its book, so it travels whole (`isRevivable`) and a currency it merely carries, with that field's own clock, could
   // otherwise still win the per-field merge.
   if (mark && Number(mark[1]) === 1) return without(op, ['currency']);
+  // Final review I1: an expense's rate is to the event currency its phone held when it was recorded, which the record
+  // does not name. A change that reached the log after another phone came in may be one that phone never saw before it
+  // recorded: its rate would then be read against a currency it was never meant for (a lira rate read as euros). So
+  // once a second device is in the log the currency is fixed, expense or none, on every phone at the same entry. A phone
+  // alone records against its own changes in its own order, which is the log's.
+  if (await secondDeviceInTx(tx, bookId)) return without(op, ['currency']);
   const changed = op.changed ?? Object.keys(op.fields);
   if (!changed.includes('currency')) return op;
   await tx.run(sql`
     INSERT INTO event_log_currency (book_id, currency, locked) VALUES (${bookId}, ${String(op.fields.currency)}, 0)
     ON CONFLICT (book_id) DO UPDATE SET currency = excluded.currency`);
   return op;
+}
+
+/**
+ * Whether more than one device has ever been in an event's log, per the view at this point of the log: from then on its
+ * currency is fixed (I1). Removed devices count, so a currency never comes free again when someone leaves.
+ */
+export async function secondDeviceInTx(tx: Db, bookId: string): Promise<boolean> {
+  const [row] = await tx.values<[number]>(sql`SELECT count(*) FROM sync_authority_devices WHERE book_id = ${bookId}`);
+  return Number(row?.[0] ?? 0) > 1;
 }
 
 /** Puts this phone's own currency back to the log's when the log stripped it (R8). Nothing is emitted. */
