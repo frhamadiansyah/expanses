@@ -97,16 +97,27 @@ export function fillFromLastMonth(groups: readonly EditGroup[], state: EditState
   return next;
 }
 
-/** What Save sends: new and changed rows, cleared ones removed, untouched ones left out; unreadable rows named. */
-export function changesOf(groups: readonly EditGroup[], state: EditState, budgets: readonly BudgetRow[], currency: string): BudgetChanges & { unreadable: string[] } {
-  const byCategory = new Map(budgets.map((row) => [row.categoryAccountId, row]));
+/**
+ * What Save sends: only the rows changed on this screen since it opened — new and changed figures saved, cleared ones
+ * removed — and unreadable rows named. A row left alone is never sent, so a budget someone else set or changed while
+ * the screen was open (a partner, another device) is not undone. `budgets` is what is stored now, read only to know
+ * whether a cleared row has a budget to remove.
+ */
+export function changesOf(
+  groups: readonly EditGroup[],
+  state: EditState,
+  initial: EditState,
+  budgets: readonly BudgetRow[],
+  currency: string,
+): BudgetChanges & { unreadable: string[] } {
+  const stored = new Set(budgets.map((row) => row.categoryAccountId));
   const out: BudgetChanges & { unreadable: string[] } = { save: [], remove: [], unreadable: [] };
   for (const row of groups.flatMap((group) => group.rows)) {
-    const typed = state[row.id];
-    if (!typed) continue;
-    const stored = byCategory.get(row.id);
+    const typed = rowStateOf(state, row.id);
+    const loaded = rowStateOf(initial, row.id);
+    if (typed.amount === loaded.amount && typed.frequency === loaded.frequency) continue;
     if (!typed.amount.trim()) {
-      if (stored) out.remove.push(row.id);
+      if (stored.has(row.id)) out.remove.push(row.id);
       continue;
     }
     let minor: number;
@@ -116,10 +127,14 @@ export function changesOf(groups: readonly EditGroup[], state: EditState, budget
       out.unreadable.push(row.id);
       continue;
     }
-    if (stored && minor === stored.amountAsSetMinor && typed.frequency === stored.frequency) continue;
     out.save.push({ categoryAccountId: row.id, amountMinor: minor, frequency: typed.frequency });
   }
   return out;
+}
+
+/** A row's state; one that arrived after the screen opened (a category synced in) reads as empty and monthly. */
+export function rowStateOf(state: EditState, id: string): RowState {
+  return state[id] ?? { amount: '', frequency: 'monthly', filled: false };
 }
 
 export function isDirty(state: EditState, initial: EditState): boolean {

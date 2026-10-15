@@ -11,7 +11,7 @@ import { bareFigure } from '../networth/debt-rows';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState } from './edit-budgets-model';
+import { changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState, rowStateOf } from './edit-budgets-model';
 import { FREQUENCY_WORDS } from './frequency-form';
 import { useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
 
@@ -62,8 +62,8 @@ export function EditBudgetsPage() {
 
   async function save() {
     setError(null);
-    if (!ready || busy || !budgets) return;
-    const changes = changesOf(groups, state, budgets, currency);
+    if (!ready || busy || !budgets || !initial) return;
+    const changes = changesOf(groups, state, initial, budgets, currency);
     if (changes.unreadable.length > 0) {
       setError(new Error(`${labelOf(changes.unreadable[0]!)}: that figure cannot be read`));
       return;
@@ -79,7 +79,7 @@ export function EditBudgetsPage() {
     }
   }
 
-  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...was[id]!, ...patch, filled: false } }));
+  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...rowStateOf(was, id), ...patch, filled: false } }));
   const filled = history ? fillFromLastMonth(groups, state, history, currency) : state;
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 
@@ -146,7 +146,7 @@ export function EditBudgetsPage() {
                   row={row}
                   icon={row.depth === 0 ? mark.icon : null}
                   colour={mark.colour}
-                  value={state[row.id]!}
+                  value={rowStateOf(state, row.id)}
                   currency={currency}
                   hint={hintOf(row, history?.get(row.id)?.lastMinor ?? 0, budgets?.find((stored) => stored.categoryAccountId === row.id), month, currency)}
                   focused={focused === row.id}

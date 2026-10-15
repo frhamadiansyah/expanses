@@ -1,7 +1,7 @@
 import type { BudgetLine } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal } from './edit-budgets-model';
+import { changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf } from './edit-budgets-model';
 
 function line(id: string, name: string, children: BudgetLine[] = []): BudgetLine {
   return { id, name, ownMinor: 0, totalMinor: 0, capMinor: null, overMinor: 0, children };
@@ -91,7 +91,7 @@ describe('changesOf', () => {
     state.fun = { ...state.fun!, amount: '' };
     state.t = { amount: '1.000.000', frequency: 'monthly', filled: false };
 
-    expect(changesOf(groups, state, budgets, 'IDR')).toEqual({
+    expect(changesOf(groups, state, initialState(groups, budgets, 'IDR'), budgets, 'IDR')).toEqual({
       save: [
         { categoryAccountId: 't', amountMinor: 1_000_000, frequency: 'monthly' },
         { categoryAccountId: 'fuel', amountMinor: 650_000, frequency: 'monthly' },
@@ -105,7 +105,7 @@ describe('changesOf', () => {
     const groups = editGroups(lines);
     const state = initialState(groups, [], 'IDR');
     state.fun = { amount: 'abc', frequency: 'monthly', filled: false };
-    expect(changesOf(groups, state, [], 'IDR').unreadable).toEqual(['fun']);
+    expect(changesOf(groups, state, initialState(groups, [], 'IDR'), [], 'IDR').unreadable).toEqual(['fun']);
   });
 });
 
@@ -116,5 +116,28 @@ describe('isDirty', () => {
     expect(isDirty({ ...initial }, initial)).toBe(false);
     expect(isDirty({ ...initial, fun: { amount: '1', frequency: 'monthly', filled: false } }, initial)).toBe(true);
     expect(isDirty({ ...initial, fun: { amount: '', frequency: 'weekly', filled: false } }, initial)).toBe(true);
+  });
+});
+
+describe('changesOf, while someone else changes the budgets', () => {
+  it('sends only the rows changed on this screen: a budget set or changed elsewhere since it opened is left alone', () => {
+    const groups = editGroups(lines);
+    const loaded = [budget('fuel', 600_000)];
+    const initial = initialState(groups, loaded, 'IDR');
+    const state = { ...initial, fun: { amount: '150.000', frequency: 'monthly' as const, filled: false } };
+    // A partner, meanwhile: Ride hailing gets a cap, and Fuel goes up.
+    const stored = [budget('fuel', 700_000), budget('ride', 250_000)];
+
+    expect(changesOf(groups, state, initial, stored, 'IDR')).toEqual({
+      save: [{ categoryAccountId: 'fun', amountMinor: 150_000, frequency: 'monthly' }],
+      remove: [],
+      unreadable: [],
+    });
+  });
+});
+
+describe('rowStateOf', () => {
+  it('reads a row that arrived after the screen opened as empty and monthly', () => {
+    expect(rowStateOf({}, 'new-category')).toEqual({ amount: '', frequency: 'monthly', filled: false });
   });
 });
