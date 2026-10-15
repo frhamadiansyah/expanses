@@ -221,6 +221,26 @@ describe('switchRow', () => {
     expect(switchRow(share, 'monthly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'monthly', mode: 'amount' });
   });
 
+  it('gives back the figure exactly when switched back without typing, so the row counts as unchanged', () => {
+    const groups = editGroups(lines);
+    const stored = [budget('fun', 1_234_567), { ...budget('t', 1_200_000), share: { basis: 'take-home' as const, bp: 1234 } }];
+    const initial = initialState(groups, stored, 'IDR');
+    const fun = switchRow(switchRow(initial.fun!, 'share', base, 'IDR'), 'monthly', base, 'IDR');
+    const t = switchRow(switchRow(initial.t!, 'monthly', base, 'IDR'), 'share', base, 'IDR');
+    expect(fun).toMatchObject({ amount: '1.234.567', frequency: 'monthly', mode: 'amount' });
+    expect(t).toMatchObject({ amount: '12,34', mode: 'share' });
+    const state = { ...initial, fun, t };
+    expect(isDirty(state, initial)).toBe(false);
+    expect(changesOf(groups, state, initial, stored, base.minor, 'IDR')).toEqual({ save: [], remove: [], unreadable: [] });
+  });
+
+  it('gives back a figure in its unit when that unit is picked again, and converts by the month for another', () => {
+    const yearly = { amount: '1.200.000', frequency: 'yearly' as const, filled: false, mode: 'amount' as const };
+    const share = switchRow(yearly, 'share', base, 'IDR');
+    expect(switchRow(share, 'yearly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'yearly', mode: 'amount' });
+    expect(switchRow(share, 'monthly', base, 'IDR')).toMatchObject({ amount: '99.600', frequency: 'monthly', mode: 'amount' });
+  });
+
   it('changes only the unit of a figure typed as an amount', () => {
     const monthly = { amount: '1.200.000', frequency: 'monthly' as const, filled: false, mode: 'amount' as const };
     expect(switchRow(monthly, 'yearly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'yearly', mode: 'amount' });

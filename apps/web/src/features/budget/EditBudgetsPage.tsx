@@ -91,7 +91,8 @@ export function EditBudgetsPage() {
     }
   }
 
-  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...rowStateOf(was, id), ...patch, filled: false } }));
+  // Typing or a chip forgets what a row held before its last switch; a switch brings its own `before`.
+  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...rowStateOf(was, id), before: null, ...patch, filled: false } }));
   const filled = history ? fillFromLastMonth(groups, state, history, currency) : state;
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 

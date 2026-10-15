@@ -39,6 +39,8 @@ export interface RowState {
   filled: boolean;
   /** Typed as an amount in its unit, or as a % (always a month's). */
   mode: 'amount' | 'share';
+  /** What the row held before its last switch, while nothing has been typed since: switching back gives it back exactly. */
+  before?: { amount: string; frequency: BudgetFrequency; mode: 'amount' | 'share' } | null;
 }
 
 export type EditState = Record<string, RowState>;
@@ -209,12 +211,17 @@ export function changesOf(
 /**
  * A row's unit select moved: to % (always a month's), or to a unit. A figure is converted, so nothing typed is lost:
  * an amount to the share its month is, and a share to its month's figure — by the month whatever unit was picked, as
- * there is no exact way to say a month's figure a week or a year.
+ * there is no exact way to say a month's figure a week or a year. Back to what the row held before the switch, with
+ * nothing typed since (and, for an amount, its unit picked again), the figure comes back exactly as it was.
  */
 export function switchRow(row: RowState, next: 'share' | BudgetFrequency, base: ShareBase, currency: string): RowState {
-  if (next === 'share') return row.mode === 'share' ? row : { ...row, mode: 'share', frequency: 'monthly', amount: toPercent(row.amount, row.frequency, base, currency), filled: false };
-  if (row.mode === 'amount') return { ...row, frequency: next, filled: false };
-  return { ...row, mode: 'amount', frequency: 'monthly', amount: toAmount(row.amount, base, currency), filled: false };
+  if (next === 'share' && row.mode === 'share') return row;
+  if (next !== 'share' && row.mode === 'amount') return { ...row, frequency: next, filled: false, before: null };
+  const shown = { amount: row.amount, frequency: row.frequency, mode: row.mode };
+  const back = row.before && (next === 'share' ? row.before.mode === 'share' : row.before.mode === 'amount' && row.before.frequency === next) ? row.before : null;
+  if (back) return { ...row, ...back, filled: false, before: shown };
+  if (next === 'share') return { ...row, mode: 'share', frequency: 'monthly', amount: toPercent(row.amount, row.frequency, base, currency), filled: false, before: shown };
+  return { ...row, mode: 'amount', frequency: 'monthly', amount: toAmount(row.amount, base, currency), filled: false, before: shown };
 }
 
 /** A row's state; one that arrived after the screen opened (a category synced in) reads as empty and monthly. */
