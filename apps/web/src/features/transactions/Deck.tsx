@@ -51,7 +51,12 @@ export function Deck({
   return (
     <div>
       {frame(
-        <div ref={deck} onScroll={onScroll} className="-mx-3 flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="chart-deck">
+        /*
+         * `relative`: the deck is what anything absolutely placed on a page is placed against, so it scrolls and clips
+         * with its page. Unpositioned, the bars' screen-reader line was placed against the page instead, and iOS WebKit
+         * counted the third page's left edge as the page's width — Cashflow scrolled sideways onto blank ground.
+         */
+        <div ref={deck} onScroll={onScroll} className="relative -mx-3 flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="chart-deck">
           {children.map((child, index) => (
             // The charts are fixed in order, so their position is the only name they have.
             // biome-ignore lint/suspicious/noArrayIndexKey: the pages are positional
