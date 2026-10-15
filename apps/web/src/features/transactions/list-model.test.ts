@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
@@ -11,7 +12,7 @@ const accounts = [
   account('bca', 'asset', 'bank', { name: 'BCA Tahapan' }),
   account('octo', 'liability', 'credit_card', { name: 'CIMB Octo' }),
   account('kantong', 'asset', 'ewallet', { name: 'Kantong' }),
-  account('nusa', 'liability', 'credit_card', { name: 'Nusa Visa Signature Travel' }),
+  account('nusa', 'liability', 'credit_card', { name: 'Nusa Voyager Travel' }),
   account('debit', 'asset', 'bank', { name: 'Nusa Payroll' }),
   account('friend', 'asset', 'receivable', { name: 'Dina' }),
   account('ibkr', 'asset', 'investment', { name: 'Interactive Brokers' }),
@@ -403,7 +404,7 @@ describe('a card put away since', () => {
 
 describe('a wallet’s phone digits on its rows', () => {
   const digits = { kantong: '5521' };
-  const lunch = tx('2026-09-12', 'Mie Gacoan', [['groceries', 40_000], ['kantong', -40_000]]);
+  const lunch = tx('2026-09-12', 'Mie Kuah Bu Ratmi', [['groceries', 40_000], ['kantong', -40_000]]);
   const topUp = tx('2026-09-12', 'Top up', [['kantong', 40_000], ['bca', -40_000]]);
 
   it('shows a purchase paid from the wallet as "···· 5521", the way a card is shown', () => {
@@ -448,5 +449,13 @@ describe('amountExtraParts', () => {
   it('marks points taken back with a minus and estimated points with ≈, as before', () => {
     expect(amountExtraParts(plain, { points: -38, unit: 'pts', approximate: false })).toEqual([{ text: '−38 pts', tone: 'lost' }]);
     expect(amountExtraParts(plain, { points: 38, unit: 'pts', approximate: true })).toEqual([{ text: '≈ 38 pts', tone: 'earned' }]);
+  });
+});
+
+describe('what the list model is built from', () => {
+  it('imports no hooks and nothing from the database at run time: types only, so it stays a plain model', () => {
+    const source = readFileSync(new URL('./list-model.ts', import.meta.url), 'utf8');
+    const runtime = source.split('\n').filter((line) => line.startsWith('import ') && !line.startsWith('import type '));
+    expect(runtime.filter((line) => /useCardPoints|@expanses\/db|purchase-points/.test(line))).toEqual([]);
   });
 });

@@ -48,7 +48,7 @@ import { keptText, moveHint } from './shared-move';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
-import { AmountExtra, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
+import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
@@ -718,12 +718,9 @@ export function TransactionsPage() {
           {/* The first line is the category, as on every other row; without one it says so. */}
           <div className="truncate text-sm font-medium">{row.categoryName || 'Uncategorised'}</div>
           <div className="truncate text-xs text-slate-500">
-            {row.description || 'No description yet'}
-            {row.accountLabel && ` · ${row.accountLabel}`}
-            {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {/* The row already shows what it is missing: "Uncategorised", "—" for the amount, no description,
                 no date in its own group. Only the account it was paid with has nowhere else to show. */}
-            {row.needs.includes('paid with') && ' · needs an account'}
+            <DraftSubtitle row={row} />
           </div>
         </div>
         <div className={cx('tabular text-sm font-semibold whitespace-nowrap', row.type === 'income' ? 'text-emerald-700' : 'text-red-700')}>

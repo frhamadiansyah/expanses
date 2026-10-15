@@ -1,7 +1,7 @@
 import { compareWithinDay, dayNet, formatMinor, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
-import { formatPoints } from '../cards/useCardPoints';
+import { formatPoints } from '../cards/format-points';
 import { classify } from './classify';
 
 /**

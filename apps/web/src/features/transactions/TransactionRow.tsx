@@ -284,6 +284,21 @@ export function PaidWith({ row }: { row: ListRow }) {
   );
 }
 
+/**
+ * A row not recorded yet, on its second line: the note, then what paid as a recorded row names it (`PaidWith`). The row
+ * already shows what else it is missing; only the account it was paid with has nowhere else to show.
+ */
+export function DraftSubtitle({ row }: { row: ListRow }) {
+  return (
+    <>
+      {row.description || 'No description yet'}
+      {(row.accountLabel || row.last4) && ' · '}
+      <PaidWith row={row} />
+      {row.needs.includes('paid with') && ' · needs an account'}
+    </>
+  );
+}
+
 /** The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour. */
 export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
   if (parts.length === 0) return null;

@@ -17,13 +17,13 @@ async function fitsThePhone(page: Page) {
 test('a foreign card purchase is two lines on each side, the card named "···· 4417"', async ({ page }) => {
   // No rate server: the charged figure is typed, so nothing waits on one.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await openCard(page, { name: 'Nusa Visa Signature Travel', owed: '0', last4: '4417' });
+  await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await choosePayment(page, 'Nusa Visa Signature Travel');
+  await choosePayment(page, 'Nusa Voyager Travel');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
@@ -42,7 +42,7 @@ test('a foreign card purchase is two lines on each side, the card named "···�
   const noodles = row(page, 'Lantern Noodle Bar');
   // The left: the note, then the card by its digits, and not the account's name.
   await expect(noodles).toContainText('Lantern Noodle Bar · ···· 4417');
-  await expect(noodles).not.toContainText('Nusa Visa Signature Travel');
+  await expect(noodles).not.toContainText('Nusa Voyager Travel');
   // The right: the amount here, and one line under it with the foreign amount.
   await expect(noodles).toContainText('1.390.000');
   const extra = noodles.getByTestId('amount-extra');

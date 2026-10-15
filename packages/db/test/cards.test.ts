@@ -80,7 +80,7 @@ describe('the plastic on an account', () => {
 
   it('lists archived cards too when asked, marked as archived, so a row that named one still reads its digits', async () => {
     const { database, ws, card } = await workspace();
-    const octo = await card('Octo Rewards', 'Nusa');
+    const octo = await card('Lintas Rewards', 'Nusa');
     const primary = await addCard(database, ws, { accountId: octo.id, last4: '1467', holderName: 'Fandrian', isPrimary: true });
     const supplementary = await addCard(database, ws, { accountId: octo.id, last4: '8802', holderName: 'Spouse' });
 
@@ -98,7 +98,7 @@ describe('the plastic on an account', () => {
     const { database, ws } = await workspace();
     const wallet = await createAccount(database, ws, { name: 'Pay wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
     // No bank named, as the wallet names none: the two would read as the same issuer to the duplicate check.
-    const plain = await createAccount(database, ws, { name: 'Plain Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const plain = await createAccount(database, ws, { name: 'Plain Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
 
     await setWalletLast4(database, ws, wallet.id, '5521');
 

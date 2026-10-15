@@ -118,7 +118,8 @@ export async function loadCardPoints(
 }
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-export const formatPoints = (n: number) => n.toLocaleString('id-ID');
+// Kept in a plain module of its own; still offered from here, where every card screen already reads it.
+export { formatPoints } from './format-points';
 
 /**
  * Earn for any one cycle of a card whose setup is already loaded, with the actual recorded for it. Used to check a
