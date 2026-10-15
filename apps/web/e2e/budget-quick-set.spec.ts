@@ -58,6 +58,9 @@ test('a cap of nothing keeps Edit budgets open, names its row, and saves none of
   await page.getByRole('button', { name: 'Save budgets' }).click();
   await expect(screen.getByRole('alert')).toContainText(`${transport.label}: A budget must be above zero`);
   await expect(page.getByTestId('edit-budgets')).toBeVisible();
+  // The refused row is where the reader is taken, however far down the list it sits: focused, and on screen.
+  await expect(transport.field).toBeFocused();
+  await expect(transport.field).toBeInViewport();
 
   await page.goto('/budget');
   await expect(page.getByTestId('line-Personal care')).toHaveCount(0);

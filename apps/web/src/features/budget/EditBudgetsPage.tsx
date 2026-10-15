@@ -60,12 +60,20 @@ export function EditBudgetsPage() {
   const order = rows.map((row) => row.id);
   const labelOf = (id: string) => rows.find((row) => row.id === id)?.label ?? 'A budget';
 
+  // A refused row may sit far below Save: the reader is taken to it, with the keyboard on its figure.
+  const showRow = (id: string) => {
+    const field = fields.current.get(id);
+    field?.focus();
+    field?.scrollIntoView({ block: 'center' });
+  };
+
   async function save() {
     setError(null);
     if (!ready || busy || !budgets || !initial) return;
     const changes = changesOf(groups, state, initial, budgets, currency);
     if (changes.unreadable.length > 0) {
       setError(new Error(`${labelOf(changes.unreadable[0]!)}: that figure cannot be read`));
+      showRow(changes.unreadable[0]!);
       return;
     }
     try {
@@ -76,6 +84,7 @@ export function EditBudgetsPage() {
     } catch (e) {
       setError(e instanceof BudgetError && e.categoryAccountId ? new Error(`${labelOf(e.categoryAccountId)}: ${e.message}`) : e);
       setBusy(false);
+      if (e instanceof BudgetError && e.categoryAccountId) showRow(e.categoryAccountId);
     }
   }
 
