@@ -15,6 +15,7 @@ import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigu
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
+import { eventOnlyExists, notEventOnly } from './event-only';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -661,10 +662,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   if (opts.accountIds && opts.accountIds.length > 0) {
     conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id IN ${opts.accountIds})`);
   }
-  // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book.
+  // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book. What
+  // a shared event put in this phone's books is filed nowhere too, and shows in no book (shared events §5.1): read
+  // owner-wide (an account's history, a receipt, the event page) it is still there.
   const bookId = opts.bookId ?? ws.bookId;
   if (bookId) {
     conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${bookId})`);
+    if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
   // stopped before 0067 has no places: every day reads newest first, as it always did.
