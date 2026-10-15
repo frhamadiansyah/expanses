@@ -7,6 +7,9 @@ import {
   listAccounts,
   guessCategoryFromHistory,
   memberTransfersOf,
+  moveIntoSharedEvent,
+  ownerScope,
+  sharedEventOf,
   paidFromAccount,
   type PaidWithItem,
   type SetAsideChoice,
@@ -20,9 +23,9 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
@@ -31,6 +34,7 @@ import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
 import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { fitsEventSet } from '../categories/offered';
@@ -47,6 +51,7 @@ import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
 import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
+import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
@@ -56,7 +61,7 @@ import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -89,26 +94,8 @@ const CATEGORY_LATER = '\u0000category-later';
 /** What a draft cannot carry to the ledger: `confirmDraft` posts one category, paid by one account. */
 const DRAFT_OMITS: readonly ExtraRow[] = ['split', 'with'];
 
-/** The ‹ › steppers are 28px drawn; their target reaches the 44pt floor around them. */
-const TAP_REACH = { '--ph-tap-y': '8px', '--ph-tap-x': '4px' } as CSSProperties;
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "Thu, 17 Sep 2026" — how B2's date row reads a day. The empty string for anything that is not a date. */
-export function dayLabel(iso: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!match) return '';
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return `${DAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
-}
-
-/** A day either side of the date, as the ‹ › buttons step it. */
-export function stepDay(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return isoDate(date);
-}
+// The Note and Date rows, and how they read a day, are shared with a shared event's card (`CardRows`).
+export { dayLabel, stepDay } from './CardRows';
 
 /**
  * What a caller finishing something already half-read hands the card — Review, opening a captured draft. The card
@@ -300,8 +287,6 @@ function CardBody({
   const [recorded, setRecorded] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const noteId = useId();
-  const dateId = useId();
   const set = (patch: Partial<FormDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const setPurchase = (patch: Partial<PurchaseDraft>) => setDraft((d) => ({ ...d, purchase: { ...d.purchase, ...patch } }));
 
@@ -311,6 +296,8 @@ function CardBody({
    * row, so it follows the row however it was set — by the address an event opened this screen with, or by hand.
    */
   const events = useEvents().data ?? [];
+  // The shared events among them: tagging an existing purchase into one moves it there (shared events §6).
+  const sharedSummaries = useSharedEventSummaries().data ?? {};
   const eventSet = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.setId ?? null) : null;
   /*
    * What Category may hold while recording into that set: its own categories, as the picker offers. A category the
@@ -513,7 +500,23 @@ function CardBody({
         // The new id is kept from the two that make a purchase, for a follow-up that answers something with it.
         if (post.kind === 'split') posted = (await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice })).transactionId;
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
-        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (initial) {
+          const replaced = await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
+          /*
+           * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
+           * workspace and becomes this person's own expense on the event, keeping its card, MCC, photos and points.
+           * The edit is saved first, so what moves is the purchase as corrected; a purchase the move keeps (a refund,
+           * a split bill) stays here, saved, and the reason is shown.
+           */
+          if (draft.eventId && draft.eventId !== initial.eventId && sharedSummaries[draft.eventId]) {
+            // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.
+            const target = await sharedEventOf(database, ownerScope(ws), draft.eventId);
+            const wanted = [target?.currency, typedCurrency(filed, accounts), byId.get(filed.moneyId)?.currency].filter((c): c is string => !!c);
+            await resolveRates([...new Set(wanted)], filed.occurredOn).catch(() => undefined);
+            const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), draft.eventId, [replaced]);
+            if (kept.length > 0) throw new Error(kept[0]!.why);
+          }
+        }
         else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
@@ -657,7 +660,7 @@ function CardBody({
   };
 
   /*
-   * B2's Note and Date rows. Note is still today's Description — the same field, typed in place — drawn as the
+   * B2's Note and Date rows (`CardRows`, shared with a shared event's card). Note is still today's Description — the same field, typed in place — drawn as the
    * row's title with ☰ in the lead. Date is ‹ [the day] ›: the arrows step a day, which is nearly always what a
    * correction is, and the middle is the real date input laid over the day it shows, so it is still labelled
    * Date and still opens the browser's own picker.
@@ -715,68 +718,6 @@ function CardBody({
     categorySource.current = null;
     setDraft((d) => ({ ...d, categoryId: '' }));
   }, [eventSet, membership.isSuccess, membership.data, draft.categoryId]);
-  const noteRow = (
-    <div className="flex items-center gap-[10px] pl-[10px]">
-      <RowLead>
-        <RowGlyph>
-          <AlignLeft size={15} />
-        </RowGlyph>
-      </RowLead>
-      <span className={ROW_BODY}>
-        <input
-          id={noteId}
-          aria-label="Note"
-          value={draft.description}
-          onChange={(e) => set({ description: e.target.value })}
-          onFocus={() => setNoteFocused(true)}
-          onBlur={() => setNoteFocused(false)}
-          placeholder="Note"
-          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
-        />
-      </span>
-    </div>
-  );
-  const stepButton = 'ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink)]';
-  const dateRow = (on: string, change: (iso: string) => void, max?: string) => (
-    <div className="flex items-center gap-[10px] pl-[10px]">
-      <RowLead>
-        <RowGlyph>
-          <CalendarDays size={15} />
-        </RowGlyph>
-      </RowLead>
-      <span className={cx(ROW_BODY, 'gap-[6px]')}>
-        <button type="button" aria-label="A day earlier" onClick={() => change(stepDay(on, -1))} className={stepButton} style={TAP_REACH}>
-          <ChevronLeft size={16} aria-hidden />
-        </button>
-        <span className="relative flex h-7 min-w-0 flex-1 items-center justify-center rounded-lg bg-[var(--ph-fill)] text-[13px] font-medium text-[var(--ph-ink)]">
-          <span aria-hidden className="truncate">
-            {dayLabel(on)}
-          </span>
-          <input
-            id={dateId}
-            aria-label="Date"
-            type="date"
-            required
-            max={max}
-            value={on}
-            onChange={(e) => change(e.target.value)}
-            onClick={(e) => {
-              try {
-                e.currentTarget.showPicker?.();
-              } catch {
-                // A browser that will not show its picker on a click still takes the keyboard.
-              }
-            }}
-            className="ph-focus absolute inset-0 h-full w-full cursor-pointer rounded-lg opacity-0"
-          />
-        </span>
-        <button type="button" aria-label="A day later" onClick={() => change(stepDay(on, 1))} className={stepButton} style={TAP_REACH}>
-          <ChevronRight size={16} aria-hidden />
-        </button>
-      </span>
-    </div>
-  );
-
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
       {finish?.header}
@@ -895,7 +836,7 @@ function CardBody({
                 onChange={(charged) => setPurchase({ charged })}
               />
             )}
-            {dateRow(purchase.occurredOn, (occurredOn) => setPurchase({ occurredOn }), isoDate())}
+            <DateRow on={purchase.occurredOn} onChange={(occurredOn) => setPurchase({ occurredOn })} max={isoDate()} />
           </FormRows>
         ) : (
           <FormRows className="rounded-none">
@@ -989,8 +930,8 @@ function CardBody({
               )
             )}
 
-            {noteRow}
-            {dateRow(draft.occurredOn, (occurredOn) => set({ occurredOn }))}
+            <NoteRow value={draft.description} onChange={(description) => set({ description })} onFocus={() => setNoteFocused(true)} onBlur={() => setNoteFocused(false)} />
+            <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}
@@ -1095,7 +1036,7 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={finish ? DRAFT_OMITS : undefined} />
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={finish ? DRAFT_OMITS : undefined} opensSharedEvent={!finish} />
         </section>
       )}
       {/*

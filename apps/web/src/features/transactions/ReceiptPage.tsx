@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { listPhotos, listTransactions, ownerScope, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, listPhotos, listTransactions, ownerScope, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
@@ -94,6 +94,12 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
    * route asks the same hook, so the two can never answer differently.
    */
   const { changeable, elsewhere, isTrade } = useChangeable(tx);
+  /*
+   * A transaction a shared event put here follows its record (shared events §5, §7): it is changed on the event — Edit
+   * opens the expense's own card, or the event for a settle-up — never deleted or copied on its own (the ledger refuses
+   * it: EVENT_POSTING), and it says who last changed the record when that was not this phone's person.
+   */
+  const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
 
   if (receipt.isSuccess && !tx) {
     return (
@@ -138,7 +144,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
    * it has always had, in a sheet, in place — a desktop is not a phone with something taken away, and navigating
    * it off the receipt to a form would be exactly that.
    */
-  const edit = () => (phone ? void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId } }) : setEditing(true));
+  const edit = () =>
+    fromEvent
+      ? void navigate(
+          fromEvent.kind === 'expense'
+            ? { to: '/transactions/new', search: { event: fromEvent.eventId, expense: fromEvent.recordId } }
+            : { to: '/events/$eventId', params: { eventId: fromEvent.eventId } },
+        )
+      : phone
+        ? void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId } })
+        : setEditing(true);
 
   async function remove() {
     setError(null);
@@ -174,7 +189,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             <button type="button" onClick={edit} aria-label="Edit this transaction" className={ROUND}>
               <Pencil size={16} aria-hidden />
             </button>
-            {duplicable(tx) && (
+            {duplicable(tx) && !fromEvent && (
               <button
                 type="button"
                 onClick={() => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId } })}
@@ -203,6 +218,14 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         </span>
         <span className="text-sm text-slate-500">{longDate(tx.occurredOn)}</span>
         {tx.status === 'void' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Deleted</span>}
+        {fromEvent && (
+          <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="from-event">
+            {fromEvent.changedByName ? `Changed by ${fromEvent.changedByName} · ` : ''}
+            <Link to="/events/$eventId" params={{ eventId: fromEvent.eventId }} className="font-medium text-[var(--ph-tint)]">
+              Open the event
+            </Link>
+          </p>
+        )}
         {tx.excluded && (
           <p data-testid="excluded-note" className="max-w-sm text-xs text-slate-500">
             Excluded from the chart and budgets. Still counted in balances, statements and points.
@@ -250,7 +273,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             </Link>
           ) : (
             <>
-              {tx.status === 'posted' && kind.type === 'expense' && holdings.length > 0 && (
+              {tx.status === 'posted' && kind.type === 'expense' && holdings.length > 0 && !fromEvent && (
                 <button type="button" onClick={() => setConverting(true)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100">
                   This was a purchase
                 </button>
@@ -260,8 +283,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                   <Button variant="ghost" className="min-h-11" onClick={edit}>
                     Edit
                   </Button>
-                  {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. */}
-                  <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+                  {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. A shared
+                      event's transaction is deleted on the event, with its record, never here. */}
+                  {fromEvent ? null : <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />}
                 </>
               )}
             </>
