@@ -120,7 +120,7 @@ describe('migration 0045', () => {
     expect(shapeApartFromSubtypes(after.ddl)).toBe(shapeApartFromSubtypes(before.ddl));
     expect(allowedSubtypes(before.ddl)).not.toContain('fund');
     // `migrate` runs every later migration too, and 0047 widened the same CHECK again.
-    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'ewallet', 'fund', 'other_cash', 'time_deposit'].sort());
+    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'event_balance', 'ewallet', 'fund', 'other_cash', 'time_deposit'].sort());
     for (const clause of ['REFERENCES workspaces(id)', 'REFERENCES accounts(id)', 'id TEXT PRIMARY KEY']) {
       expect(flat(after.ddl)).toContain(clause);
     }
