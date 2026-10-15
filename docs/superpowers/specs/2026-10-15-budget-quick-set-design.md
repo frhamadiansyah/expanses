@@ -108,7 +108,7 @@ Each budget is set either as an amount (**Rp**) or as a **%**. A % stays a %: wh
 - **Edit budgets summary** also shows the share of take-home that is budgeted ("71% of take-home").
 
 **Storage:**
-- Migration `0069_budget_shares.sql` adds the side table `budget_shares`: `budget_id` (primary key, references `budgets`), `workspace_id`, `basis` (`'take-home'` | `'parent'`), `share_bp` (integer 1–10000).
+- Migration `0070_budget_shares.sql` adds the side table `budget_shares`: `budget_id` (primary key, references `budgets`), `workspace_id`, `basis` (`'take-home'` | `'parent'`), `share_bp` (integer 1–10000).
 - Like `budget_frequencies`, no row means an amount budget.
 - `budgets.amount_minor` keeps the figure resolved at save time. A device on an older build therefore still reads a sensible cap.
 - The table is a new synced entity, `budget_share`. It is registered wherever `budget_frequency` is: `sync/capture.ts`, `sync/apply.ts`, `sync/shared-entities.ts`, `sync/seed.ts`, and the copy in `repos/books.ts`.

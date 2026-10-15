@@ -198,7 +198,7 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     table: 'budget_shares',
     scopeRule: 'its budget_id is a budget of the book',
     scope: (bookId) => sql`t.budget_id IN (${budgetsOfBook(bookId)})`,
-    // Keyed by budget_id, one row per budget (0069), as budget_frequency is.
+    // Keyed by budget_id, one row per budget (0070), as budget_frequency is.
     keyColumns: ['budget_id'],
     fields: { basis: 'basis', shareBp: 'share_bp' },
     localOnInsert: [],

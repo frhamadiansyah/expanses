@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { budgetSharesExist } from '../src/index';
 import { setupDb } from './helpers';
 
-describe('migration 0069: budget shares', () => {
+describe('migration 0070: budget shares', () => {
   it('adds the table, and the guard sees it', async () => {
     const { database } = await setupDb();
     expect(await budgetSharesExist(database.db)).toBe(true);
