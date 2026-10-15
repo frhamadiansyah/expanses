@@ -11,9 +11,10 @@ import { bareFigure } from '../networth/debt-rows';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState, rowStateOf } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, keptOf, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
 import { FREQUENCY_WORDS } from './frequency-form';
 import { useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
+import { keptWarning, type ShareBase } from './share-form';
 
 const UNIT_SHORT: Record<BudgetFrequency, string> = { daily: '/day', weekly: '/wk', monthly: '/mo', quarterly: '/qtr', yearly: '/yr' };
 
@@ -41,6 +42,8 @@ export function EditBudgetsPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const fields = useRef(new Map<string, HTMLInputElement>());
+  // This month's take-home, as the sheet reads it: what a % of take-home is of.
+  const takeHome = sheet?.incomePlanMinor ?? 0;
 
   // The stored figures are read once, when both have arrived; a later re-read must not wipe what is being typed.
   useEffect(() => {
@@ -70,15 +73,21 @@ export function EditBudgetsPage() {
   async function save() {
     setError(null);
     if (!ready || busy || !budgets || !initial) return;
-    const changes = changesOf(groups, state, initial, budgets, currency);
+    const changes = changesOf(groups, state, initial, budgets, takeHome, currency);
     if (changes.unreadable.length > 0) {
       setError(new Error(`${labelOf(changes.unreadable[0]!)}: that figure cannot be read`));
       showRow(changes.unreadable[0]!);
       return;
     }
+    // A cleared parent's %-children have nothing to be a share of once it goes: each keeps its figure, as an amount.
+    if (kept.size > 0) {
+      const dependants = [...kept].map(([id, minor]) => ({ name: rows.find((row) => row.id === id)?.name ?? 'A budget', minor }));
+      const parents = new Set([...kept.keys()].map((id) => rows.find((row) => row.id === id)?.parentId)).size;
+      if (!window.confirm(keptWarning(dependants, currency, parents))) return;
+    }
     try {
       setBusy(true);
-      await saveBudgets(database, ws, changes);
+      await saveBudgets(database, ws, changes, month);
       await invalidate();
       back();
     } catch (e) {
@@ -88,11 +97,21 @@ export function EditBudgetsPage() {
     }
   }
 
-  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...rowStateOf(was, id), ...patch, filled: false } }));
+  // Typing or a chip forgets what a row held before its last switch; a switch brings its own `before`.
+  const change = (id: string, patch: Partial<RowState>) => setState((was) => ({ ...was, [id]: { ...rowStateOf(was, id), before: null, ...patch, filled: false } }));
   const filled = history ? fillFromLastMonth(groups, state, history, currency) : state;
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 
-  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, currency) : 0;
+  const stored = { initial: initial ?? {}, budgets: budgets ?? [] };
+  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency, stored) : 0;
+  const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency, stored) : new Map<string, number>();
+  const kept = keptOf(groups, state, stored);
+  // What a row's % is of: the basis it was saved with while that is there, else the figure typed for its parent, or
+  // take-home when its parent has none.
+  const baseOf = (row: EditRow): ShareBase =>
+    basisOfRow(row, figures, stored.budgets) === 'parent'
+      ? { basis: 'parent', label: rows.find((r) => r.id === row.parentId)?.name ?? 'its parent', minor: figures.get(row.parentId!)! }
+      : { basis: 'take-home', label: 'take-home', minor: takeHome };
   const income = sheet?.incomePlanMinor ?? 0;
   const debt = sheet?.debtPaymentsPlanMinor ?? 0;
   const goals = sheet?.savingsPlanMinor ?? 0;
@@ -127,6 +146,13 @@ export function EditBudgetsPage() {
             {unplanned < 0 ? `Over by ${formatMinor(-unplanned, currency)}` : `Unplanned ${formatMinor(unplanned, currency)}`}
           </b>
         </p>
+        {income > 0 ? (
+          <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="edit-share">
+            {Math.round((budgeted / income) * 100)}% of take-home budgeted
+          </p>
+        ) : (
+          <p className="text-[13px] leading-[18px] text-[var(--ph-warn)]">Set a take-home first to budget by %</p>
+        )}
       </Panel>
 
       <div className="mb-2 flex w-full items-center justify-between md:max-w-2xl">
@@ -149,27 +175,34 @@ export function EditBudgetsPage() {
           const mark = markOf(group.id);
           return (
             <InsetGroup key={group.id} header={group.name}>
-              {group.rows.map((row) => (
-                <BudgetField
-                  key={row.id}
-                  row={row}
-                  icon={row.depth === 0 ? mark.icon : null}
-                  colour={mark.colour}
-                  value={rowStateOf(state, row.id)}
-                  currency={currency}
-                  hint={hintOf(row, history?.get(row.id)?.lastMinor ?? 0, budgets?.find((stored) => stored.categoryAccountId === row.id), month, currency)}
-                  focused={focused === row.id}
-                  chips={history?.get(row.id) ?? null}
-                  last={order[order.length - 1] === row.id}
-                  register={(input) => {
-                    if (input) fields.current.set(row.id, input);
-                    else fields.current.delete(row.id);
-                  }}
-                  onFocus={() => setFocused(row.id)}
-                  onNext={() => fields.current.get(order[order.indexOf(row.id) + 1] ?? '')?.focus()}
-                  onChange={(patch) => change(row.id, patch)}
-                />
-              ))}
+              {group.rows.map((row) => {
+                const base = baseOf(row);
+                return (
+                  <BudgetField
+                    key={row.id}
+                    row={row}
+                    base={base}
+                    shareDisabled={base.minor <= 0}
+                    shareMinor={figures.get(row.id) ?? 0}
+                    kept={kept.get(row.id) ?? null}
+                    icon={row.depth === 0 ? mark.icon : null}
+                    colour={mark.colour}
+                    value={rowStateOf(state, row.id)}
+                    currency={currency}
+                    hint={hintOf(row, history?.get(row.id)?.lastMinor ?? 0, budgets?.find((stored) => stored.categoryAccountId === row.id), month, currency)}
+                    focused={focused === row.id}
+                    chips={history?.get(row.id) ?? null}
+                    last={order[order.length - 1] === row.id}
+                    register={(input) => {
+                      if (input) fields.current.set(row.id, input);
+                      else fields.current.delete(row.id);
+                    }}
+                    onFocus={() => setFocused(row.id)}
+                    onNext={() => fields.current.get(order[order.indexOf(row.id) + 1] ?? '')?.focus()}
+                    onChange={(patch) => change(row.id, patch)}
+                  />
+                );
+              })}
             </InsetGroup>
           );
         })}
@@ -190,6 +223,10 @@ function hintOf(row: EditRow, lastMinor: number, stored: BudgetRow | undefined, 
 /** One category's field: its name and hint, the figure, and the unit it is typed in; the focused row offers figures. */
 function BudgetField({
   row,
+  base,
+  shareDisabled,
+  shareMinor,
+  kept,
   icon,
   colour,
   value,
@@ -205,6 +242,14 @@ function BudgetField({
   position,
 }: GroupChild & {
   row: EditRow;
+  /** What a % typed here is of, as things are typed now. */
+  base: ShareBase;
+  /** No basis to take a % of: no take-home, and no figure above it. */
+  shareDisabled: boolean;
+  /** What the % typed here comes to. */
+  shareMinor: number;
+  /** The amount this row is left at when its cleared parent goes, or null when it is not. */
+  kept: number | null;
   icon: ReactNode;
   colour: string;
   value: RowState;
@@ -225,6 +270,14 @@ function BudgetField({
       ].filter((chip) => chip.minor > 0)
     : [];
   const inset = 16 + row.depth * 16;
+  const share = value.mode === 'share';
+  const caption = value.filled
+    ? 'Filled from last month'
+    : kept !== null
+      ? `Kept as ${formatMinor(kept, currency)} a month`
+      : share
+        ? `= ${formatMinor(shareMinor, currency)} of ${base.label}`
+        : hint;
   return (
     <div className={cx('relative', focused && 'bg-[var(--ph-tint-panel)]')} data-testid={`edit-row-${row.label}`}>
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 right-[16px] h-[0.5px] bg-[var(--ph-hair)]" style={{ left: inset }} />}
@@ -236,15 +289,15 @@ function BudgetField({
         )}
         <label htmlFor={`cap-${row.id}`} className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">{row.label}</span>
-          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{value.filled ? 'Filled from last month' : hint}</span>
+          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</span>
         </label>
         <input
           id={`cap-${row.id}`}
           ref={register}
           aria-label={row.label}
           value={value.amount}
-          placeholder="Amount"
-          inputMode={currency === 'IDR' ? 'numeric' : 'decimal'}
+          placeholder={share ? '%' : 'Amount'}
+          inputMode={share || currency !== 'IDR' ? 'decimal' : 'numeric'}
           enterKeyHint={last ? 'done' : 'next'}
           onFocus={(e) => {
             onFocus();
@@ -256,7 +309,7 @@ function BudgetField({
             if (last) e.currentTarget.blur();
             else onNext();
           }}
-          onChange={(e) => onChange({ amount: groupTypedAmount(e.target.value, currency) })}
+          onChange={(e) => onChange({ amount: share ? e.target.value.replace(/[^\d.,]/g, '') : groupTypedAmount(e.target.value, currency) })}
           className={cx(
             'tabular h-[36px] w-[120px] shrink-0 rounded-[8px] px-[10px] text-right text-[16px] text-[var(--ph-ink)] outline-none',
             focused ? 'bg-[var(--ph-surface)] ring-2 ring-[var(--ph-tint)]' : 'bg-[var(--ph-fill)]',
@@ -264,8 +317,8 @@ function BudgetField({
         />
         <select
           aria-label={`${row.label} every`}
-          value={value.frequency}
-          onChange={(e) => onChange({ frequency: e.target.value as BudgetFrequency })}
+          value={share ? 'share' : value.frequency}
+          onChange={(e) => onChange(switchRow(value, e.target.value as 'share' | BudgetFrequency, base, currency))}
           className="ph-focus h-[36px] w-[44px] shrink-0 appearance-none bg-transparent text-[13px] text-[var(--ph-ink-3)]"
         >
           {BUDGET_FREQUENCIES.map((key) => (
@@ -273,6 +326,9 @@ function BudgetField({
               {UNIT_SHORT[key]}
             </option>
           ))}
+          <option value="share" disabled={shareDisabled} aria-label={`a % of ${base.label}`}>
+            %
+          </option>
         </select>
       </div>
       {focused && offered.length > 0 && (
@@ -283,7 +339,7 @@ function BudgetField({
               type="button"
               // Chips sit under the field; pressing one must not blur it first and fold the chips away.
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onChange({ amount: bareFigure(chip.minor, currency), frequency: 'monthly' })}
+              onClick={() => onChange({ amount: bareFigure(chip.minor, currency), frequency: 'monthly', mode: 'amount' })}
               className="ph-focus min-h-[32px] rounded-full bg-[var(--ph-surface)] px-[12px] text-[13px] text-[var(--ph-tint)] ring-1 ring-[var(--ph-hair)] ring-inset"
             >
               {chip.label} · {bareFigure(chip.minor, currency)}

@@ -1,7 +1,19 @@
-import { type BudgetFrequency, type BudgetLine, type CapNode, outermostCapsTotal, parseMajor, roundUpToMajor } from '@expanses/core';
+import {
+  type BudgetFrequency,
+  type BudgetLine,
+  type CapNode,
+  formatBp,
+  outermostCapsTotal,
+  parseMajor,
+  parsePercentBp,
+  roundUpToMajor,
+  type ShareBasis,
+  shareOfMinor,
+} from '@expanses/core';
 import type { BudgetChanges, BudgetRow } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
 import { perMonthPreview } from './frequency-form';
+import { type ShareBase, toAmount, toPercent } from './share-form';
 
 /** One field on the Edit budgets screen: a category, named as the list shows it, and where it sits in its tree. */
 export interface EditRow {
@@ -25,6 +37,10 @@ export interface RowState {
   amount: string;
   frequency: BudgetFrequency;
   filled: boolean;
+  /** Typed as an amount in its unit, or as a % (always a month's). */
+  mode: 'amount' | 'share';
+  /** What the row held before its last switch, while nothing has been typed since: switching back gives it back exactly. */
+  before?: { amount: string; frequency: BudgetFrequency; mode: 'amount' | 'share' } | null;
 }
 
 export type EditState = Record<string, RowState>;
@@ -55,22 +71,89 @@ export function initialState(groups: readonly EditGroup[], budgets: readonly Bud
   const state: EditState = {};
   for (const row of groups.flatMap((group) => group.rows)) {
     const stored = byCategory.get(row.id);
-    state[row.id] = { amount: stored ? bareFigure(stored.amountAsSetMinor, currency) : '', frequency: stored?.frequency ?? 'monthly', filled: false };
+    state[row.id] = stored?.share
+      ? { amount: formatBp(stored.share.bp), frequency: 'monthly', filled: false, mode: 'share' }
+      : { amount: stored ? bareFigure(stored.amountAsSetMinor, currency) : '', frequency: stored?.frequency ?? 'monthly', filled: false, mode: 'amount' };
   }
   return state;
 }
 
-/** What a row comes to a month, or null when it is empty, unreadable or nothing. */
+/** What a row typed as an amount comes to a month, or null when it is empty, unreadable, nothing or a share. */
 export function monthlyOf(row: RowState | undefined, currency: string): number | null {
-  if (!row) return null;
+  if (!row || row.mode === 'share') return null;
   const minor = perMonthPreview(row.amount, row.frequency, currency);
   return minor !== null && minor > 0 ? minor : null;
 }
 
+/** A share typed in a row, of `baseMinor`; null when it cannot be read or comes to nothing. */
+function shareFigure(row: RowState, baseMinor: number, currency: string): number | null {
+  try {
+    const share = shareOfMinor(baseMinor, parsePercentBp(row.amount), currency);
+    return share > 0 ? share : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the screen opened with, and the budgets as stored now: what a row's figure and its share's basis are read against. */
+export interface Stored {
+  initial: EditState;
+  budgets: readonly BudgetRow[];
+}
+
+/**
+ * What a row's % is of. A share saved before keeps its basis while it is there: take-home always, a parent while a
+ * figure is typed for it. A new share, or one whose parent has no figure now, takes what is typed above it: its
+ * parent's figure, or take-home.
+ */
+export function basisOfRow(row: EditRow, figures: ReadonlyMap<string, number>, budgets: readonly BudgetRow[]): ShareBasis {
+  if (row.parentId === null || !figures.has(row.parentId)) return 'take-home';
+  return budgets.find((stored) => stored.categoryAccountId === row.id)?.share?.basis === 'take-home' ? 'take-home' : 'parent';
+}
+
+const unchanged = (a: RowState, b: RowState) => a.amount === b.amount && a.frequency === b.frequency && a.mode === b.mode;
+
+/**
+ * The children Save turns into amounts: each stored as a % of its parent, left alone here, under a parent with a budget
+ * that is cleared. Each keeps its plan for the month on screen — the figure `saveBudgets` writes for it — so the screen
+ * shows and counts that figure rather than a share of something about to go.
+ */
+export function keptOf(groups: readonly EditGroup[], state: EditState, stored: Stored): Map<string, number> {
+  const byCategory = new Map(stored.budgets.map((row) => [row.categoryAccountId, row]));
+  const kept = new Map<string, number>();
+  for (const row of groups.flatMap((group) => group.rows)) {
+    const child = byCategory.get(row.id);
+    if (row.parentId === null || child?.share?.basis !== 'parent' || !byCategory.has(row.parentId)) continue;
+    if (!unchanged(rowStateOf(state, row.id), rowStateOf(stored.initial, row.id))) continue;
+    if (rowStateOf(state, row.parentId).amount.trim() || unchanged(rowStateOf(state, row.parentId), rowStateOf(stored.initial, row.parentId))) continue;
+    kept.set(row.id, child.planMinor);
+  }
+  return kept;
+}
+
+/** Every row's month figure as typed, parents first (editGroups lists a parent before its children). */
+function figuresOf(groups: readonly EditGroup[], state: EditState, stored: Stored, takeHomeMinor: number, currency: string): Map<string, number> {
+  const kept = keptOf(groups, state, stored);
+  const figures = new Map<string, number>();
+  for (const row of groups.flatMap((group) => group.rows)) {
+    const typed = rowStateOf(state, row.id);
+    const base = basisOfRow(row, figures, stored.budgets) === 'parent' ? figures.get(row.parentId!)! : takeHomeMinor;
+    const minor = kept.get(row.id) ?? (typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency));
+    if (minor !== null) figures.set(row.id, minor);
+  }
+  return figures;
+}
+
+/** Every row's month figure as typed: a share resolved against the basis it has (see `basisOfRow`). */
+export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): Map<string, number> {
+  return figuresOf(editGroups(lines), state, stored, takeHomeMinor, currency);
+}
+
 /** The Budgeted figure as typed so far, counted as the sheet counts it: the outermost cap in each branch. */
-export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, currency: string): number {
-  const typed = (line: BudgetLine): CapNode => ({ capMinor: monthlyOf(state[line.id], currency), children: line.children.map(typed) });
-  return outermostCapsTotal(lines.map(typed));
+export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): number {
+  const figures = typedCaps(lines, state, takeHomeMinor, currency, stored);
+  const node = (line: BudgetLine): CapNode => ({ capMinor: figures.get(line.id) ?? null, children: line.children.map(node) });
+  return outermostCapsTotal(lines.map(node));
 }
 
 /**
@@ -91,7 +174,7 @@ export function fillFromLastMonth(groups: readonly EditGroup[], state: EditState
       if (row.hasChildren || next[row.id]?.amount.trim() || cappedAbove(row.id)) continue;
       const spent = history.get(row.id)?.lastMinor ?? 0;
       if (spent <= 0) continue;
-      next[row.id] = { amount: bareFigure(roundUpToMajor(spent, currency), currency), frequency: 'monthly', filled: true };
+      next[row.id] = { amount: bareFigure(roundUpToMajor(spent, currency), currency), frequency: 'monthly', filled: true, mode: 'amount' };
     }
   }
   return next;
@@ -108,16 +191,30 @@ export function changesOf(
   state: EditState,
   initial: EditState,
   budgets: readonly BudgetRow[],
+  takeHomeMinor: number,
   currency: string,
 ): BudgetChanges & { unreadable: string[] } {
   const stored = new Set(budgets.map((row) => row.categoryAccountId));
   const out: BudgetChanges & { unreadable: string[] } = { save: [], remove: [], unreadable: [] };
-  for (const row of groups.flatMap((group) => group.rows)) {
+  const rows = groups.flatMap((group) => group.rows);
+  const figures = figuresOf(groups, state, { initial, budgets }, takeHomeMinor, currency);
+  for (const row of rows) {
     const typed = rowStateOf(state, row.id);
     const loaded = rowStateOf(initial, row.id);
-    if (typed.amount === loaded.amount && typed.frequency === loaded.frequency) continue;
+    if (unchanged(typed, loaded)) continue;
     if (!typed.amount.trim()) {
       if (stored.has(row.id)) out.remove.push(row.id);
+      continue;
+    }
+    if (typed.mode === 'share') {
+      let bp: number;
+      try {
+        bp = parsePercentBp(typed.amount);
+      } catch {
+        out.unreadable.push(row.id);
+        continue;
+      }
+      out.save.push({ categoryAccountId: row.id, amountMinor: figures.get(row.id) ?? 0, frequency: 'monthly', share: { basis: basisOfRow(row, figures, budgets), bp } });
       continue;
     }
     let minor: number;
@@ -132,11 +229,27 @@ export function changesOf(
   return out;
 }
 
+/**
+ * A row's unit select moved: to % (always a month's), or to a unit. A figure is converted, so nothing typed is lost:
+ * an amount to the share its month is, and a share to its month's figure — by the month whatever unit was picked, as
+ * there is no exact way to say a month's figure a week or a year. Back to what the row held before the switch, with
+ * nothing typed since (and, for an amount, its unit picked again), the figure comes back exactly as it was.
+ */
+export function switchRow(row: RowState, next: 'share' | BudgetFrequency, base: ShareBase, currency: string): RowState {
+  if (next === 'share' && row.mode === 'share') return row;
+  if (next !== 'share' && row.mode === 'amount') return { ...row, frequency: next, filled: false, before: null };
+  const shown = { amount: row.amount, frequency: row.frequency, mode: row.mode };
+  const back = row.before && (next === 'share' ? row.before.mode === 'share' : row.before.mode === 'amount' && row.before.frequency === next) ? row.before : null;
+  if (back) return { ...row, ...back, filled: false, before: shown };
+  if (next === 'share') return { ...row, mode: 'share', frequency: 'monthly', amount: toPercent(row.amount, row.frequency, base, currency), filled: false, before: shown };
+  return { ...row, mode: 'amount', frequency: 'monthly', amount: toAmount(row.amount, base, currency), filled: false, before: shown };
+}
+
 /** A row's state; one that arrived after the screen opened (a category synced in) reads as empty and monthly. */
 export function rowStateOf(state: EditState, id: string): RowState {
-  return state[id] ?? { amount: '', frequency: 'monthly', filled: false };
+  return state[id] ?? { amount: '', frequency: 'monthly', filled: false, mode: 'amount' };
 }
 
 export function isDirty(state: EditState, initial: EditState): boolean {
-  return Object.keys(state).some((id) => state[id]!.amount !== initial[id]?.amount || state[id]!.frequency !== initial[id]?.frequency);
+  return Object.keys(state).some((id) => state[id]!.amount !== initial[id]?.amount || state[id]!.frequency !== initial[id]?.frequency || state[id]!.mode !== initial[id]?.mode);
 }

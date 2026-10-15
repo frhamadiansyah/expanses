@@ -106,6 +106,8 @@ export async function openCapOf(page: Page, option: string): Promise<Locator> {
   await budgetTab(page, 'Spending');
   const capped = page.getByTestId(`line-${name}`).first();
   const uncapped = page.getByTestId(`uncapped-${name}`);
+  // isVisible does not wait: the rows (or a folded drawer holding them) must be on the page before it is asked.
+  await expect(capped.or(uncapped).or(page.locator('[data-testid^="drawer-"]')).first()).toBeVisible();
   if (!(await capped.isVisible()) && !(await uncapped.isVisible())) {
     for (const drawer of await page.locator('[data-testid^="drawer-"][aria-expanded="false"]').all()) await drawer.click();
   }

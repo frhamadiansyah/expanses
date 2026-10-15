@@ -194,6 +194,17 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'budget_share',
+    table: 'budget_shares',
+    scopeRule: 'its budget_id is a budget of the book',
+    scope: (bookId) => sql`t.budget_id IN (${budgetsOfBook(bookId)})`,
+    // Keyed by budget_id, one row per budget (0070), as budget_frequency is.
+    keyColumns: ['budget_id'],
+    fields: { basis: 'basis', shareBp: 'share_bp' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
     entity: 'book_income',
     table: 'book_budget_settings',
     scopeRule: 'book_id = bookId',
@@ -508,6 +519,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   budgets: ['workspace_id', 'created_at', 'updated_at'],
   budget_overrides: ['workspace_id'],
   budget_frequencies: ['workspace_id'],
+  budget_shares: ['workspace_id'],
   book_budget_settings: ['workspace_id', 'updated_at'],
   book_income_overrides: ['workspace_id'],
   expense_templates: ['workspace_id', 'created_at'],

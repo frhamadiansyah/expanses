@@ -52,6 +52,8 @@ export interface ListRow {
   needs: string[];
   /** Money back on a purchase: an expense whose category took money back (a negative `amountMinor`). */
   refund?: boolean;
+  /** A row with a person whose money came in: one paying back, or lending. Money in, but not income. */
+  moneyIn?: boolean;
   /** Saved with its category left for later, so it is filed under Uncategorised until one is chosen. */
   needsCategory?: boolean;
   tx?: TransactionView;
@@ -145,6 +147,7 @@ export function buildRows(
       excluded: tx.excluded ?? false,
       needs: [],
       refund: c.type === 'expense' && c.amountMinor < 0,
+      moneyIn: type === 'debt' && money.filter((e) => !isPerson(e.accountId)).reduce((sum, e) => sum + e.amountBaseMinor, 0) > 0,
       needsCategory: c.categoryIds.some((id) => isUncategorisedKey(byId.get(id)?.systemKey)),
       tx,
     };
@@ -277,6 +280,21 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
 }
 
 /** A day's net in the workspace currency: income less spending, never counting drafts, deleted rows or transfers. */
+/**
+ * How a row's figure reads: a sign for its colour (red out, green in), a plus, and muted. A row with a person reads by
+ * what it holds: a purchase split with someone is spending (its own share, red), money a person paid back is money in
+ * with a plus but muted, since it is not income and adds nothing to the day, and money lent out stays plain.
+ */
+export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; muted: boolean } {
+  if (row.refund) return { sign: 1, plus: true, muted: false };
+  if (row.type === 'expense') return { sign: -1, plus: false, muted: false };
+  if (row.type === 'income') return { sign: 1, plus: false, muted: false };
+  if (row.type === 'debt' && row.spentMinor > 0) return { sign: -1, plus: false, muted: false };
+  if (row.type === 'debt' && row.earnedMinor > 0) return { sign: 1, plus: false, muted: false };
+  if (row.moneyIn) return { sign: 0, plus: true, muted: true };
+  return { sign: 0, plus: false, muted: false };
+}
+
 export function dayTotal(rows: readonly ListRow[]): number {
   const counted = (row: ListRow) => row.kind === 'tx' && !row.deleted && !row.excluded;
   return dayNet(

@@ -10,7 +10,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import type { ListRow } from './list-model';
+import { amountLook, type ListRow } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { TwoTapDelete } from './TwoTapDelete';
@@ -94,10 +94,10 @@ export function TransactionRow({
   select?: { selected: boolean; onToggle?: () => void };
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  // Money back on a purchase reads as money in: a plus, in green.
+  // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   const shownMinor = amountMinor ?? row.amountMinor;
-  const money = row.refund ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
-  const sign = row.refund ? 1 : row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
+  const { sign, plus, muted } = amountLook(row);
+  const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
   const circle = (
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
@@ -208,6 +208,7 @@ export function TransactionRow({
             'tabular block text-sm font-semibold whitespace-nowrap',
             sign < 0 && 'text-red-700',
             sign > 0 && 'text-emerald-700',
+            muted && 'text-slate-500',
             row.excluded && 'line-through',
           )}
         >
