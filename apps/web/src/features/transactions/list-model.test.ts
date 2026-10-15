@@ -1,7 +1,7 @@
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals , groupByCategory } from './list-model';
+import { amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals , groupByCategory } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -317,5 +317,29 @@ describe('money back and rows waiting for a category', () => {
     expect(built.filter((row) => row.needsCategory).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
     expect(filterRows(built, { ...EMPTY_FILTERS, needsCategory: true }, withLater).map((row) => row.id)).toEqual([later.id, laterIncome.id]);
     expect(filterRows(built, EMPTY_FILTERS, withLater)).toHaveLength(3);
+  });
+});
+
+describe('amountLook', () => {
+  const one = (t: TransactionView) => buildRows([t], [], accounts, cards)[0]!;
+
+  it('reads a purchase split with a person as spending: the own share, in red, as the day counts it', () => {
+    // Rp 80.000 on the card: Rp 40.000 own share, Rp 40.000 that Dina owes.
+    const split = one(tx('2026-09-12', 'Lunch', [['groceries', 40_000], ['friend', 40_000], ['octo', -80_000]]));
+    expect(split).toMatchObject({ type: 'debt', amountMinor: 40_000, spentMinor: 40_000 });
+    expect(amountLook(split)).toEqual({ sign: -1, plus: false, muted: false });
+  });
+
+  it('reads money a person paid back as money in, with a plus, muted: it is not income and adds nothing to the day', () => {
+    const collection = one(tx('2026-09-12', 'Collection from Dina', [['bca', 40_000], ['friend', -40_000]]));
+    expect(amountLook(collection)).toEqual({ sign: 0, plus: true, muted: true });
+    expect(dayTotal([collection])).toBe(0);
+  });
+
+  it('leaves money lent out plain, and keeps a purchase, an income and a refund as they were', () => {
+    expect(amountLook(one(tx('2026-09-12', 'Lent to Dina', [['friend', 40_000], ['bca', -40_000]])))).toEqual({ sign: 0, plus: false, muted: false });
+    expect(amountLook(one(tx('2026-09-12', 'Superindo', [['groceries', 40_000], ['bca', -40_000]])))).toEqual({ sign: -1, plus: false, muted: false });
+    expect(amountLook(one(tx('2026-09-12', 'Salary', [['bca', 40_000], ['salary', -40_000]])))).toEqual({ sign: 1, plus: false, muted: false });
+    expect(amountLook(one(tx('2026-09-12', 'Refund', [['groceries', -40_000], ['bca', 40_000]])))).toEqual({ sign: 1, plus: true, muted: false });
   });
 });
