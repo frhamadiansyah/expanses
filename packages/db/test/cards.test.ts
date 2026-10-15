@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCard, archiveCard, createAccount, listCards, listIssuers, saveCardIdentity } from '../src/index';
+import { addCard, archiveCard, createAccount, createCardAccount, listCards, listIssuers, saveCardIdentity } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -76,6 +76,26 @@ describe('the plastic on an account', () => {
     expect(await listCards(database, ws, mandiri.id)).toEqual([]);
     // A replacement card after a lost one carries the same digits often enough.
     await expect(addCard(database, ws, { accountId: mandiri.id, last4: '1467', isPrimary: true })).resolves.toEqual(expect.any(String));
+  });
+
+  it('leaves exactly the two new cards after the primary is removed and a primary and a supplementary are added again', async () => {
+    const { database, ws } = await workspace();
+    // Opened with its card, as the Add a card account form does: the plastic recorded is the primary.
+    const bonvoy = await createCardAccount(database, ws, { name: 'Mandiri Marriott Bonvoy', subtype: 'credit_card', currency: 'IDR', issuer: 'Mandiri', last4: '4410' });
+    const [first] = await listCards(database, ws, bonvoy.id);
+    await archiveCard(database, ws, first!.id);
+
+    // The card page marks the first card added to an account with none as its primary, and the next as supplementary.
+    await addCard(database, ws, { accountId: bonvoy.id, last4: '4410', holderName: 'Fandrian', isPrimary: (await listCards(database, ws, bonvoy.id)).length === 0 });
+    await addCard(database, ws, { accountId: bonvoy.id, last4: '7723', holderName: 'Spouse', isPrimary: (await listCards(database, ws, bonvoy.id)).length === 0 });
+
+    // The removed card is gone from every list, the account's and the workspace's: no third row is left behind.
+    for (const rows of [await listCards(database, ws, bonvoy.id), await listCards(database, ws)]) {
+      expect(rows.map((row) => [row.last4, row.isPrimary]).sort()).toEqual([
+        ['4410', true],
+        ['7723', false],
+      ]);
+    }
   });
 
   it('offers the issuers the workspace already uses', async () => {

@@ -100,19 +100,14 @@ test('Paid with names each card by its digits, and choosing one sets the account
   await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 8802', exact: true })).toBeVisible();
 
   /*
-   * The account alone is offered as well, and **last**: it is how a purchase is recorded when the card is not
-   * known or not worth saying. It was taken away once without a decision, so the facts are asserted — that it is
-   * there, that both cards are too, and that the account's own row comes after them rather than among them.
-   *
-   * Which of the two cards leads is the query's business, not this function's, so the cards are compared as a
-   * set: pinning their order here would assert something `paymentOptions` never promised.
+   * The two cards and nothing else: the account alone, with no card label, is not offered beside them (the owner
+   * asked for it to go on 15 October). Which of the two cards leads is the query's business, so they are compared
+   * as a set: pinning their order here would assert something `paymentOptions` never promised.
    */
   const offered = await sheet
     .locator('ul > li button')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
-  expect(offered).toHaveLength(3);
-  expect(offered.at(-1)).toBe('BCA KrisFlyer');
-  expect([...offered.slice(0, 2)].sort()).toEqual(['BCA KrisFlyer ···· 1467', 'BCA KrisFlyer ···· 8802']);
+  expect([...offered].sort()).toEqual(['BCA KrisFlyer ···· 1467', 'BCA KrisFlyer ···· 8802']);
 
   await sheet.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Cancel' }).click();
@@ -123,13 +118,37 @@ test('Paid with names each card by its digits, and choosing one sets the account
   const row = page.getByTestId('transaction-row').filter({ hasText: 'Ranch Market' });
   await expect(row).toContainText('8802');
   await expect(row).not.toContainText('1467');
+});
 
-  // And a purchase whose card nobody named is still a purchase: it records against the account, with no digits.
-  await addTransaction(page, { description: 'Bakmi GM', paidWith: 'BCA KrisFlyer', category: 'Groceries', amount: '75000' });
-  const unnamed = page.getByTestId('transaction-row').filter({ hasText: 'Bakmi GM' });
-  await expect(unnamed).toContainText('BCA KrisFlyer');
-  await expect(unnamed).not.toContainText('1467');
-  await expect(unnamed).not.toContainText('8802');
+test('a card whose primary was removed and a primary and a supplementary added again offers just those two', async ({ page }) => {
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
+    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Last 4 digits').fill('1467');
+  });
+  await page.goto('/cards');
+  await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
+  // The primary goes, and the account carries no card for a moment.
+  await page.getByRole('button', { name: 'Remove card ending 1467' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(0);
+  // Then a primary again, and a supplementary beside it.
+  for (const [last4, holder, count] of [['4410', 'Fandrian', 1], ['7723', 'Spouse', 2]] as const) {
+    await page.getByLabel('Last 4 digits').fill(last4);
+    await page.getByLabel('Whose card').fill(holder);
+    await page.getByRole('button', { name: 'Add card' }).click();
+    await expect(page.getByTestId('card-on-account')).toHaveCount(count);
+  }
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 4410', exact: true })).toBeVisible();
+  // Two cards, two rows: no third, plain row for the account, and nothing left of the removed card.
+  const offered = await sheet
+    .locator('ul > li button')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
+  expect([...offered].sort()).toEqual(['BCA KrisFlyer ···· 4410', 'BCA KrisFlyer ···· 7723']);
 });
 
 test('/transactions/new opens the empty card rather than a receipt for a transaction called "new"', async ({ page }) => {
