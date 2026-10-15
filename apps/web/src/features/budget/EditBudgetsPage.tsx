@@ -41,6 +41,8 @@ export function EditBudgetsPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const fields = useRef(new Map<string, HTMLInputElement>());
+  // This month's take-home, as the sheet reads it: what a % of take-home is of.
+  const takeHome = sheet?.incomePlanMinor ?? 0;
 
   // The stored figures are read once, when both have arrived; a later re-read must not wipe what is being typed.
   useEffect(() => {
@@ -70,7 +72,7 @@ export function EditBudgetsPage() {
   async function save() {
     setError(null);
     if (!ready || busy || !budgets || !initial) return;
-    const changes = changesOf(groups, state, initial, budgets, currency);
+    const changes = changesOf(groups, state, initial, budgets, takeHome, currency);
     if (changes.unreadable.length > 0) {
       setError(new Error(`${labelOf(changes.unreadable[0]!)}: that figure cannot be read`));
       showRow(changes.unreadable[0]!);
@@ -92,7 +94,7 @@ export function EditBudgetsPage() {
   const filled = history ? fillFromLastMonth(groups, state, history, currency) : state;
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 
-  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, currency) : 0;
+  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency) : 0;
   const income = sheet?.incomePlanMinor ?? 0;
   const debt = sheet?.debtPaymentsPlanMinor ?? 0;
   const goals = sheet?.savingsPlanMinor ?? 0;
