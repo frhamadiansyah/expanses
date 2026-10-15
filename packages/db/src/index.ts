@@ -88,6 +88,8 @@ export * from './repos/event-items';
 export * from './repos/shared-event-records';
 export * from './repos/shared-event-postings';
 export * from './repos/shared-event-writes';
+export * from './repos/shared-event-reads';
+export * from './repos/shared-event-plan';
 export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';
 export * as draftsSchema from './schema-drafts';
