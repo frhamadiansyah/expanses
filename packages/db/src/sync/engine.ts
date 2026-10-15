@@ -3,7 +3,8 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
-import { clearAuthorityTx, groupLogWorkspaceOf, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { retryUnpostedEventRecords } from '../repos/shared-event-postings';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
@@ -326,6 +327,15 @@ export class SyncEngine {
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     const result = await this.syncBook(bookId, seen);
+    // Shared events §5: a record left waiting here (a rate, a detail not yet arrived, a derivation the ledger refused)
+    // is tried again after the pull. Never fails the sync: what still cannot post waits for the next one.
+    if (!result.stopped && !result.ended && (await eventBookWorkspaceOf(this.database.db, bookId)) !== null) {
+      try {
+        await retryUnpostedEventRecords(this.database, bookId);
+      } catch (error) {
+        console.warn('Synced the event; a waiting share could not be posted yet', error);
+      }
+    }
     // Joint net worth (§4): a workspace's sync joins and syncs its group log; a group log that ended here is forgotten.
     // No failure of the group log's part — a relay error or any other — fails the workspace's sync (task 4 review round
     // 1; final review item 6): it comes back as `groupError`, and the next run tries again.
