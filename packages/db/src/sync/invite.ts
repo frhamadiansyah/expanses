@@ -17,6 +17,18 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_BYTES = 32;
 const CODE_CHARS = 52;
 
+/** What an invite to a shared event shows before anything is claimed (shared events §6, Joining). */
+export interface EventInviteDetails {
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  /** The event currency. The preview's own `baseCurrency` is 'XXX', so a build without events refuses it (ruling R10). */
+  currency: string;
+  /** Everyone in the event when the invite was made: "I'm Budi" picks one not yet claimed. */
+  people: { personId: string; name: string; claimed: boolean }[];
+  minAppVersion: string;
+}
+
 /** What the preview carries, sealed under the invite key (§8.1 step 4; `bookId` and `terms` added in task 5, see §8.1). */
 export interface InvitePreview {
   bookId: string;
@@ -34,6 +46,8 @@ export interface InvitePreview {
   memberName?: string;
   baseCurrency: string;
   terms: InviteTerms;
+  /** Set on an invite to a shared event's book rather than a workspace's. */
+  event?: EventInviteDetails;
 }
 
 /** The bytes an invite's terms signature covers: the terms without `sig` and the book, keys sorted. */

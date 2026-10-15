@@ -1,5 +1,5 @@
 import { setActiveBook } from '@expanses/db';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { watchCaptures } from '../capture/drain';
@@ -9,12 +9,11 @@ import { scheduleDailyCopy } from '../db/snapshots';
 import { listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
+import { createAppQueryClient } from './query-client';
 import { router } from './router';
 
 export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
-  const [queryClient] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false } } }),
-  );
+  const [queryClient] = useState(createAppQueryClient);
   // The open workspace is state rather than something read once at startup, so choosing another one re-reads
   // every book-scoped screen without reloading the app.
   const [bookId, setBookId] = useState(app.ws.bookId);

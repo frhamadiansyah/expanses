@@ -121,6 +121,8 @@ const SECTION_BY_SUBTYPE: Record<string, SheetSectionKey> = {
   vehicle: 'movable',
   property: 'immovable',
   receivable: 'receivable',
+  // A trip balance the group owes this person is money owed to them (shared events §5); one they owe is a payable.
+  event_balance: 'receivable',
   investment: 'invest',
 };
 

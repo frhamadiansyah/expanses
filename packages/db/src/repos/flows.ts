@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles, investmentTrades } from '../schema-assets';
 import { bookMoneyFor, type Unconverted } from './book-currency';
+import { eventOnlyExists, notEventOnly } from './event-only';
 import { categoryIdsOfBook, hasBooks } from './books';
 import { categoryIdsByKeyAll } from './categories';
 import { resolvedCategoryNeeds } from './category-needs';
@@ -89,6 +90,8 @@ export async function periodFlows(
   const money = await bookMoneyFor(database, ws);
   const intoRead = (amountMinor: number, onDate: string) => (money.converts ? (money.convert(amountMinor, ws.baseCurrency, onDate) ?? 0) : amountMinor);
 
+  // What a shared event put in this phone's books is in no workspace's Cashflow (shared events §5.1).
+  const eventOnly = await eventOnlyExists(database.db);
   const rows = await database.db
     .select({
       transactionId: entries.transactionId,
@@ -109,6 +112,7 @@ export async function periodFlows(
         eq(transactions.status, 'posted'),
         gte(transactions.occurredOn, range.from),
         lte(transactions.occurredOn, range.to),
+        ...(eventOnly ? [notEventOnly(transactions.id)] : []),
       ),
     );
 

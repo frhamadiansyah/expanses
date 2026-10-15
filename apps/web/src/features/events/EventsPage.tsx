@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { type EventRow, saveEvent } from '@expanses/db';
+import { type EventRow, saveEvent, type SharedEventSummary } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CalendarRange, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -25,6 +25,8 @@ import {
 import { useCategorySets } from '../categories/set-queries';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
+import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
+import { sharedWithText } from './shared-view';
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
 export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
@@ -65,10 +67,13 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
  * page it opens can never disagree. No items is no plan at all, not a plan of nought: such an event says what it
  * cost, says "spent", and is measured against nothing, because there is nothing to measure it against.
  */
-function EventListRow({ event, today, position }: GroupChild & { event: EventRow; today: string }) {
+function EventListRow({ event, today, position, shared, ready }: GroupChild & { event: EventRow; today: string; shared?: SharedEventSummary; ready: boolean }) {
   const { ws } = useApp();
-  const plan = useEventPlan(event.id).data;
+  // Until the shared events are known, a shared one is not yet told apart: its local plan is not read meanwhile.
+  const plan = useEventPlan(shared || !ready ? null : event.id).data;
   const line = plan ? eventListLine(plan, ws.baseCurrency) : null;
+  // A shared event's figure is what the trip spent, in its own currency (shared events §6), as its page's header says.
+  const spent = useSharedEventView(shared ? event.id : null).data;
   const of = line?.ofMinor ?? null;
   return (
     <div className="relative">
@@ -98,6 +103,18 @@ function EventListRow({ event, today, position }: GroupChild & { event: EventRow
               <span className="truncate">{eventDates(event)}</span>
               <StatusChip status={eventStatus(event, today)} />
             </span>
+            {shared && (
+              <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="event-shared-with">
+                <span aria-hidden className="flex -space-x-1">
+                  {shared.people.slice(0, 3).map((p, i) => (
+                    <span key={`${i}-${p.name}`} className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[10px] font-semibold text-[var(--ph-ink-2)] ring-1 ring-[var(--ph-surface)]">
+                      {p.initials}
+                    </span>
+                  ))}
+                </span>
+                <span className="truncate">{sharedWithText(shared.sharedWith)}</span>
+              </span>
+            )}
             {line && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
@@ -109,6 +126,12 @@ function EventListRow({ event, today, position }: GroupChild & { event: EventRow
               <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
                 {of === null ? 'spent' : <>of <Money minor={of} currency={ws.baseCurrency} /></>}
               </span>
+            </span>
+          )}
+          {shared && spent && (
+            <span className="tabular shrink-0 text-right" data-testid="event-shared-spent">
+              <Money minor={spent.spentMinor} currency={spent.currency} className="block text-[15px] leading-[20px] text-[var(--ph-ink)]" />
+              <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">spent</span>
             </span>
           )}
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
@@ -139,6 +162,8 @@ export function EventsPage() {
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const events = useEvents();
+  const summaryRead = useSharedEventSummaries();
+  const summaries = summaryRead.data ?? {};
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const today = isoDate();
   const phone = usePhone();
@@ -212,14 +237,14 @@ export function EventsPage() {
       {current.length > 0 && (
         <InsetGroup header="Now and next">
           {current.map((event) => (
-            <EventListRow key={event.id} event={event} today={today} />
+            <EventListRow key={event.id} event={event} today={today} shared={summaries[event.id]} ready={!summaryRead.isPending} />
           ))}
         </InsetGroup>
       )}
       {past.length > 0 && (
         <InsetGroup header="Past">
           {past.map((event) => (
-            <EventListRow key={event.id} event={event} today={today} />
+            <EventListRow key={event.id} event={event} today={today} shared={summaries[event.id]} ready={!summaryRead.isPending} />
           ))}
         </InsetGroup>
       )}

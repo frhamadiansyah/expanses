@@ -35,7 +35,8 @@ describe('the account types someone can open', () => {
 
   it('offers every type the ledger balances, so none is unreachable', () => {
     const offered = new Set(ACCOUNT_TYPES.map((type) => type.subtype));
-    for (const subtype of [...BALANCE_SUBTYPES.asset, ...BALANCE_SUBTYPES.liability]) {
+    // A shared event's trip balance is made by the event and never offered by a picker (shared events §5).
+    for (const subtype of [...BALANCE_SUBTYPES.asset, ...BALANCE_SUBTYPES.liability].filter((s) => s !== 'event_balance')) {
       expect(offered, subtype).toContain(subtype);
     }
   });

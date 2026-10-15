@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { attributedOn, billTablesExist } from './bill-months';
 import { bookMoneyFor, type Unconverted } from './book-currency';
+import { eventOnlyExists, notEventOnly } from './event-only';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 
 /** What narrows a category total beyond its kind and its dates. */
@@ -63,6 +64,8 @@ async function categoryRows(
       // What was marked "not my spending" leaves the chart, the rings and the budgets. It is still on the card,
       // still in the balance, still earning points: only this reading of it changes.
       ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+      // What a shared event put in this phone's books is no workspace's spending (shared events §5.1), owner-wide too.
+      ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
       ...(paid ? [sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${paid})`] : []),
     )!,
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
@@ -266,6 +269,8 @@ export async function eventSpendingBetween(
     ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
     // Same clause as `categoryRows`: the event's Spent and the category report must drop the same rows.
     ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+    // A shared event's own share is counted on the event page, never on a workspace's event line (§5.1).
+    ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
   );
   if (!money.converts) {
     const [row] = await database.db

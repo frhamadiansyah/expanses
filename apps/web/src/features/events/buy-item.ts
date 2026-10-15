@@ -11,8 +11,22 @@ import { type FormDraft, isRefund } from '../transactions/tx-form';
  * keypad, the note's category guess, a card, a split, Photos. Save and Back go back to the event, the way they go
  * back to whatever opened the screen.
  */
-export function addSpendingTarget(eventId: string) {
-  return { to: '/transactions/new' as const, search: { event: eventId } };
+export function addSpendingTarget(eventId: string, carried: { amount?: string; currency?: string; note?: string; date?: string } = {}) {
+  return { to: '/transactions/new' as const, search: { event: eventId, ...carried } };
+}
+
+/**
+ * What the workspace card already holds when a shared event is picked on its Event row: the amount, currency, note and
+ * date, only the ones filled in, so the shared card opens with them rather than empty.
+ */
+export function carriedFromDraft(draft: { amount: string; currency: string; description: string; occurredOn: string }): { amount?: string; currency?: string; note?: string; date?: string } {
+  const amount = draft.amount.trim();
+  const note = draft.description.trim();
+  return {
+    ...(amount ? { amount, currency: draft.currency } : {}),
+    ...(note ? { note } : {}),
+    ...(draft.occurredOn ? { date: draft.occurredOn } : {}),
+  };
 }
 
 /**

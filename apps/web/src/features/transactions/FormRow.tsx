@@ -379,6 +379,7 @@ export function FieldRow({
   hint,
   inputMode,
   divided,
+  disabled = false,
 }: {
   icon?: ReactNode;
   label: string;
@@ -389,15 +390,18 @@ export function FieldRow({
   hint?: ReactNode;
   inputMode?: 'decimal' | 'numeric' | 'text';
   divided?: boolean;
+  /** Read, not typed into: a shared expense's rate is its payer's alone (shared events D8). */
+  disabled?: boolean;
 }) {
   const row = (
-    <div className="flex items-center gap-[10px] pl-[10px]">
+    <div className={cx('flex items-center gap-[10px] pl-[10px]', disabled && 'opacity-40')}>
       <RowLead>{icon}</RowLead>
       <span className={bodyClass(divided)}>
         <input
           aria-label={label}
           inputMode={inputMode}
           value={value}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           className={ROW_FIELD}
