@@ -18,9 +18,22 @@ import {
   parseInviteCode,
   sealInviteJson,
   termsSigningBytes,
+  type EventInviteDetails,
   type InviteKey,
   type InvitePreview,
 } from './invite';
+import {
+  eventInviteDetails,
+  type EventLogHost,
+  isEventBook,
+  isEventMember,
+  joinEvent as joinEventLog,
+  type JoinEventInput,
+  leaveEvent as leaveEventLog,
+  removeEventMember as removeEventMemberLog,
+  shareEvent as shareEventLog,
+  type ShareEventInput,
+} from './events/event-log';
 import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import {
@@ -449,8 +462,8 @@ export class SyncEngine {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     if (await this.isFrozen(bookId)) throw new FrozenBookError();
-    const [book] = await this.database.db.values<[string, string]>(sql`SELECT name, base_currency FROM books WHERE id = ${bookId}`);
-    if (!book) throw new SharingError('NOT_FOUND', 'That workspace is not here');
+    const subject = await this.inviteSubject(bookId);
+    if (!subject) throw new SharingError('NOT_FOUND', 'That workspace is not here');
     // §6.5 step 4: the outbox is drained before any invite exists, so the creator's seed is always the log's first
     // entry — the one introduction that needs no invite (§8.2) — and every joiner finds the book already there. A full
     // sync, not a drain alone: the pull brings the authority view up to the log, which the owner check below reads.
@@ -475,12 +488,15 @@ export class SyncEngine {
     const preview: InvitePreview = {
       bookId,
       relayBookId: shared.relayBookId,
-      bookName: book[0],
+      bookName: subject.name,
       inviterName: input.inviterName,
       inviterMemberId: shared.memberId,
       ...(named ? { memberName: named[0] } : {}),
-      baseCurrency: book[1],
+      // R10: an event's invite names no currency an older build could take, so it refuses it before claiming. The
+      // event's own currency travels in `event`, which only a build that knows shared events reads.
+      baseCurrency: subject.event ? 'XXX' : subject.currency,
       terms,
+      ...(subject.event ? { event: subject.event } : {}),
     };
     const expiresAt = new Date(this.now() + INVITE_TTL_MS).toISOString();
     const unsigned: Omit<InviteRecord, 'sig'> = {
@@ -495,6 +511,14 @@ export class SyncEngine {
     await this.transport.putInvite(shared.relayBookId, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
     const code = encodeInviteCode(inviteId, secret);
     return { inviteId, code, link: inviteLink(code), expiresAt };
+  }
+
+  /** What an invite is to: a workspace's book, or a shared event's (shared events §3), with its people sealed in. */
+  private async inviteSubject(bookId: string): Promise<{ name: string; currency: string; event?: EventInviteDetails } | null> {
+    const [book] = await this.database.db.values<[string, string]>(sql`SELECT name, base_currency FROM books WHERE id = ${bookId}`);
+    if (book) return { name: book[0], currency: book[1] };
+    const event = await eventInviteDetails(this.database, bookId);
+    return event ? { name: event.name, currency: event.currency, event } : null;
   }
 
   /** §8.3: an invite for another device of this device's own member. */
@@ -1104,6 +1128,66 @@ export class SyncEngine {
   /** Either party deletes a transfer: both sides voided, for ever. */
   voidMemberTransfer(workspaceBookId: string, transferId: string): Promise<void> {
     return voidTransfer(this.database, workspaceBookId, transferId);
+  }
+
+  /* ------------------------------------------------------------- shared events */
+
+  /** What a shared event's relay book (sync/events/event-log.ts) borrows from this engine. */
+  private eventHost(): EventLogHost {
+    return {
+      database: this.database,
+      transport: this.transport,
+      device: this.device,
+      sealer: this.sealer,
+      now: this.now,
+      ...(this.appVersion === undefined ? {} : { appVersion: this.appVersion }),
+      syncOnce: (bookId) => this.syncOnce(bookId),
+      previewInvite: (code) => this.previewInvite(code),
+      leave: (bookId) => this.leave(bookId),
+      removeDevice: (bookId, target) => this.removeDevice(bookId, target),
+    };
+  }
+
+  /** Shares a local event as its own relay book (shared events §3). */
+  shareEvent(ws: WorkspaceContext, input: ShareEventInput): Promise<{ bookId: string; personId: string }> {
+    return shareEventLog(this.eventHost(), ws, input);
+  }
+
+  /**
+   * An invite to an event, by any member (every member owns its book). `forPersonId` makes it an invite for that
+   * person's new phone (§7 Lost phone): a person with the app, whose new phone joins as them.
+   *
+   * The relay takes an invite only from a device it knows as an owner, and it learns a new member's device from a
+   * phone already an owner there once that phone has synced (`followOwners`): a member who joined a moment ago is told
+   * so in words rather than with the relay's 403.
+   */
+  async createEventInvite(bookId: string, input: { inviterName: string; forPersonId?: string }): Promise<CreatedInvite> {
+    if (!(await isEventBook(this.database, bookId))) throw new SharingError('NOT_FOUND', 'That event is not shared on this device');
+    if (input.forPersonId !== undefined && !(await isEventMember(this.database, bookId, input.forPersonId))) {
+      throw new SharingError('NOT_FOUND', 'That person has no phone in this event yet: send an ordinary invite, and they pick their name');
+    }
+    try {
+      return await this.createInvite(bookId, { inviterName: input.inviterName, ...(input.forPersonId ? { sameMember: true, memberId: input.forPersonId } : {}) });
+    } catch (error) {
+      if (!(error instanceof SyncTransportError && error.status === 403)) throw error;
+      const [row] = await this.database.db.values<[string]>(sql`SELECT name FROM shared_events WHERE book_id = ${bookId}`);
+      throw new SharingError('NOT_OWNER', `This phone can invite people to ${row?.[0] ?? 'this event'} once a phone already in it has synced. Try again in a minute.`);
+    }
+  }
+
+  /** Joins an event on its invite, as a name in it ("I'm Budi") or a new one (shared events §6). */
+  joinEvent(code: string, input: JoinEventInput): Promise<{ bookId: string; eventId: string; personId: string; result: SyncOnceResult }> {
+    return joinEventLog(this.eventHost(), code, input);
+  }
+
+  /** Leaves an event at zero balance (D9); its records and this phone's own lines from it stay. */
+  leaveEvent(bookId: string): Promise<void> {
+    return leaveEventLog(this.eventHost(), bookId);
+  }
+
+  /** Removes a person from an event at zero balance and in no record (D9): a name, or a person with the app and their phones. */
+  removeEventMember(ws: WorkspaceContext, eventId: string, personId: string): Promise<void> {
+    return removeEventMemberLog(this.eventHost(), ws, eventId, personId);
   }
 
   /* ---------------------------------------------------------------- restore */

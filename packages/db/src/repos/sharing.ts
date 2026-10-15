@@ -31,6 +31,8 @@ export interface SharedBookSummary {
   unsharedBy: string | null;
   /** For an `unshared` book, how: its owner stopped it, this member left, or this device was removed (final review, I2). */
   unsharedReason: 'stopped' | 'left' | 'removed' | null;
+  /** A workspace's book, or a shared event's (shared events §3): the sharing screens list workspaces only. */
+  kind: 'workspace' | 'event';
 }
 
 export interface SharedDevice {
@@ -82,9 +84,20 @@ export async function listSharedBooks(database: Database): Promise<SharedBookSum
             WHERE book_id NOT IN (SELECT group_book_id FROM nw_group_books) ORDER BY shared_at, book_id`
       : sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
   );
+  // A shared event's relay book has no `books` row either (shared events §3); it is listed, marked as an event's.
+  const eventBooks = new Set((await database.db.values<[string]>(sql`SELECT book_id FROM event_books`).catch(() => [] as [string][])).map(([id]) => id));
   const out: SharedBookSummary[] = [];
   for (const [bookId, relayBookId, state, memberId, unsharedBy, unsharedReason] of rows) {
-    out.push({ bookId, relayBookId, state: state as SharedBookState, memberId, members: await membersOf(database, bookId), unsharedBy, unsharedReason });
+    out.push({
+      bookId,
+      relayBookId,
+      state: state as SharedBookState,
+      memberId,
+      members: await membersOf(database, bookId),
+      unsharedBy,
+      unsharedReason,
+      kind: eventBooks.has(bookId) ? 'event' : 'workspace',
+    });
   }
   return out;
 }
