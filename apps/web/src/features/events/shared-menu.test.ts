@@ -20,7 +20,13 @@ describe('the shared event’s ⋯ menu (§6)', () => {
     expect(menu.find((a) => a.key === 'leave')).toMatchObject({ disabled: true, detail: "Rina's balance is not zero yet" });
   });
 
-  it('offers Reopen on a Done event', () => {
-    expect(sharedEventMenu(view({ finishedAt: '2026-10-13T00:00:00Z' }), noop).find((a) => a.key === 'done')?.label).toBe('Reopen');
+  it('offers Reopen on a Done event, and no Currency (refused until it is reopened)', () => {
+    const menu = sharedEventMenu(view({ finishedAt: '2026-10-13T00:00:00Z' }), noop);
+    expect(menu.find((a) => a.key === 'done')?.label).toBe('Reopen');
+    expect(menu.map((a) => a.key)).toEqual(['people', 'done', 'leave']);
+  });
+
+  it('keeps People alone once this person is no longer in the event (I5)', () => {
+    expect(sharedEventMenu(view({ state: 'unshared' }), noop).map((a) => a.key)).toEqual(['people']);
   });
 });

@@ -1,7 +1,23 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, SharedEventView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { balanceLine, expenseRow, headerLine, mineToSettle, moneyAccounts, paymentLine, possessive, settlementRow, sharedWithText, waitingLine } from './shared-view';
+import {
+  balanceLine,
+  expenseRow,
+  headerLine,
+  mineToSettle,
+  moneyAccounts,
+  pageLocks,
+  paymentLine,
+  possessive,
+  readOnlyLine,
+  settlementDeletable,
+  settlementRow,
+  sharedWithText,
+  takeOverBatches,
+  takeOverRows,
+  waitingLine,
+} from './shared-view';
 
 /*
  * The words of a shared event's page (shared events §6, §7). Every line names a person; none says "you". Figures are
@@ -34,6 +50,7 @@ describe('shared event words', () => {
   it('says who it is shared with, by count', () => {
     expect(sharedWithText(2)).toBe('Shared with 2 people');
     expect(sharedWithText(1)).toBe('Shared with 1 person');
+    expect(sharedWithText(0)).toBe('Shared, nobody else in it yet');
   });
 
   it('writes a spending row in its own currency, with who paid, the category, the split, the share and its flags', () => {
@@ -71,5 +88,48 @@ describe('shared event words', () => {
   it('offers money accounts and cards that are open', () => {
     const account = (id: string, kind: string, subtype: string, archivedAt: string | null = null) => ({ id, kind, subtype, archivedAt, name: id, currency: 'IDR' }) as unknown as AccountRow;
     expect(moneyAccounts([account('bank', 'asset', 'bank'), account('card', 'liability', 'credit_card'), account('trip', 'asset', 'event_balance'), account('old', 'asset', 'cash', '2026-01-01'), account('food', 'expense', 'category')]).map((a) => a.id)).toEqual(['bank', 'card']);
+  });
+
+  it('locks a Done event’s writes, and every write of an event this person is no longer in (I5)', () => {
+    expect(pageLocks(view())).toEqual({ readOnly: false, locked: false });
+    expect(pageLocks(view({ finishedAt: '2026-10-13T00:00:00Z' }))).toEqual({ readOnly: false, locked: true });
+    expect(pageLocks(view({ state: 'unshared' }))).toEqual({ readOnly: true, locked: true });
+    expect(readOnlyLine(view())).toBe('Rina is no longer in Coast week. What was recorded is kept here, read-only.');
+  });
+
+  it('lets the payer or the receiver delete a settle-up, or anyone when neither has the app (R11)', () => {
+    const s = { settlementId: 's', occurredOn: '2026-10-12', fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-budi', toName: 'Budi', amountMinor: 1_900, voided: false, unsent: false, mine: false, posting: null };
+    const person = (personId: string, hasApp: boolean) => ({ personId, name: personId, initials: 'X', hasApp, isMe: false, removed: false, balanceMinor: 0 });
+    expect(settlementDeletable(s, view({ people: [person('p-andi', false), person('p-budi', false)] }))).toBe(true);
+    expect(settlementDeletable(s, view({ people: [person('p-andi', true), person('p-budi', false)] }))).toBe(false);
+    expect(settlementDeletable({ ...s, mine: true }, view({ people: [person('p-andi', true)] }))).toBe(true);
+    expect(settlementDeletable({ ...s, mine: true, voided: true }, view())).toBe(false);
+  });
+
+  it('lists each waiting record with its own way: From for what was paid, Into for a settle-up received (I4)', () => {
+    const settlement = { settlementId: 's1', occurredOn: '2026-10-12', fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-rina', toName: 'Rina', amountMinor: 290_000, voided: false, unsent: false, mine: true, posting: null };
+    const paid = { ...settlement, settlementId: 's2', fromPersonId: 'p-rina', fromName: 'Rina', toPersonId: 'p-budi', toName: 'Budi' };
+    const v = view({
+      expenses: [{ ...expense, expenseId: 'e1' }],
+      settlements: [settlement, paid],
+      waiting: [
+        { recordId: 'e1', kind: 'expense', reason: 'choose-account' },
+        { recordId: 's1', kind: 'settlement', reason: 'choose-account' },
+        { recordId: 's2', kind: 'settlement', reason: 'choose-account' },
+        { recordId: 'e9', kind: 'expense', reason: 'no-rate' },
+      ],
+    });
+    const rows = takeOverRows(v);
+    expect(rows).toEqual([
+      { recordId: 'e1', title: 'Fish dinner', amount: formatMinor(9_000, 'EUR'), direction: 'From' },
+      { recordId: 's1', title: 'Andi paid Rina', amount: formatMinor(290_000, 'TRY'), direction: 'Into' },
+      { recordId: 's2', title: 'Rina paid Budi', amount: formatMinor(290_000, 'TRY'), direction: 'From' },
+    ]);
+    // Each its own account; a record not picked takes the last one picked.
+    expect(takeOverBatches(rows, { e1: 'cash', s1: 'bank' }, 'bank')).toEqual([
+      { accountId: 'cash', recordIds: ['e1'] },
+      { accountId: 'bank', recordIds: ['s1', 's2'] },
+    ]);
+    expect(() => takeOverBatches(rows, {}, '')).toThrow('Choose an account for Fish dinner');
   });
 });

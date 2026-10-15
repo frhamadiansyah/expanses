@@ -26,7 +26,19 @@ function rememberedName(): string {
   }
 }
 
-export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: string; onJoined: (bookId: string) => void }) {
+export function JoinWorkspace({
+  initialCode = '',
+  onJoined,
+  onJoinedEvent,
+  onPreview,
+}: {
+  initialCode?: string;
+  onJoined: (bookId: string) => void;
+  /** An event's invite joins the event, which is not a workspace: the host opens its page. */
+  onJoinedEvent: (eventId: string) => void | Promise<void>;
+  /** The invite looked at, or null: an event's invite retitles the host ("Join Coast week"). */
+  onPreview?: (preview: PreviewedInvite | null) => void;
+}) {
   const { ws, sync } = useApp();
   const [code, setCode] = useState(initialCode);
   const [preview, setPreview] = useState<PreviewedInvite | null>(null);
@@ -40,8 +52,11 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
     setBusy(true);
     setError(null);
     setPreview(null);
+    onPreview?.(null);
     try {
-      setPreview(await sync.preview(text));
+      const found = await sync.preview(text);
+      setPreview(found);
+      onPreview?.(found);
     } catch (failure) {
       setError(sayError(failure));
     } finally {
@@ -110,6 +125,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
             onChange={(event) => {
               setCode(event.target.value);
               setPreview(null);
+              onPreview?.(null);
             }}
             placeholder="XXXX-XXXX-…"
             autoCapitalize="characters"
@@ -120,7 +136,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
         </InsetGroup>
       </form>
 
-      {preview?.event ? <JoinEvent code={code} preview={preview} /> : preview ? (
+      {preview?.event ? <JoinEvent code={code} preview={preview} onJoined={onJoinedEvent} /> : preview ? (
         <form aria-label="Join a workspace" onSubmit={(event) => void join(event)}>
           <InsetGroup
             wide
@@ -148,7 +164,10 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
           )}
           {refusal || unusable ? (
             <InsetGroup wide>
-              <InsetRow title="Try another code" chevron={false} onClick={() => setPreview(null)} />
+              <InsetRow title="Try another code" chevron={false} onClick={() => {
+                  setPreview(null);
+                  onPreview?.(null);
+                }} />
             </InsetGroup>
           ) : null}
         </form>

@@ -7,18 +7,27 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
 import { buyTarget } from './buy-item';
+import { SharedItemSheet } from './SharedItemSheet';
 import { useSharedEventPlan } from './shared-queries';
+import { type SharedPlanItem } from './shared-plan';
+import { pageLocks } from './shared-view';
 
-/** The shared plan (D7): what the trip means to buy, in the event currency; Buy it now opens the Add screen on the item. */
+/**
+ * The shared plan (D7): what the trip means to buy, in the event currency. A tap on an item opens it — its name and
+ * price, what bought it (the tick), Buy it now, and Remove — so a mistyped price or an item bought without Buy it now
+ * is put right on every phone (I10).
+ */
 export function SharedPlanTab({ view }: { view: SharedEventView }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
-  const plan = useSharedEventPlan(view.eventId).data;
+  const plan = useSharedEventPlan(view.eventId);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [error, setError] = useState<unknown>(null);
-  const items = (plan?.lines ?? []).flatMap((line) => line.items);
+  const [opened, setOpened] = useState<SharedPlanItem | null>(null);
+  const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
+  const { locked } = pageLocks(view);
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -35,6 +44,7 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
 
   return (
     <>
+      <ErrorBox error={plan.error} />
       <InsetGroup header="To buy">
         {items.map((item) => (
           <InsetRow
@@ -42,13 +52,13 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
             title={item.name}
             subtitle={item.bought ? `Bought · ${formatMinor(item.actualMinor ?? 0, view.currency)}` : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`}
             value={formatMinor(item.estimateMinor, view.currency)}
-            onClick={item.bought || view.finishedAt ? undefined : () => void navigate(buyTarget(view.eventId, item.id))}
-            label={item.bought ? item.name : `Buy ${item.name} now`}
+            onClick={locked ? undefined : () => setOpened(item)}
+            label={item.name}
             testId="shared-plan-item"
           />
         ))}
       </InsetGroup>
-      {view.finishedAt ? null : (
+      {locked ? null : (
         <form aria-label="Add to the plan" onSubmit={(event) => void add(event)}>
           <InsetGroup>
             <TextRow label="Thing to buy" value={name} onChange={(e) => setName(e.target.value)} />
@@ -58,6 +68,17 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
           <ErrorBox error={error} />
         </form>
       )}
+      {opened ? (
+        <SharedItemSheet
+          view={view}
+          item={opened}
+          onBuy={() => {
+            setOpened(null);
+            void navigate(buyTarget(view.eventId, opened.id));
+          }}
+          onClose={() => setOpened(null)}
+        />
+      ) : null}
     </>
   );
 }

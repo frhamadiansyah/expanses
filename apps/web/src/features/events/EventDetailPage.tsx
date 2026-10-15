@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { Plus, UserPlus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
@@ -13,6 +13,7 @@ import {
   InsetRow,
   LargeTitle,
   Panel,
+  SCREEN,
   SegmentedControl,
   type CornerAction,
   type GroupChild,
@@ -37,27 +38,59 @@ import { EventCurrencySheet } from './EventCurrencySheet';
 import { ShareEventSheet } from './ShareEventSheet';
 import { sharedEventMenu } from './shared-menu';
 import { SharedEventPage } from './SharedEventPage';
-import { useSharedEventView } from './shared-queries';
+import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
+import { sayError } from '../sharing/sharing-copy';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
 /**
  * An event's page: a shared event's own (shared events §6), or - for an event that is not shared - the page events have
  * always had, unchanged (D10).
+ *
+ * Which of the two is decided by whether this phone holds an event book for it (`sharedEventSummaries` reads that row
+ * alone), never by whether the shared read came back: that read can still be on its way, can find the event's own row
+ * not arrived yet (a joiner mid-pull), or can fail on one bad record from a peer. Falling back to the local page then
+ * would offer Share (refused) and Remove (which hides the shared event for good) on an event that is shared (I2), so a
+ * shared event waits on its own page, or says why it cannot open.
  */
 export function EventDetailPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
+  const summaries = useSharedEventSummaries();
   const shared = useSharedEventView(eventId);
   // Hosted here, above the switch: sharing turns this page into the shared one at once, and the sheet still has the
   // move and the invite to finish (shared events §6).
   const [sharing, setSharing] = useState(false);
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  if (shared.isPending) return null;
+  if (summaries.isPending) return null;
+  const isShared = summaries.data?.[eventId] !== undefined || Boolean(shared.data);
   return (
     <>
-      {shared.data ? <SharedEventScreen view={shared.data} /> : <LocalEventPage onShare={() => setSharing(true)} />}
+      {!isShared ? (
+        <LocalEventPage onShare={() => setSharing(true)} />
+      ) : shared.data ? (
+        <SharedEventScreen view={shared.data} />
+      ) : (
+        <SharedEventWaiting name={event?.name ?? 'Event'} loading={shared.isPending || (shared.isFetching && !shared.error)} error={shared.error} />
+      )}
       {sharing && event ? <ShareEventSheet event={event} onClose={() => setSharing(false)} /> : null}
     </>
+  );
+}
+
+/** A shared event whose page cannot be drawn yet: still being read, its details still arriving, or a read that failed. */
+function SharedEventWaiting({ name, loading, error }: { name: string; loading: boolean; error: unknown }) {
+  return (
+    <div className={SCREEN} data-testid="shared-event-waiting">
+      <LargeTitle title={name} back="Events" backTo="/events" />
+      <ErrorBox error={error} />
+      <p className="px-[4px] py-[8px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">
+        {loading
+          ? 'Loading…'
+          : error
+            ? `${name} is shared, and could not be read on this phone just now.`
+            : `${name} is still arriving from the others. It opens once its details are here.`}
+      </p>
+    </div>
   );
 }
 
@@ -74,7 +107,7 @@ function SharedEventScreen({ view }: { view: SharedEventView }) {
       await work();
       await invalidate();
     } catch (failure) {
-      setError(failure);
+      setError(sayError(failure));
     }
   };
   const menu = sharedEventMenu(view, {
@@ -87,8 +120,7 @@ function SharedEventScreen({ view }: { view: SharedEventView }) {
   });
   return (
     <>
-      <ErrorBox error={error} />
-      <SharedEventPage view={view} menu={menu} />
+      <SharedEventPage view={view} menu={menu} error={error} />
       {currencyOpen ? <EventCurrencySheet view={view} onClose={() => setCurrencyOpen(false)} /> : null}
     </>
   );
@@ -294,7 +326,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     run: () => void navigate(addSpendingTarget(eventId)),
   };
   // Only an event that is not shared reaches this page (a shared one is `SharedEventScreen`), so an event can be shared once.
-  const share: CornerAction = { key: 'share', label: 'Share this event', run: onShare };
+  // A corner button carries a glyph, never a word: without one this drew an empty circle beside + (I1).
+  const share: CornerAction = { key: 'share', label: 'Share this event', glyph: <UserPlus size={21} aria-hidden />, run: onShare };
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
