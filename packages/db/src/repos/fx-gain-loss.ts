@@ -43,11 +43,20 @@ export function exchangeCategoryTx(db: Db, ws: WorkspaceContext, gain: boolean):
   );
 }
 
+const transferPostings = new WeakMap<object, true>();
+
+/** Whether this copy has joint net worth's partner-transfer postings. Once seen it is remembered, as `hasBooks` does. */
+async function transferPostingsExist(db: Db): Promise<boolean> {
+  if (transferPostings.get(db)) return true;
+  const rows = await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'member_transfer_postings'`);
+  if (rows.length > 0) transferPostings.set(db, true);
+  return rows.length > 0;
+}
+
 /** A shared event's derived transaction, or this phone's side of a transfer with a partner: in no workspace, ever. */
-async function inNoWorkspaceTx(db: Db, transactionId: string): Promise<boolean> {
+export async function inNoWorkspaceTx(db: Db, transactionId: string): Promise<boolean> {
   if (await eventPostingOfTx(db, transactionId)) return true;
-  const table = await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'member_transfer_postings'`);
-  if (table.length === 0) return false;
+  if (!(await transferPostingsExist(db))) return false;
   return (await db.values(sql`SELECT 1 FROM member_transfer_postings WHERE transaction_id = ${transactionId}`)).length > 0;
 }
 
