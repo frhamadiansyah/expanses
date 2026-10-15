@@ -80,6 +80,23 @@ describe('readCapture', () => {
     expect(reading.name?.value).toBe('INDOMARET');
   });
 
+  it('reads a bank message end to end: the card, the day and time, the merchant and the amount', () => {
+    const reading = readCapture(
+      notification('Terima kasih utk trx kartukredit XXXX1497 tgl 15-10-2026 15:05:49 di ROTI BAKAR KEIBAR KA IDR238.825,00. Jika trx tidak Anda kenal, hub 14000', 'BANKMANDIRI'),
+      WORDS,
+      null,
+    );
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 238_825, currency: 'IDR' });
+    // Day first with hyphens, the order a bank's message writes, and the seconds are not part of the stamp.
+    expect(reading.occurredAt?.value).toBe('2026-10-15T15:05');
+    expect(reading.name?.value).toBe('ROTI BAKAR KEIBAR KA');
+    // The masked number is the card, so a workspace holding more than one files it on the right one.
+    expect(reading.accountHint).toBe('1497');
+    // "Terima kasih" is thanks, not money received.
+    expect(reading.type.value).toBe('spent');
+  });
+
   it('reads money received, and who sent it', () => {
     const reading = readCapture(notification('Dana masuk Rp 5.000.000 dari PT MAJU JAYA'), WORDS, null);
     expect(reading.skipped).toBeNull();

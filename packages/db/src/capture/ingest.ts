@@ -156,7 +156,13 @@ export async function planDraft(
 ): Promise<CapturePlan> {
   const workspace = await workspaceFor(tx, ws, source);
   const learned = await accountFor(tx, source);
-  const card = await cardAccountFor(tx, workspace.workspaceId, reading.paymentMethod?.last4);
+  /*
+   * Which card paid: the payment method when the capture labelled one ("Sumber dana: Kartu Kredit •••• 1497"), and
+   * otherwise the masked number the capture printed anywhere — a bank's SMS names the card without ever labelling it
+   * ("trx kartukredit XXXX1497 …"), and reading those digits only to drop them files every card's purchases on one.
+   * An unknown or ambiguous four digits match no card, and the source's own account still answers.
+   */
+  const card = await cardAccountFor(tx, workspace.workspaceId, reading.paymentMethod?.last4 ?? reading.accountHint);
   // The card that paid outranks what the source learned; a top-up paid by card is the card's money going in.
   const account = card ?? learned;
   const method = reading.paymentMethod ?? null;

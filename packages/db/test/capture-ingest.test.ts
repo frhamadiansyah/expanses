@@ -258,6 +258,27 @@ describe('what is not worth a draft', () => {
     ).toMatchObject({ drafts: 0, skipped: 1 });
   });
 
+  it('files a bank message on the card its masked number names, not on the source\u2019s own account', async () => {
+    const { database, ws, bank } = await workspace();
+    const visa = await createCardAccount(database, ws, { name: 'Travel card', subtype: 'credit_card', currency: 'IDR' });
+    await addCard(database, ws, { accountId: visa.id, last4: '1497' });
+    const sms = at('15:05', {
+      id: 'sms-1',
+      app: 'BANKMANDIRI',
+      title: 'BANKMANDIRI',
+      body: 'Terima kasih utk trx kartukredit XXXX1497 tgl 15-10-2026 15:05:49 di ROTI BAKAR KEIBAR KA IDR238.825,00. Jika trx tidak Anda kenal, hub 14000',
+    });
+
+    // The source has learned a different account, and the card the message names still wins.
+    const source = await sourceFor(database.db, sms, false);
+    await setSourceAccount(database, source.id, bank.id, ws.workspaceId);
+    expect(await ingestCaptures(database, ws, [sms], { today: DAY })).toMatchObject({ drafts: 1, skipped: 0 });
+
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft).toMatchObject({ amountMinor: 238_825, occurredOn: '2026-10-15', kind: 'expense', accountId: visa.id });
+    expect(draft!.description).toContain('ROTI BAKAR KEIBAR KA');
+  });
+
   it('skips an offer handed over twice (the app stopped before the phone let it go) once', async () => {
     const { database, ws } = await workspace();
     const offer = at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' });

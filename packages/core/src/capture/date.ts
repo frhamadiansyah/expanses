@@ -90,8 +90,13 @@ const PATTERNS: readonly { source: RegExp; read: (m: RegExpExecArray) => { year:
     },
   },
   {
-    // 29/09/2026 — day first, the order this part of the world writes, with an optional time.
-    source: /(\d{1,2})[/.](\d{1,2})[/.](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?)?/g,
+    /*
+     * 29/09/2026, 29.09.2026, 29-09-2026 — day first, the order this part of the world writes, with an optional
+     * time. The hyphen belongs here as much as the slash: a bank's SMS writes "tgl 15-10-2026 15:05:49", and
+     * year-first above cannot claim it, since its year must come first and have four digits. A run of digits that
+     * is no date — a reference like 12-34-5678 — is thrown out by `valid` on its month.
+     */
+    source: /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?)?/g,
     read: (m) => ({ year: Number(m[3]), month: Number(m[2]), day: Number(m[1]), time: timeOf(m[4], m[5], undefined) }),
   },
 ];
