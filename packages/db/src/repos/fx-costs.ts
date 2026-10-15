@@ -1,6 +1,7 @@
 import {
   classifyInflow,
   currencyInfo,
+  EXCHANGE_LOSS_KEY,
   fifoCosts,
   type FifoResult,
   FX_LOT_SUBTYPES,
@@ -22,7 +23,8 @@ import { captureRevaluingTx } from '../sync/capture';
 import { sharingTablesExist } from '../sync/placeholder';
 import { hasBooks } from './books';
 import { dayOrderExists } from './day-order-column';
-import { inNoWorkspaceTx, writeGainLossTx } from './fx-gain-loss';
+import { clampEventItemsTx } from './event-items';
+import { type GainLossPair, inNoWorkspaceTx, pairByShape, writeGainLossTx } from './fx-gain-loss';
 import { fxTablesExist, queueForeignRecalcTx } from './fx-tables';
 
 /*
@@ -46,6 +48,9 @@ export interface FxTxLine extends FxLine {
   dayOrder: number | null;
   createdAt: string;
   fxRateToBase: number;
+  /** The line's account kind ('expense', 'asset', …) and system key: what says a category line, or a pair's line. */
+  accountKind: string;
+  systemKey: string | null;
 }
 
 function roleOf(account: { kind: string; subtype: string; currency: string | null; systemKey: string | null; placeholder: boolean }, baseCurrency: string): FxRole {
@@ -72,11 +77,20 @@ export async function isLotAccountTx(db: Db, ws: WorkspaceContext, accountId: st
 
 type LineRow = [string, string, string, string, number, number, number, string, string, string | null, string | null, string, number | null, string, number];
 
+/** An account's lines, and the gain or loss pair of each transaction that has one (left out of `lines`). */
+export interface AccountLines {
+  lines: FxTxLine[];
+  pairs: Map<string, GainLossPair>;
+}
+
 /**
- * Every line of every posted transaction that touches `accountId`, in the order they were written, each with its role;
- * an exchange's gain or loss pair is left out (it is the recalculation's own output, R8).
+ * Every line of every posted transaction that touches `accountId`, in the order they were written, each with its role,
+ * and each exchange's gain or loss pair apart from them (it is the recalculation's own output, R8). Two reads, however
+ * long the history (final review I2): the lines, and the pairs registered for them. A pair is known by the registry,
+ * else by its shape (final review I3): a partner's edit reposts an exchange through apply, and its pair arrives as two
+ * ordinary lines that only their shape still names.
  */
-export async function linesTouchingTx(db: Db, ws: WorkspaceContext, accountId: string, opts: { excludeTransactionId?: string | null } = {}): Promise<FxTxLine[]> {
+export async function accountLinesTx(db: Db, ws: WorkspaceContext, accountId: string, opts: { excludeTransactionId?: string | null } = {}): Promise<AccountLines> {
   const placed = await dayOrderExists(db);
   const placeholder = await placeholderSql(db, sql`e.account_id`);
   const rows = await db.values<LineRow>(sql`
@@ -87,10 +101,16 @@ export async function linesTouchingTx(db: Db, ws: WorkspaceContext, accountId: s
     JOIN transactions t ON t.id = e.transaction_id
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
       AND e.transaction_id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId})
-      AND e.id NOT IN (SELECT category_entry_id FROM fx_gain_loss UNION ALL SELECT exchange_entry_id FROM fx_gain_loss)
       ${opts.excludeTransactionId ? sql`AND t.id <> ${opts.excludeTransactionId}` : sql``}
     ORDER BY e.rowid`);
-  return rows.map(([entryId, transactionId, lineAccount, currency, amountMinor, amountBaseMinor, fxRateToBase, kind, subtype, accountCurrency, systemKey, occurredOn, dayOrder, createdAt, isPlaceholder]) => ({
+  const registered = new Map(
+    (
+      await db.values<[string, string, string]>(sql`
+        SELECT transaction_id, category_entry_id, exchange_entry_id FROM fx_gain_loss
+        WHERE transaction_id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId})`)
+    ).map(([transactionId, category, exchange]) => [transactionId, { category, exchange }]),
+  );
+  const all = rows.map(([entryId, transactionId, lineAccount, currency, amountMinor, amountBaseMinor, fxRateToBase, kind, subtype, accountCurrency, systemKey, occurredOn, dayOrder, createdAt, isPlaceholder]): FxTxLine => ({
     entryId,
     transactionId,
     accountId: lineAccount,
@@ -101,14 +121,39 @@ export async function linesTouchingTx(db: Db, ws: WorkspaceContext, accountId: s
     occurredOn,
     dayOrder: dayOrder === null ? null : Number(dayOrder),
     createdAt,
+    accountKind: kind,
+    systemKey,
     role: roleOf({ kind, subtype, currency: accountCurrency, systemKey, placeholder: Number(isPlaceholder) === 1 }, ws.baseCurrency),
   }));
+  const byTransaction = new Map<string, FxTxLine[]>();
+  for (const line of all) byTransaction.set(line.transactionId, [...(byTransaction.get(line.transactionId) ?? []), line]);
+  const pairs = new Map<string, GainLossPair>();
+  const left = new Set<string>();
+  for (const [transactionId, txLines] of byTransaction) {
+    const known = registered.get(transactionId);
+    const ids = new Set(txLines.map((line) => line.entryId));
+    const found = known && ids.has(known.category) && ids.has(known.exchange) ? { categoryEntryId: known.category, exchangeEntryId: known.exchange, registered: true } : null;
+    const pair = found ?? (() => {
+      const shaped = pairByShape(txLines, ws.baseCurrency);
+      return shaped ? { ...shaped, registered: false } : null;
+    })();
+    if (!pair) continue;
+    const category = txLines.find((line) => line.entryId === pair.categoryEntryId)!;
+    pairs.set(transactionId, { ...pair, amountMinor: category.amountMinor, key: category.systemKey });
+    left.add(pair.categoryEntryId).add(pair.exchangeEntryId);
+  }
+  return { lines: all.filter((line) => !left.has(line.entryId)), pairs };
 }
 
-/** What each outflow line was first posted at, positive (R4); absent for a line never rewritten. */
-async function dayValuesOfTx(db: Db, entryIds: readonly string[]): Promise<Map<string, number>> {
-  if (entryIds.length === 0) return new Map();
-  const rows = await db.values<[string, number]>(sql`SELECT entry_id, base_minor FROM fx_day_values WHERE entry_id IN ${idList(entryIds)}`);
+/** `accountLinesTx`'s lines alone: what the screens' reads replay. */
+export async function linesTouchingTx(db: Db, ws: WorkspaceContext, accountId: string, opts: { excludeTransactionId?: string | null } = {}): Promise<FxTxLine[]> {
+  return (await accountLinesTx(db, ws, accountId, opts)).lines;
+}
+
+/** What each outflow line of the account was first posted at, positive (R4); absent for a line never rewritten. One read. */
+async function dayValuesOfTx(db: Db, accountId: string): Promise<Map<string, number>> {
+  const rows = await db.values<[string, number]>(sql`
+    SELECT d.entry_id, d.base_minor FROM fx_day_values d JOIN entries e ON e.id = d.entry_id WHERE e.account_id = ${accountId}`);
   return new Map(rows.map(([id, base]) => [id, -Number(base)]));
 }
 
@@ -142,7 +187,7 @@ export async function movementsOfTx(
   const byTransaction = new Map<string, FxTxLine[]>();
   for (const line of lines) byTransaction.set(line.transactionId, [...(byTransaction.get(line.transactionId) ?? []), line]);
   const own = lines.filter((line) => line.accountId === accountId && line.amountMinor !== 0);
-  const dayValues = await dayValuesOfTx(db, own.filter((line) => line.amountMinor < 0).map((line) => line.entryId));
+  const dayValues = own.some((line) => line.amountMinor < 0) ? await dayValuesOfTx(db, accountId) : new Map<string, number>();
   const movements: FxMovement[] = [];
   const inCosts = new Map<string, Record<string, number>>();
   const carriedFrom = new Map<string, string>();
@@ -187,25 +232,53 @@ function rateFor(line: FxTxLine, base: number, baseCurrency: string): number {
 const usesKey = (uses: readonly { lotId: string; minor: number; costBaseMinor: number }[]) =>
   JSON.stringify([...uses].sort((a, b) => (a.lotId < b.lotId ? -1 : a.lotId > b.lotId ? 1 : 0)).map((use) => [use.lotId, use.minor, use.costBaseMinor]));
 
-async function usesOfAccountTx(db: Db, accountId: string): Promise<Map<string, string>> {
+/** What the account's two caches hold now: each outflow's lots (as `usesKey`), and each shortfall. Two reads. */
+async function cachesOfAccountTx(db: Db, accountId: string): Promise<{ uses: Map<string, string>; shortfalls: Map<string, number> }> {
   const rows = await db.values<[string, string, number, number]>(sql`SELECT out_entry_id, lot_entry_id, minor, cost_base_minor FROM fx_lot_uses WHERE account_id = ${accountId}`);
   const byOut = new Map<string, { lotId: string; minor: number; costBaseMinor: number }[]>();
   for (const [out, lotId, minor, cost] of rows) byOut.set(out, [...(byOut.get(out) ?? []), { lotId, minor: Number(minor), costBaseMinor: Number(cost) }]);
-  return new Map([...byOut].map(([out, uses]) => [out, usesKey(uses)]));
+  const shortfalls = await db.values<[string, number]>(sql`SELECT entry_id, uncovered_minor FROM fx_shortfalls WHERE account_id = ${accountId}`);
+  return { uses: new Map([...byOut].map(([out, uses]) => [out, usesKey(uses)])), shortfalls: new Map(shortfalls.map(([id, minor]) => [id, Number(minor)])) };
 }
 
-async function writeCachesTx(db: Db, accountId: string, result: FifoResult | null): Promise<void> {
-  await db.run(sql`DELETE FROM fx_lot_uses WHERE account_id = ${accountId}`);
-  await db.run(sql`DELETE FROM fx_shortfalls WHERE account_id = ${accountId}`);
-  if (!result) return;
-  for (const out of result.outs) {
-    for (const use of out.uses) {
-      await db.run(sql`INSERT INTO fx_lot_uses (account_id, out_entry_id, lot_entry_id, minor, cost_base_minor) VALUES (${accountId}, ${out.entryId}, ${use.lotId}, ${use.minor}, ${use.costBaseMinor})`);
-    }
+/** Rows per multi-row INSERT: 5 parameters a row stays far below SQLite's limit on bound parameters. */
+const BATCH = 200;
+
+async function inBatches<T>(items: readonly T[], write: (batch: readonly T[]) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < items.length; i += BATCH) await write(items.slice(i, i + BATCH));
+}
+
+/**
+ * Brings the account's two caches in line with this pass (final review I2): only the outflows whose lots or shortfall
+ * changed are deleted and written again, in batches — a new spend at the end of a long history writes its own rows and
+ * nothing else. `result` null: the account holds no lots (any more), and every row it had goes.
+ */
+async function writeCachesTx(db: Db, accountId: string, result: FifoResult | null, held: { uses: Map<string, string>; shortfalls: Map<string, number> } | null): Promise<void> {
+  if (!result || !held) {
+    await db.run(sql`DELETE FROM fx_lot_uses WHERE account_id = ${accountId}`);
+    await db.run(sql`DELETE FROM fx_shortfalls WHERE account_id = ${accountId}`);
+    if (!result) return;
   }
-  for (const shortfall of result.shortfalls) {
-    await db.run(sql`INSERT INTO fx_shortfalls (account_id, entry_id, uncovered_minor) VALUES (${accountId}, ${shortfall.entryId}, ${shortfall.uncoveredMinor})`);
-  }
+  const oldUses = held?.uses ?? new Map<string, string>();
+  const oldShort = held?.shortfalls ?? new Map<string, number>();
+  const newUses = new Map(result.outs.filter((out) => out.uses.length > 0).map((out) => [out.entryId, out]));
+  const newShort = new Map(result.shortfalls.map((shortfall) => [shortfall.entryId, shortfall.uncoveredMinor]));
+
+  const usesGone = [...oldUses.keys()].filter((out) => !newUses.has(out) || usesKey(newUses.get(out)!.uses) !== oldUses.get(out));
+  const usesNew = [...newUses.values()].filter((out) => oldUses.get(out.entryId) !== usesKey(out.uses));
+  const shortGone = [...oldShort.keys()].filter((id) => newShort.get(id) !== oldShort.get(id));
+  const shortNew = [...newShort].filter(([id, minor]) => oldShort.get(id) !== minor);
+
+  await inBatches(usesGone, (batch) => db.run(sql`DELETE FROM fx_lot_uses WHERE account_id = ${accountId} AND out_entry_id IN ${idList(batch)}`));
+  const rows = usesNew.flatMap((out) => out.uses.map((use) => sql`(${accountId}, ${out.entryId}, ${use.lotId}, ${use.minor}, ${use.costBaseMinor})`));
+  await inBatches(rows, (batch) => db.run(sql`INSERT INTO fx_lot_uses (account_id, out_entry_id, lot_entry_id, minor, cost_base_minor) VALUES ${sql.join([...batch], sql`, `)}`));
+  await inBatches(shortGone, (batch) => db.run(sql`DELETE FROM fx_shortfalls WHERE account_id = ${accountId} AND entry_id IN ${idList(batch)}`));
+  await inBatches(shortNew, (batch) =>
+    db.run(sql`INSERT INTO fx_shortfalls (account_id, entry_id, uncovered_minor) VALUES ${sql.join(
+      batch.map(([id, minor]) => sql`(${accountId}, ${id}, ${minor})`),
+      sql`, `,
+    )}`),
+  );
 }
 
 /**
@@ -213,18 +286,13 @@ async function writeCachesTx(db: Db, accountId: string, result: FifoResult | nul
  * recalculation added left out: a plain exchange is filed in Personal only while it carries its pair (R8), and must
  * still read as filed nowhere here, or the next pass would take the pair away and the one after put it back. A shared
  * event's derived transaction and a partner transfer's posting belong to no workspace, whatever else is on them.
+ * `lines` are the transaction's lines without its pair; with no category line among them, nothing needs reading.
  */
-async function filedInWorkspaceTx(db: Db, transactionId: string): Promise<boolean> {
+async function filedInWorkspaceTx(db: Db, transactionId: string, lines: readonly FxTxLine[]): Promise<boolean> {
+  if (!lines.some((line) => line.accountKind === 'income' || line.accountKind === 'expense')) return false;
   if (!(await hasBooks(db))) return false;
   if (await inNoWorkspaceTx(db, transactionId)) return false;
-  const [row] = await db.values(sql`
-    SELECT 1 FROM book_transactions b
-    WHERE b.transaction_id = ${transactionId}
-      AND EXISTS (
-        SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id
-        WHERE e.transaction_id = b.transaction_id AND a.kind IN ('income', 'expense')
-          AND e.id NOT IN (SELECT category_entry_id FROM fx_gain_loss WHERE transaction_id = ${transactionId}))
-    LIMIT 1`);
+  const [row] = await db.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${transactionId} LIMIT 1`);
   return row !== undefined;
 }
 
@@ -239,13 +307,29 @@ async function filedInWorkspaceTx(db: Db, transactionId: string): Promise<boolea
 const asSpending = (lines: readonly FxTxLine[]): FxTxLine[] =>
   lines.map((line) => (line.role === 'money' || (line.role === 'lot' && line.amountMinor > 0) ? { ...line, role: 'other' } : line));
 
-/** One account's pass: what it rewrote, and which pockets its moves carried lots into (the chain). */
-export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<{ changedTransactions: string[]; chain: { accountId: string; fromDate: string }[] }> {
+const expenseOf = (lines: readonly FxTxLine[], base: (line: FxTxLine) => number) =>
+  lines.filter((line) => line.accountKind === 'expense').reduce((sum, line) => sum + base(line), 0);
+
+/**
+ * One account's pass: what it rewrote, and which pockets its moves carried lots into (the chain).
+ *
+ * Its cost stays proportional to what changed (final review I2): a fixed handful of reads for the whole account, then
+ * writes only for the transactions whose figures move and the cache rows that differ. The replay itself still starts at
+ * the first entry — the lots open at `fromDate` are the whole history — but FIFO is causal (R10): when every outflow
+ * dated before `fromDate` used exactly the lots it used last time, nothing before `fromDate` can have moved and those
+ * transactions are not revalued at all. Without `fromDate`, or with a cache that disagrees, every one is.
+ */
+export async function recalcAccountTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  accountId: string,
+  fromDate: string | null = null,
+): Promise<{ changedTransactions: string[]; chain: { accountId: string; fromDate: string }[] }> {
   if (!(await isLotAccountTx(tx, ws, accountId))) {
-    await writeCachesTx(tx, accountId, null);
+    await writeCachesTx(tx, accountId, null, null);
     return { changedTransactions: [], chain: [] };
   }
-  const lines = await linesTouchingTx(tx, ws, accountId);
+  const { lines, pairs } = await accountLinesTx(tx, ws, accountId);
   const { movements, inCosts, byTransaction } = await movementsOfTx(tx, ws, accountId, lines);
   const result = fifoCosts(movements);
   const transactionOf = new Map(lines.map((line) => [line.entryId, line.transactionId]));
@@ -254,8 +338,13 @@ export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: s
     const transactionId = transactionOf.get(out.entryId)!;
     outCosts.set(transactionId, { ...(outCosts.get(transactionId) ?? {}), [out.entryId]: out.costBaseMinor });
   }
-  const oldUses = await usesOfAccountTx(tx, accountId);
+  const held = await cachesOfAccountTx(tx, accountId);
+  const oldUses = held.uses;
   const newUses = new Map(result.outs.map((out) => [out.entryId, usesKey(out.uses)]));
+  const dateOf = new Map(movements.map((movement) => [movement.entryId, movement.occurredOn]));
+  const settled =
+    fromDate !== null &&
+    result.outs.every((out) => dateOf.get(out.entryId)! >= fromDate || ((oldUses.get(out.entryId) ?? '[]') === newUses.get(out.entryId) && (held.shortfalls.get(out.entryId) ?? 0) === out.uncoveredMinor));
   const changedTransactions: string[] = [];
   const chain: { accountId: string; fromDate: string }[] = [];
 
@@ -263,9 +352,12 @@ export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: s
     const out = outCosts.get(transactionId);
     const into = inCosts.get(transactionId);
     if (!out && !into) continue;
+    if (settled && txLines[0]!.occurredOn < fromDate!) continue;
+    const exchanged = txLines.some((line) => line.role === 'exchange');
+    const pair = pairs.get(transactionId) ?? null;
     // Ruling: a pair is only ever written on a transaction in no workspace; one filed in a workspace spreads its whole
     // cost over its own lines (`asSpending`). Asked only where a pair could arise: money leaving across currencies.
-    const filed = out !== undefined && txLines.some((line) => line.role === 'exchange') && (await filedInWorkspaceTx(tx, transactionId));
+    const filed = out !== undefined && exchanged && (await filedInWorkspaceTx(tx, transactionId, txLines));
     let revalued: Revalued;
     try {
       revalued = revalueTransaction({ lines: filed ? asSpending(txLines) : txLines, baseCurrency: ws.baseCurrency, ...(out ? { outCosts: out } : {}), ...(into ? { inCosts: into } : {}) });
@@ -281,8 +373,12 @@ export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: s
     const changed = txLines.filter((line) => revalued.bases[line.entryId] !== line.amountBaseMinor);
     if (changed.length > 0) {
       await captureRevaluingTx(tx, transactionId);
-      for (const line of changed.filter((l) => l.role === 'lot')) {
-        await tx.run(sql`INSERT OR IGNORE INTO fx_day_values (entry_id, base_minor, rate) VALUES (${line.entryId}, ${line.amountBaseMinor}, ${line.fxRateToBase})`);
+      const lots = changed.filter((l) => l.role === 'lot');
+      if (lots.length > 0) {
+        await tx.run(sql`INSERT OR IGNORE INTO fx_day_values (entry_id, base_minor, rate) VALUES ${sql.join(
+          lots.map((line) => sql`(${line.entryId}, ${line.amountBaseMinor}, ${line.fxRateToBase})`),
+          sql`, `,
+        )}`);
       }
       for (const line of changed) {
         const base = revalued.bases[line.entryId]!;
@@ -290,7 +386,14 @@ export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: s
       }
     }
     const gainLossBaseMinor = filed ? 0 : revalued.gainLossBaseMinor;
-    const pairWritten = await writeGainLossTx(tx, ws, transactionId, gainLossBaseMinor);
+    // Only an exchange can carry a pair, or one that already has one (I2): a plain spend reads and writes nothing here.
+    const pairWritten = exchanged || pair ? await writeGainLossTx(tx, ws, transactionId, gainLossBaseMinor, pair) : false;
+    // Final review M1: a cheaper cost lowers what a purchase spent, and an event plan's covers of it are stored figures
+    // that may now add to more than it. Cut as an edit of the purchase cuts them, so the next cover edit is not refused.
+    // What it spent counts an Exchange loss too (it is an expense line, as the plan's total reads it).
+    const spentBefore = expenseOf(txLines, (line) => line.amountBaseMinor) + (pair?.key === EXCHANGE_LOSS_KEY ? pair.amountMinor : 0);
+    const spentAfter = expenseOf(txLines, (line) => revalued.bases[line.entryId]!) + Math.max(0, -gainLossBaseMinor);
+    if (spentAfter < spentBefore) await clampEventItemsTx(tx, ws, transactionId);
     if (changed.length > 0 || pairWritten) {
       changedTransactions.push(transactionId);
       await tx.insert(auditLog).values({
@@ -313,7 +416,7 @@ export async function recalcAccountTx(tx: Db, ws: WorkspaceContext, accountId: s
       if (revalued.bases[line.entryId] !== line.amountBaseMinor || lotsMoved) chain.push({ accountId: line.accountId, fromDate: line.occurredOn });
     }
   }
-  await writeCachesTx(tx, accountId, result);
+  await writeCachesTx(tx, accountId, result, held);
   return { changedTransactions, chain };
 }
 
@@ -345,7 +448,7 @@ export async function recalcForeignTx(
       continue;
     }
     steps += 1;
-    const pass = await recalcAccountTx(tx, ws, next);
+    const pass = await recalcAccountTx(tx, ws, next, from);
     pass.changedTransactions.forEach((id) => changed.add(id));
     for (const link of pass.chain) queue.set(link.accountId, earlier(queue.has(link.accountId) ? queue.get(link.accountId)! : undefined, link.fromDate));
   }

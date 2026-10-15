@@ -39,20 +39,34 @@ function lotDates(movements: readonly FxMovement[]): Map<string, string> {
   return dates;
 }
 
-/** What spending `amountMinor` from a foreign account on `occurredOn` would cost, before it is saved. */
-export async function foreignCostPreview(
-  database: Database,
-  ws: WorkspaceContext,
-  input: { accountId: string; amountMinor: number; occurredOn: string; excludeTransactionId?: string | null; dayRate?: number | null },
-): Promise<ForeignCostPreview | null> {
+/** A foreign account's movements as the recalculation replays them, read once for a preview (final review M5). */
+export interface ForeignMovements {
+  accountId: string;
+  currency: string;
+  movements: FxMovement[];
+}
+
+/**
+ * The account's whole history, read once: the Add screen keeps it while the amount is typed and prices each keystroke
+ * in memory (`previewForeignCost`), instead of reading every line of the account again for every digit (M5). Null for
+ * an account that holds no lots.
+ */
+export async function foreignMovements(database: Database, ws: WorkspaceContext, input: { accountId: string; excludeTransactionId?: string | null }): Promise<ForeignMovements | null> {
   const db = database.db;
-  if (!(await fxTablesExist(db)) || !(input.amountMinor > 0)) return null;
+  if (!(await fxTablesExist(db))) return null;
   const lot = await isLotAccountTx(db, ws, input.accountId);
   if (!lot) return null;
   const lines = await linesTouchingTx(db, ws, input.accountId, { excludeTransactionId: input.excludeTransactionId ?? null });
   const { movements } = await movementsOfTx(db, ws, input.accountId, lines);
+  return { accountId: input.accountId, currency: lot.currency, movements };
+}
+
+/** What spending `amountMinor` on `occurredOn` would cost, from movements already read: no database. */
+export function previewForeignCost(read: ForeignMovements, baseCurrency: string, input: { amountMinor: number; occurredOn: string; dayRate?: number | null }): ForeignCostPreview | null {
+  if (!(input.amountMinor > 0)) return null;
+  const { movements, currency } = read;
   const rate = input.dayRate && input.dayRate > 0 ? input.dayRate : null;
-  const dayValue = rate === null ? 0 : convertMinor(input.amountMinor, lot.currency, ws.baseCurrency, rate);
+  const dayValue = rate === null ? 0 : convertMinor(input.amountMinor, currency, baseCurrency, rate);
   // The newest row of its day: a new row lands on top of its day, which is last in time (R3).
   const previewed: FxMovement = { kind: 'out', entryId: '\u0000preview', occurredOn: input.occurredOn, dayOrder: null, createdAt: '9999-12-31T23:59:59.999Z', minor: input.amountMinor, dayValueBaseMinor: dayValue };
   const out = fifoCosts([...movements, previewed]).outs.find((o) => o.entryId === previewed.entryId)!;
@@ -61,14 +75,25 @@ export async function foreignCostPreview(
   const costBaseMinor = out.uncoveredMinor > 0 && rate === null ? null : out.costBaseMinor;
   const dates = lotDates(movements);
   return {
-    currency: lot.currency,
+    currency,
     costBaseMinor,
     coveredMinor,
     coveredCostBaseMinor,
     uncoveredMinor: out.uncoveredMinor,
-    ratePerUnit: costBaseMinor === null ? null : ratePerUnit(costBaseMinor, input.amountMinor, lot.currency, ws.baseCurrency),
+    ratePerUnit: costBaseMinor === null ? null : ratePerUnit(costBaseMinor, input.amountMinor, currency, baseCurrency),
     lots: out.uses.map((use) => ({ lotId: use.lotId, lotDate: dates.get(use.lotId) ?? input.occurredOn, minor: use.minor })),
   };
+}
+
+/** What spending `amountMinor` from a foreign account on `occurredOn` would cost, before it is saved: both steps at once. */
+export async function foreignCostPreview(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { accountId: string; amountMinor: number; occurredOn: string; excludeTransactionId?: string | null; dayRate?: number | null },
+): Promise<ForeignCostPreview | null> {
+  if (!(input.amountMinor > 0)) return null;
+  const read = await foreignMovements(database, ws, input);
+  return read ? previewForeignCost(read, ws.baseCurrency, input) : null;
 }
 
 export interface ForeignLotsView {

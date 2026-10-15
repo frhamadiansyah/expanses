@@ -565,16 +565,21 @@ async function postingLines(
 
   const accountOwner = money.paidFrom?.owner ?? money.paidBy;
   let cardId: string | null | undefined;
+  const headBase = new Map<object, number>();
   const own =
     money.paidBy === ctx.memberId && accountOwner === ctx.memberId && head
       ? (
-          await tx.values<[string, number, string, string | null, string | null]>(sql`
-            SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id
+          await tx.values<[string, number, string, string | null, string | null, number]>(sql`
+            SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id, e.amount_base_minor
             FROM entries e JOIN accounts a ON a.id = e.account_id
             WHERE e.transaction_id = ${head} AND a.kind NOT IN ('income', 'expense')
               AND e.account_id NOT IN (SELECT account_id FROM book_member_accounts)
             ORDER BY e.rowid`)
-        ).map(([accountId, amountMinor, currency, memo, spendCategoryId]) => ({ accountId, amountMinor: Number(amountMinor), currency, memo, spendCategoryId }))
+        ).map(([accountId, amountMinor, currency, memo, spendCategoryId, amountBaseMinor]) => {
+          const entry = { accountId, amountMinor: Number(amountMinor), currency, memo, spendCategoryId };
+          headBase.set(entry, Number(amountBaseMinor));
+          return entry;
+        })
       : [];
 
   for (const [currency, sum] of perCurrency) {
@@ -601,6 +606,18 @@ async function postingLines(
       largest.amountMinor += diff;
     }
     for (const entry of mine) if (entry.amountMinor !== 0) lines.push(entry);
+  }
+  // This member's own lines in a currency no category line speaks of, that already add up to nothing in it: the other
+  // leg of an exchange (lira out, lira onto the exchange account), which a purchase never carries — it carries category
+  // lines only. Withdrawal rate R8 files an exchange with its gain or loss pair in Personal, so a shared Personal book
+  // sends it as a purchase; rebuilt from the category lines alone, a partner's note edit dropped the lira side here and
+  // put the money back in the pocket (final review I3). Kept as they are. A currency whose own lines do not balance
+  // is one a category line left; it goes as it always did.
+  for (const currency of new Set(own.map((entry) => entry.currency))) {
+    if (perCurrency.has(currency)) continue;
+    const rest = own.filter((entry) => entry.currency === currency && entry.amountMinor !== 0);
+    // With the figures they hold here, which need no rate of the day (and which the recalculation then owns).
+    if (rest.length > 0 && rest.reduce((sum, entry) => sum + entry.amountMinor, 0) === 0) lines.push(...rest.map((entry) => ({ ...entry, amountBaseMinor: headBase.get(entry)! })));
   }
   return { lines, ratesToBase, cardId, refused };
 }

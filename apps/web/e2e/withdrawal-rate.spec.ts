@@ -96,7 +96,7 @@ test('lira spent before any withdrawal was recorded says so, on the Add screen, 
 
   // Saved at the day's 512 (fetched on Save): the receipt values it there, and says no withdrawal covered it.
   await page.getByRole('link', { name: 'Receipt for Street snack' }).click();
-  await expect(page.getByText('≈ Rp 230.400 · ₺ 450 at today’s rate (no withdrawal recorded)')).toBeVisible();
+  await expect(page.getByText('≈ Rp 230.400 · ₺ 450 at the day’s rate (no withdrawal recorded)')).toBeVisible();
   await expect(page.getByText(/^From the .* withdrawal$/)).toHaveCount(0);
 
   await openLiraPocket(page, CASH.name);

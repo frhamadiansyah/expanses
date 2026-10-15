@@ -24,17 +24,29 @@ const unitPrice = (costBaseMinor: number, minor: number, currency: string, baseC
   `${currencyInfo(baseCurrency).symbol} ${number(costBaseMinor / 10 ** currencyInfo(baseCurrency).exponent / (minor / 10 ** currencyInfo(currency).exponent))}`;
 
 /**
- * The Add screen's and the receipt's line (§7): "≈ Rp 236.250 at the withdrawal rate (525)"; with money no withdrawal
- * covers, "≈ Rp 238.900 · ₺ 300 at today’s rate (no withdrawal recorded)"; with no rate for today, only the shortfall.
+ * The Add screen's line (§7): "≈ Rp 236.250 at the withdrawal rate (525)"; with money no withdrawal covers,
+ * "≈ Rp 238.900 · ₺ 300 at today’s rate (no withdrawal recorded)"; with no rate for today, only the shortfall.
  */
 export function withdrawalRateLine(cost: { costBaseMinor: number | null; uncoveredMinor: number; ratePerUnit: number | null }, currency: string, baseCurrency: string): string | null {
+  return costLine(cost, currency, baseCurrency, 'today’s rate');
+}
+
+/**
+ * The receipt's line (§7, final review M2): the same, except that a saved spend's uncovered part was valued at the
+ * rate of the day it was spent (R4), which on a receipt from months ago is not today's: "· ₺ 300 at the day’s rate".
+ */
+export function receiptWithdrawalLine(cost: { costBaseMinor: number | null; uncoveredMinor: number; ratePerUnit: number | null }, currency: string, baseCurrency: string): string | null {
+  return costLine(cost, currency, baseCurrency, 'the day’s rate');
+}
+
+function costLine(cost: { costBaseMinor: number | null; uncoveredMinor: number; ratePerUnit: number | null }, currency: string, baseCurrency: string, rate: string): string | null {
   if (cost.uncoveredMinor === 0) {
     if (cost.costBaseMinor === null || cost.ratePerUnit === null) return null;
     return `≈ ${formatMinor(cost.costBaseMinor, baseCurrency)} at the withdrawal rate (${number(cost.ratePerUnit)})`;
   }
   const uncovered = foreignMoney(cost.uncoveredMinor, currency);
   if (cost.costBaseMinor === null) return `${uncovered} has no withdrawal recorded and no rate for today yet`;
-  return `≈ ${formatMinor(cost.costBaseMinor, baseCurrency)} · ${uncovered} at today’s rate (no withdrawal recorded)`;
+  return `≈ ${formatMinor(cost.costBaseMinor, baseCurrency)} · ${uncovered} at ${rate} (no withdrawal recorded)`;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { formatMinor, monthName } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, TransactionView, WithdrawalsUsed } from '@expanses/db';
-import { fromWithdrawalsText, withdrawalRateLine } from '../../lib/withdrawal-rate';
+import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
 
@@ -120,7 +120,7 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (paid) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
   // Withdrawal rate §7: what the foreign money cost, and which withdrawals it came from.
   if (input.withdrawal) {
-    const cost = withdrawalRateLine(input.withdrawal, input.withdrawal.currency, input.currency);
+    const cost = receiptWithdrawalLine(input.withdrawal, input.withdrawal.currency, input.currency);
     if (cost) lines.push({ label: 'Cost', value: cost });
     const from = fromWithdrawalsText(input.withdrawal.uses, input.today ?? tx.occurredOn);
     if (from) lines.push({ label: 'Withdrawn', value: from });

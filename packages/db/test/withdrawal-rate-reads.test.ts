@@ -1,6 +1,6 @@
 import { exchangeLines, expenseLines, transferLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { createAccount, exchangeResultOf, foreignCostPreview, foreignLots, listAccounts, postTransaction, recalcForeignTx, systemAccountId, withdrawalsUsedBy } from '../src/index';
+import { createAccount, exchangeResultOf, foreignCostPreview, foreignLots, foreignMovements, listAccounts, postTransaction, previewForeignCost, recalcForeignTx, systemAccountId, withdrawalsUsedBy } from '../src/index';
 import { setupDb } from './helpers';
 
 /* Withdrawal rate §7's figures, read. Invented: lira at 525 and 540, the day's 512. */
@@ -52,6 +52,23 @@ describe('foreignCostPreview (Add screen, R20)', () => {
     await t.settle();
     expect(await t.preview(950_000, { excludeTransactionId: dinner })).toMatchObject({ costBaseMinor: 4_987_500, uncoveredMinor: 0 });
     expect(await t.preview(950_000, { dayRate: 512 })).toMatchObject({ coveredMinor: 100_000, uncoveredMinor: 850_000, costBaseMinor: 525_000 + 4_352_000 });
+  });
+
+  it('reads the account once and prices every keystroke from it in memory, as a save would (final review M5)', async () => {
+    const t = await trip();
+    await t.withdraw('2026-11-02', 105_000, 20_000);
+    await t.withdraw('2026-11-04', 540_000, 100_000);
+    await t.spend('2026-11-03', 15_000);
+    await t.settle();
+    const read = await foreignMovements(t.database, t.ws, { accountId: t.lira });
+    expect(read).not.toBeNull();
+    // Typed one digit at a time: 4, 45, 450, 4.500 (kurus ×100), each priced without the database.
+    for (const amountMinor of [400, 4_500, 45_000, 450_000]) {
+      const inMemory = previewForeignCost(read!, t.ws.baseCurrency, { amountMinor, occurredOn: '2026-11-15', dayRate: 512 });
+      expect(inMemory).toEqual(await t.preview(amountMinor, { dayRate: 512 }));
+    }
+    expect(previewForeignCost(read!, t.ws.baseCurrency, { amountMinor: 0, occurredOn: '2026-11-15' })).toBeNull();
+    expect(await foreignMovements(t.database, t.ws, { accountId: t.bank })).toBeNull();
   });
 
   it('is nothing for money that is not foreign, or no money at all', async () => {

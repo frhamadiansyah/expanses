@@ -218,6 +218,19 @@ describe('recalcForeignTx: whose account, and how often', () => {
     expect(await t.revalued()).toBe(audits);
   });
 
+  it('revalues what is dated before the change after all when the lots it used are not the ones recorded (I2)', async () => {
+    const t = await trip();
+    await t.withdraw('2026-11-02', 5_250_000, 1_000_000);
+    const dinner = await t.spend('2026-11-03', 45_000);
+    await t.recalc();
+    // A figure and a cache out of step (a write from before the cache, an interrupted pass): the dinner back at its
+    // posted figure, and no record of the lots it used.
+    await t.database.db.run(sql`UPDATE entries SET amount_base_minor = CASE WHEN account_id = ${t.lira} THEN -230400 ELSE 230400 END WHERE transaction_id = ${dinner}`);
+    await t.database.db.run(sql`DELETE FROM fx_lot_uses WHERE account_id = ${t.lira}`);
+    await t.recalc(t.lira, '2026-11-10');
+    expect(await t.bases(dinner)).toEqual({ [t.lira]: -236_250, [t.category('Restaurants')]: 236_250 });
+  });
+
   it('in a shared Personal book, the spend goes out at the withdrawal rate', async () => {
     const t = await trip();
     const personal = await personalBook(t.database, t.ws);

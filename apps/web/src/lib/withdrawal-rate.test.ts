@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exchangeOutPreview, exchangeResultLine, exchangeResultText, foreignMoney, fromWithdrawalsText, transferRateText, withdrawalRateLine, withdrawalsLeftView } from './withdrawal-rate';
+import { exchangeOutPreview, exchangeResultLine, exchangeResultText, foreignMoney, fromWithdrawalsText, receiptWithdrawalLine, transferRateText, withdrawalRateLine, withdrawalsLeftView } from './withdrawal-rate';
 
 /* Withdrawal rate §7's copy, word for word (with the app's ’). Invented figures. Intl writes a no-break space after Rp. */
 const plain = (text: string | null) => text?.replace(/ /g, ' ') ?? null;
@@ -15,6 +15,11 @@ describe('the withdrawal rate’s words (§7)', () => {
     expect(plain(withdrawalRateLine({ costBaseMinor: 236_250, uncoveredMinor: 0, ratePerUnit: 525 }, 'TRY', 'IDR'))).toBe('≈ Rp 236.250 at the withdrawal rate (525)');
     expect(plain(withdrawalRateLine({ costBaseMinor: 238_900, uncoveredMinor: 30_000, ratePerUnit: 530.9 }, 'TRY', 'IDR'))).toBe('≈ Rp 238.900 · ₺ 300 at today’s rate (no withdrawal recorded)');
     expect(withdrawalRateLine({ costBaseMinor: null, uncoveredMinor: 30_000, ratePerUnit: null }, 'TRY', 'IDR')).toBe('₺ 300 has no withdrawal recorded and no rate for today yet');
+  });
+
+  it('on a receipt, values what no withdrawal covered at the day’s rate: the day it was spent, not today (M2)', () => {
+    expect(plain(receiptWithdrawalLine({ costBaseMinor: 236_250, uncoveredMinor: 0, ratePerUnit: 525 }, 'TRY', 'IDR'))).toBe('≈ Rp 236.250 at the withdrawal rate (525)');
+    expect(plain(receiptWithdrawalLine({ costBaseMinor: 238_900, uncoveredMinor: 30_000, ratePerUnit: 530.9 }, 'TRY', 'IDR'))).toBe('≈ Rp 238.900 · ₺ 300 at the day’s rate (no withdrawal recorded)');
   });
 
   it('writes a transfer’s Rate against the market when one side is the base currency (R15)', () => {

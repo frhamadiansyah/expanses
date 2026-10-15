@@ -344,6 +344,11 @@ describe('a spend from foreign cash (withdrawal rate §7)', () => {
     expect(valueOf(lines, 'Withdrawn')).toBe('From the 12 Nov withdrawal');
   });
 
+  it('values a past spend’s uncovered part at the day’s rate, never today’s (final review M2)', () => {
+    const lines = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: used([{ lotId: 'w1', lotDate: '2026-11-12' }], 15_000), today: '2027-03-02' });
+    expect(valueOf(lines, 'Cost')).toBe('≈ Rp 236.250 · ₺ 150 at the day’s rate (no withdrawal recorded)');
+  });
+
   it('counts two withdrawals, and says nothing for money that was not foreign', () => {
     const two = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: used([{ lotId: 'w1', lotDate: '2026-11-02' }, { lotId: 'w2', lotDate: '2026-11-09' }]), today: '2026-11-20' });
     expect(valueOf(two, 'Withdrawn')).toBe('From 2 withdrawals');

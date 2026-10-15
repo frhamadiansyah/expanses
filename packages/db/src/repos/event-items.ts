@@ -423,6 +423,21 @@ export async function setPurchaseCover(
  * an Indonesian share times an Indonesian total passes what a double can count in whole numbers long before either
  * figure looks large on screen, and money here is never a float.
  */
+/**
+ * Cuts the plan's covers of one purchase back to what it now spent, when they add to more (withdrawal rate, final
+ * review M1). Covers are stored base figures; the withdrawal rate's recalculation rewrites a purchase's figures in place
+ * — a cheaper withdrawal recorded late lowers what it spent — and nothing else would bring its covers along, so the
+ * next cover edit on it would be refused as OVER_ALLOCATED. The same cut in proportion as an edit's (`carryEventItemTx`);
+ * covers that still fit are left exactly as they are.
+ */
+export async function clampEventItemsTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<void> {
+  if (!(await eventItemsExist(tx))) return;
+  const [row] = await tx.values<[number | null]>(sql`
+    SELECT sum(max(0, coalesce(share_minor, 0))) FROM event_items WHERE workspace_id = ${ws.workspaceId} AND transaction_id = ${transactionId}`);
+  const given = Number(row?.[0] ?? 0);
+  if (given > 0 && given > (await expenseTotalOf(tx, ws, transactionId))) await carryEventItemTx(tx, ws, transactionId, transactionId);
+}
+
 export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: string, to: string): Promise<void> {
   if (!(await eventItemsExist(tx))) return;
   const rows = await tx
