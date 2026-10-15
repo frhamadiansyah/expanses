@@ -1,7 +1,7 @@
 import type { BudgetLine } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { basisOfRow, changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf, typedCaps } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
 
 function line(id: string, name: string, children: BudgetLine[] = []): BudgetLine {
   return { id, name, ownMinor: 0, totalMinor: 0, capMinor: null, overMinor: 0, children };
@@ -207,3 +207,22 @@ describe('a share keeps the basis it was saved with', () => {
   });
 });
 
+describe('switchRow', () => {
+  const base = { basis: 'take-home' as const, label: 'take-home', minor: 12_000_000 };
+
+  it('turns a figure typed in another unit into the share its month is', () => {
+    const quarterly = { amount: '3.600.000', frequency: 'quarterly' as const, filled: false, mode: 'amount' as const };
+    expect(switchRow(quarterly, 'share', base, 'IDR')).toMatchObject({ amount: '10', frequency: 'monthly', mode: 'share' });
+  });
+
+  it('turns a share into its month’s figure, by the month whatever unit was picked', () => {
+    const share = { amount: '10', frequency: 'monthly' as const, filled: false, mode: 'share' as const };
+    expect(switchRow(share, 'weekly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'monthly', mode: 'amount' });
+    expect(switchRow(share, 'monthly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'monthly', mode: 'amount' });
+  });
+
+  it('changes only the unit of a figure typed as an amount', () => {
+    const monthly = { amount: '1.200.000', frequency: 'monthly' as const, filled: false, mode: 'amount' as const };
+    expect(switchRow(monthly, 'yearly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'yearly', mode: 'amount' });
+  });
+});

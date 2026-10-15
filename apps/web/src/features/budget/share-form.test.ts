@@ -35,15 +35,20 @@ describe('toPercent and toAmount', () => {
   const base = { basis: 'take-home' as const, label: 'take-home', minor: 12_000_000 };
 
   it('turn a figure into its share and back within a whole unit', () => {
-    expect(toPercent('1.860.000', base, 'IDR')).toBe('15,5');
+    expect(toPercent('1.860.000', 'monthly', base, 'IDR')).toBe('15,5');
     expect(toAmount('15,5', base, 'IDR')).toBe('1.860.000');
-    expect(toAmount(toPercent('1.234.567', base, 'IDR'), base, 'IDR')).toBe('1.234.800');
+    expect(toAmount(toPercent('1.234.567', 'monthly', base, 'IDR'), base, 'IDR')).toBe('1.234.800');
+  });
+
+  it('turn a figure typed in another unit into the share its month is', () => {
+    expect(toPercent('3.600.000', 'quarterly', base, 'IDR')).toBe('10');
+    expect(toPercent('1.200.000', 'monthly', base, 'IDR')).toBe('10');
   });
 
   it('keep an empty or unreadable figure as it is, and give no share without a basis', () => {
-    expect(toPercent('', base, 'IDR')).toBe('');
+    expect(toPercent('', 'monthly', base, 'IDR')).toBe('');
     expect(toAmount('abc', base, 'IDR')).toBe('');
-    expect(toPercent('500.000', { ...base, minor: 0 }, 'IDR')).toBe('');
+    expect(toPercent('500.000', 'monthly', { ...base, minor: 0 }, 'IDR')).toBe('');
   });
 });
 

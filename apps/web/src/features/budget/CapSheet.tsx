@@ -92,7 +92,7 @@ export function CapSheet({
   const switchMode = (next: 'amount' | 'share') => {
     if (next === mode) return;
     setTouched(true);
-    setAmount(next === 'share' ? toPercent(amount, base, currency) : toAmount(amount, base, currency));
+    setAmount(next === 'share' ? toPercent(amount, frequency, base, currency) : toAmount(amount, base, currency));
     if (next === 'share') setFrequency('monthly');
     setMode(next);
   };

@@ -11,10 +11,10 @@ import { bareFigure } from '../networth/debt-rows';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState, rowStateOf, typedCaps } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
 import { FREQUENCY_WORDS } from './frequency-form';
 import { useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
-import { type ShareBase, toAmount, toPercent } from './share-form';
+import type { ShareBase } from './share-form';
 
 const UNIT_SHORT: Record<BudgetFrequency, string> = { daily: '/day', weekly: '/wk', monthly: '/mo', quarterly: '/qtr', yearly: '/yr' };
 
@@ -299,11 +299,7 @@ function BudgetField({
         <select
           aria-label={`${row.label} every`}
           value={share ? 'share' : value.frequency}
-          onChange={(e) => {
-            const next = e.target.value;
-            if (next === 'share') onChange({ mode: 'share', frequency: 'monthly', amount: toPercent(value.amount, base, currency) });
-            else onChange({ mode: 'amount', frequency: next as BudgetFrequency, amount: share ? toAmount(value.amount, base, currency) : value.amount });
-          }}
+          onChange={(e) => onChange(switchRow(value, e.target.value as 'share' | BudgetFrequency, base, currency))}
           className="ph-focus h-[36px] w-[44px] shrink-0 appearance-none bg-transparent text-[13px] text-[var(--ph-ink-3)]"
         >
           {BUDGET_FREQUENCIES.map((key) => (
