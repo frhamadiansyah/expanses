@@ -1,7 +1,9 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
+import type { PreviewedInvite } from '@expanses/db';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { LargeTitle, SCREEN } from '../../ui/native';
+import { joinTitle } from './join-event';
 import { JoinWorkspace } from './JoinWorkspace';
 
 /**
@@ -16,14 +18,20 @@ export function JoinPage() {
   const [code] = useState(() => decodeHash(hash));
   const { switchBook } = useApp();
   const navigate = useNavigate();
+  // An event's invite says what it joins: "Join Coast week", not a workspace (spec §6).
+  const [preview, setPreview] = useState<PreviewedInvite | null>(null);
   useEffect(() => {
     if (hash) void navigate({ to: '/join', replace: true });
   }, [hash, navigate]);
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Join a workspace" back="Cashflow" backTo="/transactions" />
+      <LargeTitle title={joinTitle(preview)} back="Cashflow" backTo="/transactions" />
       <JoinWorkspace
         initialCode={code}
+        onPreview={setPreview}
+        onJoinedEvent={async (eventId) => {
+          await navigate({ to: '/events/$eventId', params: { eventId } });
+        }}
         onJoined={async (bookId) => {
           await switchBook(bookId);
           await navigate({ to: '/transactions' });

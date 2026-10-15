@@ -13,10 +13,27 @@ export interface NewTransactionSearch {
   to?: string;
   event?: string;
   item?: string;
+  /** A shared event's expense, opened for editing on the Add screen (shared events §6). Read only with `event`. */
+  expense?: string;
   ws?: string;
+  /**
+   * What was already typed on the workspace card when a shared event was picked on its Event row (shared events §6):
+   * the amount, its currency, the note and the date, carried into the shared card. Read only with a bare `event`.
+   */
+  amount?: string;
+  currency?: string;
+  note?: string;
+  date?: string;
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+
+const carried = (search: Record<string, unknown>): Partial<NewTransactionSearch> => ({
+  ...(text(search.amount) ? { amount: text(search.amount) } : {}),
+  ...(text(search.currency) ? { currency: text(search.currency) } : {}),
+  ...(text(search.note) ? { note: text(search.note) } : {}),
+  ...(text(search.date) ? { date: text(search.date) } : {}),
+});
 
 export const newTransactionSearch = (search: Record<string, unknown>): NewTransactionSearch => ({
   ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' ? { mode: search.mode } : {}),
@@ -25,5 +42,7 @@ export const newTransactionSearch = (search: Record<string, unknown>): NewTransa
   ...(text(search.event) ? { event: text(search.event) } : {}),
   // An item is bought inside its event, so one carried without an event is dropped here rather than half-read later.
   ...(text(search.event) && text(search.item) ? { item: text(search.item) } : {}),
+  ...(text(search.event) && text(search.expense) ? { expense: text(search.expense) } : {}),
   ...(text(search.ws) ? { ws: text(search.ws) } : {}),
+  ...(text(search.event) && !text(search.item) && !text(search.expense) ? carried(search) : {}),
 });

@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { budgetTab, openCapOf, openNewCap, setBudget } from './budget';
+import { budgetTab, capField, openCapOf, openEditBudgets, setBudget } from './budget';
 import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
@@ -39,34 +39,13 @@ test('a cap on a parent counts what its children spent, and an over cap is liste
   await expect(sheet.getByTestId('cap-spent')).toContainText('500.000');
 });
 
-test('leaving the category untouched refuses to save, rather than capping the wrong one', async ({ page }) => {
+test('every spending category can be budgeted on Edit budgets, capped or not', async ({ page }) => {
   await page.goto('/budget');
-  const sheet = await openNewCap(page);
-
-  // Never opened, the Category row still reads as unset — not silently matched to whatever option sorts first.
-  await expect(sheet.getByLabel('Category', { exact: true })).toHaveValue('');
-  await sheet.getByLabel('Cap', { exact: true }).fill('300000');
-  await sheet.getByRole('button', { name: 'Save budget' }).click();
-  await expect(page.getByRole('alert')).toContainText('Choose a category');
-
-  await page.keyboard.press('Escape');
-  await budgetTab(page, 'Plan');
-  await expect(page.getByTestId('caps-total')).toContainText('Rp 0');
-});
-
-test('every spending category is listed, capped or not: the uncapped ones under No budget', async ({ page }) => {
-  await page.goto('/budget');
-
-  await expect(page.getByTestId('no-budget')).toContainText('categories');
-  await page.getByTestId('no-budget').click();
-  const list = page.getByRole('dialog', { name: 'No budget' });
-  await expect(list.getByTestId('uncapped-Personal care')).toBeVisible();
-
-  // Tapping one opens its cap.
-  await list.getByTestId('uncapped-Personal care').click();
-  const sheet = page.getByRole('dialog', { name: 'Personal care' });
-  await sheet.getByLabel('Cap', { exact: true }).fill('400000');
-  await sheet.getByRole('button', { name: 'Save budget' }).click();
+  const screen = await openEditBudgets(page);
+  const { field } = await capField(screen, 'Personal care');
+  await expect(field).toHaveValue('');
+  await field.fill('400000');
+  await page.getByRole('button', { name: 'Save budgets' }).click();
   await expect(page.getByTestId('line-Personal care')).toContainText('left of 400.000');
 });
 
@@ -88,7 +67,7 @@ test('an override changes one month and leaves the next alone', async ({ page })
   await expect(sheet.getByLabel('Cap', { exact: true })).toHaveValue('1.000.000');
 });
 
-test('Remove budget takes the cap off, and the category goes back under No budget', async ({ page }) => {
+test('Remove budget takes the cap off, and the category is uncapped again', async ({ page }) => {
   await page.goto('/budget');
   await setBudget(page, 'Transportation', '900000');
   await expect(page.getByTestId('line-Transportation')).toBeVisible();
@@ -97,8 +76,9 @@ test('Remove budget takes the cap off, and the category goes back under No budge
   await page.getByRole('dialog', { name: 'Transportation' }).getByRole('button', { name: 'Remove budget' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByTestId('line-Transportation')).toHaveCount(0);
-  await page.getByTestId('no-budget').click();
-  await expect(page.getByRole('dialog', { name: 'No budget' }).getByTestId('uncapped-Transportation')).toBeVisible();
+  // Nothing was spent on it, so it waits on Edit budgets, empty, rather than under No budget yet.
+  const screen = await openEditBudgets(page);
+  await expect((await capField(screen, 'Transportation')).field).toHaveValue('');
 });
 
 test('the plan divides a typed take-home, and a bonus month is that month alone', async ({ page }) => {

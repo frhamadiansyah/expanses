@@ -9,9 +9,36 @@ import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
 import { personDue, personParams } from './lend-borrow-view';
+import { useEventBalanceRows } from '../events/shared-queries';
 import { usePeopleDebts } from './queries';
 import { newDebtPath, openingSide, type Side } from './sides';
+import { tripSubtitle } from './trip-rows';
 import { sideTotal } from './totals';
+
+/**
+ * Trips (shared events section 5): each shared event's balance in this person's books - owed to them, or owed by them -
+ * and the suggested payments they are in. The event page is one tap away, where Settle up is.
+ */
+function TripRows() {
+  const trips = useEventBalanceRows().data ?? [];
+  if (trips.length === 0) return null;
+  return (
+    <InsetGroup header="Trips">
+      {trips.map((trip) => (
+        <InsetRow
+          key={trip.eventId}
+          title={trip.name}
+          subtitle={tripSubtitle(trip)}
+          value={<Money minor={trip.balanceMinor} currency={trip.currency} tone="auto" />}
+          valueTone="ink"
+          to="/events/$eventId"
+          params={{ eventId: trip.eventId }}
+          testId="trip-row"
+        />
+      ))}
+    </InsetGroup>
+  );
+}
 
 /**
  * One side of the ledger, its people and, as the box's last row, their total.
@@ -184,6 +211,7 @@ export function LendBorrowPage() {
         </>
       )}
 
+      <TripRows />
     </div>
   );
 }

@@ -1,17 +1,21 @@
 import type { AccountRow } from '@expanses/db';
+import { useNavigate } from '@tanstack/react-router';
 import { Camera, EyeOff, Hash, Plane, ShoppingCart, Split, Users } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ratePreview } from '../../lib/rates';
 import { useIsBookShared } from '../../lib/queries';
 import { InputRow, RowHint } from '../../ui';
+import { addSpendingTarget, carriedFromDraft } from '../events/buy-item';
 import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
 import { ChannelSheet } from './ChannelSheet';
 import { FormRow, FormRows, RowGlyph, SwitchRow } from './FormRow';
 import { McSheet } from './McSheet';
 import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
+import { moveHint } from './shared-move';
 import { WithSheet, withSummary } from './WithSheet';
 import { type ExtraRow, extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
 
@@ -44,6 +48,7 @@ export function MoreDetails({
   accounts,
   missingRate,
   omit = [],
+  opensSharedEvent = true,
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
@@ -51,6 +56,11 @@ export function MoreDetails({
   missingRate: MissingRate | null;
   /** Rows the caller cannot carry to the ledger — a captured draft has one category and one payer. */
   omit?: readonly ExtraRow[];
+  /**
+   * Whether picking a shared event while adding opens that event's own card (shared events §6, R14). A captured draft
+   * being confirmed says no: leaving for another card would leave the draft behind unconfirmed.
+   */
+  opensSharedEvent?: boolean;
 }) {
   const { ws } = useApp();
   const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
@@ -59,6 +69,14 @@ export function MoreDetails({
   const rows = extraRows(draft, accounts, { missingRate, sharedBook }).filter((row) => !omit.includes(row));
   const events = useEvents().data ?? [];
   const eventName = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? '') : '';
+  /*
+   * A shared event is recorded on its own card — Paid by, Split, its categories — so picking one while adding opens
+   * that card in this one's place. On an edit the purchase already exists: tagging it moves it there when it saves
+   * (D2), and the row says so before anything is saved.
+   */
+  const summaries = useSharedEventSummaries().data ?? {};
+  const navigate = useNavigate();
+  const moving = draft.editing && draft.eventId ? summaries[draft.eventId] : undefined;
   // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so
   // the row's total is read in that one, never in the currency the amount row happens to be showing. Asked of
   // `postingCurrency`, which is `amountFields`' own answer: which currency a figure is read in is decided once,
@@ -80,6 +98,11 @@ export function MoreDetails({
     <>
       <FormRows>
         {rows.includes('event') && <FormRow icon={glyph(<Plane size={15} />)} label="Event" value={eventName} onClick={() => setSheet('event')} />}
+        {rows.includes('event') && moving ? (
+          <p className="px-[16px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="moves-hint">
+            {moveHint(eventName || 'the event', moving.sharedWith)}
+          </p>
+        ) : null}
         {rows.includes('split') && (
           <FormRow icon={glyph(<Split size={15} />)} label="Split" value={splitSummary(draft.splits, currency)} disabled={!!splitRefusal} onClick={() => setSheet('split')} />
         )}
@@ -127,7 +150,13 @@ export function MoreDetails({
         </div>
       )}
 
-      {sheet === 'event' && <EventSheet value={draft.eventId} onPick={(eventId) => set({ eventId })} onClose={() => setSheet(null)} />}
+      {sheet === 'event' && (
+        <EventSheet
+          value={draft.eventId}
+          onPick={(eventId) => (opensSharedEvent && !draft.editing && summaries[eventId] ? void navigate({ ...addSpendingTarget(eventId, carriedFromDraft(draft)), replace: true }) : set({ eventId }))}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
       {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} />}

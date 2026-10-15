@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { BudgetError, createAccount, healthSchema, listBudgets, removeBudget, saveBudget, clearBudgetOverride, setBudgetOverride } from '../src/index';
+import { BudgetError, createAccount, healthSchema, listBudgets, removeBudget, saveBudget, saveBudgets, clearBudgetOverride, setBudgetOverride } from '../src/index';
 import { setupDb } from './helpers';
 
 async function withCategories() {
@@ -116,5 +116,49 @@ describe('removing a budget', () => {
 
     const rows = await database.db.select().from(healthSchema.budgetFrequencies).where(eq(healthSchema.budgetFrequencies.workspaceId, ws.workspaceId));
     expect(rows).toEqual([]);
+  });
+});
+
+describe('saveBudgets', () => {
+  it('saves and removes together', async () => {
+    const { database, ws, food, coffee } = await withCategories();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 5_000_000 });
+
+    await saveBudgets(database, ws, { save: [{ categoryAccountId: coffee.id, amountMinor: 1_200_000, frequency: 'yearly' }], remove: [food.id] });
+
+    const rows = await listBudgets(database, ws, '2026-09');
+    expect(capOf(rows, food.id)).toBeUndefined();
+    expect(capOf(rows, coffee.id)).toMatchObject({ planMinor: 100_000, frequency: 'yearly', amountAsSetMinor: 1_200_000 });
+  });
+
+  it('writes nothing when one row is refused, and names that row', async () => {
+    const { database, ws, food, coffee } = await withCategories();
+
+    const refused = saveBudgets(database, ws, {
+      save: [
+        { categoryAccountId: food.id, amountMinor: 5_000_000 },
+        { categoryAccountId: coffee.id, amountMinor: 0 },
+      ],
+      remove: [],
+    });
+
+    await expect(refused).rejects.toMatchObject({ name: 'BudgetError', categoryAccountId: coffee.id });
+    expect(await listBudgets(database, ws, '2026-09')).toHaveLength(0);
+  });
+
+  it('leaves a month of its own standing when the plan is saved', async () => {
+    const { database, ws, food } = await withCategories();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 5_000_000 });
+    await setBudgetOverride(database, ws, { categoryAccountId: food.id, month: '2026-12', amountMinor: 9_000_000 });
+
+    await saveBudgets(database, ws, { save: [{ categoryAccountId: food.id, amountMinor: 6_000_000 }], remove: [] });
+
+    expect(capOf(await listBudgets(database, ws, '2026-12'), food.id)).toMatchObject({ amountMinor: 9_000_000, planMinor: 6_000_000, overridden: true });
+  });
+
+  it('does nothing for no changes', async () => {
+    const { database, ws } = await withCategories();
+    await saveBudgets(database, ws, { save: [], remove: [] });
+    expect(await listBudgets(database, ws, '2026-09')).toHaveLength(0);
   });
 });

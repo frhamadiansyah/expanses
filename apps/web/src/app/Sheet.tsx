@@ -117,7 +117,9 @@ export function Sheet({
     // cannot leave the page locked when only one of them closes.
     open += 1;
     document.body.style.overflow = 'hidden';
-    panel.current?.focus();
+    // The sheet takes the focus unless a field inside it already asked for it first (a cap typed straight away): this
+    // effect runs after its children's autoFocus, and focusing the panel here would take the keyboard away again.
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
     return () => {
       open -= 1;
       if (open <= 0) {

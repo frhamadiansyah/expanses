@@ -28,7 +28,7 @@ export const accounts = sqliteTable('accounts', {
   subtype: text('subtype', {
     // 'fund' is a money account at a broker or fund manager (an RDN), not the asset profile kind of the same name.
     // 'time_deposit' holds money it cannot be paid from; 'other_cash' is a cheque, a wesel or commercial paper.
-    enum: ['cash', 'bank', 'credit_card', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable', 'payable', 'loan', 'category', 'equity'],
+    enum: ['cash', 'bank', 'credit_card', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable', 'payable', 'loan', 'category', 'equity', 'event_balance'],
   }).notNull(),
   name: text('name').notNull(),
   icon: text('icon'),

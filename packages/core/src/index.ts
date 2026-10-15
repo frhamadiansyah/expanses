@@ -31,6 +31,7 @@ export {
   parseRate,
   type RoundDirection,
   roundHalfAwayFromZero,
+  roundUpToMajor,
   wholeFromHundredths,
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
@@ -387,7 +388,7 @@ export {
   toConverterTsv,
 } from './coretax/converter';
 
-export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type SavingsRow } from './budget/sheet';
+export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type CapNode, outermostCapsTotal, type SavingsRow } from './budget/sheet';
 export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
 export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
 export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
@@ -529,3 +530,20 @@ export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, m
 export { merchantKeyOf, readStatement } from './statement/read';
 export { STATEMENT_WORDS, type StatementWords } from './statement/words';
 export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';
+export {
+  expenseInEvent,
+  type ExpenseRecord,
+  isRateString,
+  parseSplitJson,
+  type PersonMinor,
+  rateString,
+  type SettlementRecord,
+  SharedEventError,
+  type SharedEventErrorCode,
+  sharesOf,
+  splitJsonOf,
+  type SplitInput,
+  toEvent,
+} from './shared-events/split';
+export { balances, fewestPayments, type SuggestedPayment } from './shared-events/balances';
+export { type MyLineAccounts, type MyLines, myExpenseLines, mySettlementLines, type PaidFromAccount } from './shared-events/lines';

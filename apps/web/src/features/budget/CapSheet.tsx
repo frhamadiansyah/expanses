@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatMinor, groupTypedAmount, parseMajor } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatMinor, groupTypedAmount, parseMajor, roundUpToMajor } from '@expanses/core';
 import { type BudgetRow, clearBudgetOverride, removeBudget, saveBudget, setBudgetOverride } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -9,11 +9,7 @@ import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from
 import { bareFigure } from '../networth/debt-rows';
 import { FREQUENCY_WORDS, perMonthPreview } from './frequency-form';
 import { FigureRow } from './budget-rows';
-
-export interface CategoryOption {
-  id: string;
-  label: string;
-}
+import type { SpendHistory } from './budget-view';
 
 /** What is typed into the Cap row to begin with: this month's own figure when it has one, else the plan as it was typed. */
 function startingFigure(row: BudgetRow | undefined, thisMonthOnly: boolean, currency: string): string {
@@ -25,11 +21,13 @@ function startingFigure(row: BudgetRow | undefined, thisMonthOnly: boolean, curr
  * The cap of one category: ✕ · its name · ✓. The cap, the unit it was typed in, and whether it is this month's alone;
  * then what the month has spent against it, and a way to take it off.
  *
- * Opened from a row it knows its category; opened from ⋯ Add a budget it asks for one first.
+ * Always opened for a known category, from its row. The Cap row has focus with its figure selected, so typing replaces
+ * it; figures to start from — last month, the average, the month so far — are a tap each.
  */
 export function CapSheet({
-  categoryId: given,
-  options,
+  categoryId,
+  name,
+  history,
   month,
   currency,
   ready,
@@ -38,9 +36,11 @@ export function CapSheet({
   committed,
   onClose,
 }: {
-  /** Null when the sheet was opened to add a budget and the category is still to be chosen. */
-  categoryId: string | null;
-  options: readonly CategoryOption[];
+  categoryId: string;
+  /** The category's name, for the sheet's title. */
+  name: string;
+  /** What it spent in the months before; null while those are still being read. */
+  history: SpendHistory | null;
   month: string;
   /** The open workspace's own currency, which a cap is typed and parsed in. */
   currency: string;
@@ -53,10 +53,8 @@ export function CapSheet({
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const [picked, setPicked] = useState(given ?? '');
-  const categoryId = given ?? picked;
-  const row = categoryId ? rowOf(categoryId) : undefined;
-  const line = categoryId ? lineOf(categoryId) : undefined;
+  const row = rowOf(categoryId);
+  const line = lineOf(categoryId);
   const [thisMonthOnly, setThisMonthOnly] = useState(Boolean(row?.overridden));
   const [frequency, setFrequency] = useState<BudgetFrequency>(row?.frequency ?? 'monthly');
   const [amount, setAmount] = useState(() => startingFigure(row, Boolean(row?.overridden), currency));
@@ -67,26 +65,30 @@ export function CapSheet({
   // An override is always a month's figure; only the plan is typed in the unit it is thought of in.
   const unit: BudgetFrequency = thisMonthOnly ? 'monthly' : frequency;
   const preview = perMonthPreview(amount, unit, currency);
-  const name = options.find((option) => option.id === categoryId)?.label.replace(/^— /, '') ?? line?.name ?? 'New budget';
-
-  const choose = (id: string) => {
-    setPicked(id);
-    const next = id ? rowOf(id) : undefined;
-    setThisMonthOnly(Boolean(next?.overridden));
-    setFrequency(next?.frequency ?? 'monthly');
-    if (!touched) setAmount(startingFigure(next, Boolean(next?.overridden), currency));
-  };
 
   const switchMonth = (on: boolean) => {
     setThisMonthOnly(on);
     if (!touched) setAmount(startingFigure(row, on, currency));
   };
 
+  // Figures to start from, each rounded up to a whole unit; one that comes to nothing is not offered.
+  const chips = [
+    { key: 'last', label: 'Last month', minor: roundUpToMajor(history?.lastMinor ?? 0, currency) },
+    { key: 'average', label: '3-month average', minor: history?.averageMinor ?? 0 },
+    { key: 'spent', label: 'Spent so far', minor: roundUpToMajor(line?.totalMinor ?? 0, currency) },
+  ].filter((chip) => chip.minor > 0);
+
+  /** A chip's figure into the Cap row. The figures are a month's, so the unit becomes Month. Nothing is saved yet. */
+  const takeFigure = (minor: number) => {
+    setTouched(true);
+    setFrequency('monthly');
+    setAmount(bareFigure(minor, currency));
+  };
+
   async function save() {
     setError(null);
     if (!ready || busy) return;
     try {
-      if (!categoryId) throw new Error(options.length === 0 ? 'There are no categories to budget for yet' : 'Choose a category');
       // The empty box is the one refusal `parseMajor` has no words for, so it is worded here.
       if (!amount.trim()) throw new Error('The cap is empty — type a figure');
       const minor = parseMajor(amount, currency);
@@ -102,7 +104,7 @@ export function CapSheet({
   }
 
   async function remove() {
-    if (!categoryId || busy) return;
+    if (busy) return;
     setError(null);
     try {
       setBusy(true);
@@ -119,26 +121,14 @@ export function CapSheet({
 
   return (
     <Sheet grouped title={name} onClose={onClose} confirm={{ label: 'Save budget', disabled: !ready || busy, run: () => void save() }}>
-      {given === null && (
-        <InsetGroup>
-          {/* The empty choice stays first and selected until one is made: nothing is capped that nobody picked. */}
-          <SelectRow label="Category" value={picked} onChange={(e) => choose(e.target.value)}>
-            <option value="">Choose</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </SelectRow>
-        </InsetGroup>
-      )}
-
       <InsetGroup>
         <TextRow
           label="Cap"
           value={amount}
           placeholder="Amount"
           inputMode={currency === 'IDR' ? 'numeric' : 'decimal'}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => {
             setTouched(true);
             setAmount(groupTypedAmount(e.target.value, currency));
@@ -157,6 +147,26 @@ export function CapSheet({
         {/* Only a cap that exists can be changed for one month: there is nothing to override before it. */}
         {row && <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={switchMonth} />}
       </InsetGroup>
+
+      {chips.length > 0 && (
+        <section className="mb-[18px] w-full" data-testid="cap-chips">
+          <p className="mb-[6px] px-[16px] text-[13px] leading-[18px] text-[var(--ph-ink-3)] uppercase">Use a figure</p>
+          <div className="flex flex-wrap gap-2">
+            {chips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => takeFigure(chip.minor)}
+                aria-label={`${chip.label}, ${bareFigure(chip.minor, currency)}`}
+                className="ph-focus ph-tap flex min-h-[44px] flex-col items-start justify-center rounded-[12px] bg-[var(--ph-surface)] px-[14px] py-[4px] text-left ring-1 ring-[var(--ph-hair)] ring-inset"
+              >
+                <span className="text-[12px] leading-[16px] text-[var(--ph-ink-3)]">{chip.label}</span>
+                <span className="tabular text-[15px] leading-[20px] font-semibold text-[var(--ph-tint)]">{bareFigure(chip.minor, currency)}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {line && (
         <InsetGroup>

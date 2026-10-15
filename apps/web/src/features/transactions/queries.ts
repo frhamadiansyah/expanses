@@ -1,5 +1,5 @@
 import { useOpenBookReadOnly } from '../sharing/queries';
-import { allPhotoRows, listExpenseTemplates, type TransactionView } from '@expanses/db';
+import { allPhotoRows, listExpenseTemplates, shareCategoryAccountIds, type TransactionView } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { editInsteadIn, type RowBook } from '../workspaces/filing';
@@ -119,4 +119,16 @@ export function useChangeable(tx: TransactionView | null): Changeable {
     elsewhere,
     isTrade,
   };
+}
+
+const NO_SHARE_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * The accounts that are a shared event's own copies of its categories (shared events §5.1): expense accounts in this
+ * workspace, filed in no book. A category picker leaves them out — they are a trip's, recorded on its own card.
+ */
+export function useShareCategoryIds(): ReadonlySet<string> {
+  const { database, ws } = useApp();
+  const ids = useQuery({ queryKey: ['share-category-ids', ws.workspaceId], queryFn: async () => new Set(await shareCategoryAccountIds(database)) });
+  return ids.data ?? NO_SHARE_IDS;
 }

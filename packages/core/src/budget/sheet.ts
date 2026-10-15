@@ -94,6 +94,28 @@ export interface BudgetSheet {
   leftOverActualMinor: number;
 }
 
+/** What a cap total needs of a line: its own cap, and the lines under it. */
+export interface CapNode {
+  capMinor: number | null;
+  children: readonly CapNode[];
+}
+
+/**
+ * A budget inside a budgeted branch is a tighter cap, not another pocket of money: only the outermost cap in each
+ * branch belongs in the total.
+ */
+export function outermostCapsTotal(lines: readonly CapNode[]): number {
+  let total = 0;
+  const walk = (rows: readonly CapNode[]) => {
+    for (const row of rows) {
+      if (row.capMinor !== null) total += row.capMinor;
+      else walk(row.children);
+    }
+  };
+  walk(lines);
+  return total;
+}
+
 export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
   const own = new Map<string, number>();
   for (const amount of input.amounts) own.set(amount.accountId, (own.get(amount.accountId) ?? 0) + amount.amountBaseMinor);
@@ -129,19 +151,15 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
 
   const lines = (childrenOf.get(null) ?? []).map(build).sort(byTotalThenName);
 
-  // A budget inside a budgeted branch is a tighter cap, not another pocket of money: only the
-  // outermost cap in each branch belongs in the total.
-  let capsTotalMinor = 0;
+  const capsTotalMinor = outermostCapsTotal(lines);
   let overCount = 0;
-  const walk = (rows: BudgetLine[], insideBudget: boolean) => {
+  const countOver = (rows: BudgetLine[]) => {
     for (const row of rows) {
       if (row.overMinor > 0) overCount += 1;
-      const budgeted = row.capMinor !== null;
-      if (budgeted && !insideBudget) capsTotalMinor += row.capMinor!;
-      walk(row.children, insideBudget || budgeted);
+      countOver(row.children);
     }
   };
-  walk(lines, false);
+  countOver(lines);
 
   const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0) + (input.unfiledMinor ?? 0);
   // Signed, category by category, over exactly the categories the lines were built from; essential is the rest,

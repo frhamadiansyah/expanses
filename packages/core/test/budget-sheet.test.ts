@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSheet, type BudgetSheetInput, type CategoryAmount, type CategoryNode } from '../src/index';
+import { budgetSheet, type BudgetSheetInput, type CapNode, outermostCapsTotal, type CategoryAmount, type CategoryNode } from '../src/index';
 
 const categories: CategoryNode[] = [
   { id: 'food', parentId: null, name: 'Food' },
@@ -272,5 +272,21 @@ describe('essential and lifestyle', () => {
     });
     expect(sheet.lifestyleActualMinor).toBe(0);
     expect(sheet.essentialActualMinor).toBe(sheet.spendingActualMinor);
+  });
+});
+
+describe('outermostCapsTotal', () => {
+  const node = (capMinor: number | null, children: CapNode[] = []): CapNode => ({ capMinor, children });
+
+  it('counts a cap inside a capped branch once, as the outer cap', () => {
+    expect(outermostCapsTotal([node(500, [node(200), node(100)]), node(300)])).toBe(800);
+  });
+
+  it('adds the children when their parent carries no cap', () => {
+    expect(outermostCapsTotal([node(null, [node(200), node(null)])])).toBe(200);
+  });
+
+  it('is nothing when nothing is capped', () => {
+    expect(outermostCapsTotal([node(null, [node(null)])])).toBe(0);
   });
 });

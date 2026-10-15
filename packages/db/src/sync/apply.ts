@@ -14,6 +14,7 @@ import {
   AuthorityError,
   authorMemberOf,
   decideOpsTx,
+  eventBookWorkspaceOf,
   groupLogWorkspaceOf,
   NO_REVIVE,
   viewMember,
@@ -31,6 +32,9 @@ import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './sha
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
+import { EVENT_ENTITIES } from './events/authority';
+import { restoreRefusedOwnEventOpTx } from './events/log-rows';
+import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
 /*
  * Apply and merge (household-sharing spec §7). The pull loop reads the relay's log from this device's cursor, and
@@ -66,6 +70,18 @@ export async function bookContextTx(tx: Db, bookId: string): Promise<BookContext
       SELECT b.workspace_id, w.base_currency, b.base_currency, s.member_id
       FROM nw_group_books g JOIN books b ON b.id = g.book_id JOIN workspaces w ON w.id = b.workspace_id JOIN shared_books s ON s.book_id = g.group_book_id
       WHERE g.group_book_id = ${bookId}`);
+  }
+  if (!row) {
+    // A shared event's relay book (shared events §3) has no `books` row either: it is held in the workspace this phone
+    // recorded when it shared or joined the event (`event_books`), in that workspace's currency.
+    try {
+      [row] = await tx.values<[string, string, string, string]>(sql`
+        SELECT e.workspace_id, w.base_currency, w.base_currency, s.member_id
+        FROM event_books e JOIN workspaces w ON w.id = e.workspace_id JOIN shared_books s ON s.book_id = e.book_id
+        WHERE e.book_id = ${bookId}`);
+    } catch {
+      // a database from before migration 0069
+    }
   }
   if (!row) throw new Error(`Book ${bookId} is not shared on this device`);
   const [workspaceId, baseCurrency, currency, memberId] = row;
@@ -765,6 +781,8 @@ export interface ApplyRun {
   introducedMember?: string;
   /** Each op as the authority view decided it (`decideOpsTx`); worked out here when a test applies directly. */
   decisions?: (Op | AuthorityError)[];
+  /** A shared event's log pulled again from its first entry: records are followed once at its end (`replayingEventLog`). */
+  deferEventFollow?: boolean;
 }
 
 let savepoints = 0;
@@ -798,6 +816,104 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
   }
 }
 
+/* ------------------------------------------------------------ shared events */
+
+const RECORD_KIND: Readonly<Record<string, EventPostingKind>> = { event_expense: 'expense', event_expense_detail: 'expense', event_settlement: 'settlement' };
+
+/**
+ * Shared events §5: what an applied op means for this phone's own books (`followEventOpTx`). In a savepoint of its own,
+ * after the op itself: whatever this phone's derivation makes of the record — a ledger refusal, a rate core cannot read,
+ * an account it no longer has — is this phone's alone, so it never rolls back the record every other phone took in, nor
+ * stops the pull (controller ruling a). The record waits, marked 'malformed', and each sync tries it again
+ * (`retryUnpostedEventRecords`); a person or category that changed what other records read brings those along too, each
+ * on its own savepoint.
+ */
+async function followEventGuarded(tx: Tx, bookId: string, entity: string, id: string, author: string | null): Promise<void> {
+  await followOneGuarded(tx, bookId, entity, id, author);
+  if (entity !== 'event_person' && entity !== 'event_category') return;
+  for (const { kind, recordId } of await recordsReadingTx(tx, bookId, entity, id)) {
+    await followOneGuarded(tx, bookId, kind === 'expense' ? 'event_expense' : 'event_settlement', recordId, author);
+  }
+}
+
+async function followOneGuarded(tx: Tx, bookId: string, entity: string, id: string, author: string | null): Promise<void> {
+  const name = sql.raw(`follow_op_${(savepoints += 1)}`);
+  await tx.run(sql`SAVEPOINT ${name}`);
+  try {
+    await followEventOpTx(tx, bookId, entity, id, author);
+    await tx.run(sql`RELEASE ${name}`);
+  } catch (error) {
+    await tx.run(sql`ROLLBACK TO ${name}`);
+    await tx.run(sql`RELEASE ${name}`);
+    const kind = RECORD_KIND[entity];
+    if (kind) {
+      await tx.run(sql`
+        INSERT INTO event_postings (book_id, record_id, kind, unposted) VALUES (${bookId}, ${id}, ${kind}, 'malformed')
+        ON CONFLICT (book_id, record_id) DO UPDATE SET unposted = 'malformed'`);
+    }
+    console.warn(`sync: this phone could not bring its books in line with ${entity} ${id}; it waits`, error);
+  }
+}
+
+/**
+ * Ruling R8, in log order (controller ruling b): the event's currency here is the one the log last took, whatever the
+ * per-field clocks would say. Two changes made before any expense can reach the log in the other order than their
+ * clocks; the mark (`event_log_currency`) follows the log, so a stored currency that followed the clock would part from
+ * it — and from the lock the first expense puts on it — on the phones whose own change lost. Set after every entry that
+ * speaks of the event, own or not, and the event (its local row, its trip balance while empty) follows. Nothing emitted.
+ */
+async function takeLogCurrencyTx(tx: Tx, bookId: string): Promise<void> {
+  const [mark] = await tx.values<[string]>(sql`SELECT currency FROM event_log_currency WHERE book_id = ${bookId}`);
+  if (mark && mark[0] !== '') await tx.run(sql`UPDATE shared_events SET currency = ${mark[0]} WHERE book_id = ${bookId} AND currency <> ${mark[0]}`);
+  await followSharedEventTx(tx, bookId);
+}
+
+/*
+ * Controller ruling e: a phone that joins an event again (a restored phone, one whose person rejoined) drops the event's
+ * rows and pulls the log from its first entry, but keeps its postings. Followed op by op, that pull would walk each
+ * record through its history — the split before a friend changed it, the expense before it was taken over — replacing
+ * and voiding the transactions this phone already holds and posting them anew without their card, photos or statement
+ * match. So while such a pull runs (marked here, so a pull stopped half way goes on the same way), records are not
+ * followed one op at a time; once the log is read to its end, each is brought in line once, against what it is now,
+ * which leaves a transaction that already reads so as it is.
+ */
+const REPLAY_KEY = (bookId: string) => `shared-events.replay.${bookId}`;
+
+async function replayingEventLog(database: Database, bookId: string): Promise<boolean> {
+  const [marked] = await database.db.values(sql`SELECT 1 FROM settings WHERE key = ${REPLAY_KEY(bookId)}`);
+  if (marked) return true;
+  if ((await cursorOf(database, bookId)) !== 0) return false;
+  const [kept] = await database.db.values(sql`SELECT 1 FROM event_postings WHERE book_id = ${bookId} AND transaction_id IS NOT NULL LIMIT 1`);
+  if (!kept) return false;
+  await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${REPLAY_KEY(bookId)}, '1') ON CONFLICT (key) DO NOTHING`);
+  return true;
+}
+
+/** The member whose change a record last took in here: the author of its latest field clock, by the view. */
+async function lastAuthorTx(tx: Tx, bookId: string, recordId: string): Promise<string | null> {
+  const [latest] = await tx.values<[string]>(sql`
+    SELECT hlc FROM sync_field_clocks WHERE book_id = ${bookId} AND id = ${recordId} AND entity IN ('event_expense', 'event_expense_detail', 'event_settlement')
+    ORDER BY hlc DESC LIMIT 1`);
+  const device = latest ? hlcDeviceOf(latest[0]) : null;
+  return device ? authorMemberOf(tx, bookId, device) : null;
+}
+
+/** After a replayed pull reached the log's end: the event, its categories and every record followed once, each alone. */
+async function followReplayedEventLog(database: Database, bookId: string): Promise<void> {
+  // Derived lines are in no workspace book, so nothing here is captured, as `retryUnpostedEventRecords` writes them.
+  await database.transaction((tx) => takeLogCurrencyTx(tx, bookId));
+  const categories = await database.db.values<[string]>(sql`SELECT id FROM event_categories WHERE book_id = ${bookId} ORDER BY id`);
+  for (const [id] of categories) await database.transaction((tx) => followOneGuarded(tx, bookId, 'event_category', id, null));
+  const records = await database.db.values<[string, string]>(sql`
+    SELECT 'event_expense', id FROM event_expenses WHERE book_id = ${bookId}
+    UNION ALL SELECT 'event_settlement', id FROM event_settlements WHERE book_id = ${bookId}
+    ORDER BY 2`);
+  for (const [entity, id] of records) {
+    await database.transaction(async (tx) => followOneGuarded(tx, bookId, entity, id, await lastAuthorTx(tx, bookId, id)));
+  }
+  await database.db.run(sql`DELETE FROM settings WHERE key = ${REPLAY_KEY(bookId)}`);
+}
+
 /** The category and the settings that go with it when it is deleted (`deleteCategory`). */
 const CATEGORY_SETTINGS = new Set(['category', 'category_need', 'category_colour']);
 
@@ -827,6 +943,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
   const decisions =
     run.decisions ?? (await decideOpsTx(tx, { bookId: ctx.bookId, author, hlc: changeSet.hlc, creator: run.creator ?? false, introducedMember: run.introducedMember }, changeSet.ops));
   const kept = await categoriesKeptTx(tx, ctx, changeSet.ops);
+  let eventTouched = false;
   for (const [index, original] of changeSet.ops.entries()) {
     const decision = decisions[index]!;
     const op = decision instanceof AuthorityError ? original : decision;
@@ -839,6 +956,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       continue;
     }
     // Who may write what (task 5 fix rounds 1–2): a refused op is a recorded skip, the same on every device.
+    const skippedBefore = run.skipped.length;
     await guarded(tx, ctx, run, op, async () => {
       if (decision instanceof AuthorityError) throw decision;
       const keptBecause = op.op === 'delete' && CATEGORY_SETTINGS.has(op.entity) ? kept.get(op.id) : undefined;
@@ -848,7 +966,14 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       // for a party, while the group is active and the author (the authority view's, never the change-set's claim) is in it.
       if (entity.entity === 'member_transfer' && op.op === 'upsert') await postTransferSideTx(tx, ctx.bookId, op.id, await authorMemberOf(tx, ctx.bookId, author));
     });
+    // Shared events §5: an applied record brings this phone's own share in line, authored by the view's member. The
+    // event's own row waits for the end of the entry: its currency is the log's (`takeLogCurrencyTx`).
+    if (EVENT_ENTITIES.has(entity.entity) && run.skipped.length === skippedBefore) {
+      if (entity.entity === 'shared_event') eventTouched = true;
+      else if (!run.deferEventFollow) await followEventGuarded(tx, ctx.bookId, entity.entity, op.id, await authorMemberOf(tx, ctx.bookId, author));
+    }
   }
+  if (eventTouched) await takeLogCurrencyTx(tx, ctx.bookId);
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
   for (const [lineageId, ops] of [...held]) {
     if (!(await lineageOf(tx, lineageId))) continue;
@@ -958,6 +1083,9 @@ export async function pullAndApply(
   const self = sealer.deviceId;
   // A net-worth group log admits by the linked workspace's pins (joint-net-worth §4): the workspace it belongs to.
   const groupWorkspace = await groupLogWorkspaceOf(database.db, bookId);
+  // A shared event's book: every member an owner (shared events §3), as in a group log, but admitted by invite terms.
+  const eventLog = (await eventBookWorkspaceOf(database.db, bookId)) !== null;
+  const replaying = eventLog && (await replayingEventLog(database, bookId));
   let since = await cursorOf(database, bookId);
   let applied = 0;
   const held: HeldOps = new Map();
@@ -1029,7 +1157,7 @@ export async function pullAndApply(
       let applyingDecisions: (Op | AuthorityError)[] | undefined;
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
-          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId };
+          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId, ...(replaying ? { deferEventFollow: true } : {}) };
           const refuse = async (entity: string, id: string, error: string) => {
             const skip: SkippedOp = { seq: entry.seq, entity, id, error };
             await tx.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${entry.seq}, ${entity}, ${id}, ${error}, ${new Date().toISOString()})`);
@@ -1056,7 +1184,7 @@ export async function pullAndApply(
               if (changeSet) {
                 run.decisions = applyingDecisions = await decideOpsTx(
                   tx,
-                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own, groupLog: groupWorkspace !== null },
+                  { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember, own, groupLog: groupWorkspace !== null, everyMemberOwns: eventLog },
                   changeSet.ops,
                 );
                 // A rejoin's pull (§8.7, N2) notes what the log says, as the view took it, for what it sends after.
@@ -1068,9 +1196,23 @@ export async function pullAndApply(
                     // decision.message already reads "AUTHORITY: ..." (authority.ts): recorded as-is, matching guarded()'s format.
                     if (decision instanceof AuthorityError) await refuse(changeSet.ops[i]!.entity, changeSet.ops[i]!.id, decision.message);
                   }
+                  // I3: an own write to an event row the log refused (a friend's takeover took it first) goes back to
+                  // what the log has, and the record's lines here follow it, as on every other phone.
+                  if (eventLog) {
+                    for (const [i, decision] of run.decisions.entries()) {
+                      const op = changeSet.ops[i]!;
+                      if (!(decision instanceof AuthorityError) || !EVENT_ENTITIES.has(op.entity)) continue;
+                      if (await restoreRefusedOwnEventOpTx(tx, bookId, op, changeSet.hlc)) await followEventGuarded(tx, bookId, op.entity, op.id, null);
+                    }
+                  }
                   // …and whatever of our member edits the log did not take is put back to what it did (fix round 3).
                   const members = new Set(changeSet.ops.filter((op) => op.entity === 'member').map((op) => op.id));
                   if (members.size) await reconcileMembersTx(tx, await bookContextTx(tx, bookId), members, changeSet);
+                  // R8: a currency change of this phone's own is put back to the log's currency — stripped once locked, or
+                  // overtaken in log order before — and the event (its local row, its trip balance) follows.
+                  if (eventLog && changeSet.ops.some((op) => op.entity === 'shared_event')) {
+                    await takeLogCurrencyTx(tx, bookId);
+                  }
                 }
               }
               if (entry.kind === 'removal') {
@@ -1110,6 +1252,7 @@ export async function pullAndApply(
       applied += 1;
     }
   }
+  if (replaying) await followReplayedEventLog(database, bookId);
   return await finish();
 
   /** An entry refused as a whole, before anything of it is opened: recorded, and the cursor moves past it. */

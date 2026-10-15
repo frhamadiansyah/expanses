@@ -22,6 +22,7 @@ import { mccSourcesFor } from './mcc';
 import { nonEarningInstallmentTransactionIds } from './installments';
 import { exactExists, exactFitsPosting } from './exact-column';
 import { extrasTablesExist } from './transaction-extras';
+import { eventOnlyExists } from './event-only';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
 export class PointsError extends Error {
@@ -532,6 +533,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
   const categoryLines = hasExact
     ? sql`(SELECT count(*) FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))`
     : sql`0`;
+  // Shared events (ruling R12): a purchase paid by card for several people has a share line of only this person's part,
+  // so it earns on the card line instead (its spend category is set) and the share category's own line is skipped.
+  const shareLinesOut = (await eventOnlyExists(database.db)) ? sql`AND a.id NOT IN (SELECT account_id FROM event_category_accounts)` : sql``;
   type Row = [string, string, string, string, string, number, string, string | null, string | null, string | null, number | null, number];
   const rows = await database.db.values<Row>(sql`
     SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}
@@ -543,6 +547,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     WHERE e.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
       AND a.kind = 'expense'
+      ${shareLinesOut}
       AND COALESCE(p.posted_on, t.occurred_on) BETWEEN ${from} AND ${to}
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
     ORDER BY t.occurred_on, t.id, e.id

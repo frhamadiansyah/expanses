@@ -15,6 +15,7 @@ import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigu
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
+import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -55,7 +56,7 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT' | 'EVENT_POSTING';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -302,7 +303,8 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
  * answer are taken back, unless `keep` says an edit carries them on (set-aside rulings I1, I2, I4). What else a void
  * means (a deposit event reopened) is `voidTransactionTx`'s; an edit keeps that (`replaceTransaction`).
  */
-async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string): Promise<void> {
+async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string, door: LedgerDoor = {}): Promise<void> {
+  if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
@@ -325,13 +327,38 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
  * Voids inside an open transaction, so a caller can void and repost several transactions atomically. `author` is the
  * member whose change this applies (household sharing, spec §7.3), recorded in the audit 'void' payload.
  */
-export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string): Promise<void> {
-  await markVoidTx(tx, ws, id, keep, author);
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string, door: LedgerDoor = {}): Promise<void> {
+  await markVoidTx(tx, ws, id, keep, author, door);
   // A deposit event this posted is reopened, and the rest of what that event posted is voided with it (whole: `{}`).
   for (const other of await reopenDepositEventTx(tx, ws, id)) {
     const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));
     if (row?.status === 'posted') await voidTransactionTx(tx, ws, other, {}, author);
   }
+}
+
+/** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */
+export interface LedgerDoor {
+  /**
+   * The caller is `postEventRecordTx` (or a refused join taken back), bringing a derived transaction in line with its
+   * record. Every other door is refused on a derived transaction.
+   */
+  eventDerivation?: boolean;
+}
+
+/** The words every door but the event's says when it meets a transaction a shared event put here. */
+export const EVENT_POSTING_MESSAGE = 'This follows a shared event’s record. Change it on the event.';
+
+/**
+ * A transaction a shared event put in this phone's books follows its record (shared events §5): deleting or editing it
+ * anywhere but the event would leave it disagreeing with the record and every other phone. Worse, the derivation finds
+ * its transaction void (or replaced) the next time the record changes and posts it again, so a card that a statement
+ * check corrected, or a purchase converted, would be charged twice (final review C1). So the guard sits on the inner
+ * doors every caller goes through (`markVoidTx`, under both void and replace), and only the derivation passes
+ * `{ eventDerivation: true }`. A statement check, a conversion, an account deletion or anything written later is
+ * refused here, with words the screen shows as they are.
+ */
+async function refuseEventPostingTx(tx: Db, id: string): Promise<void> {
+  if (await eventPostingOfTx(tx, id)) throw new LedgerError('EVENT_POSTING', EVENT_POSTING_MESSAGE);
 }
 
 export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -352,9 +379,11 @@ export function replaceTransaction(
  * `replaceTransaction` inside a transaction already running (check #13: apply corrects a purchase inside its own db
  * transaction, and the mutex is not reentrant). The replacement always gets a fresh id: `input.id` is dropped.
  */
-export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: string, withId: PostTransactionInput): Promise<string> {
+export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: string, withId: PostTransactionInput, door: LedgerDoor = {}): Promise<string> {
   const { id: _ignored, ...input } = withId;
   void _ignored;
+  // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
+  if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [original] = await tx
     .select({
       source: transactions.source,
@@ -424,7 +453,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
   const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
   // An edit voids without reopening a deposit event: the replacement carries on what the original was.
-  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor);
+  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor, door);
   // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
   const setAside = keepAnswer ? null : withSavedStage(answered, saved);
   // Keep import identity so re-importing the same statement still recognises the row.
@@ -661,10 +690,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   if (opts.accountIds && opts.accountIds.length > 0) {
     conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id IN ${opts.accountIds})`);
   }
-  // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book.
+  // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book. What
+  // a shared event put in this phone's books is filed nowhere too, and shows in no book (shared events §5.1): read
+  // owner-wide (an account's history, a receipt, the event page) it is still there.
   const bookId = opts.bookId ?? ws.bookId;
   if (bookId) {
     conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${bookId})`);
+    if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
   // stopped before 0067 has no places: every day reads newest first, as it always did.

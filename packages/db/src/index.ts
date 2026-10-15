@@ -85,6 +85,12 @@ export * from './repos/expense-templates';
 export * from './repos/event-scope';
 export * from './repos/events';
 export * from './repos/event-items';
+export * from './repos/shared-event-records';
+export * from './repos/shared-event-postings';
+export * from './repos/shared-event-writes';
+export * from './repos/shared-event-reads';
+export * from './repos/shared-event-plan';
+export * from './repos/shared-event-moves';
 export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';
 export * as draftsSchema from './schema-drafts';
@@ -205,3 +211,6 @@ export {
 export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';
 // Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
 export { type JointReport, reportInputsFor } from './repos/joint-tax';
+export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
+export type { EventInviteDetails } from './sync/invite';
+export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';

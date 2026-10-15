@@ -50,6 +50,18 @@ export function wholeFromHundredths(hundredths: number, direction: RoundDirectio
 }
 
 /**
+ * Up to the next whole major unit, by the currency's exponent: 12,34 USD → 13,00; a currency with no minor unit is
+ * already whole. Nothing or less is nothing — a suggestion is never a negative cap.
+ */
+export function roundUpToMajor(minor: number, currency: string): number {
+  assertMinor(minor);
+  if (minor <= 0) return 0;
+  const unit = 10 ** currencyInfo(currency).exponent;
+  const rest = minor % unit;
+  return rest === 0 ? minor : minor - rest + unit;
+}
+
+/**
  * Like `parseMajor`, but a currency with no minor unit (IDR, JPY, KRW — by exponent, never by name) also takes up to
  * two decimals: the figure comes back rounded `direction` to whole units, with the exact magnitude in hundredths
  * beside it when the decimals are not zero (12.500,30 → 12.501 up, 12.500 down, exact 1250030). A whole figure, or

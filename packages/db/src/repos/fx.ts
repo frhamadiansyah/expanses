@@ -2,6 +2,7 @@ import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
 import { retryUnpostedTransfers } from '../sync/net-worth/transfers';
+import { retryUnpostedEventRecords } from './shared-event-postings';
 
 /** 'kmk' is the Kurs Menteri Keuangan, entered by hand for the tax report and never fetched. */
 export type FxSource = 'frankfurter' | 'manual' | 'kmk';
@@ -38,6 +39,12 @@ export async function upsertRate(
     await retryUnpostedTransfers(database);
   } catch (error) {
     console.warn('Saved the rate; a waiting transfer between partners could not be posted yet', error);
+  }
+  // Shared events §5: a record this phone could not post for want of this rate posts now. Never the save's failure.
+  try {
+    await retryUnpostedEventRecords(database);
+  } catch (error) {
+    console.warn('Saved the rate; a shared event’s record could not be posted yet', error);
   }
 }
 
