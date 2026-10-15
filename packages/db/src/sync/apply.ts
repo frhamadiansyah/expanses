@@ -7,6 +7,7 @@ import { categoryInUseMessage, categoryUsesTx, removeCategorySettingsTx } from '
 import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
+import { markForeignDirtyTx } from '../repos/fx-pending';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
@@ -696,6 +697,9 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     if ('dayOrder' in winners) {
       const value = winners.dayOrder;
       await tx.run(sql`UPDATE transactions SET day_order = ${typeof value === 'number' && Number.isFinite(value) ? value : null} WHERE id = ${lineage.head!}`);
+      // Withdrawal rate R13: a new place in the day reorders a foreign account's outflows. Capture is paused here, so
+      // the account waits in the queue and is recalculated after the sync (R9).
+      await markForeignDirtyTx(tx, ctx.ws, lineage.head!);
     }
     if ('exactHundredths' in winners) {
       // Judged against the lines here, as a repost judges it: a figure the amount no longer rounds from (a new amount

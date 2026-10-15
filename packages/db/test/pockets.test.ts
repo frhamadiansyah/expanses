@@ -1,4 +1,4 @@
-import { exchangeCost, exchangeLines, openingBalanceLines, transferLines } from '@expanses/core';
+import { exchangeLines, openingBalanceLines, transferLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -411,16 +411,16 @@ describe('a move between pockets', () => {
     return { pockets, exchangeId, id };
   };
 
-  it('records the bank’s spread on the Currency exchange account, to the rupiah the screen showed', async () => {
+  it('leaves the Currency exchange account at nothing: the move’s result is its gain against what the dollars cost', async () => {
     const { exchangeId, id } = await moveUsdToSgd();
     const legs = await database.db
       .select({ base: schema.entries.amountBaseMinor })
       .from(schema.entries)
       .where(and(eq(schema.entries.transactionId, id), eq(schema.entries.accountId, exchangeId)));
     const recorded = legs.reduce((sum, leg) => sum + leg.base, 0);
-    const shown = exchangeCost({ fromMinor: 50_000, fromCurrency: 'USD', toMinor: 63_800, toCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: { USD: 16_250, SGD: 12_680 } })!;
-    expect(recorded).toBe(shown.costMinor);
-    expect(recorded).toBe(35_160);
+    // withdrawal rate §4, R6, R8: US$500 leaves at its 15.940 opening cost (Rp 7.970.000) for Rp 8.089.840 of SGD — a
+    // Rp 119.840 gain pair whose exchange line closes the account (was the day-rate spread, Rp 35.160).
+    expect(recorded).toBe(0);
   });
 
   it('moves the pockets’ own balances, each in its own currency', async () => {
@@ -429,9 +429,10 @@ describe('a move between pockets', () => {
     expect([balances[pockets[0]!.id], balances[pockets[1]!.id]]).toEqual([190_000, 178_800]);
   });
 
-  it('reaches neither income nor spending, and lowers put-away by exactly the spread (today’s rule, pinned)', async () => {
+  it('reaches income by exactly its exchange gain, and neither spending nor put-away (today’s rule, pinned)', async () => {
     await moveUsdToSgd();
     const flows = await periodFlows(database, ws, { from: '2026-09-01', to: '2026-09-30' });
-    expect([flows.incomeMinor, flows.spendingMinor, flows.putAwayMinor]).toEqual([0, 0, -35_160]);
+    // withdrawal rate §4, R8: the Rp 119.840 gain is income (was put-away lowered by the Rp 35.160 day-rate spread).
+    expect([flows.incomeMinor, flows.spendingMinor, flows.putAwayMinor]).toEqual([119_840, 0, 0]);
   });
 });
