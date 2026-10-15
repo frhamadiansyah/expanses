@@ -12,6 +12,7 @@ import { EventsPage } from '../features/events/EventsPage';
 import { EditItemRoute, NewItemRoute } from '../features/events/ItemFormPage';
 import { ItemPage } from '../features/events/ItemPage';
 import { PickPurchasePage } from '../features/events/PickPurchasePage';
+import { PeoplePage } from '../features/events/PeoplePage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
@@ -172,6 +173,8 @@ const routeTree = rootRoute.addChildren([
   // The plan and its items: six screens, every one of them a real route, so a desktop reaches each by URL and by
   // keyboard exactly as a phone reaches it by thumb. No nav.ts entry — these hang off an event, and /events is in
   // MORE_GROUPS already. "link" is a static segment, so it outranks `$itemId` however they are ordered here.
+  // A shared event's people (shared events §6): invite, add a name, a new phone, remove.
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/people', component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/link', component: PickPurchasePage, validateSearch: linkSearch }),

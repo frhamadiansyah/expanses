@@ -406,7 +406,7 @@ export async function removeEventPerson(database: Database, ws: WorkspaceContext
     const people = await peopleTx(tx, book.bookId);
     const person = people.get(personId);
     if (!person || person.removed) return;
-    if (person.memberId) throw new SharedEventDbError('HAS_APP', `${person.name} has the app: remove ${person.name} from People`);
+    if (person.memberId) throw new SharedEventDbError('HAS_APP', `${person.name} has the app: ${person.name} is removed from People, which also signs ${person.name}'s phones out of the event`);
     const refused = await personRefusalTx(tx, book, personId);
     if (refused) throw refused;
     await withCapture(tx, { entity: 'event_person', id: personId, bookId: book.bookId }, () =>
