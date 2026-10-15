@@ -12,6 +12,7 @@ import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budge
 import { daysLeft, findLine, noBudgetRows, planSplit, spendingView } from './budget-view';
 import { MonthSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
+import { shareBaseOf } from './share-form';
 import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 
 function monthLabel(month: string) {
@@ -319,6 +320,10 @@ export function BudgetPage() {
           categoryId={open.id}
           name={findLine(sheet.lines, open.id)?.name ?? 'Budget'}
           history={history?.get(open.id) ?? null}
+          base={shareBaseOf(sheet.lines, open.id, sheet.incomePlanMinor)}
+          dependants={(findLine(sheet.lines, open.id)?.children ?? [])
+            .filter((child) => budgets.find((row) => row.categoryAccountId === child.id)?.share?.basis === 'parent')
+            .map((child) => ({ name: child.name, minor: child.capMinor ?? 0 }))}
           month={month}
           currency={planCurrency}
           ready={planReady}
