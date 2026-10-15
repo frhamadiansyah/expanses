@@ -14,6 +14,7 @@ import { ItemPage } from '../features/events/ItemPage';
 import { PickPurchasePage } from '../features/events/PickPurchasePage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
+import { budgetSearch } from '../features/budget/budget-search';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
 import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
@@ -162,7 +163,7 @@ const routeTree = rootRoute.addChildren([
       throw redirect({ to: '/transactions', search: { view: 'list' } });
     },
   }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage, validateSearch: budgetSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: RecurringPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute }),
