@@ -1,3 +1,4 @@
+import { isExchangeResultKey } from '@expanses/core';
 import type { TransactionView } from '@expanses/db';
 
 export type TransactionType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction';
@@ -18,8 +19,10 @@ export interface Classified {
 
 export function classify(tx: TransactionView): Classified {
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
-  const expenses = tx.entries.filter((e) => e.accountKind === 'expense');
-  const incomes = tx.entries.filter((e) => e.accountKind === 'income');
+  // An exchange's gain or loss (withdrawal rate §5, R8) is booked on the transfer it came from; it never makes the
+  // transfer read as spending or income, open in the wrong form, or show the wrong figure on its row.
+  const expenses = tx.entries.filter((e) => e.accountKind === 'expense' && !isExchangeResultKey(e.accountSystemKey));
+  const incomes = tx.entries.filter((e) => e.accountKind === 'income' && !isExchangeResultKey(e.accountSystemKey));
   const equity = tx.entries.filter((e) => e.accountKind === 'equity');
   // Sorted by sign: the credit (the account the money came out of) first, then the debit it reached.
   const names = [...new Set([...money].sort((a, b) => a.amountMinor - b.amountMinor).map((e) => e.accountName))];
