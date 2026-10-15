@@ -17,6 +17,8 @@ import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
 import { useYahooClosesAtStart } from '../features/prices/yahoo';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
+import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
+import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
@@ -87,6 +89,8 @@ export function Layout() {
   useYahooClosesAtStart();
   // The day's iCloud copy, in the iOS app with the switch on: at open, and each time the app comes back to the front.
   useICloudBackupAtStart(database);
+  // Withdrawal rate (R18): foreign accounts recalculated behind whatever is on screen, one at a time.
+  useForeignRecalcAtStart();
 
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);
@@ -165,6 +169,7 @@ export function Layout() {
           <InstallHint />
           {/* What just happened to their data comes before the standing reminder about backing it up. */}
           <AfterUpdateCard />
+          <WithdrawalRateNotice />
           <BackupBanner />
           {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
           <ReadOnlyNotice />
