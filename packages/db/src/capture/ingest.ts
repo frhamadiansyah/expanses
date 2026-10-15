@@ -94,7 +94,7 @@ async function accountFor(tx: Db, source: CaptureSource): Promise<{ id: string; 
  *
  * A wallet screen paid by card ("Payment Method  Credit Card (6175)") is money out of the card, whatever the wallet's
  * source learned. Four digits repeat across banks, so two cards ending alike — or none — is no answer, and the
- * source's own account stands.
+ * source's own account stands. A wallet's row holds its phone number's digits, which are no card's, so it is never one.
  */
 async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null | undefined): Promise<{ id: string; currency: string | null } | null> {
   if (!last4) return null;
@@ -102,7 +102,9 @@ async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null 
     .select({ id: accounts.id, currency: accounts.currency })
     .from(cards)
     .innerJoin(accounts, eq(accounts.id, cards.accountId))
-    .where(and(eq(cards.workspaceId, workspaceId), eq(cards.last4, last4), isNull(cards.archivedAt), isNull(accounts.archivedAt)));
+    .where(
+      and(eq(cards.workspaceId, workspaceId), eq(cards.last4, last4), isNull(cards.archivedAt), isNull(accounts.archivedAt), ne(accounts.subtype, 'ewallet')),
+    );
   return rows.length === 1 ? rows[0]! : null;
 }
 

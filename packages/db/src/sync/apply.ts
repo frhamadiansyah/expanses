@@ -493,14 +493,19 @@ async function paidFromAccountHere(
   return cardHere(tx, accountId, trust.head);
 }
 
-/** The card a purchase on `accountId` names: the one the head already names on it (a supplementary card), else its primary. */
+/**
+ * The card a purchase on `accountId` names: the one the head already names on it (a supplementary card), else its primary.
+ * A wallet names none: its row holds its phone number's digits, which are no card's.
+ */
 async function cardHere(tx: Db, accountId: string, head: string | null): Promise<{ accountId: string; cardId: string | null }> {
   const [kept] = head
     ? await tx.values<[string]>(sql`SELECT c.id FROM transactions t JOIN cards c ON c.id = t.card_id WHERE t.id = ${head} AND c.account_id = ${accountId}`)
     : [];
   if (kept) return { accountId, cardId: kept[0] };
   const [card] = await tx.values<[string]>(
-    sql`SELECT id FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL ORDER BY is_primary DESC, created_at, id LIMIT 1`,
+    sql`SELECT id FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL
+          AND account_id NOT IN (SELECT id FROM accounts WHERE subtype = 'ewallet')
+        ORDER BY is_primary DESC, created_at, id LIMIT 1`,
   );
   return { accountId, cardId: card?.[0] ?? null };
 }
