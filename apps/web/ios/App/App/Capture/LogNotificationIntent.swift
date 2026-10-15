@@ -36,6 +36,9 @@ struct LogNotificationIntent: AppIntent {
             imageFile: nil
         )
         try HoldingArea.write(capture: capture)
-        return .result(dialog: "Saved to review")
+        // The count is the shortcut's side of Settings → Capture's "Waiting": the two disagreeing would mean the
+        // shortcut and the app see different holding areas.
+        let waiting = HoldingArea.pendingCount()
+        return .result(dialog: "Saved to review · \(waiting) waiting")
     }
 }
