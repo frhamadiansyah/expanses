@@ -1,7 +1,7 @@
 import { BUDGET_FREQUENCIES, type BudgetFrequency, isUncategorisedKey, perMonthMinor, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Db } from '../database';
+import type { Database, Db, Tx } from '../database';
 import { accounts } from '../schema';
 import { budgetOverrides, budgets } from '../schema-budget';
 import { budgetFrequencies } from '../schema-health';
@@ -13,6 +13,8 @@ export class BudgetError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /** The category the refusal is about, when several were being saved at once. */
+    readonly categoryAccountId?: string,
   ) {
     super(message);
     this.name = 'BudgetError';
@@ -100,7 +102,8 @@ async function assertCategory(database: Database, ws: WorkspaceContext, accountI
   if (refusal) throw new BudgetError(refusal, REFUSED[refusal]);
 }
 
-export async function saveBudget(database: Database, ws: WorkspaceContext, input: SaveBudgetInput): Promise<string> {
+/** A budget's figure as a month, checked; the refusals every way of saving a budget shares. */
+function checkedMonthly(input: SaveBudgetInput): { monthlyMinor: number; frequency: BudgetFrequency } {
   assertWholeMinor(input.amountMinor);
   if (input.amountMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'A budget must be above zero; remove it instead');
   const frequency = input.frequency ?? 'monthly';
@@ -108,53 +111,93 @@ export async function saveBudget(database: Database, ws: WorkspaceContext, input
   // Converted once, here. Every reader of budgets.amount_minor goes on reading a month.
   const monthlyMinor = perMonthMinor(input.amountMinor, frequency);
   if (monthlyMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'That comes to nothing a month; set it higher or choose a shorter period');
-  await assertCategory(database, ws, input.categoryAccountId);
+  return { monthlyMinor, frequency };
+}
 
-  const now = new Date().toISOString();
-  return database.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ id: budgets.id })
-      .from(budgets)
-      .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
-    const id = existing?.id ?? uuidv7();
-    await withCapture(tx, [{ entity: 'budget', id }, { entity: 'budget_frequency', id }], async () => {
-      if (existing) {
-        await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
-      } else {
-        await tx.insert(budgets).values({
-          id,
-          workspaceId: ws.workspaceId,
-          categoryAccountId: input.categoryAccountId,
-          amountMinor: monthlyMinor,
-          createdAt: now,
-          updatedAt: now,
-        });
+/** Writes one checked budget inside a transaction already open; its id back. */
+async function writeBudget(tx: Tx, ws: WorkspaceContext, input: SaveBudgetInput, checked: { monthlyMinor: number; frequency: BudgetFrequency }, now: string): Promise<string> {
+  const { monthlyMinor, frequency } = checked;
+  const [existing] = await tx
+    .select({ id: budgets.id })
+    .from(budgets)
+    .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
+  const id = existing?.id ?? uuidv7();
+  await withCapture(tx, [{ entity: 'budget', id }, { entity: 'budget_frequency', id }], async () => {
+    if (existing) {
+      await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
+    } else {
+      await tx.insert(budgets).values({
+        id,
+        workspaceId: ws.workspaceId,
+        categoryAccountId: input.categoryAccountId,
+        amountMinor: monthlyMinor,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    // Monthly is the absence of a row. Without 0053 the monthly figure is all that is kept, which is still the right money.
+    if (await healthTablesExist(tx)) {
+      await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, id));
+      if (frequency !== 'monthly') {
+        await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
       }
-      // Monthly is the absence of a row. Without 0053 the monthly figure is all that is kept, which is still the right money.
-      if (await healthTablesExist(tx)) {
-        await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, id));
-        if (frequency !== 'monthly') {
-          await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
-        }
-      }
-    });
-    return id;
+    }
   });
+  return id;
+}
+
+/** Deletes one category's budget and every override that only made sense against it, inside an open transaction. */
+async function deleteBudget(tx: Tx, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
+  const [existing] = await tx
+    .select({ id: budgets.id })
+    .from(budgets)
+    .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
+  if (!existing) return;
+  await withCapture(tx, [{ entity: 'budget', id: existing.id }, { entity: 'budget_frequency', id: existing.id }, { entity: 'budget_override' }], async () => {
+    if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
+    await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
+    await tx.delete(budgets).where(eq(budgets.id, existing.id));
+  });
+}
+
+export async function saveBudget(database: Database, ws: WorkspaceContext, input: SaveBudgetInput): Promise<string> {
+  const checked = checkedMonthly(input);
+  await assertCategory(database, ws, input.categoryAccountId);
+  const now = new Date().toISOString();
+  return database.transaction((tx) => writeBudget(tx, ws, input, checked, now));
 }
 
 /** Removes the budget and every override that only made sense against it. */
 export async function removeBudget(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
+  await database.transaction((tx) => deleteBudget(tx, ws, categoryAccountId));
+}
+
+export interface BudgetChanges {
+  save: SaveBudgetInput[];
+  remove: string[];
+}
+
+/**
+ * Every budget the Edit budgets screen changed, written together: each row is checked before anything is written, so
+ * one refusal leaves every budget as it was. A refusal names its category.
+ */
+export async function saveBudgets(database: Database, ws: WorkspaceContext, changes: BudgetChanges): Promise<void> {
+  const checked: { input: SaveBudgetInput; monthly: { monthlyMinor: number; frequency: BudgetFrequency } }[] = [];
+  for (const input of changes.save) {
+    try {
+      const monthly = checkedMonthly(input);
+      await assertCategory(database, ws, input.categoryAccountId);
+      checked.push({ input, monthly });
+    } catch (e) {
+      if (e instanceof BudgetError) throw new BudgetError(e.code, e.message, input.categoryAccountId);
+      throw e;
+    }
+  }
+  if (checked.length === 0 && changes.remove.length === 0) return;
+  const now = new Date().toISOString();
   await database.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ id: budgets.id })
-      .from(budgets)
-      .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
-    if (!existing) return;
-    await withCapture(tx, [{ entity: 'budget', id: existing.id }, { entity: 'budget_frequency', id: existing.id }, { entity: 'budget_override' }], async () => {
-      if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
-      await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
-      await tx.delete(budgets).where(eq(budgets.id, existing.id));
-    });
+    for (const categoryAccountId of changes.remove) await deleteBudget(tx, ws, categoryAccountId);
+    for (const { input, monthly } of checked) await writeBudget(tx, ws, input, monthly, now);
   });
 }
 
