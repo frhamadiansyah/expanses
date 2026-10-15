@@ -271,6 +271,13 @@ function BudgetField({
     : [];
   const inset = 16 + row.depth * 16;
   const share = value.mode === 'share';
+  const caption = value.filled
+    ? 'Filled from last month'
+    : kept !== null
+      ? `Kept as ${formatMinor(kept, currency)} a month`
+      : share
+        ? `= ${formatMinor(shareMinor, currency)} of ${base.label}`
+        : hint;
   return (
     <div className={cx('relative', focused && 'bg-[var(--ph-tint-panel)]')} data-testid={`edit-row-${row.label}`}>
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 right-[16px] h-[0.5px] bg-[var(--ph-hair)]" style={{ left: inset }} />}
@@ -282,13 +289,7 @@ function BudgetField({
         )}
         <label htmlFor={`cap-${row.id}`} className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">{row.label}</span>
-          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{value.filled
-              ? 'Filled from last month'
-              : kept !== null
-                ? `Kept as ${formatMinor(kept, currency)} a month`
-                : share
-                  ? `= ${formatMinor(shareMinor, currency)} of ${base.label}`
-                  : hint}</span>
+          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</span>
         </label>
         <input
           id={`cap-${row.id}`}
