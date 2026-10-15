@@ -20,6 +20,7 @@ import {
   archiveCard,
   createCardAccount,
   listCards,
+  setWalletLast4,
 } from '../src/index';
 import { captureSkipped, captureSources } from '../src/schema-capture';
 import { eq } from 'drizzle-orm';
@@ -565,6 +566,15 @@ describe('the card a screen says paid', () => {
     expect(drafts.find((draft) => draft.amountMinor === 20_000)).toMatchObject({ accountId: wallet.id });
     expect(drafts.find((draft) => draft.amountMinor === 30_000)).toMatchObject({ accountId: wallet.id });
     expect(cardAccountId).not.toBe(wallet.id);
+  });
+
+  it('never reads a wallet’s phone digits as a card, even when they end like the card that paid', async () => {
+    const { database, ws, wallet, cardAccountId } = await withCard();
+    await setWalletLast4(database, ws, wallet.id, '6175');
+
+    await ingestCaptures(database, ws, [walletDetail('d-1', 'Logitek Digital Nusantara', 'Rp295.000')], { today: DAY });
+
+    expect((await draftsOf(database, ws))[0]).toMatchObject({ accountId: cardAccountId, amountMinor: 295_000 });
   });
 
   it('passes over a card that has been put away', async () => {

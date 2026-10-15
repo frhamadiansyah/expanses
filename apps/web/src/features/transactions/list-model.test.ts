@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals , groupByCategory } from './list-model';
+import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -10,6 +11,9 @@ const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subt
 const accounts = [
   account('bca', 'asset', 'bank', { name: 'BCA Tahapan' }),
   account('octo', 'liability', 'credit_card', { name: 'CIMB Octo' }),
+  account('kantong', 'asset', 'ewallet', { name: 'Kantong' }),
+  account('nusa', 'liability', 'credit_card', { name: 'Nusa Voyager Travel' }),
+  account('debit', 'asset', 'bank', { name: 'Nusa Payroll' }),
   account('friend', 'asset', 'receivable', { name: 'Dina' }),
   account('ibkr', 'asset', 'investment', { name: 'Interactive Brokers' }),
   account('food', 'expense', 'category', { name: 'Food & Beverage', systemKey: 'food_beverage' }),
@@ -21,6 +25,8 @@ const byId = new Map(accounts.map((a) => [a.id, a]));
 const cards: CardRow[] = [
   { id: 'c1', accountId: 'octo', last4: '1467', holderName: 'Fandrian', isPrimary: true },
   { id: 'c2', accountId: 'octo', last4: '8802', holderName: 'Aisyah', isPrimary: false },
+  { id: 'c3', accountId: 'nusa', last4: '4417', holderName: null, isPrimary: true },
+  { id: 'c4', accountId: 'debit', last4: '6630', holderName: null, isPrimary: true },
 ];
 
 let seq = 0;
@@ -341,5 +347,115 @@ describe('amountLook', () => {
     expect(amountLook(one(tx('2026-09-12', 'Superindo', [['groceries', 40_000], ['bca', -40_000]])))).toEqual({ sign: -1, plus: false, muted: false });
     expect(amountLook(one(tx('2026-09-12', 'Salary', [['bca', 40_000], ['salary', -40_000]])))).toEqual({ sign: 1, plus: false, muted: false });
     expect(amountLook(one(tx('2026-09-12', 'Refund', [['groceries', -40_000], ['bca', 40_000]])))).toEqual({ sign: 1, plus: true, muted: false });
+  });
+});
+
+describe('paidWithLook', () => {
+  const one = (t: TransactionView) => buildRows([t], [], accounts, cards)[0]!;
+
+  it('shows a card only by its last four digits when they are known, not by its account name', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]], { cardId: 'c1' })))).toEqual({ name: '', last4: '1467' });
+  });
+
+  it('shows a card account’s only card by its digits when the purchase names no card, as Paid with offered it', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]])))).toEqual({ name: '', last4: '4417' });
+  });
+
+  it('leaves out the digits when the purchase named neither of an account’s two cards, or was paid from a bank with a debit card', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
+    // A bank account is not its debit card: money out of it by transfer or QRIS was never the card's.
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['debit', -40_000]])))).toEqual({ name: 'Nusa Payroll', last4: null });
+  });
+
+  it('keeps the account name when the last four digits are not known', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
+  });
+
+  it('leaves money moving between two accounts named in full, with the card after them', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → CIMB Octo', last4: '1467' });
+  });
+});
+
+describe('a card put away since', () => {
+  const lunch = (cardId: string | null) => tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]], { cardId });
+
+  it('keeps the digits and holder of an archived supplementary card on the rows that named it, and finds them by those digits only', () => {
+    const withArchived: CardRow[] = [cards[0]!, { ...cards[1]!, archived: true }];
+    const rows = buildRows([lunch('c2')], [], accounts, withArchived);
+    expect(rows[0]).toMatchObject({ last4: '8802', holderName: 'Aisyah' });
+    expect(filterRows(rows, { ...EMPTY_FILTERS, q: '1467' }, accounts)).toEqual([]);
+  });
+
+  it('keeps a replaced card’s old digits on the rows that named it, and gives the new card’s only to rows that named none', () => {
+    const replaced: CardRow[] = [{ ...cards[2]!, archived: true }, { id: 'c5', accountId: 'nusa', last4: '9051', holderName: null, isPrimary: true }];
+    const named = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]], { cardId: 'c3' });
+    const unnamed = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]]);
+    const [first, second] = buildRows([named, unnamed], [], accounts, replaced);
+    expect(first!.last4).toBe('4417');
+    expect(second!.last4).toBe('9051');
+  });
+
+  it('shows no digits at all for a card the list does not know, never another card’s', () => {
+    const named = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]], { cardId: 'gone' });
+    expect(buildRows([named], [], accounts, cards)[0]!.last4).toBeNull();
+    expect(buildRows([], [draft({ accountId: 'nusa', cardId: 'gone' })], accounts, cards)[0]!.last4).toBeNull();
+  });
+});
+
+describe('a wallet’s phone digits on its rows', () => {
+  const digits = { kantong: '5521' };
+  const lunch = tx('2026-09-12', 'Mie Kuah Bu Ratmi', [['groceries', 40_000], ['kantong', -40_000]]);
+  const topUp = tx('2026-09-12', 'Top up', [['kantong', 40_000], ['bca', -40_000]]);
+
+  it('shows a purchase paid from the wallet as "···· 5521", the way a card is shown', () => {
+    const [row] = buildRows([lunch], [], accounts, cards, digits);
+    expect(row).toMatchObject({ last4: '5521', cardId: null });
+    expect(paidWithLook(row!)).toEqual({ name: '', last4: '5521' });
+  });
+
+  it('shows a draft paid from the wallet the same way', () => {
+    const [row] = buildRows([], [draft({ accountId: 'kantong' })], accounts, cards, digits);
+    expect(row).toMatchObject({ last4: '5521' });
+  });
+
+  it('keeps both names on money moving into the wallet, without the wallet’s digits', () => {
+    const [row] = buildRows([topUp], [], accounts, cards, digits);
+    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan → Kantong', last4: null });
+  });
+
+  it('finds the wallet’s rows by its digits, as a card’s are found', () => {
+    const built = buildRows([lunch, salary], [], accounts, cards, digits);
+    expect(filterRows(built, { ...EMPTY_FILTERS, q: '5521' }, accounts).map((row) => row.id)).toEqual([lunch.id]);
+  });
+});
+
+describe('amountExtraParts', () => {
+  const foreign = { originalCurrency: 'JPY', originalAmountMinor: 1850 };
+  const plain = { originalCurrency: null, originalAmountMinor: null };
+  const line = (parts: { text: string }[]) => parts.map((part) => part.text).join(' · ');
+
+  it('puts the foreign amount first and the points after it, on one line', () => {
+    const parts = amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false });
+    expect(line(parts)).toBe('JP¥1.850 · +38 pts');
+    expect(parts.map((part) => part.tone)).toEqual(['foreign', 'earned']);
+  });
+
+  it('shows either part alone when only one applies, and nothing when neither does', () => {
+    expect(line(amountExtraParts(foreign, undefined))).toBe('JP¥1.850');
+    expect(line(amountExtraParts(plain, { points: 1200, unit: 'miles', approximate: false }))).toBe('+1.200 miles');
+    expect(amountExtraParts(plain, undefined)).toEqual([]);
+  });
+
+  it('marks points taken back with a minus and estimated points with ≈, as before', () => {
+    expect(amountExtraParts(plain, { points: -38, unit: 'pts', approximate: false })).toEqual([{ text: '−38 pts', tone: 'lost' }]);
+    expect(amountExtraParts(plain, { points: 38, unit: 'pts', approximate: true })).toEqual([{ text: '≈ 38 pts', tone: 'earned' }]);
+  });
+});
+
+describe('what the list model is built from', () => {
+  it('imports no hooks and nothing from the database at run time: types only, so it stays a plain model', () => {
+    const source = readFileSync(new URL('./list-model.ts', import.meta.url), 'utf8');
+    const runtime = source.split('\n').filter((line) => line.startsWith('import ') && !line.startsWith('import type '));
+    expect(runtime.filter((line) => /useCardPoints|@expanses\/db|purchase-points/.test(line))).toEqual([]);
   });
 });

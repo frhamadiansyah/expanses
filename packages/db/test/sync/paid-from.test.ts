@@ -7,6 +7,7 @@ import {
   cardSpendLines,
   cardStatement,
   confirmReview,
+  createAccount,
   createCardAccount,
   paidFromAccount,
   paidWithItems,
@@ -15,6 +16,7 @@ import {
   replaceTransaction,
   saveCardTerms,
   setShareSetting,
+  setWalletLast4,
 } from '../../src/index';
 import { applyChangeSet } from '../../src/sync/apply';
 import { SyncEngine } from '../../src/sync/engine';
@@ -401,5 +403,62 @@ describe('paid with the other’s item (task 7)', () => {
     expect(row).toEqual([null, null]);
     const head = (await headOf(s.rina.database, '01a0f000-0000-7000-8000-000000000003'))!;
     expect((await purchasePayers(s.rina.database, [head]))[head]).toMatchObject({ paidBy: s.andi.memberId, paidFrom: null });
+  });
+});
+
+describe('paid with the other’s wallet', () => {
+  /** Rina and Andi in a net-worth group, Rina's wallet shared with its phone digits 5521. */
+  async function walletSharing() {
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const andi = await home.device('Andi');
+    const bookId = await home.share(rina);
+    await home.join(andi, rina);
+    await home.settle();
+    const wallet = await createAccount(rina.database, rina.ws, { name: 'Rina Wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    await setWalletLast4(rina.database, rina.ws, wallet.id, '5521');
+    const proposalId = await rina.engine.proposeNetWorth(bookId, { mode: 'separate', members: [andi.memberId] });
+    await settle(home);
+    await andi.engine.answerNetWorth(bookId, proposalId, 'confirm');
+    await settle(home);
+    await confirmReview(rina.database, rina.ws, { [wallet.id]: 'total' });
+    await confirmReview(andi.database, andi.ws, {});
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    const walletItem = await itemIdOf(groupBookId, wallet.id);
+    return { home, rina, andi, bookId, wallet, groupBookId, walletItem };
+  }
+
+  it('a change to the wallet’s phone digits re-sends its item, so the household reads the new ones', async () => {
+    const { home, rina, andi, wallet, groupBookId, walletItem } = await walletSharing();
+    const nameOn = async () => (await receivedItems(andi.database, groupBookId)).find((i) => i.itemId === walletItem)?.name;
+    expect(await nameOn()).toBe('Rina Wallet ···· 5521');
+
+    await setWalletLast4(rina.database, rina.ws, wallet.id, '7310');
+    await settle(home);
+
+    expect(await nameOn()).toBe('Rina Wallet ···· 7310');
+  });
+
+  it('Andi pays from Rina’s wallet: her wallet on her phone with no card named, its phone digits in the label', async () => {
+    const { home, rina, andi, bookId, wallet, walletItem } = await walletSharing();
+    const [item] = (await paidWithItems(andi.database, bookId)).filter((i) => i.itemId === walletItem);
+    expect(item).toBeDefined();
+    const account = await paidFromAccount(andi.database, bookId, item!.owner, item!.currency);
+    const lineage = await postTransaction(andi.database, andi.ws, {
+      occurredOn: today,
+      description: 'Household groceries',
+      lines: expenseLines({ categoryAccountId: await categoryOf(andi.database, bookId, 'Groceries'), paymentAccountId: account, amountMinor: 120_000_00, currency: 'IDR' }),
+      paidFrom: { owner: item!.owner, itemId: item!.itemId },
+    });
+    await settle(home);
+
+    const head = (await headOf(rina.database, lineage))!;
+    expect(await moneySide(rina, head)).toEqual([wallet.id]);
+    // The phone digits are no card: a purchase landing on the wallet names none, as one recorded on it by hand does not.
+    expect(await cardIdOf(rina, head)).toBeNull();
+    // What reaches the household is the shared item's name, digits and all, as a card's is.
+    const andiHead = (await headOf(andi.database, lineage))!;
+    expect((await purchasePayers(andi.database, [andiHead]))[andiHead]).toMatchObject({ paidLabel: 'Rina Wallet ···· 5521' });
   });
 });

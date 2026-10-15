@@ -1,11 +1,26 @@
 import { CATALOG } from '@expanses/catalog';
-import { listCardIdentities, listCards, listIssuers, listPrograms } from '@expanses/db';
+import { listCardIdentities, listCards, listIssuers, listPrograms, listWalletLast4 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
 export function useCards(accountId?: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['cards', ws.workspaceId, accountId ?? 'all'], queryFn: () => listCards(database, ws, accountId) });
+}
+
+/**
+ * Every card ever recorded, archived ones marked: what a list of transactions reads a row's card from, so a row that named
+ * a card since put away keeps that card's digits. Never a choice of what to pay with — `useCards` is.
+ */
+export function useCardsWithArchived() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['cards', ws.workspaceId, 'with-archived'], queryFn: () => listCards(database, ws, undefined, { withArchived: true }) });
+}
+
+/** The last four digits of each digital wallet's phone number, by account: never among `useCards`. */
+export function useWalletLast4() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['wallet-last4', ws.workspaceId], queryFn: () => listWalletLast4(database, ws) });
 }
 
 /** Issuer and product name keyed by account, for every surface that shows a card. */

@@ -10,7 +10,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { amountLook, type ListRow } from './list-model';
+import { type AmountExtraPart, amountLook, type ListRow, paidWithLook } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { TwoTapDelete } from './TwoTapDelete';
@@ -191,9 +191,8 @@ export function TransactionRow({
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
             <>
-              {row.description ? `${row.description}${row.accountLabel ? ' · ' : ''}` : ''}
-              {row.accountLabel}
-              {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
+              {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
+              <PaidWith row={row} />
             </>
           )}
         </span>
@@ -202,7 +201,9 @@ export function TransactionRow({
           within a <button> is invalid HTML whose name swallows the inner one's. */}
       {under}
       </div>
-      <span className="shrink-0 text-right">
+      {/* At most 40% of the row, so the longest line under an amount — a foreign figure and points in a long unit —
+          never squeezes the category and the note to a sliver at a phone's width; the points give way first. */}
+      <span className="min-w-0 max-w-[40%] shrink-0 text-right">
         <span
           className={cx(
             'tabular block text-sm font-semibold whitespace-nowrap',
@@ -268,6 +269,62 @@ export function TransactionRow({
     >
       {face()}
     </li>
+  );
+}
+
+/**
+ * What paid, as a row's second line names it: "···· 4417" alone for a card whose digits are known, the account's name
+ * otherwise, and both names of a transfer with the digits after them (`paidWithLook`).
+ */
+export function PaidWith({ row }: { row: ListRow }) {
+  const { name, last4 } = paidWithLook(row);
+  return (
+    <>
+      {name}
+      {last4 && <span className="tabular font-semibold text-slate-600">{name ? ' ' : ''}···· {last4}</span>}
+    </>
+  );
+}
+
+/**
+ * A row not recorded yet, on its second line: the note, then what paid as a recorded row names it (`PaidWith`). The row
+ * already shows what else it is missing; only the account it was paid with has nowhere else to show.
+ */
+export function DraftSubtitle({ row }: { row: ListRow }) {
+  return (
+    <>
+      {row.description || 'No description yet'}
+      {(row.accountLabel || row.last4) && ' · '}
+      <PaidWith row={row} />
+      {row.needs.includes('paid with') && ' · needs an account'}
+    </>
+  );
+}
+
+/**
+ * The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour.
+ * Always one line: when the row's right side is out of room the points are cut short with an ellipsis — the foreign
+ * figure, being money, never is — and the whole line is the element's title.
+ */
+export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
+  if (parts.length === 0) return null;
+  return (
+    <span data-testid="amount-extra" title={parts.map((part) => part.text).join(' · ')} className="tabular flex justify-end whitespace-nowrap text-xs">
+      {parts.map((part, i) => (
+        <span
+          key={part.tone}
+          className={cx(
+            part.tone === 'foreign' ? 'shrink-0 text-slate-500' : 'min-w-0 truncate',
+            part.tone === 'lost' && 'text-red-700',
+            part.tone === 'earned' && 'text-emerald-700',
+          )}
+        >
+          {/* No-break spaces: at the start of a flex item a plain one is dropped, and the dot would touch the figure. */}
+          {i > 0 && <span className="text-slate-400">{' · '}</span>}
+          {part.text}
+        </span>
+      ))}
+    </span>
   );
 }
 

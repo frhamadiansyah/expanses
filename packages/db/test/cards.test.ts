@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCard, archiveCard, createAccount, listCards, listIssuers, saveCardIdentity } from '../src/index';
+import { addCard, archiveCard, cardsSchema, createAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -78,11 +78,104 @@ describe('the plastic on an account', () => {
     await expect(addCard(database, ws, { accountId: mandiri.id, last4: '1467', isPrimary: true })).resolves.toEqual(expect.any(String));
   });
 
+  it('lists archived cards too when asked, marked as archived, so a row that named one still reads its digits', async () => {
+    const { database, ws, card } = await workspace();
+    const octo = await card('Lintas Rewards', 'Nusa');
+    const primary = await addCard(database, ws, { accountId: octo.id, last4: '1467', holderName: 'Fandrian', isPrimary: true });
+    const supplementary = await addCard(database, ws, { accountId: octo.id, last4: '8802', holderName: 'Spouse' });
+
+    await archiveCard(database, ws, supplementary);
+
+    expect((await listCards(database, ws)).map((row) => row.id)).toEqual([primary]);
+    const all = await listCards(database, ws, undefined, { withArchived: true });
+    expect(all.map((row) => [row.last4, row.archived])).toEqual([
+      ['8802', true],
+      ['1467', false],
+    ]);
+  });
+
+  it('keeps a wallet’s phone digits out of the cards, so no card list, chooser or duplicate check ever sees them', async () => {
+    const { database, ws } = await workspace();
+    const wallet = await createAccount(database, ws, { name: 'Pay wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    // No bank named, as the wallet names none: the two would read as the same issuer to the duplicate check.
+    const plain = await createAccount(database, ws, { name: 'Plain Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+
+    await setWalletLast4(database, ws, wallet.id, '5521');
+
+    expect(await listCards(database, ws)).toEqual([]);
+    expect(await listCards(database, ws, wallet.id)).toEqual([]);
+    // A card ending like the phone number is a card of its own, never refused as typed twice.
+    await expect(addCard(database, ws, { accountId: plain.id, last4: '5521', isPrimary: true })).resolves.toEqual(expect.any(String));
+  });
+
   it('offers the issuers the workspace already uses', async () => {
     const { database, ws, card } = await workspace();
     await card('Mandiri Marriott Bonvoy', 'Mandiri');
     await card('BCA KrisFlyer', 'BCA');
 
     expect(await listIssuers(database, ws)).toEqual(['BCA', 'Mandiri']);
+  });
+});
+
+describe('the last four digits of a wallet’s phone number', () => {
+  async function withWallets() {
+    const { database, ws } = await workspace();
+    const wallet = await createAccount(database, ws, { name: 'Pay wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    const other = await createAccount(database, ws, { name: 'Kantong', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    return { database, ws, wallet, other };
+  }
+
+  it('records them once, reads them back by account, and replaces them when they change', async () => {
+    const { database, ws, wallet } = await withWallets();
+
+    await setWalletLast4(database, ws, wallet.id, '5521');
+    expect(await listWalletLast4(database, ws)).toEqual({ [wallet.id]: '5521' });
+
+    await setWalletLast4(database, ws, wallet.id, '7310');
+    expect(await listWalletLast4(database, ws)).toEqual({ [wallet.id]: '7310' });
+  });
+
+  it('keeps one row for them, changed in place, however often they change or are cleared', async () => {
+    const { database, ws, wallet } = await withWallets();
+
+    for (const digits of ['5521', '7310', null, '0042']) await setWalletLast4(database, ws, wallet.id, digits);
+
+    const rows = await database.db.select({ last4: cardsSchema.cards.last4, archivedAt: cardsSchema.cards.archivedAt }).from(cardsSchema.cards);
+    expect(rows).toEqual([{ last4: '0042', archivedAt: null }]);
+  });
+
+  it('is never a card: a wallet is refused a card of its own', async () => {
+    const { database, ws, wallet } = await withWallets();
+
+    await expect(addCard(database, ws, { accountId: wallet.id, last4: '5521', isPrimary: true })).rejects.toThrow(/Only a credit card or a bank account carries cards/);
+  });
+
+  it('removes them when they are cleared', async () => {
+    const { database, ws, wallet } = await withWallets();
+    await setWalletLast4(database, ws, wallet.id, '5521');
+
+    await setWalletLast4(database, ws, wallet.id, null);
+    await setWalletLast4(database, ws, wallet.id, '  ');
+
+    expect(await listWalletLast4(database, ws)).toEqual({});
+  });
+
+  it('lets two wallets on the same phone carry the same digits', async () => {
+    const { database, ws, wallet, other } = await withWallets();
+
+    await setWalletLast4(database, ws, wallet.id, '5521');
+    await setWalletLast4(database, ws, other.id, '5521');
+
+    expect(await listWalletLast4(database, ws)).toEqual({ [wallet.id]: '5521', [other.id]: '5521' });
+  });
+
+  it('insists on exactly four digits, and only on a wallet', async () => {
+    const { database, ws, wallet } = await withWallets();
+    const bank = await createAccount(database, ws, { name: 'Everyday bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+
+    await expect(setWalletLast4(database, ws, wallet.id, '552')).rejects.toThrow(/four numbers/);
+    await expect(setWalletLast4(database, ws, wallet.id, '55210')).rejects.toThrow(/four numbers/);
+    await expect(setWalletLast4(database, ws, bank.id, '5521')).rejects.toThrow(/digital wallet/);
+    expect(await listWalletLast4(database, ws)).toEqual({});
   });
 });

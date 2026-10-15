@@ -1,5 +1,7 @@
-import { compareWithinDay, dayNet, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import type { PurchasePoints } from '../../lib/purchase-points';
+import { formatPoints } from '../cards/format-points';
 import { classify } from './classify';
 
 /**
@@ -105,9 +107,29 @@ export function buildRows(
   drafts: readonly DraftRow[],
   accounts: readonly AccountRow[],
   cards: readonly CardRow[],
+  /** The last four digits of each digital wallet's phone number, by account (`listWalletLast4`). */
+  walletLast4: Readonly<Record<string, string>> = {},
 ): ListRow[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
+  // Archived cards included (`listCards`'s `withArchived`): a row that named a card since put away still reads its digits.
   const cardById = new Map(cards.map((card) => [card.id, card]));
+  /*
+   * The digits a row names when it names no card: a credit card account's only card in use — Paid with offers that card
+   * as the account itself, so a purchase on it records no card — and a wallet's phone number. An account with two cards
+   * and no card named was paid "from the account", and a bank is not its debit card, so neither gets any. Only a row paid
+   * from that one account and nothing else: money moving between two names both, and digits after both would say neither.
+   * A row that names a card is that card's alone, even one this list does not know: never another card's digits.
+   */
+  const cardsOf = new Map<string, CardRow[]>();
+  for (const card of cards) if (!card.archived) cardsOf.set(card.accountId, [...(cardsOf.get(card.accountId) ?? []), card]);
+  const soleCard = (accountId: string) => {
+    const own = cardsOf.get(accountId) ?? [];
+    return byId.get(accountId)?.subtype === 'credit_card' && own.length === 1 ? own[0]!.last4 : null;
+  };
+  const digitsOf = (cardId: string | null, accountIds: readonly string[]) => {
+    if (cardId) return cardById.get(cardId)?.last4 ?? null;
+    return accountIds.length === 1 ? (soleCard(accountIds[0]!) ?? walletLast4[accountIds[0]!] ?? null) : null;
+  };
   const isPerson = (id: string) => ['receivable', 'payable'].includes(byId.get(id)?.subtype ?? '');
 
   // A statement check's "Payments not tracked" adjustment (statement-check spec §3.6) is the card's business alone: it
@@ -121,6 +143,7 @@ export function buildRows(
     const categoryId = c.categoryIds[0] ?? null;
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
     const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
+    const accountIds = [...new Set(money.map((e) => e.accountId))];
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
     const baseOf = (kind: 'expense' | 'income') => (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
@@ -138,10 +161,10 @@ export function buildRows(
       categoryId,
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,
       parentName: parentNameOf(categoryId, byId),
-      accountIds: [...new Set(money.map((e) => e.accountId))],
+      accountIds,
       accountLabel: c.moneyAccountNames.join(' → '),
       cardId: tx.cardId,
-      last4: card?.last4 ?? null,
+      last4: digitsOf(tx.cardId, accountIds),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
       excluded: tx.excluded ?? false,
@@ -172,7 +195,7 @@ export function buildRows(
       accountIds: draft.accountId ? [draft.accountId] : [],
       accountLabel: draft.accountId ? (byId.get(draft.accountId)?.name ?? '') : '',
       cardId: draft.cardId,
-      last4: card?.last4 ?? null,
+      last4: digitsOf(draft.cardId, draft.accountId ? [draft.accountId] : []),
       holderName: card?.holderName ?? null,
       deleted: false,
       // Nothing is excluded until it is recorded: a draft counts nothing either way.
@@ -293,6 +316,41 @@ export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; mut
   if (row.type === 'debt' && row.earnedMinor > 0) return { sign: 1, plus: false, muted: false };
   if (row.moneyIn) return { sign: 0, plus: true, muted: true };
   return { sign: 0, plus: false, muted: false };
+}
+
+/**
+ * How a row names what paid, on its second line. A card whose last four digits are known is those digits alone —
+ * "···· 4417" says which card more surely than a long account name, and leaves the line room for the note. Money moving
+ * between two accounts ("BCA Tahapan → CIMB Octo") keeps both names, with the digits after them as before.
+ */
+export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4'>): { name: string; last4: string | null } {
+  if (row.last4 && row.accountIds.length <= 1) return { name: '', last4: row.last4 };
+  return { name: row.accountLabel, last4: row.last4 };
+}
+
+/** One piece of the line under a row's amount: what it cost in the currency it was charged in, or the points it earned. */
+export interface AmountExtraPart {
+  text: string;
+  /** `foreign` reads muted; points read green when earned and red when taken back. */
+  tone: 'foreign' | 'earned' | 'lost';
+}
+
+/**
+ * The one line under a row's amount: the foreign amount first, then the points ("¥1.850 · +38 pts"), either alone when
+ * only one applies, and nothing when neither does. Both used to stack as lines of their own, which made a foreign
+ * purchase on a card that earns three lines tall.
+ */
+export function amountExtraParts(
+  tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
+  points: PurchasePoints | undefined,
+): AmountExtraPart[] {
+  const parts: AmountExtraPart[] = [];
+  if (tx.originalCurrency && tx.originalAmountMinor !== null) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
+  if (points) {
+    const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';
+    parts.push({ text: `${mark}${formatPoints(Math.abs(points.points))} ${points.unit}`, tone: points.points < 0 ? 'lost' : 'earned' });
+  }
+  return parts;
 }
 
 export function dayTotal(rows: readonly ListRow[]): number {

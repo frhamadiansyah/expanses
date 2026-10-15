@@ -1,5 +1,7 @@
 import { bankMatches, takesPockets, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { openCashAccount, openPocketedAccount } from '@expanses/db';
+import { openCashAccount, openPocketedAccount, setWalletLast4 } from '@expanses/db';
+import { readWalletLast4 } from '../accounts/wallet-last4';
+import { openOnce } from './open-once';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -287,10 +289,15 @@ export function CashAccountForm({
   const [manualRate, setManualRate] = useState('');
   const [pocketed, setPocketed] = useState(false);
   const [pockets, setPockets] = useState<PocketDraft[]>([]);
+  // A wallet's phone number, by its last four digits: optional, and only ever asked of a wallet.
+  const [phoneLast4, setPhoneLast4] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
-  const canSave = !busy && name.trim() !== '';
+  // The account this form has already opened, so a second Save after a failure finishes it rather than opening another.
+  const opened = useRef<{ id: string | null }>({ id: null });
+  const phone = item === 'ewallet' ? readWalletLast4(phoneLast4) : null;
+  const canSave = !busy && name.trim() !== '' && phone?.ok !== false;
   const onCanSave = embedded?.onCanSave;
   useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
 
@@ -320,6 +327,11 @@ export function CashAccountForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    // Refused before anything is written: the page's own Add account is pressed whether or not the sheet's ✓ is dimmed.
+    if (phone?.ok === false) {
+      setError(new Error(phone.error));
+      return;
+    }
     setBusy(true);
     try {
       if (pocketed) {
@@ -342,27 +354,39 @@ export function CashAccountForm({
         else await navigate({ to: '/accounts' });
         return;
       }
-      const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
-      const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
-      const opened = await openCashAccount(database, ws, {
-        item,
-        name,
-        currency,
-        openingBalanceMinor,
-        openedOn,
-        openingRateToBase,
-        bank: bank.trim() || undefined,
-        maturesOn: locked ? maturesOn : undefined,
-        // A rate is stored in basis points, so 6,25% is 625 and nothing is lost to a fraction of a percent.
-        rateBps: locked && rate.trim() ? Math.round(parseRate(rate) * 100) : undefined,
-        sourceAccountId: source?.id,
-      });
-      await household.save([opened.id]);
+      // Opened once: if the digits or the sharing fail after it is open, Save again finishes this account, never a second.
+      const openedId = await openOnce(
+        opened.current,
+        async () => {
+          const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
+          const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
+          const account = await openCashAccount(database, ws, {
+            item,
+            name,
+            currency,
+            openingBalanceMinor,
+            openedOn,
+            openingRateToBase,
+            bank: bank.trim() || undefined,
+            maturesOn: locked ? maturesOn : undefined,
+            // A rate is stored in basis points, so 6,25% is 625 and nothing is lost to a fraction of a percent.
+            rateBps: locked && rate.trim() ? Math.round(parseRate(rate) * 100) : undefined,
+            sourceAccountId: source?.id,
+          });
+          return account.id;
+        },
+        async (id) => {
+          if (phone?.ok && phone.last4) await setWalletLast4(database, ws, id, phone.last4);
+          await household.save([id]);
+        },
+      );
       await invalidate();
-      if (onCreated) onCreated(opened.id);
+      if (onCreated) onCreated(openedId);
       else await navigate({ to: '/accounts' });
     } catch (e) {
       setError(e);
+      // An account opened before the failure is real: the lists show it while the form says what is left to do.
+      if (opened.current.id) await invalidate();
     } finally {
       setBusy(false);
     }
@@ -423,6 +447,18 @@ export function CashAccountForm({
           ) : (
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
           )
+        )}
+        {/* What tells two wallets of one app apart, shown on their rows as a card's digits are: "···· 5521". */}
+        {item === 'ewallet' && (
+          <TextRow
+            label="Last 4 digits of phone"
+            value={phoneLast4}
+            onChange={(e) => setPhoneLast4(e.target.value)}
+            inputMode="tel"
+            placeholder="Optional"
+            className="tabular"
+            hint={phone?.ok === false ? phone.error : undefined}
+          />
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}

@@ -31,8 +31,7 @@ import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidate
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { useCards } from '../cards/card-queries';
-import { formatPoints } from '../cards/useCardPoints';
+import { useCards, useCardsWithArchived, useWalletLast4 } from '../cards/card-queries';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
@@ -49,11 +48,11 @@ import { keptText, moveHint } from './shared-move';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
-import { TransactionRow, useRecategorise } from './TransactionRow';
+import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { amountExtraParts, billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -147,6 +146,9 @@ export function TransactionsPage() {
   // to, because it went through a second filter that had no membership test.
   const membership = useCategorySetMembership().data ?? {};
   const cards = useCards().data ?? [];
+  const walletLast4 = useWalletLast4().data ?? {};
+  // What a row names may have been put away since; the rows read it from every card, archived ones too.
+  const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
@@ -305,7 +307,7 @@ export function TransactionsPage() {
    * of it. The table is the exception it has always been: it is the editor, and a half-typed row waiting there is
    * the work in progress that editor exists for.
    */
-  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards);
+  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4);
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
    * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
@@ -716,12 +718,9 @@ export function TransactionsPage() {
           {/* The first line is the category, as on every other row; without one it says so. */}
           <div className="truncate text-sm font-medium">{row.categoryName || 'Uncategorised'}</div>
           <div className="truncate text-xs text-slate-500">
-            {row.description || 'No description yet'}
-            {row.accountLabel && ` · ${row.accountLabel}`}
-            {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {/* The row already shows what it is missing: "Uncategorised", "—" for the amount, no description,
                 no date in its own group. Only the account it was paid with has nowhere else to show. */}
-            {row.needs.includes('paid with') && ' · needs an account'}
+            <DraftSubtitle row={row} />
           </div>
         </div>
         <div className={cx('tabular text-sm font-semibold whitespace-nowrap', row.type === 'income' ? 'text-emerald-700' : 'text-red-700')}>
@@ -902,29 +901,15 @@ export function TransactionsPage() {
             {payerOf(tx.id) ? (
               payerLine(payerOf(tx.id)!)
             ) : onPlaceholder(tx) ? null : (
-              <>
-                {row.accountLabel}
-                {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
-              </>
+              <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
         under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
-        amountExtra={
-          <>
-            {points && (
-              <span className={cx('tabular block whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
-                {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
-                {formatPoints(Math.abs(points.points))} {points.unit}
-              </span>
-            )}
-            {tx.originalCurrency && tx.originalAmountMinor !== null && (
-              <span className="tabular block whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</span>
-            )}
-          </>
-        }
+        // One line under the amount, never two: the foreign amount, then the points ("JP¥1.850 · +38 pts").
+        amountExtra={<AmountExtra parts={amountExtraParts(tx, points)} />}
         trailing={
           selecting ? undefined : <>
             {trade ? (
