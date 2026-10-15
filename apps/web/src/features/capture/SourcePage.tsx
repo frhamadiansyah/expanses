@@ -1,10 +1,10 @@
-import { deleteSource, resetSourceTemplate, setSourceAccount } from '@expanses/db';
+import { deleteSource, resetSourceTemplate, setSourceAccount, setSourceReadsOffers } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, SwitchRow } from '../../ui/native';
 import { useCaptureSources } from '../review/queries';
 
 /**
@@ -86,6 +86,18 @@ export function SourcePage() {
             <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
           ))}
         </SelectRow>
+      </InsetGroup>
+
+      <InsetGroup
+        header="Offers"
+        footer="A notification about points or cashback is normally skipped — it is about the offer, not the purchase. Some cards announce a purchase only inside one, and nothing else ever arrives. Switched on, an offer from this source that names a transaction and shows an amount becomes a draft; one that names no transaction is still skipped."
+      >
+        <SwitchRow
+          label="Read offers for the purchase"
+          checked={source.readOffers}
+          disabled={busy}
+          onChange={(checked) => void run(() => setSourceReadsOffers(database, source.id, checked))}
+        />
       </InsetGroup>
 
       <InsetGroup header="What it learned" footer="Resetting forgets where the fields sat — the account stays. The next correction teaches it again.">

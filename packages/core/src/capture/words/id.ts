@@ -8,6 +8,8 @@ export const ID: WordList = {
   refund: ['refund', 'pengembalian dana'],
   notDirection: ['terima kasih', 'kartu kredit'],
   promo: ['diskon', 'cashback', 'voucher', 'promo', 'reward', 'kupon', 'poin'],
+  transaction: ['transaksi', 'edc'],
+  notName: ['anda', 'kamu', 'saya', 'kami', 'mu', 'nya'],
   balance: ['saldo', 'sisa saldo'],
   amountLabels: ['total', 'total bayar', 'jumlah', 'nominal', 'total pembayaran'],
   nameLabels: ['merchant', 'penerima', 'nama penerima', 'toko', 'pengirim'],

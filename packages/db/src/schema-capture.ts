@@ -19,6 +19,8 @@ export const captureSources = sqliteTable('capture_sources', {
   accountId: text('account_id'),
   /** `{ amount?: Anchor, name?: Anchor, date?: Anchor }` — where each field was found when it was corrected. */
   templateJson: text('template_json'),
+  /** 1 when this source's offers are read for the purchase they report (see 0069). Off for every new source. */
+  readOffers: integer('read_offers').notNull().default(0),
   capturedCount: integer('captured_count').notNull().default(0),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
