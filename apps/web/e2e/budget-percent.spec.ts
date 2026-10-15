@@ -76,3 +76,31 @@ test('a % of a parent: removing the parent asks first, and the child keeps its f
   await expect(groceries.getByRole('radio', { name: 'Amount' })).toHaveAttribute('aria-checked', 'true');
   await expect(groceries.getByLabel('Cap', { exact: true })).toHaveValue('800.000');
 });
+
+test('Edit budgets shows a cleared parent’s %-child at the amount it keeps, and asks before saving', async ({ page }) => {
+  await page.goto('/budget');
+  const screen = await openEditBudgets(page);
+  await (await capField(screen, 'Household')).field.fill('2000000');
+  const child = await capField(screen, 'Groceries');
+  await screen.getByLabel(`${child.label} every`).selectOption('share');
+  await child.field.fill('40');
+  await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+
+  const again = await openEditBudgets(page);
+  await (await capField(again, 'Household')).field.fill('');
+  await expect(again.getByTestId('edit-row-Groceries')).toContainText(/Kept as Rp\s800\.000 a month/);
+  page.removeAllListeners('dialog');
+  let asked = '';
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+    void dialog.accept();
+  });
+  await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect.poll(() => asked).toMatch(/^Groceries keeps Rp\s800\.000 a month\. Remove this budget\?$/);
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+
+  const groceries = await openCapOf(page, 'Groceries');
+  await expect(groceries.getByRole('radio', { name: 'Amount' })).toHaveAttribute('aria-checked', 'true');
+  await expect(groceries.getByLabel('Cap', { exact: true })).toHaveValue('800.000');
+});
