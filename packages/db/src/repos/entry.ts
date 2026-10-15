@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, notInArray, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
+import { eventOnlyExists, notShareCategory } from './event-only';
 
 /** Filed under Uncategorised: saved with its category left for later, so no evidence of one. */
 const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.systemKey, [UNCATEGORISED.expense.key, UNCATEGORISED.income.key]));
@@ -30,6 +31,8 @@ export async function guessCategoryFromHistory(
 ): Promise<string | null> {
   const key = merchantKey(description);
   if (!key) return null;
+  // M7: with no workspace open nothing narrows to a tree, so a shared event's local share categories are left out here.
+  const shareCategories = !ws.bookId && (await eventOnlyExists(database.db));
   const rows = await database.db
     .select({ transactionId: transactions.id, description: transactions.description, categoryId: entries.accountId })
     .from(entries)
@@ -44,6 +47,7 @@ export async function guessCategoryFromHistory(
         // A guess is offered to a form that records into one workspace, so it may only offer that workspace's
         // categories: anything else the posting would refuse a moment later.
         ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+        ...(shareCategories ? [notShareCategory(entries.accountId)] : []),
       ),
     )
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
@@ -94,6 +98,7 @@ export function noteMatches(description: string, typed: string): boolean {
 
 /** Past transactions filed under a category of this kind, newest first, each with the categories it touched. */
 async function filedHistory(database: Database, ws: WorkspaceContext, kind: 'expense' | 'income') {
+  const shareCategories = !ws.bookId && (await eventOnlyExists(database.db));
   const rows = await database.db
     .select({ transactionId: transactions.id, description: transactions.description, categoryId: entries.accountId })
     .from(entries)
@@ -106,6 +111,7 @@ async function filedHistory(database: Database, ws: WorkspaceContext, kind: 'exp
         eq(accounts.kind, kind),
         notUncategorised,
         ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+        ...(shareCategories ? [notShareCategory(entries.accountId)] : []),
       ),
     )
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))

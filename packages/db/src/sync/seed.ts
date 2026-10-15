@@ -42,7 +42,9 @@ export type SharingErrorCode =
   | 'NAME_TAKEN'
   | 'APP_OUTDATED'
   | 'NOT_SETTLED'
-  | 'LAST_MEMBER';
+  | 'LAST_MEMBER'
+  // A new phone for a person who still has one in (final review C2): their old phone is removed first.
+  | 'STILL_HAS_PHONE';
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;

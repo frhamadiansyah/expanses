@@ -38,10 +38,12 @@ import { confirmDraftTx, listDrafts } from './drafts';
 import { guessCategoryFromHistory } from './entry';
 import { listTransactions, nativeBalancesTx, postTransactionTx, replaceTransactionTx, type TransactionView, voidTransactionTx } from './ledger';
 import { cardStatement, postingDates } from './statements';
+import { eventPostingOfTx } from './event-only';
+import { postEventRecordTx, setPaidFromTx } from './shared-event-postings';
 
 export class StatementCheckError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY',
+    readonly code: 'NOT_FOUND' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY' | 'EVENT_POSTING',
     message: string,
   ) {
     super(message);
@@ -524,6 +526,36 @@ async function linesOf(tx: Db, ws: WorkspaceContext, id: string) {
   return { ...row, lines: posting, ratesToBase };
 }
 
+/** Why a check leaves a shared event's transaction alone: the record is changed on the event, never here (C1). */
+const onTheEvent = (description: string) => `“${description}” follows a shared event’s record. Change it on the event.`;
+
+/**
+ * "Use the statement's figure" on a transaction a shared event put on this card (final review C1). Replacing it here
+ * would leave the record saying otherwise, and the next change to the record would post it again: the card charged
+ * twice. What a card in another currency than the expense was charged is this phone's own fact (ruling R5), so that
+ * figure is written where the derivation reads it and the derivation brings the transaction in line. An expense in the
+ * card's own currency is charged exactly its amount, and that amount is the record's: it is changed on the event.
+ * Returns the transaction that now stands.
+ */
+async function statementFigureOnEventTx(tx: Tx, cardAccountId: string, derived: { bookId: string; recordId: string; kind: 'expense' | 'settlement' }, statementMinor: number, description: string): Promise<string> {
+  const [record] =
+    derived.kind === 'expense'
+      ? await tx.values<[string, string | null, string | null]>(sql`
+          SELECT x.currency, p.account_id, a.currency
+          FROM event_expenses x JOIN event_postings p ON p.book_id = x.book_id AND p.record_id = x.id
+          LEFT JOIN accounts a ON a.id = p.account_id
+          WHERE x.book_id = ${derived.bookId} AND x.id = ${derived.recordId}`)
+      : [];
+  if (!record || record[1] !== cardAccountId || record[2] === null || record[0] === record[2] || !(statementMinor > 0)) {
+    throw new StatementCheckError('EVENT_POSTING', onTheEvent(description));
+  }
+  await setPaidFromTx(tx, derived.bookId, derived.recordId, 'expense', { accountId: cardAccountId, amountMinor: statementMinor });
+  await postEventRecordTx(tx, derived.bookId, 'expense', derived.recordId, null);
+  const [now] = await tx.values<[string | null, string | null]>(sql`SELECT transaction_id, unposted FROM event_postings WHERE book_id = ${derived.bookId} AND record_id = ${derived.recordId}`);
+  if (!now || now[0] === null || now[1] !== null) throw new StatementCheckError('EVENT_POSTING', onTheEvent(description));
+  return now[0];
+}
+
 /** The same lines with the card's side at `amountMinor`, the other side scaled to match. Never a zero line. */
 function rescaled(lines: PostingLine[], cardAccountId: string, amountMinor: number): PostingLine[] {
   if (new Set(lines.map((l) => l.currency)).size > 1) throw new StatementCheckError('MIXED_CURRENCY', 'A transaction in two currencies is corrected on its own screen');
@@ -694,7 +726,10 @@ export async function recordStatementCheck(
           await link(id, useStatement ? 'differs-updated' : 'differs-kept');
         } else if (useStatement) {
           const was = await linesOf(tx, ws, outcome.candidateId);
-          if (was.status === 'posted') {
+          const derived = was.status === 'posted' ? await eventPostingOfTx(tx, outcome.candidateId) : null;
+          if (derived) {
+            await link(await statementFigureOnEventTx(tx, cardAccountId, derived, outcome.statementMinor, was.description), 'differs-updated');
+          } else if (was.status === 'posted') {
             const id = await replaceTransactionTx(tx, ws, outcome.candidateId, {
               occurredOn: was.occurredOn,
               description: was.description,
@@ -786,6 +821,9 @@ export async function recordStatementCheck(
       }
       const was = await linesOf(tx, ws, id);
       if (was.status !== 'posted') continue;
+      // Deleted or moved here, a shared event's transaction would be posted again on this card the next time its
+      // record changes (C1): it goes, or moves, on the event.
+      if (await eventPostingOfTx(tx, id)) throw new StatementCheckError('EVENT_POSTING', onTheEvent(was.description));
       if (answer === 'delete') {
         await voidTransactionTx(tx, ws, id);
       } else {

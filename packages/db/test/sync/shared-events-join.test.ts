@@ -116,7 +116,7 @@ describe('leaving and removing (D9)', () => {
     expect(await andi.database.db.values(sql`SELECT state FROM shared_books WHERE book_id = ${trip.bookId}`)).toEqual([['unshared']]);
   });
 
-  it('a person’s new phone joins as the same person on an invite made for them (§7 Lost phone)', async () => {
+  it('a person’s new phone joins as the same person once the lost one is removed (§7 Lost phone, C2)', async () => {
     const trip = new Trip();
     const rina = await trip.device('Rina');
     const andi = await trip.device('Andi');
@@ -125,11 +125,59 @@ describe('leaving and removing (D9)', () => {
     await trip.join(andi, rina);
     await trip.settle([rina, andi]);
     const [andiPerson] = await andi.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${trip.bookId}`);
+    // While Andi's phone is still in, nobody else makes an invite as Andi (C2).
+    await expect(rina.engine.createEventInvite(trip.bookId, { inviterName: 'Rina', forPersonId: andiPerson![0] })).rejects.toMatchObject({
+      code: 'STILL_HAS_PHONE',
+      message: 'Andi still has a phone in this event. Remove Andi’s old phone first, or Andi invites the new one.',
+    });
+    // The lost phone removed first, which every phone sees in the log; then Rina's invite for Andi's new phone.
+    await rina.engine.removeDevice(trip.bookId, andi.deviceId);
+    await trip.settle([rina]);
     const { code } = await rina.engine.createEventInvite(trip.bookId, { inviterName: 'Rina', forPersonId: andiPerson![0] });
     await andiNew.engine.joinEvent(code, { ws: andiNew.ws, personId: null, name: 'Andi', deviceName: 'new phone' });
     await trip.settle([rina, andiNew]);
     expect(await andiNew.database.db.values(sql`SELECT member_id FROM shared_books WHERE book_id = ${trip.bookId}`)).toEqual([[andiPerson![0]]]);
     expect(await people(andiNew, trip.bookId)).toEqual([['Andi', 1], ['Rina', 1]]);
+  });
+
+  it('Andi links a second phone of his own on his own invite while the first is still in (C2)', async () => {
+    const trip = new Trip();
+    const rina = await trip.device('Rina');
+    const andi = await trip.device('Andi');
+    const tablet = await trip.device('Andi');
+    await trip.share(rina);
+    await trip.join(andi, rina);
+    await trip.settle([rina, andi]);
+    const [andiPerson] = await andi.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${trip.bookId}`);
+    const { code } = await andi.engine.createEventInvite(trip.bookId, { inviterName: 'Andi', forPersonId: andiPerson![0] });
+    await tablet.engine.joinEvent(code, { ws: tablet.ws, personId: null, name: 'Andi', deviceName: 'tablet' });
+    await trip.settle([rina, andi, tablet]);
+    for (const d of [rina, andi, tablet]) {
+      expect(await d.database.db.values(sql`SELECT member_id FROM sync_authority_devices WHERE book_id = ${trip.bookId} AND device_id = ${tablet.deviceId} AND removed_seq IS NULL`)).toEqual([[andiPerson![0]]]);
+    }
+  });
+
+  it('a phone linked as Andi on an invite Budi signed, while Andi’s phone is in, is refused on every phone (C2)', async () => {
+    const trip = new Trip();
+    const rina = await trip.device('Rina');
+    const andi = await trip.device('Andi');
+    const budi = await trip.device('Budi');
+    const impostor = await trip.device('Other');
+    await trip.share(rina);
+    await trip.join(andi, rina);
+    await trip.join(budi, rina);
+    await trip.settle([rina, andi, budi]);
+    const [andiPerson] = await andi.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${trip.bookId}`);
+    // Past the screen's own refusal: an invite made straight on the engine, as a modified build would.
+    const { code } = await budi.engine.createInvite(trip.bookId, { inviterName: 'Budi', sameMember: true, memberId: andiPerson![0] });
+    await expect(impostor.engine.joinEvent(code, { ws: impostor.ws, personId: null, name: 'Andi', deviceName: 'phone' })).rejects.toMatchObject({ code: 'NAME_TAKEN' });
+    await trip.settle([rina, andi, budi]);
+    for (const d of [rina, andi, budi]) {
+      expect(await d.database.db.values(sql`SELECT 1 FROM sync_authority_devices WHERE book_id = ${trip.bookId} AND device_id = ${impostor.deviceId}`)).toEqual([]);
+      expect(await d.database.db.values(sql`SELECT error FROM sync_skipped WHERE book_id = ${trip.bookId} AND entity = 'device' AND id = ${impostor.deviceId}`)).toEqual([
+        ['AUTHORITY: introduction as a member who still has a phone in, on an invite another member signed'],
+      ]);
+    }
   });
 });
 

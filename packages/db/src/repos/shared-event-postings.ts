@@ -212,6 +212,28 @@ async function settlementBuiltTx(tx: Db, book: EventBookRow, recordId: string, p
   return { lines, occurredOn: record.occurredOn, description: `${names.get(record.fromPersonId) ?? 'Someone'} paid ${names.get(record.toPersonId) ?? 'someone'}`, original: null };
 }
 
+/** The only door the ledger lets change a derived transaction (final review C1). */
+const DERIVATION = { eventDerivation: true } as const;
+
+/**
+ * The posted transaction that stands for the one `event_postings` names: itself while posted, else whatever replaced
+ * it, followed forward (`replaces_transaction_id`) to the live one. The ledger refuses every other door on a derived
+ * transaction, but a copy written before that guard (or a door added later without it) may have replaced one: posting
+ * afresh beside the replacement would charge the paying account twice (final review C1), so the replacement is what
+ * the derivation brings in line. A transaction voided with nothing after it is gone: null, and the record posts anew.
+ */
+async function liveHeadTx(tx: Db, transactionId: string): Promise<string | null> {
+  let at: string | null = transactionId;
+  for (let hops = 0; at !== null && hops < 64; hops++) {
+    const [row] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${at}`);
+    if (!row) return null;
+    if (row[0] === 'posted') return at;
+    const [next]: [string][] = await tx.values<[string]>(sql`SELECT id FROM transactions WHERE replaces_transaction_id = ${at} ORDER BY id DESC LIMIT 1`);
+    at = next?.[0] ?? null;
+  }
+  return null;
+}
+
 /**
  * Brings this phone's transaction for one record in line with it. `author` is the member whose change this follows —
  * the authority view's for a peer's op, null for this phone's own write — and is what "Changed by Andi" reads.
@@ -221,10 +243,9 @@ export async function postEventRecordTx(tx: Tx, bookId: string, kind: EventPosti
   if (!book) return;
   const ws = wsOf(book);
   const posting = await ensurePostingTx(tx, bookId, recordId, kind);
-  const [status] = posting.transactionId ? await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${posting.transactionId}`) : [];
-  const posted = status?.[0] === 'posted' ? posting.transactionId : null;
+  const posted = posting.transactionId ? await liveHeadTx(tx, posting.transactionId) : null;
   const voidPosted = async () => {
-    if (posted) await voidTransactionTx(tx, ws, posted, {}, author ?? undefined);
+    if (posted) await voidTransactionTx(tx, ws, posted, {}, author ?? undefined, DERIVATION);
   };
   let built: Built | null;
   try {
@@ -249,6 +270,13 @@ export async function postEventRecordTx(tx: Tx, bookId: string, kind: EventPosti
   await tx.run(sql`
     UPDATE accounts SET currency = ${book.currency}
     WHERE id = ${book.balanceAccountId} AND currency <> ${book.currency} AND NOT EXISTS (SELECT 1 FROM entries WHERE account_id = ${book.balanceAccountId})`);
+  // Final review I1: a trip balance holds one currency. A line on it in any other (an event currency that moved after
+  // the account was first used) would add lira to euros in one figure, which the ledger does not check. Never posted:
+  // the record waits as one this phone cannot read, and nothing it posted before is touched.
+  const [held] = await tx.values<[string | null]>(sql`SELECT currency FROM accounts WHERE id = ${book.balanceAccountId}`);
+  if (held?.[0] !== book.currency || built.lines.lines.some((line) => line.accountId === book.balanceAccountId && line.currency !== held[0])) {
+    return setUnpostedTx(tx, bookId, recordId, 'malformed');
+  }
   const input: PostTransactionInput = {
     occurredOn: built.occurredOn,
     description: built.description,
@@ -260,8 +288,12 @@ export async function postEventRecordTx(tx: Tx, bookId: string, kind: EventPosti
     ...(author ? { syncAuthor: author } : {}),
   };
   if (posted) {
-    if (await samePostingTx(tx, posted, input)) return setUnpostedTx(tx, bookId, recordId, null);
-    const replaced = await replaceTransactionTx(tx, ws, posted, input);
+    if (await samePostingTx(tx, posted, input)) {
+      // Still named by its live head, should a replacement have been followed to it (C1).
+      await tx.run(sql`UPDATE event_postings SET transaction_id = ${posted}, unposted = NULL WHERE book_id = ${bookId} AND record_id = ${recordId}`);
+      return;
+    }
+    const replaced = await replaceTransactionTx(tx, ws, posted, input, DERIVATION);
     // "Changed by Andi" (spec §7): someone else's change replaced it. This phone's own edit clears it.
     const changedBy = author !== null && author !== book.me ? author : null;
     await tx.run(sql`UPDATE event_postings SET transaction_id = ${replaced}, unposted = NULL, changed_by = ${changedBy} WHERE book_id = ${bookId} AND record_id = ${recordId}`);

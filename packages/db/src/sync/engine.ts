@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
-import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, mayLinkAsMemberTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { retryUnpostedEventRecords } from '../repos/shared-event-postings';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
@@ -1175,6 +1175,14 @@ export class SyncEngine {
     if (!(await isEventBook(this.database, bookId))) throw new SharingError('NOT_FOUND', 'That event is not shared on this device');
     if (input.forPersonId !== undefined && !(await isEventMember(this.database, bookId, input.forPersonId))) {
       throw new SharingError('NOT_FOUND', 'That person has no phone in this event yet: send an ordinary invite, and they pick their name');
+    }
+    // C2: a new phone for someone else is linked only once their old phone is removed; every phone's log refuses it
+    // otherwise (`introductionRefusal`), so the invite is refused here first, in words.
+    const forPersonId = input.forPersonId;
+    if (forPersonId !== undefined && !(await this.database.transaction((tx) => mayLinkAsMemberTx(tx, bookId, forPersonId, [this.deviceId])))) {
+      const [named] = await this.database.db.values<[string]>(sql`SELECT name FROM event_people WHERE book_id = ${bookId} AND id = ${forPersonId}`);
+      const who = named?.[0] ?? 'This person';
+      throw new SharingError('STILL_HAS_PHONE', `${who} still has a phone in this event. Remove ${who}’s old phone first, or ${who} invites the new one.`);
     }
     try {
       return await this.createInvite(bookId, { inviterName: input.inviterName, ...(input.forPersonId ? { sameMember: true, memberId: input.forPersonId } : {}) });

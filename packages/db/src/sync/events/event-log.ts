@@ -4,6 +4,7 @@ import { ownerScope, type WorkspaceContext } from '../../context';
 import type { Database, Tx } from '../../database';
 import { eventOf } from '../../repos/event-scope';
 import { voidTransactionTx } from '../../repos/ledger';
+import { dropEventLogRowsTx } from './log-rows';
 import { eventBookTx, openEventBookTx } from '../../repos/shared-event-records';
 import { openSharedEventTx, personRefusalTx, removeEventPerson, SharedEventDbError } from '../../repos/shared-event-writes';
 import { clearAuthorityTx, viewActiveDevices, viewDevice, viewMember } from '../authority';
@@ -157,6 +158,7 @@ async function dropEventLogTx(tx: Tx, bookId: string): Promise<void> {
     await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
   }
   await clearAuthorityTx(tx, bookId);
+  await dropEventLogRowsTx(tx, bookId);
 }
 
 /**
@@ -169,7 +171,7 @@ async function undoRefusedJoinTx(tx: Tx, ws: WorkspaceContext, bookId: string, e
   for (const [transactionId] of await tx.values<[string]>(sql`
     SELECT p.transaction_id FROM event_postings p JOIN transactions t ON t.id = p.transaction_id
     WHERE p.book_id = ${bookId} AND t.status = 'posted'`)) {
-    await voidTransactionTx(tx, ownerScope(ws), transactionId);
+    await voidTransactionTx(tx, ownerScope(ws), transactionId, {}, undefined, { eventDerivation: true });
   }
   const accounts = [
     ...(hold ? [hold[0]] : []),

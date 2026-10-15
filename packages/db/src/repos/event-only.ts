@@ -25,6 +25,15 @@ export function notEventOnly(transactionId: SQLWrapper): SQL {
   return sql`${transactionId} NOT IN (SELECT transaction_id FROM event_postings WHERE transaction_id IS NOT NULL)`;
 }
 
+/**
+ * Over an account id: true when it is not a shared event's local copy of one of its categories (`event_category_accounts`,
+ * an expense account in no book). A reader that narrows to a workspace's categories leaves them out already; one that
+ * cannot narrow (no workspace open, a copy before books) adds this so a share category is never guessed or budgeted (M7).
+ */
+export function notShareCategory(accountId: SQLWrapper): SQL {
+  return sql`${accountId} NOT IN (SELECT account_id FROM event_category_accounts)`;
+}
+
 /** The shared-event record a derived transaction follows, or null for any other transaction. */
 export async function eventPostingOfTx(db: Db, transactionId: string): Promise<{ bookId: string; recordId: string; kind: 'expense' | 'settlement' } | null> {
   if (!(await eventOnlyExists(db))) return null;
