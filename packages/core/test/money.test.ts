@@ -7,6 +7,7 @@ import {
   MoneyError,
   parseMajor,
   roundHalfAwayFromZero,
+  roundUpToMajor,
   UnknownCurrencyError,
   uuidv7,
 } from '../src/index';
@@ -118,5 +119,19 @@ describe('review fixes: amounts and rates', () => {
     expect(parseRate('0.0000571')).toBe(0.0000571);
     expect(() => parseRate('abc')).toThrow(MoneyError);
     expect(() => parseRate('0')).toThrow(MoneyError);
+  });
+});
+
+describe('roundUpToMajor', () => {
+  it('leaves a whole figure alone and lifts a part one to the next whole unit', () => {
+    expect(roundUpToMajor(1_420_000, 'IDR')).toBe(1_420_000);
+    expect(roundUpToMajor(1_234, 'USD')).toBe(1_300);
+    expect(roundUpToMajor(1_200, 'USD')).toBe(1_200);
+    expect(roundUpToMajor(999, 'JPY')).toBe(999);
+  });
+
+  it('gives nothing for nothing or less', () => {
+    expect(roundUpToMajor(0, 'USD')).toBe(0);
+    expect(roundUpToMajor(-250, 'USD')).toBe(0);
   });
 });

@@ -1,25 +1,25 @@
 import { addMonths, formatMinor, isoDate, monthOf } from '@expanses/core';
-import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Plus, Scale, Target } from 'lucide-react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Scale, Target } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInOpenBook } from '../../lib/queries';
+import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
-import { useCategorySetMembership } from '../categories/set-queries';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budget-rows';
-import { daysLeft, findLine, planSplit, spendingView } from './budget-view';
-import { MonthSheet, NoBudgetSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
+import { daysLeft, findLine, noBudgetRows, planSplit, spendingView } from './budget-view';
+import { MonthSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
-import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
+import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
 type Tab = 'spending' | 'plan';
-type Open = { kind: 'cap'; id: string | null } | { kind: 'take-home' } | { kind: 'split' } | { kind: 'month' } | { kind: 'no-budget' } | null;
+type Open = { kind: 'cap'; id: string } | { kind: 'take-home' } | { kind: 'split' } | { kind: 'month' } | null;
 
 /** ‹ October 2026 ›, as Cashflow steps its months. */
 function MonthPicker({ month, onMonth }: { month: string; onMonth: (month: string) => void }) {
@@ -68,17 +68,16 @@ const PLAN_COLOURS = { debt: 'var(--ph-ink-2)', goals: 'var(--ph-info-ink)', bud
 export function BudgetPage() {
   const { ws } = useApp();
   const today = isoDate();
-  const [month, setMonth] = useState(monthOf(today));
+  // Edit budgets sends the reader back to the month they left from.
+  const asked = useSearch({ strict: false }) as { month?: string };
+  const [month, setMonth] = useState(asked.month ?? monthOf(today));
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('spending');
   const [open, setOpen] = useState<Open>(null);
   const drawers = useDrawers();
 
   const accounts = useAccounts().data ?? [];
   const markOf = useCategoryMarks(accounts);
-  const membership = useCategorySetMembership().data ?? {};
-  // Caps are for the monthly tree, and the open book's: an event plans its set on its own page.
-  const inOpenBook = useInOpenBook();
-  const categories = accounts.filter((account) => account.kind === 'expense' && membership[account.id] === undefined && inOpenBook(account));
   const sheetQuery = useBudgetSheet(month);
   const sheet = sheetQuery.data;
   const budgets = useBudgets(month).data ?? [];
@@ -90,24 +89,21 @@ export function BudgetPage() {
   const planReady = useBooks().isSuccess;
   const currency = sheet?.currency ?? planCurrency;
 
-  // Roots first, each followed by its children, so the choice reads like the tree.
-  const options = categories
-    .filter((account) => !categories.some((parent) => parent.id === account.parentId))
-    .flatMap((root) => [
-      { id: root.id, label: root.name },
-      ...categories.filter((child) => child.parentId === root.id).map((child) => ({ id: child.id, label: `— ${child.name}` })),
-    ]);
-
   const view = sheet ? spendingView(sheet.lines) : null;
-  const openCap = (id: string | null) => setOpen({ kind: 'cap', id });
+  const history = useSpendingHistory(month, currency);
+  const openCap = (id: string) => setOpen({ kind: 'cap', id });
   const close = () => setOpen(null);
 
   const menu: CornerAction[] = [
-    { key: 'add', label: 'Add a budget', glyph: <Plus size={18} aria-hidden />, run: () => openCap(null) },
     { key: 'split', label: 'Essential and lifestyle', glyph: <Scale size={18} aria-hidden />, run: () => setOpen({ kind: 'split' }), disabled: !sheet },
     { key: 'month', label: 'Month so far', glyph: <CalendarDays size={18} aria-hidden />, run: () => setOpen({ kind: 'month' }), disabled: !sheet },
   ];
-  const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
+  const editBudgets = () => void navigate({ to: '/budget/edit', search: { month } });
+  const actions: CornerAction[] = [
+    { key: 'edit', label: 'Edit budgets', glyph: <Pencil size={18} aria-hidden />, run: editBudgets },
+    { key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu },
+  ];
+  const unbudgeted = view ? noBudgetRows(view.noBudget) : [];
 
   const left = sheet && view ? sheet.capsTotalMinor - view.spentMinor : 0;
   const days = daysLeft(month, today);
@@ -153,7 +149,7 @@ export function BudgetPage() {
 
           <InsetGroup header="Budgeted">
             {view.budgeted.length === 0 ? (
-              <InsetRow title={<span className="font-normal text-[var(--ph-tint)]">Add a budget</span>} chevron={false} onClick={() => openCap(null)} label="Add a budget" />
+              <InsetRow title={<span className="font-normal text-[var(--ph-tint)]">Set budgets</span>} chevron={false} onClick={editBudgets} label="Set budgets" />
             ) : (
               view.budgeted.flatMap((entry, index) => {
                 if (entry.kind === 'line') {
@@ -195,18 +191,46 @@ export function BudgetPage() {
             )}
           </InsetGroup>
 
-          {view.noBudget.length > 0 && (
-            <InsetGroup>
-              <InsetRow
-                testId="no-budget"
-                title="No budget"
-                value={
-                  <>
-                    {view.noBudget.length === 1 ? '1 category' : `${view.noBudget.length} categories`} · <Money minor={view.noBudgetMinor} currency={currency} />
-                  </>
-                }
-                onClick={() => setOpen({ kind: 'no-budget' })}
-              />
+          {unbudgeted.length > 0 && (
+            <InsetGroup
+              header="No budget yet"
+              trailing={
+                <span className="tabular text-[13px] text-[var(--ph-ink-3)]">
+                  <Money minor={view.noBudgetMinor} currency={currency} /> spent
+                </span>
+              }
+              footer={
+                <>
+                  Several to set?{' '}
+                  <button type="button" onClick={editBudgets} className="ph-focus font-semibold text-[var(--ph-tint)]">
+                    Edit budgets
+                  </button>{' '}
+                  sets them all on one screen.
+                </>
+              }
+            >
+              {unbudgeted.map((row) => {
+                const mark = row.depth === 0 ? markOf(row.line.id) : null;
+                return (
+                  <InsetRow
+                    key={row.line.id}
+                    testId={`uncapped-${row.line.name}`}
+                    depth={row.depth}
+                    icon={mark?.icon}
+                    iconColour={mark?.colour}
+                    title={row.line.name}
+                    subtitle={<>{formatMinor(row.spentMinor, currency)} spent this month</>}
+                    value={
+                      <span className="inline-flex h-[30px] items-center rounded-full bg-[var(--ph-tint-panel)] px-[14px] text-[14px] font-semibold text-[var(--ph-tint)]">
+                        Set
+                      </span>
+                    }
+                    chevron={false}
+                    onClick={() => openCap(row.line.id)}
+                    label={`Set a budget for ${row.line.name}`}
+                  />
+                );
+              })}
             </InsetGroup>
           )}
         </>
@@ -289,15 +313,16 @@ export function BudgetPage() {
         </>
       )}
 
-      {open?.kind === 'cap' && (
+      {open?.kind === 'cap' && sheet && (
         <CapSheet
-          key={open.id ?? 'new'}
+          key={open.id}
           categoryId={open.id}
-          options={options}
+          name={findLine(sheet.lines, open.id)?.name ?? 'Budget'}
+          history={history?.get(open.id) ?? null}
           month={month}
           currency={planCurrency}
           ready={planReady}
-          lineOf={(id) => (sheet ? findLine(sheet.lines, id) : undefined)}
+          lineOf={(id) => findLine(sheet.lines, id)}
           rowOf={(id) => budgets.find((row) => row.categoryAccountId === id)}
           committed={committed}
           onClose={close}
@@ -306,9 +331,6 @@ export function BudgetPage() {
       {open?.kind === 'take-home' && sheet && <TakeHomeSheet sheet={sheet} month={month} currency={planCurrency} ready={planReady} onClose={close} />}
       {open?.kind === 'split' && sheet && <SplitSheet sheet={sheet} currency={currency} onClose={close} />}
       {open?.kind === 'month' && sheet && <MonthSheet sheet={sheet} currency={currency} onClose={close} />}
-      {open?.kind === 'no-budget' && view && (
-        <NoBudgetSheet entries={view.noBudget} currency={currency} markOf={markOf} onPick={(id) => openCap(id)} onClose={close} />
-      )}
     </div>
   );
 }

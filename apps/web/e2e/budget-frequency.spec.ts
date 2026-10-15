@@ -1,18 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { budgetTab, openCapOf, openDrawer, openNewCap } from './budget';
+import { budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
 
 test('a weekly line is shown and counted as 52/12 of a week', async ({ page }) => {
   await page.goto('/budget');
-  const sheet = await openNewCap(page);
-  await sheet.getByLabel('Category', { exact: true }).selectOption({ label: '— Groceries' });
-  await sheet.getByLabel('Every').selectOption('weekly');
-  const amount = sheet.getByLabel('Cap', { exact: true });
-  await amount.click();
-  await amount.pressSequentially('500000', { delay: 30 });
-  await expect(sheet.getByText('Per month')).toBeVisible();
-  await expect(sheet).toContainText('2.166.667');
-  await sheet.getByRole('button', { name: 'Save budget' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const screen = await openEditBudgets(page);
+  const { field, label } = await capField(screen, '— Groceries');
+  await screen.getByLabel(`${label} every`).selectOption('weekly');
+  await field.click();
+  await field.pressSequentially('500000', { delay: 30 });
+  await expect(screen.getByTestId('edit-budgeted')).toContainText('2.166.667');
+  await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('budget-page')).toBeVisible();
 
   // Folded under its parent, and read a month at a time.
   await openDrawer(page, 'Household');

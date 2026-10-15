@@ -1,6 +1,6 @@
 import type { BudgetLine } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { daysLeft, planSplit, spendingView, uncoveredMinor } from './budget-view';
+import { daysLeft, historyOf, noBudgetRows, planSplit, spendingView, uncoveredMinor } from './budget-view';
 
 function line(id: string, ownMinor: number, capMinor: number | null, children: BudgetLine[] = []): BudgetLine {
   const totalMinor = children.reduce((total, child) => total + child.totalMinor, ownMinor);
@@ -81,5 +81,37 @@ describe('the take-home split', () => {
     const split = planSplit({ incomeMinor: 0, debtMinor: 1_000, goalsMinor: 0, budgetedMinor: 2_000 });
     expect(split.scaleMinor).toBe(3_000);
     expect(split.parts.every((part) => part.percent === null)).toBe(true);
+  });
+});
+
+describe('noBudgetRows', () => {
+  it('lists an uncapped root, then its uncapped sub-categories one step in, each only when it spent', () => {
+    const food = line('food', 0, null, [line('groceries', 300, null), line('snacks', 0, null)]);
+    const fun = line('fun', 0, null);
+    const view = spendingView([food, fun]);
+
+    expect(noBudgetRows(view.noBudget).map((row) => [row.line.id, row.depth, row.spentMinor])).toEqual([
+      ['food', 0, 300],
+      ['groceries', 1, 300],
+    ]);
+  });
+
+  it('leaves out a sub-category a capped parent already covers', () => {
+    const view = spendingView([line('food', 0, 1_000, [line('groceries', 300, null)])]);
+    expect(noBudgetRows(view.noBudget)).toEqual([]);
+  });
+});
+
+describe('historyOf', () => {
+  it('reads last month and the three-month average, rounded up to a whole unit', () => {
+    const months = [[line('food', 1_000, null)], [line('food', 2_000, null)], [line('food', 1_001, null)]];
+    expect(historyOf(months, 'USD').get('food')).toEqual({ lastMinor: 1_000, averageMinor: 1_400 });
+  });
+
+  it('counts a month a category did not appear in as nothing, and a sub-category by its own total', () => {
+    const months = [[line('food', 0, null, [line('groceries', 600, null)])], [], []];
+    const history = historyOf(months, 'IDR');
+    expect(history.get('groceries')).toEqual({ lastMinor: 600, averageMinor: 200 });
+    expect(history.get('food')).toEqual({ lastMinor: 600, averageMinor: 200 });
   });
 });

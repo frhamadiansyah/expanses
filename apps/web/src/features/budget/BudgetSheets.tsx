@@ -8,8 +8,7 @@ import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, SwitchRow, TextRow } from '../../ui/native';
 import type { BudgetSheetResult } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
-import { FigureRow, type useCategoryMarks } from './budget-rows';
-import type { NoBudgetEntry } from './budget-view';
+import { FigureRow } from './budget-rows';
 
 /** The expected take-home: the usual figure, or this month's alone. */
 export function TakeHomeSheet({
@@ -154,54 +153,6 @@ export function MonthSheet({ sheet, currency, onClose }: { sheet: BudgetSheetRes
           value={<Money minor={sheet.leftOverActualMinor} currency={currency} />}
           testId="left-over-actual"
         />
-      </InsetGroup>
-    </Sheet>
-  );
-}
-
-/** The categories no cap covers, with what each spent; one opens its cap. */
-export function NoBudgetSheet({
-  entries,
-  currency,
-  markOf,
-  onPick,
-  onClose,
-}: {
-  entries: readonly NoBudgetEntry[];
-  currency: string;
-  markOf: ReturnType<typeof useCategoryMarks>;
-  onPick: (id: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <Sheet grouped tall title="No budget" onClose={onClose}>
-      <InsetGroup>
-        {entries.flatMap((entry) => {
-          const mark = markOf(entry.line.id);
-          return [
-            <InsetRow
-              key={entry.line.id}
-              testId={`uncapped-${entry.line.name}`}
-              icon={mark.icon}
-              iconColour={mark.colour}
-              title={entry.line.name}
-              value={<Money minor={entry.spentMinor} currency={currency} />}
-              valueTone="ink-3"
-              onClick={() => onPick(entry.line.id)}
-            />,
-            ...entry.children.map((child) => (
-              <InsetRow
-                key={child.line.id}
-                testId={`uncapped-${child.line.name}`}
-                depth={1}
-                title={child.line.name}
-                value={<Money minor={child.spentMinor} currency={currency} />}
-                valueTone="ink-3"
-                onClick={() => onPick(child.line.id)}
-              />
-            )),
-          ];
-        })}
       </InsetGroup>
     </Sheet>
   );
