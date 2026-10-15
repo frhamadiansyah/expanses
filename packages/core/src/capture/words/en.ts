@@ -8,6 +8,8 @@ export const EN: WordList = {
   refund: ['refund', 'refunded'],
   notDirection: ['credit card', 'credit-card'],
   promo: ['discount', 'cashback', 'voucher', 'promo', 'reward', 'coupon', 'points'],
+  transaction: ['transaction', 'edc'],
+  notName: ['your', 'my', 'our', 'their', 'the', 'this', 'that', 'a', 'an'],
   balance: ['balance', 'available balance', 'remaining'],
   amountLabels: ['total', 'amount', 'grand total', 'total paid'],
   nameLabels: ['merchant', 'recipient', 'payee', 'to account', 'sender', 'store'],

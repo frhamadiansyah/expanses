@@ -49,6 +49,7 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
       'Turn “Confirm Before Run” off, so the capture is saved without a tap.',
       'Below the trigger, add the action “Log notification” (search for the app), then tap each of Title, Body, App and Date and insert the matching variable from the trigger. Left empty they capture nothing.',
       'Save, then pay once with that app: the draft appears in Review the next time the app is opened.',
+      'If the only notification that card sends is about points or cashback, turn on “Read offers for the purchase” for that source under Capture sources — the purchase is read out of the rewards message.',
     ],
   },
   {

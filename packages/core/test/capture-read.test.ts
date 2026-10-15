@@ -45,9 +45,39 @@ describe('readCapture', () => {
   });
 
   it('reads an offer for its money when the owner brings it back', () => {
-    const reading = readCapture(notification('Cashback Rp5.000 masuk! Pakai voucher'), WORDS, null, { skipPromos: false });
+    const reading = readCapture(notification('Cashback Rp5.000 masuk! Pakai voucher'), WORDS, null, { offers: 'read' });
     expect(reading.skipped).toBeNull();
     expect(reading.amount?.value).toEqual({ minor: 5_000, currency: 'IDR' });
+  });
+
+  it('skips a rewards notification that reports a purchase, until the source is opened to offers', () => {
+    const rewards = notification(
+      "You earned 15 Livin'poin from your credit card EDC transaction of Rp 102.700,00 on 14 October 2026.",
+      "Yay, You've Just Earned More Livin'poin!",
+    );
+    // Every sentence of it holds a promo word, so by default there is nothing left and it is an offer.
+    expect(readCapture(rewards, WORDS, null).skipped).toBe('promo');
+
+    // Opened to offers, the sentence reporting the purchase stays: the amount is the purchase, never the 15 points,
+    // because a bare number is not money. No merchant is named, so none is invented.
+    const read = readCapture(rewards, WORDS, null, { offers: 'transactions' });
+    expect(read.skipped).toBeNull();
+    expect(read.amount?.value).toEqual({ minor: 102_700, currency: 'IDR' });
+    expect(read.occurredAt?.value).toBe('2026-10-14');
+    expect(read.type.value).toBe('spent');
+    expect(read.name).toBeNull();
+  });
+
+  it('still skips an offer that reports no purchase, however the source is set', () => {
+    for (const offers of ['skip', 'transactions'] as const) {
+      expect(readCapture(notification('Cashback Rp5.000 masuk! Pakai voucher'), WORDS, null, { offers }).skipped).toBe('promo');
+      expect(readCapture(notification('Diskon 50% di merchant pilihan! Belanja sekarang.'), WORDS, null, { offers }).skipped).toBe('promo');
+    }
+  });
+
+  it('names the merchant and stops there, rather than running on into the words after it', () => {
+    const reading = readCapture(notification('Pembayaran Rp102.700 ke INDOMARET berhasil dengan Kartu Kredit 1234.'), WORDS, null);
+    expect(reading.name?.value).toBe('INDOMARET');
   });
 
   it('reads money received, and who sent it', () => {

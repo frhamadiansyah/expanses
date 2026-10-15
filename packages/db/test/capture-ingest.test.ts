@@ -2,7 +2,7 @@ import type { CaptureLine, RawCapture } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getCaptureScope, ingestCaptures, purgeCaptureLeftovers, purgeCaptures, setCaptureScope } from '../src/capture/ingest';
 import { bringBack, listSkipped } from '../src/capture/skipped';
-import { listSources, setSourceAccount, sourceFor } from '../src/capture/sources';
+import { listSources, setSourceAccount, setSourceReadsOffers, sourceFor } from '../src/capture/sources';
 import {
   archiveAccount,
   confirmDraft,
@@ -229,6 +229,34 @@ describe('what is not worth a draft', () => {
     expect(skipped).toHaveLength(1);
     expect(skipped[0]).toMatchObject({ reason: 'promo' });
     expect(skipped[0]!.capture.body).toContain('Cashback');
+  });
+
+  it('reads a rewards notification for its purchase once the source is opened to offers, and not before', async () => {
+    const { database, ws, bank } = await workspace();
+    const rewards = (id: string) =>
+      at('09:30', {
+        id,
+        title: "Yay, You've Just Earned More Livin'poin!",
+        body: "You earned 15 Livin'poin from your credit card EDC transaction of Rp 102.700,00 on 14 October 2026.",
+      });
+
+    // Off, as every source starts: the only record this card sends is skipped.
+    expect(await ingestCaptures(database, ws, [rewards('note-poin1')], { today: DAY })).toMatchObject({ drafts: 0, skipped: 1 });
+
+    const [source] = await listSources(database);
+    expect(source!.readOffers).toBe(false);
+    await setSourceAccount(database, source!.id, bank.id, ws.workspaceId);
+    await setSourceReadsOffers(database, source!.id, true);
+
+    // On: the purchase is read out of it, at its own amount and its own date — never the 15 points.
+    expect(await ingestCaptures(database, ws, [rewards('note-poin2')], { today: DAY })).toMatchObject({ drafts: 1, skipped: 0 });
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft).toMatchObject({ amountMinor: 102_700, occurredOn: '2026-10-14', kind: 'expense', accountId: bank.id });
+
+    // Marketing from the same source still goes: it reports no transaction.
+    expect(
+      await ingestCaptures(database, ws, [at('09:40', { id: 'note-mkt', title: 'Promo', body: 'Diskon 50% di merchant pilihan! Belanja sekarang.' })], { today: DAY }),
+    ).toMatchObject({ drafts: 0, skipped: 1 });
   });
 
   it('skips an offer handed over twice (the app stopped before the phone let it go) once', async () => {

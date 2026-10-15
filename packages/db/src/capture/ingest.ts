@@ -322,7 +322,8 @@ export async function ingestCaptures(
       // Everything about this capture happens in the workspace its source files into: where its draft goes is where
       // its duplicates are looked for, and where a skipped copy is kept.
       const home = await workspaceFor(tx, ws, source);
-      const reading = readCapture(capture, WORDS, source.template);
+      // A source the owner has opened to offers reads the ones reporting a purchase; every other source skips them all.
+      const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
       if (reading.skipped === 'promo') {
         await skip(tx, home, 'promo', capture, reading);
         result.skipped += 1;

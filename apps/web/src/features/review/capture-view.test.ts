@@ -33,6 +33,7 @@ const source = (over: Partial<CaptureSource> = {}): CaptureSource => ({
   keyKind: 'app',
   key: 'com.example.pay',
   label: 'Pay',
+  readOffers: false,
   accountId: 'bank',
   workspaceId: 'ws',
   template: null,

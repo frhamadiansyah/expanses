@@ -22,6 +22,8 @@ export interface CaptureSource {
   accountId: string | null;
   workspaceId: string | null;
   template: Template | null;
+  /** Whether this source's offers are read for the purchase they report, rather than skipped. */
+  readOffers: boolean;
   capturedCount: number;
 }
 
@@ -54,6 +56,7 @@ const toSource = (row: typeof captureSources.$inferSelect): CaptureSource => ({
   accountId: row.accountId,
   workspaceId: row.workspaceId,
   template: templateOf(row.templateJson),
+  readOffers: row.readOffers === 1,
   capturedCount: row.capturedCount,
 });
 
@@ -118,6 +121,8 @@ export async function sourceFor(tx: Db, capture: RawCapture, count = true): Prom
     label: wanted.label,
     accountId: null,
     templateJson: null,
+    // An offer is not a payment: a new source skips its offers until the owner says otherwise.
+    readOffers: 0,
     capturedCount: count ? 1 : 0,
     createdAt: now,
     updatedAt: now,
@@ -161,4 +166,18 @@ export async function resetSourceTemplate(database: Database, sourceId: string):
 /** Forgets a source completely: the next capture of it is a stranger again, and asks which account it is. */
 export async function deleteSource(database: Database, sourceId: string): Promise<void> {
   await database.db.delete(captureSources).where(eq(captureSources.id, sourceId));
+}
+
+/**
+ * Whether this source's offers are read for the purchase they report.
+ *
+ * Some cards announce a purchase only inside a rewards notification, and nothing else ever arrives; for those the
+ * offer is the only record there is. It stays off everywhere else, and even on, an offer that names no transaction
+ * is skipped as it always was.
+ */
+export async function setSourceReadsOffers(database: Database, sourceId: string, readOffers: boolean): Promise<void> {
+  await database.db
+    .update(captureSources)
+    .set({ readOffers: readOffers ? 1 : 0, updatedAt: new Date().toISOString() })
+    .where(eq(captureSources.id, sourceId));
 }

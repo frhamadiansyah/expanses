@@ -105,6 +105,18 @@ export interface WordList {
   notDirection: string[];
   /** An offer rather than a movement: "cashback", "voucher". */
   promo: string[];
+  /**
+   * Words naming a payment that has already happened: "transaksi", "transaction".
+   *
+   * They say nothing about direction — what they do is tell an offer that merely reports a purchase ("you earned
+   * 15 points from your card transaction of Rp 102.700") from one that is only an offer ("cashback Rp5.000!").
+   */
+  transaction: string[];
+  /**
+   * Words that are never somebody's name, however a lead-in points at them: "your", "anda". Without this a
+   * notification reading "from your credit card" names a merchant called "your".
+   */
+  notName: string[];
   /** The balance words: a figure on such a line is never the amount. */
   balance: string[];
   /** Labels whose next figure is the amount: "total", "nominal". */

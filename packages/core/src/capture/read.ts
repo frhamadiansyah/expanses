@@ -375,15 +375,31 @@ const NAME_TOKEN = /^[\p{Lu}][\p{L}\p{N}'&.\-]*$/u;
  * The run ends where the sentence does, or where the next figure starts: a dot inside a word is part of it, so
  * "TIKET.COM" survives, and a full stop followed by a space ends what came before it.
  */
-function nameFrom(units: readonly Unit[], at: number, rest: string): { value: string; confidence: number; line: number | null } | null {
+function nameFrom(
+  units: readonly Unit[],
+  at: number,
+  rest: string,
+  notName: readonly string[] = [],
+): { value: string; confidence: number; line: number | null } | null {
   const cut = rest.search(/[.,;:!?()](?=\s|$)| {2,}/);
   const head = (cut < 0 ? rest : rest.slice(0, cut)).trim();
   if (head === '') return null;
   const money = findAmounts(head, WORDS_FOR_CUT)[0];
   const words = (money ? head.slice(0, money.start) : head).trim().split(/\s+/).filter(Boolean);
-  const capitalised = words.filter((word) => NAME_TOKEN.test(word));
-  if (capitalised.length === 0) return null;
-  const value = words.slice(0, capitalised.length).join(' ').trim();
+  /*
+   * The name is the run of name-like words where the label or lead-in leaves off, not every name-like word in the
+   * piece. Counting them anywhere and then taking that many words from the front read "INDOMARET berhasil dengan"
+   * out of "ke INDOMARET berhasil dengan Kartu Kredit 1234", because "Kartu" and "Kredit" are capitalised too. A
+   * word that is nobody's name is stepped over first, so "from your credit card" names no merchant at all rather
+   * than one called "your".
+   */
+  const stop = new Set(notName.map((word) => word.toLowerCase()));
+  let from = 0;
+  while (from < words.length && stop.has(words[from]!.toLowerCase())) from += 1;
+  let to = from;
+  while (to < words.length && NAME_TOKEN.test(words[to]!)) to += 1;
+  if (to === from) return null;
+  const value = words.slice(from, to).join(' ').trim();
   if (value === '') return null;
   return { value, confidence: 80, line: units[at]!.line };
 }
@@ -396,6 +412,8 @@ const WORDS_FOR_CUT: WordList = {
   refund: [],
   notDirection: [],
   promo: [],
+  transaction: [],
+  notName: [],
   balance: [],
   amountLabels: [],
   nameLabels: [],
@@ -449,14 +467,14 @@ function nameOf(units: readonly Unit[], words: WordList, capture: RawCapture, te
     const at = unitWith(units, label);
     if (at !== null) {
       const rest = units[at]!.text.slice(units[at]!.text.toLowerCase().indexOf(label.toLowerCase()) + label.length);
-      const found = nameFrom(units, at, rest) ?? (units[at + 1] ? nameFrom(units, at + 1, units[at + 1]!.text) : null);
+      const found = nameFrom(units, at, rest, words.notName) ?? (units[at + 1] ? nameFrom(units, at + 1, units[at + 1]!.text, words.notName) : null);
       if (found) return { value: found.value, confidence: 95, line: found.line };
     }
   }
   if (template.name?.region) {
     const at = units.findIndex((unit) => inRegion(unit, template, capture, 'name'));
     if (at >= 0) {
-      const found = nameFrom(units, at, units[at]!.text);
+      const found = nameFrom(units, at, units[at]!.text, words.notName);
       if (found) return { value: found.value, confidence: 95, line: found.line };
     }
   }
@@ -468,10 +486,10 @@ function nameOf(units: readonly Unit[], words: WordList, capture: RawCapture, te
       if (rest === null) continue;
       /* An empty rest is a label on a line of its own: the name is the line under it. Words that held no name at all
          are not that — "Refunded $9.99 to your card ending 4321" is followed by a reference line, not a name. */
-      const here = nameFrom(units, index, rest);
+      const here = nameFrom(units, index, rest, words.notName);
       if (here) return { value: here.value, confidence: here.confidence, line: here.line };
       if (rest.trim() === '' && units[index + 1]) {
-        const next = nameFrom(units, index + 1, units[index + 1]!.text);
+        const next = nameFrom(units, index + 1, units[index + 1]!.text, words.notName);
         if (next) return { value: next.value, confidence: next.confidence, line: next.line };
       }
     }
@@ -483,10 +501,10 @@ function nameOf(units: readonly Unit[], words: WordList, capture: RawCapture, te
       const at = wordAt(text, lead);
       if (at === null) continue;
       const rest = text.slice(at + lead.length);
-      const here = nameFrom(units, index, rest);
+      const here = nameFrom(units, index, rest, words.notName);
       if (here) return { value: here.value, confidence: 75, line: here.line };
       if (rest.trim() === '' && units[index + 1]) {
-        const next = nameFrom(units, index + 1, units[index + 1]!.text);
+        const next = nameFrom(units, index + 1, units[index + 1]!.text, words.notName);
         if (next) return { value: next.value, confidence: 75, line: next.line };
       }
     }
@@ -526,11 +544,21 @@ function dateOf(units: readonly Unit[], capture: RawCapture, template: Template)
  * the capture is an offer only when what is left holds no figure, or names no movement and labels no total: "Cashback
  * Rp5.000 masuk!" is about the cashback, and every piece of it says so.
  */
-function withoutOffers(units: readonly Unit[], words: WordList): Unit[] | null {
-  const rest = units.filter((unit) => !hasWord(unit.text, words.promo));
+function withoutOffers(units: readonly Unit[], words: WordList, keepTransactions: boolean): Unit[] | null {
+  /*
+   * A piece that holds a promo word is the offer — unless it is the sentence reporting the purchase the offer came
+   * from: "You earned 15 points from your credit card transaction of Rp 102.700,00". Some cards announce a purchase
+   * only that way, so where the owner has said to read a source's offers, a piece that names a transaction and
+   * carries a figure stays. "Cashback Rp5.000 masuk!" names no transaction and goes, as it did before.
+   */
+  const reportsPurchase = (unit: Unit) => hasWord(unit.text, words.transaction) && findAmounts(unit.text, words).length > 0;
+  const isOffer = (unit: Unit) => hasWord(unit.text, words.promo) && !(keepTransactions && reportsPurchase(unit));
+  const rest = units.filter((unit) => !isOffer(unit));
   if (rest.length === units.length) return [...units];
   const hasFigure = rest.some((unit) => findAmounts(unit.text, words).length > 0);
-  const saysWhat = rest.some((unit) => namesDirection(unit.text, words) || hasWord(unit.text, words.amountLabels));
+  const saysWhat = rest.some(
+    (unit) => namesDirection(unit.text, words) || hasWord(unit.text, words.amountLabels) || (keepTransactions && hasWord(unit.text, words.transaction)),
+  );
   return hasFigure && saysWhat ? rest : null;
 }
 
@@ -555,8 +583,14 @@ export function readCapture(
   words: WordList,
   template: Template | null,
   opts: {
-    /** False reads an offer for its money anyway: the owner bringing back a skipped capture has overruled the filter. */
-    skipPromos?: boolean;
+    /**
+     * What to do with an offer.
+     *
+     * `skip` (the default) is the filter as it stands: an offer never becomes a draft. `transactions` is a source
+     * the owner has said to read offers from — only the ones reporting a purchase are read, the rest still skipped.
+     * `read` is the owner bringing one capture back by hand, which overrules the filter entirely.
+     */
+    offers?: 'skip' | 'transactions' | 'read';
   } = {},
 ): Reading {
   const all = unitsOf(capture);
@@ -567,7 +601,8 @@ export function readCapture(
   const hint = paymentMethod?.last4 ?? accountHintOf(text, words);
 
   if (all.length === 0) return SKIPPED('unreadable', hint, paymentMethod);
-  const units = opts.skipPromos === false ? all : withoutOffers(all, words);
+  const offers = opts.offers ?? 'skip';
+  const units = offers === 'read' ? all : withoutOffers(all, words, offers === 'transactions');
   if (units === null) return SKIPPED('promo', hint, paymentMethod);
 
   const learned = template ?? null;
