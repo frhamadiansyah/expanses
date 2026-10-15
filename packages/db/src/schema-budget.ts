@@ -48,3 +48,11 @@ export const goalCalculators = sqliteTable('goal_calculators', {
   computedMinor: integer('computed_minor').notNull(),
   computedAt: text('computed_at').notNull(),
 });
+
+/** A budget set as a % (0069). No row: an amount. */
+export const budgetShares = sqliteTable('budget_shares', {
+  budgetId: text('budget_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  basis: text('basis', { enum: ['take-home', 'parent'] }).notNull(),
+  shareBp: integer('share_bp').notNull(),
+});
