@@ -545,6 +545,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       AND a.kind = 'expense'
       AND COALESCE(p.posted_on, t.occurred_on) BETWEEN ${from} AND ${to}
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
+      -- A card line that names its category is the whole charge (read below): a split's own share, or a fee beside a
+      -- holding, is already inside it and is not counted a second time.
+      AND NOT EXISTS (SELECT 1 FROM entries s WHERE s.transaction_id = t.id AND s.account_id = ${cardAccountId} AND s.spend_category_id IS NOT NULL)
     ORDER BY t.occurred_on, t.id, e.id
   `);
   // A purchase of a holding paid by card: the card line itself names the category it would have had.
