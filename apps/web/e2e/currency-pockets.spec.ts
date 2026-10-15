@@ -95,7 +95,10 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
-  await expect(page.getByText('The bank’s rate cost extra')).toBeVisible();
+  // Withdrawal rate §5: the dollars cost 16.250 each when they came in; the dollars changed are 8.125.000 of that, and
+  // the 638 SGD that arrived are worth 8.089.840 at the day's 12.680 — a loss, recorded as spending.
+  await expect(page.getByTestId('exchange-cost')).toContainText('8.125.000');
+  await expect(page.getByTestId('spread')).toContainText('Exchange loss');
   await expect(page.getByTestId('spread')).toContainText('35.160');
   await page.getByRole('button', { name: 'Move it' }).click();
 
@@ -123,8 +126,10 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await expect(page.getByTestId('spread')).toContainText('last known');
   await page.getByRole('button', { name: 'Move it' }).click();
 
-  // 500 × 16.400 − 638 × 12.800: what the ledger records, at the rates the save fetched.
-  await expect(page.getByTestId('recorded-spread')).toContainText('33.600');
+  // What the ledger records (withdrawal rate §5): the dollars still cost 8.125.000 — the day's 16.400 changes nothing
+  // about what they cost — and 638 SGD at the day's 12.800 are 8.166.400: a gain of 41.400.
+  await expect(page.getByTestId('recorded-spread')).toContainText('Exchange gain');
+  await expect(page.getByTestId('recorded-spread')).toContainText('41.400');
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');

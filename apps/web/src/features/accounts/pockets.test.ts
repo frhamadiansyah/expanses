@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -215,14 +215,6 @@ describe('moving between pockets', () => {
     const typed = { ...start, amount: '500', toAmount: '638', manualRate: '12680' };
     expect(withPockets(typed, { toId: idr.id }).manualRate).toBe('');
     expect(withPockets(typed, { moneyId: sgd.id }).manualRate).toBe('');
-  });
-
-  it('says a cost, a gain and a match in words, with one positive figure', () => {
-    const idrFormat = (minor: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(minor);
-    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_089_840, costMinor: 35_160 }, 'IDR')).toEqual({ title: 'The bank’s rate cost extra', figure: idrFormat(35_160) });
-    expect(spreadLine({ fromBaseMinor: 8_125_000, toBaseMinor: 8_242_000, costMinor: -117_000 }, 'IDR')).toEqual({ title: 'The bank’s rate gained extra', figure: idrFormat(117_000) });
-    expect(spreadLine({ fromBaseMinor: 1, toBaseMinor: 1, costMinor: 0 }, 'IDR')!.title).toBe('The bank’s rate matched the day’s rate');
-    expect(spreadLine(null, 'IDR')).toBeNull();
   });
 
   it('writes the bank’s rate to four places', () => {
