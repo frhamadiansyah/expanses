@@ -11,10 +11,10 @@ import { bareFigure } from '../networth/debt-rows';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, keptOf, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
 import { FREQUENCY_WORDS } from './frequency-form';
 import { useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
-import type { ShareBase } from './share-form';
+import { keptWarning, type ShareBase } from './share-form';
 
 const UNIT_SHORT: Record<BudgetFrequency, string> = { daily: '/day', weekly: '/wk', monthly: '/mo', quarterly: '/qtr', yearly: '/yr' };
 
@@ -79,6 +79,12 @@ export function EditBudgetsPage() {
       showRow(changes.unreadable[0]!);
       return;
     }
+    // A cleared parent's %-children have nothing to be a share of once it goes: each keeps its figure, as an amount.
+    if (kept.size > 0) {
+      const dependants = [...kept].map(([id, minor]) => ({ name: rows.find((row) => row.id === id)?.name ?? 'A budget', minor }));
+      const parents = new Set([...kept.keys()].map((id) => rows.find((row) => row.id === id)?.parentId)).size;
+      if (!window.confirm(keptWarning(dependants, currency, parents))) return;
+    }
     try {
       setBusy(true);
       await saveBudgets(database, ws, changes, month);
@@ -99,6 +105,7 @@ export function EditBudgetsPage() {
   const stored = { initial: initial ?? {}, budgets: budgets ?? [] };
   const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency, stored) : 0;
   const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency, stored) : new Map<string, number>();
+  const kept = keptOf(groups, state, stored);
   // What a row's % is of: the basis it was saved with while that is there, else the figure typed for its parent, or
   // take-home when its parent has none.
   const baseOf = (row: EditRow): ShareBase =>
@@ -177,6 +184,7 @@ export function EditBudgetsPage() {
                     base={base}
                     shareDisabled={base.minor <= 0}
                     shareMinor={figures.get(row.id) ?? 0}
+                    kept={kept.get(row.id) ?? null}
                     icon={row.depth === 0 ? mark.icon : null}
                     colour={mark.colour}
                     value={rowStateOf(state, row.id)}
@@ -218,6 +226,7 @@ function BudgetField({
   base,
   shareDisabled,
   shareMinor,
+  kept,
   icon,
   colour,
   value,
@@ -239,6 +248,8 @@ function BudgetField({
   shareDisabled: boolean;
   /** What the % typed here comes to. */
   shareMinor: number;
+  /** The amount this row is left at when its cleared parent goes, or null when it is not. */
+  kept: number | null;
   icon: ReactNode;
   colour: string;
   value: RowState;
@@ -271,7 +282,13 @@ function BudgetField({
         )}
         <label htmlFor={`cap-${row.id}`} className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">{row.label}</span>
-          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{value.filled ? 'Filled from last month' : share ? `= ${formatMinor(shareMinor, currency)} of ${base.label}` : hint}</span>
+          <span className="truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{value.filled
+              ? 'Filled from last month'
+              : kept !== null
+                ? `Kept as ${formatMinor(kept, currency)} a month`
+                : share
+                  ? `= ${formatMinor(shareMinor, currency)} of ${base.label}`
+                  : hint}</span>
         </label>
         <input
           id={`cap-${row.id}`}

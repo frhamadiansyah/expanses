@@ -1,7 +1,7 @@
 import type { BudgetLine } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { basisOfRow, changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, fillFromLastMonth, initialState, isDirty, keptOf, liveCapsTotal, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
 
 function line(id: string, name: string, children: BudgetLine[] = []): BudgetLine {
   return { id, name, ownMinor: 0, totalMinor: 0, capMinor: null, overMinor: 0, children };
@@ -246,3 +246,30 @@ describe('switchRow', () => {
     expect(switchRow(monthly, 'yearly', base, 'IDR')).toMatchObject({ amount: '1.200.000', frequency: 'yearly', mode: 'amount' });
   });
 });
+
+describe('clearing a parent whose %-children are left alone', () => {
+  const take = 10_000_000;
+  const stored = [budget('t', 1_000_000), { ...budget('fuel', 400_000), share: { basis: 'parent' as const, bp: 4000 } }, budget('ride', 200_000)];
+
+  it('shows and counts each such child at the amount it will keep, and sends only the parent’s removal', () => {
+    const groups = editGroups(lines);
+    const initial = initialState(groups, stored, 'IDR');
+    const state = { ...initial, t: { ...initial.t!, amount: '' } };
+    expect(keptOf(groups, state, { initial, budgets: stored })).toEqual(new Map([['fuel', 400_000]]));
+    expect(typedCaps(lines, state, take, 'IDR', { initial, budgets: stored }).get('fuel')).toBe(400_000);
+    expect(liveCapsTotal(lines, state, take, 'IDR', { initial, budgets: stored })).toBe(600_000);
+    expect(changesOf(groups, state, initial, stored, take, 'IDR')).toEqual({ save: [], remove: ['t'], unreadable: [] });
+  });
+
+  it('keeps nothing for a child changed on the screen, or under a parent that is not cleared', () => {
+    const groups = editGroups(lines);
+    const initial = initialState(groups, stored, 'IDR');
+    const changed = { ...initial, t: { ...initial.t!, amount: '' }, fuel: { ...initial.fuel!, amount: '5' } };
+    expect(keptOf(groups, changed, { initial, budgets: stored }).size).toBe(0);
+    expect(typedCaps(lines, changed, take, 'IDR', { initial, budgets: stored }).get('fuel')).toBe(500_000);
+    const lowered = { ...initial, t: { ...initial.t!, amount: '500.000' } };
+    expect(keptOf(groups, lowered, { initial, budgets: stored }).size).toBe(0);
+    expect(typedCaps(lines, lowered, take, 'IDR', { initial, budgets: stored }).get('fuel')).toBe(200_000);
+  });
+});
+

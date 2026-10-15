@@ -111,13 +111,34 @@ export function basisOfRow(row: EditRow, figures: ReadonlyMap<string, number>, b
   return budgets.find((stored) => stored.categoryAccountId === row.id)?.share?.basis === 'take-home' ? 'take-home' : 'parent';
 }
 
+const unchanged = (a: RowState, b: RowState) => a.amount === b.amount && a.frequency === b.frequency && a.mode === b.mode;
+
+/**
+ * The children Save turns into amounts: each stored as a % of its parent, left alone here, under a parent with a budget
+ * that is cleared. Each keeps its plan for the month on screen — the figure `saveBudgets` writes for it — so the screen
+ * shows and counts that figure rather than a share of something about to go.
+ */
+export function keptOf(groups: readonly EditGroup[], state: EditState, stored: Stored): Map<string, number> {
+  const byCategory = new Map(stored.budgets.map((row) => [row.categoryAccountId, row]));
+  const kept = new Map<string, number>();
+  for (const row of groups.flatMap((group) => group.rows)) {
+    const child = byCategory.get(row.id);
+    if (row.parentId === null || child?.share?.basis !== 'parent' || !byCategory.has(row.parentId)) continue;
+    if (!unchanged(rowStateOf(state, row.id), rowStateOf(stored.initial, row.id))) continue;
+    if (rowStateOf(state, row.parentId).amount.trim() || unchanged(rowStateOf(state, row.parentId), rowStateOf(stored.initial, row.parentId))) continue;
+    kept.set(row.id, child.planMinor);
+  }
+  return kept;
+}
+
 /** Every row's month figure as typed, parents first (editGroups lists a parent before its children). */
-function figuresOf(rows: readonly EditRow[], state: EditState, budgets: readonly BudgetRow[], takeHomeMinor: number, currency: string): Map<string, number> {
+function figuresOf(groups: readonly EditGroup[], state: EditState, stored: Stored, takeHomeMinor: number, currency: string): Map<string, number> {
+  const kept = keptOf(groups, state, stored);
   const figures = new Map<string, number>();
-  for (const row of rows) {
+  for (const row of groups.flatMap((group) => group.rows)) {
     const typed = rowStateOf(state, row.id);
-    const base = basisOfRow(row, figures, budgets) === 'parent' ? figures.get(row.parentId!)! : takeHomeMinor;
-    const minor = typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency);
+    const base = basisOfRow(row, figures, stored.budgets) === 'parent' ? figures.get(row.parentId!)! : takeHomeMinor;
+    const minor = kept.get(row.id) ?? (typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency));
     if (minor !== null) figures.set(row.id, minor);
   }
   return figures;
@@ -125,7 +146,7 @@ function figuresOf(rows: readonly EditRow[], state: EditState, budgets: readonly
 
 /** Every row's month figure as typed: a share resolved against the basis it has (see `basisOfRow`). */
 export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): Map<string, number> {
-  return figuresOf(editGroups(lines).flatMap((group) => group.rows), state, stored.budgets, takeHomeMinor, currency);
+  return figuresOf(editGroups(lines), state, stored, takeHomeMinor, currency);
 }
 
 /** The Budgeted figure as typed so far, counted as the sheet counts it: the outermost cap in each branch. */
@@ -176,11 +197,11 @@ export function changesOf(
   const stored = new Set(budgets.map((row) => row.categoryAccountId));
   const out: BudgetChanges & { unreadable: string[] } = { save: [], remove: [], unreadable: [] };
   const rows = groups.flatMap((group) => group.rows);
-  const figures = figuresOf(rows, state, budgets, takeHomeMinor, currency);
+  const figures = figuresOf(groups, state, { initial, budgets }, takeHomeMinor, currency);
   for (const row of rows) {
     const typed = rowStateOf(state, row.id);
     const loaded = rowStateOf(initial, row.id);
-    if (typed.amount === loaded.amount && typed.frequency === loaded.frequency && typed.mode === loaded.mode) continue;
+    if (unchanged(typed, loaded)) continue;
     if (!typed.amount.trim()) {
       if (stored.has(row.id)) out.remove.push(row.id);
       continue;
