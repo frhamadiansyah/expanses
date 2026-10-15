@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatBp, formatMinor, groupTypedAmount, parseMajor, parsePercentBp, roundUpToMajor, shareOfMinor } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatMinor, groupTypedAmount, parsePercentBp, roundUpToMajor, shareOfMinor } from '@expanses/core';
 import { type BudgetRow, clearBudgetOverride, removeBudget, saveBudget, setBudgetOverride } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -10,17 +10,8 @@ import { bareFigure } from '../networth/debt-rows';
 import { FREQUENCY_WORDS, perMonthPreview } from './frequency-form';
 import { FigureRow } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { type Dependant, keptWarning, type ShareBase, toAmount, toPercent } from './share-form';
-
-/**
- * What is typed into the Cap row to begin with: this month's own figure when it has one, else the plan as it was typed
- * — its share, for a budget set as a %.
- */
-function startingFigure(row: BudgetRow | undefined, thisMonthOnly: boolean, currency: string): string {
-  if (!row) return '';
-  if (!thisMonthOnly && row.share) return formatBp(row.share.bp);
-  return bareFigure(thisMonthOnly ? row.amountMinor : row.amountAsSetMinor, currency);
-}
+import { openForm, savedOf, setUnit, switchMode, switchMonth, takeFigure, typeFigure } from './cap-sheet-state';
+import { type Dependant, keptWarning, type ShareBase } from './share-form';
 
 /**
  * The cap of one category: ✕ · its name · ✓. The cap, the unit it was typed in, and whether it is this month's alone;
@@ -66,11 +57,8 @@ export function CapSheet({
   const invalidate = useInvalidateAll();
   const row = rowOf(categoryId);
   const line = lineOf(categoryId);
-  const [thisMonthOnly, setThisMonthOnly] = useState(Boolean(row?.overridden));
-  const [frequency, setFrequency] = useState<BudgetFrequency>(row?.frequency ?? 'monthly');
-  const [mode, setMode] = useState<'amount' | 'share'>(row?.share && !row.overridden ? 'share' : 'amount');
-  const [amount, setAmount] = useState(() => startingFigure(row, Boolean(row?.overridden), currency));
-  const [touched, setTouched] = useState(false);
+  const [form, setForm] = useState(() => openForm(row, currency));
+  const { mode, amount, frequency, thisMonthOnly } = form;
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -88,21 +76,6 @@ export function CapSheet({
     }
   })();
 
-  // Switching converts what is typed, so nothing is lost: 1.800.000 of a 12.000.000 take-home is 15%.
-  const switchMode = (next: 'amount' | 'share') => {
-    if (next === mode) return;
-    setTouched(true);
-    setAmount(next === 'share' ? toPercent(amount, frequency, base, currency) : toAmount(amount, base, currency));
-    if (next === 'share') setFrequency('monthly');
-    setMode(next);
-  };
-
-  const switchMonth = (on: boolean) => {
-    if (on && mode === 'share') switchMode('amount');
-    setThisMonthOnly(on);
-    if (!touched) setAmount(startingFigure(row, on, currency));
-  };
-
   // Figures to start from, each rounded up to a whole unit; one that comes to nothing is not offered.
   const chips = [
     { key: 'last', label: 'Last month', minor: roundUpToMajor(history?.lastMinor ?? 0, currency) },
@@ -110,32 +83,14 @@ export function CapSheet({
     { key: 'spent', label: 'Spent so far', minor: roundUpToMajor(line?.totalMinor ?? 0, currency) },
   ].filter((chip) => chip.minor > 0);
 
-  /** A chip's figure into the Cap row. The figures are a month's, so the unit becomes Month. Nothing is saved yet. */
-  const takeFigure = (minor: number) => {
-    setTouched(true);
-    setMode('amount');
-    setFrequency('monthly');
-    setAmount(bareFigure(minor, currency));
-  };
-
   async function save() {
     setError(null);
     if (!ready || busy) return;
     try {
-      // The empty box is the one refusal `parseMajor` has no words for, so it is worded here.
-      if (!amount.trim()) throw new Error(sharing ? 'The share is empty — type a %' : 'The cap is empty — type a figure');
-      if (sharing) {
-        const bp = parsePercentBp(amount);
-        setBusy(true);
-        await saveBudget(database, ws, { categoryAccountId: categoryId, amountMinor: shareOfMinor(base.minor, bp, currency), frequency: 'monthly', share: { basis: base.basis, bp } });
-        await invalidate();
-        onClose();
-        return;
-      }
-      const minor = parseMajor(amount, currency);
+      const saving = savedOf(form, base, currency);
       setBusy(true);
-      if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: categoryId, month, amountMinor: minor });
-      else await saveBudget(database, ws, { categoryAccountId: categoryId, amountMinor: minor, frequency: unit });
+      if (saving.kind === 'month') await setBudgetOverride(database, ws, { categoryAccountId: categoryId, month, amountMinor: saving.amountMinor });
+      else await saveBudget(database, ws, { categoryAccountId: categoryId, ...saving.plan });
       await invalidate();
       onClose();
     } catch (e) {
@@ -175,7 +130,7 @@ export function CapSheet({
               { key: 'share', label: '%' },
             ]}
             value={mode}
-            onChange={(key) => switchMode(key as 'amount' | 'share')}
+            onChange={(key) => setForm((was) => switchMode(was, key as 'amount' | 'share', base, currency))}
           />
         </div>
       )}
@@ -191,8 +146,8 @@ export function CapSheet({
             autoFocus
             onFocus={(e) => e.currentTarget.select()}
             onChange={(e) => {
-              setTouched(true);
-              setAmount(e.target.value.replace(/[^\d.,]/g, ''));
+              const typed = e.target.value.replace(/[^\d.,]/g, '');
+              setForm((was) => typeFigure(was, typed));
             }}
           />
         ) : (
@@ -205,13 +160,13 @@ export function CapSheet({
             autoFocus
             onFocus={(e) => e.currentTarget.select()}
             onChange={(e) => {
-              setTouched(true);
-              setAmount(groupTypedAmount(e.target.value, currency));
+              const typed = groupTypedAmount(e.target.value, currency);
+              setForm((was) => typeFigure(was, typed));
             }}
           />
         )}
         {!thisMonthOnly && !sharing && (
-          <SelectRow label="Every" value={frequency} onChange={(e) => setFrequency(e.target.value as BudgetFrequency)}>
+          <SelectRow label="Every" value={frequency} onChange={(e) => setForm(setUnit(form, e.target.value as BudgetFrequency))}>
             {BUDGET_FREQUENCIES.map((key) => (
               <option key={key} value={key}>
                 {FREQUENCY_WORDS[key].every}
@@ -221,7 +176,7 @@ export function CapSheet({
         )}
         {unit !== 'monthly' && <ReadOnlyRow label="Per month" value={preview === null ? null : formatMinor(preview, currency)} />}
         {/* Only a cap that exists can be changed for one month: there is nothing to override before it. */}
-        {row && <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={switchMonth} />}
+        {row && <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={(on) => setForm((was) => switchMonth(was, on, row, base, currency))} />}
       </InsetGroup>
 
       {chips.length > 0 && (
@@ -232,7 +187,7 @@ export function CapSheet({
               <button
                 key={chip.key}
                 type="button"
-                onClick={() => takeFigure(chip.minor)}
+                onClick={() => setForm((was) => takeFigure(was, chip.minor, currency))}
                 aria-label={`${chip.label}, ${bareFigure(chip.minor, currency)}`}
                 className="ph-focus ph-tap flex min-h-[44px] flex-col items-start justify-center rounded-[12px] bg-[var(--ph-surface)] px-[14px] py-[4px] text-left ring-1 ring-[var(--ph-hair)] ring-inset"
               >
