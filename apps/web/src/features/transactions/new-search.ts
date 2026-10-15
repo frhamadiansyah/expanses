@@ -13,6 +13,8 @@ export interface NewTransactionSearch {
   to?: string;
   event?: string;
   item?: string;
+  /** A shared event's expense, opened for editing on the Add screen (shared events §6). Read only with `event`. */
+  expense?: string;
   ws?: string;
 }
 
@@ -25,5 +27,6 @@ export const newTransactionSearch = (search: Record<string, unknown>): NewTransa
   ...(text(search.event) ? { event: text(search.event) } : {}),
   // An item is bought inside its event, so one carried without an event is dropped here rather than half-read later.
   ...(text(search.event) && text(search.item) ? { item: text(search.item) } : {}),
+  ...(text(search.event) && text(search.expense) ? { expense: text(search.expense) } : {}),
   ...(text(search.ws) ? { ws: text(search.ws) } : {}),
 });
