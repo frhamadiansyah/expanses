@@ -117,6 +117,7 @@ export * as extrasSchema from './schema-extras';
 export * from './repos/transaction-extras';
 export * as healthSchema from './schema-health';
 export * from './repos/health-tables';
+export * from './repos/share-tables';
 export * from './repos/category-needs';
 export * as sharingSchema from './schema-sharing';
 // Household sharing: the HTTP transport to the relay and its request signer (spec §9)

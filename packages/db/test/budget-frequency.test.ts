@@ -73,7 +73,7 @@ describe('a budget typed in another unit', () => {
     const { database, ws } = await setupDb();
     const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
-    await removeBudget(database, ws, groceries);
+    await removeBudget(database, ws, groceries, MONTH);
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 900_000 });
     expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ frequency: 'monthly', amountAsSetMinor: 900_000 });
   });
@@ -174,7 +174,7 @@ describe('a budget typed in another unit', () => {
     // Neither call may throw "no such table: budget_frequencies" — the guard each one carries must hold
     // on a database this old, exactly as it does for save and list.
     await expect(setBookBaseCurrency(database, ws, biz, 'SGD')).resolves.toMatchObject({ rate: 0.000083 });
-    await expect(removeBudget(database, book, software.id)).resolves.toBeUndefined();
+    await expect(removeBudget(database, book, software.id, MONTH)).resolves.toBeUndefined();
     expect(await listBudgets(database, book, MONTH)).toEqual([]);
   });
 });

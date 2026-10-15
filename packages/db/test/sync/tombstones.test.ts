@@ -63,7 +63,7 @@ describe('tombstones', () => {
     await saveBudget(fandri.database, ws(fandri), { categoryAccountId: groceries, amountMinor: 1_000_000 });
     await home.settle();
     await saveBudget(dewi.database, ws(dewi), { categoryAccountId: groceries, amountMinor: 2_000_000 });
-    await removeBudget(fandri.database, ws(fandri), groceries);
+    await removeBudget(fandri.database, ws(fandri), groceries, '2026-10');
     await home.settle();
     for (const d of [fandri, dewi]) expect((await projectBook(d.database, bookId)).budget).toEqual({});
   });
