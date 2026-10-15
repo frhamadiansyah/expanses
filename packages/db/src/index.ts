@@ -210,3 +210,6 @@ export {
 export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';
 // Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
 export { type JointReport, reportInputsFor } from './repos/joint-tax';
+export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
+export type { EventInviteDetails } from './sync/invite';
+export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
