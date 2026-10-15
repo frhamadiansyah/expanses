@@ -548,3 +548,19 @@ export {
 } from './shared-events/split';
 export { balances, fewestPayments, type SuggestedPayment } from './shared-events/balances';
 export { type MyLineAccounts, type MyLines, myExpenseLines, mySettlementLines, type PaidFromAccount } from './shared-events/lines';
+export { EXCHANGE_GAIN_KEY, EXCHANGE_GAIN_NAME, EXCHANGE_LOSS_KEY, EXCHANGE_LOSS_NAME, FX_LOT_SUBTYPES, isExchangeResultKey, isFxLotAccount } from './fx/keys';
+export {
+  chronological,
+  fifoCosts,
+  type FifoResult,
+  FxError,
+  type FxInflow,
+  type FxLotPart,
+  type FxLotUse,
+  type FxMovement,
+  type FxOpenLot,
+  type FxOutCost,
+  type FxOutflow,
+  type FxShortfall,
+  shareOf,
+} from './fx/fifo';
