@@ -157,6 +157,7 @@ test('a purchase on the account’s only card keeps that card once it is removed
     await page.getByLabel('Last 4 digits').fill('1467');
   });
   // One card, so Paid with offers the account as one row; the purchase is saved on that card all the same.
+  await page.goto('/transactions');
   await addTransaction(page, { description: 'Bakmi GM', paidWith: 'BCA KrisFlyer', category: 'Groceries', amount: '75000' });
 
   // A supplementary added, and the old primary removed.

@@ -52,6 +52,8 @@ describe('the row Paid with marks as chosen', () => {
 
   it('is none for a purchase made on a card since removed, rather than another card on the account', () => {
     expect(pickedPayment(options, 'bonvoy', 'c-old')).toBeUndefined();
+    // Nor the account's one row once one card is left in use: that row is the card still in use, not the removed one.
+    expect(pickedPayment(options, 'krisflyer', 'k-old', true)).toBeUndefined();
   });
 });
 

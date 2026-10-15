@@ -1177,6 +1177,7 @@ function CardBody({
           placeholders={placeholders}
           chosenAccountId={draft.moneyId}
           chosenCardId={draft.cardId}
+          chosenCardRemoved={removedCard !== null}
           cards={draft.mode === 'expense'}
           // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
           onPick={(option) => {

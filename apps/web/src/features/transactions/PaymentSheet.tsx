@@ -42,9 +42,10 @@ export function chosenPayment(options: readonly PaymentOption[], draft: FormDraf
 /**
  * The row a purchase's own account and card stand on: the row naming that card, else the account's own row when it names
  * no card — an account with one card in use is one row, and a purchase saved naming that card is on it. A purchase on a
- * card since removed stands on none: another card on the same account is not what paid.
+ * card since removed (`removed`) stands on none: neither another card on the account nor the one still in use paid.
  */
-export function pickedPayment(options: readonly PaymentOption[], accountId: string, cardId: string): PaymentOption | undefined {
+export function pickedPayment(options: readonly PaymentOption[], accountId: string, cardId: string, removed = false): PaymentOption | undefined {
+  if (removed) return undefined;
   return (
     options.find((option) => option.accountId === accountId && (option.cardId ?? '') === cardId) ??
     options.find((option) => option.accountId === accountId && !option.cardId)
@@ -168,6 +169,7 @@ export function PaymentSheet({
   accounts,
   chosenAccountId = '',
   chosenCardId = '',
+  chosenCardRemoved = false,
   cards = false,
   onPick,
   onClose,
@@ -183,6 +185,8 @@ export function PaymentSheet({
   /** What is chosen now, which decides the tab the sheet opens on. */
   chosenAccountId?: string;
   chosenCardId?: string;
+  /** The chosen card was removed since: the purchase's value, which no row in the list stands for. */
+  chosenCardRemoved?: boolean;
   /** Whether a card can answer this question — Paid with, not Received into — which is when the tabs are drawn. */
   cards?: boolean;
   onPick: (option: PaymentOption) => void;
@@ -235,7 +239,7 @@ export function PaymentSheet({
   // The row already in Paid with: its icon sits in a filled circle, so the currencies stay where they are.
   const picked = shared?.chosenItemId
     ? undefined
-    : pickedPayment(options, chosenAccountId, chosenCardId);
+    : pickedPayment(options, chosenAccountId, chosenCardId, chosenCardRemoved);
 
   const row = (option: PaymentOption) => {
     const account = accounts.find((a) => a.id === option.accountId);
