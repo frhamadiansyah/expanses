@@ -194,6 +194,33 @@ test('the chart card keeps its height when the month is read the other way', asy
 });
 
 /**
+ * Nothing on the chart card's pages is placed against a box outside the card's own scroller. The bars' screen-reader
+ * line is absolutely placed; with the scroller unpositioned it was placed against the page instead, and iOS WebKit
+ * then counted the third page's left edge as the page's width — 756 px on a 402 px phone, so Cashflow scrolled
+ * sideways onto blank ground. Chromium does not widen the page for it, so what is asserted is the cause, which both
+ * engines share: every absolutely placed thing in the deck is contained by the deck.
+ */
+test('Cashflow never scrolls sideways: whatever the chart card places is placed inside its own scroller', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
+  const deck = page.getByTestId('chart-deck');
+  await expect(deck.locator('[data-testid="trend-bars"]')).toHaveCount(1);
+
+  const escaped = await deck.evaluate((box) =>
+    [...box.querySelectorAll('*')]
+      .filter((el) => getComputedStyle(el).position === 'absolute')
+      .filter((el) => {
+        const holder = (el as HTMLElement).offsetParent;
+        return holder === null || !(holder === box || box.contains(holder));
+      })
+      .map((el) => `${el.tagName.toLowerCase()}.${el.getAttribute('class')}`),
+  );
+  expect(escaped).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+/**
  * The card's last page draws the period over time: a bar per day of the month, read by tapping it, and the month's
  * biggest days under it — each one line, and each a way into that day.
  */
