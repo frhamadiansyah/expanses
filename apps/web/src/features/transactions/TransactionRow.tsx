@@ -10,7 +10,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { amountLook, type ListRow } from './list-model';
+import { type AmountExtraPart, amountLook, type ListRow, paidWithLook } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { TwoTapDelete } from './TwoTapDelete';
@@ -191,9 +191,8 @@ export function TransactionRow({
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
             <>
-              {row.description ? `${row.description}${row.accountLabel ? ' · ' : ''}` : ''}
-              {row.accountLabel}
-              {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
+              {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
+              <PaidWith row={row} />
             </>
           )}
         </span>
@@ -268,6 +267,35 @@ export function TransactionRow({
     >
       {face()}
     </li>
+  );
+}
+
+/**
+ * What paid, as a row's second line names it: "···· 4417" alone for a card whose digits are known, the account's name
+ * otherwise, and both names of a transfer with the digits after them (`paidWithLook`).
+ */
+export function PaidWith({ row }: { row: ListRow }) {
+  const { name, last4 } = paidWithLook(row);
+  return (
+    <>
+      {name}
+      {last4 && <span className="tabular font-semibold text-slate-600">{name ? ' ' : ''}···· {last4}</span>}
+    </>
+  );
+}
+
+/** The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour. */
+export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
+  if (parts.length === 0) return null;
+  return (
+    <span data-testid="amount-extra" className="tabular block whitespace-nowrap text-xs">
+      {parts.map((part, i) => (
+        <span key={part.tone} className={part.tone === 'foreign' ? 'text-slate-500' : part.tone === 'lost' ? 'text-red-700' : 'text-emerald-700'}>
+          {i > 0 && <span className="text-slate-400"> · </span>}
+          {part.text}
+        </span>
+      ))}
+    </span>
   );
 }
 

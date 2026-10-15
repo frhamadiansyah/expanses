@@ -32,7 +32,6 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useCards } from '../cards/card-queries';
-import { formatPoints } from '../cards/useCardPoints';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
@@ -49,11 +48,11 @@ import { keptText, moveHint } from './shared-move';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
-import { TransactionRow, useRecategorise } from './TransactionRow';
+import { AmountExtra, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { amountExtraParts, billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -902,29 +901,15 @@ export function TransactionsPage() {
             {payerOf(tx.id) ? (
               payerLine(payerOf(tx.id)!)
             ) : onPlaceholder(tx) ? null : (
-              <>
-                {row.accountLabel}
-                {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
-              </>
+              <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
         under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
-        amountExtra={
-          <>
-            {points && (
-              <span className={cx('tabular block whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
-                {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
-                {formatPoints(Math.abs(points.points))} {points.unit}
-              </span>
-            )}
-            {tx.originalCurrency && tx.originalAmountMinor !== null && (
-              <span className="tabular block whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</span>
-            )}
-          </>
-        }
+        // One line under the amount, never two: the foreign amount, then the points ("JP¥1.850 · +38 pts").
+        amountExtra={<AmountExtra parts={amountExtraParts(tx, points)} />}
         trailing={
           selecting ? undefined : <>
             {trade ? (

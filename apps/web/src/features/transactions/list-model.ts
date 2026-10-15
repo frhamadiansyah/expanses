@@ -1,5 +1,7 @@
-import { compareWithinDay, dayNet, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import type { PurchasePoints } from '../../lib/purchase-points';
+import { formatPoints } from '../cards/useCardPoints';
 import { classify } from './classify';
 
 /**
@@ -293,6 +295,41 @@ export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; mut
   if (row.type === 'debt' && row.earnedMinor > 0) return { sign: 1, plus: false, muted: false };
   if (row.moneyIn) return { sign: 0, plus: true, muted: true };
   return { sign: 0, plus: false, muted: false };
+}
+
+/**
+ * How a row names what paid, on its second line. A card whose last four digits are known is those digits alone —
+ * "···· 4417" says which card more surely than a long account name, and leaves the line room for the note. Money moving
+ * between two accounts ("BCA Tahapan → CIMB Octo") keeps both names, with the digits after them as before.
+ */
+export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4'>): { name: string; last4: string | null } {
+  if (row.last4 && row.accountIds.length <= 1) return { name: '', last4: row.last4 };
+  return { name: row.accountLabel, last4: row.last4 };
+}
+
+/** One piece of the line under a row's amount: what it cost in the currency it was charged in, or the points it earned. */
+export interface AmountExtraPart {
+  text: string;
+  /** `foreign` reads muted; points read green when earned and red when taken back. */
+  tone: 'foreign' | 'earned' | 'lost';
+}
+
+/**
+ * The one line under a row's amount: the foreign amount first, then the points ("¥1.850 · +38 pts"), either alone when
+ * only one applies, and nothing when neither does. Both used to stack as lines of their own, which made a foreign
+ * purchase on a card that earns three lines tall.
+ */
+export function amountExtraParts(
+  tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
+  points: PurchasePoints | undefined,
+): AmountExtraPart[] {
+  const parts: AmountExtraPart[] = [];
+  if (tx.originalCurrency && tx.originalAmountMinor !== null) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
+  if (points) {
+    const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';
+    parts.push({ text: `${mark}${formatPoints(Math.abs(points.points))} ${points.unit}`, tone: points.points < 0 ? 'lost' : 'earned' });
+  }
+  return parts;
 }
 
 export function dayTotal(rows: readonly ListRow[]): number {

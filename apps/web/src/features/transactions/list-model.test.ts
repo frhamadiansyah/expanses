@@ -1,7 +1,7 @@
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals , groupByCategory } from './list-model';
+import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -341,5 +341,44 @@ describe('amountLook', () => {
     expect(amountLook(one(tx('2026-09-12', 'Superindo', [['groceries', 40_000], ['bca', -40_000]])))).toEqual({ sign: -1, plus: false, muted: false });
     expect(amountLook(one(tx('2026-09-12', 'Salary', [['bca', 40_000], ['salary', -40_000]])))).toEqual({ sign: 1, plus: false, muted: false });
     expect(amountLook(one(tx('2026-09-12', 'Refund', [['groceries', -40_000], ['bca', 40_000]])))).toEqual({ sign: 1, plus: true, muted: false });
+  });
+});
+
+describe('paidWithLook', () => {
+  const one = (t: TransactionView) => buildRows([t], [], accounts, cards)[0]!;
+
+  it('shows a card only by its last four digits when they are known, not by its account name', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]], { cardId: 'c1' })))).toEqual({ name: '', last4: '1467' });
+  });
+
+  it('keeps the account name when the last four digits are not known', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
+  });
+
+  it('leaves money moving between two accounts named in full, with the card after them', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → CIMB Octo', last4: '1467' });
+  });
+});
+
+describe('amountExtraParts', () => {
+  const foreign = { originalCurrency: 'JPY', originalAmountMinor: 1850 };
+  const plain = { originalCurrency: null, originalAmountMinor: null };
+  const line = (parts: { text: string }[]) => parts.map((part) => part.text).join(' · ');
+
+  it('puts the foreign amount first and the points after it, on one line', () => {
+    const parts = amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false });
+    expect(line(parts)).toBe('JP¥1.850 · +38 pts');
+    expect(parts.map((part) => part.tone)).toEqual(['foreign', 'earned']);
+  });
+
+  it('shows either part alone when only one applies, and nothing when neither does', () => {
+    expect(line(amountExtraParts(foreign, undefined))).toBe('JP¥1.850');
+    expect(line(amountExtraParts(plain, { points: 1200, unit: 'miles', approximate: false }))).toBe('+1.200 miles');
+    expect(amountExtraParts(plain, undefined)).toEqual([]);
+  });
+
+  it('marks points taken back with a minus and estimated points with ≈, as before', () => {
+    expect(amountExtraParts(plain, { points: -38, unit: 'pts', approximate: false })).toEqual([{ text: '−38 pts', tone: 'lost' }]);
+    expect(amountExtraParts(plain, { points: 38, unit: 'pts', approximate: true })).toEqual([{ text: '≈ 38 pts', tone: 'earned' }]);
   });
 });
