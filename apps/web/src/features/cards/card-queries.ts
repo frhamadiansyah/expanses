@@ -8,6 +8,15 @@ export function useCards(accountId?: string) {
   return useQuery({ queryKey: ['cards', ws.workspaceId, accountId ?? 'all'], queryFn: () => listCards(database, ws, accountId) });
 }
 
+/**
+ * Every card ever recorded, archived ones marked: what a list of transactions reads a row's card from, so a row that named
+ * a card since put away keeps that card's digits. Never a choice of what to pay with — `useCards` is.
+ */
+export function useCardsWithArchived() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['cards', ws.workspaceId, 'with-archived'], queryFn: () => listCards(database, ws, undefined, { withArchived: true }) });
+}
+
 /** The last four digits of each digital wallet's phone number, by account: never among `useCards`. */
 export function useWalletLast4() {
   const { database, ws } = useApp();

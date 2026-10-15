@@ -31,7 +31,7 @@ import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidate
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { useCards, useWalletLast4 } from '../cards/card-queries';
+import { useCards, useCardsWithArchived, useWalletLast4 } from '../cards/card-queries';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
@@ -147,6 +147,8 @@ export function TransactionsPage() {
   const membership = useCategorySetMembership().data ?? {};
   const cards = useCards().data ?? [];
   const walletLast4 = useWalletLast4().data ?? {};
+  // What a row names may have been put away since; the rows read it from every card, archived ones too.
+  const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
@@ -305,7 +307,7 @@ export function TransactionsPage() {
    * of it. The table is the exception it has always been: it is the editor, and a half-typed row waiting there is
    * the work in progress that editor exists for.
    */
-  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards, walletLast4);
+  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4);
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
    * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.

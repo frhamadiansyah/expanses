@@ -375,6 +375,32 @@ describe('paidWithLook', () => {
   });
 });
 
+describe('a card put away since', () => {
+  const lunch = (cardId: string | null) => tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]], { cardId });
+
+  it('keeps the digits and holder of an archived supplementary card on the rows that named it, and finds them by those digits only', () => {
+    const withArchived: CardRow[] = [cards[0]!, { ...cards[1]!, archived: true }];
+    const rows = buildRows([lunch('c2')], [], accounts, withArchived);
+    expect(rows[0]).toMatchObject({ last4: '8802', holderName: 'Aisyah' });
+    expect(filterRows(rows, { ...EMPTY_FILTERS, q: '1467' }, accounts)).toEqual([]);
+  });
+
+  it('keeps a replaced card’s old digits on the rows that named it, and gives the new card’s only to rows that named none', () => {
+    const replaced: CardRow[] = [{ ...cards[2]!, archived: true }, { id: 'c5', accountId: 'nusa', last4: '9051', holderName: null, isPrimary: true }];
+    const named = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]], { cardId: 'c3' });
+    const unnamed = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]]);
+    const [first, second] = buildRows([named, unnamed], [], accounts, replaced);
+    expect(first!.last4).toBe('4417');
+    expect(second!.last4).toBe('9051');
+  });
+
+  it('shows no digits at all for a card the list does not know, never another card’s', () => {
+    const named = tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]], { cardId: 'gone' });
+    expect(buildRows([named], [], accounts, cards)[0]!.last4).toBeNull();
+    expect(buildRows([], [draft({ accountId: 'nusa', cardId: 'gone' })], accounts, cards)[0]!.last4).toBeNull();
+  });
+});
+
 describe('a wallet’s phone digits on its rows', () => {
   const digits = { kantong: '5521' };
   const lunch = tx('2026-09-12', 'Mie Gacoan', [['groceries', 40_000], ['kantong', -40_000]]);

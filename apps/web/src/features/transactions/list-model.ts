@@ -111,21 +111,25 @@ export function buildRows(
   walletLast4: Readonly<Record<string, string>> = {},
 ): ListRow[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
+  // Archived cards included (`listCards`'s `withArchived`): a row that named a card since put away still reads its digits.
   const cardById = new Map(cards.map((card) => [card.id, card]));
   /*
-   * The digits a row names when it names no card: a credit card account's only card — Paid with offers that card as the
-   * account itself, so a purchase on it records no card — and a wallet's phone number. An account with two cards and no
-   * card named was paid "from the account", and a bank is not its debit card, so neither gets any. Only a row paid from
-   * that one account and nothing else: money moving between two names both, and digits after both would say neither.
+   * The digits a row names when it names no card: a credit card account's only card in use — Paid with offers that card
+   * as the account itself, so a purchase on it records no card — and a wallet's phone number. An account with two cards
+   * and no card named was paid "from the account", and a bank is not its debit card, so neither gets any. Only a row paid
+   * from that one account and nothing else: money moving between two names both, and digits after both would say neither.
+   * A row that names a card is that card's alone, even one this list does not know: never another card's digits.
    */
   const cardsOf = new Map<string, CardRow[]>();
-  for (const card of cards) cardsOf.set(card.accountId, [...(cardsOf.get(card.accountId) ?? []), card]);
+  for (const card of cards) if (!card.archived) cardsOf.set(card.accountId, [...(cardsOf.get(card.accountId) ?? []), card]);
   const soleCard = (accountId: string) => {
     const own = cardsOf.get(accountId) ?? [];
     return byId.get(accountId)?.subtype === 'credit_card' && own.length === 1 ? own[0]!.last4 : null;
   };
-  const accountDigits = (accountIds: readonly string[]) =>
-    accountIds.length === 1 ? (soleCard(accountIds[0]!) ?? walletLast4[accountIds[0]!] ?? null) : null;
+  const digitsOf = (cardId: string | null, accountIds: readonly string[]) => {
+    if (cardId) return cardById.get(cardId)?.last4 ?? null;
+    return accountIds.length === 1 ? (soleCard(accountIds[0]!) ?? walletLast4[accountIds[0]!] ?? null) : null;
+  };
   const isPerson = (id: string) => ['receivable', 'payable'].includes(byId.get(id)?.subtype ?? '');
 
   // A statement check's "Payments not tracked" adjustment (statement-check spec §3.6) is the card's business alone: it
@@ -160,7 +164,7 @@ export function buildRows(
       accountIds,
       accountLabel: c.moneyAccountNames.join(' → '),
       cardId: tx.cardId,
-      last4: card?.last4 ?? accountDigits(accountIds),
+      last4: digitsOf(tx.cardId, accountIds),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
       excluded: tx.excluded ?? false,
@@ -191,7 +195,7 @@ export function buildRows(
       accountIds: draft.accountId ? [draft.accountId] : [],
       accountLabel: draft.accountId ? (byId.get(draft.accountId)?.name ?? '') : '',
       cardId: draft.cardId,
-      last4: card?.last4 ?? accountDigits(draft.accountId ? [draft.accountId] : []),
+      last4: digitsOf(draft.cardId, draft.accountId ? [draft.accountId] : []),
       holderName: card?.holderName ?? null,
       deleted: false,
       // Nothing is excluded until it is recorded: a draft counts nothing either way.

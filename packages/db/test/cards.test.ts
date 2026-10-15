@@ -78,6 +78,22 @@ describe('the plastic on an account', () => {
     await expect(addCard(database, ws, { accountId: mandiri.id, last4: '1467', isPrimary: true })).resolves.toEqual(expect.any(String));
   });
 
+  it('lists archived cards too when asked, marked as archived, so a row that named one still reads its digits', async () => {
+    const { database, ws, card } = await workspace();
+    const octo = await card('Octo Rewards', 'Nusa');
+    const primary = await addCard(database, ws, { accountId: octo.id, last4: '1467', holderName: 'Fandrian', isPrimary: true });
+    const supplementary = await addCard(database, ws, { accountId: octo.id, last4: '8802', holderName: 'Spouse' });
+
+    await archiveCard(database, ws, supplementary);
+
+    expect((await listCards(database, ws)).map((row) => row.id)).toEqual([primary]);
+    const all = await listCards(database, ws, undefined, { withArchived: true });
+    expect(all.map((row) => [row.last4, row.archived])).toEqual([
+      ['8802', true],
+      ['1467', false],
+    ]);
+  });
+
   it('keeps a wallet’s phone digits out of the cards, so no card list, chooser or duplicate check ever sees them', async () => {
     const { database, ws } = await workspace();
     const wallet = await createAccount(database, ws, { name: 'Pay wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });

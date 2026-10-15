@@ -45,8 +45,7 @@ function WalletPhoneRow({ accountId, saved }: { accountId: string; saved: string
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
           onBlur={() => void save()}
-          inputMode="numeric"
-          maxLength={4}
+          inputMode="tel"
           placeholder="None"
           className="tabular"
           hint={read.ok ? undefined : read.error}

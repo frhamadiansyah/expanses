@@ -440,8 +440,7 @@ export function CashAccountForm({
             label="Last 4 digits of phone"
             value={phoneLast4}
             onChange={(e) => setPhoneLast4(e.target.value)}
-            inputMode="numeric"
-            maxLength={4}
+            inputMode="tel"
             placeholder="Optional"
             className="tabular"
             hint={phone?.ok === false ? phone.error : undefined}
