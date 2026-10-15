@@ -1,9 +1,9 @@
-import { balances, convertMinor, isRateString, isSupportedCurrency, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
+import { balances, convertMinor, expenseInEvent, isRateString, isSupportedCurrency, MoneyError, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
 import { type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { withCapture } from '../sync/capture';
-import { followEventOpTx, postEventRecordTx, rateToBaseTx, setPaidFromTx } from './shared-event-postings';
+import { followEventOpTx, postEventRecordTx, rateToBaseTx, recordsReadingTx, setPaidFromTx } from './shared-event-postings';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseRecordTx, settlementRecordTx, type StoredExpense } from './shared-event-records';
 
 /*
@@ -379,6 +379,8 @@ export async function renameEventPerson(database: Database, ws: WorkspaceContext
     await withCapture(tx, { entity: 'event_person', id: personId, bookId: book.bookId }, () =>
       tx.run(sql`UPDATE event_people SET name = ${trimmed} WHERE book_id = ${book.bookId} AND id = ${personId}`),
     );
+    // The settle-ups that name this person read the new name here too ("Andika paid Rina"), as on every other phone.
+    for (const { kind, recordId } of await recordsReadingTx(tx, book.bookId, 'event_person', personId)) await postEventRecordTx(tx, book.bookId, kind, recordId, null);
   });
 }
 
@@ -386,13 +388,30 @@ export async function renameEventPerson(database: Database, ws: WorkspaceContext
  * D9: why this person cannot be removed now, or null — a balance that is not zero, or a live record naming them (as
  * payer, in a split, or on either side of a settle-up). A voided record no longer names anyone. The split is read as
  * written rather than through `sharesOf`, so a peer's split that does not add up still keeps its people in.
+ *
+ * A peer's expense core cannot count (a rate it cannot read, a split that does not add up) is left out of the balance
+ * rather than failing the check (controller ruling f); one that names this person leaves their balance unknown, so it
+ * holds them as an unsettled one does — said plainly, so leaving is refused too.
  */
 export async function personRefusalTx(db: Db, book: EventBookRow, personId: string): Promise<SharedEventDbError | null> {
   const { expenses, settlements, people } = await eventRecordsTx(db, book.bookId);
   const name = people.find((p) => p.personId === personId)?.name ?? 'This person';
-  const owed = balances(expenses, settlements, book.currency, [personId])[personId] ?? 0;
-  if (owed !== 0) return new SharedEventDbError('NOT_SETTLED', `${name}'s balance is not zero yet: settle up first`);
   const inSplit = (split: SplitInput) => (split.mode === 'equal' ? split.people.includes(personId) : split.shares.some((s) => s.personId === personId));
+  const countable = (e: StoredExpense) => {
+    try {
+      expenseInEvent(e, book.currency);
+      return true;
+    } catch (error) {
+      if (error instanceof SharedEventError || error instanceof MoneyError) return false;
+      throw error;
+    }
+  };
+  const uncounted = expenses.filter((e) => !e.voided && !countable(e));
+  if (uncounted.some((e) => e.payerPersonId === personId || inSplit(e.split))) {
+    return new SharedEventDbError('NOT_SETTLED', `${name}'s balance cannot be worked out yet: an expense naming ${name} cannot be read here`);
+  }
+  const owed = balances(expenses.filter((e) => !uncounted.includes(e)), settlements, book.currency, [personId])[personId] ?? 0;
+  if (owed !== 0) return new SharedEventDbError('NOT_SETTLED', `${name}'s balance is not zero yet: settle up first`);
   const named =
     expenses.some((e) => !e.voided && (e.payerPersonId === personId || inSplit(e.split))) ||
     settlements.some((s) => !s.voided && (s.fromPersonId === personId || s.toPersonId === personId));
@@ -450,6 +469,8 @@ export async function saveEventCategory(database: Database, ws: WorkspaceContext
         ON CONFLICT (book_id, id) DO UPDATE SET name = excluded.name, icon = excluded.icon`),
     );
     await followEventOpTx(tx, book.bookId, 'event_category', id, null);
+    // An expense without a note is described by its category: a renamed category renames it.
+    for (const { kind, recordId } of await recordsReadingTx(tx, book.bookId, 'event_category', id)) await postEventRecordTx(tx, book.bookId, kind, recordId, null);
   });
   return id;
 }
