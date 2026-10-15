@@ -297,6 +297,27 @@ export async function followEventOpTx(tx: Tx, bookId: string, entity: string, id
 }
 
 /**
+ * The records whose derived transaction reads a person's or a category's row besides its own (controller ruling c): a
+ * settle-up's description names both people ("Andi paid Rina"); an expense without a note is described by its
+ * category's name. A rename brings each along, so no description goes stale. Live records only: a voided one's
+ * transaction is void already.
+ */
+export async function recordsReadingTx(tx: Db, bookId: string, entity: string, id: string): Promise<{ kind: EventPostingKind; recordId: string }[]> {
+  if (entity === 'event_person') {
+    const rows = await tx.values<[string]>(sql`
+      SELECT id FROM event_settlements WHERE book_id = ${bookId} AND voided_at IS NULL AND (from_person_id = ${id} OR to_person_id = ${id}) ORDER BY id`);
+    return rows.map(([recordId]) => ({ kind: 'settlement', recordId }));
+  }
+  if (entity === 'event_category') {
+    const rows = await tx.values<[string]>(sql`
+      SELECT x.id FROM event_expenses x JOIN event_expense_details d ON d.book_id = x.book_id AND d.id = x.id
+      WHERE x.book_id = ${bookId} AND x.voided_at IS NULL AND d.category_id = ${id} AND trim(coalesce(d.note, '')) = '' ORDER BY x.id`);
+    return rows.map(([recordId]) => ({ kind: 'expense', recordId }));
+  }
+  return [];
+}
+
+/**
  * Tries again every record this phone left waiting for a rate, or for a detail that had not arrived: after a rate is
  * saved and after each sync of an event's book. Returns how many now post.
  */
@@ -309,11 +330,14 @@ export async function retryUnpostedEventRecords(database: Database, bookId?: str
   );
   let posted = 0;
   for (const [book, record, kind] of rows) {
-    const done = await database.transaction(async (tx) => {
-      await postEventRecordTx(tx, book, kind as EventPostingKind, record, null);
-      const [row] = await tx.values<[string | null]>(sql`SELECT unposted FROM event_postings WHERE book_id = ${book} AND record_id = ${record}`);
-      return row?.[0] === null;
-    });
+    // One record the ledger still refuses (a peer's date it cannot read) stays waiting, and never holds up the rest.
+    const done = await database
+      .transaction(async (tx) => {
+        await postEventRecordTx(tx, book, kind as EventPostingKind, record, null);
+        const [row] = await tx.values<[string | null]>(sql`SELECT unposted FROM event_postings WHERE book_id = ${book} AND record_id = ${record}`);
+        return row?.[0] === null;
+      })
+      .catch(() => false);
     if (done) posted += 1;
   }
   return posted;

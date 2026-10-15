@@ -636,7 +636,11 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     const now = after.get(key);
     const entity = (was ?? now)!.entity;
     if (EVENT_ENTITIES.has(entity.entity)) {
-      // Shared events (rulings R1–R3): the same predicate a peer's op meets, against this write's pre-image.
+      // Shared events (rulings R1–R3): the same predicate a peer's op meets, against this write's pre-image — for a row
+      // this write changed. A row it was pointed at but left as it was emits nothing, so there is nothing to judge: a
+      // friend's split edit under a capture of both halves of a member's expense is not an edit of the money half
+      // (controller ruling d).
+      if (was && now && was.bookId === now.bookId && Object.keys(diffFields(was.values, now.values)).length === 0) continue;
       const gone = !now || (was !== undefined && now.bookId !== was.bookId);
       const row = (was ?? now)!;
       const member = books.find((b) => b.bookId === row.bookId)?.memberId ?? null;
