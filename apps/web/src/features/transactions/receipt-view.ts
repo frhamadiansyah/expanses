@@ -96,8 +96,12 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? '';
   // The card's last four, and only when the transaction names the card the account was charged through: an
   // account holding two cards must not lend the primary's digits to a purchase made on the supplementary.
+  // A card since removed is still the card it was made with: it keeps its digits, and says it was removed.
   const card = tx.cardId ? cards.find((row) => row.id === tx.cardId) : undefined;
-  const accountText = (accountId: string) => (card && card.accountId === accountId && card.last4 ? `${nameOf(accountId)} ···· ${card.last4}` : nameOf(accountId));
+  const accountText = (accountId: string) =>
+    card && card.accountId === accountId
+      ? `${nameOf(accountId)}${card.last4 ? ` ···· ${card.last4}` : ''}${card.archived ? ' · removed card' : ''}`
+      : nameOf(accountId);
 
   // Money that left is what was paid with; money that only arrived — a salary, a refund — was paid *into*.
   // A transfer touches two money accounts, and a receipt that named only the first would hide where it went.

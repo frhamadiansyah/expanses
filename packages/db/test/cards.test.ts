@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCard, archiveCard, cardsSchema, createAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
+import { addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -106,6 +106,43 @@ describe('the plastic on an account', () => {
     expect(await listCards(database, ws, wallet.id)).toEqual([]);
     // A card ending like the phone number is a card of its own, never refused as typed twice.
     await expect(addCard(database, ws, { accountId: plain.id, last4: '5521', isPrimary: true })).resolves.toEqual(expect.any(String));
+  });
+
+  it('leaves exactly the two new cards after the primary is removed and a primary and a supplementary are added again', async () => {
+    const { database, ws } = await workspace();
+    // Opened with its card, as the Add a card account form does: the plastic recorded is the primary.
+    const bonvoy = await createCardAccount(database, ws, { name: 'Mandiri Marriott Bonvoy', subtype: 'credit_card', currency: 'IDR', issuer: 'Mandiri', last4: '4410' });
+    const [first] = await listCards(database, ws, bonvoy.id);
+    await archiveCard(database, ws, first!.id);
+
+    // The card page marks the first card added to an account with none as its primary, and the next as supplementary.
+    await addCard(database, ws, { accountId: bonvoy.id, last4: '4410', holderName: 'Fandrian', isPrimary: (await listCards(database, ws, bonvoy.id)).length === 0 });
+    await addCard(database, ws, { accountId: bonvoy.id, last4: '7723', holderName: 'Spouse', isPrimary: (await listCards(database, ws, bonvoy.id)).length === 0 });
+
+    // The removed card is gone from every list, the account's and the workspace's: no third row is left behind.
+    for (const rows of [await listCards(database, ws, bonvoy.id), await listCards(database, ws)]) {
+      expect(rows.map((row) => [row.last4, row.isPrimary]).sort()).toEqual([
+        ['4410', true],
+        ['7723', false],
+      ]);
+    }
+  });
+
+  it('lists a removed card, marked as removed, only when asked for removed cards too', async () => {
+    const { database, ws, card } = await workspace();
+    const octo = await card('Octo Card', 'CIMB Niaga');
+    const old = await addCard(database, ws, { accountId: octo.id, last4: '1467', isPrimary: true });
+    const fresh = await addCard(database, ws, { accountId: octo.id, last4: '7781' });
+    await archiveCard(database, ws, old);
+
+    // Every list a purchase is paid from leaves it out, and says nothing of removal: every card it lists is in use.
+    expect(await listCards(database, ws, octo.id)).toEqual([{ id: fresh, accountId: octo.id, last4: '7781', holderName: null, isPrimary: false }]);
+    // An older purchase that names it still has its digits to show.
+    const all = await listCards(database, ws, octo.id, { withArchived: true });
+    expect(all.map((row) => [row.last4, row.archived]).sort()).toEqual([
+      ['1467', true],
+      ['7781', false],
+    ]);
   });
 
   it('offers the issuers the workspace already uses', async () => {

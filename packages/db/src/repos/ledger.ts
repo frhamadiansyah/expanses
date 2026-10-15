@@ -165,6 +165,24 @@ async function bookOfCategories(tx: Db, lineAccounts: readonly { id: string; kin
   return bookId;
 }
 
+/**
+ * The card a purchase that names none was made with, when there is no question which: a purchase spent under a category
+ * and charged to one credit-card account, which has exactly one card in use. Paid with offers such an account as one row
+ * naming no card, so every way in — the Add screen, a table row, a capture, a statement row, an import, a shared bill —
+ * leaves the card to this. An account with no card names none; one with two or more leaves the card for the owner to say.
+ */
+async function onlyCardOfPurchaseTx(tx: Db, ws: WorkspaceContext, found: readonly { id: string; kind: string; subtype: string }[]): Promise<string | null> {
+  if (!found.some((account) => account.kind === 'expense')) return null;
+  const onCard = found.filter((account) => account.subtype === 'credit_card');
+  if (onCard.length !== 1) return null;
+  // Cards came with 0034: a database stopped before it has none to name.
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'`)).length === 0) return null;
+  const inUse = await tx.values<[string]>(
+    sql`SELECT id FROM cards WHERE workspace_id = ${ws.workspaceId} AND account_id = ${onCard[0]!.id} AND archived_at IS NULL LIMIT 2`,
+  );
+  return inUse.length === 1 ? inUse[0]![0] : null;
+}
+
 /** Posts inside an open transaction. Throws PostingError or LedgerError without writing on invalid input. */
 export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
   if (!DATE.test(input.occurredOn)) {
@@ -193,7 +211,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
-        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind, name: accounts.name })
+        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind, name: accounts.name, subtype: accounts.subtype })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)))
     : [];
@@ -243,7 +261,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     originalCurrency,
     originalAmountMinor,
     mcc,
-    cardId: input.cardId ?? null,
+    cardId: input.cardId ?? (await onlyCardOfPurchaseTx(tx, ws, found)),
     templateId: input.templateId ?? null,
     createdAt: new Date().toISOString(),
   });

@@ -13,7 +13,7 @@ import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Button, Card, cx, Empty, ErrorBox } from '../../ui';
-import { useCards } from '../cards/card-queries';
+import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
 import { useEvents } from '../events/queries';
@@ -55,7 +55,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const phone = usePhone();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const cards = useCards().data ?? [];
+  // Removed cards too: a purchase made on one still names it, by its digits.
+  const cards = useCardsWithArchived().data ?? [];
   const goals = useGoals().data ?? [];
   const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
   const today = isoDate();

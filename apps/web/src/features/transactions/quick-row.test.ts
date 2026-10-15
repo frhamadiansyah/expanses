@@ -102,27 +102,45 @@ describe('what the ledger gets', () => {
 });
 
 describe('paymentOptions', () => {
-  it('offers each card on a shared statement, and then the account itself, which names no card', () => {
+  it('offers each card on a shared statement and never the account alone, which names no card', () => {
     const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
-    const shared = options.filter((o) => o.accountId === 'bonvoy');
-    // The cards first, then the account: the row that answers half the question is the last one.
-    expect(shared.map((o) => [o.cardId, o.last4])).toEqual([
+    // The primary and the supplementary, and nothing else: an account carrying cards is paid with one of them.
+    expect(options.filter((o) => o.accountId === 'bonvoy').map((o) => [o.cardId, o.last4])).toEqual([
       ['c1', '1467'],
       ['c2', '8802'],
-      [null, null],
     ]);
-    /*
-     * The account's own row carries no digits, which is what keeps `matchPayment` honest: a search for `1467`
-     * has to find the card ending 1467 and nothing else. A bare row holding the first card's digits would make
-     * two rows match, and the account would be reported with no card at all.
-     */
+    // A search for one card's digits finds that card; the account's name alone still says which account, and leaves the card to be said.
     expect(matchPayment('1467', options)).toEqual({ accountId: 'bonvoy', cardId: 'c1' });
     expect(matchPayment('Mandiri Bonvoy', options)).toEqual({ accountId: 'bonvoy', cardId: null });
+  });
+
+  it('offers just the two cards after the primary was removed and a primary and a supplementary were added again', () => {
+    // What `listCards` hands over after that sequence: the removed card is archived, so only the two new ones are left.
+    const again: CardRow[] = [
+      { id: 'c4', accountId: 'bonvoy', last4: '7723', holderName: 'Spouse', isPrimary: false },
+      { id: 'c3', accountId: 'bonvoy', last4: '4410', holderName: 'Fandrian', isPrimary: true },
+    ];
+    const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), again);
+    expect(options.filter((o) => o.accountId === 'bonvoy').map((o) => o.cardId)).toEqual(['c4', 'c3']);
   });
 
   it('offers an account with one card once, and shows its digits', () => {
     const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
     expect(options.filter((o) => o.accountId === 'bca')).toHaveLength(1);
+  });
+
+  it('still offers a card account with no card recorded, or only removed ones, as the account itself', () => {
+    // `listCards` leaves archived cards out, so an account whose cards were all removed reaches here with none.
+    const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), []);
+    expect(options.filter((o) => o.accountId === 'bonvoy')).toEqual([{ accountId: 'bonvoy', cardId: null, accountName: 'Mandiri Bonvoy', last4: null, holderName: null }]);
+  });
+
+  it('keeps the account alone only as the value a row already names, so an older purchase with no card still shows what paid it', () => {
+    const money = accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability');
+    expect(payerOptions(money, cards, 'bonvoy').filter((o) => o.accountId === 'bonvoy').map((o) => o.cardId)).toEqual(['c1', 'c2', null]);
+    // A row naming one of the cards, or another account, is offered the cards alone.
+    expect(payerOptions(money, cards, 'bonvoy:c2').filter((o) => o.accountId === 'bonvoy').map((o) => o.cardId)).toEqual(['c1', 'c2']);
+    expect(payerOptions(money, cards, 'bca').filter((o) => o.accountId === 'bonvoy').map((o) => o.cardId)).toEqual(['c1', 'c2']);
   });
 });
 
@@ -175,8 +193,8 @@ describe('a placeholder in the Paid-with picker (§4.4, final review minor 2)', 
 
   it('is never offered, and the one the row already names is kept as its current value only', () => {
     const options = paymentOptions([...accounts.filter((a) => a.kind !== 'expense' && a.kind !== 'income'), dewi, budi], cards);
-    expect(withoutPlaceholders(options, listed, 'ph-dewi').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'bonvoy', 'wise', 'ph-dewi']);
-    expect(withoutPlaceholders(options, listed, 'bca').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'bonvoy', 'wise']);
+    expect(withoutPlaceholders(options, listed, 'ph-dewi').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'wise', 'ph-dewi']);
+    expect(withoutPlaceholders(options, listed, 'bca').map((o) => o.accountId)).toEqual(['bca', 'bonvoy', 'bonvoy', 'wise']);
     expect(withoutPlaceholders(options, listed, '').some((o) => o.accountId.startsWith('ph-'))).toBe(false);
   });
 

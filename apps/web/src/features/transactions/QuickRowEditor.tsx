@@ -53,9 +53,10 @@ export function buildRowOptions(
   return {
     /**
      * The paid-with list for one row. Built here rather than handed over whole, because what a row may offer
-     * depends on what it already names: a purchase recorded against a house still has to show the house.
+     * depends on what it already names: a purchase recorded against a house still has to show the house, and one
+     * recorded against a card account with no card named still has to show that account. `key` is a `paymentKey`.
      */
-    paidFor: (accountId: string): ComboOption[] => (accountId && !paid.some((option) => option.value.split(':')[0] === accountId) ? payerOptions(money, cards, accountId).map(toCombo) : paid),
+    paidFor: (key: string): ComboOption[] => (key && !paid.some((option) => option.value === key) ? payerOptions(money, cards, key).map(toCombo) : paid),
     categories,
     resolvePaid: (text: string) => {
       const hit = matchPayment(text, payments);
@@ -144,7 +145,7 @@ export function QuickRowEditor({
         label="Row paid with"
         placeholder="Name or last 4 digits"
         value={paymentKey(values.accountId, values.cardId)}
-        options={options.paidFor(values.accountId)}
+        options={options.paidFor(paymentKey(values.accountId, values.cardId))}
         resolve={options.resolvePaid}
         invalid={missing('paid with')}
         onChange={(key) => {

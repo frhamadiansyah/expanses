@@ -119,22 +119,24 @@ export function quickToInput(read: QuickRead, accounts: readonly AccountRow[]): 
 /**
  * Accounts to pay with, as one list.
  *
- * An account with a single card is one choice, showing its digits. An account carrying several cards offers
- * **each card first and then the account itself**: the digits answer both questions at once, and the account's
- * own row is how a purchase is recorded when the card is not known or not worth saying.
+ * An account with a single card is one choice, showing its digits; an account with none is one choice, itself. An
+ * account carrying several cards offers **each card and nothing else**: the digits answer both questions at once.
+ * The account alone — a row with no card label beside its primary and supplementary — was offered from 21 September
+ * so a shared statement could be recorded without naming a card; the owner asked for it to go (15 October), since
+ * it read as a third, plain card that does not exist.
  *
- * That last row was taken away without a decision — a shared statement could not be recorded at all unless a
- * card was named — and it is restored here. It carries **no digits**, deliberately: it names no card, so a search
- * for one card's digits has to find that card and not this, and `matchPayment` keeps saying which card it means.
+ * `keep` is the value a row already names, as a `paymentKey`. An older purchase recorded against such an account
+ * with no card keeps its account alone as its current value, so it still shows what paid it; nothing else gets it.
  */
-export function paymentOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]): PaymentOption[] {
+export function paymentOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], keep = ''): PaymentOption[] {
   return accounts.flatMap((account): PaymentOption[] => {
     const own = cards.filter((card) => card.accountId === account.id);
     if (own.length < 2) {
       return [{ accountId: account.id, cardId: null, accountName: account.name, last4: own[0]?.last4 ?? null, holderName: null }];
     }
-    const itself: PaymentOption = { accountId: account.id, cardId: null, accountName: account.name, last4: null, holderName: null };
-    return [...own.map((card) => ({ accountId: account.id, cardId: card.id, accountName: account.name, last4: card.last4, holderName: card.holderName })), itself];
+    const each = own.map((card): PaymentOption => ({ accountId: account.id, cardId: card.id, accountName: account.name, last4: card.last4, holderName: card.holderName }));
+    if (keep !== account.id) return each;
+    return [...each, { accountId: account.id, cardId: null, accountName: account.name, last4: null, holderName: null }];
   });
 }
 
@@ -159,13 +161,15 @@ export function placeholderLabel(memberName: string): string {
  *
  * The cell says what paid, so it offers only what can: never a locked deposit, never a house. But a purchase
  * already recorded against one of those is a fact, and a cell that cannot show its own value reads as an error
- * and invites being saved over. `current` is that account, kept whatever it is; pass an empty string for a row
- * being typed from scratch, which has nothing to keep.
+ * and invites being saved over. `current` is that value as a `paymentKey` — the account, and the card on it if one
+ * is named — kept whatever it is; pass an empty string for a row being typed from scratch, which has nothing to keep.
  */
 export function payerOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], current: string): PaymentOption[] {
+  const [currentAccount = ''] = current.split(':');
   return paymentOptions(
-    accounts.filter((account) => canPayWith(account, current)),
+    accounts.filter((account) => canPayWith(account, currentAccount)),
     cards,
+    current,
   );
 }
 

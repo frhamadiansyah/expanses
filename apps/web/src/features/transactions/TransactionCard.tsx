@@ -32,7 +32,7 @@ import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from 
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
-import { useCards } from '../cards/card-queries';
+import { useCards, useCardsWithArchived } from '../cards/card-queries';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { CategoryOptions } from '../cards/options';
@@ -60,7 +60,7 @@ import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { TransferRates } from './TransferRates';
 import { WithdrawalLine } from './WithdrawalLine';
-import { PaymentSheet, chosenPayment, sharedTitle } from './PaymentSheet';
+import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
@@ -252,6 +252,8 @@ function CardBody({
   const bookShared = useIsBookShared();
   const savedPayer = usePurchasePayers(initial ? [initial.id] : [], bookShared);
   const allCards = useCards().data ?? [];
+  // Removed cards too, read only to name the one an older purchase was made on: never offered to pay with.
+  const everyCard = useCardsWithArchived().data ?? [];
   const goals = useGoals().data ?? [];
   const assetValues = useAssetValues();
   // What this device lists, placeholders left out; `accounts` may also hold one the edited purchase names.
@@ -553,6 +555,8 @@ function CardBody({
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
+  // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
+  const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
@@ -879,12 +883,12 @@ function CardBody({
               value={
                 partnerShown && draft.partner?.side === 'from'
                   ? partnerShown.value
-                  : sharedShown ? sharedShown.value : paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)
+                  : sharedShown ? sharedShown.value : removedCard ? removedCard.value : paying?.cardId ? paying.accountName : chosenPayment(payable, draft, placeholders)
               }
               caption={
                 partnerShown && draft.partner?.side === 'from'
                   ? partnerShown.caption
-                  : sharedShown ? sharedShown.caption : paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel
+                  : sharedShown ? sharedShown.caption : removedCard ? removedCard.caption : paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel
               }
               onClick={() => setSheet('money')}
               // A side of a transfer with a partner keeps its accounts: only its date, figure and note change (§7.2).
@@ -1173,6 +1177,7 @@ function CardBody({
           placeholders={placeholders}
           chosenAccountId={draft.moneyId}
           chosenCardId={draft.cardId}
+          chosenCardRemoved={removedCard !== null}
           cards={draft.mode === 'expense'}
           // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
           onPick={(option) => {
