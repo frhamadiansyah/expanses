@@ -390,6 +390,7 @@ export {
 
 export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type CapNode, outermostCapsTotal, type SavingsRow } from './budget/sheet';
 export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
+export { type BudgetShare, bpOf, type CapToResolve, formatBp, parsePercentBp, resolveCaps, ShareError, type ShareBasis, shareOfMinor } from './budget/shares';
 export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
 export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
 export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goals/classes';
