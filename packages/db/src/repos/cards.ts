@@ -1,10 +1,11 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Tx } from '../database';
 import { accounts } from '../schema';
 import { type AccountRow, createAccountTx } from './accounts';
 import { cardIdentity, cards } from '../schema-cards';
+import { markAccountDirtyTx } from '../sync/capture';
 
 export class CardError extends Error {
   constructor(
@@ -107,29 +108,51 @@ export async function listWalletLast4(database: Database, ws: WorkspaceContext):
 }
 
 /**
- * Records, replaces or (with null or blanks) removes the last four digits of a digital wallet's phone number.
+ * Records, changes or (with null or blanks) clears the last four digits of a digital wallet's phone number.
  *
  * Unlike a card's, they are never refused as typed twice: two wallets on one phone — two apps, one number — carry the
- * same digits, and that is the truth of it. A change archives the row that was there and adds the new one, as a card
- * replaced after a lost one is, so the old digits stay with whatever already named them.
+ * same digits, and that is the truth of it. They live on one row per wallet, changed in place: no transaction ever names
+ * a wallet's row, so there is nothing an older value must stay with, and archived rows would only pile up. The account
+ * is marked changed, so a wallet shared in a net-worth group sends its item again, under the name with its new digits.
  */
 export async function setWalletLast4(database: Database, ws: WorkspaceContext, accountId: string, last4: string | null): Promise<void> {
   const digits = last4?.trim() || null;
   if (digits !== null && !FOUR_DIGITS.test(digits)) throw new CardError('LAST4', 'Last four digits are four numbers, like 1467');
-  const [account] = await database.db
-    .select({ subtype: accounts.subtype })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!account) throw new CardError('NOT_FOUND', 'That account is not in this workspace');
-  if (account.subtype !== 'ewallet') throw new CardError('NOT_A_WALLET', 'Only a digital wallet keeps the last four digits of a phone number');
+  await database.transaction(async (tx) => {
+    const [account] = await tx
+      .select({ subtype: accounts.subtype })
+      .from(accounts)
+      .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new CardError('NOT_FOUND', 'That account is not in this workspace');
+    if (account.subtype !== 'ewallet') throw new CardError('NOT_A_WALLET', 'Only a digital wallet keeps the last four digits of a phone number');
 
-  const held = await database.db
-    .select({ id: cards.id, last4: cards.last4 })
-    .from(cards)
-    .where(and(eq(cards.workspaceId, ws.workspaceId), eq(cards.accountId, accountId), isNull(cards.archivedAt)));
-  if (held.length === (digits === null ? 0 : 1) && held.every((row) => row.last4 === digits)) return;
-  for (const row of held) await archiveCard(database, ws, row.id);
-  if (digits !== null) await addCard(database, ws, { accountId, last4: digits, isPrimary: true });
+    const held = await tx
+      .select({ id: cards.id, last4: cards.last4 })
+      .from(cards)
+      .where(and(eq(cards.workspaceId, ws.workspaceId), eq(cards.accountId, accountId), isNull(cards.archivedAt)))
+      .orderBy(desc(cards.isPrimary), asc(cards.createdAt));
+    const [kept, ...extra] = held;
+    if (kept?.last4 === digits && extra.length === 0) return;
+    if (kept) await tx.update(cards).set({ last4: digits, isPrimary: 1 }).where(eq(cards.id, kept.id));
+    else if (digits !== null) await insertWalletRowTx(tx, ws, accountId, digits);
+    // Only ever one: any other row a wallet carries (from an earlier build) is put away.
+    for (const row of extra) await tx.update(cards).set({ archivedAt: new Date().toISOString() }).where(eq(cards.id, row.id));
+    markAccountDirtyTx(tx, accountId);
+  });
+}
+
+/** A wallet's one row for its phone digits: never a card, so never through `addCard`. */
+async function insertWalletRowTx(tx: Tx, ws: WorkspaceContext, accountId: string, last4: string): Promise<void> {
+  await tx.insert(cards).values({
+    id: uuidv7(),
+    workspaceId: ws.workspaceId,
+    accountId,
+    last4,
+    holderName: null,
+    isPrimary: 1,
+    archivedAt: null,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -152,12 +175,10 @@ export async function addCard(
     .from(accounts)
     .where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!account) throw new CardError('NOT_FOUND', 'That account is not in this workspace');
-  // A wallet's row is its phone number's digits (`setWalletLast4`), the one way a wallet comes here.
-  const wallet = account.subtype === 'ewallet';
-  if (account.subtype !== 'credit_card' && account.subtype !== 'bank' && !wallet) throw new CardError('NOT_A_CARD', 'Only a credit card or a bank account carries cards');
+  // A wallet's phone digits are kept by `setWalletLast4`, never as a card.
+  if (account.subtype !== 'credit_card' && account.subtype !== 'bank') throw new CardError('NOT_A_CARD', 'Only a credit card or a bank account carries cards');
 
-  // Two wallets on one phone share their digits, so a wallet's are never checked for having been typed twice.
-  if (last4 !== null && !wallet) {
+  if (last4 !== null) {
     const issuerOf = new Map((await listCardIdentities(database, ws)).map((row) => [row.accountId, row.issuer]));
     const issuer = issuerOf.get(input.accountId) ?? null;
     for (const existing of await listCards(database, ws)) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCard, archiveCard, createAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
+import { addCard, archiveCard, cardsSchema, createAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -133,6 +133,21 @@ describe('the last four digits of a wallet’s phone number', () => {
 
     await setWalletLast4(database, ws, wallet.id, '7310');
     expect(await listWalletLast4(database, ws)).toEqual({ [wallet.id]: '7310' });
+  });
+
+  it('keeps one row for them, changed in place, however often they change or are cleared', async () => {
+    const { database, ws, wallet } = await withWallets();
+
+    for (const digits of ['5521', '7310', null, '0042']) await setWalletLast4(database, ws, wallet.id, digits);
+
+    const rows = await database.db.select({ last4: cardsSchema.cards.last4, archivedAt: cardsSchema.cards.archivedAt }).from(cardsSchema.cards);
+    expect(rows).toEqual([{ last4: '0042', archivedAt: null }]);
+  });
+
+  it('is never a card: a wallet is refused a card of its own', async () => {
+    const { database, ws, wallet } = await withWallets();
+
+    await expect(addCard(database, ws, { accountId: wallet.id, last4: '5521', isPrimary: true })).rejects.toThrow(/Only a credit card or a bank account carries cards/);
   });
 
   it('removes them when they are cleared', async () => {
