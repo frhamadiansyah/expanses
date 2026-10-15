@@ -1,4 +1,4 @@
-import { type BudgetLine, bpOf, formatBp, formatMinor, parseMajor, parsePercentBp, type ShareBasis, shareOfMinor } from '@expanses/core';
+import { type BudgetLine, type BudgetShare, bpOf, formatBp, formatMinor, parseMajor, parsePercentBp, type ShareBasis, shareOfMinor } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
 import { findLine } from './budget-view';
@@ -10,8 +10,12 @@ export interface ShareBase {
   minor: number;
 }
 
-/** The parent's budget when the category's direct parent has one; take-home otherwise. */
-export function shareBaseOf(lines: readonly BudgetLine[], categoryId: string, takeHomeMinor: number): ShareBase {
+/**
+ * What a % for the category is of. A share already saved keeps the basis it was saved with while that basis is there
+ * (take-home always is; a parent, while it has a budget). A new share, or one whose parent has gone, takes the tree's:
+ * the parent's budget when the category's direct parent has one, take-home otherwise.
+ */
+export function shareBaseOf(lines: readonly BudgetLine[], categoryId: string, takeHomeMinor: number, stored: BudgetShare | null): ShareBase {
   const parentOf = (rows: readonly BudgetLine[], parent: BudgetLine | null): BudgetLine | null | undefined => {
     for (const row of rows) {
       if (row.id === categoryId) return parent;
@@ -21,7 +25,7 @@ export function shareBaseOf(lines: readonly BudgetLine[], categoryId: string, ta
     return undefined;
   };
   const parent = parentOf(lines, null);
-  if (parent && parent.capMinor !== null) return { basis: 'parent', label: parent.name, minor: parent.capMinor };
+  if (parent && parent.capMinor !== null && stored?.basis !== 'take-home') return { basis: 'parent', label: parent.name, minor: parent.capMinor };
   return { basis: 'take-home', label: 'take-home', minor: takeHomeMinor };
 }
 

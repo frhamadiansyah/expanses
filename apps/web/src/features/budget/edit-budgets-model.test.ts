@@ -1,7 +1,7 @@
 import type { BudgetLine } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf, typedCaps } from './edit-budgets-model';
+import { basisOfRow, changesOf, editGroups, fillFromLastMonth, initialState, isDirty, liveCapsTotal, rowStateOf, typedCaps } from './edit-budgets-model';
 
 function line(id: string, name: string, children: BudgetLine[] = []): BudgetLine {
   return { id, name, ownMinor: 0, totalMinor: 0, capMinor: null, overMinor: 0, children };
@@ -18,6 +18,8 @@ const budget = (categoryAccountId: string, amountAsSetMinor: number, frequency: 
 });
 
 const lines = [line('t', 'Transport', [line('fuel', 'Fuel'), line('ride', 'Ride hailing')]), line('fun', 'Entertainment')];
+// Nothing stored, and nothing on screen to compare with: every share is new.
+const nothing = { initial: {}, budgets: [] };
 
 describe('editGroups', () => {
   it('gives a root with children an All row first, its children one step in, and a lone root a single row; by name', () => {
@@ -46,15 +48,15 @@ describe('liveCapsTotal', () => {
     const state = initialState(groups, [], 'IDR');
     state.fuel = { amount: '1.200.000', frequency: 'yearly', filled: false, mode: 'amount' };
     state.fun = { amount: '300.000', frequency: 'monthly', filled: false, mode: 'amount' };
-    expect(liveCapsTotal(lines, state, 0, 'IDR')).toBe(400_000);
+    expect(liveCapsTotal(lines, state, 0, 'IDR', nothing)).toBe(400_000);
     state.t = { amount: '1.000.000', frequency: 'monthly', filled: false, mode: 'amount' };
-    expect(liveCapsTotal(lines, state, 0, 'IDR')).toBe(1_300_000);
+    expect(liveCapsTotal(lines, state, 0, 'IDR', nothing)).toBe(1_300_000);
   });
 
   it('leaves out a figure that cannot be read', () => {
     const state = initialState(editGroups(lines), [], 'IDR');
     state.fun = { amount: 'abc', frequency: 'monthly', filled: false, mode: 'amount' };
-    expect(liveCapsTotal(lines, state, 0, 'IDR')).toBe(0);
+    expect(liveCapsTotal(lines, state, 0, 'IDR', nothing)).toBe(0);
   });
 });
 
@@ -156,8 +158,8 @@ describe('shares on Edit budgets', () => {
     const state = initialState(groups, [], 'IDR');
     state.t = { amount: '30', frequency: 'monthly', filled: false, mode: 'share' };
     state.fuel = { amount: '40', frequency: 'monthly', filled: false, mode: 'share' };
-    expect(typedCaps(lines, state, take, 'IDR').get('fuel')).toBe(1_200_000);
-    expect(liveCapsTotal(lines, state, take, 'IDR')).toBe(3_000_000);
+    expect(typedCaps(lines, state, take, 'IDR', nothing).get('fuel')).toBe(1_200_000);
+    expect(liveCapsTotal(lines, state, take, 'IDR', nothing)).toBe(3_000_000);
   });
 
   it('sends a share with the basis the row has now and the figure it comes to', () => {
@@ -179,3 +181,29 @@ describe('shares on Edit budgets', () => {
     expect(isDirty({ ...initial, fun: { ...initial.fun!, mode: 'share' } }, initial)).toBe(true);
   });
 });
+
+describe('a share keeps the basis it was saved with', () => {
+  const take = 10_000_000;
+
+  it('resolves, counts and saves a stored % of take-home against take-home, even under a parent with a figure', () => {
+    const groups = editGroups(lines);
+    const stored = [budget('t', 1_000_000), { ...budget('fuel', 500_000), share: { basis: 'take-home' as const, bp: 500 } }];
+    const initial = initialState(groups, stored, 'IDR');
+    const state = { ...initial, fuel: { ...initial.fuel!, amount: '6' } };
+    expect(typedCaps(lines, state, take, 'IDR', { initial, budgets: stored }).get('fuel')).toBe(600_000);
+    expect(basisOfRow(groups[1]!.rows[1]!, typedCaps(lines, state, take, 'IDR', { initial, budgets: stored }), stored)).toBe('take-home');
+    expect(changesOf(groups, state, initial, stored, take, 'IDR').save).toEqual([{ categoryAccountId: 'fuel', amountMinor: 600_000, frequency: 'monthly', share: { basis: 'take-home', bp: 600 } }]);
+  });
+
+  it('takes the basis from the tree for a new share, and for a stored % of a parent that no longer has a figure', () => {
+    const groups = editGroups(lines);
+    const stored = [{ ...budget('fuel', 400_000), share: { basis: 'parent' as const, bp: 4000 } }];
+    const initial = initialState(groups, stored, 'IDR');
+    const state = { ...initial, fuel: { ...initial.fuel!, amount: '5' }, ride: { amount: '2', frequency: 'monthly' as const, filled: false, mode: 'share' as const } };
+    expect(changesOf(groups, state, initial, stored, take, 'IDR').save).toEqual([
+      { categoryAccountId: 'fuel', amountMinor: 500_000, frequency: 'monthly', share: { basis: 'take-home', bp: 500 } },
+      { categoryAccountId: 'ride', amountMinor: 200_000, frequency: 'monthly', share: { basis: 'take-home', bp: 200 } },
+    ]);
+  });
+});
+

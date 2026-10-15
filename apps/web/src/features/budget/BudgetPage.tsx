@@ -320,7 +320,7 @@ export function BudgetPage() {
           categoryId={open.id}
           name={findLine(sheet.lines, open.id)?.name ?? 'Budget'}
           history={history?.get(open.id) ?? null}
-          base={shareBaseOf(sheet.lines, open.id, sheet.incomePlanMinor)}
+          base={shareBaseOf(sheet.lines, open.id, sheet.incomePlanMinor, budgets.find((row) => row.categoryAccountId === open.id)?.share ?? null)}
           dependants={dependantsOf(sheet.lines, budgets, open.id)}
           month={month}
           currency={planCurrency}

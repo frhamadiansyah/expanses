@@ -18,9 +18,16 @@ const stored = (categoryAccountId: string, planMinor: number, amountMinor: numbe
 describe('shareBaseOf', () => {
   it('is the parent’s budget when the parent has one, and take-home otherwise', () => {
     const lines = [line('food', 'Food', 2_000_000, [line('groceries', 'Groceries', null)]), line('fun', 'Fun', null, [line('games', 'Games', null)])];
-    expect(shareBaseOf(lines, 'groceries', 10_000_000)).toEqual({ basis: 'parent', label: 'Food', minor: 2_000_000 });
-    expect(shareBaseOf(lines, 'games', 10_000_000)).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
-    expect(shareBaseOf(lines, 'food', 10_000_000)).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
+    expect(shareBaseOf(lines, 'groceries', 10_000_000, null)).toEqual({ basis: 'parent', label: 'Food', minor: 2_000_000 });
+    expect(shareBaseOf(lines, 'games', 10_000_000, null)).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
+    expect(shareBaseOf(lines, 'food', 10_000_000, null)).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
+  });
+
+  it('keeps the basis a share was saved with while it is there, and falls back to the tree once it is not', () => {
+    const lines = [line('food', 'Food', 2_000_000, [line('groceries', 'Groceries', null)]), line('fun', 'Fun', null, [line('games', 'Games', null)])];
+    expect(shareBaseOf(lines, 'groceries', 10_000_000, { basis: 'take-home', bp: 500 })).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
+    expect(shareBaseOf(lines, 'groceries', 10_000_000, { basis: 'parent', bp: 4000 })).toEqual({ basis: 'parent', label: 'Food', minor: 2_000_000 });
+    expect(shareBaseOf(lines, 'games', 10_000_000, { basis: 'parent', bp: 4000 })).toEqual({ basis: 'take-home', label: 'take-home', minor: 10_000_000 });
   });
 });
 

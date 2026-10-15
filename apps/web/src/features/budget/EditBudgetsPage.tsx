@@ -95,11 +95,13 @@ export function EditBudgetsPage() {
   const filled = history ? fillFromLastMonth(groups, state, history, currency) : state;
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 
-  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency) : 0;
-  const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency) : new Map<string, number>();
-  // What a row's % is of now: the figure typed for its parent, or take-home when its parent has none.
+  const stored = { initial: initial ?? {}, budgets: budgets ?? [] };
+  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency, stored) : 0;
+  const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency, stored) : new Map<string, number>();
+  // What a row's % is of: the basis it was saved with while that is there, else the figure typed for its parent, or
+  // take-home when its parent has none.
   const baseOf = (row: EditRow): ShareBase =>
-    basisOfRow(row, figures) === 'parent'
+    basisOfRow(row, figures, stored.budgets) === 'parent'
       ? { basis: 'parent', label: rows.find((r) => r.id === row.parentId)?.name ?? 'its parent', minor: figures.get(row.parentId!)! }
       : { basis: 'take-home', label: 'take-home', minor: takeHome };
   const income = sheet?.incomePlanMinor ?? 0;

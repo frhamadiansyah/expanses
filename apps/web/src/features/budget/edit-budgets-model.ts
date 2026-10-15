@@ -92,29 +92,42 @@ function shareFigure(row: RowState, baseMinor: number, currency: string): number
   }
 }
 
-/** Every row's month figure as typed: a share resolved against its typed parent, or against take-home without one. */
-export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string): Map<string, number> {
-  const out = new Map<string, number>();
-  const walk = (rows: readonly BudgetLine[], parentMinor: number | null) => {
-    for (const line of rows) {
-      const row = rowStateOf(state, line.id);
-      const minor = row.mode === 'share' ? shareFigure(row, parentMinor ?? takeHomeMinor, currency) : monthlyOf(row, currency);
-      if (minor !== null) out.set(line.id, minor);
-      walk(line.children, minor);
-    }
-  };
-  walk(lines, null);
-  return out;
+/** What the screen opened with, and the budgets as stored now: what a row's figure and its share's basis are read against. */
+export interface Stored {
+  initial: EditState;
+  budgets: readonly BudgetRow[];
 }
 
-/** What a row's % is of, by what is typed above it now: its parent's figure, or take-home. */
-export function basisOfRow(row: EditRow, figures: ReadonlyMap<string, number>): ShareBasis {
-  return row.parentId !== null && figures.has(row.parentId) ? 'parent' : 'take-home';
+/**
+ * What a row's % is of. A share saved before keeps its basis while it is there: take-home always, a parent while a
+ * figure is typed for it. A new share, or one whose parent has no figure now, takes what is typed above it: its
+ * parent's figure, or take-home.
+ */
+export function basisOfRow(row: EditRow, figures: ReadonlyMap<string, number>, budgets: readonly BudgetRow[]): ShareBasis {
+  if (row.parentId === null || !figures.has(row.parentId)) return 'take-home';
+  return budgets.find((stored) => stored.categoryAccountId === row.id)?.share?.basis === 'take-home' ? 'take-home' : 'parent';
+}
+
+/** Every row's month figure as typed, parents first (editGroups lists a parent before its children). */
+function figuresOf(rows: readonly EditRow[], state: EditState, budgets: readonly BudgetRow[], takeHomeMinor: number, currency: string): Map<string, number> {
+  const figures = new Map<string, number>();
+  for (const row of rows) {
+    const typed = rowStateOf(state, row.id);
+    const base = basisOfRow(row, figures, budgets) === 'parent' ? figures.get(row.parentId!)! : takeHomeMinor;
+    const minor = typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency);
+    if (minor !== null) figures.set(row.id, minor);
+  }
+  return figures;
+}
+
+/** Every row's month figure as typed: a share resolved against the basis it has (see `basisOfRow`). */
+export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): Map<string, number> {
+  return figuresOf(editGroups(lines).flatMap((group) => group.rows), state, stored.budgets, takeHomeMinor, currency);
 }
 
 /** The Budgeted figure as typed so far, counted as the sheet counts it: the outermost cap in each branch. */
-export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string): number {
-  const figures = typedCaps(lines, state, takeHomeMinor, currency);
+export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): number {
+  const figures = typedCaps(lines, state, takeHomeMinor, currency, stored);
   const node = (line: BudgetLine): CapNode => ({ capMinor: figures.get(line.id) ?? null, children: line.children.map(node) });
   return outermostCapsTotal(lines.map(node));
 }
@@ -160,15 +173,7 @@ export function changesOf(
   const stored = new Set(budgets.map((row) => row.categoryAccountId));
   const out: BudgetChanges & { unreadable: string[] } = { save: [], remove: [], unreadable: [] };
   const rows = groups.flatMap((group) => group.rows);
-  // Every row's figure as typed, parents first (editGroups lists a parent before its children), so a share resolves
-  // against its parent's figure as typed now.
-  const figures = new Map<string, number>();
-  for (const row of rows) {
-    const typed = rowStateOf(state, row.id);
-    const base = row.parentId !== null && figures.has(row.parentId) ? figures.get(row.parentId)! : takeHomeMinor;
-    const minor = typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency);
-    if (minor !== null) figures.set(row.id, minor);
-  }
+  const figures = figuresOf(rows, state, budgets, takeHomeMinor, currency);
   for (const row of rows) {
     const typed = rowStateOf(state, row.id);
     const loaded = rowStateOf(initial, row.id);
@@ -185,7 +190,7 @@ export function changesOf(
         out.unreadable.push(row.id);
         continue;
       }
-      out.save.push({ categoryAccountId: row.id, amountMinor: figures.get(row.id) ?? 0, frequency: 'monthly', share: { basis: basisOfRow(row, figures), bp } });
+      out.save.push({ categoryAccountId: row.id, amountMinor: figures.get(row.id) ?? 0, frequency: 'monthly', share: { basis: basisOfRow(row, figures, budgets), bp } });
       continue;
     }
     let minor: number;
