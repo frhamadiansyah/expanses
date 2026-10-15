@@ -88,8 +88,11 @@ function MoneyField({
   placeholder = 'Amount',
   selectOnOpen = false,
   refund = false,
+  disabled = false,
 }: {
   field: MoneyFieldSpec;
+  /** Drawn, not typed into: a figure that is someone else's to change (shared events D8). */
+  disabled?: boolean;
   /** A desktop field takes focus with its text selected on first draw, so typing replaces the figure. */
   selectOnOpen?: boolean;
   placeholder?: string;
@@ -117,7 +120,7 @@ function MoneyField({
        * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
-      <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'flex items-center self-stretch text-left')}>
+      <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch text-left')}>
         <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
       </button>
     );
@@ -128,6 +131,7 @@ function MoneyField({
       aria-label={label}
       inputMode="decimal"
       value={value}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       onBlur={() => {
         const { text } = amountAfterEnter(value, currency, refund, fractional);
@@ -165,6 +169,8 @@ export function AmountRow({
   unsure = false,
   selectOnOpen = false,
   noRefund = false,
+  anyCurrency = false,
+  locked = false,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
@@ -175,6 +181,13 @@ export function AmountRow({
   unsure?: boolean;
   /** Opened on a copied figure: a desktop field is selected, a phone's keypad opens and its first digit replaces it. */
   selectOnOpen?: boolean;
+  /**
+   * The flag is a control whatever the open book is. A shared event's card (shared events §6) records "any currency,
+   * with the rate to the event currency": the household rule that fixes a shared book's currency is not its rule.
+   */
+  anyCurrency?: boolean;
+  /** Every figure and the flag drawn, none of them a control: a shared expense another member paid (D8). */
+  locked?: boolean;
 }) {
   const phone = usePhone();
   const { ws } = useApp();
@@ -189,7 +202,7 @@ export function AmountRow({
   // Household sharing spec §4.4 last line: a shared book's currency is the book's own, fixed for every member, so
   // the flag is drawn but never a control — the same "drawn, not a control" shape a transfer's flag already has.
   const sharedBook = useIsBookShared();
-  const choosable = currencyChoosable(draft) && !sharedBook;
+  const choosable = currencyChoosable(draft) && (anyCurrency || !sharedBook) && !locked;
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
@@ -249,7 +262,7 @@ export function AmountRow({
           puts the dock away rather than being swallowed by the sheet of glass the dock lays over the page —
           without that, the fourth way out is unreachable, which an e2e now holds in place. Only while the
           dock is open: raised at all times it would paint over any sheet that opened later. */}
-      <div className={cx('flex items-center gap-[10px] pl-[10px]', keypad !== null && 'relative z-40 bg-[var(--ph-surface)]')}>
+      <div className={cx('flex items-center gap-[10px] pl-[10px]', keypad !== null && 'relative z-40 bg-[var(--ph-surface)]', locked && 'opacity-40')}>
         <RowLead>
           {/* The flag is a control only where a figure may be typed in a currency of its own. A transfer's may
               not — `currencyChoosable` says why — and a control the save ignores is worse than no control: this
@@ -293,6 +306,7 @@ export function AmountRow({
               className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
               selectOnOpen={selectOnOpen}
               refund={refundable}
+              disabled={locked}
             />
           </span>
           {fields.charged && (
@@ -314,12 +328,13 @@ export function AmountRow({
                   className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
                   placeholder="0"
                   refund={refund}
+                  disabled={locked}
                 />
               </span>
             </>
           )}
           {unsure && <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-warn)]">check</span>}
-          {draft.amount !== '' && (
+          {draft.amount !== '' && !locked && (
             <button
               type="button"
               aria-label="Clear amount"

@@ -58,6 +58,13 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
     const balanceMinor = balances[value.accountId] ?? 0;
 
     if (value.planGroup === 'owed') {
+      // A trip balance (shared events §5) is piutang lainnya while the group owes this person, utang lainnya while this
+      // person owes the group — read by its sign on 31 December.
+      if (value.subtype === 'event_balance') {
+        if (balanceMinor > 0) inputs.receivables.push({ accountId: value.accountId, name: value.name, code: '0209', balanceMinor, currency: value.currency, fields: { name: value.name, ...fields } });
+        if (balanceMinor < 0) inputs.debts.push({ accountId: value.accountId, name: value.name, code: '109', balanceMinor: -balanceMinor, currency: value.currency, note: null });
+        continue;
+      }
       // A receivable's name is what the piutang table asks for.
       const person = debtProfileOf.get(value.accountId);
       if (balanceMinor <= 0) continue;

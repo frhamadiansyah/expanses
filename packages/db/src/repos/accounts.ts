@@ -21,7 +21,8 @@ export class AccountError extends Error {
 }
 
 export const BALANCE_SUBTYPES = {
-  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable'],
+  // 'event_balance' is a shared event's trip balance (shared events §5): made by the event, never offered by a picker.
+  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable', 'event_balance'],
   liability: ['credit_card', 'loan', 'payable'],
 } as const satisfies Record<'asset' | 'liability', readonly AccountSubtype[]>;
 

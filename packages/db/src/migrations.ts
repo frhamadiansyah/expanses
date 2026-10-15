@@ -66,6 +66,7 @@ import transactionCapture from '../migrations/0065_transaction_capture.sql?raw';
 import statementChecks from '../migrations/0066_statement_checks.sql?raw';
 import dayOrder from '../migrations/0067_day_order.sql?raw';
 import exactHundredths from '../migrations/0068_exact_hundredths.sql?raw';
+import sharedEvents from '../migrations/0069_shared_events.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -142,6 +143,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 66, name: 'statement_checks', sql: statementChecks },
   { version: 67, name: 'day_order', sql: dayOrder },
   { version: 68, name: 'exact_hundredths', sql: exactHundredths },
+  { version: 69, name: 'shared_events', sql: sharedEvents },
 ];
 
 /** The highest version this build of the app knows how to produce. */

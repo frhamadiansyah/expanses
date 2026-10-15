@@ -69,6 +69,7 @@ const GROUP_BY_SUBTYPE: Record<string, PlanGroup> = {
   other_cash: 'liquid',
   investment: 'invest',
   receivable: 'owed',
+  event_balance: 'owed',
   property: 'use',
   vehicle: 'use',
 };
@@ -247,7 +248,11 @@ function emptyAssets(): Record<SheetSectionKey, number> {
 /** Assets at their value minus what is still owed, both through `sumToBase`: every rate, or no figure. */
 export async function netWorthAt(database: Database, ws: WorkspaceContext, date: string, ratesToBase: Record<string, number>): Promise<NetWorth> {
   const values = await assetValuesAt(database, ws, date);
-  const assets = sumToBase({ amounts: values.map((row) => ({ minor: row.valueMinor, currency: row.currency })), baseCurrency: ws.baseCurrency, ratesToBase });
+  // A trip balance below zero is money this person owes the group (shared events §5): counted as a payable, never as
+  // an asset worth less than nothing. Net worth is the same figure either way; what it is made of is not.
+  const owing = values.filter((row) => row.subtype === 'event_balance' && row.valueMinor < 0);
+  const held = values.filter((row) => !owing.includes(row));
+  const assets = sumToBase({ amounts: held.map((row) => ({ minor: row.valueMinor, currency: row.currency })), baseCurrency: ws.baseCurrency, ratesToBase });
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
   const rows = await database.db
@@ -255,7 +260,10 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)));
   const balances = await nativeBalances(database, ws, date);
-  const owed = rows.filter((row) => liabilitySubtypes.includes(row.subtype)).map((row) => ({ minor: -(balances[row.id] ?? 0), currency: row.currency ?? ws.baseCurrency }));
+  const owed = [
+    ...rows.filter((row) => liabilitySubtypes.includes(row.subtype)).map((row) => ({ minor: -(balances[row.id] ?? 0), currency: row.currency ?? ws.baseCurrency })),
+    ...owing.map((row) => ({ minor: -row.valueMinor, currency: row.currency })),
+  ];
   const liabilities = sumToBase({ amounts: owed, baseCurrency: ws.baseCurrency, ratesToBase });
 
   /*
@@ -266,7 +274,7 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
    */
   const stacked = new Set<string>();
   const bySection = emptyAssets();
-  for (const row of values) {
+  for (const row of held) {
     const section = sheetSectionOf({ code: row.coretaxCode, subtype: row.subtype });
     bySection[section] += toBase(row.valueMinor, row.currency, ws, ratesToBase, stacked);
   }
@@ -277,6 +285,7 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
     const kind = row.subtype as LiabilityKind;
     byKind[kind] += toBase(-(balances[row.id] ?? 0), row.currency ?? ws.baseCurrency, ws, ratesToBase, stacked);
   }
+  for (const row of owing) byKind.payable += toBase(-row.valueMinor, row.currency, ws, ratesToBase, stacked);
   const missing = [...new Set([...assets.missing, ...liabilities.missing, ...stacked])].sort();
   const netWorthMinor = assets.totalMinor !== null && liabilities.totalMinor !== null ? assets.totalMinor - liabilities.totalMinor : null;
   return {
@@ -356,7 +365,9 @@ export async function sheetInputsAt(
 ): Promise<SheetInputs> {
   const values = await assetValuesAt(database, ws, date);
   const missing = new Set<string>();
-  const assets: SheetAsset[] = values.map((row) => ({
+  // A trip balance below zero is a payable (shared events §5), as in `netWorthAt`.
+  const owing = values.filter((row) => row.subtype === 'event_balance' && row.valueMinor < 0);
+  const assets: SheetAsset[] = values.filter((row) => !owing.includes(row)).map((row) => ({
     accountId: row.accountId,
     name: row.name,
     planGroup: row.planGroup,
@@ -399,6 +410,11 @@ export async function sheetInputsAt(
       item: items[row.id] ?? null,
       icon: debtIcon(subtype, loanTerms.get(row.id), assetSubtype),
     });
+  }
+  for (const row of owing) {
+    const balanceMinor = toBase(-row.valueMinor, row.currency, ws, ratesToBase, missing);
+    // Owed to friends from a trip: due at once, like any personal debt.
+    liabilities.push({ accountId: row.accountId, name: row.name, subtype: 'payable', balanceMinor, dueWithinYearMinor: balanceMinor, note: null, item: null, icon: debtIcon('payable', undefined, assetSubtype) });
   }
   return { assets, liabilities, missing: [...missing].sort() };
 }

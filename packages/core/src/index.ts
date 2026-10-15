@@ -530,3 +530,20 @@ export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, m
 export { merchantKeyOf, readStatement } from './statement/read';
 export { STATEMENT_WORDS, type StatementWords } from './statement/words';
 export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';
+export {
+  expenseInEvent,
+  type ExpenseRecord,
+  isRateString,
+  parseSplitJson,
+  type PersonMinor,
+  rateString,
+  type SettlementRecord,
+  SharedEventError,
+  type SharedEventErrorCode,
+  sharesOf,
+  splitJsonOf,
+  type SplitInput,
+  toEvent,
+} from './shared-events/split';
+export { balances, fewestPayments, type SuggestedPayment } from './shared-events/balances';
+export { type MyLineAccounts, type MyLines, myExpenseLines, mySettlementLines, type PaidFromAccount } from './shared-events/lines';

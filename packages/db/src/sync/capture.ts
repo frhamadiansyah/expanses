@@ -4,7 +4,8 @@ import type { Database, Db, Tx } from '../database';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { AuthorityError, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { AuthorityError, eventBookWorkspaceOf, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { EVENT_ENTITIES, eventWriteRefusal } from './events/authority';
 import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
@@ -634,6 +635,24 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     const was = before.get(key);
     const now = after.get(key);
     const entity = (was ?? now)!.entity;
+    if (EVENT_ENTITIES.has(entity.entity)) {
+      // Shared events (rulings R1–R3): the same predicate a peer's op meets, against this write's pre-image — for a row
+      // this write changed. A row it was pointed at but left as it was emits nothing, so there is nothing to judge: a
+      // friend's split edit under a capture of both halves of a member's expense is not an edit of the money half
+      // (controller ruling d).
+      if (was && now && was.bookId === now.bookId && Object.keys(diffFields(was.values, now.values)).length === 0) continue;
+      const gone = !now || (was !== undefined && now.bookId !== was.bookId);
+      const row = (was ?? now)!;
+      const member = books.find((b) => b.bookId === row.bookId)?.memberId ?? null;
+      const why = eventWriteRefusal(entity.entity, was?.values ?? null, gone ? null : now!.values, parseOpId(entity, row.id), member);
+      if (why) throw new AuthorityError(why);
+      // R8: once an expense is here the currency stays; the log decides a race (`noteEventLogTx`).
+      if (entity.entity === 'shared_event' && was && now && was.values.currency !== now.values.currency) {
+        const [expense] = await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${row.bookId} LIMIT 1`);
+        if (expense) throw new AuthorityError('the currency is fixed once an expense exists');
+      }
+      continue;
+    }
     if (!entity.writer) {
       // A write-once row (task 4 review round 1): judged by the same predicate its peers use.
       // A new row is judged as written (review round 1, finding 5): only a row that was here can be gone.
@@ -702,6 +721,11 @@ async function refuseWrongLog(tx: Db, before: ReadonlyMap<string, RowState>, aft
     if (!verdicts.has(bookId)) verdicts.set(bookId, (await groupLogWorkspaceOf(tx, bookId)) !== null);
     return verdicts.get(bookId)!;
   };
+  const eventVerdicts = new Map<string, boolean>();
+  const isEventBook = async (bookId: string) => {
+    if (!eventVerdicts.has(bookId)) eventVerdicts.set(bookId, (await eventBookWorkspaceOf(tx, bookId)) !== null);
+    return eventVerdicts.get(bookId)!;
+  };
   for (const key of new Set([...before.keys(), ...after.keys()])) {
     const was = before.get(key);
     const now = after.get(key);
@@ -711,6 +735,8 @@ async function refuseWrongLog(tx: Db, before: ReadonlyMap<string, RowState>, aft
       const entity = row.entity.entity;
       if (GROUP_LOG_ENTITIES.has(entity) && !(await isGroupLog(row.bookId))) throw new AuthorityError(`${entity} outside a net-worth group log`);
       if (entity === 'net_worth_group' && (await isGroupLog(row.bookId))) throw new AuthorityError('net_worth_group inside a net-worth group log');
+      // A shared event's rows live only in its own book, never in a workspace's (shared events §3).
+      if (EVENT_ENTITIES.has(entity) && !(await isEventBook(row.bookId))) throw new AuthorityError(`${entity} outside a shared event's book`);
     }
   }
 }

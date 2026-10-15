@@ -341,6 +341,49 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.forgetSharing(bookId));
   }
 
+  /* ------------------------------------------------------------- shared events */
+
+  /** Share an event as its own relay book (shared events §3); polled from here on like any shared book. */
+  async shareEvent(ws: WorkspaceContext, input: { eventId: string; currency: string; personName: string; deviceName: string; names: string[] }): Promise<{ bookId: string }> {
+    const engine = await this.engine();
+    const { bookId } = await engine.shareEvent(ws, input);
+    await this.touched(bookId);
+    await this.refresh();
+    this.onApplied();
+    return { bookId };
+  }
+
+  /** An invite to an event; for a person's new phone when `forPersonId` is given (§7). */
+  async eventInvite(bookId: string, inviterName: string, forPersonId?: string): Promise<CreatedInvite> {
+    const engine = await this.engine();
+    return this.exclusive(bookId, () => engine.createEventInvite(bookId, { inviterName, ...(forPersonId ? { forPersonId } : {}) }));
+  }
+
+  /** Join an event: the claim, the book, the name, and a first pull of the whole log. */
+  async joinEvent(code: string, input: { ws: WorkspaceContext; personId: string | null; name: string; deviceName: string }): Promise<{ eventId: string }> {
+    const engine = await this.engine();
+    const { bookId, eventId, result } = await engine.joinEvent(code, input);
+    await this.touched(bookId, result);
+    await this.refresh();
+    this.onApplied();
+    return { eventId };
+  }
+
+  /** Leave an event at a zero balance (D9): kept here read-only, no longer polled. */
+  async leaveEvent(bookId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.leaveEvent(bookId));
+  }
+
+  /** Remove a person from an event at zero and in no record; a person with the app loses their devices in it. */
+  async removeEventMember(ws: WorkspaceContext, eventId: string, bookId: string, personId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.removeEventMember(ws, eventId, personId));
+  }
+
+  /** Lost phone: remove a person's old phone(s) from an event, keeping the person, before inviting the new one. */
+  async removeEventMemberPhones(ws: WorkspaceContext, eventId: string, bookId: string, personId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.removeEventMemberPhones(ws, eventId, personId));
+  }
+
   /* ------------------------------------------------------ joint net worth */
 
   /** The workspace's net-worth group as this device derives it (§6); null before any engine exists. */

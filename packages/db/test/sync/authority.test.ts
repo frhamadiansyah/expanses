@@ -99,6 +99,18 @@ describe('joining on the terms an owner signed (§8.2, C3)', () => {
     await expect(eve.transport.removeDevice(home.relayBookId, dewi.deviceId)).rejects.toMatchObject({ status: 403 });
   });
 
+  it('a shared event’s row sent in a workspace’s log is refused, never written there (shared events I4)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const forged: ChangeSet = {
+      v: 1, hlc: encodeHlc(Date.now() + 5, 0, dewi.deviceId), member: dewi.memberId,
+      ops: [{ entity: 'event_category', id: 'forged-category', op: 'upsert', fields: { name: 'Planted', icon: null, sortOrder: 0, archivedAt: null } }],
+    };
+    await dewi.transport.append(home.relayBookId, await dewi.engine.sealer.seal(bookId, 1, forged));
+    await fandri.engine.syncOnce(bookId);
+    expect((await skips(fandri, bookId)).map(([e, id]) => [e, id])).toEqual([['event_category', 'forged-category']]);
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM event_categories WHERE id = 'forged-category'`)).toEqual([]);
+  });
+
   it('an introduction with no signed terms, after the first entry of the log, is refused', async () => {
     const { home, fandri, bookId } = await household();
     const { eve } = await eveWithInvite(home, fandri, bookId);
