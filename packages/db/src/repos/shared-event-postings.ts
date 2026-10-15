@@ -4,6 +4,8 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { ensureSystemAccountTx } from './accounts';
 import { eventOnlyExists } from './event-only';
+import { pairEntryIdsOfTx } from './fx-gain-loss';
+import { fxTablesExist } from './fx-tables';
 import { postTransactionTx, type PostTransactionInput, replaceTransactionTx, voidTransactionTx } from './ledger';
 import { type EventBookRow, eventBookTx, expenseRecordTx, settlementRecordTx } from './shared-event-records';
 
@@ -134,18 +136,23 @@ async function ratesForTx(tx: Db, base: string, currencies: readonly string[], o
  * holds one line per currency, so a record moved from euro to dollars with the same figures has the same accounts and
  * amounts and differs only there.
  */
-async function samePostingTx(tx: Db, transactionId: string, input: PostTransactionInput): Promise<boolean> {
+async function samePostingTx(tx: Db, transactionId: string, input: PostTransactionInput, baseCurrency: string): Promise<boolean> {
   const [head] = await tx.values<[string, string, string | null, number | null, string | null]>(
     sql`SELECT occurred_on, description, original_currency, original_amount_minor, event_id FROM transactions WHERE id = ${transactionId}`,
   );
   if (!head || head[0] !== input.occurredOn || head[1] !== input.description.trim() || head[4] !== (input.eventId ?? null)) return false;
   if (head[2] !== (input.originalCurrency ?? null) || (head[3] === null ? null : Number(head[3])) !== (input.originalAmountMinor ?? null)) return false;
-  const entries = await tx.values<[string, number, string, string | null]>(
-    sql`SELECT account_id, amount_minor, currency, spend_category_id FROM entries WHERE transaction_id = ${transactionId}`,
+  const entries = await tx.values<[string, string, number, string, string | null]>(
+    sql`SELECT id, account_id, amount_minor, currency, spend_category_id FROM entries WHERE transaction_id = ${transactionId}`,
   );
+  // Withdrawal rate (final review I1): a record paid from foreign cash carries the gain or loss pair its recalculation
+  // added, which the record's own lines never have. Counted, it made every unchanged record differ — replaced on every
+  // re-derivation (a rename, an echo, a retry), and "Changed by" whoever's op set it off. The pair is the
+  // recalculation's, as the base figures are (never compared here): left out.
+  const pair = (await fxTablesExist(tx)) ? await pairEntryIdsOfTx(tx, transactionId, baseCurrency) : new Set<string>();
   const key = (lines: [string, number, string, string | null][]) => lines.map((line) => line.join('|')).sort().join(',');
   return (
-    key(entries.map(([account, minor, currency, spend]) => [account, Number(minor), currency, spend])) ===
+    key(entries.filter(([id]) => !pair.has(id)).map(([, account, minor, currency, spend]) => [account, Number(minor), currency, spend])) ===
     key(input.lines.map((line) => [line.accountId, line.amountMinor, line.currency, line.spendCategoryId ?? null]))
   );
 }
@@ -288,7 +295,7 @@ export async function postEventRecordTx(tx: Tx, bookId: string, kind: EventPosti
     ...(author ? { syncAuthor: author } : {}),
   };
   if (posted) {
-    if (await samePostingTx(tx, posted, input)) {
+    if (await samePostingTx(tx, posted, input, ws.baseCurrency)) {
       // Still named by its live head, should a replacement have been followed to it (C1).
       await tx.run(sql`UPDATE event_postings SET transaction_id = ${posted}, unposted = NULL WHERE book_id = ${bookId} AND record_id = ${recordId}`);
       return;

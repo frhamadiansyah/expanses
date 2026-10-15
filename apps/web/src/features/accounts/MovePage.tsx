@@ -1,17 +1,19 @@
-import { evaluateAmount, type ExchangeCost, formatMinor, isoDate } from '@expanses/core';
-import { type AccountRow, postTransaction } from '@expanses/db';
+import { evaluateAmount, formatMinor, isoDate } from '@expanses/core';
+import { type AccountRow, exchangeResultOf, postTransaction } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
+import { exchangeResultLine } from '../../lib/withdrawal-rate';
 import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { useCanHold } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
+import { useTransferPreview } from '../transactions/transfer-preview';
 import { formToPost, type MoneyFieldSpec, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
-import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, spreadLine, withPockets } from './pockets';
+import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, withPockets } from './pockets';
 import { useHeldRates } from './queries';
 
 /** Only reached once `moveView` has read both figures (it returns a cost only then): not a second reader. */
@@ -49,16 +51,15 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  /** The spread the ledger recorded, kept only when it is not the one the screen showed (spec §10.3). */
-  const [recorded, setRecorded] = useState<ExchangeCost | null>(null);
+  /** The gain or loss the ledger recorded, kept only when it is not the one the screen showed (R15, spec §10.3 of pockets). */
+  const [recorded, setRecorded] = useState<number | null>(null);
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
   const from = pockets.find((p) => p.id === draft.moneyId)!;
   const to = pockets.find((p) => p.id === draft.toId)!;
   const held = useHeldRates([from.currency!, to.currency!], draft.occurredOn);
   const view = moveView(draft, accounts, ws.baseCurrency, held.data?.rates ?? {});
-  const spread = spreadLine(view.cost, ws.baseCurrency);
-  // Rates held for an earlier day: the save fetches the day's own, so the figure shown is only an estimate.
-  const lastKnown = held.data?.stale ?? [];
+  // Withdrawal rate §7: the Rate against the market, and out of a foreign pocket its cost and gain or loss.
+  const preview = useTransferPreview(draft, accounts, null);
   const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
   const canHold = useCanHold();
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
@@ -79,14 +80,16 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       const post = formToPost(final, accounts);
       if (post.kind !== 'post') throw new Error('A move between pockets is a plain transfer');
       const ratesToBase = await ratesForSave({ database, ws, draft: final, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Rate' });
-      await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+      const id = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
       await invalidate();
-      // The posting converts at the rates the save resolved, which need not be the ones on screen. When the spread
-      // the ledger now holds differs from the one shown, say so instead of leaving the screen's figure standing.
-      const posted = moveView(final, accounts, ws.baseCurrency, ratesToBase).cost;
-      if (posted && posted.costMinor !== view.cost?.costMinor) {
-        setRecorded(posted);
-        return;
+      // What arrived is valued at the day's rate the save fetched, which need not be the one on screen. When the gain or
+      // loss the ledger now holds differs from the one shown, say so instead of leaving the screen's figure standing.
+      if (preview.gainLossBaseMinor !== null) {
+        const gainLoss = await exchangeResultOf(database, id);
+        if (gainLoss !== preview.gainLossBaseMinor) {
+          setRecorded(gainLoss);
+          return;
+        }
       }
       await navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } });
     } catch (e) {
@@ -110,16 +113,13 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     setDraft((d) => withPockets(d, patch));
   };
 
-  if (recorded) {
-    const line = spreadLine(recorded, ws.baseCurrency)!;
+  if (recorded !== null) {
+    const line = exchangeResultLine(recorded, ws.baseCurrency);
     return (
       <div className={SCREEN}>
         <LargeTitle title="Moved" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
-        <InsetGroup
-          header="Recorded"
-          footer={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the spread the ledger holds.`}
-        >
-          <InsetRow testId="recorded-spread" title={line.title} value={line.figure} valueTone="ink" chevron={false} />
+        <InsetGroup header="Recorded" footer={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the result the ledger holds.`}>
+          <InsetRow testId="recorded-spread" title={line.title} value={`${line.figure} (${line.note})`} valueTone="ink" chevron={false} />
         </InsetGroup>
         <InsetGroup>
           <InsetRow title="Done" chevron={false} onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
@@ -155,24 +155,28 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
             inputMode="decimal"
           />
         )}
-        <ReadOnlyRow label="Bank's rate" value={bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)} />
+        <ReadOnlyRow label="Rate" value={preview.rateText ?? bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)} />
         <TextRow label="Date" type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} />
         {needsRate && (
           <TextRow label={`Rate: ${ws.baseCurrency} per 1 ${needsRate}`} value={draft.manualRate} onChange={(e) => set({ manualRate: e.target.value })} inputMode="decimal" />
         )}
       </InsetGroup>
-      {spread && view.cost && (
+      {preview.result && (
         <InsetGroup
-          footer={`${lastKnown.length > 0 ? `At the last-known ${lastKnown.join(', ')} rates: ` : ''}${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} was worth ${formatMinor(view.cost.fromBaseMinor, ws.baseCurrency)} on ${draft.occurredOn}; ${formatMinor(
-            evaluateOrZero(view.arrives!),
-            view.arrives!.currency,
-          )} is worth ${formatMinor(view.cost.toBaseMinor, ws.baseCurrency)}. ${
-            lastKnown.length > 0
-              ? 'Moving it fetches the day’s rates and records the spread at those, which may differ.'
-              : 'The gap is the bank’s spread, and it is recorded.'
-          }`}
+          footer={
+            preview.stale
+              ? `At the last-known ${[view.leaves.currency, view.arrives?.currency].filter(Boolean).join(', ')} rates: moving it fetches the day’s rates and records the result at those, which may differ.`
+              : `Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first; what arrives is valued at the day’s rate.`
+          }
         >
-          <InsetRow testId="spread" title={lastKnown.length > 0 ? `${spread.title} (last known)` : spread.title} value={spread.figure} valueTone="ink" chevron={false} />
+          <InsetRow testId="exchange-cost" title="Cost" value={preview.costText ?? '—'} valueTone="ink" chevron={false} />
+          <InsetRow
+            testId="spread"
+            title={preview.stale ? `${preview.result.title} (last known)` : preview.result.title}
+            value={`${preview.result.figure} (${preview.result.note})`}
+            valueTone="ink"
+            chevron={false}
+          />
         </InsetGroup>
       )}
       {setAside.node}
