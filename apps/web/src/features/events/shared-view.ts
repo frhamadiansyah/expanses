@@ -46,9 +46,11 @@ export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title
   return {
     title: e.note ?? e.categoryName ?? 'Shared spending',
     detail: [`${e.payerName} paid`, e.categoryName, e.splitText].filter(Boolean).join(' · '),
-    amount: formatMinor(e.amountMinor, e.currency),
+    // An unreadable record counts in no figure, so its amount is not shown either (no ₺0 that reads as a real figure):
+    // the row says what is wrong, and a tap opens the card for whoever may fix it (I2).
+    amount: e.unreadable ? '' : formatMinor(e.amountMinor, e.currency),
     share: e.myShareMinor > 0 ? `${possessive(view.myName)} share ${formatMinor(e.myShareMinor, e.currency)}` : null,
-    flags: [e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
+    flags: [e.unreadable ? `Needs fixing: ${e.unreadable}` : null, e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
   };
 }
 

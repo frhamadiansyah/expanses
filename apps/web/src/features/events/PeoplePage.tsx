@@ -9,6 +9,7 @@ import { InsetGroup, InsetRow, LargeTitle, SCREEN, SubmitRow, TextRow } from '..
 import { InviteCard } from '../sharing/InviteCard';
 import { sayError } from '../sharing/sharing-copy';
 import { useSharedEventView } from './shared-queries';
+import { isStillHasPhone, oldPhoneTitle } from './people-phone';
 import { balanceLine, pageLocks } from './shared-view';
 
 /**
@@ -30,6 +31,10 @@ export function PeoplePage() {
   const [sheetError, setSheetError] = useState<unknown>(null);
   // Removing asks twice (it also signs a person's phones out, with no undo): the first tap arms, closing disarms.
   const [armed, setArmed] = useState(false);
+  // Lost phone: an invite for a person's new phone was refused because the old phone is still in. The sheet then offers
+  // removing just that phone, asked twice like Remove, before the invite is tried again.
+  const [oldPhone, setOldPhone] = useState(false);
+  const [armedPhone, setArmedPhone] = useState(false);
   if (!view) {
     return (
       <div className={SCREEN}>
@@ -64,11 +69,15 @@ export function PeoplePage() {
   const open = (p: SharedPersonView) => {
     setSheetError(null);
     setArmed(false);
+    setOldPhone(false);
+    setArmedPhone(false);
     setChosen(p);
   };
   const close = () => {
     setSheetError(null);
     setArmed(false);
+    setOldPhone(false);
+    setArmedPhone(false);
     setChosen(null);
   };
 
@@ -111,8 +120,29 @@ export function PeoplePage() {
                   void run(async () => {
                     setInvite({ invite: await sync.eventInvite(view.bookId, view.myName, chosen.personId), header: `${chosen.name}'s new phone` });
                     close();
-                  }, setSheetError)
+                  }, (failure) => {
+                    setOldPhone(isStillHasPhone(failure));
+                    setSheetError(failure);
+                  })
                 }
+              />
+            ) : null}
+            {chosen.hasApp && oldPhone ? (
+              <InsetRow
+                title={oldPhoneTitle(chosen.name, armedPhone)}
+                destructive
+                testId="event-person-remove-phone"
+                onClick={() => {
+                  if (!armedPhone) return setArmedPhone(true);
+                  void run(async () => {
+                    await sync.removeEventMemberPhones(ownerScope(ws), eventId, view.bookId, chosen.personId);
+                    setOldPhone(false);
+                    setArmedPhone(false);
+                  }, (failure) => {
+                    setArmedPhone(false);
+                    setSheetError(failure);
+                  });
+                }}
               />
             ) : null}
             <InsetRow

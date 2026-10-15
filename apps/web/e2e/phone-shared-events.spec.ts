@@ -115,7 +115,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await openTrip(rina);
   await eventually(rina, () => expect(rina.getByTestId('take-over-row')).toContainText("1 record is not in Rina's books yet", { timeout: 1_000 }));
   await rina.getByTestId('take-over-row').click();
-  await rina.getByLabel('From', { exact: true }).selectOption({ label: 'Rina Bank · IDR' });
+  await rina.getByLabel('Into', { exact: true }).selectOption({ label: 'Rina Bank · IDR' });
   await rina.getByRole('button', { name: 'Add to the books' }).click();
   await expect(rina.getByTestId('take-over-row')).toHaveCount(0, { timeout: 30_000 });
 

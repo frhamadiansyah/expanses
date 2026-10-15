@@ -221,7 +221,7 @@ describe('three phones, one event', () => {
     await dinner(s);
     await s.rina.device.engine.syncOnce(s.trip.bookId);
     // The screen refuses it now that Rina's phone is in (I1); a stale or older build writes it past the screen.
-    await expect(setSharedEventCurrency(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, 'EUR')).rejects.toThrow('fixed once someone else has joined');
+    await expect(setSharedEventCurrency(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, 'EUR')).rejects.toThrow('currency is set when it is shared');
     await currencyPastTheScreen(s.andi.device, 'EUR');
     await s.trip.settle([s.andi.device, s.rina.device]);
     for (const p of [s.rina, s.andi]) {
@@ -370,6 +370,19 @@ describe('what apply does with records it cannot post, and the edges between pho
     expect((await nativeBalances(restored.database, ownerScope(restored.ws)))[restored.bank]).toBe(-336_000);
     expect(await s.tripBalance(phone)).toBe(30_000 - 141_750 - 4_000);
     expect(boatId).toBeTruthy();
+  });
+
+  it('removing only a person’s old phone keeps the person and lets a new phone be invited as them', async () => {
+    const s = await coastWeek();
+    await dinner(s);
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    await expect(s.rina.device.engine.createEventInvite(s.trip.bookId, { inviterName: 'Rina', forPersonId: s.andi.person })).rejects.toMatchObject({ code: 'STILL_HAS_PHONE' });
+    await s.rina.device.engine.removeEventMemberPhones(ownerScope(s.rina.device.ws), s.rina.eventId, s.andi.person);
+    const people = (await s.view(s.rina)).people;
+    expect(people.find((p) => p.personId === s.andi.person)).toMatchObject({ removed: false, hasApp: true });
+    await s.rina.device.engine.syncOnce(s.trip.bookId);
+    await expect(s.rina.device.engine.createEventInvite(s.trip.bookId, { inviterName: 'Rina', forPersonId: s.andi.person })).resolves.toHaveProperty('code');
+    await expect(s.rina.device.engine.removeEventMemberPhones(ownerScope(s.rina.device.ws), s.rina.eventId, s.rina.person)).rejects.toMatchObject({ code: 'INVALID' });
   });
 
   it('Budi takes over what Rina paid for him a moment before Andi, offline, deletes it: Andi’s own phone puts it back, as every phone has it (I3)', async () => {

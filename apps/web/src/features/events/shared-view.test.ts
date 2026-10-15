@@ -67,6 +67,13 @@ describe('shared event words', () => {
     ]);
   });
 
+  it('flags an unreadable expense "Needs fixing" with its reason, and shows no figure', () => {
+    const row = expenseRow({ ...expense, myShareMinor: 0, unreadable: 'The split does not add up to the amount' }, view());
+    expect(row.amount).toBe('');
+    expect(row.share).toBeNull();
+    expect(row.flags[0]).toBe('Needs fixing: The split does not add up to the amount');
+  });
+
   it('writes a settle-up, a balance and a suggested payment by name', () => {
     const s = { settlementId: 's', occurredOn: '2026-10-12', fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-rina', toName: 'Rina', amountMinor: 290_000, voided: false, unsent: false, mine: true, posting: null };
     expect(settlementRow(s, view())).toEqual({ title: 'Andi paid Rina', amount: formatMinor(290_000, 'TRY'), flags: [] });

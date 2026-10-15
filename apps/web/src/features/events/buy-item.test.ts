@@ -1,6 +1,7 @@
 import { EventError } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { addSpendingTarget, buyTarget, coverTarget, isNothingLeft } from './buy-item';
+import { newTransactionSearch } from '../transactions/new-search';
+import { addSpendingTarget, buyTarget, carriedFromDraft, coverTarget, isNothingLeft } from './buy-item';
 
 /*
  * The one refusal a screen routes rather than prints.
@@ -78,5 +79,20 @@ describe('the refusal the screen can route', () => {
     // a link to an item becomes a link to a route nobody wrote.
     expect(href(buyTarget('e/1', 'i 1'))).toBe('/transactions/new?event=e%2F1&item=i+1');
     expect(href(coverTarget('e 1', 't/1'))).toBe('/events/e%201/plan/link/t%2F1');
+  });
+});
+
+describe('picking a shared event on the Add screen', () => {
+  it('carries the amount, currency, note and date already typed, and only those filled in', () => {
+    expect(carriedFromDraft({ amount: '45000', currency: 'IDR', description: ' Lunch ', occurredOn: '2026-10-15' })).toEqual({ amount: '45000', currency: 'IDR', note: 'Lunch', date: '2026-10-15' });
+    expect(carriedFromDraft({ amount: '', currency: 'IDR', description: '', occurredOn: '2026-10-15' })).toEqual({ date: '2026-10-15' });
+    expect(addSpendingTarget('e1', { amount: '10' }).search).toEqual({ event: 'e1', amount: '10' });
+    expect(addSpendingTarget('e1').search).toEqual({ event: 'e1' });
+  });
+
+  it('is read back from the address only beside a bare event', () => {
+    expect(newTransactionSearch({ event: 'e1', amount: '10', currency: 'EUR', note: 'x', date: '2026-10-15' })).toEqual({ event: 'e1', amount: '10', currency: 'EUR', note: 'x', date: '2026-10-15' });
+    expect(newTransactionSearch({ amount: '10' })).toEqual({});
+    expect(newTransactionSearch({ event: 'e1', expense: 'x1', amount: '10' })).toEqual({ event: 'e1', expense: 'x1' });
   });
 });

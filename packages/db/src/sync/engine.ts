@@ -32,6 +32,7 @@ import {
   type JoinEventInput,
   leaveEvent as leaveEventLog,
   removeEventMember as removeEventMemberLog,
+  removeEventMemberPhones as removeEventMemberPhonesLog,
   shareEvent as shareEventLog,
   type ShareEventInput,
 } from './events/event-log';
@@ -1206,6 +1207,11 @@ export class SyncEngine {
   /** Removes a person from an event at zero balance and in no record (D9): a name, or a person with the app and their phones. */
   removeEventMember(ws: WorkspaceContext, eventId: string, personId: string): Promise<void> {
     return removeEventMemberLog(this.eventHost(), ws, eventId, personId);
+  }
+
+  /** Lost phone: removes a person's phones from an event, keeping the person, so a new phone can join as them. */
+  removeEventMemberPhones(ws: WorkspaceContext, eventId: string, personId: string): Promise<void> {
+    return removeEventMemberPhonesLog(this.eventHost(), ws, eventId, personId);
   }
 
   /* ---------------------------------------------------------------- restore */

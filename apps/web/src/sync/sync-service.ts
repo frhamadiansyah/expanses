@@ -379,6 +379,11 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.removeEventMember(ws, eventId, personId));
   }
 
+  /** Lost phone: remove a person's old phone(s) from an event, keeping the person, before inviting the new one. */
+  async removeEventMemberPhones(ws: WorkspaceContext, eventId: string, bookId: string, personId: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.removeEventMemberPhones(ws, eventId, personId));
+  }
+
   /* ------------------------------------------------------ joint net worth */
 
   /** The workspace's net-worth group as this device derives it (§6); null before any engine exists. */

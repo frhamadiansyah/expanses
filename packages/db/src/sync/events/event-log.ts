@@ -329,6 +329,29 @@ export async function leaveEvent(host: EventLogHost, bookId: string): Promise<vo
   }
 }
 
+/** The devices a person with the app has in the event's book, per this phone's view of its log. */
+async function personDevices(host: EventLogHost, bookId: string, personId: string): Promise<string[]> {
+  return host.database.transaction(async (tx) => {
+    const out: string[] = [];
+    for (const deviceId of await viewActiveDevices(tx, bookId)) if ((await viewDevice(tx, bookId, deviceId))?.memberId === personId) out.push(deviceId);
+    return out;
+  });
+}
+
+/**
+ * Lost phone (§7): removes only a person's phones from the event, keeping the person, their records and their balance.
+ * A new phone can then join as them (`mayLinkAsMemberTx`). Any member may, as they may remove a person; this phone's
+ * own person never (that is `leaveEvent`).
+ */
+export async function removeEventMemberPhones(host: EventLogHost, ws: WorkspaceContext, eventId: string, personId: string): Promise<void> {
+  const book = await openSharedEventTx(host.database.db, ws, eventId);
+  const [person] = await host.database.db.values<[string, string | null]>(sql`SELECT name, member_id FROM event_people WHERE book_id = ${book.bookId} AND id = ${personId}`);
+  if (!person || person[1] === null) return;
+  if (personId === book.me) throw new SharedEventDbError('INVALID', `${person[0]}'s phone is this one: ${person[0]} leaves from the event's menu instead`);
+  for (const deviceId of await personDevices(host, book.bookId, personId)) await host.removeDevice(book.bookId, deviceId);
+  await quietly(host.syncOnce(book.bookId));
+}
+
 /**
  * Removes a person (D9): at zero balance and in no record, and not while the event is Done (R9). A name without the
  * app is Task 6's `removeEventPerson`; a person with the app has their devices removed from the book first (any member
@@ -343,12 +366,7 @@ export async function removeEventMember(host: EventLogHost, ws: WorkspaceContext
   if (personId === book.me) throw new SharedEventDbError('INVALID', `${person[0]} leaves from the event's menu instead`);
   const refusal = await personRefusalTx(host.database.db, book, personId);
   if (refusal) throw refusal;
-  const devices = await host.database.transaction(async (tx) => {
-    const out: string[] = [];
-    for (const deviceId of await viewActiveDevices(tx, book.bookId)) if ((await viewDevice(tx, book.bookId, deviceId))?.memberId === personId) out.push(deviceId);
-    return out;
-  });
-  for (const deviceId of devices) await host.removeDevice(book.bookId, deviceId);
+  for (const deviceId of await personDevices(host, book.bookId, personId)) await host.removeDevice(book.bookId, deviceId);
   await host.database.transaction((tx) =>
     withCapture(tx, { entity: 'event_person', id: personId, bookId: book.bookId }, () =>
       tx.run(sql`UPDATE event_people SET removed_at = ${new Date(host.now()).toISOString()} WHERE book_id = ${book.bookId} AND id = ${personId}`),

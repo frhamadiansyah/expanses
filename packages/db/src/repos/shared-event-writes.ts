@@ -450,15 +450,17 @@ async function writeEventTx(tx: Tx, book: EventBookRow, set: SQL): Promise<void>
   await followEventOpTx(tx, book.bookId, 'shared_event', book.bookId, null);
 }
 
+/**
+ * The currency of a shared event is chosen once, when it is shared (the Share sheet). Once this phone holds the event's
+ * relay book it is fixed: a change would race a second phone's expense recorded on the old currency (I1) and the first
+ * expense only widens that. The log still strips a late change on every phone (`noteEventLogTx`); this says so first.
+ */
 export async function setSharedEventCurrency(database: Database, ws: WorkspaceContext, eventId: string, currency: string): Promise<void> {
   await database.transaction(async (tx) => {
     const book = await openSharedEventTx(tx, ws, eventId);
     if (!isSupportedCurrency(currency)) throw invalid(`Unsupported currency ${currency}`);
-    const [spent] = await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} LIMIT 1`);
-    if (spent) throw invalid(`${book.name}'s currency is fixed once something is spent`);
-    // I1: once another phone is in, a change could cross an expense that phone records on the old currency. The log
-    // strips such a change on every phone (`noteEventLogTx`); this says so before it is made.
-    if (await secondDeviceInTx(tx, book.bookId)) throw invalid(`${book.name}'s currency is fixed once someone else has joined`);
+    const [shared] = await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${book.bookId} LIMIT 1`);
+    if (shared) throw invalid(`${book.name}'s currency is set when it is shared`);
     await writeEventTx(tx, book, sql`currency = ${currency}`);
   });
 }

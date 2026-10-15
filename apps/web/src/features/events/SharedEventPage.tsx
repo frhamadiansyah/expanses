@@ -22,7 +22,7 @@ const TABS: readonly Segment[] = [
 
 /**
  * A shared event (shared events §6): its header — the dates, the currency, what was spent and this person's share —
- * then Spending, Balances and Plan. The ⋯ menu (People, Currency, Done, Leave) is `menu`'s, so this page reads the same
+ * then Spending, Balances and Plan. The ⋯ menu (People, Done, Leave) is `menu`'s, so this page reads the same
  * on every phone whatever its person may do.
  *
  * Done locks every write but Reopen; an event this phone's person is no longer in (left, or removed) is kept to read,
@@ -69,7 +69,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
         </InsetGroup>
       ) : null}
       {locked ? null : <FinishSharing view={view} />}
-      {waiting && !locked ? (
+      {waiting && !readOnly ? (
         <InsetGroup>
           <InsetRow title={waiting} subtitle="Choose the account for each" onClick={() => setTakingOver(true)} testId="take-over-row" />
         </InsetGroup>

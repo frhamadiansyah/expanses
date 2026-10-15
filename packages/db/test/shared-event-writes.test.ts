@@ -177,13 +177,12 @@ describe('people, currency and Done (D9, R9)', () => {
     await expect(removeEventPerson(t.database, t.ws, t.eventId, 'p-andi')).rejects.toMatchObject({ code: 'HAS_APP' });
   });
 
-  it('changes the currency until the first expense, the trip balance with it, and not after', async () => {
+  it('refuses a currency change once the event is shared, with or without an expense', async () => {
     const t = await coastWeek();
-    await setSharedEventCurrency(t.database, t.ws, t.eventId, 'EUR');
-    expect(await t.database.db.values(sql`SELECT currency FROM accounts WHERE id = ${t.trip}`)).toEqual([['EUR']]);
-    await setSharedEventCurrency(t.database, t.ws, t.eventId, 'TRY');
+    await expect(setSharedEventCurrency(t.database, t.ws, t.eventId, 'EUR')).rejects.toMatchObject({ code: 'INVALID', message: "Coast week's currency is set when it is shared" });
     await recordSharedExpense(t.database, t.ws, t.eventId, t.dinner());
     await expect(setSharedEventCurrency(t.database, t.ws, t.eventId, 'EUR')).rejects.toMatchObject({ code: 'INVALID' });
+    expect(await t.database.db.values(sql`SELECT currency FROM accounts WHERE id = ${t.trip}`)).toEqual([['TRY']]);
   });
 
   it('keeps a Done event read-only until it is reopened', async () => {

@@ -10,4 +10,10 @@ describe('a trip on the Debts page', () => {
     ] })).toBe(`Andi pays Rina ${formatMinor(290_000, 'TRY')} · Budi pays Rina ${formatMinor(190_000, 'TRY')}`);
     expect(tripSubtitle({ eventId: 'e', name: 'Coast week', currency: 'TRY', balanceMinor: 0, payments: [] })).toBe('Settled');
   });
+
+  it('adds how many records are not in the books yet', () => {
+    const base = { eventId: 'e', name: 'Coast week', currency: 'TRY', balanceMinor: 0, payments: [] };
+    expect(tripSubtitle({ ...base, waitingCount: 2 })).toBe('Settled · 2 not in the books yet');
+    expect(tripSubtitle({ ...base, waitingCount: 0 })).toBe('Settled');
+  });
 });

@@ -34,7 +34,6 @@ import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
-import { EventCurrencySheet } from './EventCurrencySheet';
 import { ShareEventSheet } from './ShareEventSheet';
 import { sharedEventMenu } from './shared-menu';
 import { SharedEventPage } from './SharedEventPage';
@@ -94,12 +93,11 @@ function SharedEventWaiting({ name, loading, error }: { name: string; loading: b
   );
 }
 
-/** The shared page with its ⋯ menu wired: People, Currency, Done or Reopen, Leave (shared events §6). */
+/** The shared page with its ⋯ menu wired: People, Done or Reopen, Leave (shared events §6). */
 function SharedEventScreen({ view }: { view: SharedEventView }) {
   const { database, ws, sync } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
-  const [currencyOpen, setCurrencyOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const run = async (work: () => Promise<unknown>) => {
     setError(null);
@@ -112,18 +110,12 @@ function SharedEventScreen({ view }: { view: SharedEventView }) {
   };
   const menu = sharedEventMenu(view, {
     people: () => void navigate({ to: '/events/$eventId/people', params: { eventId: view.eventId } }),
-    currency: () => setCurrencyOpen(true),
     done: (finished) => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, finished)),
     leave: () => {
       if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
     },
   });
-  return (
-    <>
-      <SharedEventPage view={view} menu={menu} error={error} />
-      {currencyOpen ? <EventCurrencySheet view={view} onClose={() => setCurrencyOpen(false)} /> : null}
-    </>
-  );
+  return <SharedEventPage view={view} menu={menu} error={error} />;
 }
 
 /** A suggestion, a workspace's own row: wrapped so the group can still hand it its separator. */

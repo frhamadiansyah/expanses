@@ -36,6 +36,9 @@ export interface SharedExpenseSeed {
   note: string;
   amount: string;
   categoryId: string | null;
+  /** Carried from the workspace card (the Event row): its currency and date, when it had a figure or a day of its own. */
+  currency?: string;
+  occurredOn?: string;
 }
 
 /**
@@ -82,7 +85,9 @@ export function SharedExpenseCard({
   const [draft, setDraft] = useState<SharedExpenseDraft>(() => {
     if (editing) return draftFromExpense(view, editing);
     const empty = emptySharedDraft(view, isoDate());
-    return seed ? { ...empty, note: seed.note, amount: seed.amount, categoryId: seed.categoryId ?? '' } : empty;
+    return seed
+      ? { ...empty, note: seed.note, amount: seed.amount, categoryId: seed.categoryId ?? '', ...(seed.currency ? { currency: seed.currency } : {}), ...(seed.occurredOn ? { occurredOn: seed.occurredOn } : {}) }
+      : empty;
   });
   const [sheet, setSheet] = useState<null | 'payer' | 'money' | 'category' | 'split'>(null);
   const [busy, setBusy] = useState(false);
@@ -100,7 +105,8 @@ export function SharedExpenseCard({
    * base currency — what this phone stored first, then what the rate service says — and the row stays editable. A
    * rate typed by hand is kept until the currency changes again; an expense opened for editing keeps its own.
    */
-  const lastCurrency = useRef(draft.currency);
+  // A new card opened on a carried currency starts from the event's own, so the first pass suggests that currency's rate.
+  const lastCurrency = useRef(editing ? draft.currency : view.currency);
   useEffect(() => {
     if (draft.currency === lastCurrency.current) return;
     lastCurrency.current = draft.currency;

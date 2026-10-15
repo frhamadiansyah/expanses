@@ -6,7 +6,7 @@ import { useApp } from '../../app/context';
 import { ratePreview } from '../../lib/rates';
 import { useIsBookShared } from '../../lib/queries';
 import { InputRow, RowHint } from '../../ui';
-import { addSpendingTarget } from '../events/buy-item';
+import { addSpendingTarget, carriedFromDraft } from '../events/buy-item';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { ChannelSheet } from './ChannelSheet';
@@ -153,7 +153,7 @@ export function MoreDetails({
       {sheet === 'event' && (
         <EventSheet
           value={draft.eventId}
-          onPick={(eventId) => (opensSharedEvent && !draft.editing && summaries[eventId] ? void navigate({ ...addSpendingTarget(eventId), replace: true }) : set({ eventId }))}
+          onPick={(eventId) => (opensSharedEvent && !draft.editing && summaries[eventId] ? void navigate({ ...addSpendingTarget(eventId, carriedFromDraft(draft)), replace: true }) : set({ eventId }))}
           onClose={() => setSheet(null)}
         />
       )}
