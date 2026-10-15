@@ -225,6 +225,13 @@ export class CaptureSession {
   /** Joint net worth (§9): accounts, and transactions whose accounts, this transaction changed; their summaries are recomputed at flush. */
   private readonly dirtyAccounts = new Set<string>();
   private readonly dirtyTransactions = new Set<string>();
+  /**
+   * Work a write leaves for the end of its db transaction (withdrawal rate, ruling R9): run by `flush` first, before
+   * summaries and lineages, paused or not, so what a step writes is captured exactly like the write that asked for it.
+   */
+  private readonly steps = new Map<string, () => Promise<void>>();
+  /** Values kept for the rest of this db transaction, by key (`sessionValueTx`). */
+  private readonly values = new Map<string, unknown>();
 
   constructor(
     private readonly tx: Tx,
@@ -281,6 +288,20 @@ export class CaptureSession {
 
   markTransactionDirty(transactionId: string): void {
     this.dirtyTransactions.add(transactionId);
+  }
+
+  addStep(key: string, step: () => Promise<void>): void {
+    if (!this.steps.has(key)) this.steps.set(key, step);
+  }
+
+  valueOf<T>(key: string, make: () => T): T {
+    if (!this.values.has(key)) this.values.set(key, make());
+    return this.values.get(key) as T;
+  }
+
+  /** Paused by apply or suspended, while capture is on for the database (`capturePausedTx`). */
+  get paused(): boolean {
+    return this.config.enabled && !this.enabled;
   }
 
   /** The Paid with choice a posting carried (§7.1): read when its lineage is projected at flush. */
@@ -366,6 +387,12 @@ export class CaptureSession {
 
   /** Resolves the lineages, cuts the ops into change-sets, puts them in the outbox, and writes the clocks. */
   async flush(): Promise<void> {
+    // Steps first (withdrawal rate R9): a step may leave another, and what any of them writes is captured below.
+    while (this.steps.size > 0) {
+      const [key, step] = this.steps.entries().next().value as [string, () => Promise<void>];
+      this.steps.delete(key);
+      await step();
+    }
     await this.sendDirtySummaries();
     if (!this.enabled) return;
     if (this.slots.length === 0) return;
@@ -549,6 +576,32 @@ export async function withCaptureSuspended<T>(tx: Db, fn: () => Promise<T>): Pro
   } finally {
     if (was) session?.resume();
   }
+}
+
+/**
+ * Runs `step` at the end of this db transaction, before anything in it is captured, once per `key` (withdrawal rate,
+ * ruling R9). False when `tx` is not inside `Database.transaction` (there is no end to wait for): the caller runs it now.
+ */
+export function beforeFlushTx(tx: Db, key: string, step: () => Promise<void>): boolean {
+  const session = sessionOf(tx);
+  if (!session) return false;
+  session.addStep(key, step);
+  return true;
+}
+
+/** A value kept for the rest of this db transaction under `key`, made by `make` the first time; null outside one. */
+export function sessionValueTx<T>(tx: Db, key: string, make: () => T): T | null {
+  return sessionOf(tx)?.valueOf(key, make) ?? null;
+}
+
+/**
+ * Whether this transaction writes with capture paused — apply writing what another device already sent — while capture
+ * is on for the database. A recalculation then waits for a transaction of its own (ruling R9): figures rewritten here
+ * would never be sent, and the partner would keep the old ones. With capture off for the whole database there is
+ * nothing to send, so nothing waits.
+ */
+export function capturePausedTx(tx: Db): boolean {
+  return sessionOf(tx)?.paused ?? false;
 }
 
 /**
@@ -1168,6 +1221,25 @@ export async function captureVoidingTx(tx: Db, transactionId: string): Promise<v
 export async function captureReorderingTx(tx: Db, transactionId: string): Promise<void> {
   const session = sessionOf(tx);
   if (!session) return;
+  const books = await session.sharedBooks();
+  if (books.length === 0) return;
+  const bookId = await bookOfTransaction(tx, transactionId);
+  const lineageId = await lineageOfTransaction(tx, transactionId);
+  const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
+  if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
+/**
+ * The withdrawal rate's in-place door (spec §6): called before a transaction's base figures — and an exchange's gain or
+ * loss pair — are rewritten in place, and once more right after the transaction is filed into a book, so a purchase in
+ * a shared book goes out with its new figures as a `money` change (or, newly filed, as a new purchase; unfiled, as a
+ * void). Every figure is money, so its accounts' summaries are recomputed too. Never refuses a book that is no longer
+ * shared (§8.6): a revaluation is this phone's own bookkeeping, kept here and sent nowhere (ruling R16).
+ */
+export async function captureRevaluingTx(tx: Db, transactionId: string): Promise<void> {
+  const session = sessionOf(tx);
+  if (!session) return;
+  session.markTransactionDirty(transactionId);
   const books = await session.sharedBooks();
   if (books.length === 0) return;
   const bookId = await bookOfTransaction(tx, transactionId);
