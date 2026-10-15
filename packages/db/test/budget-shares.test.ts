@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createAccount, listBudgets, removeBudget, saveBudget, saveBudgets, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '../src/index';
 import { setupDb } from './helpers';
@@ -14,7 +13,8 @@ async function withTree() {
 type Db = Awaited<ReturnType<typeof setupDb>>['database'];
 
 async function makeShare(database: Db, ws: { workspaceId: string }, budgetId: string, basis: string, bp: number) {
-  await database.db.run(sql`INSERT INTO budget_shares VALUES (${budgetId}, ${ws.workspaceId}, ${basis}, ${bp})`);
+  // A fixture, not a repository write: execScript keeps it out of the capture run's watch.
+  await database.execScript(`INSERT INTO budget_shares VALUES ('${budgetId}', '${ws.workspaceId}', '${basis}', ${bp});`);
 }
 
 const capOf = (rows: Awaited<ReturnType<typeof listBudgets>>, id: string) => rows.find((row) => row.categoryAccountId === id)!;
