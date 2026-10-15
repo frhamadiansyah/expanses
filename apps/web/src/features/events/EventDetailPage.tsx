@@ -33,7 +33,21 @@ import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
+import { SharedEventPage } from './SharedEventPage';
+import { useSharedEventView } from './shared-queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
+
+/**
+ * An event's page: a shared event's own (shared events §6), or - for an event that is not shared - the page events have
+ * always had, unchanged (D10).
+ */
+export function EventDetailPage() {
+  const { eventId } = useParams({ from: '/events/$eventId' });
+  const shared = useSharedEventView(eventId);
+  if (shared.isPending) return null;
+  if (shared.data) return <SharedEventPage view={shared.data} />;
+  return <LocalEventPage />;
+}
 
 /** A suggestion, a workspace's own row: wrapped so the group can still hand it its separator. */
 function TaggableRow({ position, ...row }: GroupChild & InsetRowProps) {
@@ -60,7 +74,7 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
  * the list of events is one tap back. Planning and tagging happen here, under the chart they change; recording opens
  * the Add screen with the event filled in, and comes back here.
  */
-export function EventDetailPage() {
+function LocalEventPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
   // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
   const { ws: openedIn } = useSearch({ from: '/events/$eventId' });
