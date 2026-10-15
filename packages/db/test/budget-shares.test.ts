@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createAccount, listBudgets, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '../src/index';
+import { createAccount, listBudgets, removeBudget, saveBudget, saveBudgets, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '../src/index';
 import { setupDb } from './helpers';
 
 async function withTree() {
@@ -59,5 +59,46 @@ describe('listBudgets with shares', () => {
     const rows = await listBudgets(database, ws, '2026-10');
     expect(capOf(rows, food.id).amountMinor).toBe(0);
     expect(capOf(rows, groceries.id)).toMatchObject({ amountMinor: 250_000, share: null });
+  });
+});
+
+describe('saving a share', () => {
+  it('keeps the share and the figure it came to, and saving an amount again clears the share', async () => {
+    const { database, ws, food } = await withTree();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 3_000_000, share: { basis: 'take-home', bp: 3000 } });
+    expect(capOf(await listBudgets(database, ws, '2026-10'), food.id)).toMatchObject({ amountMinor: 3_000_000, share: { basis: 'take-home', bp: 3000 } });
+
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 2_500_000 });
+    expect(capOf(await listBudgets(database, ws, '2026-10'), food.id)).toMatchObject({ amountMinor: 2_500_000, share: null });
+  });
+
+  it('refuses a % of take-home while there is no take-home, a % of a parent with no budget, a share out of range and a weekly share', async () => {
+    const { database, ws, food, groceries } = await withTree();
+    await expect(saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 0, share: { basis: 'take-home', bp: 3000 } })).rejects.toMatchObject({ code: 'NO_TAKE_HOME', message: 'Set a take-home first' });
+    await expect(saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 100_000, share: { basis: 'parent', bp: 1000 } })).rejects.toMatchObject({ code: 'NO_PARENT_CAP' });
+    await expect(saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 100_000, share: { basis: 'take-home', bp: 10001 } })).rejects.toMatchObject({ code: 'BAD_SHARE' });
+    await expect(saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 100_000, frequency: 'weekly', share: { basis: 'take-home', bp: 100 } })).rejects.toMatchObject({ code: 'BAD_FREQUENCY' });
+    expect(await listBudgets(database, ws, '2026-10')).toHaveLength(0);
+  });
+
+  it('accepts a % of a parent saved in the same go as the parent', async () => {
+    const { database, ws, food, groceries } = await withTree();
+    await saveBudgets(database, ws, {
+      save: [
+        { categoryAccountId: groceries.id, amountMinor: 800_000, share: { basis: 'parent', bp: 4000 } },
+        { categoryAccountId: food.id, amountMinor: 2_000_000 },
+      ],
+      remove: [],
+    });
+    expect(capOf(await listBudgets(database, ws, '2026-10'), groceries.id).amountMinor).toBe(800_000);
+  });
+
+  it('turns a removed parent’s %-children into amounts at their figure now', async () => {
+    const { database, ws, food, groceries } = await withTree();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 2_000_000 });
+    await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 800_000, share: { basis: 'parent', bp: 4000 } });
+
+    await removeBudget(database, ws, food.id);
+    expect(capOf(await listBudgets(database, ws, '2026-10'), groceries.id)).toMatchObject({ amountMinor: 800_000, share: null });
   });
 });

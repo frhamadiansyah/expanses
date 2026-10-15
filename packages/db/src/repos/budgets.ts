@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isUncategorisedKey, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isoDate, isUncategorisedKey, monthOf, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -29,6 +29,8 @@ export interface SaveBudgetInput {
   /** The amount as typed, in the unit `frequency` names. Monthly when no unit is given. */
   amountMinor: number;
   frequency?: BudgetFrequency;
+  /** Set as a % of take-home or of its parent: `amountMinor` is then the share resolved now, which amount_minor keeps. */
+  share?: BudgetShare | null;
 }
 
 export interface SetOverrideInput {
@@ -110,6 +112,14 @@ async function assertCategory(database: Database, ws: WorkspaceContext, accountI
 /** A budget's figure as a month, checked; the refusals every way of saving a budget shares. */
 function checkedMonthly(input: SaveBudgetInput): { monthlyMinor: number; frequency: BudgetFrequency } {
   assertWholeMinor(input.amountMinor);
+  if (input.share) {
+    const { basis, bp } = input.share;
+    if (!Number.isInteger(bp) || bp < 1 || bp > 10000) throw new BudgetError('BAD_SHARE', 'A share is more than 0% and at most 100%');
+    if ((input.frequency ?? 'monthly') !== 'monthly') throw new BudgetError('BAD_FREQUENCY', "A share is a month's figure");
+    // A share that comes to nothing has nothing to be a share of.
+    if (input.amountMinor <= 0 && basis === 'take-home') throw new BudgetError('NO_TAKE_HOME', 'Set a take-home first');
+    if (input.amountMinor <= 0) throw new BudgetError('NO_PARENT_CAP', 'Its parent has no budget to take a share of');
+  }
   if (input.amountMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'A budget must be above zero; remove it instead');
   const frequency = input.frequency ?? 'monthly';
   if (!BUDGET_FREQUENCIES.includes(frequency)) throw new BudgetError('BAD_FREQUENCY', `${String(frequency)} is not a unit a budget can be set in`);
@@ -127,7 +137,7 @@ async function writeBudget(tx: Tx, ws: WorkspaceContext, input: SaveBudgetInput,
     .from(budgets)
     .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
   const id = existing?.id ?? uuidv7();
-  await withCapture(tx, [{ entity: 'budget', id }, { entity: 'budget_frequency', id }], async () => {
+  await withCapture(tx, [{ entity: 'budget', id }, { entity: 'budget_frequency', id }, { entity: 'budget_share', id }], async () => {
     if (existing) {
       await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
     } else {
@@ -147,18 +157,69 @@ async function writeBudget(tx: Tx, ws: WorkspaceContext, input: SaveBudgetInput,
         await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
       }
     }
+    // An amount is the absence of a row, so saving an amount over a share clears it.
+    if (await budgetSharesExist(tx)) {
+      await tx.delete(budgetShares).where(eq(budgetShares.budgetId, id));
+      if (input.share) await tx.insert(budgetShares).values({ budgetId: id, workspaceId: ws.workspaceId, basis: input.share.basis, shareBp: input.share.bp });
+    }
   });
   return id;
 }
 
-/** Deletes one category's budget and every override that only made sense against it, inside an open transaction. */
-async function deleteBudget(tx: Tx, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
+/** A % of a parent needs a parent with a budget: checked once every row of a call is written, so a parent saved in the same go counts. */
+async function assertParentsCapped(tx: Tx, ws: WorkspaceContext, inputs: readonly SaveBudgetInput[]): Promise<void> {
+  for (const input of inputs) {
+    if (input.share?.basis !== 'parent') continue;
+    const [category] = await tx.select({ parentId: accounts.parentId }).from(accounts).where(eq(accounts.id, input.categoryAccountId));
+    const parentId = category?.parentId ?? null;
+    const [parent] = parentId
+      ? await tx.select({ id: budgets.id }).from(budgets).where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, parentId)))
+      : [];
+    if (!parent) throw new BudgetError('NO_PARENT_CAP', 'Its parent has no budget to take a share of', input.categoryAccountId);
+  }
+}
+
+/** Each category's plan this month, resolved: what a %-child keeps when the parent it was a share of goes. */
+async function planFiguresNow(database: Database, ws: WorkspaceContext): Promise<Map<string, number>> {
+  return new Map((await listBudgets(database, ws, monthOf(isoDate()))).map((row) => [row.categoryAccountId, row.planMinor]));
+}
+
+/**
+ * Deletes one category's budget and every override that only made sense against it, inside an open transaction. Its
+ * children that were a % of it become amounts at their figure now (`figures`), in the same go.
+ */
+async function deleteBudget(tx: Tx, ws: WorkspaceContext, categoryAccountId: string, figures: ReadonlyMap<string, number>): Promise<void> {
   const [existing] = await tx
     .select({ id: budgets.id })
     .from(budgets)
     .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
   if (!existing) return;
-  await withCapture(tx, [{ entity: 'budget', id: existing.id }, { entity: 'budget_frequency', id: existing.id }, { entity: 'budget_override' }], async () => {
+  const shares = await budgetSharesExist(tx);
+  const children = shares
+    ? await tx
+        .select({ budgetId: budgets.id, categoryAccountId: budgets.categoryAccountId })
+        .from(budgets)
+        .innerJoin(budgetShares, eq(budgetShares.budgetId, budgets.id))
+        .innerJoin(accounts, eq(accounts.id, budgets.categoryAccountId))
+        .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgetShares.basis, 'parent'), eq(accounts.parentId, categoryAccountId)))
+    : [];
+  const targets = [
+    { entity: 'budget', id: existing.id },
+    { entity: 'budget_frequency', id: existing.id },
+    { entity: 'budget_share', id: existing.id },
+    { entity: 'budget_override' },
+    ...children.flatMap((child) => [
+      { entity: 'budget', id: child.budgetId },
+      { entity: 'budget_share', id: child.budgetId },
+    ]),
+  ];
+  await withCapture(tx, targets, async () => {
+    for (const child of children) {
+      const figure = figures.get(child.categoryAccountId);
+      if (figure !== undefined && figure > 0) await tx.update(budgets).set({ amountMinor: figure, updatedAt: new Date().toISOString() }).where(eq(budgets.id, child.budgetId));
+      await tx.delete(budgetShares).where(eq(budgetShares.budgetId, child.budgetId));
+    }
+    if (shares) await tx.delete(budgetShares).where(eq(budgetShares.budgetId, existing.id));
     if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
     await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
     await tx.delete(budgets).where(eq(budgets.id, existing.id));
@@ -169,12 +230,17 @@ export async function saveBudget(database: Database, ws: WorkspaceContext, input
   const checked = checkedMonthly(input);
   await assertCategory(database, ws, input.categoryAccountId);
   const now = new Date().toISOString();
-  return database.transaction((tx) => writeBudget(tx, ws, input, checked, now));
+  return database.transaction(async (tx) => {
+    const id = await writeBudget(tx, ws, input, checked, now);
+    await assertParentsCapped(tx, ws, [input]);
+    return id;
+  });
 }
 
 /** Removes the budget and every override that only made sense against it. */
 export async function removeBudget(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
-  await database.transaction((tx) => deleteBudget(tx, ws, categoryAccountId));
+  const figures = await planFiguresNow(database, ws);
+  await database.transaction((tx) => deleteBudget(tx, ws, categoryAccountId, figures));
 }
 
 export interface BudgetChanges {
@@ -200,9 +266,11 @@ export async function saveBudgets(database: Database, ws: WorkspaceContext, chan
   }
   if (checked.length === 0 && changes.remove.length === 0) return;
   const now = new Date().toISOString();
+  const figures = changes.remove.length > 0 ? await planFiguresNow(database, ws) : new Map<string, number>();
   await database.transaction(async (tx) => {
-    for (const categoryAccountId of changes.remove) await deleteBudget(tx, ws, categoryAccountId);
+    for (const categoryAccountId of changes.remove) await deleteBudget(tx, ws, categoryAccountId, figures);
     for (const { input, monthly } of checked) await writeBudget(tx, ws, input, monthly, now);
+    await assertParentsCapped(tx, ws, checked.map((entry) => entry.input));
   });
 }
 

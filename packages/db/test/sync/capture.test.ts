@@ -212,6 +212,18 @@ describe('capture: rows edited in place', () => {
     expect(tombstones).toContainEqual(['budget', budgetId]);
   });
 
+  it('a budget set as a share carries its share, and removing it removes the share', async () => {
+    const { database, ws, groceries } = await sharedHousehold();
+    await saveExpectedIncome(database, ws, 10_000_000);
+    await clearOutbox(database);
+    const budgetId = await saveBudget(database, ws, { categoryAccountId: groceries.id, amountMinor: 1_000_000, share: { basis: 'take-home', bp: 1000 } });
+    expect(await outboxOps(database)).toContainEqual({ entity: 'budget_share', id: budgetId, op: 'upsert', fields: { basis: 'take-home', shareBp: 1000 } });
+
+    await clearOutbox(database);
+    await removeBudget(database, ws, groceries.id);
+    expect(await outboxOps(database)).toContainEqual({ entity: 'budget_share', id: budgetId, op: 'delete' });
+  });
+
   it('book income and a bonus month', async () => {
     const { database, ws, book } = await sharedHousehold();
     await saveExpectedIncome(database, ws, 20_000_000);
