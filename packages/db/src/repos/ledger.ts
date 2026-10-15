@@ -15,7 +15,7 @@ import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigu
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
-import { eventOnlyExists, notEventOnly } from './event-only';
+import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -56,7 +56,7 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT' | 'EVENT_POSTING';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -335,8 +335,20 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   }
 }
 
+/**
+ * A transaction a shared event put in this phone's books follows its record (shared events §5): deleting or editing it
+ * anywhere but the event would leave it disagreeing with the record and every other phone. Only the derivation, which
+ * calls the `…Tx` doors directly, changes it.
+ */
+async function refuseEventPostingTx(tx: Db, id: string): Promise<void> {
+  if (await eventPostingOfTx(tx, id)) throw new LedgerError('EVENT_POSTING', 'This follows a shared event’s record. Change it on the event.');
+}
+
 export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  return database.transaction((tx) => voidTransactionTx(tx, ws, id));
+  return database.transaction(async (tx) => {
+    await refuseEventPostingTx(tx, id);
+    await voidTransactionTx(tx, ws, id);
+  });
 }
 
 /** Edit = void the original and post the replacement atomically. */
@@ -346,7 +358,10 @@ export function replaceTransaction(
   id: string,
   input: PostTransactionInput,
 ): Promise<string> {
-  return database.transaction((tx) => replaceTransactionTx(tx, ws, id, input));
+  return database.transaction(async (tx) => {
+    await refuseEventPostingTx(tx, id);
+    return replaceTransactionTx(tx, ws, id, input);
+  });
 }
 
 /**

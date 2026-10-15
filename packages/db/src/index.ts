@@ -85,6 +85,8 @@ export * from './repos/expense-templates';
 export * from './repos/event-scope';
 export * from './repos/events';
 export * from './repos/event-items';
+export * from './repos/shared-event-records';
+export * from './repos/shared-event-postings';
 export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';
 export * as draftsSchema from './schema-drafts';
