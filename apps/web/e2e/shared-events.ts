@@ -1,0 +1,93 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+import { TODAY } from './event-plan';
+import { choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
+
+/*
+ * Helpers for the shared-events journey. Everything that names the shared Add screen (Task 13) is here and nowhere
+ * else, so when that screen's words settle a spec never needs touching: the screen is built from the normal Add
+ * screen's pieces, so its amount is the keypad's (never a typed field), its rows are `FormRow`s and its pickers are
+ * sheets.
+ */
+
+/** The app comes back to the foreground: every shared book syncs (household sharing §9.4). */
+export async function eventually(page: Page, check: () => Promise<void>) {
+  await expect(async () => {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await check();
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+}
+
+/** A corner action by name, inline or under ⋯. */
+export async function corner(page: Page, name: string) {
+  const inline = page.getByRole('button', { name, exact: true });
+  if ((await inline.count()) > 0) return inline.first().click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
+}
+
+export async function openTrip(page: Page, name = 'Coast week') {
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: name }).click();
+  await expect(page.getByTestId('shared-event')).toBeVisible({ timeout: 30_000 });
+}
+
+/** An event for today, from either shell: the phone's button says "New event", the desktop's "Add an event". */
+export async function newEvent(page: Page, name: string) {
+  await page.goto('/events');
+  await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByLabel('Starts on').fill(TODAY);
+  await page.getByLabel('Ends on').fill(TODAY);
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+}
+
+/** A row of the trip's Spending list, by its note. */
+export const spendingRow = (page: Page, text: string) => page.getByTestId('shared-expense-row').filter({ hasText: text });
+
+/** The Balances section of the trip page (a radio of the segmented control). */
+export async function showBalances(page: Page) {
+  await page.getByRole('radio', { name: 'Balances' }).click();
+}
+
+/** The shared Add screen, whichever way it is drawn. */
+export const sharedCard = (page: Page): Locator => page.getByTestId('shared-expense-card');
+
+export interface SharedSpend {
+  note: string;
+  /** Digits only: the keypad types digits. */
+  amount: string;
+  /** The currency the amount is typed in, by code, when it is not the event's. */
+  currency?: string;
+  /** Who paid, as the Paid by sheet names them, and the account they paid from when it is asked. */
+  paidBy: { person: string | RegExp; account?: string };
+  /** People left out of an equal split, by name. */
+  leaveOut?: string[];
+}
+
+/**
+ * Fills the open shared Add screen and saves it. The amount goes on the keypad (the owner's rule: no typed amount
+ * field on the Add screen), then Paid by, then the split, then the ✓.
+ */
+export async function recordSharedSpend(page: Page, spend: SharedSpend) {
+  const card = sharedCard(page);
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await openAmount(card);
+  await fillAmount(page, card, spend.amount);
+  if (spend.currency) {
+    await card.getByRole('button', { name: 'Currency' }).click();
+    await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${spend.currency}\\b`) }).first().click();
+  }
+  await card.getByRole('button', { name: /^Paid by/ }).click();
+  const paidBy = page.getByRole('dialog', { name: 'Paid by' });
+  await paidBy.getByRole('button', { name: spend.paidBy.person }).first().click();
+  if (spend.paidBy.account) await choosePayment(page, spend.paidBy.account, /^(Paid with|Paid from|Paid by)$/);
+  await card.getByLabel('Note').fill(spend.note);
+  if (spend.leaveOut?.length) {
+    await card.getByTestId('split-row').click();
+    const split = page.getByRole('dialog', { name: 'Split' });
+    for (const name of spend.leaveOut) await split.getByRole('button', { name: new RegExp(name) }).click();
+    await page.keyboard.press('Escape');
+  }
+  await saveButton(card).click();
+}
