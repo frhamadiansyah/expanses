@@ -15,6 +15,7 @@ import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigu
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
+import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
 import { carryEventItemTx } from './event-items';
 import {
@@ -288,6 +289,11 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
   if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
+  // Withdrawal rate §6: a foreign money account this touches is recalculated at the end of the db transaction, from
+  // this date — before capture reads the figures, so a shared purchase goes out at the withdrawal rate (R9). Every
+  // posting comes through here: a form, an import, a statement check, a conversion, a trade, a debt, a goal transfer,
+  // a shared event's derivation and sync apply alike.
+  await markForeignDirtyTx(tx, ws, id);
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
   await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
@@ -315,6 +321,9 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
   // correction (a replace posts the next head in the same transaction).
   await captureVoidingTx(tx, id);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
+  // What this took out of (or put into) a foreign account is no longer there: its later outflows are recalculated (§6).
+  // Every void and every replace's void comes through here, the event's derivation and an account's deletion included.
+  await markForeignDirtyTx(tx, ws, id);
   // A transfer tagged to a goal parked what it landed: that comes back out, whichever door deletes or edits it — as far
   // as it is still there. An edit that still moves between the same two accounts keeps it and carries the difference.
   const arrival = row.goalId && !keep.tagged ? await takeBackTaggedArrivalTx(tx, ws, id, row.goalId) : null;
@@ -573,6 +582,8 @@ export function moveTransactionInDay(database: Database, ws: WorkspaceContext, t
       // Household sharing: a shared purchase's place travels with it (the purchase's `dayOrder`).
       await captureReorderingTx(tx, write.id);
       await tx.run(sql`UPDATE transactions SET day_order = ${write.dayOrder} WHERE id = ${write.id}`);
+      // A place in the day is the order money moved in (R3, R13): the day's foreign outflows are priced again.
+      await markForeignDirtyTx(tx, ws, write.id);
       await audit(tx, ws, 'reorder', write.id, { dayOrder: write.dayOrder });
     }
   });

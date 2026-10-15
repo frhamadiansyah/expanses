@@ -28,4 +28,9 @@ describe('category visuals', () => {
     expect(categoryVisual(null, 'household')).toEqual({ icon: 'house', colour: CATEGORY_COLOURS.household });
     expect(categoryVisual(null, null)).toEqual(UNKNOWN_VISUAL);
   });
+
+  it('draws Exchange gain and Exchange loss as the transfer they come from, gain in the income colour', () => {
+    expect(categoryVisual('expense.exchange_loss', 'expense.exchange_loss')).toEqual({ icon: 'arrow-left-right', colour: '#475569' });
+    expect(categoryVisual('income.exchange_gain', 'income.exchange_gain')).toEqual({ icon: 'arrow-left-right', colour: CATEGORY_COLOURS.income });
+  });
 });
