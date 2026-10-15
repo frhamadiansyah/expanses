@@ -7,7 +7,7 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-test('on a phone: Spending first, Plan a tap away, a row opens its cap, and No budget lists the rest', async ({ page }) => {
+test('on a phone: Spending first, Plan a tap away, a row opens its cap, and No budget yet lists the rest', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Grab', paidWith: 'BCA Tahapan', category: 'Ride hailing', amount: '120000' });
@@ -37,13 +37,11 @@ test('on a phone: Spending first, Plan a tap away, a row opens its cap, and No b
   await expect(sheet.getByRole('button', { name: 'Remove budget' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close' }).tap();
 
-  // What no cap covers is one row, opening the list of it.
-  const noBudget = page.getByTestId('no-budget');
-  await expect(noBudget).toContainText('80.000');
-  await noBudget.tap();
-  const list = page.getByRole('dialog', { name: 'No budget' });
-  await expect(list.getByTestId('uncapped-Personal care')).toContainText('80.000');
-  await list.getByTestId('uncapped-Personal care').tap();
+  // What no cap covers is listed on the page, each row a Set away from its cap.
+  const uncapped = page.getByTestId('uncapped-Personal care');
+  await expect(uncapped).toContainText('80.000 spent this month');
+  await expect(uncapped).toContainText('Set');
+  await uncapped.tap();
   // An uncapped category has nothing to remove and nothing to change for one month.
   const fresh = page.getByRole('dialog', { name: 'Personal care' });
   await expect(fresh.getByLabel('Cap', { exact: true })).toHaveValue('');

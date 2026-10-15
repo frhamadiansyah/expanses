@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { addCap, budgetTab, openCapOf, openDrawer, openNewCap } from './budget';
+import { addCap, budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
 import { editGoal, openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { countsAs, expectNeed, markNeed, openCategory } from './categories';
@@ -138,6 +138,7 @@ test('row 7 — a weekly line overridden for one month keeps its unit, and next 
   await type(sheet.getByLabel('Cap', { exact: true }), '3000000');
   await sheet.getByRole('button', { name: 'Save budget' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('3.000.000');
 
   // The month's own figure, and the week it was planned in still behind it.
@@ -150,6 +151,7 @@ test('row 7 — a weekly line overridden for one month keeps its unit, and next 
   await sheet.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Next month' }).click();
+  await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
   sheet = await openCapOf(page, '— Groceries');
   await expect(sheet.getByLabel('Just this month')).not.toBeChecked();
@@ -189,14 +191,14 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Studio');
 
   await page.goto('/budget');
-  const capSheet = await openNewCap(page);
-  await capSheet.getByLabel('Category', { exact: true }).selectOption({ label: '— Groceries' });
-  await capSheet.getByLabel('Every').selectOption('weekly');
-  await type(capSheet.getByLabel('Cap', { exact: true }), '10,00');
+  const screen = await openEditBudgets(page);
+  const { field, label } = await capField(screen, '— Groceries');
+  await screen.getByLabel(`${label} every`).selectOption('weekly');
+  await type(field, '10,00');
   // 1.000 cents × 52 ÷ 12 = 4.333,3 → 4.333 cents.
-  await expect(capSheet).toContainText('43,33');
-  await capSheet.getByRole('button', { name: 'Save budget' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(screen.getByTestId('edit-budgeted')).toContainText('43,33');
+  await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('budget-page')).toBeVisible();
   await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('43,33');
   const again = await openCapOf(page, '— Groceries');
