@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
 import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, mayLinkAsMemberTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { recalcPendingForeign } from '../repos/fx-pending';
 import { retryUnpostedEventRecords } from '../repos/shared-event-postings';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
@@ -328,6 +329,14 @@ export class SyncEngine {
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     const result = await this.syncBook(bookId, seen);
+    // Withdrawal rate (R9): what apply just put on this phone's own foreign accounts was queued, since capture was
+    // paused; recalculated now, with capture on, so the new figures go to the household as an ordinary edit (sent on
+    // the next sync). Never fails the sync: what cannot be recalculated waits for the next one.
+    try {
+      await recalcPendingForeign(this.database);
+    } catch (error) {
+      console.warn('Synced; a foreign account could not be recalculated yet', error);
+    }
     // Shared events §5: a record left waiting here (a rate, a detail not yet arrived, a derivation the ledger refused)
     // is tried again after the pull. Never fails the sync: what still cannot post waits for the next one.
     if (!result.stopped && !result.ended && (await eventBookWorkspaceOf(this.database.db, bookId)) !== null) {

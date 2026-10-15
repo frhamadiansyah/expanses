@@ -37,6 +37,7 @@ export * from './repos/fx-tables';
 export * from './repos/fx-gain-loss';
 export * from './repos/fx-costs';
 export * from './repos/fx-reads';
+export * from './repos/fx-pending';
 export * from './repos/reports';
 export * as pointsSchema from './schema-points';
 export * from './repos/points';
