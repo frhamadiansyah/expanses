@@ -9,6 +9,7 @@ import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
+import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
 import { useAssetProfile, useAssetValues } from './queries';
@@ -93,6 +94,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
 
       {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
       {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}
+      {/* A digital wallet says which phone number it is tied to, by its last four digits. */}
+      {account?.subtype === 'ewallet' && <WalletPhoneGroup accountId={accountId} />}
 
       {profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
 
