@@ -54,6 +54,59 @@ test('a foreign card purchase is two lines on each side, the card named "···�
 });
 
 /**
+ * The longest line under an amount there is — a foreign amount and points in a long unit — still leaves the left side
+ * room to read: the category and the note keep a usable width, and nothing on the page scrolls sideways.
+ */
+test('a foreign purchase that earns cashback keeps the left side readable at a phone’s width', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
+  await page.goto('/cards');
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Voyager Travel(,|$)/ }).click();
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await page.getByLabel('Earns').selectOption({ label: 'Cashback' });
+  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await page.getByRole('button', { name: 'Add rule' }).click();
+  await page.getByLabel('Rule name').fill('Base');
+  await page.getByLabel('Points', { exact: true }).fill('1');
+  await page.getByLabel('Per spend (IDR)').fill('100');
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await choosePayment(page, 'Nusa Voyager Travel');
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'EUR Euro' }).first().click();
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const key of '1234,56') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Charged in IDR' }).click();
+  for (const key of '1234500') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Harbour Lantern Brasserie');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  const dinner = row(page, 'Harbour Lantern Brasserie');
+  const extra = dinner.getByTestId('amount-extra');
+  // Both parts, on the one line under the amount.
+  await expect(extra).toContainText('€1.234,56');
+  await expect(extra).toContainText('12.345 cashback');
+  expect((await extra.boundingBox())!.height).toBeLessThan(20);
+  // The left side keeps room to be read: the category and the note are not squeezed to a sliver.
+  const face = dinner.getByRole('button', { name: /^Restaurants/ });
+  expect((await face.boundingBox())!.width).toBeGreaterThanOrEqual(120);
+  await fitsThePhone(page);
+});
+
+/**
  * A digital wallet tied to a phone number says so by the number's last four digits, recorded on the form that opens it
  * and changed on its settings; its rows show them as a card's are shown, and it never becomes a card.
  */

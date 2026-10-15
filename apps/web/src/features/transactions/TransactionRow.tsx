@@ -201,7 +201,9 @@ export function TransactionRow({
           within a <button> is invalid HTML whose name swallows the inner one's. */}
       {under}
       </div>
-      <span className="shrink-0 text-right">
+      {/* At most 40% of the row, so the longest line under an amount — a foreign figure and points in a long unit —
+          never squeezes the category and the note to a sliver at a phone's width; the points give way first. */}
+      <span className="min-w-0 max-w-[40%] shrink-0 text-right">
         <span
           className={cx(
             'tabular block text-sm font-semibold whitespace-nowrap',
@@ -299,14 +301,26 @@ export function DraftSubtitle({ row }: { row: ListRow }) {
   );
 }
 
-/** The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour. */
+/**
+ * The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour.
+ * Always one line: when the row's right side is out of room the points are cut short with an ellipsis — the foreign
+ * figure, being money, never is — and the whole line is the element's title.
+ */
 export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
   if (parts.length === 0) return null;
   return (
-    <span data-testid="amount-extra" className="tabular block whitespace-nowrap text-xs">
+    <span data-testid="amount-extra" title={parts.map((part) => part.text).join(' · ')} className="tabular flex justify-end whitespace-nowrap text-xs">
       {parts.map((part, i) => (
-        <span key={part.tone} className={part.tone === 'foreign' ? 'text-slate-500' : part.tone === 'lost' ? 'text-red-700' : 'text-emerald-700'}>
-          {i > 0 && <span className="text-slate-400"> · </span>}
+        <span
+          key={part.tone}
+          className={cx(
+            part.tone === 'foreign' ? 'shrink-0 text-slate-500' : 'min-w-0 truncate',
+            part.tone === 'lost' && 'text-red-700',
+            part.tone === 'earned' && 'text-emerald-700',
+          )}
+        >
+          {/* No-break spaces: at the start of a flex item a plain one is dropped, and the dot would touch the figure. */}
+          {i > 0 && <span className="text-slate-400">{' · '}</span>}
           {part.text}
         </span>
       ))}
