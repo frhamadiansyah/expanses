@@ -564,3 +564,4 @@ export {
   type FxShortfall,
   shareOf,
 } from './fx/fifo';
+export { classifyInflow, type FxLine, type FxRole, type InflowCost, revalueTransaction, type Revalued, type RevalueInput, spreadBase } from './fx/revalue';
