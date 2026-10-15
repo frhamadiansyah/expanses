@@ -1,5 +1,6 @@
 import { formatMinor, monthName } from '@expanses/core';
-import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, TransactionView, WithdrawalsUsed } from '@expanses/db';
+import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
 
@@ -34,6 +35,13 @@ export interface ReceiptInput {
    * a placeholder account that is never named or linked, so this is the only place its payment is described.
    */
   payer?: PurchasePayer | null;
+  /**
+   * Which withdrawals a spend from foreign money came from, and what it cost at them (withdrawal rate §7). Null or
+   * absent for anything that did not take foreign money; `currency` above is the base it is read in.
+   */
+  withdrawal?: WithdrawalsUsed | null;
+  /** Today, for "From the 12 Nov withdrawal" (a withdrawal in another year names its year). */
+  today?: string;
 }
 
 /** Money accounts: the two kinds whose entry says what was actually charged or received. */
@@ -110,6 +118,13 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const refund = spent.length > 0 && spent.reduce((sum, entry) => sum + entry.amountMinor, 0) < 0;
   if (refund) lines.push({ label: 'Refund', value: 'Money back' });
   if (paid) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
+  // Withdrawal rate §7: what the foreign money cost, and which withdrawals it came from.
+  if (input.withdrawal) {
+    const cost = receiptWithdrawalLine(input.withdrawal, input.withdrawal.currency, input.currency);
+    if (cost) lines.push({ label: 'Cost', value: cost });
+    const from = fromWithdrawalsText(input.withdrawal.uses, input.today ?? tx.occurredOn);
+    if (from) lines.push({ label: 'Withdrawn', value: from });
+  }
   if (points) lines.push({ label: 'Points earned', value: pointsText(points), tone: 'points' });
   if (owed.length > 0) {
     const total = owed.reduce((sum, person) => sum + person.totalMinor, 0);

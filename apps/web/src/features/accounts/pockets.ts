@@ -90,14 +90,6 @@ export function moveView(draft: FormDraft, accounts: readonly AccountRow[], base
 export const bankRateText = (rate: number | null, from: string, to: string, locale = 'id-ID') =>
   rate === null ? '—' : `1 ${from} = ${rate.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${to}`;
 
-/** The spread in words. The sign picks the words; the figure is the cost, negated once when it is a gain. */
-export function spreadLine(cost: ExchangeCost | null, baseCurrency: string): { title: string; figure: string } | null {
-  if (!cost) return null;
-  if (cost.costMinor === 0) return { title: 'The bank’s rate matched the day’s rate', figure: formatMinor(0, baseCurrency) };
-  if (cost.costMinor > 0) return { title: 'The bank’s rate cost extra', figure: formatMinor(cost.costMinor, baseCurrency) };
-  return { title: 'The bank’s rate gained extra', figure: formatMinor(-cost.costMinor, baseCurrency) };
-}
-
 /** "1 pocket", "3 pockets". */
 export const pocketCount = (n: number) => `${n} ${n === 1 ? 'pocket' : 'pockets'}`;
 

@@ -29,6 +29,7 @@ import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 import { TwoTapDelete } from './TwoTapDelete';
+import { useWithdrawalsUsed } from '../../lib/withdrawal-queries';
 
 const route = getRouteApi('/transactions/$transactionId');
 
@@ -100,6 +101,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
    * it: EVENT_POSTING), and it says who last changed the record when that was not this phone's person.
    */
   const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
+  // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
+  const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
 
   if (receipt.isSuccess && !tx) {
     return (
@@ -134,6 +137,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     eventName: (events.data ?? []).find((event) => event.id === tx.eventId)?.name,
     goalName: goals.find((goal) => goal.id === tx.goalId)?.name,
     payer: payerOf(tx.id),
+    withdrawal,
+    today,
   });
 
   const caption = heroCaption(tx, kind.amountMinor);
