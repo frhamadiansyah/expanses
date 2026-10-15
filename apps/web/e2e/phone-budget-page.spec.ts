@@ -39,18 +39,17 @@ test('a budget row leads with what is left or over, then what was spent and its 
   await expect(transport).not.toContainText('%');
 });
 
-test('by thumb: the ✓ on the cap sheet takes the tap it is given, even as the page opens', async ({ page }) => {
+test('by thumb: a ✓ takes the tap it is given, even as the page opens', async ({ page }) => {
   /*
    * The ✓ is drawn before the workspace's books are read, and the books decide the currency a typed figure is parsed
-   * in — so it is a real `disabled` button until then, which a tap waits for instead of vanishing into. The refusal it
-   * must produce — "Choose a category", the sheet's own first check — is the proof it landed.
+   * in — so it is a real `disabled` button until then, which a tap waits for instead of vanishing into. Edit budgets'
+   * own ✓ is the same: with nothing changed, the way back to the Budget page is the proof it landed.
    */
   await page.goto('/budget');
-  await page.getByRole('button', { name: 'More', exact: true }).tap();
-  await page.getByRole('menuitem', { name: 'Add a budget' }).tap();
-  await page.getByRole('button', { name: 'Save budget' }).tap();
-  await expect(page.getByRole('alert')).toHaveText('Choose a category');
-  await page.getByRole('button', { name: 'Close' }).tap();
+  await page.getByRole('button', { name: 'Edit budgets', exact: true }).tap();
+  await page.getByRole('button', { name: 'Save budgets' }).tap();
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
 
   // The same for the take-home, whose own empty case is worded rather than left to `parseMajor`.
   await page.getByRole('radiogroup', { name: 'Budget view' }).getByRole('radio', { name: 'Plan' }).tap();

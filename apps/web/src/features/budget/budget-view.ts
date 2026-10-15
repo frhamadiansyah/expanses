@@ -1,4 +1,4 @@
-import type { BudgetLine } from '@expanses/core';
+import { type BudgetLine, roundUpToMajor } from '@expanses/core';
 
 /*
  * What the Budget page draws, worked out from the sheet: which lines are over, which are capped and how they fold,
@@ -168,4 +168,49 @@ export function planSplit(input: { incomeMinor: number; debtMinor: number; goals
     ],
     scaleMinor: Math.max(input.incomeMinor, planned),
   };
+}
+
+/** One row of the page's No budget yet group: a root, or one of its sub-categories one step in. */
+export interface NoBudgetRow {
+  line: BudgetLine;
+  spentMinor: number;
+  depth: 0 | 1;
+}
+
+/** What no cap covers and that spent something, roots by spend with their spending sub-categories under them. */
+export function noBudgetRows(entries: readonly NoBudgetEntry[]): NoBudgetRow[] {
+  return entries
+    .filter((entry) => entry.spentMinor > 0)
+    .flatMap((entry) => [
+      { line: entry.line, spentMinor: entry.spentMinor, depth: 0 as const },
+      ...entry.children.filter((child) => child.spentMinor > 0).map((child) => ({ line: child.line, spentMinor: child.spentMinor, depth: 1 as const })),
+    ]);
+}
+
+/** What a category spent the month before, and on average over the months read. */
+export interface SpendHistory {
+  lastMinor: number;
+  averageMinor: number;
+}
+
+/** Each category's history from earlier months' lines, newest first; a month it is missing from counts as nothing. */
+export function historyOf(months: readonly (readonly BudgetLine[])[], currency: string): Map<string, SpendHistory> {
+  const totals = new Map<string, number[]>();
+  months.forEach((lines, index) => {
+    const walk = (rows: readonly BudgetLine[]) => {
+      for (const row of rows) {
+        const list = totals.get(row.id) ?? months.map(() => 0);
+        list[index] = row.totalMinor;
+        totals.set(row.id, list);
+        walk(row.children);
+      }
+    };
+    walk(lines);
+  });
+  return new Map(
+    [...totals].map(([id, list]) => [
+      id,
+      { lastMinor: Math.max(0, list[0] ?? 0), averageMinor: roundUpToMajor(Math.ceil(list.reduce((sum, minor) => sum + minor, 0) / months.length), currency) },
+    ]),
+  );
 }
