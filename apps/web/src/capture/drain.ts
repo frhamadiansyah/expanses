@@ -19,7 +19,7 @@ import {
   type WorkspaceContext,
 } from '@expanses/db';
 import { App as Shell } from '@capacitor/app';
-import { native } from './native';
+import { native, wholeCapture } from './native';
 
 /** What the drain needs from the capture bridge: the phone, or a stand-in in a test. */
 export interface CaptureBridge {
@@ -72,7 +72,8 @@ export async function drainCaptures(
 ): Promise<IngestResult> {
   let found: number | null = null;
   try {
-    const { captures } = await bridge.drainCaptures();
+    // Made whole here as well as in `native`: a stand-in bridge hands captures over the way the phone does.
+    const captures = (await bridge.drainCaptures()).captures.map(wholeCapture);
     found = captures.length;
     if (captures.length === 0) {
       await tidyImages(database, bridge, [], on);
@@ -123,8 +124,9 @@ export async function scanReceipt(
   bridge: CaptureBridge = native,
   on = today(),
 ): Promise<IngestResult> {
-  const { capture } = await bridge.scanReceipt();
-  if (!capture) return nothing();
+  const { capture: handed } = await bridge.scanReceipt();
+  if (!handed) return nothing();
+  const capture = wholeCapture(handed);
   const result = await ingestCaptures(database, ws, [capture], { today: on });
   await tidyImages(database, bridge, result.discardedImages, on);
   return result;

@@ -159,6 +159,40 @@ describe('emptying the phone into the queue', () => {
   });
 });
 
+/**
+ * A capture as the phone's bridge really hands it over: Capacitor's encoder drops an empty array and a nil, so a
+ * text capture arrives with no `lines` and no `imageFile` key at all.
+ */
+const asBridged = (capture: RawCapture): RawCapture => {
+  const { lines, imageFile, ...rest } = capture;
+  return { ...rest, ...(lines.length > 0 ? { lines } : {}), ...(imageFile !== null ? { imageFile } : {}) } as RawCapture;
+};
+
+describe('captures as the bridge hands them over', () => {
+  it('reads a notification whose empty lines the bridge dropped', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([asBridged(notification)]);
+      const result = await drainCaptures(database, ws, phone, '2026-09-30');
+
+      expect(counts(result)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      expect(phone.acked).toEqual([[notification.id]]);
+    } finally {
+      close();
+    }
+  });
+
+  it('reads a photographed receipt with no text on it', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const blank: RawCapture = { ...notification, id: 'blank', kind: 'photo', app: null, title: null, body: null };
+      await expect(scanReceipt(database, ws, bridge([], asBridged(blank)), '2026-09-30')).resolves.toBeDefined();
+    } finally {
+      close();
+    }
+  });
+});
+
 describe('the last drain, as Settings → Capture shows it', () => {
   it('reports what was handed over and what came of it', async () => {
     const { database, ws, close } = await setup();
