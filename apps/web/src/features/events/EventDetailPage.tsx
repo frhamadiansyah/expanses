@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { deleteEvent, finishEvent, tagTransaction } from '@expanses/db';
+import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -33,6 +33,9 @@ import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
+import { EventCurrencySheet } from './EventCurrencySheet';
+import { ShareEventSheet } from './ShareEventSheet';
+import { sharedEventMenu } from './shared-menu';
 import { SharedEventPage } from './SharedEventPage';
 import { useSharedEventView } from './shared-queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
@@ -44,9 +47,51 @@ import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSugg
 export function EventDetailPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
   const shared = useSharedEventView(eventId);
+  // Hosted here, above the switch: sharing turns this page into the shared one at once, and the sheet still has the
+  // move and the invite to finish (shared events §6).
+  const [sharing, setSharing] = useState(false);
+  const events = useEvents();
+  const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
   if (shared.isPending) return null;
-  if (shared.data) return <SharedEventPage view={shared.data} />;
-  return <LocalEventPage />;
+  return (
+    <>
+      {shared.data ? <SharedEventScreen view={shared.data} /> : <LocalEventPage onShare={() => setSharing(true)} />}
+      {sharing && event ? <ShareEventSheet event={event} onClose={() => setSharing(false)} /> : null}
+    </>
+  );
+}
+
+/** The shared page with its ⋯ menu wired: People, Currency, Done or Reopen, Leave (shared events §6). */
+function SharedEventScreen({ view }: { view: SharedEventView }) {
+  const { database, ws, sync } = useApp();
+  const invalidate = useInvalidateAll();
+  const navigate = useNavigate();
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const run = async (work: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await work();
+      await invalidate();
+    } catch (failure) {
+      setError(failure);
+    }
+  };
+  const menu = sharedEventMenu(view, {
+    people: () => void navigate({ to: '/events/$eventId/people', params: { eventId: view.eventId } }),
+    currency: () => setCurrencyOpen(true),
+    done: (finished) => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, finished)),
+    leave: () => {
+      if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
+    },
+  });
+  return (
+    <>
+      <ErrorBox error={error} />
+      <SharedEventPage view={view} menu={menu} />
+      {currencyOpen ? <EventCurrencySheet view={view} onClose={() => setCurrencyOpen(false)} /> : null}
+    </>
+  );
 }
 
 /** A suggestion, a workspace's own row: wrapped so the group can still hand it its separator. */
@@ -74,7 +119,7 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
  * the list of events is one tap back. Planning and tagging happen here, under the chart they change; recording opens
  * the Add screen with the event filled in, and comes back here.
  */
-function LocalEventPage() {
+function LocalEventPage({ onShare }: { onShare: () => void }) {
   const { eventId } = useParams({ from: '/events/$eventId' });
   // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
   const { ws: openedIn } = useSearch({ from: '/events/$eventId' });
@@ -248,11 +293,13 @@ function LocalEventPage() {
     glyph: <Plus size={22} aria-hidden />,
     run: () => void navigate(addSpendingTarget(eventId)),
   };
+  // Only an event that is not shared reaches this page (a shared one is `SharedEventScreen`), so an event can be shared once.
+  const share: CornerAction = { key: 'share', label: 'Share this event', run: onShare };
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending]} />
+      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, share]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}

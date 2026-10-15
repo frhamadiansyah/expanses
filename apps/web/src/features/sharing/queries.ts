@@ -3,11 +3,15 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import type { BookSyncStatus } from '../../sync/sync-service';
+import { workspaceBooks } from './workspace-books';
 
-/** Every shared book on this device, with its members: the switcher's "Shared with …". */
+/**
+ * Every shared workspace on this device, with its members: the switcher's "Shared with …". A shared event's book is
+ * left out (`workspaceBooks`): it is no workspace, so no screen that lists or looks one up should meet it.
+ */
 export function useSharedBooks() {
   const { database } = useApp();
-  return useQuery({ queryKey: ['shared-books'], queryFn: () => listSharedBooks(database) });
+  return useQuery({ queryKey: ['shared-books'], queryFn: async () => workspaceBooks(await listSharedBooks(database)) });
 }
 
 /** One book's sharing, as its settings show it (§11), re-read after every sync run. */

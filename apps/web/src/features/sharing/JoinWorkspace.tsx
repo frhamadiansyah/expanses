@@ -4,6 +4,7 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
+import { JoinEvent } from './JoinEvent';
 import { currencyRefusal, replaceConfirm, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
@@ -89,7 +90,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
     }
   }
 
-  const refusal = preview && preview.baseCurrency !== ws.baseCurrency ? currencyRefusal(preview.baseCurrency, ws.baseCurrency) : null;
+  const refusal = preview && !preview.event && preview.baseCurrency !== ws.baseCurrency ? currencyRefusal(preview.baseCurrency, ws.baseCurrency) : null;
   const unusable = preview?.claimed ? 'Someone has already used this invite. Ask for a new one.' : preview?.expired ? 'This invite has expired. Ask for a new one.' : null;
 
   return (
@@ -119,7 +120,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
         </InsetGroup>
       </form>
 
-      {preview ? (
+      {preview?.event ? <JoinEvent code={code} preview={preview} /> : preview ? (
         <form aria-label="Join a workspace" onSubmit={(event) => void join(event)}>
           <InsetGroup
             wide
