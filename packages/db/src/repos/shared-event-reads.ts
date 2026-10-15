@@ -42,6 +42,10 @@ export interface RecordPostingView {
   changedByName: string | null;
   /** The currency of the account this phone's person paid it from or received it into, when one is kept here (R5). */
   accountCurrency: string | null;
+  /** That account, local to this phone (R5): the Add screen opens this person's own payment on it. */
+  accountId?: string | null;
+  /** What that account moved in its own currency, when that is not the record's (R5); null when it is. */
+  accountAmountMinor?: number | null;
 }
 
 export interface SharedExpenseView {
@@ -125,12 +129,20 @@ async function unsentIdsTx(db: Db, bookId: string): Promise<Set<string>> {
 }
 
 async function postingsTx(db: Db, bookId: string, names: Map<string, string>): Promise<Map<string, RecordPostingView>> {
-  const rows = await db.values<[string, string | null, string | null, string | null, string | null]>(sql`
-    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency FROM event_postings p LEFT JOIN accounts a ON a.id = p.account_id WHERE p.book_id = ${bookId}`);
+  const rows = await db.values<[string, string | null, string | null, string | null, string | null, string | null, number | null]>(sql`
+    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency, p.account_id, p.account_amount_minor
+    FROM event_postings p LEFT JOIN accounts a ON a.id = p.account_id WHERE p.book_id = ${bookId}`);
   return new Map(
-    rows.map(([id, transactionId, unposted, changedBy, accountCurrency]) => [
+    rows.map(([id, transactionId, unposted, changedBy, accountCurrency, accountId, accountAmountMinor]) => [
       id,
-      { transactionId, unposted: unposted as EventUnposted | null, changedByName: changedBy ? (names.get(changedBy) ?? null) : null, accountCurrency },
+      {
+        transactionId,
+        unposted: unposted as EventUnposted | null,
+        changedByName: changedBy ? (names.get(changedBy) ?? null) : null,
+        accountCurrency,
+        accountId,
+        accountAmountMinor: accountAmountMinor === null ? null : Number(accountAmountMinor),
+      },
     ]),
   );
 }
@@ -273,4 +285,31 @@ export async function eventBalanceRows(database: Database, ws: WorkspaceContext)
     if (balanceMinor !== 0 || payments.length > 0) out.push({ eventId, name: book.name, currency: book.currency, balanceMinor, payments });
   }
   return out;
+}
+
+/**
+ * The shared event's record a transaction follows, for its receipt (§7 "Changed by"); null for any other transaction.
+ * A derived transaction is changed on the event, never on its own, so the receipt sends Edit there and says who last
+ * changed the record when it was not this phone's person.
+ */
+export async function eventPostingOf(
+  database: Database,
+  transactionId: string,
+): Promise<{ eventId: string; kind: 'expense' | 'settlement'; recordId: string; changedByName: string | null } | null> {
+  const [row] = await database.db
+    .values<[string, string, string, string | null]>(sql`
+      SELECT b.event_id, p.kind, p.record_id, (SELECT name FROM event_people WHERE book_id = p.book_id AND id = p.changed_by)
+      FROM event_postings p JOIN event_books b ON b.book_id = p.book_id WHERE p.transaction_id = ${transactionId}`)
+    // A copy stopped before migration 0069 has no shared events, and so no transaction that follows one.
+    .catch(() => []);
+  return row ? { eventId: row[0], kind: row[1] as 'expense' | 'settlement', recordId: row[2], changedByName: row[3] } : null;
+}
+
+/**
+ * Every account that is a shared event's local copy of one of its categories (`event_category_accounts`): an expense
+ * account filed in no book, which no workspace category picker may offer (§5.1). Empty on a copy stopped before 0069.
+ */
+export async function shareCategoryAccountIds(database: Database): Promise<string[]> {
+  const rows = await database.db.values<[string]>(sql`SELECT account_id FROM event_category_accounts`).catch(() => []);
+  return rows.map(([id]) => id);
 }

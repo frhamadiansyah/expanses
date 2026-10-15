@@ -1,7 +1,9 @@
+import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createAccount,
   eventBalanceRows,
+  eventPostingOf,
   initialsOf,
   linkSharedItem,
   openEventBookTx,
@@ -13,6 +15,7 @@ import {
   sharedEventPlan,
   sharedEventSummaries,
   sharedEventView,
+  shareCategoryAccountIds,
   splitText,
   upsertRate,
   voidSharedExpense,
@@ -106,6 +109,30 @@ describe('sharedEventView', () => {
     const t = await coastWeek();
     const other = await saveEvent(t.database, t.ws, { name: 'Hill weekend', startsOn: '2026-11-01', endsOn: '2026-11-02' });
     expect(await sharedEventView(t.database, t.ws, other)).toBeNull();
+  });
+});
+
+describe('a receipt that follows a shared event (§7)', () => {
+  it('names the record a derived transaction follows and who last changed it; any other transaction follows none', async () => {
+    const t = await coastWeek();
+    const view = (await sharedEventView(t.database, t.ws, t.eventId))!;
+    const dinner = view.expenses.find((e) => e.note === 'Fish dinner')!;
+    // The payment opens on the euro wallet with nothing re-figured: the wallet is in the expense's own currency.
+    expect(dinner.posting).toMatchObject({ accountId: t.wallet.id, accountCurrency: 'EUR', accountAmountMinor: null });
+    const transactionId = dinner.posting!.transactionId!;
+    expect(await eventPostingOf(t.database, transactionId)).toEqual({ eventId: t.eventId, kind: 'expense', recordId: dinner.expenseId, changedByName: null });
+    await t.database.execScript(`UPDATE event_postings SET changed_by = 'p-andi' WHERE transaction_id = '${transactionId}'`);
+    expect((await eventPostingOf(t.database, transactionId))?.changedByName).toBe('Andi');
+    expect(await eventPostingOf(t.database, 'not-a-transaction')).toBeNull();
+  });
+
+  it('lists the local copies of the event’s categories, which no workspace picker offers', async () => {
+    const t = await coastWeek();
+    const ids = await shareCategoryAccountIds(t.database);
+    // Dinners, and "no category" for the market: one copy each, both made by the records above.
+    expect(ids).toHaveLength(2);
+    const [booked] = await t.database.db.values<[number]>(sql`SELECT count(*) FROM book_categories WHERE category_account_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    expect(Number(booked![0])).toBe(0);
   });
 });
 
