@@ -1,5 +1,6 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
+import { addTransaction } from './add-transaction';
 import { mockRates } from './pockets';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, sharedCard, showBalances, spendingRow } from './shared-events';
 
@@ -63,7 +64,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   // Rina pays a €90 fish dinner from her euro wallet, for all three; the keypad types the amount.
   await openTrip(rina);
   await corner(rina, 'Add spending');
-  await recordSharedSpend(rina, { note: 'Fish dinner', amount: '90', currency: 'EUR', paidBy: { person: /^Rina/, account: 'Euro wallet' } });
+  await recordSharedSpend(rina, { note: 'Fish dinner', amount: '90', currency: 'EUR', paidWith: 'Euro wallet' });
   await expect(rina.getByTestId('shared-event-header')).toContainText(/Spent .*2[.,]835.*Rina's share .*945/);
   await expect(spendingRow(rina, 'Fish dinner')).toContainText('Rina paid');
 
@@ -73,15 +74,16 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(spendingRow(andi, 'Fish dinner')).toContainText("Andi's share");
   await spendingRow(andi, 'Fish dinner').click();
   const locked = sharedCard(andi);
-  await expect(locked.getByRole('button', { name: 'Amount', exact: true })).toBeDisabled();
+  await expect(locked.getByLabel('Amount', { exact: true })).toBeDisabled();
+  await expect(locked.getByRole('button', { name: /^Paid by/ })).toBeDisabled();
   await expect(locked).toContainText('Only Rina changes the amount, currency, rate or date of what Rina paid');
   await openTrip(andi);
 
   // Andi, offline, records a ₺600 boat from his rupiah bank for himself and Rina: it waits as "Not sent yet".
   await andi.context().setOffline(true);
   await corner(andi, 'Add spending');
-  await recordSharedSpend(andi, { note: 'Boat', amount: '600', paidBy: { person: /^Andi/, account: 'Andi Bank' }, leaveOut: ['Budi'] });
-  await expect(spendingRow(andi, 'Boat')).toContainText('Not sent yet');
+  await recordSharedSpend(andi, { note: 'Boat', amount: '600', paidWith: 'Andi Bank', charged: { currency: 'IDR', amount: '336000' }, leaveOut: ['Budi'] });
+  await expect(spendingRow(andi, 'Boat')).toContainText('Not sent yet', { timeout: 20_000 });
 
   // Back online, it goes, and Rina has it.
   await andi.context().setOffline(false);
@@ -97,7 +99,9 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(rinaPayments.nth(1)).toContainText(/Andi pays Rina .*645/);
   await openTrip(andi);
   await showBalances(andi);
-  await expect(andi.getByTestId('shared-payment-row')).toHaveText(await rinaPayments.allTextContents());
+  // The same list; only the chevron differs, since Settle up is offered on a line this phone's person pays or receives.
+  const plain = (texts: string[]) => texts.map((t) => t.replace('›', '').trim());
+  expect(plain(await andi.getByTestId('shared-payment-row').allTextContents())).toEqual(plain(await rinaPayments.allTextContents()));
 
   // Andi settles up in rupiah from his bank.
   await andi.getByTestId('shared-payment-row').filter({ hasText: 'Andi pays Rina' }).click();
@@ -118,4 +122,29 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   // Debts shows the trip, and what Budi still owes.
   await rina.goto('/net-worth/lend-borrow');
   await expect(rina.getByTestId('trip-row').filter({ hasText: 'Coast week' })).toContainText(/Budi pays Rina .*945/);
+
+  // A purchase that already exists moves in with Select → Add to event: it leaves Cashflow and joins the trip's spending.
+  await rina.goto('/transactions');
+  await addTransaction(rina, { description: 'Taxi', paidWith: 'Rina Bank', category: 'Transport', amount: '120000' });
+  await rina.getByRole('button', { name: 'Filters' }).click();
+  await rina.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
+  await expect(bar).toBeVisible();
+  await rina.getByRole('checkbox', { name: 'Select Taxi' }).click();
+  await bar.getByRole('button', { name: 'Add to event…' }).click();
+  await rina.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Coast week' }).click();
+  await expect(bar).toHaveCount(0, { timeout: 30_000 });
+  await expect(rina.getByTestId('transaction-row').filter({ hasText: 'Taxi' })).toHaveCount(0);
+  await openTrip(rina);
+  await expect(spendingRow(rina, 'Taxi')).toContainText('Rina paid');
+
+  // The derived transaction stays in its account's history; its receipt opens the trip's expense to change it.
+  await rina.goto('/accounts');
+  await openTypes(rina);
+  await rina.getByRole('link', { name: 'Rina Bank', exact: true }).first().click();
+  await rina.getByTestId('account-recent').getByText('Taxi').click();
+  await expect(rina).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
+  await rina.getByRole('button', { name: 'Edit this transaction' }).click();
+  await expect(rina.getByTestId('shared-expense-card')).toBeVisible();
+  await expect(rina.getByLabel('Note', { exact: true })).toHaveValue('Taxi');
 });

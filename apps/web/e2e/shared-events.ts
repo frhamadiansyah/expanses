@@ -59,35 +59,41 @@ export interface SharedSpend {
   amount: string;
   /** The currency the amount is typed in, by code, when it is not the event's. */
   currency?: string;
-  /** Who paid, as the Paid by sheet names them, and the account they paid from when it is asked. */
-  paidBy: { person: string | RegExp; account?: string };
+  /** The account (or card) this phone's person paid with, by name. */
+  paidWith: string;
+  /** What the paying account was charged, in its own currency, typed on the keypad when it is not the amount's. */
+  charged?: { currency: string; amount: string };
   /** People left out of an equal split, by name. */
   leaveOut?: string[];
 }
 
 /**
- * Fills the open shared Add screen and saves it. The amount goes on the keypad (the owner's rule: no typed amount
- * field on the Add screen), then Paid by, then the split, then the ✓.
+ * Fills the open shared Add screen and saves it, in the card's own order: Paid with (Paid by is this phone's person by
+ * default), the amount on the keypad (the owner's rule: no typed amount field on the Add screen), its currency, Note,
+ * the Split, then the bar's ✓.
  */
 export async function recordSharedSpend(page: Page, spend: SharedSpend) {
   const card = sharedCard(page);
   await expect(card).toBeVisible({ timeout: 30_000 });
-  await openAmount(card);
-  await fillAmount(page, card, spend.amount);
+  await card.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, spend.paidWith, 'Paid with');
   if (spend.currency) {
     await card.getByRole('button', { name: 'Currency' }).click();
     await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${spend.currency}\\b`) }).first().click();
   }
-  await card.getByRole('button', { name: /^Paid by/ }).click();
-  const paidBy = page.getByRole('dialog', { name: 'Paid by' });
-  await paidBy.getByRole('button', { name: spend.paidBy.person }).first().click();
-  if (spend.paidBy.account) await choosePayment(page, spend.paidBy.account, /^(Paid with|Paid from|Paid by)$/);
-  await card.getByLabel('Note').fill(spend.note);
+  await openAmount(card);
+  await fillAmount(page, card, spend.amount);
+  if (spend.charged) {
+    await card.getByRole('button', { name: `Charged in ${spend.charged.currency}` }).click();
+    await fillAmount(page, card, spend.charged.amount);
+  }
+  await card.getByLabel('Note', { exact: true }).fill(spend.note);
   if (spend.leaveOut?.length) {
-    await card.getByTestId('split-row').click();
+    await card.getByRole('button', { name: /^Split/ }).click();
     const split = page.getByRole('dialog', { name: 'Split' });
-    for (const name of spend.leaveOut) await split.getByRole('button', { name: new RegExp(name) }).click();
+    for (const name of spend.leaveOut) await split.getByRole('button', { name: `${name} shares it` }).click();
     await page.keyboard.press('Escape');
   }
   await saveButton(card).click();
+  await expect(card).toHaveCount(0, { timeout: 30_000 });
 }
