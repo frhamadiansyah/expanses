@@ -291,9 +291,10 @@ export function TransactionsPage() {
    * never waits.
    */
   const filingKnown = !ownerWide || badges.ready;
+  // A phone's row has no room for points (they crowded out the note); its receipt and the card's page show them.
   const purchasePoints = useQuery({
     queryKey: ['purchase-points', ws.workspaceId, recorded.map((tx) => tx.id).join(',')],
-    enabled: list.isSuccess && accounts.length > 0,
+    enabled: !phone && list.isSuccess && accounts.length > 0,
     queryFn: () => loadPurchasePoints(database, ws, recorded, accounts),
   });
 
@@ -908,8 +909,9 @@ export function TransactionsPage() {
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
         under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
-        // One line under the amount, never two: the foreign amount, then the points ("JP¥1.850 · +38 pts").
-        amountExtra={<AmountExtra parts={amountExtraParts(tx, points)} />}
+        // One line under the amount, never two: the foreign amount, then — on a wide screen only — the points
+        // ("JP¥1.850 · +38 pts").
+        amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points)} />}
         trailing={
           selecting ? undefined : <>
             {trade ? (

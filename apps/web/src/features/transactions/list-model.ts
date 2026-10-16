@@ -320,7 +320,7 @@ export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; mut
 
 /**
  * How a row names what paid, on its second line. A card whose last four digits are known is those digits alone —
- * "···· 4417" says which card more surely than a long account name, and leaves the line room for the note. Money moving
+ * "4417", bold, says which card more surely than a long account name, and leaves the line room for the note. Money moving
  * between two accounts ("BCA Tahapan → CIMB Octo") keeps both names, with the digits after them as before.
  */
 export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4'>): { name: string; last4: string | null } {
