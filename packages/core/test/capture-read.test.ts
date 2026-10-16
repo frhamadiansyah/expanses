@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { namesCard, type RawCapture, readCapture, WORDS } from '../src/index';
+import { accountHintOf, namesCard, type RawCapture, readCapture, WORDS } from '../src/index';
 
 const notification = (body: string, title: string | null = null): RawCapture => ({
   id: 'c1',
@@ -42,6 +42,24 @@ describe('readCapture', () => {
     expect(reading.accountHint).toBe('8421');
     expect(reading.occurredAt?.value).toBe('2026-09-03');
   });
+
+  it('reads the card from its plain last four digits after the card words, with the bank between', () => {
+    const reading = readCapture(
+      notification('Nsb Yth. Transaksi Kartu Kredit Contoh 4821 di TOKO CONTOH +62 2100000000 ID sebesar IDR 250.000,00 pada 03/09/26 10:15:00 telah berhasil. Info: 1500000/+620000000000(LN)'),
+      WORDS,
+      null,
+    );
+    expect(reading.amount?.value).toEqual({ minor: 250_000, currency: 'IDR' });
+    expect(reading.name?.value).toBe('TOKO CONTOH');
+    expect(reading.occurredAt?.value).toBe('2026-09-03T10:15');
+    expect(reading.accountHint).toBe('4821');
+  });
+
+  it.each([
+    ['an amount after the card words', 'Tagihan kartu kredit IDR 7342 jatuh tempo'],
+    ['a longer number', 'Kartu Kredit Contoh 48210 aktif'],
+    ['digits too far from the card words', 'Kartu kredit Anda untuk belanja online 4821'],
+  ])('reads no card from %s', (_, text) => expect(accountHintOf(text)).toBeNull());
 
   it('names nothing after the amount when what follows is the sentence, not a name', () => {
     expect(readCapture(notification('Pembayaran Rp38.000 berhasil'), WORDS, null).name).toBeNull();

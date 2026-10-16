@@ -132,6 +132,28 @@ export function accountHintOf(text: string, words: WordList = WORDS): string | n
       return match[1]!;
     }
   }
+  return plainCardDigitsOf(text, words);
+}
+
+const escaped = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * A card's last four digits printed plainly after the card words, with up to two words between — the issuer's name:
+ * "Kartu Kredit Contoh 4821". Only when no mask named an account, and never digits that belong to an amount ("kartu
+ * kredit IDR 7342") or to a longer number.
+ */
+function plainCardDigitsOf(text: string, words: WordList): string | null {
+  if (words.cardWords.length === 0) return null;
+  const card = [...words.cardWords].sort((a, b) => b.length - a.length).map(escaped).join('|');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:${card})\\s+(?:[\\p{L}][\\p{L}'&.-]*\\s+){0,2}(\\d{4})(?![\\d.,]\\d)(?!\\d)`, 'giu');
+  for (const line of text.split('\n')) {
+    const amounts = findAmounts(line, words);
+    for (const match of line.matchAll(pattern)) {
+      const at = match.index + match[0].length - 4;
+      if (amounts.some((amount) => at >= amount.start && at < amount.end)) continue;
+      return match[1]!;
+    }
+  }
   return null;
 }
 
