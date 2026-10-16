@@ -17,7 +17,7 @@ function draftRow(extra: Partial<ListRow>): ListRow {
 
 describe('DraftSubtitle', () => {
   it('names the card by its digits alone, as a recorded row does', () => {
-    expect(text(renderToStaticMarkup(createElement(DraftSubtitle, { row: draftRow({}) })))).toBe('Kedai Mawar · ···· 1467');
+    expect(text(renderToStaticMarkup(createElement(DraftSubtitle, { row: draftRow({}) })))).toBe('Kedai Mawar · 1467');
   });
 
   it('keeps the account name without digits, and says what it still needs', () => {

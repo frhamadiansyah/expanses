@@ -11,10 +11,10 @@ async function fitsThePhone(page: Page) {
 
 /**
  * Option A of the row (two lines, never three): a foreign purchase on a card reads the amount here on the right's first
- * line and the foreign amount under it, on one line with any points; the left names the card by its last four digits
- * alone, not by its long account name.
+ * line and the foreign amount under it; the left names the card by its last four digits alone, not by its long account
+ * name.
  */
-test('a foreign card purchase is two lines on each side, the card named "···· 4417"', async ({ page }) => {
+test('a foreign card purchase is two lines on each side, the card named "4417"', async ({ page }) => {
   // No rate server: the charged figure is typed, so nothing waits on one.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
@@ -41,7 +41,7 @@ test('a foreign card purchase is two lines on each side, the card named "···�
 
   const noodles = row(page, 'Lantern Noodle Bar');
   // The left: the note, then the card by its digits, and not the account's name.
-  await expect(noodles).toContainText('Lantern Noodle Bar · ···· 4417');
+  await expect(noodles).toContainText('Lantern Noodle Bar · 4417');
   await expect(noodles).not.toContainText('Nusa Voyager Travel');
   // The right: the amount here, and one line under it with the foreign amount.
   await expect(noodles).toContainText('1.390.000');
@@ -54,10 +54,10 @@ test('a foreign card purchase is two lines on each side, the card named "···�
 });
 
 /**
- * The longest line under an amount there is — a foreign amount and points in a long unit — still leaves the left side
- * room to read: the category and the note keep a usable width, and nothing on the page scrolls sideways.
+ * A phone's row leaves points out: a foreign amount and points in a long unit crowded the note. The line under the
+ * amount is the foreign amount alone, the left side keeps its room, and the points are on the receipt.
  */
-test('a foreign purchase that earns cashback keeps the left side readable at a phone’s width', async ({ page }) => {
+test('a foreign purchase that earns cashback shows the foreign amount alone under it at a phone’s width', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
   await page.goto('/cards');
@@ -96,21 +96,25 @@ test('a foreign purchase that earns cashback keeps the left side readable at a p
 
   const dinner = row(page, 'Harbour Lantern Brasserie');
   const extra = dinner.getByTestId('amount-extra');
-  // Both parts, on the one line under the amount.
-  await expect(extra).toContainText('€1.234,56');
-  await expect(extra).toContainText('12.345 cashback');
+  // The foreign amount alone: the points are not on a phone's row.
+  await expect(extra).toHaveText('€1.234,56');
+  await expect(dinner).not.toContainText('cashback');
   expect((await extra.boundingBox())!.height).toBeLessThan(20);
   // The left side keeps room to be read: the category and the note are not squeezed to a sliver.
   const face = dinner.getByRole('button', { name: /^Restaurants/ });
   expect((await face.boundingBox())!.width).toBeGreaterThanOrEqual(120);
   await fitsThePhone(page);
+
+  // The points are a tap away, on the receipt.
+  await dinner.getByRole('button', { name: /^Restaurants/ }).click();
+  await expect(page.getByText('12.345 cashback')).toBeVisible();
 });
 
 /**
  * A digital wallet tied to a phone number says so by the number's last four digits, recorded on the form that opens it
  * and changed on its settings; its rows show them as a card's are shown, and it never becomes a card.
  */
-test('a wallet with phone digits shows "···· 5521" on its rows, and is never offered as a card', async ({ page }) => {
+test('a wallet with phone digits shows "5521" on its rows, and is never offered as a card', async ({ page }) => {
   await openAccount(page, {
     subtype: 'ewallet',
     name: 'Kantong Biru',
@@ -129,7 +133,7 @@ test('a wallet with phone digits shows "···· 5521" on its rows, and is never
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Mie Ayam Pak Darmo', paidWith: 'Kantong Biru', category: 'Restaurants', amount: '35000' });
   const lunch = row(page, 'Mie Ayam Pak Darmo');
-  await expect(lunch).toContainText('Mie Ayam Pak Darmo · ···· 5521');
+  await expect(lunch).toContainText('Mie Ayam Pak Darmo · 5521');
   await expect(lunch).not.toContainText('Kantong Biru');
   await fitsThePhone(page);
 
@@ -155,5 +159,5 @@ test('a wallet with phone digits shows "···· 5521" on its rows, and is never
   await digits.blur();
   // Away inside the app, as a person would: a reload straight after the blur could cut the save short.
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Transactions' }).click();
-  await expect(row(page, 'Mie Ayam Pak Darmo')).toContainText('Mie Ayam Pak Darmo · ···· 7310');
+  await expect(row(page, 'Mie Ayam Pak Darmo')).toContainText('Mie Ayam Pak Darmo · 7310');
 });

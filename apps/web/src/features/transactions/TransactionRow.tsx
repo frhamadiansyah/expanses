@@ -59,7 +59,7 @@ export function TransactionRow({
   testId?: string;
   /** The first line. The category by default — the list writes its own, with a date and a workspace badge. */
   label?: ReactNode;
-  /** The second line. "description · account ···· 1234" by default. */
+  /** The second line. "description · 1234" by default: the card by its last four digits. */
   subtitle?: ReactNode;
   /** Anything below the two lines, inside the row's tap target: the event's item pills, say. */
   under?: ReactNode;
@@ -273,7 +273,7 @@ export function TransactionRow({
 }
 
 /**
- * What paid, as a row's second line names it: "···· 4417" alone for a card whose digits are known, the account's name
+ * What paid, as a row's second line names it: "4417" alone for a card whose digits are known, the account's name
  * otherwise, and both names of a transfer with the digits after them (`paidWithLook`).
  */
 export function PaidWith({ row }: { row: ListRow }) {
@@ -281,7 +281,7 @@ export function PaidWith({ row }: { row: ListRow }) {
   return (
     <>
       {name}
-      {last4 && <span className="tabular font-semibold text-slate-600">{name ? ' ' : ''}···· {last4}</span>}
+      {last4 && <span className="tabular font-semibold text-slate-600">{name ? ' ' : ''}{last4}</span>}
     </>
   );
 }
