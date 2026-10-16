@@ -1,6 +1,9 @@
 import { type CaptureScope, getCaptureScope, setCaptureScope } from '@expanses/db';
-import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { type DrainReport, drainNow, lastDrain } from '../../capture/drain';
+import { native } from '../../capture/native';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useAccounts } from '../../lib/queries';
 import { Button, ErrorBox } from '../../ui';
@@ -16,6 +19,58 @@ import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './g
  * everything, or only money going out. Below, every source the phone has recognised, with the account it files
  * into and whether it has learned a layout yet.
  */
+/** A drain's report in a line: what the phone handed over and what came of it, or why it failed. */
+export function reportLine(report: DrainReport | null): string {
+  if (!report) return 'Not checked since the app opened.';
+  const time = new Date(report.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (report.error) return `${time} · failed${report.found === null ? '' : ` with ${report.found} handed over`}: ${report.error}`;
+  const result = report.result;
+  if (!result || report.found === 0) return `${time} · nothing waiting`;
+  return `${time} · ${report.found} handed over → ${result.drafts} new, ${result.merged} merged, ${result.skipped} skipped`;
+}
+
+/**
+ * What waits on the phone for the app, and what the last drain made of it. A shortcut says "Saved to review" the
+ * moment it writes; this is where the other half — the app taking it in — can be seen, and asked for again.
+ */
+function HoldingArea() {
+  const { database, ws } = useApp();
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<{ pending: number; broken: number } | null>(null);
+  const [report, setReport] = useState<DrainReport | null>(lastDrain);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setStatus(await native.holdingAreaStatus().catch(() => null));
+    setReport(lastDrain());
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function check() {
+    setBusy(true);
+    try {
+      await drainNow(database, ws);
+      void queryClient.invalidateQueries();
+    } catch {
+      // The report below carries the error.
+    } finally {
+      await refresh();
+      setBusy(false);
+    }
+  }
+
+  return (
+    <InsetGroup header="Waiting on the phone" footer={`Last check: ${reportLine(report)}`}>
+      <InsetRow title="Waiting" value={status ? String(status.pending) : '–'} chevron={false} />
+      <InsetRow title="Could not be opened" value={status ? String(status.broken) : '–'} chevron={false} />
+      <InsetRow title={busy ? 'Checking…' : 'Check now'} chevron={false} onClick={busy ? undefined : () => void check()} />
+    </InsetGroup>
+  );
+}
+
 export function CaptureSettingsPage() {
   const { database } = useApp();
   const accounts = useAccounts().data ?? [];
@@ -119,6 +174,8 @@ export function CaptureSettingsPage() {
           />
         </div>
       </InsetGroup>
+
+      <HoldingArea />
 
       <InsetGroup
         header="Capture sources"

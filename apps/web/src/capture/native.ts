@@ -75,9 +75,43 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
   }
 }
 
-export const native = registerPlugin<CapturePluginApi>('Capture', {
+const plugin = registerPlugin<CapturePluginApi>('Capture', {
   web: () => Promise.resolve(new CaptureWeb()),
 });
+
+/**
+ * A capture made whole again. Capacitor's encoder drops an empty array and a nil on the way over, so a notification
+ * (no lines, no picture) arrives with neither key — and the reader, which walks `lines`, fails on it. Every capture
+ * from the phone passes through here before anything reads it.
+ */
+export function wholeCapture(capture: RawCapture): RawCapture {
+  return {
+    ...capture,
+    app: capture.app ?? null,
+    title: capture.title ?? null,
+    body: capture.body ?? null,
+    lines: capture.lines ?? [],
+    imageFile: capture.imageFile ?? null,
+  };
+}
+
+/**
+ * The plugin, with every answer that carries an array made whole: the encoder sends an empty one as nothing at all
+ * (see `wholeCapture`), so a screenshot with no text on it would otherwise arrive with no `lines`.
+ */
+export const native: CapturePluginApi = {
+  drainCaptures: () => plugin.drainCaptures().then(({ captures }) => ({ captures: (captures ?? []).map(wholeCapture) })),
+  ackCaptures: (opts) => plugin.ackCaptures(opts),
+  scanReceipt: () => plugin.scanReceipt().then(({ capture }) => ({ capture: capture ? wholeCapture(capture) : null })),
+  readCaptureImage: (opts) => plugin.readCaptureImage(opts),
+  deleteCaptureImage: (opts) => plugin.deleteCaptureImage(opts),
+  recognizeImage: (opts) => plugin.recognizeImage(opts).then(({ lines }) => ({ lines: lines ?? [] })),
+  takeStatementBatch: (opts) =>
+    plugin
+      .takeStatementBatch(opts)
+      .then(({ images }) => ({ images: (images ?? []).map((image) => ({ lines: image?.lines ?? [] })) })),
+  holdingAreaStatus: () => plugin.holdingAreaStatus(),
+};
 
 /** The bytes behind a bridge answer, for a Blob or an OPFS write. */
 export function captureBytes(base64: string): Uint8Array<ArrayBuffer> {

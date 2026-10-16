@@ -19,7 +19,7 @@ import {
   type WorkspaceContext,
 } from '@expanses/db';
 import { App as Shell } from '@capacitor/app';
-import { native } from './native';
+import { native, wholeCapture } from './native';
 
 /** What the drain needs from the capture bridge: the phone, or a stand-in in a test. */
 export interface CaptureBridge {
@@ -70,17 +70,47 @@ export async function drainCaptures(
   bridge: CaptureBridge = native,
   on = today(),
 ): Promise<IngestResult> {
-  const { captures } = await bridge.drainCaptures();
-  if (captures.length === 0) {
-    await tidyImages(database, bridge, [], on);
-    return nothing();
+  let found: number | null = null;
+  try {
+    // Made whole here as well as in `native`: a stand-in bridge hands captures over the way the phone does.
+    const captures = (await bridge.drainCaptures()).captures.map(wholeCapture);
+    found = captures.length;
+    if (captures.length === 0) {
+      await tidyImages(database, bridge, [], on);
+      lastReport = { at: new Date().toISOString(), found, result: nothing(), error: null };
+      return nothing();
+    }
+    const result = await ingestCaptures(database, ws, captures, { today: on });
+    // Stored: what is left is housekeeping. An ack that fails is retried by the next drain (the queue takes each
+    // capture once), so it must not hide this drain's drafts from the screen.
+    await bridge.ackCaptures({ ids: captures.map((capture) => capture.id) }).catch(() => undefined);
+    await tidyImages(database, bridge, result.discardedImages, on);
+    lastReport = { at: new Date().toISOString(), found, result, error: null };
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    lastReport = { at: new Date().toISOString(), found, result: null, error: message };
+    throw error;
   }
-  const result = await ingestCaptures(database, ws, captures, { today: on });
-  // Stored: what is left is housekeeping. An ack that fails is retried by the next drain (the queue takes each
-  // capture once), so it must not hide this drain's drafts from the screen.
-  await bridge.ackCaptures({ ids: captures.map((capture) => capture.id) }).catch(() => undefined);
-  await tidyImages(database, bridge, result.discardedImages, on);
-  return result;
+}
+
+/**
+ * What the last drain did, kept for Settings → Capture. A drain runs on its own and tells nobody when it fails, so
+ * this is the one place a capture that waits but never becomes a draft can be seen.
+ */
+export interface DrainReport {
+  at: string;
+  /** How many captures the phone handed over; null when the hand-over itself failed. */
+  found: number | null;
+  result: IngestResult | null;
+  error: string | null;
+}
+
+let lastReport: DrainReport | null = null;
+
+/** The last drain's report since the app started, or null before the first one. */
+export function lastDrain(): DrainReport | null {
+  return lastReport;
 }
 
 /**
@@ -94,8 +124,9 @@ export async function scanReceipt(
   bridge: CaptureBridge = native,
   on = today(),
 ): Promise<IngestResult> {
-  const { capture } = await bridge.scanReceipt();
-  if (!capture) return nothing();
+  const { capture: handed } = await bridge.scanReceipt();
+  if (!handed) return nothing();
+  const capture = wholeCapture(handed);
   const result = await ingestCaptures(database, ws, [capture], { today: on });
   await tidyImages(database, bridge, result.discardedImages, on);
   return result;
@@ -107,6 +138,27 @@ export async function scanReceipt(
  * other's acknowledgements and picture clean-up.
  */
 let running: Promise<void> | null = null;
+
+/** Runs one drain once no other is running, and hands back its own outcome. */
+async function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  while (running) await running;
+  const once = work();
+  // Cleared by the chain itself, before anyone waiting on it wakes: so the first waiter finds the way free.
+  running = once
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      running = null;
+    });
+  return once;
+}
+
+/** Drains now, at the owner's asking (Settings → Capture): the outcome, or the error a quiet drain would swallow. */
+export function drainNow(database: Database, ws: WorkspaceContext, bridge: CaptureBridge = native): Promise<IngestResult> {
+  return exclusive(() => drainCaptures(database, ws, bridge));
+}
 
 /**
  * Drains now, and on every return to the foreground. `onCaptured` is told when something came of it, so the app
@@ -130,11 +182,7 @@ export function watchCaptures(
     }
   };
   const run = async () => {
-    while (running) await running;
-    running = drainOnce().finally(() => {
-      running = null;
-    });
-    await running;
+    await exclusive(drainOnce);
   };
   void run();
   const listener = Shell.addListener('appStateChange', ({ isActive }) => {

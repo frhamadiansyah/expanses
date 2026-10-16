@@ -2,7 +2,8 @@ import type { RawCapture } from '@expanses/core';
 import { createDatabase, createWorkspace, listDrafts, migrate } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
-import { drainCaptures, scanReceipt, type CaptureBridge } from './drain';
+import { drainCaptures, drainNow, lastDrain, scanReceipt, type CaptureBridge } from './drain';
+import { reportLine } from '../features/capture/CaptureSettingsPage';
 
 async function setup() {
   const executor = createNodeExecutor();
@@ -155,6 +156,104 @@ describe('emptying the phone into the queue', () => {
     } finally {
       close();
     }
+  });
+});
+
+/**
+ * A capture as the phone's bridge really hands it over: Capacitor's encoder drops an empty array and a nil, so a
+ * text capture arrives with no `lines` and no `imageFile` key at all.
+ */
+const asBridged = (capture: RawCapture): RawCapture => {
+  const { lines, imageFile, ...rest } = capture;
+  return { ...rest, ...(lines.length > 0 ? { lines } : {}), ...(imageFile !== null ? { imageFile } : {}) } as RawCapture;
+};
+
+describe('captures as the bridge hands them over', () => {
+  it('reads a notification whose empty lines the bridge dropped', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([asBridged(notification)]);
+      const result = await drainCaptures(database, ws, phone, '2026-09-30');
+
+      expect(counts(result)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      expect(phone.acked).toEqual([[notification.id]]);
+    } finally {
+      close();
+    }
+  });
+
+  it('reads a photographed receipt with no text on it', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const blank: RawCapture = { ...notification, id: 'blank', kind: 'photo', app: null, title: null, body: null };
+      await expect(scanReceipt(database, ws, bridge([], asBridged(blank)), '2026-09-30')).resolves.toBeDefined();
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('the last drain, as Settings → Capture shows it', () => {
+  it('reports what was handed over and what came of it', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      await drainNow(database, ws, bridge([notification]));
+
+      expect(lastDrain()).toMatchObject({ found: 1, error: null, result: { drafts: 1, merged: 0, skipped: 0 } });
+      expect(reportLine(lastDrain())).toMatch(/1 handed over → 1 new, 0 merged, 0 skipped$/);
+    } finally {
+      close();
+    }
+  });
+
+  it('keeps the error a quiet drain would swallow, with how many were handed over', async () => {
+    const executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    try {
+      const ws = { workspaceId: 'nowhere' } as unknown as Parameters<typeof drainCaptures>[1];
+
+      await expect(drainNow(database, ws, bridge([notification]))).rejects.toThrow();
+      expect(lastDrain()).toMatchObject({ found: 1, result: null });
+      expect(lastDrain()?.error).toBeTruthy();
+      expect(reportLine(lastDrain())).toMatch(/failed with 1 handed over: /);
+    } finally {
+      executor.close();
+    }
+  });
+
+  it('says when the phone could not hand anything over at all', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([]);
+      phone.drainCaptures = async () => {
+        throw new Error('The holding area could not be read');
+      };
+
+      await expect(drainNow(database, ws, phone)).rejects.toThrow();
+      expect(reportLine(lastDrain())).toMatch(/failed: The holding area could not be read$/);
+    } finally {
+      close();
+    }
+  });
+
+  it('runs one drain at a time, each with its own outcome', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const [first, second] = await Promise.all([
+        drainNow(database, ws, bridge([notification])),
+        drainNow(database, ws, bridge([notification])),
+      ]);
+
+      // The second hand-over of the same capture is taken once: it finds the first drain's write.
+      expect(counts(first)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      expect(counts(second)).toEqual({ drafts: 0, merged: 0, skipped: 0 });
+    } finally {
+      close();
+    }
+  });
+
+  it('reads as not checked before any drain', () => {
+    expect(reportLine(null)).toBe('Not checked since the app opened.');
   });
 });
 
