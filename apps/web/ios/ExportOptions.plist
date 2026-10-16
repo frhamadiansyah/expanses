@@ -33,5 +33,12 @@
 	-->
 	<key>stripSwiftSymbols</key>
 	<true/>
+	<!--
+	  The build number stays the one archived. Left on, Xcode quietly moves a number already taken on App Store
+	  Connect to the next free one, and on 2026-10-16 three builds went up under numbers nobody chose (an archived
+	  22 became TestFlight 24). A taken number should fail the upload instead, where it can be seen.
+	-->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
 </dict>
 </plist>
