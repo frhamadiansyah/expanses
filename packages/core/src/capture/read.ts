@@ -509,8 +509,24 @@ function nameOf(units: readonly Unit[], words: WordList, capture: RawCapture, te
       }
     }
   }
+
+  /*
+   * Last, the words right after the amount, past a date: a card issuer's SMS sets the shop there with no word to
+   * introduce it ("IDR 254300 03/09/26 Toko Contoh ID"). Surer than nothing and less sure than a lead-in, because it
+   * is a place in the sentence rather than a word saying so; a sentence that carries on in lower case names nothing.
+   */
+  for (let index = 0; index < units.length; index += 1) {
+    const text = units[index]!.text;
+    const money = findAmounts(text, words)[0];
+    if (!money) continue;
+    const here = nameFrom(units, index, text.slice(money.end).replace(LEADING_DATE, ''), words.notName);
+    if (here) return { value: here.value, confidence: 60, line: here.line };
+  }
   return null;
 }
+
+/** A date, and its time, opening a run of text: what sits between an SMS's amount and the shop it names. */
+const LEADING_DATE = /^\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}(?:[,\s]+\d{1,2}:\d{2}(?::\d{2})?)?/;
 
 /** The date: what the capture printed, and nothing when it printed none — the caller knows when it arrived. */
 function dateOf(units: readonly Unit[], capture: RawCapture, template: Template): Field<string> | null {

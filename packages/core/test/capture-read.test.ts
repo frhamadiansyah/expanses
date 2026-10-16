@@ -29,6 +29,24 @@ const image = (texts: string[], tall: number[] = []): RawCapture => ({
 });
 
 describe('readCapture', () => {
+  it('reads a card SMS that names the shop right after the amount and the date, with no word before it', () => {
+    const reading = readCapture(
+      notification('Terimakasih telah bertransaksi KKXXXX8421 IDR 254300 03/09/26 Toko Contoh ID 2.Ubah cicilan klik https://example.test/cicilan hub 1500000'),
+      WORDS,
+      null,
+    );
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 254_300, currency: 'IDR' });
+    expect(reading.type.value).toBe('spent');
+    expect(reading.name?.value).toBe('Toko Contoh ID');
+    expect(reading.accountHint).toBe('8421');
+    expect(reading.occurredAt?.value).toBe('2026-09-03');
+  });
+
+  it('names nothing after the amount when what follows is the sentence, not a name', () => {
+    expect(readCapture(notification('Pembayaran Rp38.000 berhasil'), WORDS, null).name).toBeNull();
+  });
+
   it('never reads the balance as the amount', () => {
     const reading = readCapture(notification('Pembayaran Rp38.000 ke KOPI KENANGAN berhasil. Saldo Rp1.212.000'), WORDS, null);
     expect(reading.skipped).toBeNull();
