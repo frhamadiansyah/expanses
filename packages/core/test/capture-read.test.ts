@@ -55,6 +55,19 @@ describe('readCapture', () => {
     expect(reading.accountHint).toBe('4821');
   });
 
+  it('reads a card SMS with a US-style amount and a two-digit year closing the sentence', () => {
+    const reading = readCapture(
+      notification('Terima kasih telah bertransaksi dg KK Contoh xx5512 sebesar IDR45,500.00 di Toko Contoh 02100000000 tgl 07/03/26.Jika bukan trx Anda hub 1500000'),
+      WORDS,
+      null,
+    );
+    expect(reading.amount?.value).toEqual({ minor: 45_500, currency: 'IDR' });
+    expect(reading.name?.value).toBe('Toko Contoh');
+    expect(reading.occurredAt?.value).toBe('2026-03-07');
+    expect(reading.accountHint).toBe('5512');
+    expect(reading.type.value).toBe('spent');
+  });
+
   it.each([
     ['an amount after the card words', 'Tagihan kartu kredit IDR 7342 jatuh tempo'],
     ['a longer number', 'Kartu Kredit Contoh 48210 aktif'],
