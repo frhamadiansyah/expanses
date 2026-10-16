@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { namesCard, type RawCapture, readCapture, WORDS } from '../src/index';
+import { accountHintOf, namesCard, type RawCapture, readCapture, WORDS } from '../src/index';
 
 const notification = (body: string, title: string | null = null): RawCapture => ({
   id: 'c1',
@@ -29,6 +29,55 @@ const image = (texts: string[], tall: number[] = []): RawCapture => ({
 });
 
 describe('readCapture', () => {
+  it('reads a card SMS that names the shop right after the amount and the date, with no word before it', () => {
+    const reading = readCapture(
+      notification('Terimakasih telah bertransaksi KKXXXX8421 IDR 254300 03/09/26 Toko Contoh ID 2.Ubah cicilan klik https://example.test/cicilan hub 1500000'),
+      WORDS,
+      null,
+    );
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 254_300, currency: 'IDR' });
+    expect(reading.type.value).toBe('spent');
+    expect(reading.name?.value).toBe('Toko Contoh ID');
+    expect(reading.accountHint).toBe('8421');
+    expect(reading.occurredAt?.value).toBe('2026-09-03');
+  });
+
+  it('reads the card from its plain last four digits after the card words, with the bank between', () => {
+    const reading = readCapture(
+      notification('Nsb Yth. Transaksi Kartu Kredit Contoh 4821 di TOKO CONTOH +62 2100000000 ID sebesar IDR 250.000,00 pada 03/09/26 10:15:00 telah berhasil. Info: 1500000/+620000000000(LN)'),
+      WORDS,
+      null,
+    );
+    expect(reading.amount?.value).toEqual({ minor: 250_000, currency: 'IDR' });
+    expect(reading.name?.value).toBe('TOKO CONTOH');
+    expect(reading.occurredAt?.value).toBe('2026-09-03T10:15');
+    expect(reading.accountHint).toBe('4821');
+  });
+
+  it('reads a card SMS with a US-style amount and a two-digit year closing the sentence', () => {
+    const reading = readCapture(
+      notification('Terima kasih telah bertransaksi dg KK Contoh xx5512 sebesar IDR45,500.00 di Toko Contoh 02100000000 tgl 07/03/26.Jika bukan trx Anda hub 1500000'),
+      WORDS,
+      null,
+    );
+    expect(reading.amount?.value).toEqual({ minor: 45_500, currency: 'IDR' });
+    expect(reading.name?.value).toBe('Toko Contoh');
+    expect(reading.occurredAt?.value).toBe('2026-03-07');
+    expect(reading.accountHint).toBe('5512');
+    expect(reading.type.value).toBe('spent');
+  });
+
+  it.each([
+    ['an amount after the card words', 'Tagihan kartu kredit IDR 7342 jatuh tempo'],
+    ['a longer number', 'Kartu Kredit Contoh 48210 aktif'],
+    ['digits too far from the card words', 'Kartu kredit Anda untuk belanja online 4821'],
+  ])('reads no card from %s', (_, text) => expect(accountHintOf(text)).toBeNull());
+
+  it('names nothing after the amount when what follows is the sentence, not a name', () => {
+    expect(readCapture(notification('Pembayaran Rp38.000 berhasil'), WORDS, null).name).toBeNull();
+  });
+
   it('never reads the balance as the amount', () => {
     const reading = readCapture(notification('Pembayaran Rp38.000 ke KOPI KENANGAN berhasil. Saldo Rp1.212.000'), WORDS, null);
     expect(reading.skipped).toBeNull();

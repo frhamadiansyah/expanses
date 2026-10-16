@@ -99,6 +99,15 @@ const PATTERNS: readonly { source: RegExp; read: (m: RegExpExecArray) => { year:
     source: /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?)?/g,
     read: (m) => ({ year: Number(m[3]), month: Number(m[2]), day: Number(m[1]), time: timeOf(m[4], m[5], undefined) }),
   },
+  {
+    /*
+     * 03/09/26 — day first with a two-digit year, the way a card issuer's SMS writes it, read as this century. A
+     * slash or a hyphen only: a dot is a thousands mark first, and "1.10.26" is likelier money than a day. Digits on
+     * either side make it part of a longer number, and a four-digit year is the pattern above's.
+     */
+    source: /(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{2})(?!\d)(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?)?/g,
+    read: (m) => ({ year: 2000 + Number(m[3]), month: Number(m[2]), day: Number(m[1]), time: timeOf(m[4], m[5], undefined) }),
+  },
 ];
 
 /**

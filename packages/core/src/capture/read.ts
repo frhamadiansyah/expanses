@@ -132,6 +132,28 @@ export function accountHintOf(text: string, words: WordList = WORDS): string | n
       return match[1]!;
     }
   }
+  return plainCardDigitsOf(text, words);
+}
+
+const escaped = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * A card's last four digits printed plainly after the card words, with up to two words between — the issuer's name:
+ * "Kartu Kredit Contoh 4821". Only when no mask named an account, and never digits that belong to an amount ("kartu
+ * kredit IDR 7342") or to a longer number.
+ */
+function plainCardDigitsOf(text: string, words: WordList): string | null {
+  if (words.cardWords.length === 0) return null;
+  const card = [...words.cardWords].sort((a, b) => b.length - a.length).map(escaped).join('|');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:${card})\\s+(?:[\\p{L}][\\p{L}'&.-]*\\s+){0,2}(\\d{4})(?![\\d.,]\\d)(?!\\d)`, 'giu');
+  for (const line of text.split('\n')) {
+    const amounts = findAmounts(line, words);
+    for (const match of line.matchAll(pattern)) {
+      const at = match.index + match[0].length - 4;
+      if (amounts.some((amount) => at >= amount.start && at < amount.end)) continue;
+      return match[1]!;
+    }
+  }
   return null;
 }
 
@@ -509,8 +531,24 @@ function nameOf(units: readonly Unit[], words: WordList, capture: RawCapture, te
       }
     }
   }
+
+  /*
+   * Last, the words right after the amount, past a date: a card issuer's SMS sets the shop there with no word to
+   * introduce it ("IDR 254300 03/09/26 Toko Contoh ID"). Surer than nothing and less sure than a lead-in, because it
+   * is a place in the sentence rather than a word saying so; a sentence that carries on in lower case names nothing.
+   */
+  for (let index = 0; index < units.length; index += 1) {
+    const text = units[index]!.text;
+    const money = findAmounts(text, words)[0];
+    if (!money) continue;
+    const here = nameFrom(units, index, text.slice(money.end).replace(LEADING_DATE, ''), words.notName);
+    if (here) return { value: here.value, confidence: 60, line: here.line };
+  }
   return null;
 }
+
+/** A date, and its time, opening a run of text: what sits between an SMS's amount and the shop it names. */
+const LEADING_DATE = /^\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}(?:[,\s]+\d{1,2}:\d{2}(?::\d{2})?)?/;
 
 /** The date: what the capture printed, and nothing when it printed none — the caller knows when it arrived. */
 function dateOf(units: readonly Unit[], capture: RawCapture, template: Template): Field<string> | null {

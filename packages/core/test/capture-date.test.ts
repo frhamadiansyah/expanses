@@ -19,6 +19,16 @@ describe('findDateTime', () => {
     ['29 Feb 2026', null],
     ['29 Feb 2028', '2028-02-29'],
     ['31 Okt 2026', '2026-10-31'],
+    // Day first with a two-digit year, as a card issuer's SMS writes it: read as this century.
+    ['IDR 254300 03/09/26 Toko Contoh', '2026-09-03'],
+    ['03-09-26 14:05', '2026-09-03T14:05'],
+    ['31/04/26', null],
+    // A dot is a thousands mark before it is a date's: an amount is never read as a short date.
+    ['Rp 1.003.500', null],
+    ['1.10.26', null],
+    // Digits run on either side: part of a longer number, not a date.
+    ['ref 103/09/26', null],
+    ['03/09/265', null],
   ])('%s', (text, iso) => expect(findDateTime(text)).toBe(iso));
 });
 
