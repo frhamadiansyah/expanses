@@ -23,7 +23,7 @@ export interface AssetPreset {
 }
 
 export const ASSET_PRESETS: readonly AssetPreset[] = [
-  { kind: 'fund', label: 'Fund', subtype: 'investment', valuationMode: 'market', unitKind: 'units', lotSize: null, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0307', priceLabel: 'NAV per unit' },
+  { kind: 'fund', label: 'Fund', subtype: 'investment', valuationMode: 'amount', unitKind: 'units', lotSize: null, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0307', priceLabel: 'NAV per unit' },
   { kind: 'stock', label: 'Stock', subtype: 'investment', valuationMode: 'market', unitKind: 'shares', lotSize: 100, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0303', priceLabel: 'Closing price' },
   { kind: 'bond', label: 'Bond', subtype: 'investment', valuationMode: 'market', unitKind: 'face', lotSize: null, risk: 'low', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0305', priceLabel: 'Face value' },
   { kind: 'gold', label: 'Gold', subtype: 'investment', valuationMode: 'market', unitKind: 'grams', lotSize: null, risk: 'medium', planGroup: 'invest', coretaxSection: 'lainnya', coretaxCode: '0701', priceLabel: 'Buyback price per gram' },

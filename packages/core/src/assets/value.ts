@@ -1,7 +1,8 @@
+import type { MoneyFlow } from './by-money';
 import type { Position } from './position';
 import { unitsValueMinor } from './units';
 
-export type ValuationMode = 'derived' | 'snapshot' | 'market';
+export type ValuationMode = 'derived' | 'snapshot' | 'market' | 'amount';
 export type ValuationBasis = 'estimate' | 'appraisal' | 'listing' | 'njop' | 'purchase';
 
 export interface PriceRow {
@@ -21,10 +22,12 @@ export interface AssetValueInput {
   currency: string;
   /** Balance of the account in the ledger on the date asked for: cost for holdings, money held for cash accounts. */
   ledgerBalanceMinor: number;
-  /** Units and cost on the date asked for. Market mode only. */
+  /** Units and cost on the date asked for. Market mode, and the money still in for amount mode. */
   position?: Position;
   prices?: PriceRow[];
   valuations?: ValuationRow[];
+  /** Amount mode: the holding's buys (+) and sells (−) as money, which move its value between typed values. */
+  flows?: MoneyFlow[];
 }
 
 export interface AssetValue {
@@ -56,6 +59,16 @@ export function assetValueAt(input: AssetValueInput, date: string): AssetValue {
   const { accountId } = input;
   if (input.mode === 'derived') {
     return { accountId, valueMinor: input.ledgerBalanceMinor, costMinor: input.ledgerBalanceMinor, source: 'ledger', asOf: null };
+  }
+  if (input.mode === 'amount') {
+    /* Tracked by money: the last value the owner typed, moved by every buy and sell dated after it. A value typed on a
+       day already includes that day's buys and sells, so only later ones are added. With no value typed yet, the
+       money still in is the value. */
+    const costMinor = input.position?.costMinor ?? 0;
+    const anchor = latest(input.valuations ?? [], (v) => v.asOf, date);
+    if (!anchor) return { accountId, valueMinor: costMinor, costMinor, source: 'cost', asOf: null };
+    const moved = (input.flows ?? []).reduce((sum, flow) => (flow.occurredOn > anchor.asOf && flow.occurredOn <= date ? sum + flow.amountMinor : sum), 0);
+    return { accountId, valueMinor: Math.max(0, anchor.valueMinor + moved), costMinor, source: 'valuation', asOf: anchor.asOf };
   }
   const costMinor = input.mode === 'market' ? (input.position?.costMinor ?? 0) : input.ledgerBalanceMinor;
   if (input.mode === 'market') {

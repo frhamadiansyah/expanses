@@ -166,6 +166,7 @@ export {
   type YearBucket,
 } from './assets/position';
 export { type TradeAccounts, type TradeInput, tradeDescription, tradePostings } from './assets/trades';
+export { type MoneyFlow, moneyFlows, moneyPositionAfter, moneySellBasis, navAnchors } from './assets/by-money';
 export {
   formatBps,
   gainBps,
