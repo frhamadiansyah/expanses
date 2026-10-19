@@ -1,7 +1,7 @@
 # Mutual funds: where they are held
 
-Status: agreed in outline with the owner on 2026-10-19; not planned or built. To follow the add-asset redesign
-(`feat/asset-form`).
+Status: **replaced** on 2026-10-19 by `2026-10-19-fund-by-amount-design.md`, which builds "where it is held" together
+with tracking funds by money. Kept for its history; build from the newer document.
 
 ## Why
 
