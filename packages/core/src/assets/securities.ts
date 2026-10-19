@@ -146,10 +146,20 @@ const ONE_CURRENCY: TradeAccounts = {
  * back with `outflowFrom` / `inflowTo` — so a change to how a trade posts can never leave this figure behind. A sell
  * is posted against a position that holds exactly what it sells; its basis never touches the cash line.
  */
+/**
+ * The trade as the cash side reads it: a buy or sell with no units is one tracked by money, whose cash lines are its
+ * amount alone — what it gives up on the holding side does not touch the cash, so no cost is needed for it here.
+ */
+const cashOnly = (input: TradeInput): TradeInput => ({
+  ...input,
+  cashMinor: undefined,
+  byMoney: input.byMoney ?? ((input.kind === 'buy' || input.kind === 'sell') && input.unitsMicro <= 0 ? { basisMinor: 0 } : undefined),
+});
+
 export function tradeCashMinor(input: TradeInput): number {
   if (input.kind === 'unit_change') return 0;
   const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
-  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  const lines = tradePostings(cashOnly(input), held, ONE_CURRENCY);
   return input.kind === 'buy' ? outflowFrom(lines, CASH) : inflowTo(lines, CASH);
 }
 
@@ -161,7 +171,7 @@ export function tradeCashMinor(input: TradeInput): number {
 export function tradeCashMovedMinor(input: TradeInput): number {
   if (input.kind === 'unit_change') return 0;
   const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
-  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  const lines = tradePostings(cashOnly(input), held, ONE_CURRENCY);
   return outflowFrom(lines, CASH) + inflowTo(lines, CASH);
 }
 

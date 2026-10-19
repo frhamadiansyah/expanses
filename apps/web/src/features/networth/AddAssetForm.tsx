@@ -6,7 +6,7 @@ import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
-import { chosenItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset, type PurchaseDraft } from './add-asset';
+import { byMoneyItem, chosenItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset, type PurchaseDraft } from './add-asset';
 import { AcquiredRow, MoneyRow } from './AssetRows';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
@@ -121,6 +121,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
   }
 
   const estimated = needsEstimate(draft.itemId, draft.typedInstead);
+  const byMoney = byMoneyItem(draft.itemId, draft.typedInstead);
   // Ready once it has a name and, where a year is asked, a year: the rest is optional or checked on save.
   const ready = draft.name.trim() !== '' && (!(estimated || legacyCash) || draft.acquired.year.trim() !== '');
   useEffect(() => {
@@ -192,7 +193,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
           <MoneyRow label="Original cost" value={draft.cost} onChange={(cost) => change({ cost })} currency={draft.currency} base={ws.baseCurrency} onCurrency={setCurrency} placeholder="Amount" />
         ) : null}
         {estimated ? rateRow : null}
-        {estimated ? (
+        {estimated || byMoney ? (
           <MoneyRow label="Current value" value={draft.estimate} onChange={(estimate) => change({ estimate })} currency={draft.currency} placeholder="Optional" />
         ) : null}
       </InsetGroup>
@@ -211,10 +212,11 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
               footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so bank balances do not move.' : undefined}
             >
               <AcquiredRow label="Bought" value={purchase.on} onChange={(on) => setPurchase(index, { on })} />
-              <TextRow label="How much" value={purchase.units} inputMode="decimal" placeholder="10" onChange={(e) => setPurchase(index, { units: e.target.value })} />
+              {/* A fund tracked by money is bought by amount: its units only if the fund app shows them. */}
+              <TextRow label={byMoney ? 'Units' : 'How much'} value={purchase.units} inputMode="decimal" placeholder={byMoney ? 'Optional' : '10'} onChange={(e) => setPurchase(index, { units: e.target.value })} />
               {/* One currency per holding: the first purchase sets it, the rest only say it. */}
               <MoneyRow
-                label="Total cost"
+                label={byMoney ? 'Amount' : 'Total cost'}
                 value={purchase.cost}
                 onChange={(cost) => setPurchase(index, { cost })}
                 currency={draft.currency}

@@ -82,7 +82,7 @@ export function percentOfFace(priceMicro: number, currency: string): string {
  */
 export function heroLine(o: {
   kindLabel: string;
-  mode: 'market' | 'snapshot' | 'derived';
+  mode: 'market' | 'snapshot' | 'derived' | 'amount';
   unitKind: UnitKind | null;
   unitsMicro: number;
   lotSize: number | null;

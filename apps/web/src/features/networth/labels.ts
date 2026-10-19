@@ -14,6 +14,7 @@ export const METHOD_LABELS: Record<ValuationMode, string> = {
   derived: 'Ledger balance',
   market: 'Units × price',
   snapshot: 'Estimate',
+  amount: 'Value typed, moved by buys and sells',
 };
 
 export const ASSET_KIND_LABELS: Record<AssetKind, string> = {

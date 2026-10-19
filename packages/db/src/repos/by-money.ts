@@ -32,7 +32,7 @@ export async function byMoneyHistoryTx(tx: Db, ws: WorkspaceContext, accountId: 
     .orderBy(sql`rowid`);
   return {
     prices: priceRows,
-    valuations: valuationRows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(({ asOf, valueMinor, basis }) => ({ asOf, valueMinor, basis })),
+    valuations: valuationRows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };
 }
 

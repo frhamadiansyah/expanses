@@ -131,7 +131,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     const accountValuations: ValuationRow[] = valuationRows
       .filter((row) => row.accountId === account.id)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
+      .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
     const value = assetValueAt(
       {
         accountId: account.id,
@@ -194,7 +194,7 @@ export async function assetValueSeries(
       }));
   const accountValuations: ValuationRow[] = (
     await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId)))
-  ).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
+  ).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
   return dates.map(
     (date) =>
       assetValueAt(

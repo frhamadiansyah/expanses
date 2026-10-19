@@ -131,8 +131,10 @@ fine to change: their fund data so far is test data, and they do not rely on goa
 - **A sell's profit is fixed when it is saved.** Adding, editing or deleting something dated before an existing sell
   does not re-book that sell's profit, so a profit already reported for tax is never rewritten. Store the cost each sell
   took out with the sell. Editing the sell itself recomputes it.
-- **A value typed on a day includes that day's buys and sells.** "Value on day D" = what the platform showed at the end
-  of D. Flows dated D are not added on top of a value typed on D; flows dated after D are.
+- **On the day a value is typed, save order decides.** A buy or sell dated the same day and saved *after* the value was
+  typed is added to it; one saved before it is taken as already in it. (Changed while building, 2026-10-19: the first
+  rule, "a value typed on D includes all of D's buys", hid a buy made right after typing the value the same day — the
+  owner's usual order. Past NAVs standing in for values carry no save time, so a same-day buy is taken as in them.)
 - **Which accounts Held at offers:** broker cash, bank and e-wallet/platform accounts, plus "type a name".
 
 ## Left to the builder

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetValueAt, type ValuationRow, moneyFlows, moneyPositionAfter, moneySellBasis, navAnchors, tradeDescription, tradePostings, type TradeRecord } from '../src/index';
+import { assetValueAt, tradeCashMinor, tradeCashMovedMinor, type ValuationRow, moneyFlows, moneyPositionAfter, moneySellBasis, navAnchors, tradeDescription, tradePostings, type TradeRecord } from '../src/index';
 
 const trade = (id: string, kind: TradeRecord['kind'], occurredOn: string, grossMinor: number, extra: Partial<TradeRecord> = {}): TradeRecord => ({
   id,
@@ -94,5 +94,19 @@ describe('a fund tracked by money', () => {
     expect(anchors).toEqual([{ asOf: '2025-12-31', valueMinor: 1_200_000, basis: 'estimate' }]);
     // A money buy after the last NAV moves the value on from it.
     expect(valueOn(units, '2026-01-01', anchors).valueMinor).toBe(1_500_000);
+  });
+
+  it('on the day a value is typed, adds only the buys saved after it: the value saw the ones before', () => {
+    // b2 (5 Oct) was saved at 00:00 that day.
+    const typedLater: ValuationRow[] = [{ asOf: '2026-10-05', valueMinor: 1_560_000, basis: 'estimate', createdAt: '2026-10-05T09:00:00Z' }];
+    expect(valueOn(bought, '2026-10-05', typedLater).valueMinor).toBe(1_560_000);
+    const typedEarlier: ValuationRow[] = [{ asOf: '2026-10-05', valueMinor: 1_052_000, basis: 'estimate', createdAt: '2026-10-04T23:00:00Z' }];
+    expect(valueOn(bought, '2026-10-05', typedEarlier).valueMinor).toBe(1_552_000);
+  });
+
+  it('reads the cash side of a buy and a sell with no units', () => {
+    expect(tradeCashMinor({ kind: 'buy', occurredOn: '2026-10-05', unitsMicro: 0, grossMinor: 500_000, feeMinor: 0, taxMinor: 0 })).toBe(500_000);
+    expect(tradeCashMinor({ kind: 'sell', occurredOn: '2026-10-10', unitsMicro: 0, grossMinor: 776_000, feeMinor: 0, taxMinor: 0 })).toBe(776_000);
+    expect(tradeCashMovedMinor({ kind: 'sell', occurredOn: '2026-10-10', unitsMicro: 0, grossMinor: 776_000, feeMinor: 0, taxMinor: 0 })).toBe(776_000);
   });
 });

@@ -14,6 +14,8 @@ export interface ValuationRow {
   asOf: string;
   valueMinor: number;
   basis: ValuationBasis;
+  /** When it was typed. Amount mode only: a buy or sell on the same day saved after it is added to it. */
+  createdAt?: string;
 }
 
 export interface AssetValueInput {
@@ -61,13 +63,15 @@ export function assetValueAt(input: AssetValueInput, date: string): AssetValue {
     return { accountId, valueMinor: input.ledgerBalanceMinor, costMinor: input.ledgerBalanceMinor, source: 'ledger', asOf: null };
   }
   if (input.mode === 'amount') {
-    /* Tracked by money: the last value the owner typed, moved by every buy and sell dated after it. A value typed on a
-       day already includes that day's buys and sells, so only later ones are added. With no value typed yet, the
-       money still in is the value. */
+    /* Tracked by money: the last value the owner typed, moved by every buy and sell after it — dated later, or dated
+       the same day and saved after the value was typed (the value did not see it). A same-day one saved before it, or
+       a past NAV standing in for a value, is already in it. With no value typed yet, the money still in is the value. */
     const costMinor = input.position?.costMinor ?? 0;
     const anchor = latest(input.valuations ?? [], (v) => v.asOf, date);
     if (!anchor) return { accountId, valueMinor: costMinor, costMinor, source: 'cost', asOf: null };
-    const moved = (input.flows ?? []).reduce((sum, flow) => (flow.occurredOn > anchor.asOf && flow.occurredOn <= date ? sum + flow.amountMinor : sum), 0);
+    const after = (flow: MoneyFlow) =>
+      flow.occurredOn > anchor.asOf || (flow.occurredOn === anchor.asOf && anchor.createdAt !== undefined && flow.createdAt !== undefined && flow.createdAt > anchor.createdAt);
+    const moved = (input.flows ?? []).reduce((sum, flow) => (after(flow) && flow.occurredOn <= date ? sum + flow.amountMinor : sum), 0);
     return { accountId, valueMinor: Math.max(0, anchor.valueMinor + moved), costMinor, source: 'valuation', asOf: anchor.asOf };
   }
   const costMinor = input.mode === 'market' ? (input.position?.costMinor ?? 0) : input.ledgerBalanceMinor;

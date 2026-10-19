@@ -38,9 +38,10 @@ export function attentionItems(
   const items: AttentionItem[] = [];
   for (const value of values) {
     if (!value.stale) continue;
-    if (value.mode === 'market' && value.unitsMicro === 0) continue;
-    const what = value.mode === 'market' ? 'price' : 'estimate';
-    const text = value.asOf ? `${value.name}: ${what} last updated ${shortDate(value.asOf)}` : `${value.name}: no ${what} yet, showing the price paid`;
+    if ((value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0)) continue;
+    const what = value.mode === 'market' ? 'price' : value.mode === 'amount' ? 'value' : 'estimate';
+    const paid = value.mode === 'amount' ? 'the money put in' : 'the price paid';
+    const text = value.asOf ? `${value.name}: ${what} last updated ${shortDate(value.asOf)}` : `${value.name}: no ${what} yet, showing ${paid}`;
     items.push({ key: `stale-${value.accountId}`, tone: 'warn', text, action: 'Update', to: '/net-worth/assets' });
   }
   for (const template of dueTemplates) {

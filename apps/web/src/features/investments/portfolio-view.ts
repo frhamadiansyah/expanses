@@ -89,7 +89,9 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
 
   const lines: (HoldingLine & { securityId: string | null })[] = [];
   for (const value of p.values) {
-    if (value.mode !== 'market' || (value.unitsMicro ?? 0) <= 0) continue;
+    // Held: units by a price, or — for a fund tracked by money — money still in it or a value left.
+    const held = value.mode === 'market' ? (value.unitsMicro ?? 0) > 0 : value.mode === 'amount' && (value.valueMinor > 0 || value.costMinor > 0);
+    if (!held) continue;
     const link = linkOf.get(value.accountId);
     if (!link?.securityId && !LISTED_KINDS.includes(kindOf.get(value.accountId) ?? 'other')) continue;
     const brokerAccountId = link?.brokerAccountId ?? null;

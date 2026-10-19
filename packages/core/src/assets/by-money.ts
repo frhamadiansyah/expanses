@@ -11,6 +11,8 @@ import { type Position, positionAfter, sellBasisMinor, TradeError, type TradeRec
 export interface MoneyFlow {
   occurredOn: string;
   amountMinor: number;
+  /** When it was saved: of a buy and a value typed on the same day, the one saved later saw the other. */
+  createdAt?: string;
 }
 
 const byTradeOrder = (a: TradeRecord, b: TradeRecord) =>
@@ -21,7 +23,7 @@ export function moneyFlows(trades: readonly TradeRecord[]): MoneyFlow[] {
   return [...trades]
     .sort(byTradeOrder)
     .filter((trade) => trade.kind === 'buy' || trade.kind === 'sell')
-    .map((trade) => ({ occurredOn: trade.occurredOn, amountMinor: trade.kind === 'buy' ? trade.grossMinor : -trade.grossMinor }));
+    .map((trade) => ({ occurredOn: trade.occurredOn, amountMinor: trade.kind === 'buy' ? trade.grossMinor : -trade.grossMinor, createdAt: trade.createdAt }));
 }
 
 /**

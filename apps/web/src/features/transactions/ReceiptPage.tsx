@@ -58,7 +58,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   // Removed cards too: a purchase made on one still names it, by its digits.
   const cards = useCardsWithArchived().data ?? [];
   const goals = useGoals().data ?? [];
-  const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
+  const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market' || row.mode === 'amount');
   const today = isoDate();
 
   const [editing, setEditing] = useState(false);
