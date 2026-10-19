@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { openDrawers } from './drawers';
 
 /** A priced thing through Add asset, one purchase line per [bought on, how much, total cost]. */
@@ -8,9 +8,9 @@ export async function addPriced(page: Page, pick: string, name: string, lines: [
   await page.getByLabel('Name', { exact: true }).fill(name);
   for (const [i, [on, much, cost]] of lines.entries()) {
     if (i > 0) await page.getByRole('button', { name: 'Add another purchase' }).click();
-    await page.getByLabel('Bought on').nth(i).fill(on);
+    await fillDay(page, 'Bought', on, i);
     await page.getByLabel('How much').nth(i).fill(much);
-    await page.getByLabel(/^Total cost/).nth(i).fill(cost);
+    await page.getByLabel('Total cost', { exact: true }).nth(i).fill(cost);
   }
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
@@ -20,9 +20,9 @@ export async function addPriced(page: Page, pick: string, name: string, lines: [
 export async function addEstimated(page: Page, pick: string, name: string, on: string, cost: string, now: string) {
   await openNewAsset(page, pick);
   await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Bought on').fill(on);
-  await page.getByLabel(/^What it cost/).fill(cost);
-  await page.getByLabel(/^What it is worth now/).fill(now);
+  await fillDay(page, 'Acquired', on);
+  await page.getByLabel('Original cost', { exact: true }).fill(cost);
+  await page.getByLabel('Current value', { exact: true }).fill(now);
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 }

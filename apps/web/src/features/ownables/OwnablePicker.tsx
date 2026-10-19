@@ -1,5 +1,5 @@
 import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/core';
-import { Search } from 'lucide-react';
+import { Check, Search } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
@@ -31,6 +31,7 @@ export function OwnablePicker({
   chosen,
   onChoose,
   handOver = [],
+  confirm,
   children,
 }: {
   flow: OwnableFlow;
@@ -45,6 +46,11 @@ export function OwnablePicker({
   handOver?: HandOverRow[];
   /** The chosen item's form. */
   children?: ReactNode;
+  /**
+   * The chosen form's save, drawn as ✓ in the bar's corner — where iOS puts Add on a form, never a button at its
+   * foot. Dim until the form can save. ‹ is the way out, one step back to the list.
+   */
+  confirm?: { label: string; disabled?: boolean; run: () => void };
 }) {
   const phone = usePhone();
   const router = useRouter();
@@ -156,9 +162,11 @@ export function OwnablePicker({
         }
         // Search is for the list of kinds; once one is chosen the phone shows its form alone, with nothing to search.
         actions={
-          phone && !chosen
-            ? [{ key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) }]
-            : []
+          chosen && confirm
+            ? [{ key: 'save', label: confirm.label, glyph: <Check size={20} aria-hidden />, disabled: confirm.disabled, run: confirm.run }]
+            : phone && !chosen
+              ? [{ key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) }]
+              : []
         }
       />
       {/* One screen at a time on a phone; both at once on anything wider, the list on the left. */}

@@ -38,6 +38,9 @@ export function CoretaxFieldsGroup({ profile, section }: { profile: AssetProfile
         coretaxSection: profile.coretaxSection,
         coretaxCode: profile.coretaxCode,
         acquiredYear: profile.acquiredYear,
+        // Written whole, so what was set elsewhere is carried rather than put back to the kind's defaults.
+        reportable: profile.reportable,
+        taxTreatment: profile.taxTreatment,
         coretaxFields: next,
       });
       await invalidate();

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { fillDay } from './add-asset';
 import { openTypes, openSettings } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openAssets, openDrawers } from './drawers';
@@ -97,8 +98,8 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await page.getByRole('button', { name: 'Immovable property' }).click();
   await page.getByRole('button', { name: 'Apartment' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Apartemen Taman Anggrek');
-  await page.getByLabel('Bought on').fill('2021-06-01');
-  await page.getByLabel('What it cost (IDR)').fill('1150000000');
+  await fillDay(page, 'Acquired', '2021-06-01');
+  await page.getByLabel('Original cost', { exact: true }).fill('1150000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The list folds its rows into a drawer per kind, so the row is one tap away.
   await openDrawers(page);
@@ -108,9 +109,9 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await page.getByPlaceholder('Search everything that can be owned').fill('gold jewellery');
   await page.getByRole('button', { name: 'Gold jewellery' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Kalung emas');
-  await page.getByLabel('Bought on').fill('2025-01-01');
+  await fillDay(page, 'Bought', '2025-01-01');
   await page.getByLabel('How much').fill('25');
-  await page.getByLabel('Total cost (IDR)').fill('35000000');
+  await page.getByLabel('Total cost', { exact: true }).fill('35000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kalung emas/ })).toBeVisible();
@@ -126,8 +127,8 @@ test('something else reaches a code the five families do not list', async ({ pag
   await page.getByRole('button', { name: 'Something else' }).click();
   await page.getByRole('button', { name: 'Ship' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Kapal nelayan');
-  await page.getByLabel('Bought on').fill('2025-05-05');
-  await page.getByLabel('What it cost (IDR)').fill('80000000');
+  await fillDay(page, 'Acquired', '2025-05-05');
+  await page.getByLabel('Original cost', { exact: true }).fill('80000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kapal nelayan/ })).toBeVisible();

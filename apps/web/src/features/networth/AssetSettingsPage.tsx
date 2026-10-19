@@ -24,7 +24,8 @@ export function AssetSettingsRoute() {
 
 /**
  * An account's or an asset's settings on a page of their own: its name, what it counts as, its tax treatment and its
- * tax-report code, and the fields the DJP form asks of its table. They are changed once or twice a year, so they wait
+ * tax-report code, and — for a money account — the fields the DJP form asks of its table (an asset's are on its Edit
+ * screen). They are changed once or twice a year, so they wait
  * behind the ⋯ of the page they belong to, which is where the round ‹ goes back to.
  *
  * Every row saves as it is changed, as iOS's own settings do; the page has no Save. The way out — archive, or delete
@@ -97,7 +98,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {/* A digital wallet says which phone number it is tied to, by its last four digits. */}
       {account?.subtype === 'ewallet' && <WalletPhoneGroup accountId={accountId} />}
 
-      {profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
+      {/* A money account's tax fields stay here; an asset's are on its Edit screen, with its name and when it was got. */}
+      {money && profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
 
       {value && (
         <>

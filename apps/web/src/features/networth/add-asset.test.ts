@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { emptyDraft, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
+import { emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
+
+/** A whole day, typed to the day. */
+const day = (iso: string) => ({ year: iso.slice(0, 4), month: String(Number(iso.slice(5, 7))), day: String(Number(iso.slice(8, 10))) });
 
 const TODAY = '2026-09-12';
 
@@ -7,8 +10,8 @@ const goldDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
   ...emptyDraft('gold', 'IDR', TODAY),
   name: 'Antam gold bars',
   purchases: [
-    { occurredOn: '2024-02-03', units: '10', cost: '13.100.000' },
-    { occurredOn: '2026-03-09', units: '5', cost: '9.300.000' },
+    { on: day('2024-02-03'), units: '10', cost: '13.100.000' },
+    { on: day('2026-03-09'), units: '5', cost: '9.300.000' },
   ],
   ...overrides,
 });
@@ -16,17 +19,16 @@ const goldDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
 const houseDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
   ...emptyDraft('property', 'IDR', TODAY),
   name: 'House in Bintaro',
-  purchasedOn: '2021-03-25',
+  acquired: day('2021-03-25'),
   cost: '1.150.000.000',
   estimate: '1.420.000.000',
-  estimateBasis: 'appraisal',
   ...overrides,
 });
 
 describe('the item chosen decides the profile written', () => {
   it('keeps what the eight old kinds always did', () => {
     const plan = planNewAsset(
-      { ...emptyDraft('gold', 'IDR', '2026-09-18'), name: 'Antam gold bars', purchases: [{ occurredOn: '2024-02-03', units: '10', cost: '13100000' }] },
+      { ...emptyDraft('gold', 'IDR', '2026-09-18'), name: 'Antam gold bars', purchases: [{ on: day('2024-02-03'), units: '10', cost: '13100000' }] },
       '2026-09-18',
     );
     expect(plan.profile).toMatchObject({ assetKind: 'gold', coretaxSection: 'lainnya', coretaxCode: '0701', planGroup: 'invest', unitKind: 'grams', acquiredYear: 2024 });
@@ -35,7 +37,7 @@ describe('the item chosen decides the profile written', () => {
 
   it('files an apartment under land and buildings, valued by what the owner says', () => {
     const plan = planNewAsset(
-      { ...emptyDraft('apartment', 'IDR', '2026-09-18'), name: 'Apartemen Taman Anggrek', purchasedOn: '2021-06-01', cost: '1150000000', estimate: '1420000000' },
+      { ...emptyDraft('apartment', 'IDR', '2026-09-18'), name: 'Apartemen Taman Anggrek', acquired: day('2021-06-01'), cost: '1150000000', estimate: '1420000000' },
       '2026-09-18',
     );
     expect(plan.profile).toMatchObject({ assetKind: 'property', coretaxSection: 'tidak_bergerak', coretaxCode: '0503', planGroup: 'use', acquiredYear: 2021 });
@@ -44,26 +46,26 @@ describe('the item chosen decides the profile written', () => {
   });
 
   it('files unlisted shares under investments, valued by what the owner says', () => {
-    const plan = planNewAsset({ ...emptyDraft('unlisted_stock', 'IDR', '2026-09-18'), name: 'PT Keluarga', purchasedOn: '2023-01-10', cost: '200000000' }, '2026-09-18');
+    const plan = planNewAsset({ ...emptyDraft('unlisted_stock', 'IDR', '2026-09-18'), name: 'PT Keluarga', acquired: day('2023-01-10'), cost: '200000000' }, '2026-09-18');
     expect(plan.profile).toMatchObject({ assetKind: 'other', coretaxSection: 'investasi', coretaxCode: '0302', planGroup: 'invest' });
     expect(plan.account.subtype).toBe('investment');
   });
 
   it('records anything under Something else as a thing with a value, in the table its family files under', () => {
-    const plan = planNewAsset({ ...emptyDraft('else:0409', 'IDR', '2026-09-18'), name: 'Kapal nelayan', purchasedOn: '2025-05-05', cost: '80000000' }, '2026-09-18');
+    const plan = planNewAsset({ ...emptyDraft('else:0409', 'IDR', '2026-09-18'), name: 'Kapal nelayan', acquired: day('2025-05-05'), cost: '80000000' }, '2026-09-18');
     expect(plan.profile).toMatchObject({ assetKind: 'vehicle', coretaxSection: 'bergerak', coretaxCode: '0409', planGroup: 'use' });
   });
 
   it('weighs gold jewellery in grams, or takes a value when the owner would rather type one', () => {
     const grams = planNewAsset(
-      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', purchases: [{ occurredOn: '2025-01-01', units: '25', cost: '35000000' }] },
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', purchases: [{ on: day('2025-01-01'), units: '25', cost: '35000000' }] },
       '2026-09-18',
     );
     expect(grams.profile).toMatchObject({ assetKind: 'gold', coretaxCode: '0702', unitKind: 'grams' });
     expect(grams.trades).toHaveLength(1);
 
     const typed = planNewAsset(
-      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', typedInstead: true, purchasedOn: '2025-01-01', cost: '35000000', estimate: '40000000' },
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', typedInstead: true, acquired: day('2025-01-01'), cost: '35000000', estimate: '40000000' },
       '2026-09-18',
     );
     expect(typed.profile).toMatchObject({ assetKind: 'other', coretaxCode: '0702', coretaxSection: 'lainnya', unitKind: null });
@@ -109,7 +111,7 @@ describe('planNewAsset', () => {
   });
 
   it('skips purchase rows left blank', () => {
-    const plan = planNewAsset(goldDraft({ purchases: [{ occurredOn: TODAY, units: '', cost: '' }, { occurredOn: '2026-03-09', units: '5', cost: '9.300.000' }] }), TODAY);
+    const plan = planNewAsset(goldDraft({ purchases: [emptyPurchase(), { on: day('2026-03-09'), units: '5', cost: '9.300.000' }] }), TODAY);
     expect(plan.trades).toHaveLength(1);
   });
 
@@ -118,24 +120,60 @@ describe('planNewAsset', () => {
 
     expect(plan.account).toMatchObject({ subtype: 'property', openingBalanceMinor: 1_150_000_000, openedOn: '2021-03-25' });
     expect(plan.trades).toEqual([]);
-    expect(plan.valuation).toEqual({ asOf: TODAY, valueMinor: 1_420_000_000, basis: 'appraisal' });
+    expect(plan.valuation).toEqual({ asOf: TODAY, valueMinor: 1_420_000_000, basis: 'estimate' });
+    expect(plan.acquired).toEqual({ on: '2021-03-25', precision: 'day' });
     expect(plan.profile).toMatchObject({ coretaxSection: 'tidak_bergerak', coretaxCode: '0502', acquiredYear: 2021 });
   });
 
-  it('keeps only the Coretax fields that were filled in', () => {
-    const plan = planNewAsset(houseDraft({ coretaxFields: { loc: 'Jl. Contoh Raya No. 12', land: '120', cert: '  ' } }), TODAY);
-    expect(plan.profile!.coretaxFields).toEqual({ loc: 'Jl. Contoh Raya No. 12', land: '120' });
+  it('takes a year alone, or a year and month, filling the rest with the start of it', () => {
+    const year = planNewAsset(houseDraft({ acquired: { year: '2021', month: '', day: '' } }), TODAY);
+    expect(year.account.openedOn).toBe('2021-01-01');
+    expect(year.acquired).toEqual({ on: '2021-01-01', precision: 'year' });
+    expect(year.profile!.acquiredYear).toBe(2021);
+
+    const month = planNewAsset(houseDraft({ acquired: { year: '2021', month: '3', day: '' } }), TODAY);
+    expect(month.account.openedOn).toBe('2021-03-01');
+    expect(month.acquired).toEqual({ on: '2021-03-01', precision: 'month' });
+  });
+
+  it('keeps the year even when no cost is given yet', () => {
+    const plan = planNewAsset(houseDraft({ cost: '', acquired: { year: '2019', month: '', day: '' } }), TODAY);
+    expect(plan.account.openingBalanceMinor).toBe(0);
+    expect(plan.profile!.acquiredYear).toBe(2019);
+    expect(plan.acquired).toEqual({ on: '2019-01-01', precision: 'year' });
+  });
+
+  it('dates a holding by its earliest purchase, at the precision that one was typed', () => {
+    const plan = planNewAsset(
+      goldDraft({
+        purchases: [
+          { on: { year: '2025', month: '6', day: '' }, units: '5', cost: '9.300.000' },
+          { on: { year: '2023', month: '', day: '' }, units: '10', cost: '13.100.000' },
+        ],
+      }),
+      TODAY,
+    );
+    expect(plan.trades.map((trade) => trade.occurredOn)).toEqual(['2025-06-01', '2023-01-01']);
+    expect(plan.acquired).toEqual({ on: '2023-01-01', precision: 'year' });
+    expect(plan.profile!.acquiredYear).toBe(2023);
+  });
+
+  it('opens money owed today, with no date asked', () => {
+    const plan = planNewAsset({ ...emptyDraft('trade_receivable', 'IDR', TODAY), name: 'PT Sejahtera', cost: '25000000' }, TODAY);
+    expect(plan.account.openedOn).toBe(TODAY);
+    expect(plan.acquired).toBeNull();
   });
 
   it('says what is missing, in plain words', () => {
     expect(() => planNewAsset(goldDraft({ name: '  ' }), TODAY)).toThrow('Give this asset a name');
-    expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2026-03-09', units: '5', cost: '' }] }), TODAY)).toThrow(/how much was bought and what it cost/);
-    expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2027-01-01', units: '5', cost: '1.000' }] }), TODAY)).toThrow(/after today/);
-    expect(() => planNewAsset(goldDraft({ purchases: [{ occurredOn: '2026-03-09', units: '0', cost: '1.000' }] }), TODAY)).toThrow(/more than zero units/);
+    expect(() => planNewAsset(goldDraft({ purchases: [{ on: day('2026-03-09'), units: '5', cost: '' }] }), TODAY)).toThrow(/how much was bought and what it cost/);
+    expect(() => planNewAsset(goldDraft({ purchases: [{ on: day('2027-01-01'), units: '5', cost: '1.000' }] }), TODAY)).toThrow(/after today/);
+    expect(() => planNewAsset(houseDraft({ acquired: { year: '', month: '', day: '' } }), TODAY)).toThrow('Say the year it was acquired');
+    expect(() => planNewAsset(goldDraft({ purchases: [{ on: day('2026-03-09'), units: '0', cost: '1.000' }] }), TODAY)).toThrow(/more than zero units/);
   });
 
   it('allows a holding with nothing bought yet', () => {
-    const plan = planNewAsset(goldDraft({ purchases: [{ occurredOn: TODAY, units: '', cost: '' }] }), TODAY);
+    const plan = planNewAsset(goldDraft({ purchases: [emptyPurchase()] }), TODAY);
     expect(plan.trades).toEqual([]);
     expect(plan.profile!.acquiredYear).toBeNull();
   });
@@ -144,7 +182,7 @@ describe('planNewAsset', () => {
 describe('the rate an asset opens at', () => {
   it('is no longer read by a parser of its own: planNewAsset hands the typed text on untouched', () => {
     // A motorcycle is valued by a figure you type, so its cost is the opening balance (the `draft.cost` branch).
-    const plan = planNewAsset({ ...emptyDraft('motorcycle', 'IDR', '2026-09-21'), name: 'Bike bought abroad', currency: 'USD', cost: '1000.00', purchasedOn: '2026-09-01', openingRate: '16.500' }, '2026-09-21');
+    const plan = planNewAsset({ ...emptyDraft('motorcycle', 'IDR', '2026-09-21'), name: 'Bike bought abroad', currency: 'USD', cost: '1000.00', acquired: day('2026-09-01'), openingRate: '16.500' }, '2026-09-21');
     // `openingRateFor` reads it with parseRate (16,5, which ratePreview shows before saving) — not 16500 as before.
     expect(plan).not.toHaveProperty('openingRateToBase');
     expect([plan.rateNeededMinor, plan.rateDate]).toEqual([100_000, '2026-09-01']);
@@ -157,8 +195,8 @@ describe('the rate an asset opens at', () => {
         name: 'US shares',
         currency: 'USD',
         purchases: [
-          { occurredOn: '2026-05-02', units: '10', cost: '150.25' },
-          { occurredOn: '2026-03-01', units: '5', cost: '70.10' },
+          { on: day('2026-05-02'), units: '10', cost: '150.25' },
+          { on: day('2026-03-01'), units: '5', cost: '70.10' },
         ],
       },
       '2026-09-21',

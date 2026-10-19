@@ -7,11 +7,12 @@ import {
   parseUnits,
   type PlanGroup,
   type UnitKind,
-  type ValuationBasis,
 } from '@expanses/core';
+import { type AcquiredParts, acquiredOn, type DatePrecision, NO_DATE } from './acquired';
 
 export interface PurchaseDraft {
-  occurredOn: string;
+  /** When it was bought: a year, and a month and day if known. */
+  on: AcquiredParts;
   /** Units, shares or grams, as typed. */
   units: string;
   /** What the purchase cost in total, as typed. */
@@ -25,15 +26,13 @@ export interface NewAssetDraft {
   currency: string;
   /** Holdings: what the owner already has, entered as opening positions. */
   purchases: PurchaseDraft[];
-  /** Property, vehicles and other assets: when it was bought and what it cost. */
-  purchasedOn: string;
+  /** Property, vehicles and other assets: when it was acquired and what it cost. */
+  acquired: AcquiredParts;
   cost: string;
-  /** Optional first estimate of what it is worth now. */
+  /** Optional first estimate of what it is worth now. Always saved as the owner's estimate. */
   estimate: string;
-  estimateBasis: ValuationBasis;
   /** What one unit of the asset's currency was worth in base when it was got. Held in the ledger only. */
   openingRate: string;
-  coretaxFields: Record<string, string>;
   /** Gold jewellery: record what it is worth rather than weigh it. Ignored by everything else. */
   typedInstead: boolean;
   /** A receivable: who owes the money. Empty means "whatever this is called". */
@@ -53,14 +52,18 @@ export interface NewAssetPlan {
     lotSize: number | null;
     coretaxSection: CoretaxSection;
     coretaxCode: string;
-    coretaxFields: Record<string, string>;
     acquiredYear: number | null;
   } | null;
+  /**
+   * The day it was acquired and how much of that day was typed, for the asset's page to show as typed. Null when
+   * nothing says (a holding with no purchases yet, or money owed).
+   */
+  acquired: { on: string; precision: DatePrecision } | null;
   /** Set instead of `profile` when the thing chosen is money owed: what to open in the ledger. */
   person: { direction: 'lent' | 'borrowed'; personName: string; coretaxCode: string; balanceMinor: number } | null;
   /** Opening positions, paid from Opening Balances so bank balances do not move. */
   trades: { occurredOn: string; unitsMicro: number; grossMinor: number }[];
-  valuation: { asOf: string; valueMinor: number; basis: ValuationBasis } | null;
+  valuation: { asOf: string; valueMinor: number; basis: 'estimate' } | null;
   /**
    * What will post in the asset's own currency and so needs a rate to base: the purchases' total cost when there
    * are purchases, else the opening balance; 0 when nothing posts. The rate itself is not read here — the form
@@ -98,20 +101,19 @@ export const needsEstimate = (itemId: string, typedInstead = false): boolean => 
   return behaviour.opens === 'holding' && behaviour.valuedBy === 'value';
 };
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A purchase row as first drawn: no date picked, nothing bought yet. */
+export const emptyPurchase = (): PurchaseDraft => ({ on: NO_DATE, units: '', cost: '' });
 
 export function emptyDraft(itemId: string, currency: string, today: string, typedInstead = false): NewAssetDraft {
   return {
     itemId,
     name: '',
     currency,
-    purchases: needsPurchases(itemId, typedInstead) ? [{ occurredOn: today, units: '', cost: '' }] : [],
-    purchasedOn: today,
+    purchases: needsPurchases(itemId, typedInstead) ? [emptyPurchase()] : [],
+    acquired: NO_DATE,
     cost: '',
     estimate: '',
-    estimateBasis: 'estimate',
     openingRate: '',
-    coretaxFields: {},
     typedInstead,
     personName: '',
   };
@@ -131,35 +133,40 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
   const trades: NewAssetPlan['trades'] = [];
   let openingBalanceMinor = 0;
   let openedOn = today;
-  let years: number[] = [];
+  let acquired: NewAssetPlan['acquired'] = null;
 
   if (needsPurchases(draft.itemId, draft.typedInstead)) {
     for (const purchase of draft.purchases) {
       const hasUnits = purchase.units.trim() !== '';
       const hasCost = purchase.cost.trim() !== '';
       if (!hasUnits && !hasCost) continue;
-      if (!DATE.test(purchase.occurredOn)) throw new Error('Each purchase needs a date');
-      if (purchase.occurredOn > today) throw new Error('A purchase cannot be dated after today');
+      const bought = acquiredOn(purchase.on, today);
       if (!hasUnits || !hasCost) throw new Error('Each purchase needs both how much was bought and what it cost');
       const unitsMicro = parseUnits(purchase.units);
       const grossMinor = parseMajor(purchase.cost, draft.currency);
       if (unitsMicro <= 0) throw new Error('A purchase needs more than zero units');
       if (grossMinor <= 0) throw new Error('A purchase needs a cost greater than zero');
-      trades.push({ occurredOn: purchase.occurredOn, unitsMicro, grossMinor });
+      trades.push({ occurredOn: bought.on, unitsMicro, grossMinor });
+      // The holding was acquired with its earliest purchase, at the precision that purchase was typed.
+      if (!acquired || bought.on < acquired.on) acquired = bought;
     }
-    years = trades.map((trade) => Number(trade.occurredOn.slice(0, 4)));
-  } else if (draft.cost.trim() !== '') {
-    if (!DATE.test(draft.purchasedOn)) throw new Error('Say when it was bought');
-    if (draft.purchasedOn > today) throw new Error('A purchase cannot be dated after today');
-    openingBalanceMinor = parseMajor(draft.cost, draft.currency);
+  } else if (behaviour.opens === 'person') {
+    // Money owed has no date row: it is owed from today, whatever it is.
+    if (draft.cost.trim() !== '') openingBalanceMinor = parseMajor(draft.cost, draft.currency);
     if (openingBalanceMinor < 0) throw new Error('A cost cannot be negative');
-    openedOn = draft.purchasedOn;
-    years = [Number(draft.purchasedOn.slice(0, 4))];
+  } else {
+    // The year is always asked, so the tax report has one even before a cost is known.
+    acquired = acquiredOn(draft.acquired, today);
+    if (draft.cost.trim() !== '') {
+      openingBalanceMinor = parseMajor(draft.cost, draft.currency);
+      if (openingBalanceMinor < 0) throw new Error('A cost cannot be negative');
+      openedOn = acquired.on;
+    }
   }
 
   let valuation: NewAssetPlan['valuation'] = null;
   if (needsEstimate(draft.itemId, draft.typedInstead) && draft.estimate.trim() !== '') {
-    valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: draft.estimateBasis };
+    valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: 'estimate' };
     if (valuation.valueMinor < 0) throw new Error('An estimate cannot be negative');
   }
 
@@ -177,10 +184,10 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
           // Every asset item files under a table; only a debt's section is null, and no debt reaches here.
           coretaxSection: item.section ?? 'lainnya',
           coretaxCode: item.code,
-          coretaxFields: Object.fromEntries(Object.entries(draft.coretaxFields).filter(([, value]) => value.trim() !== '')),
-          acquiredYear: years.length ? Math.min(...years) : null,
+          acquiredYear: acquired ? Number(acquired.on.slice(0, 4)) : null,
         }
       : null,
+    acquired: holding ? acquired : null,
     person: behaviour.opens === 'person' ? { direction: behaviour.direction, personName, coretaxCode: item.code, balanceMinor: openingBalanceMinor } : null,
     trades,
     valuation,

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillDay, openNewAsset } from './add-asset';
 import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
 
@@ -69,35 +70,70 @@ test('gold reads as grams, what went in, the average and the price, and each pur
   await expect(page.getByText('Gold bullion · 10 g')).toBeVisible();
 });
 
-test('a house takes a new value from a sheet that opens empty, and its history names each source in words', async ({ page }) => {
+test('a house takes a new value from a sheet that opens empty, and its history says estimate', async ({ page }) => {
   await addEstimated(page, 'Land and/or building for living in', 'Family home', '2019-03-12', '1150000000', '1420000000');
   await openAsset(page, 'Family home');
-  await expect(page.getByTestId('asset-grid')).toContainText('Bought on12 Mar 2019');
+  await expect(page.getByTestId('asset-grid')).toContainText('Original costRp');
+  await expect(page.getByTestId('asset-grid')).toContainText('Acquired12 Mar 2019');
 
   await page.getByRole('button', { name: 'Update value' }).click();
   const value = page.getByLabel('Value (IDR)');
   await expect(value).toHaveValue('');
+  // Every typed value is an estimate: the sheet no longer asks where it came from.
+  await expect(page.getByLabel('From', { exact: true })).toHaveCount(0);
   await value.fill('1480000000');
-  await page.getByLabel('From', { exact: true }).selectOption('appraisal');
   await page.getByLabel('Note').fill('Bank appraisal');
   await page.getByRole('button', { name: 'Save value' }).click();
 
   await expect(page.getByText('Rp 1.480.000.000').first()).toBeVisible();
-  await expect(page.getByText(/· appraisal, \d{1,2} \w{3} \d{4} · \+Rp\s330\.000\.000 · \+28,7%/)).toBeVisible();
+  await expect(page.getByText(/· estimate, \d{1,2} \w{3} \d{4} · \+Rp\s330\.000\.000 · \+28,7%/)).toBeVisible();
   // An estimate moves in steps: its line reads the year a month at a time.
   await expect(page.getByTestId('asset-card')).toContainText('12 months ago');
   await expect(page.getByRole('heading', { name: 'Value history' })).toBeVisible();
   const rows = page.getByTestId('asset-history-row');
-  await expect(rows.first()).toContainText('Appraisal');
+  await expect(rows.first()).toContainText('Estimated value');
   await expect(rows.first()).toContainText('Bank appraisal');
-  await expect(rows.last()).toContainText('Bought');
+  await expect(rows.last()).toContainText('Original cost');
   await expect(rows.last()).toContainText('12 Mar 2019');
 
-  // Opened again, it is empty again: the last source is no guess about the next.
+  // Opened again, it is empty again.
   await page.getByRole('button', { name: 'Update value' }).click();
   await expect(page.getByLabel('Value (IDR)')).toHaveValue('');
-  await expect(page.getByLabel('From', { exact: true })).toHaveValue('estimate');
   await expect(page.getByLabel('Note')).toHaveValue('');
+});
+
+test('a car added with a year and month shows just that, and its Edit screen takes the date and the tax details', async ({ page }) => {
+  await openNewAsset(page, 'Passenger car');
+  // The prompt says it is required, as Current value's says optional; the tax report's questions wait for Edit.
+  await expect(page.getByLabel('Name', { exact: true })).toHaveAttribute('placeholder', 'Required');
+  await expect(page.getByLabel('Merk/model')).toHaveCount(0);
+  await page.getByLabel('Name', { exact: true }).fill('Family car');
+  await fillDay(page, 'Acquired', '2021-03');
+  await page.getByLabel('Original cost', { exact: true }).fill('215000000');
+  await page.getByLabel('Current value', { exact: true }).fill('160000000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+
+  await openAsset(page, 'Family car');
+  await expect(page.getByTestId('asset-grid')).toContainText('AcquiredMar 2021');
+
+  await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  await expect(page).toHaveURL(/\/edit$/);
+  // The row reads back only what was picked; month set back to — leaves the year alone.
+  await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('Mar 2021');
+  await fillDay(page, 'Acquired', '2020');
+  await page.getByLabel('Merk/model').fill('Hatchback 1.5');
+  await page.getByLabel('Nomor polisi/registrasi').fill('X 1234 YZ');
+  await page.getByRole('main').getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
+  await expect(page.getByTestId('asset-grid')).toContainText('Acquired2020');
+  await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  await expect(page.getByLabel('Merk/model')).toHaveValue('Hatchback 1.5');
+  await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('2020');
+  await expect(page.getByRole('button', { name: /^Acquired/ })).not.toContainText('Mar');
 });
 
 test('a bond reads its price as a share of its face', async ({ page }) => {
@@ -199,4 +235,19 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   await page.getByRole('button', { name: /World price \(XAU\)/ }).click();
   await priceSaid(page, 'World price');
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toBeVisible();
+});
+
+test('the cost row changes currency from its symbol, and asks a rate', async ({ page }) => {
+  await openNewAsset(page, 'Passenger car');
+  // No symbol on an empty row; it comes with the figure.
+  await expect(page.getByRole('button', { name: /^Original cost currency/ })).toHaveCount(0);
+  await page.getByLabel('Original cost', { exact: true }).fill('13400');
+  await expect(page.getByRole('button', { name: 'Original cost currency: IDR' })).toHaveText('Rp');
+  await page.getByRole('button', { name: 'Original cost currency: IDR' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /^USD / }).first().click();
+  await expect(page.getByRole('button', { name: 'Original cost currency: USD' })).toHaveText('$');
+  await expect(page.getByLabel('Opening rate')).toBeVisible();
+  await expect(page.getByLabel(/^Current value currency/)).toHaveCount(0);
+  await page.getByLabel('Current value', { exact: true }).fill('12000');
+  await expect(page.getByLabel('Current value currency: USD')).toHaveText('$');
 });

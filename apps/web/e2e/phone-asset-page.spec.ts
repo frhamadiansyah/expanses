@@ -20,7 +20,7 @@ test('by thumb: gold’s grid and purchases, and a laptop valued again from its 
   await page.getByLabel('Value (IDR)').fill('12000000');
   await page.getByRole('button', { name: 'Save value' }).tap();
   await expect(page.getByTestId('asset-gain')).toHaveText('−Rp 10.000.000 · −45,5%');
-  await expect(page.getByTestId('asset-history-row').first()).toContainText('My estimate');
+  await expect(page.getByTestId('asset-history-row').first()).toContainText('Estimated value');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

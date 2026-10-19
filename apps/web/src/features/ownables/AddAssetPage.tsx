@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
+import type { FormConfirm } from '../networth/AddAssetForm';
 import { AddAssetForm } from '../networth/AddAssetForm';
 import { handOverRows } from './catalogue-view';
 import { OwnablePicker } from './OwnablePicker';
@@ -14,6 +15,8 @@ import { OwnablePicker } from './OwnablePicker';
 export function AddAssetPage() {
   const navigate = useNavigate();
   const [chosen, setChosen] = useState<string | null>(null);
+  // The form says when it can save and how; the bar draws it as ✓.
+  const [confirm, setConfirm] = useState<FormConfirm | null>(null);
   return (
     <OwnablePicker
       flow="asset"
@@ -24,9 +27,10 @@ export function AddAssetPage() {
       // Listed shares start from a ticker (spec §7.5); everything else opens the form here, as before.
       onChoose={(id) => (id === 'stock' ? void navigate({ to: '/net-worth/investments/new' }) : setChosen(id))}
       handOver={handOverRows('asset')}
+      confirm={confirm ? { label: 'Add asset', ...confirm } : undefined}
     >
       {/* The picker lays its whole screen on the kit's ground, so the form's groups sit on it as they are. */}
-      {chosen && <AddAssetForm key={chosen} itemId={chosen} onDone={() => void navigate({ to: '/net-worth/assets' })} />}
+      {chosen && <AddAssetForm key={chosen} itemId={chosen} onDone={() => void navigate({ to: '/net-worth/assets' })} onConfirm={setConfirm} />}
     </OwnablePicker>
   );
 }

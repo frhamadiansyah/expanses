@@ -1,5 +1,5 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
-import { archiveAccount, type AssetValueRow, deleteTrade, renameAccount, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
+import { archiveAccount, type AssetValueRow, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
@@ -26,6 +26,7 @@ import type { DayBalance } from '../accounts/balance-series';
 import { LINE_DAYS, useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
+import { acquiredLabel } from './acquired';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
@@ -33,7 +34,7 @@ import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
-import { useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
+import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
@@ -120,6 +121,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const loans = useLoans();
   const balances = useBalances();
   const openings = useOpenings([accountId]);
+  const acquiredDates = useAcquiredDates();
+  // When it was acquired, as precisely as that was typed; before 0074 every asset was typed to the day it opened.
+  const openedOn = openings.data?.[accountId]?.occurredOn;
+  const acquired = acquiredDates.data?.[accountId] ?? (openedOn ? { on: openedOn, precision: 'day' as const } : null);
   const held = useHeldRates(currency === ws.baseCurrency ? [] : [currency]);
   const stock = useStockAndBroker(accountId);
   const profiles = useAssetProfiles();
@@ -219,7 +224,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     : estimated
       ? estimatedTiles({
           costMinor: value.costMinor,
-          boughtOn: openings.data?.[accountId]?.occurredOn ?? null,
+          acquired,
           currency,
           loan: boughtWith ? { valueMinor: value.valueMinor, owedMinor } : null,
         })
@@ -275,23 +280,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       glyph: <MoreHorizontal size={20} aria-hidden />,
       menu: [
         { key: 'settings', label: 'Settings', glyph: <Settings size={18} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
-        {
-          key: 'edit',
-          label: 'Edit',
-          glyph: <Pencil size={18} aria-hidden />,
-          run: () => {
-            const next = window.prompt('Rename', value.name);
-            if (!next || next.trim() === '' || next === value.name) return;
-            void (async () => {
-              try {
-                await renameAccount(database, ws, accountId, next);
-                await invalidate();
-              } catch (e) {
-                setError(e);
-              }
-            })();
-          },
-        },
+        // Its name, when it was acquired, and what the tax report asks of it, on a screen of their own.
+        { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, to: '/net-worth/assets/$accountId/edit', params: { accountId } },
         {
           key: 'archive',
           label: 'Archive',
@@ -341,8 +331,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                   key: 'bought',
                   row: null,
                   line: {
-                    title: 'Bought',
-                    subtitle: openings.data?.[accountId] ? dayLabel(openings.data[accountId]!.occurredOn) : 'What was paid',
+                    title: 'Original cost',
+                    subtitle: acquired ? acquiredLabel(acquired.on, acquired.precision) : 'What was paid',
                     value: formatMinor(value.costMinor, currency),
                     note: null,
                     tone: 'quiet' as const,

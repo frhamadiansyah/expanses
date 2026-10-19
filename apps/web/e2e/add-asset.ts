@@ -24,3 +24,21 @@ export async function openNewAsset(page: Page, pick: string) {
   await search.pressSequentially(pick.replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim());
   await page.getByRole('button', { name: pick }).click();
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A day picked on an Acquired-style row — the row opens three wheels, Year, Month and Day — as the add form and an
+ * asset's Edit screen draw it. `label` is the row's ("Acquired", or "Bought" on a purchase); `nth` picks among several.
+ * Leave out the day, or the month and day, by passing "2021-03" or "2021".
+ */
+export async function fillDay(page: Page, label: string, iso: string, nth = 0) {
+  await page.getByRole('button', { name: new RegExp(`^${label}`) }).nth(nth).click();
+  const sheet = page.getByRole('dialog');
+  const pick = (wheel: string, option: string) => sheet.getByRole('listbox', { name: wheel }).getByRole('option', { name: option, exact: true }).click();
+  await pick('Year', iso.slice(0, 4));
+  await pick('Month', iso.length >= 7 ? MONTHS[Number(iso.slice(5, 7)) - 1]! : '—');
+  if (iso.length >= 10) await pick('Day', String(Number(iso.slice(8, 10))));
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await expect(sheet).toHaveCount(0);
+}

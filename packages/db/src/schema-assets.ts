@@ -78,6 +78,15 @@ export const brokerFees = sqliteTable('broker_fees', {
   updatedAt: text('updated_at').notNull(),
 });
 
+/** When an asset was acquired and how much of that day was typed (0074). No row is a whole day. */
+export const assetAcquired = sqliteTable('asset_acquired', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  acquiredOn: text('acquired_on').notNull(),
+  precision: text('precision', { enum: ['year', 'month', 'day'] }).notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const valuations = sqliteTable('valuations', {
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
