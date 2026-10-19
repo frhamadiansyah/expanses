@@ -16,7 +16,7 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
  * would read as a box inside a box. Focus comes back as an outline, since there is no border left to thicken.
  */
 
-const LABEL = 'shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]';
+const LABEL = 'shrink-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-ink)]';
 
 /** The inputs WebKit draws with a height of their own. */
 const DATE_TYPES = new Set(['date', 'time', 'datetime-local', 'month']);
@@ -67,7 +67,7 @@ export function PickerRow({
       <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(false)}>
         <span className={LABEL}>{label}</span>
         <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
-          <span className={cx('truncate text-right text-[15px] leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
+          <span className={cx('truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
           {plan.chevron && (
             <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
               {'›'}
@@ -139,7 +139,7 @@ export function TextRow({
           {...props}
           id={id}
           className={cx(
-            'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
+            'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
             'placeholder:text-[var(--ph-ink-3)]',
             // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
             // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
@@ -218,7 +218,7 @@ export function SelectRow({
             className,
           )}
         >
-          <span aria-hidden className={cx('min-w-0 truncate text-[16px] leading-[20px] md:text-[15px]', toneClass(plan.tone))}>
+          <span aria-hidden className={cx('min-w-0 truncate text-[17px] leading-[22px] md:leading-[20px] md:text-[15px]', toneClass(plan.tone))}>
             {shown}
           </span>
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
@@ -262,7 +262,7 @@ export function ReadOnlyRow({ label, value, position }: GroupChild & { label: st
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
         <span className={LABEL}>{label}</span>
-        <span className={cx('tabular min-w-0 flex-1 truncate text-right text-[15px] leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
+        <span className={cx('tabular min-w-0 flex-1 truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
       </div>
     </div>
   );
@@ -281,7 +281,7 @@ export function DestructiveRow({ label, onClick, position }: GroupChild & { labe
       <button
         type="button"
         onClick={onClick}
-        className="ph-focus-inset w-full text-center text-[15px] leading-[20px] text-[var(--ph-alarm)]"
+        className="ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-alarm)]"
         style={shell(false)}
       >
         {label}
@@ -328,7 +328,7 @@ export function SwitchRow({
           a line of text would: the padding is what keeps a switch row the height of every other row. */}
       <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
         <span className="flex min-w-0 flex-1 items-center gap-[6px]">
-          <label htmlFor={id} className={cx('min-w-0 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
+          <label htmlFor={id} className={cx('min-w-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.labelTone))}>
             {label}
           </label>
           {info && (
@@ -385,7 +385,7 @@ export function SubmitRow({ label, disabled = false, position }: GroupChild & { 
       <button
         type="submit"
         disabled={disabled}
-        className="ph-focus-inset block w-full text-left text-[15px] leading-[20px] font-semibold text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]"
+        className="ph-focus-inset block w-full text-left text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-semibold text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]"
         style={shell(false)}
       >
         {label}
@@ -404,7 +404,7 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
       <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
       <input
         {...props}
-        className="ph-focus min-w-0 flex-1 rounded bg-transparent py-[7px] text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+        className="ph-focus min-w-0 flex-1 rounded bg-transparent py-[7px] text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
       />
     </label>
   );
@@ -438,7 +438,7 @@ export function CurrencyCode({
   const known = (code: string) => codes.some((c) => c.code === code);
   const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
   const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
-  const sized = cx('text-[16px] leading-[20px] tracking-[0.5px] uppercase md:text-[15px]', className);
+  const sized = cx('text-[17px] leading-[22px] md:leading-[20px] tracking-[0.5px] uppercase md:text-[15px]', className);
   return (
     <>
       {/* As wide as the code it shows, so the caller's › sits right after it: an unseen copy sets the width. */}
