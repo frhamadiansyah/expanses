@@ -25,6 +25,8 @@ export interface TradeInput {
   taxMinor: number;
   /** Money that actually left or reached the cash account, in the cash currency. Only for a different currency. */
   cashMinor?: number;
+  /** A holding tracked by money: units are optional, and a sell gives up `basisMinor`, worked out by the caller. */
+  byMoney?: { basisMinor?: number };
 }
 
 const line = (accountId: string, amountMinor: number, currency: string): PostingLine => ({ accountId, amountMinor, currency });
@@ -68,15 +70,16 @@ export function tradePostings(input: TradeInput, position: Position, accounts: T
   if (input.kind === 'unit_change') return [];
 
   if (input.kind === 'buy') {
-    if (input.unitsMicro <= 0) throw new TradeError('INVALID_UNITS', 'A buy needs units greater than zero');
+    if (!input.byMoney && input.unitsMicro <= 0) throw new TradeError('INVALID_UNITS', 'A buy needs units greater than zero');
     const cost = input.grossMinor + input.feeMinor + input.taxMinor;
     if (cost <= 0) throw new TradeError('INVALID_AMOUNT', 'A buy needs an amount greater than zero');
     return [line(accounts.holdingAccountId, cost, holdingCurrency), ...cashLines(accounts, cost, input.cashMinor)];
   }
 
   if (input.kind === 'sell') {
-    if (input.unitsMicro <= 0) throw new TradeError('INVALID_UNITS', 'A sell needs units greater than zero');
-    const basis = sellBasisMinor(position, input.unitsMicro);
+    if (!input.byMoney && input.unitsMicro <= 0) throw new TradeError('INVALID_UNITS', 'A sell needs units greater than zero');
+    if (input.byMoney && input.grossMinor <= 0) throw new TradeError('INVALID_AMOUNT', 'A sell needs an amount greater than zero');
+    const basis = input.byMoney ? (input.byMoney.basisMinor ?? 0) : sellBasisMinor(position, input.unitsMicro);
     const net = input.grossMinor - input.feeMinor - input.taxMinor;
     const gain = input.grossMinor - input.feeMinor - basis;
     const lines: PostingLine[] = sellCashLines(accounts, net, input.cashMinor);
@@ -100,8 +103,8 @@ export function tradePostings(input: TradeInput, position: Position, accounts: T
 
 /** Plain-language description stored on the ledger transaction. */
 export function tradeDescription(input: TradeInput, holdingName: string): string {
-  if (input.kind === 'buy') return `Bought ${formatUnits(input.unitsMicro)} ${holdingName}`;
-  if (input.kind === 'sell') return `Sold ${formatUnits(input.unitsMicro)} ${holdingName}`;
+  if (input.kind === 'buy') return input.unitsMicro > 0 ? `Bought ${formatUnits(input.unitsMicro)} ${holdingName}` : `Bought ${holdingName}`;
+  if (input.kind === 'sell') return input.unitsMicro > 0 ? `Sold ${formatUnits(input.unitsMicro)} ${holdingName}` : `Sold ${holdingName}`;
   if (input.kind === 'income') return `Income from ${holdingName}`;
   return `Units changed on ${holdingName}`;
 }

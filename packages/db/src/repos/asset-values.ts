@@ -1,4 +1,5 @@
 import {
+  byMoneyInputs,
   type AssetValue,
   assetValueAt,
   convertMinor,
@@ -130,7 +131,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     const accountValuations: ValuationRow[] = valuationRows
       .filter((row) => row.accountId === account.id)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
+      .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
     const value = assetValueAt(
       {
         accountId: account.id,
@@ -140,6 +141,8 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
         position,
         prices: accountPrices,
         valuations: accountValuations,
+        // Tracked by money: the last typed value (or past NAV) moved by the buys and sells since.
+        ...(mode === 'amount' ? byMoneyInputs(tradesByAccount.get(account.id) ?? [], accountPrices, accountValuations, date) : {}),
       },
       date,
     );
@@ -181,7 +184,7 @@ export async function assetValueSeries(
     .from(assetProfiles)
     .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
   const mode: ValuationMode = profile ? presetFor(profile.assetKind).valuationMode : account.valuationMode;
-  const trades = mode === 'market' ? await listTrades(database, ws, { accountId }) : [];
+  const trades = mode === 'market' || mode === 'amount' ? await listTrades(database, ws, { accountId }) : [];
   const securityId = (await listHoldingLinks(database, ws)).find((link) => link.accountId === accountId)?.securityId ?? null;
   const accountPrices: PriceRow[] = securityId
     ? (await allSecurityPrices(database, ws)).filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
@@ -189,9 +192,12 @@ export async function assetValueSeries(
         onDate: row.onDate,
         priceMicro: row.priceMicro,
       }));
+  // Oldest saved first, as assetValuesAt reads them: of two values for one day the one saved last counts.
   const accountValuations: ValuationRow[] = (
-    await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId)))
-  ).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
+    await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId))).orderBy(sql`rowid`)
+  )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
   return dates.map(
     (date) =>
       assetValueAt(
@@ -203,6 +209,7 @@ export async function assetValueSeries(
           position: mode === 'market' ? positionAfter(trades, date) : undefined,
           prices: accountPrices,
           valuations: accountValuations,
+          ...(mode === 'amount' ? byMoneyInputs(trades, accountPrices, accountValuations, date) : {}),
         },
         date,
       ).valueMinor,

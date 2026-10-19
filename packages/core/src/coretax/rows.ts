@@ -54,6 +54,11 @@ export interface HoldingInput {
   fields: Record<string, string>;
   /** Foreign holdings only: each buy up to 31 December, for the note under the row. */
   purchases?: HoldingPurchase[];
+  /**
+   * A holding tracked by money (a mutual fund): its 31 December value, in its own currency. Each year's parcel is then
+   * valued by its share of the money still in, since there are no units to price; `priceMicro` is unused.
+   */
+  valueMinor?: number;
 }
 
 export interface EstimatedInput {
@@ -164,15 +169,29 @@ const joinNotes = (...notes: (string | null)[]): string | null => notes.filter((
 function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRow[] {
   const rows: CoretaxRow[] = [];
   for (const holding of inputs.holdings) {
-    const years = liveYears(holding.byYear);
+    const byValue = holding.valueMinor !== undefined;
+    // By money: the parcels with money still in them; worth something with none left, the one parcel it was given.
+    const withCost = Object.entries(holding.byYear).filter(([, bucket]) => bucket.costMinor > 0);
+    const years = byValue
+      ? (withCost.length > 0 ? withCost : (holding.valueMinor ?? 0) > 0 ? Object.entries(holding.byYear) : []).sort(([a], [b]) => a.localeCompare(b))
+      : liveYears(holding.byYear);
     if (years.length === 0) continue;
     const section = sectionOfCode(holding.code);
+    const totalCost = years.reduce((total, [, bucket]) => total + bucket.costMinor, 0);
 
-    const valueOf = (unitsMicro: number) => inBase(unitsValueMinor(unitsMicro, holding.priceMicro), holding.currency, settings);
+    // By units: the parcel's units at the 31 December price. By money: the value's share by the money each parcel put in.
+    const valueOf = (bucket: YearBucket) =>
+      inBase(
+        byValue
+          ? totalCost > 0 ? Math.round((holding.valueMinor! * bucket.costMinor) / totalCost) : 0
+          : unitsValueMinor(bucket.unitsMicro, holding.priceMicro),
+        holding.currency,
+        settings,
+      );
 
     if (settings.repeatRows === 'year') {
       for (const [year, bucket] of years) {
-        const value = valueOf(bucket.unitsMicro);
+        const value = valueOf(bucket);
         rows.push(
           row({
             key: `${holding.accountId}:${year}`,
@@ -192,8 +211,8 @@ function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRo
     }
 
     const unitsMicro = years.reduce((total, [, bucket]) => total + bucket.unitsMicro, 0);
-    const costMinor = years.reduce((total, [, bucket]) => total + bucket.costMinor, 0);
-    const value = valueOf(unitsMicro);
+    const costMinor = totalCost;
+    const value = byValue ? inBase(holding.valueMinor!, holding.currency, settings) : valueOf({ unitsMicro, costMinor });
     rows.push(
       row({
         key: holding.accountId,

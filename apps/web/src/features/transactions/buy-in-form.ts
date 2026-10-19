@@ -144,6 +144,7 @@ export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, tod
  * asymmetry is deliberate — a debt may **receive** money, and can never be where money comes *from*.
  */
 export function transferTargets(accounts: AccountRow[], values: AssetValueRow[]): AccountRow[] {
-  const unitPriced = new Set(values.filter((value) => value.mode === 'market').map((value) => value.accountId));
+  // A fund tracked by money is a holding too: money reaches it by a buy, never a transfer.
+  const unitPriced = new Set(values.filter((value) => value.mode === 'market' || value.mode === 'amount').map((value) => value.accountId));
   return accounts.filter((account) => !unitPriced.has(account.id));
 }

@@ -1,4 +1,4 @@
-import { formatUnits, fundBuy, fundNavText, fundSell, fundUnitsText, groupTypedAmount, isoDate, type Position, sellBasisMinor } from '@expanses/core';
+import { formatMinor, formatUnits, fundBuy, fundNavText, fundSell, fundUnitsText, groupTypedAmount, isoDate, moneySellBasis, type Position, sellBasisMinor } from '@expanses/core';
 import type { RecordTradeInput } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -10,6 +10,8 @@ import { CashRow, CashSheet, HoldingRow, MoreOptionsRow, ResultRow, signedMinor,
 
 const BUY_INFO =
   "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade.";
+const MONEY_SELL_INFO =
+  "A sell takes out the same share of the money you put in as it takes of the fund's value, and the rest is your gain. All takes everything. A reksadana gain isn't taxed for the holder (UU PPh Pasal 4(3) huruf i), but the fund still sits in the tax report's asset list.";
 const SELL_INFO =
   "All sells every unit; its value is then units × NAV rather than a typed amount. A reksadana gain isn't taxed for the holder (UU PPh Pasal 4(3) huruf i), but the fund still sits in the tax report's asset list. A money market fund usually pays out in T+1 to T+2; the law allows up to T+7.";
 
@@ -28,6 +30,7 @@ export function FundTradeSheet({
   defaultCashId,
   onMore,
   onClose,
+  byMoney = null,
 }: {
   kind: 'buy' | 'sell';
   holding: { accountId: string; name: string; currency: string };
@@ -38,6 +41,11 @@ export function FundTradeSheet({
   defaultCashId: string | null;
   onMore: (initial: Partial<TradeDraft>) => void;
   onClose: () => void;
+  /**
+   * A fund tracked by money (spec 2026-10-19-fund-by-amount): what it is worth now. Buy and sell are amounts alone, no
+   * NAV and no units; a sell can take up to the value, and All takes all of it.
+   */
+  byMoney?: { valueMinor: number } | null;
 }) {
   const today = isoDate();
   const currency = holding.currency;
@@ -50,20 +58,30 @@ export function FundTradeSheet({
   const priceMicro = lastPrice?.priceMicro ?? null;
   const amountMinor = typedMinor(amount, currency);
 
-  const buy = kind === 'buy' ? fundBuy({ amountMinor, priceMicro }) : null;
-  const sell = kind === 'sell' ? fundSell({ amountMinor, all, priceMicro, heldMicro }) : null;
+  const moneyGross = byMoney ? (kind === 'sell' && all ? byMoney.valueMinor : amountMinor) : null;
+  const buy = byMoney
+    ? kind === 'buy' && moneyGross !== null && moneyGross > 0 ? { unitsMicro: 0, grossMinor: moneyGross } : null
+    : kind === 'buy' ? fundBuy({ amountMinor, priceMicro }) : null;
+  const sell = byMoney
+    ? kind === 'sell' && moneyGross !== null && moneyGross > 0 ? { unitsMicro: 0, grossMinor: moneyGross, tooMany: moneyGross > byMoney.valueMinor } : null
+    : kind === 'sell' ? fundSell({ amountMinor, all, priceMicro, heldMicro }) : null;
   const trade = buy ?? (sell && !sell.tooMany ? sell : null);
   const input: RecordTradeInput | null =
     trade && occurredOn <= today && side.cashAccountId
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro: trade.unitsMicro, grossMinor: trade.grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
   const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency: side.cashAccount?.currency ?? undefined, onDone: onClose });
-  const gain = kind === 'sell' && position && sell && !sell.tooMany ? sell.grossMinor - sellBasisMinor(position, sell.unitsMicro) : null;
+  const gain =
+    kind === 'sell' && position && sell && !sell.tooMany
+      ? sell.grossMinor - (byMoney ? moneySellBasis(position.costMinor, byMoney.valueMinor, sell.grossMinor) : sellBasisMinor(position, sell.unitsMicro))
+      : null;
 
-  const subtitle = [
-    `${fundUnitsText(heldMicro)} units`,
-    lastPrice ? `NAV ${fundNavText(lastPrice.priceMicro, currency)} · ${dayLabel(lastPrice.onDate)}` : 'No NAV yet',
-  ].join(' · ');
+  const subtitle = byMoney
+    ? `Worth ${formatMinor(byMoney.valueMinor, currency)}`
+    : [
+        `${fundUnitsText(heldMicro)} units`,
+        lastPrice ? `NAV ${fundNavText(lastPrice.priceMicro, currency)} · ${dayLabel(lastPrice.onDate)}` : 'No NAV yet',
+      ].join(' · ');
   // All shows what it sells for; typing an amount again turns All off.
   const shownAmount = all && sell ? typedAmount(sell.grossMinor, currency) : amount;
   const worked = buy ?? sell;
@@ -108,7 +126,24 @@ export function FundTradeSheet({
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
 
-      {worked && (
+      {worked && byMoney && gain !== null && (
+        <InsetGroup>
+          <ResultRow
+            testId="fund-gain"
+            label="Gain"
+            info={MONEY_SELL_INFO}
+            value={signedMinor(gain, currency)}
+            valueClass={gain > 0 ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]'}
+          />
+        </InsetGroup>
+      )}
+      {worked && byMoney && sell?.tooMany && (
+        <InsetGroup footer="A sell can take up to what the fund is worth. If the fund app shows more, update its value first.">
+          <ResultRow testId="fund-worth" label="Worth" value={formatMinor(byMoney.valueMinor, currency)} />
+        </InsetGroup>
+      )}
+
+      {worked && !byMoney && (
         <InsetGroup footer={sell?.tooMany ? `More than the ${fundUnitsText(heldMicro)} units held` : undefined}>
           <ResultRow
             testId="fund-units"
@@ -129,6 +164,7 @@ export function FundTradeSheet({
 
       {saving.setAside.node}
       <ErrorBox error={saving.error} />
+      {!byMoney && (
       <InsetGroup>
         <MoreOptionsRow
           run={() =>
@@ -144,6 +180,7 @@ export function FundTradeSheet({
           }
         />
       </InsetGroup>
+      )}
       {picking && <CashSheet title={kind === 'buy' ? 'Paid from' : 'To'} side={side} onClose={() => setPicking(false)} />}
     </Sheet>
   );

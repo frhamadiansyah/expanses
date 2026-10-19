@@ -126,6 +126,39 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       continue;
     }
 
+    if (value.mode === 'amount') {
+      // Tracked by money: valued at its 31 December figure, its parcels by the money each put in.
+      const position = positions[value.accountId];
+      if ((position?.costMinor ?? 0) <= 0 && value.valueMinor <= 0) continue;
+      const foreign = value.currency !== ws.baseCurrency;
+      const link = linkOf.get(value.accountId);
+      const brokerName = link?.brokerAccountId ? (nameOf.get(link.brokerAccountId) ?? null) : null;
+      // Harga perolehan is historical rupiah (Pasal 10): a foreign fund's money in at its own days' rates.
+      const held = (foreign ? costs.positions[value.accountId]?.byYear : position?.byYear) ?? {};
+      /* Worth something with no money left in it (all its cost given up, or only a value typed): still declared, at a
+         cost of nothing, in the year it was first bought — or the report's year when it has no buy. */
+      const firstBuy = trades.filter((trade) => trade.accountId === value.accountId && trade.kind === 'buy' && trade.occurredOn <= onDate)[0];
+      const byYear = Object.values(held).some((bucket) => bucket.costMinor > 0) ? held : { [(firstBuy?.occurredOn ?? onDate).slice(0, 4)]: { unitsMicro: 0, costMinor: 0 } };
+      inputs.holdings.push({
+        accountId: value.accountId,
+        name: value.name,
+        code: code ?? '0307',
+        currency: value.currency,
+        priceMicro: 0,
+        byYear,
+        valueMinor: value.valueMinor,
+        fields: brokerName && !fields.inst?.trim() ? { ...fields, inst: brokerName } : fields,
+        ...(foreign
+          ? {
+              purchases: trades
+                .filter((trade) => trade.accountId === value.accountId && trade.kind === 'buy' && trade.occurredOn <= onDate)
+                .map((trade) => ({ occurredOn: trade.occurredOn, nativeMinor: trade.grossMinor + trade.feeMinor + trade.taxMinor, baseMinor: costs.buyBaseMinor[trade.id]! })),
+            }
+          : {}),
+      });
+      continue;
+    }
+
     // Property, vehicles and anything else the owner estimates.
     if (value.valueMinor <= 0 && value.costMinor <= 0) continue;
     inputs.estimated.push({

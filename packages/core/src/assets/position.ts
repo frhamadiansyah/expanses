@@ -20,6 +20,8 @@ export interface TradeRecord {
   /** Declared reinvestment of this payment, and the holding it was declared into. */
   reinvestedMinor?: number | null;
   reinvestedIntoAccountId?: string | null;
+  /** A sell from a holding tracked by money: the money still in it took out, fixed when the sell was saved. */
+  basisMinor?: number | null;
 }
 
 export interface YearBucket {

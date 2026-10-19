@@ -79,7 +79,7 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: 
     method: METHOD_LABELS[value.mode],
     coretax: code && filed ? `${code} · ${CORETAX_SECTION_LABELS[filed] ?? filed}` : '',
     stale: value.stale,
-    sold: value.mode === 'market' && value.unitsMicro === 0,
+    sold: (value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0),
     due,
     pockets: null,
     missing: [],
@@ -100,7 +100,8 @@ export interface AssetGrouping {
   due?: ReadonlySet<string>;
 }
 
-const isSold = (value: AssetValueRow) => value.mode === 'market' && value.unitsMicro === 0;
+// A fund tracked by money has no units: it is sold out when nothing is in it and it is worth nothing.
+const isSold = (value: AssetValueRow) => (value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0);
 
 /**
  * What kind of thing a row is, in the balance sheet's own words.

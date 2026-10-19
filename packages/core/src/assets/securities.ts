@@ -2,6 +2,7 @@ import { inflowTo, outflowFrom } from '../goals/set-aside';
 import { currencyInfo } from '../money/currencies';
 import { sumToBase } from '../money/exchange';
 import { convertMinor } from '../money/money';
+import { holdingPositionAfter, moneySells } from './by-money';
 import { type Position, positionAfter, type TradeRecord } from './position';
 import { type TradeAccounts, type TradeInput, tradePostings } from './trades';
 import { divRound } from './units';
@@ -17,6 +18,9 @@ export type SecurityKind = 'share' | 'etf' | 'other';
  */
 export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Readonly<Record<string, number>>, upTo?: string): Position {
   const walked: TradeRecord[] = [];
+  /* A sell tracked by money keeps its cost in the holding's own currency; in base it gives up the same share of the
+     base cost still in. Walked once in its own currency to know each sell's share. */
+  const native = trades.some((trade) => trade.basisMinor != null) ? moneySells(trades) : null;
   for (const trade of trades) {
     if (upTo && trade.occurredOn > upTo) continue;
     if (trade.kind === 'income') continue;
@@ -24,11 +28,24 @@ export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Re
       const base = baseCostOfBuy[trade.id];
       if (base === undefined) throw new Error(`No base-currency cost for buy ${trade.id}`);
       walked.push({ ...trade, grossMinor: base, feeMinor: 0, taxMinor: 0 });
+    } else if (native && trade.kind === 'sell') {
+      // The base basis is filled in below, once the base cost before this sell is known.
+      walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0, basisMinor: null });
     } else {
       walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0 });
     }
   }
-  return { ...positionAfter(walked, upTo), realizedMinor: 0, incomeMinor: 0 };
+  if (native) {
+    const ordered = [...walked].sort((a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    ordered.forEach((trade, index) => {
+      const sold = trade.kind === 'sell' ? native.get(trade.id) : undefined;
+      if (!sold) return;
+      const baseBefore = holdingPositionAfter(ordered.slice(0, index)).costMinor;
+      trade.basisMinor = sold.costBeforeMinor > 0 ? Number(divRound(BigInt(baseBefore) * BigInt(sold.basisMinor), BigInt(sold.costBeforeMinor))) : baseBefore;
+    });
+    return { ...holdingPositionAfter(ordered, upTo), realizedMinor: 0, incomeMinor: 0 };
+  }
+  return { ...holdingPositionAfter(walked, upTo), realizedMinor: 0, incomeMinor: 0 };
 }
 
 /** Whole percentages of a total that add up to exactly 100: each part floored, the remainder to the largest part. */
@@ -145,10 +162,20 @@ const ONE_CURRENCY: TradeAccounts = {
  * back with `outflowFrom` / `inflowTo` — so a change to how a trade posts can never leave this figure behind. A sell
  * is posted against a position that holds exactly what it sells; its basis never touches the cash line.
  */
+/**
+ * The trade as the cash side reads it: a buy or sell with no units is one tracked by money, whose cash lines are its
+ * amount alone — what it gives up on the holding side does not touch the cash, so no cost is needed for it here.
+ */
+const cashOnly = (input: TradeInput): TradeInput => ({
+  ...input,
+  cashMinor: undefined,
+  byMoney: input.byMoney ?? ((input.kind === 'buy' || input.kind === 'sell') && input.unitsMicro <= 0 ? { basisMinor: 0 } : undefined),
+});
+
 export function tradeCashMinor(input: TradeInput): number {
   if (input.kind === 'unit_change') return 0;
   const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
-  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  const lines = tradePostings(cashOnly(input), held, ONE_CURRENCY);
   return input.kind === 'buy' ? outflowFrom(lines, CASH) : inflowTo(lines, CASH);
 }
 
@@ -160,7 +187,7 @@ export function tradeCashMinor(input: TradeInput): number {
 export function tradeCashMovedMinor(input: TradeInput): number {
   if (input.kind === 'unit_change') return 0;
   const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
-  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  const lines = tradePostings(cashOnly(input), held, ONE_CURRENCY);
   return outflowFrom(lines, CASH) + inflowTo(lines, CASH);
 }
 

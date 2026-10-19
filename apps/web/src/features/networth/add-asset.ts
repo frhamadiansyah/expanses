@@ -6,6 +6,7 @@ import {
   parseMajor,
   parseUnits,
   type PlanGroup,
+  presetFor,
   type UnitKind,
 } from '@expanses/core';
 import { type AcquiredParts, acquiredOn, type DatePrecision, NO_DATE } from './acquired';
@@ -95,6 +96,15 @@ export const needsPurchases = (itemId: string, typedInstead = false): boolean =>
   return behaviour.opens === 'holding' && (behaviour.valuedBy === 'units' || behaviour.valuedBy === 'face' || behaviour.valuedBy === 'grams');
 };
 
+/**
+ * A holding tracked by money (a mutual fund, spec 2026-10-19-fund-by-amount): its purchases are amounts, units only if
+ * the owner knows them, and what it is worth now is typed from the fund app.
+ */
+export const byMoneyItem = (itemId: string, typedInstead = false): boolean => {
+  const { behaviour } = chosenItem(itemId, typedInstead);
+  return behaviour.opens === 'holding' && presetFor(behaviour.assetKind).valuationMode === 'amount';
+};
+
 /** Anything the owner puts a value on — property, a car, a patent — is estimated instead. */
 export const needsEstimate = (itemId: string, typedInstead = false): boolean => {
   const { behaviour } = chosenItem(itemId, typedInstead);
@@ -141,10 +151,13 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
       const hasCost = purchase.cost.trim() !== '';
       if (!hasUnits && !hasCost) continue;
       const bought = acquiredOn(purchase.on, today);
-      if (!hasUnits || !hasCost) throw new Error('Each purchase needs both how much was bought and what it cost');
-      const unitsMicro = parseUnits(purchase.units);
+      const byMoney = byMoneyItem(draft.itemId, draft.typedInstead);
+      if (byMoney ? !hasCost : !hasUnits || !hasCost) {
+        throw new Error(byMoney ? 'Each purchase needs the amount put in' : 'Each purchase needs both how much was bought and what it cost');
+      }
+      const unitsMicro = hasUnits ? parseUnits(purchase.units) : 0;
       const grossMinor = parseMajor(purchase.cost, draft.currency);
-      if (unitsMicro <= 0) throw new Error('A purchase needs more than zero units');
+      if (hasUnits && unitsMicro <= 0) throw new Error('A purchase needs more than zero units');
       if (grossMinor <= 0) throw new Error('A purchase needs a cost greater than zero');
       trades.push({ occurredOn: bought.on, unitsMicro, grossMinor });
       // The holding was acquired with its earliest purchase, at the precision that purchase was typed.
@@ -165,7 +178,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
   }
 
   let valuation: NewAssetPlan['valuation'] = null;
-  if (needsEstimate(draft.itemId, draft.typedInstead) && draft.estimate.trim() !== '') {
+  if ((needsEstimate(draft.itemId, draft.typedInstead) || byMoneyItem(draft.itemId, draft.typedInstead)) && draft.estimate.trim() !== '') {
     valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: 'estimate' };
     if (valuation.valueMinor < 0) throw new Error('An estimate cannot be negative');
   }

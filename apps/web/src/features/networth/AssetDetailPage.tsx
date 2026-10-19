@@ -138,6 +138,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const unitKind = profile.data?.unitKind ?? null;
   const priced = value.mode === 'market';
   const estimated = value.mode === 'snapshot';
+  // A fund tracked by money (spec 2026-10-19-fund-by-amount): buys and sells by amount, its value typed from the app.
+  const byMoney = value.mode === 'amount';
   const position = positions.data?.[accountId];
   const unitsMicro = position?.unitsMicro ?? 0;
   // A linked holding counts in the security's lots; one of its own, in the lot its settings say.
@@ -168,7 +170,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
   const owedMinor = boughtWith ? Math.abs(balances.data?.[boughtWith.accountId] ?? 0) : 0;
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
-  const canArchive = value.valueMinor === 0 && unitsMicro === 0;
+  const canArchive = value.valueMinor === 0 && unitsMicro === 0 && (!byMoney || value.costMinor === 0);
   const holding = { accountId, name: value.name, currency };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
@@ -221,7 +223,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ? { ...tile, info: tile.info ? `${saidPrice}. ${tile.info}` : saidPrice }
           : tile,
       )
-    : estimated
+    : byMoney
+      ? [{ label: 'Money in', value: formatMinor(value.costMinor, currency), info: 'What you put in and have not taken out yet. The value above minus this is your gain.' }]
+      : estimated
       ? estimatedTiles({
           costMinor: value.costMinor,
           acquired,
@@ -234,7 +238,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // A share listed on IDX buys and sells in its own sheet: price on IDX's tick, whole lots, the broker's fee.
   const idxShare = listedSecurity && isIdxListing(listedSecurity) ? listedSecurity : null;
   // A mutual fund counted in units buys and sells by amount in its own sheet: the units come from the NAV.
-  const fundHolding = priced && kind === 'fund' && unitKind === 'units' && !idxShare;
+  const fundHolding = byMoney || (priced && kind === 'fund' && unitKind === 'units' && !idxShare);
   // Gold counted in grams buys and sells by weight and the receipt's total, with the brand's bar sizes to hand.
   const goldHolding = priced && unitKind === 'grams' && !idxShare;
   const buyOrSell = (kind: 'buy' | 'sell', title: string) =>
@@ -257,6 +261,12 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           : [{ key: 'income', label: incomeWordOf(kind), glyph: <ArrowDownLeft size={20} aria-hidden />, run: trade(incomeWordOf(kind), { kind: 'income' }) }]),
         { key: 'price', label: 'Price', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'price' }) },
       ]
+    : byMoney
+      ? [
+          { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
+          { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: buyOrSell('sell', 'Sell') },
+          { key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
+        ]
     : estimated
       ? [{ key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]
       : [];
@@ -311,6 +321,36 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         row,
         line: tradeLine(row, { unitKind, lotSize, currency, priceMicro: latestPrice?.priceMicro ?? null, incomeWord: incomeWordOf(kind) }),
       }))
+    : byMoney
+      ? [
+          // Buys, sells and the values typed, newest first: money moved and what the fund app said, one list.
+          ...[
+            ...(trades.data ?? [])
+              .filter((row) => row.kind === 'buy' || row.kind === 'sell')
+              .map((row) => ({
+                on: row.occurredOn,
+                key: row.id,
+                row,
+                line: {
+                  title: row.kind === 'buy' ? 'Bought' : 'Sold',
+                  subtitle: dayLabel(row.occurredOn),
+                  value: `${row.kind === 'buy' ? '+' : '−'}${formatMinor(row.grossMinor, currency)}`,
+                  note: null,
+                  tone: 'quiet' as const,
+                },
+              })),
+            ...(valuations.data ?? [])
+              .filter((row) => row.basis !== 'njop')
+              .map((row) => ({
+                on: row.asOf,
+                key: row.id,
+                row: null,
+                line: { title: 'Value', subtitle: [dayLabel(row.asOf), row.note].filter(Boolean).join(' · '), value: formatMinor(row.valueMinor, currency), note: null, tone: 'quiet' as const },
+              })),
+          ]
+            .sort((a, b) => b.on.localeCompare(a.on))
+            .map(({ key, row, line }) => ({ key, row, line })),
+        ]
     : estimated
       ? [
           ...(valuations.data ?? []).map((row) => ({
@@ -343,7 +383,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         ]
       : [];
   const onlyBuys = (trades.data ?? []).every((row) => row.kind === 'buy');
-  const listTitle = estimated ? 'Value history' : onlyBuys ? 'Purchases' : 'Buys and sells';
+  const listTitle = estimated ? 'Value history' : byMoney ? 'History' : onlyBuys ? 'Purchases' : 'Buys and sells';
   const shown = all ? lines : lines.slice(0, FOLDED);
 
   return (
@@ -455,7 +495,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               search={{ link: accountId }}
             />
           ) : null,
-          priced && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
+          (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one.
             <SelectRow key="kept" label="Kept at" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
               <option value="none">No broker</option>
@@ -570,6 +610,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           defaultCashId={brokerId}
           onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
+          byMoney={byMoney ? { valueMinor: value.valueMinor } : null}
         />
       )}
       {sheet?.kind === 'gold-trade' && goldHolding && (

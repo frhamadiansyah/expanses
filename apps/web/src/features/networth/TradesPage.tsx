@@ -1,4 +1,4 @@
-import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, positionAfter, presetFor } from '@expanses/core';
+import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, holdingPositionAfter, presetFor } from '@expanses/core';
 import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -35,7 +35,7 @@ export function TradesPage() {
   const [filter, setFilter] = useState('all');
 
   const holdings = (values.data ?? [])
-    .filter((row) => row.mode === 'market')
+    .filter((row) => row.mode === 'market' || row.mode === 'amount')
     .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
   /*
    * The cash side of a trade, and the reason this set is not the payable one: a buy is paid out of the broker's own
@@ -62,8 +62,8 @@ export function TradesPage() {
     const out: Record<string, { realizedMinor: number; incomeMinor: number }> = {};
     for (const holding of holdings) {
       const list = (trades.data ?? []).filter((trade) => trade.accountId === holding.accountId);
-      const all = positionAfter(list);
-      const before = positionAfter(list, startOfYear === isoDate() ? startOfYear : `${Number(startOfYear.slice(0, 4)) - 1}-12-31`);
+      const all = holdingPositionAfter(list);
+      const before = holdingPositionAfter(list, startOfYear === isoDate() ? startOfYear : `${Number(startOfYear.slice(0, 4)) - 1}-12-31`);
       out[holding.accountId] = { realizedMinor: all.realizedMinor - before.realizedMinor, incomeMinor: all.incomeMinor - before.incomeMinor };
     }
     return out;

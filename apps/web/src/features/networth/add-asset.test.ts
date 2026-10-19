@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
+import { byMoneyItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
 
 /** A whole day, typed to the day. */
 const day = (iso: string) => ({ year: iso.slice(0, 4), month: String(Number(iso.slice(5, 7))), day: String(Number(iso.slice(8, 10))) });
@@ -202,5 +202,34 @@ describe('the rate an asset opens at', () => {
       '2026-09-21',
     );
     expect([plan.rateNeededMinor, plan.rateDate]).toEqual([22_035, '2026-03-01']);
+  });
+});
+
+describe('a mutual fund, tracked by money', () => {
+  const fundDraft = (purchases: { units: string; cost: string }[], estimate = '') => ({
+    ...emptyDraft('fund', 'IDR', '2026-10-19'),
+    name: 'Sucor Money Market',
+    purchases: purchases.map((p) => ({ on: { year: '2026', month: '8', day: '1' }, ...p })),
+    estimate,
+  });
+
+  it('is bought by amount: units are optional and a current value becomes its first typed value', () => {
+    expect(byMoneyItem('fund')).toBe(true);
+    const plan = planNewAsset(fundDraft([{ units: '', cost: '1.000.000' }], '1.052.000'), '2026-10-19');
+    expect(plan.trades).toEqual([{ occurredOn: '2026-08-01', unitsMicro: 0, grossMinor: 1_000_000 }]);
+    expect(plan.valuation).toEqual({ asOf: '2026-10-19', valueMinor: 1_052_000, basis: 'estimate' });
+  });
+
+  it('keeps units when the owner knows them', () => {
+    const plan = planNewAsset(fundDraft([{ units: '10', cost: '1.000.000' }]), '2026-10-19');
+    expect(plan.trades[0]!.unitsMicro).toBe(10_000_000);
+  });
+
+  it('asks for the amount when only units are typed', () => {
+    expect(() => planNewAsset(fundDraft([{ units: '10', cost: '' }]), '2026-10-19')).toThrow('Each purchase needs the amount put in');
+  });
+
+  it('still asks shares for both units and cost', () => {
+    expect(byMoneyItem('stock')).toBe(false);
   });
 });

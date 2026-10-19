@@ -219,7 +219,7 @@ export function TransactionsPage() {
   const trades = useTrades();
   const goals = useGoals();
   const values = useAssetValues();
-  const holdings = (values.data ?? []).filter((row) => row.mode === 'market');
+  const holdings = (values.data ?? []).filter((row) => row.mode === 'market' || row.mode === 'amount');
   const tradeByTransaction = new Map((trades.data ?? []).filter((trade) => trade.transactionId !== null).map((trade) => [trade.transactionId!, trade]));
   const goalName = (goalId: string | null) => (goalId ? ((goals.data ?? []).find((goal) => goal.id === goalId)?.name ?? 'a goal') : null);
   const [converting, setConverting] = useState<string | null>(null);
