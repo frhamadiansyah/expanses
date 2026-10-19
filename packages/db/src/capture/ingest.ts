@@ -117,15 +117,22 @@ async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null 
  * names no payment method — is the merchant alone, as it always was. A merchant that already starts with the app's
  * name is not given it twice; with no merchant, the note is what the capture says first.
  */
-function descriptionOf(capture: RawCapture, source: CaptureSource, reading: Reading, paidByCard: boolean): string {
+/** The longest title that is still a heading rather than a message run into one. */
+const TITLE_AS_NOTE = 40;
+
+function descriptionOf(capture: RawCapture, source: CaptureSource, reading: Reading, throughApp: boolean): string {
   const merchant = reading.name?.value?.trim();
   const app = source.label.trim();
   // A screen's label is a name only when it was found (the wallet's name) or given by the owner; the fallback is the
   // screen's own first line ("Transaction Detail"), which is no app name to put before the merchant.
   const named = source.keyKind === 'app' || app !== (capture.lines[0]?.text.trim() ?? '');
-  if (merchant && app && named && paidByCard) return merchant.toLowerCase().startsWith(app.toLowerCase()) ? merchant : `${app} ${merchant}`;
+  if (merchant && app && named && throughApp) return merchant.toLowerCase().startsWith(app.toLowerCase()) ? merchant : `${app} ${merchant}`;
+  /* A title is a heading ("Pembayaran berhasil"), not a sentence: a long one is the whole message run into it — what a
+     Shortcuts automation hands over as its input — and says nothing the note should. The source then names it. */
+  const title = capture.title?.trim();
+  const heading = title && title.length <= TITLE_AS_NOTE ? title : null;
   // A picture that read no name still says what it is on its first line.
-  return merchant || capture.title?.trim() || capture.lines[0]?.text.trim() || 'Captured payment';
+  return merchant || heading || capture.lines[0]?.text.trim() || (source.keyKind === 'app' ? app : '') || 'Captured payment';
 }
 
 /** What the source said, verbatim: a notification's own words, or the lines read off an image. */
@@ -159,16 +166,21 @@ export async function planDraft(
   const workspace = await workspaceFor(tx, ws, source);
   const learned = await accountFor(tx, source);
   /*
-   * Which card paid: the payment method when the capture labelled one ("Sumber dana: Kartu Kredit •••• 1497"), and
+   * Which card paid: the payment method when the capture labelled one ("Sumber dana: Kartu Kredit •••• 5512"), and
    * otherwise the masked number the capture printed anywhere — a bank's SMS names the card without ever labelling it
-   * ("trx kartukredit XXXX1497 …"), and reading those digits only to drop them files every card's purchases on one.
+   * ("trx kartukredit XXXX5512 …"), and reading those digits only to drop them files every card's purchases on one.
    * An unknown or ambiguous four digits match no card, and the source's own account still answers.
    */
   const card = await cardAccountFor(tx, workspace.workspaceId, reading.paymentMethod?.last4 ?? reading.accountHint);
   // The card that paid outranks what the source learned; a top-up paid by card is the card's money going in.
   const account = card ?? learned;
   const method = reading.paymentMethod ?? null;
-  const paidByCard = card !== null || (method !== null && namesCard(method.text, WORDS));
+  /*
+   * Paid through an app: the capture labelled a payment method, and it was a card ("Sumber dana: Kartu Kredit •••• 5512"
+   * on a wallet's screen). A bank's own message names its card by the digits alone and labels nothing — it is not an
+   * app paying, and its sender is no name to put before the shop.
+   */
+  const throughApp = method !== null && (card !== null || namesCard(method.text, WORDS));
   const type = reading.type.value;
   const currency = reading.amount?.value.currency ?? account?.currency ?? workspace.baseCurrency;
   // A figure that wore no currency was read in whole units; the account (or the workspace) says how to scale it.
@@ -194,7 +206,7 @@ export async function planDraft(
       kind: type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income',
       // The day where the owner was, from the offset the capture was stamped with — never the UTC day.
       occurredOn: printed?.slice(0, 10) || capturedDayOf(capture.capturedAt) || opts.today,
-      description: descriptionOf(capture, source, reading, paidByCard),
+      description: descriptionOf(capture, source, reading, throughApp),
       // Leaving is positive, arriving is negative: the one convention every other draft already keeps.
       amountMinor: directionOf(type) === 'out' ? amountMinor : -amountMinor,
       exactHundredths: exact,

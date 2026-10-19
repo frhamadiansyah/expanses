@@ -29,6 +29,13 @@ const image = (texts: string[], tall: number[] = []): RawCapture => ({
 });
 
 describe('readCapture', () => {
+  it.each([
+    ['a ride descriptor with a star after the brand', 'Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:00 di Ojek* B-7QWERTY12 IDR48.500,00. Jika trx tidak Anda kenal, hub 10000', 'Ojek* B-7QWERTY12'],
+    ['a processor prefix with a star before the shop', 'Pembayaran Rp50.000 di PAYPAL *CONTOHSTORE berhasil', 'PAYPAL *CONTOHSTORE'],
+  ])('keeps the star of %s in the name', (_, body, name) => {
+    expect(readCapture(notification(body), WORDS, null).name?.value).toBe(name);
+  });
+
   it('reads a card SMS that names the shop right after the amount and the date, with no word before it', () => {
     const reading = readCapture(
       notification('Terimakasih telah bertransaksi KKXXXX8421 IDR 254300 03/09/26 Toko Contoh ID 2.Ubah cicilan klik https://example.test/cicilan hub 1500000'),
@@ -131,17 +138,17 @@ describe('readCapture', () => {
 
   it('reads a bank message end to end: the card, the day and time, the merchant and the amount', () => {
     const reading = readCapture(
-      notification('Terima kasih utk trx kartukredit XXXX1497 tgl 15-10-2026 15:05:49 di ROTI BAKAR KEIBAR KA IDR238.825,00. Jika trx tidak Anda kenal, hub 14000', 'BANKMANDIRI'),
+      notification('Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:42 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000', 'BANKCONTOH'),
       WORDS,
       null,
     );
     expect(reading.skipped).toBeNull();
-    expect(reading.amount?.value).toEqual({ minor: 238_825, currency: 'IDR' });
+    expect(reading.amount?.value).toEqual({ minor: 48_300, currency: 'IDR' });
     // Day first with hyphens, the order a bank's message writes, and the seconds are not part of the stamp.
-    expect(reading.occurredAt?.value).toBe('2026-10-15T15:05');
-    expect(reading.name?.value).toBe('ROTI BAKAR KEIBAR KA');
+    expect(reading.occurredAt?.value).toBe('2026-09-03T10:15');
+    expect(reading.name?.value).toBe('TOKO ROTI CONTOH');
     // The masked number is the card, so a workspace holding more than one files it on the right one.
-    expect(reading.accountHint).toBe('1497');
+    expect(reading.accountHint).toBe('5512');
     // "Terima kasih" is thanks, not money received.
     expect(reading.type.value).toBe('spent');
   });

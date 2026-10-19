@@ -384,7 +384,11 @@ function typeOf(units: readonly Unit[], words: WordList, skipped: boolean): Fiel
   return { value: 'spent', confidence: 40, line: null };
 }
 
-const NAME_TOKEN = /^[\p{Lu}][\p{L}\p{N}'&.\-]*$/u;
+/*
+ * A word of a name: capitalised, or a star then one — a card's descriptor marks the processor or the brand with one
+ * ("Grab* A-9VNF", "PAYPAL *SHOP"), and a name cut at the star lost the shop and left the note to whatever came next.
+ */
+const NAME_TOKEN = /^(?:\p{Lu}|\*[\p{Lu}\p{N}])[\p{L}\p{N}'&.\-*]*$/u;
 
 /**
  * A name out of a run of words.
