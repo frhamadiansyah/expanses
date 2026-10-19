@@ -262,12 +262,12 @@ describe('what is not worth a draft', () => {
   it('files a bank message on the card its masked number names, not on the source\u2019s own account', async () => {
     const { database, ws, bank } = await workspace();
     const visa = await createCardAccount(database, ws, { name: 'Travel card', subtype: 'credit_card', currency: 'IDR' });
-    await addCard(database, ws, { accountId: visa.id, last4: '1497' });
-    const sms = at('15:05', {
+    await addCard(database, ws, { accountId: visa.id, last4: '5512' });
+    const sms = at('10:16', {
       id: 'sms-1',
-      app: 'BANKMANDIRI',
-      title: 'BANKMANDIRI',
-      body: 'Terima kasih utk trx kartukredit XXXX1497 tgl 15-10-2026 15:05:49 di ROTI BAKAR KEIBAR KA IDR238.825,00. Jika trx tidak Anda kenal, hub 14000',
+      app: 'BANKCONTOH',
+      title: 'BANKCONTOH',
+      body: 'Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:00 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000',
     });
 
     // The source has learned a different account, and the card the message names still wins.
@@ -276,8 +276,19 @@ describe('what is not worth a draft', () => {
     expect(await ingestCaptures(database, ws, [sms], { today: DAY })).toMatchObject({ drafts: 1, skipped: 0 });
 
     const [draft] = await listDrafts(database, ws, 'pending');
-    expect(draft).toMatchObject({ amountMinor: 238_825, occurredOn: '2026-10-15', kind: 'expense', accountId: visa.id });
-    expect(draft!.description).toContain('ROTI BAKAR KEIBAR KA');
+    expect(draft).toMatchObject({ amountMinor: 48_300, occurredOn: '2026-09-03', kind: 'expense', accountId: visa.id });
+    // The bank's own message: the shop alone, never the sender before it as if an app had paid.
+    expect(draft!.description).toBe('TOKO ROTI CONTOH');
+  });
+
+  it('notes a bank message that names no shop by its sender, never by a title the whole message ran into', async () => {
+    const { database, ws } = await workspace();
+    const body = 'Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:00 IDR48.300,00. Jika trx tidak Anda kenal, hub 10000';
+    // A Shortcuts automation can hand over its whole input as the title: the sender and the message, run together.
+    await ingestCaptures(database, ws, [at('10:16', { id: 'sms-glued', app: 'BANKCONTOH', title: `BANKCONTOH${body}`, body })], { today: DAY });
+
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft!.description).toBe('BANKCONTOH');
   });
 
   it('skips an offer handed over twice (the app stopped before the phone let it go) once', async () => {
