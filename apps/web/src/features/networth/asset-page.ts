@@ -1,5 +1,6 @@
 import { assetValueAt, currencyInfo, formatMinor, formatPriceMicro, formatUnits, PRICE_SCALE, priceMicroFrom, type UnitKind, unitsValueMinor, positionAfter, type PriceSource, type TradeRecord, type ValuationBasis } from '@expanses/core';
 import { SOURCE_LABELS } from '../prices/price-sources';
+import { acquiredLabel, type DatePrecision } from './acquired';
 
 /**
  * What an asset's own page says, worked out apart from the page: the gain beside the figure, the line under it, the
@@ -41,12 +42,15 @@ export function gainPill(valueMinor: number, costMinor: number, currency: string
   return { text: `${signed(gain, currency)} · ${percentLabel(gain, costMinor)}`, tone: gain < 0 ? 'loss' : 'gain' };
 }
 
-/** Where an estimate came from, in the words the line under the figure uses. */
+/**
+ * Where an estimate came from, in the words the line under the figure uses. Every typed value is an estimate now; an
+ * appraisal, a listing or a tax assessment recorded before the source stopped being asked reads as one too.
+ */
 const BASIS_WORDS: Record<ValuationBasis, string> = {
   estimate: 'estimate',
-  appraisal: 'appraisal',
-  listing: 'nearby listings',
-  njop: 'NJOP',
+  appraisal: 'estimate',
+  listing: 'estimate',
+  njop: 'property tax assessment',
   purchase: 'what was paid',
 };
 
@@ -151,11 +155,19 @@ function heldLabel(unitsMicro: number, unitKind: UnitKind | null, lotSize: numbe
   return quantity.endsWith('lots') || quantity.endsWith('lot') ? `${quantity} · ${formatUnits(unitsMicro)}` : quantity;
 }
 
-/** A thing valued by an estimate: what was paid and when, and — when a loan bought it — what of it is paid off. */
-export function estimatedTiles(o: { costMinor: number; boughtOn: string | null; currency: string; loan: { valueMinor: number; owedMinor: number } | null }): Tile[] {
+/**
+ * A thing valued by an estimate: what it cost and when it was acquired — only as precisely as that was typed — and,
+ * when a loan bought it, what of it is paid off.
+ */
+export function estimatedTiles(o: {
+  costMinor: number;
+  acquired: { on: string; precision: DatePrecision } | null;
+  currency: string;
+  loan: { valueMinor: number; owedMinor: number } | null;
+}): Tile[] {
   const tiles: (Tile | null)[] = [
-    o.costMinor > 0 ? { label: 'Bought for', value: formatMinor(o.costMinor, o.currency) } : null,
-    o.boughtOn ? { label: 'Bought on', value: dayLabel(o.boughtOn) } : null,
+    o.costMinor > 0 ? { label: 'Original cost', value: formatMinor(o.costMinor, o.currency) } : null,
+    o.acquired ? { label: 'Acquired', value: acquiredLabel(o.acquired.on, o.acquired.precision) } : null,
     o.loan ? { label: 'Equity', value: formatMinor(o.loan.valueMinor - o.loan.owedMinor, o.currency) } : null,
     o.loan ? { label: 'Loan left', value: formatMinor(o.loan.owedMinor, o.currency) } : null,
   ];

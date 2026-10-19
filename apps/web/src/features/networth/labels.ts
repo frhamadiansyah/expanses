@@ -44,9 +44,11 @@ export const CORETAX_SECTION_LABELS: Record<string, string> = {
 };
 
 export const BASIS_LABELS: Record<string, string> = {
-  estimate: 'My estimate',
-  appraisal: 'Appraisal',
-  listing: 'Nearby listings',
-  njop: 'NJOP from the PBB notice',
+  estimate: 'Estimated value',
+  // No longer asked: every typed value is an estimate. Kept so a value recorded with one still reads as one.
+  appraisal: 'Estimated value',
+  listing: 'Estimated value',
+  // Still left out of the value (core's assetValue), so it says what it was rather than pass for an estimate.
+  njop: 'Property tax assessment',
   purchase: 'What I paid',
 };

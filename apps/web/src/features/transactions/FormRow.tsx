@@ -100,13 +100,13 @@ export function FormRow({
   const empty = value === undefined || value === null || value === '';
   const title =
     lead === 'value' ? (
-      <span className={cx('min-w-0 flex-1 truncate text-[15px] leading-5', empty ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>
+      <span className={cx('min-w-0 flex-1 truncate text-[17px] leading-[22px] md:text-[15px] md:leading-5', empty ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>
         {empty ? (placeholder ?? label) : value}
       </span>
     ) : (
       <span
         className={cx(
-          'min-w-0 flex-1 truncate text-[15px] leading-5',
+          'min-w-0 flex-1 truncate text-[17px] leading-[22px] md:text-[15px] md:leading-5',
           tone === 'muted' ? 'text-[var(--ph-ink-3)]' : tone === 'tint' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]',
         )}
       >
@@ -190,7 +190,7 @@ export function SwitchRow({
         <RowLead>{icon}</RowLead>
         <span className={cx(ROW_BODY, 'py-2')}>
           <span className="min-w-0 flex-1">
-            <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">{label}</span>
+            <span className="block text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)]">{label}</span>
             {hint && <span className="mt-[2px] block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{hint}</span>}
           </span>
           {track}
@@ -211,7 +211,7 @@ export function SwitchRow({
       <span className={cx(ROW_BODY, 'py-2')}>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-[6px]">
-            <span className="text-[15px] leading-5 text-[var(--ph-ink)]">{label}</span>
+            <span className="text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)]">{label}</span>
             <button
               type="button"
               aria-label={`About ${label}`}
@@ -259,11 +259,11 @@ export function SwitchRow({
  */
 
 /** The row's own text on the left: the value, or its prompt in the faint ink. */
-const ROW_TITLE = 'min-w-0 flex-1 truncate text-[15px] leading-5';
+const ROW_TITLE = 'min-w-0 flex-1 truncate text-[17px] leading-[22px] md:text-[15px] md:leading-5';
 /** The small grey word on the right — "Paid with", "IDR" — as `FormRow` draws a caption. */
 const ROW_CAPTION = 'max-w-[55%] shrink-0 truncate text-right text-[12.5px] leading-4 text-[var(--ph-ink-3)]';
 /** A figure or a word typed straight into a row: no box, no border, the group's hairline is the boundary. */
-const ROW_FIELD = 'ph-focus-inset tabular min-w-0 flex-1 border-0 bg-transparent p-0 text-base leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]';
+const ROW_FIELD = 'ph-focus-inset tabular min-w-0 flex-1 border-0 bg-transparent p-0 text-[17px] leading-[22px] md:text-base md:leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]';
 /** The currency's flag, in the same 28px circle every other row leads with. */
 const FLAG_CIRCLE = 'flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none';
 

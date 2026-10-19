@@ -1,4 +1,4 @@
-import { formatMinor, formatPriceMicro, formatUnits, type GoldPriceChoice, isoDate, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor, type ValuationBasis } from '@expanses/core';
+import { formatMinor, formatPriceMicro, formatUnits, type GoldPriceChoice, isoDate, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
 import { recordValuation, type TradeRow, upsertPrice } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
@@ -7,9 +7,8 @@ import { useApp } from '../../app/context';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
-import { BASIS_LABELS } from './labels';
 import { usePositions } from './queries';
 import { TradeForm } from './TradeForm';
 import type { TradeDraft } from './trade-form';
@@ -99,17 +98,14 @@ export function PriceSheet({
   );
 }
 
-const BASES: ValuationBasis[] = ['estimate', 'appraisal', 'listing', 'njop'];
-
 /**
- * A new value for a thing that has no market price. It opens empty every time — the last source is no guess about
- * the next one — and dated today, which can be changed for a letter that came last week.
+ * A new value for a thing that has no market price: always the owner's estimate, whatever it was read from. It opens
+ * empty every time, dated today, which can be changed for a letter that came last week.
  */
 export function ValueSheet({ accountId, currency, onClose }: { accountId: string; currency: string; onClose: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [value, setValue] = useState('');
-  const [basis, setBasis] = useState<ValuationBasis>('estimate');
   const [asOf, setAsOf] = useState(isoDate());
   const [note, setNote] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -119,7 +115,7 @@ export function ValueSheet({ accountId, currency, onClose }: { accountId: string
     setError(null);
     setBusy(true);
     try {
-      await recordValuation(database, ws, { accountId, asOf, valueMinor: parseMajor(value, currency), basis, note: note.trim() || null });
+      await recordValuation(database, ws, { accountId, asOf, valueMinor: parseMajor(value, currency), basis: 'estimate', note: note.trim() || null });
       await invalidate();
       onClose();
     } catch (e) {
@@ -133,18 +129,6 @@ export function ValueSheet({ accountId, currency, onClose }: { accountId: string
     <Sheet grouped title="Update value" onClose={onClose} confirm={{ label: 'Save value', disabled: busy || value.trim() === '', run: () => void save() }}>
       <InsetGroup>
         <TextRow label={`Value (${currency})`} value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="Amount" />
-        <SelectRow
-          label="From"
-          value={basis}
-          onChange={(e) => setBasis(e.target.value as ValuationBasis)}
-          info="NJOP is kept for the tax report; the value uses the latest of the others."
-        >
-          {BASES.map((option) => (
-            <option key={option} value={option}>
-              {BASIS_LABELS[option]}
-            </option>
-          ))}
-        </SelectRow>
         <TextRow label="Date" type="date" value={asOf} max={isoDate()} onChange={(e) => setAsOf(e.target.value)} />
         <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
       </InsetGroup>

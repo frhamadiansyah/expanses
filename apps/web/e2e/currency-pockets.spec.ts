@@ -141,10 +141,14 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   const owed = async (who: string, currency: string, amount: string, rate?: string) => {
     await openNewAsset(page, 'Other receivables');
     await page.getByLabel('Name', { exact: true }).pressSequentially(`Owed by ${who}`);
-    await setCurrency(page.getByLabel('Currency', { exact: true }), currency);
-    if (rate) await page.getByLabel('Opening rate').pressSequentially(rate);
     await page.getByLabel('Who').pressSequentially(who);
-    await page.getByLabel(/^Owed now/).pressSequentially(amount);
+    await page.getByLabel('Owed now', { exact: true }).pressSequentially(amount);
+    // The currency is the symbol before the amount, there once a figure is: tapped, it opens the currency list.
+    if (currency !== 'IDR') {
+      await page.getByRole('button', { name: /^Owed now currency/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: new RegExp(`^${currency} `) }).first().click();
+    }
+    if (rate) await page.getByLabel('Opening rate').pressSequentially(rate);
     await page.getByRole('button', { name: 'Add asset' }).last().click();
     // Saved once the person is listed under Receivables — inside its drawer, which the list opens shut: leaving
     // earlier loses the write.

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings } from './accounts';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
@@ -26,9 +26,9 @@ async function addStock(page: Page) {
 async function addBond(page: Page, name: string, cost: string) {
   await openNewAsset(page, 'Government bonds (ORI, SBSN)');
   await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Bought on').fill(`${YEAR}-02-10`);
+  await fillDay(page, 'Bought', `${YEAR}-02-10`);
   await page.getByLabel('How much').fill('100');
-  await page.getByLabel('Total cost (IDR)').fill(cost);
+  await page.getByLabel('Total cost', { exact: true }).fill(cost);
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);

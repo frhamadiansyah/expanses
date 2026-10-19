@@ -1,5 +1,6 @@
 import { isoDate } from '@expanses/core';
 import {
+  acquiredDates,
   householdPurchases,
   itemTransfers,
   listBooks,
@@ -42,6 +43,12 @@ export function useIdleCash(date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({ queryKey: ['idle-cash', ws.workspaceId, onDate], queryFn: () => idleCash(database, ws, onDate) });
+}
+
+/** How precisely each asset's acquired day was typed (0074); an asset missing from it was typed to the day. */
+export function useAcquiredDates() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['acquired-dates', ws.workspaceId], queryFn: () => acquiredDates(database, ws) });
 }
 
 export function useAssetProfiles() {

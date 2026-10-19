@@ -71,6 +71,7 @@ import budgetShares from '../migrations/0070_budget_shares.sql?raw';
 import withdrawalRate from '../migrations/0071_withdrawal_rate.sql?raw';
 import purchaseOnlyCard from '../migrations/0072_purchase_only_card.sql?raw';
 import sourceOffers from '../migrations/0073_source_offers.sql?raw';
+import assetAcquired from '../migrations/0074_asset_acquired.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -152,6 +153,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 71, name: 'withdrawal_rate', sql: withdrawalRate },
   { version: 72, name: 'purchase_only_card', sql: purchaseOnlyCard },
   { version: 73, name: 'source_offers', sql: sourceOffers },
+  { version: 74, name: 'asset_acquired', sql: assetAcquired },
 ];
 
 /** The highest version this build of the app knows how to produce. */

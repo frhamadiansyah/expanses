@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes, openSettings } from './accounts';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
 import { cardSection } from './card-section';
 import { openAssets, openDrawers } from './drawers';
@@ -20,9 +20,9 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
-  await page.getByLabel('Bought on').fill('2026-03-09');
+  await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
-  await page.getByLabel('Total cost (IDR)').fill('18600000');
+  await page.getByLabel('Total cost', { exact: true }).fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);

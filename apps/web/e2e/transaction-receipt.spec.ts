@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { addTransaction, closeDetails, shareWith, choosePayment } from './add-transaction';
 import { openDrawers } from './drawers';
 
@@ -80,9 +80,9 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
 
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
-  await page.getByLabel('Bought on').fill('2026-03-09');
+  await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
-  await page.getByLabel('Total cost (IDR)').fill('18600000');
+  await page.getByLabel('Total cost', { exact: true }).fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);
@@ -177,9 +177,9 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
 
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
-  await page.getByLabel('Bought on').fill('2026-03-09');
+  await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
-  await page.getByLabel('Total cost (IDR)').fill('18600000');
+  await page.getByLabel('Total cost', { exact: true }).fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();

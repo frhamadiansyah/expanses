@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillDay } from './add-asset';
 import { openSettings } from './accounts';
 import { openDrawers } from './drawers';
 
@@ -35,8 +36,8 @@ test('a phone finds a thing by typing, without knowing its family', async ({ pag
   await page.getByPlaceholder('Search everything that can be owned').fill('patent');
   await page.getByRole('button', { name: 'Patent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Paten alat panen');
-  await page.getByLabel('Bought on').fill('2024-08-08');
-  await page.getByLabel('What it cost (IDR)').fill('15000000');
+  await fillDay(page, 'Acquired', '2024-08-08');
+  await page.getByLabel('Original cost', { exact: true }).fill('15000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The list folds its rows into a drawer per kind, so the row is one tap away; its code is on its settings.
   await openDrawers(page);

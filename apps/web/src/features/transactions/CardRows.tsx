@@ -63,7 +63,7 @@ export function NoteRow({
           onFocus={onFocus}
           onBlur={onBlur}
           placeholder="Note"
-          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[15px] leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
+          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
         />
       </span>
     </div>

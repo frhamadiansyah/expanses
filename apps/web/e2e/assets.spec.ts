@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings as openSettingsMenu } from './accounts';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { addTransfer } from './add-transaction';
 import { openDrawers } from './drawers';
 
@@ -15,13 +15,13 @@ async function addBank(page: Page) {
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
-  await page.getByLabel('Bought on').fill('2024-02-03');
+  await fillDay(page, 'Bought', '2024-02-03');
   await page.getByLabel('How much').fill('10');
-  await page.getByLabel('Total cost (IDR)').fill('13100000');
+  await page.getByLabel('Total cost', { exact: true }).fill('13100000');
   await page.getByRole('button', { name: 'Add another purchase' }).click();
-  await page.getByLabel('Bought on').nth(1).fill('2026-03-09');
+  await fillDay(page, 'Bought', '2026-03-09', 1);
   await page.getByLabel('How much').nth(1).fill('5');
-  await page.getByLabel('Total cost (IDR)').nth(1).fill('9300000');
+  await page.getByLabel('Total cost', { exact: true }).nth(1).fill('9300000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The list folds its rows by kind — gold under "Gold bullion" — so the drawer comes first, as it does for a reader.
   await openDrawers(page);

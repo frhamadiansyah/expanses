@@ -255,7 +255,7 @@ export function InsetRow({
   const tint = iconColour ? iconTint(iconColour) : null;
 
   const body = destructive ? (
-    <span className="w-full text-center text-[15px] leading-[20px] font-normal text-[var(--ph-alarm)]">{title}</span>
+    <span className="w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-normal text-[var(--ph-alarm)]">{title}</span>
   ) : (
     <>
       {icon && (
@@ -264,11 +264,11 @@ export function InsetRow({
         </RowIcon>
       )}
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{title}</span>
+        <span className="block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-medium text-[var(--ph-ink)]">{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}
       </span>
       {value !== undefined && value !== null && (
-        <span className={cx('tabular shrink-0 text-[15px] leading-[20px] whitespace-nowrap', TONE[valueTone])}>{value}</span>
+        <span className={cx('tabular shrink-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] whitespace-nowrap', TONE[valueTone])}>{value}</span>
       )}
       {points && <Chevron />}
     </>

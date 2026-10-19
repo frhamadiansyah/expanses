@@ -42,7 +42,7 @@ describe('the line under the figure', () => {
     const base = { unitKind: null, unitsMicro: 0, lotSize: null, currency: 'IDR', valuation: null } as const;
     expect(heroLine({ ...base, kindLabel: 'Gold bullion', mode: 'market', unitKind: 'grams', unitsMicro: 32 * M })).toBe('Gold bullion · 32 g');
     expect(heroLine({ ...base, kindLabel: 'Listed shares', mode: 'market', unitKind: 'shares', unitsMicro: 500 * M, lotSize: 100 })).toBe('Listed shares · 5 lots');
-    expect(heroLine({ ...base, kindLabel: 'House', mode: 'snapshot', valuation: { basis: 'appraisal', asOf: '2026-09-30' } })).toBe('House · appraisal, 30 Sep 2026');
+    expect(heroLine({ ...base, kindLabel: 'House', mode: 'snapshot', valuation: { basis: 'appraisal', asOf: '2026-09-30' } })).toBe('House · estimate, 30 Sep 2026');
     expect(heroLine({ ...base, kindLabel: 'Laptop', mode: 'snapshot' })).toBe('Laptop · what was paid');
     expect(heroLine({ ...base, kindLabel: 'Government bond', mode: 'market', unitKind: 'face', unitsMicro: 10_000_000 * M })).toBe('Government bond');
   });
@@ -75,12 +75,18 @@ describe('the numbers grid', () => {
     ]);
   });
 
+  it('says only as much of when it was acquired as was typed', () => {
+    const tile = (precision: 'year' | 'month') => estimatedTiles({ costMinor: 0, acquired: { on: '2021-03-01', precision }, currency: 'IDR', loan: null });
+    expect(tile('year').map((t) => [t.label, t.value])).toEqual([['Acquired', '2021']]);
+    expect(tile('month').map((t) => [t.label, t.value])).toEqual([['Acquired', 'Mar 2021']]);
+  });
+
   it('gives an estimated thing what it cost and when, and what is yours when a loan bought it', () => {
-    expect(estimatedTiles({ costMinor: 22_000_000, boughtOn: '2024-01-05', currency: 'IDR', loan: null }).map((t) => t.label)).toEqual(['Bought for', 'Bought on']);
-    const house = estimatedTiles({ costMinor: 1_150_000_000, boughtOn: '2019-03-12', currency: 'IDR', loan: { valueMinor: 1_480_000_000, owedMinor: 500_000_000 } });
+    expect(estimatedTiles({ costMinor: 22_000_000, acquired: { on: '2024-01-05', precision: 'day' }, currency: 'IDR', loan: null }).map((t) => t.label)).toEqual(['Original cost', 'Acquired']);
+    const house = estimatedTiles({ costMinor: 1_150_000_000, acquired: { on: '2019-03-12', precision: 'day' }, currency: 'IDR', loan: { valueMinor: 1_480_000_000, owedMinor: 500_000_000 } });
     expect(house.map((t) => [t.label, plain(t.value)])).toEqual([
-      ['Bought for', 'Rp 1.150.000.000'],
-      ['Bought on', '12 Mar 2019'],
+      ['Original cost', 'Rp 1.150.000.000'],
+      ['Acquired', '12 Mar 2019'],
       ['Equity', 'Rp 980.000.000'],
       ['Loan left', 'Rp 500.000.000'],
     ]);

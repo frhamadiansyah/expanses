@@ -41,6 +41,7 @@ import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
+import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { AttentionPage } from '../features/networth/AttentionPage';
 import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
@@ -246,6 +247,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   // An asset's settings, behind its gear: they used to sit at the bottom of the asset's own page.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/edit', component: EditAssetRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
   // One goal on its own page: the list reads them as a set, and a goal that was a card among cards is a page now.

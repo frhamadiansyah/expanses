@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { openNewAsset } from './add-asset';
+import { openNewAsset, fillDay } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 
@@ -317,9 +317,9 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).pressSequentially('Antam gold bars');
-  await page.getByLabel('Bought on').fill('2026-03-09');
+  await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').pressSequentially('10');
-  await page.getByLabel('Total cost (IDR)').pressSequentially('18600000');
+  await page.getByLabel('Total cost', { exact: true }).pressSequentially('18600000');
   // Paid from Opening Balances: nothing left Jenius, so nothing is asked.
   await expect(page.getByText(/more than is free/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Add asset' }).last().click();

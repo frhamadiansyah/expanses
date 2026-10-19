@@ -234,7 +234,7 @@ export function AmountRow({
     // in one pass rather than re-filling a row that agrees with the estimate.
   }, [prefill]);
 
-  const fieldBase = 'min-w-0 flex-1 text-[15px] leading-5 text-[var(--ph-ink)] tabular ph-focus-inset';
+  const fieldBase = 'min-w-0 flex-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] tabular ph-focus-inset';
   /** A code and the figure it names, side by side: the pair is what shares out the row's width. */
   const codeGroup = 'flex min-w-0 items-center gap-[5px] self-stretch';
   const codeClass = 'shrink-0 text-[12.5px] leading-4 font-semibold tracking-[0.2px] text-[var(--ph-ink-3)]';
