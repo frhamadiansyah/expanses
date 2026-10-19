@@ -2,6 +2,7 @@ import { inflowTo, outflowFrom } from '../goals/set-aside';
 import { currencyInfo } from '../money/currencies';
 import { sumToBase } from '../money/exchange';
 import { convertMinor } from '../money/money';
+import { holdingPositionAfter } from './by-money';
 import { type Position, positionAfter, type TradeRecord } from './position';
 import { type TradeAccounts, type TradeInput, tradePostings } from './trades';
 import { divRound } from './units';
@@ -28,7 +29,7 @@ export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Re
       walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0 });
     }
   }
-  return { ...positionAfter(walked, upTo), realizedMinor: 0, incomeMinor: 0 };
+  return { ...holdingPositionAfter(walked, upTo), realizedMinor: 0, incomeMinor: 0 };
 }
 
 /** Whole percentages of a total that add up to exactly 100: each part floored, the remainder to the largest part. */

@@ -1,5 +1,10 @@
 import {
+  assetValueAt,
+  holdingPositionAfter,
+  byMoneyInputs,
   goalUnitsOf,
+  moneyPositionAfter,
+  moneySellBasis,
   inflowTo,
   outflowFrom,
   type Position,
@@ -24,6 +29,7 @@ import { adjustSetAsideTx, carryable, lowerSetAsideTx, type SetAsideChoice, setA
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
+import { byMoneyHistoryTx, isByMoneyTx, setTradeBasisTx, tradeBasesTx } from './by-money';
 
 export interface TradeRow extends TradeRecord {
   workspaceId: string;
@@ -107,7 +113,8 @@ export async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: str
     .from(investmentTrades)
     .where(and(...where))
     .orderBy(asc(investmentTrades.occurredOn), asc(investmentTrades.createdAt));
-  return rows.map(toRow);
+  const bases = rows.length > 0 ? await tradeBasesTx(tx, ws) : new Map<string, number>();
+  return rows.map((row) => (bases.has(row.id) ? { ...toRow(row), basisMinor: bases.get(row.id)! } : toRow(row)));
 }
 
 /** The accounts a trade posts to: the holding, the cash side, and the income and tax categories. */
@@ -218,6 +225,8 @@ async function recalculateSells(
   fromDate: string,
   ratesToBase: Record<string, number> | undefined,
 ): Promise<RecalculatedSell[]> {
+  // A holding tracked by money keeps each sell's cost as it was saved: nothing earlier rewrites a profit booked.
+  if (await isByMoneyTx(tx, ws, accountId)) return [];
   const trades = await activeTrades(tx, ws, accountId);
   const later = trades.filter((trade) => trade.kind === 'sell' && trade.occurredOn >= fromDate && trade.transactionId);
   if (later.length === 0) return [];
@@ -264,9 +273,21 @@ export async function writeTradeTx(
   if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
   const trades = await activeTrades(tx, ws, input.accountId);
-  const position = positionAt(trades, input.occurredOn);
+  const byMoney = await isByMoneyTx(tx, ws, input.accountId);
+  const position = byMoney ? moneyPositionAfter(trades, input.occurredOn) : positionAt(trades, input.occurredOn);
+  /* Tracked by money: a sell takes out the same share of the money still in as it takes of the value just before it —
+     the last typed value moved by every buy and sell up to that day — and keeps that cost from then on. */
+  let basisMinor: number | null = null;
+  if (byMoney && input.kind === 'sell') {
+    const history = await byMoneyHistoryTx(tx, ws, input.accountId);
+    const before = assetValueAt(
+      { accountId: input.accountId, mode: 'amount', currency: tradeAccounts.holdingCurrency, ledgerBalanceMinor: 0, ...byMoneyInputs(trades, history.prices, history.valuations, input.occurredOn) },
+      input.occurredOn,
+    );
+    basisMinor = moneySellBasis(position.costMinor, before.valueMinor, input.grossMinor);
+  }
   if (input.kind === 'sell') {
-    await checkGoalUnits(tx, ws, trades, input);
+    if (!byMoney) await checkGoalUnits(tx, ws, trades, input);
     if (input.cashAccountId) {
       const [cash] = await tx
         .select({ subtype: accounts.subtype })
@@ -275,7 +296,7 @@ export async function writeTradeTx(
       if (cash?.subtype === 'credit_card') throw new AssetError('Choose a bank or cash account for the proceeds');
     }
   }
-  const tradeInput = toInput(input);
+  const tradeInput: TradeInput = byMoney ? { ...toInput(input), byMoney: basisMinor === null ? {} : { basisMinor } } : toInput(input);
   const lines = tradePostings(tradeInput, position, tradeAccounts).map((line) =>
     // The card line carries the purchase category, so points are computed without it being spending.
     input.kind === 'buy' && input.spendCategoryId && input.cashAccountId && line.accountId === input.cashAccountId
@@ -314,6 +335,7 @@ export async function writeTradeTx(
     replacesTradeId,
     createdAt: new Date().toISOString(),
   });
+  if (basisMinor !== null) await setTradeBasisTx(tx, id, basisMinor);
   // Money parked for this goal in the account that paid is now units: lowered by what left that account, in its currency.
   if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
     const outflow = outflowFrom(lines, input.cashAccountId);
@@ -455,5 +477,5 @@ export async function positionsFor(database: Database, ws: WorkspaceContext, upT
     list.push(trade);
     byAccount.set(trade.accountId, list);
   }
-  return Object.fromEntries([...byAccount].map(([accountId, list]) => [accountId, positionAfter(list, upTo)]));
+  return Object.fromEntries([...byAccount].map(([accountId, list]) => [accountId, holdingPositionAfter(list, upTo)]));
 }

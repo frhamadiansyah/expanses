@@ -1,6 +1,6 @@
 import { divRound, unitsValueMinor } from './units';
 import type { ValuationRow } from './value';
-import { type Position, sellBasisMinor, TradeError, type TradeRecord, type YearBucket } from './position';
+import { type Position, positionAfter, sellBasisMinor, TradeError, type TradeRecord, type YearBucket } from './position';
 
 /**
  * A holding tracked by money (a mutual fund): what went in, what came out, and the total the platform shows when the
@@ -102,4 +102,26 @@ export function navAnchors(trades: readonly TradeRecord[], prices: readonly { on
     if (units > 0) anchors.push({ asOf: price.onDate, valueMinor: unitsValueMinor(units, price.priceMicro), basis: 'estimate' });
   }
   return anchors;
+}
+
+/**
+ * What `assetValueAt` needs to value a holding tracked by money on a date: the money still in, the values typed (and
+ * the past NAVs as values, first, so a value typed the same day wins), and the buys and sells that move it.
+ */
+export function byMoneyInputs(
+  trades: readonly TradeRecord[],
+  prices: readonly { onDate: string; priceMicro: number }[],
+  valuations: readonly ValuationRow[],
+  date: string,
+): { position: Position; valuations: ValuationRow[]; flows: MoneyFlow[] } {
+  return { position: moneyPositionAfter(trades, date), valuations: [...navAnchors(trades, prices), ...valuations], flows: moneyFlows(trades) };
+}
+
+/**
+ * A holding's position by whichever rule its trades need: by money once any buy or sell carries no units or a saved
+ * cost (a fund tracked by money), by units otherwise. For readers that walk every holding at once.
+ */
+export function holdingPositionAfter(trades: readonly TradeRecord[], upTo?: string): Position {
+  const byMoney = trades.some((trade) => (trade.kind === 'buy' || trade.kind === 'sell') && (trade.unitsMicro <= 0 || trade.basisMinor != null));
+  return byMoney ? moneyPositionAfter(trades, upTo) : positionAfter([...trades], upTo);
 }

@@ -126,6 +126,25 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       continue;
     }
 
+    if (value.mode === 'amount') {
+      // Tracked by money: valued at its 31 December figure, its parcels by the money each put in.
+      const position = positions[value.accountId];
+      if (!position || (position.costMinor <= 0 && value.valueMinor <= 0)) continue;
+      const link = linkOf.get(value.accountId);
+      const brokerName = link?.brokerAccountId ? (nameOf.get(link.brokerAccountId) ?? null) : null;
+      inputs.holdings.push({
+        accountId: value.accountId,
+        name: value.name,
+        code: code ?? '0307',
+        currency: value.currency,
+        priceMicro: 0,
+        byYear: position.byYear,
+        valueMinor: value.valueMinor,
+        fields: brokerName && !fields.inst?.trim() ? { ...fields, inst: brokerName } : fields,
+      });
+      continue;
+    }
+
     // Property, vehicles and anything else the owner estimates.
     if (value.valueMinor <= 0 && value.costMinor <= 0) continue;
     inputs.estimated.push({

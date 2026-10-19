@@ -1,4 +1,4 @@
-import { type Position, positionAfter, positionInBase } from '@expanses/core';
+import { type Position, holdingPositionAfter, positionInBase } from '@expanses/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -61,7 +61,7 @@ export async function baseCosts(database: Database, ws: WorkspaceContext, upTo?:
   for (const trade of trades) byAccount.set(trade.accountId, [...(byAccount.get(trade.accountId) ?? []), trade]);
   const positions: Record<string, Position> = {};
   for (const [accountId, list] of byAccount) {
-    positions[accountId] = currencyOf.get(accountId) === ws.baseCurrency ? positionAfter(list, upTo) : positionInBase(list, buyBaseMinor, upTo);
+    positions[accountId] = currencyOf.get(accountId) === ws.baseCurrency ? holdingPositionAfter(list, upTo) : positionInBase(list, buyBaseMinor, upTo);
   }
   return { positions, buyBaseMinor };
 }

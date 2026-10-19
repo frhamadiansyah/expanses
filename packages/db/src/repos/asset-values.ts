@@ -1,4 +1,5 @@
 import {
+  byMoneyInputs,
   type AssetValue,
   assetValueAt,
   convertMinor,
@@ -140,6 +141,8 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
         position,
         prices: accountPrices,
         valuations: accountValuations,
+        // Tracked by money: the last typed value (or past NAV) moved by the buys and sells since.
+        ...(mode === 'amount' ? byMoneyInputs(tradesByAccount.get(account.id) ?? [], accountPrices, accountValuations, date) : {}),
       },
       date,
     );
@@ -181,7 +184,7 @@ export async function assetValueSeries(
     .from(assetProfiles)
     .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
   const mode: ValuationMode = profile ? presetFor(profile.assetKind).valuationMode : account.valuationMode;
-  const trades = mode === 'market' ? await listTrades(database, ws, { accountId }) : [];
+  const trades = mode === 'market' || mode === 'amount' ? await listTrades(database, ws, { accountId }) : [];
   const securityId = (await listHoldingLinks(database, ws)).find((link) => link.accountId === accountId)?.securityId ?? null;
   const accountPrices: PriceRow[] = securityId
     ? (await allSecurityPrices(database, ws)).filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
@@ -203,6 +206,7 @@ export async function assetValueSeries(
           position: mode === 'market' ? positionAfter(trades, date) : undefined,
           prices: accountPrices,
           valuations: accountValuations,
+          ...(mode === 'amount' ? byMoneyInputs(trades, accountPrices, accountValuations, date) : {}),
         },
         date,
       ).valueMinor,
