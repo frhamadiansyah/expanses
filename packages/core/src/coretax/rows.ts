@@ -170,8 +170,10 @@ function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRo
   const rows: CoretaxRow[] = [];
   for (const holding of inputs.holdings) {
     const byValue = holding.valueMinor !== undefined;
+    // By money: the parcels with money still in them; worth something with none left, the one parcel it was given.
+    const withCost = Object.entries(holding.byYear).filter(([, bucket]) => bucket.costMinor > 0);
     const years = byValue
-      ? Object.entries(holding.byYear).filter(([, bucket]) => bucket.costMinor > 0).sort(([a], [b]) => a.localeCompare(b))
+      ? (withCost.length > 0 ? withCost : (holding.valueMinor ?? 0) > 0 ? Object.entries(holding.byYear) : []).sort(([a], [b]) => a.localeCompare(b))
       : liveYears(holding.byYear);
     if (years.length === 0) continue;
     const section = sectionOfCode(holding.code);

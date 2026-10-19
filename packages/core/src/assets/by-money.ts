@@ -127,3 +127,25 @@ export function holdingPositionAfter(trades: readonly TradeRecord[], upTo?: stri
   const byMoney = trades.some((trade) => (trade.kind === 'buy' || trade.kind === 'sell') && (trade.unitsMicro <= 0 || trade.basisMinor != null));
   return byMoney ? moneyPositionAfter(trades, upTo) : positionAfter([...trades], upTo);
 }
+
+/** What one sell of a holding tracked by money gave up, and the money still in just before it. */
+export interface MoneySell {
+  basisMinor: number;
+  costBeforeMinor: number;
+}
+
+/**
+ * Every sell's cost, walked in trade order: the cost a sell was saved with, or — for a sell from the units days, saved
+ * with none — the average cost of the units it sold, as `moneyPositionAfter` takes it.
+ */
+export function moneySells(trades: readonly TradeRecord[]): Map<string, MoneySell> {
+  const ordered = [...trades].sort(byTradeOrder);
+  const sells = new Map<string, MoneySell>();
+  ordered.forEach((trade, index) => {
+    if (trade.kind !== 'sell') return;
+    const before = moneyPositionAfter(ordered.slice(0, index));
+    const basisMinor = before.costMinor - moneyPositionAfter(ordered.slice(0, index + 1)).costMinor;
+    sells.set(trade.id, { basisMinor, costBeforeMinor: before.costMinor });
+  });
+  return sells;
+}

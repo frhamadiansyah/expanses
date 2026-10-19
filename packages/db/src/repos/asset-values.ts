@@ -192,9 +192,12 @@ export async function assetValueSeries(
         onDate: row.onDate,
         priceMicro: row.priceMicro,
       }));
+  // Oldest saved first, as assetValuesAt reads them: of two values for one day the one saved last counts.
   const accountValuations: ValuationRow[] = (
-    await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId)))
-  ).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
+    await database.db.select().from(valuations).where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId))).orderBy(sql`rowid`)
+  )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
   return dates.map(
     (date) =>
       assetValueAt(

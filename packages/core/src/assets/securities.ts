@@ -2,7 +2,7 @@ import { inflowTo, outflowFrom } from '../goals/set-aside';
 import { currencyInfo } from '../money/currencies';
 import { sumToBase } from '../money/exchange';
 import { convertMinor } from '../money/money';
-import { holdingPositionAfter } from './by-money';
+import { holdingPositionAfter, moneySells } from './by-money';
 import { type Position, positionAfter, type TradeRecord } from './position';
 import { type TradeAccounts, type TradeInput, tradePostings } from './trades';
 import { divRound } from './units';
@@ -18,6 +18,9 @@ export type SecurityKind = 'share' | 'etf' | 'other';
  */
 export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Readonly<Record<string, number>>, upTo?: string): Position {
   const walked: TradeRecord[] = [];
+  /* A sell tracked by money keeps its cost in the holding's own currency; in base it gives up the same share of the
+     base cost still in. Walked once in its own currency to know each sell's share. */
+  const native = trades.some((trade) => trade.basisMinor != null) ? moneySells(trades) : null;
   for (const trade of trades) {
     if (upTo && trade.occurredOn > upTo) continue;
     if (trade.kind === 'income') continue;
@@ -25,9 +28,22 @@ export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Re
       const base = baseCostOfBuy[trade.id];
       if (base === undefined) throw new Error(`No base-currency cost for buy ${trade.id}`);
       walked.push({ ...trade, grossMinor: base, feeMinor: 0, taxMinor: 0 });
+    } else if (native && trade.kind === 'sell') {
+      // The base basis is filled in below, once the base cost before this sell is known.
+      walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0, basisMinor: null });
     } else {
       walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0 });
     }
+  }
+  if (native) {
+    const ordered = [...walked].sort((a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    ordered.forEach((trade, index) => {
+      const sold = trade.kind === 'sell' ? native.get(trade.id) : undefined;
+      if (!sold) return;
+      const baseBefore = holdingPositionAfter(ordered.slice(0, index)).costMinor;
+      trade.basisMinor = sold.costBeforeMinor > 0 ? Number(divRound(BigInt(baseBefore) * BigInt(sold.basisMinor), BigInt(sold.costBeforeMinor))) : baseBefore;
+    });
+    return { ...holdingPositionAfter(ordered, upTo), realizedMinor: 0, incomeMinor: 0 };
   }
   return { ...holdingPositionAfter(walked, upTo), realizedMinor: 0, incomeMinor: 0 };
 }

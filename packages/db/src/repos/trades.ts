@@ -5,6 +5,7 @@ import {
   goalUnitsOf,
   moneyPositionAfter,
   moneySellBasis,
+  moneySells,
   inflowTo,
   outflowFrom,
   type Position,
@@ -225,21 +226,26 @@ async function recalculateSells(
   fromDate: string,
   ratesToBase: Record<string, number> | undefined,
 ): Promise<RecalculatedSell[]> {
-  // A holding tracked by money keeps each sell's cost as it was saved: nothing earlier rewrites a profit booked.
-  if (await isByMoneyTx(tx, ws, accountId)) return [];
+  const byMoney = await isByMoneyTx(tx, ws, accountId);
   const trades = await activeTrades(tx, ws, accountId);
-  const later = trades.filter((trade) => trade.kind === 'sell' && trade.occurredOn >= fromDate && trade.transactionId);
+  /* A holding tracked by money keeps each sell's cost as it was saved: nothing earlier rewrites a profit booked. A sell
+     from its units days was saved with none, and still follows the average cost of the units it sold. */
+  const later = trades.filter(
+    (trade) => trade.kind === 'sell' && trade.occurredOn >= fromDate && trade.transactionId && (!byMoney || trade.basisMinor == null),
+  );
   if (later.length === 0) return [];
+  const moneyBases = byMoney ? moneySells(trades) : null;
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, accountId, later[0]!.cashAccountId);
   const changed: RecalculatedSell[] = [];
   for (const sell of later) {
-    const position = positionAt(trades, sell.occurredOn, sell.id);
-    const newBasisMinor = sellBasisMinor(position, sell.unitsMicro);
+    const position = moneyBases ? moneyPositionAfter(trades.filter((trade) => trade.id !== sell.id), sell.occurredOn) : positionAt(trades, sell.occurredOn, sell.id);
+    const newBasisMinor = moneyBases ? (moneyBases.get(sell.id)?.basisMinor ?? 0) : sellBasisMinor(position, sell.unitsMicro);
     const oldBasisMinor = await postedBasis(tx, sell.transactionId!, accountId);
     if (oldBasisMinor === newBasisMinor) continue;
     const withCash = sell.cashAccountId === later[0]!.cashAccountId ? tradeAccounts : (await tradeAccountsFor(tx, ws, accountId, sell.cashAccountId)).accounts;
     const posted = await postedMoneyTx(tx, sell.transactionId!, withCash, sell.kind);
-    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
+    const plain = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
+    const input: TradeInput = moneyBases ? { ...plain, byMoney: { basisMinor: newBasisMinor } } : plain;
     const lines = tradePostings(input, position, withCash);
     await voidTransactionTx(tx, ws, sell.transactionId!);
     const replacement = await postTransactionTx(tx, ws, {

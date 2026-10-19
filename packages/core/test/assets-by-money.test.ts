@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetValueAt, tradeCashMinor, tradeCashMovedMinor, type ValuationRow, moneyFlows, moneyPositionAfter, moneySellBasis, navAnchors, tradeDescription, tradePostings, type TradeRecord } from '../src/index';
+import { assetValueAt, moneySells, positionInBase, tradeCashMinor, tradeCashMovedMinor, type ValuationRow, moneyFlows, moneyPositionAfter, moneySellBasis, navAnchors, tradeDescription, tradePostings, type TradeRecord } from '../src/index';
 
 const trade = (id: string, kind: TradeRecord['kind'], occurredOn: string, grossMinor: number, extra: Partial<TradeRecord> = {}): TradeRecord => ({
   id,
@@ -108,5 +108,24 @@ describe('a fund tracked by money', () => {
     expect(tradeCashMinor({ kind: 'buy', occurredOn: '2026-10-05', unitsMicro: 0, grossMinor: 500_000, feeMinor: 0, taxMinor: 0 })).toBe(500_000);
     expect(tradeCashMinor({ kind: 'sell', occurredOn: '2026-10-10', unitsMicro: 0, grossMinor: 776_000, feeMinor: 0, taxMinor: 0 })).toBe(776_000);
     expect(tradeCashMovedMinor({ kind: 'sell', occurredOn: '2026-10-10', unitsMicro: 0, grossMinor: 776_000, feeMinor: 0, taxMinor: 0 })).toBe(776_000);
+  });
+
+  it('records each sell\u2019s cost and the money in before it, the units days\u2019 sells by their units', () => {
+    const units = [
+      trade('u1', 'buy', '2025-01-01', 1_000_000, { unitsMicro: 1_000_000_000 }),
+      trade('u2', 'sell', '2025-06-01', 600_000, { unitsMicro: 500_000_000 }),
+      trade('m1', 'buy', '2026-01-01', 300_000),
+      trade('m2', 'sell', '2026-02-01', 400_000, { basisMinor: 200_000 }),
+    ];
+    expect(moneySells(units)).toEqual(new Map([
+      ['u2', { basisMinor: 500_000, costBeforeMinor: 1_000_000 }],
+      ['m2', { basisMinor: 200_000, costBeforeMinor: 800_000 }],
+    ]));
+  });
+
+  it('gives a foreign fund\u2019s sell the same share of its base cost as of its own', () => {
+    // 1.000 USD bought at a base cost of 16.000.000; half the money (500 USD) taken out by a sell.
+    const usd = [trade('b', 'buy', '2026-01-01', 100_000), trade('s', 'sell', '2026-02-01', 60_000, { basisMinor: 50_000 })];
+    expect(positionInBase(usd, { b: 16_000_000 })).toMatchObject({ costMinor: 8_000_000 });
   });
 });

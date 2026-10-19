@@ -209,3 +209,35 @@ describe('sectionTotals', () => {
     expect(sectionTotals(coretaxRows(YEAR, empty, settings()))).toEqual([]);
   });
 });
+
+describe('a fund tracked by money on the daftar harta', () => {
+  /** Rp 1.552.000 on 31 December: 1.000.000 put in in 2025, 500.000 in 2026; no units. */
+  const fund = {
+    accountId: 'fund',
+    name: 'Sucor Money Market',
+    code: '0307',
+    currency: 'IDR',
+    priceMicro: 0,
+    byYear: { '2025': { unitsMicro: 0, costMinor: 1_000_000 }, '2026': { unitsMicro: 0, costMinor: 500_000 } },
+    valueMinor: 1_552_000,
+    fields: {},
+  };
+
+  it('files one row at its 31 December value and the money still in', () => {
+    const [row] = coretaxRows(YEAR, inputs({ holdings: [fund] }), settings());
+    expect(row).toMatchObject({ costMinor: 1_500_000, valueMinor: 1_552_000, acquiredYear: 2025 });
+  });
+
+  it('shares the value out by the money each year put in, when rows repeat by year', () => {
+    const rows = coretaxRows(YEAR, inputs({ holdings: [fund] }), settings({ repeatRows: 'year' }));
+    expect(rows.map((row) => [row.acquiredYear, row.costMinor, row.valueMinor])).toEqual([
+      [2025, 1_000_000, 1_034_667],
+      [2026, 500_000, 517_333],
+    ]);
+  });
+
+  it('still files a fund worth something with no money left in it, at no cost', () => {
+    const [row] = coretaxRows(YEAR, inputs({ holdings: [{ ...fund, byYear: { '2026': { unitsMicro: 0, costMinor: 0 } }, valueMinor: 30_000 }] }), settings());
+    expect(row).toMatchObject({ costMinor: 0, valueMinor: 30_000, acquiredYear: 2026 });
+  });
+});

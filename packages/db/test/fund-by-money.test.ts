@@ -92,3 +92,42 @@ describe('a fund tracked by money, saved', () => {
     expect(await valueOn('2026-02-01')).toMatchObject({ valueMinor: 1_400_000, costMinor: 1_300_000 });
   });
 });
+
+describe('a fund from its units days, now tracked by money', () => {
+  it('still re-books a sell from the units days when an earlier buy changes, and keeps the ledger in step', async () => {
+    // Its trades were saved while it was counted in units (no profile yet), then it became a fund tracked by money.
+    const old = await createAccount(database, ws, { name: 'Old fund', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    const units = (kind: 'buy' | 'sell', occurredOn: string, unitsMicro: number, grossMinor: number) =>
+      recordTrade(database, ws, { accountId: old.id, kind, occurredOn, unitsMicro, grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
+    const first = await units('buy', '2025-01-01', 1_000_000_000, 1_000_000);
+    await units('sell', '2025-06-01', 500_000_000, 600_000);
+    await saveAssetProfile(database, ws, { accountId: old.id, assetKind: 'fund' });
+    expect((await positionsFor(database, ws))[old.id]).toMatchObject({ costMinor: 500_000, realizedMinor: 100_000 });
+
+    const result = await replaceTrade(database, ws, first.tradeId, {
+      accountId: old.id, kind: 'buy', occurredOn: '2025-01-01', unitsMicro: 1_000_000_000, grossMinor: 1_200_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id,
+    });
+
+    expect(result.recalculatedSells).toEqual([expect.objectContaining({ oldBasisMinor: 500_000, newBasisMinor: 600_000 })]);
+    expect((await nativeBalances(database, ws))[old.id]).toBe(600_000);
+    expect((await positionsFor(database, ws))[old.id]).toMatchObject({ costMinor: 600_000, realizedMinor: 0 });
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+});
+
+describe('a fund on the tax report with no money left in it', () => {
+  it('is still declared, at no cost, when only a value was typed', async () => {
+    await recordValuation(database, ws, { accountId: fund.id, asOf: '2026-12-01', valueMinor: 250_000, basis: 'estimate' });
+    const row = (await coretaxInputsFor(database, ws, 2026)).holdings.find((holding) => holding.accountId === fund.id);
+    expect(row).toMatchObject({ valueMinor: 250_000, byYear: { '2026': { costMinor: 0 } } });
+  });
+
+  it('is still declared when every rupiah put in was taken out and value is left', async () => {
+    await money('buy', '2026-03-01', 1_000_000);
+    await recordValuation(database, ws, { accountId: fund.id, asOf: '2026-06-01', valueMinor: 1_000_000, basis: 'estimate' });
+    await money('sell', '2026-06-02', 1_000_000);
+    await recordValuation(database, ws, { accountId: fund.id, asOf: '2026-12-01', valueMinor: 30_000, basis: 'estimate' });
+    const row = (await coretaxInputsFor(database, ws, 2026)).holdings.find((holding) => holding.accountId === fund.id);
+    expect(row).toMatchObject({ valueMinor: 30_000, byYear: { '2026': { costMinor: 0 } } });
+  });
+});
