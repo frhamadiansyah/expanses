@@ -141,9 +141,9 @@ test('a bond reads its price as a share of its face', async ({ page }) => {
   await openAsset(page, 'ORI026');
   await typePrice(page, '102');
   const grid = page.getByTestId('asset-grid');
-  await expect(grid).toContainText('Face value');
-  await expect(grid).toContainText('Price today102% of face');
-  await expect(grid).toContainText('Average buy100% of face');
+  await expect(grid).toContainText('Par value');
+  await expect(grid).toContainText('Price today102% of par');
+  await expect(grid).toContainText('Average buy100% of par');
   await expect(page.getByText('Rp 10.200.000').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Coupon' })).toBeVisible();
 });

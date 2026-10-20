@@ -13,7 +13,7 @@ export interface BuyChoice {
   unitLabel: string;
 }
 
-const UNIT_LABELS: Record<string, string> = { units: 'Units', shares: 'Shares', grams: 'Grams', face: 'Units' };
+const UNIT_LABELS: Record<string, string> = { units: 'Units', shares: 'Shares', grams: 'Grams', face: 'Par value' };
 
 /** Holdings measured in units: the only things you can buy or sell from the transaction window. */
 export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[]): { buys: BuyChoice[]; sells: BuyChoice[] } {

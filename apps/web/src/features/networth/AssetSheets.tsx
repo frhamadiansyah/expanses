@@ -29,7 +29,7 @@ export const PRICE_WORDS: Record<UnitKind, string> = {
   grams: 'Buyback price a gram',
   shares: 'Closing price',
   units: 'Price a unit',
-  face: 'Price, % of face',
+  face: 'Price, % of par',
 };
 
 /**
