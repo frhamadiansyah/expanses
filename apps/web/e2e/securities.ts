@@ -2,9 +2,6 @@ import { expect, type Page } from '@playwright/test';
 import { fillDay } from './add-asset';
 import { setCurrency } from './currency-field';
 
-/** BBCA as the IDX list carries it, typed through Name it myself — the walk that checks a stock named by hand is the listed one. */
-export const BBCA_BY_HAND = { ticker: 'BBCA', name: 'BCA', market: 'IDX', currency: 'IDR', lotSize: '100' };
-
 /** The owner's preview switch (developer settings, linked from nowhere): the US list, granted on this device. */
 export async function setForeignList(page: Page, on: boolean) {
   await page.goto('/settings/developer');

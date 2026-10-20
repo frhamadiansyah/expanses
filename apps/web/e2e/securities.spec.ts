@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { expectBalance, startReport } from './deposit-maturity';
-import { addHoldingFlow, BBCA_BY_HAND, setForeignList } from './securities';
+import { addHoldingFlow, setForeignList } from './securities';
 import { addMoneyAccount } from './set-aside';
 import { todayIn } from './today';
 
@@ -109,14 +109,14 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
   await addHoldingFlow(page, {
     search: 'BBCA old',
     nameIt: { ticker: '', name: 'BBCA old', market: '', currency: 'IDR' },
-    broker: 'No broker',
+    broker: { new: 'Ajaib' },
     quantity: '100',
     price: '8.750',
     paidFrom: 'Owned before this app',
     date: await todayIn(page, 200),
   });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.getByRole('link', { name: /BBCA old/ }).click();
+  await page.getByRole('link', { name: 'Ajaib', exact: true }).click();
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   // The list leads with what is held — which is this asset's own unlisted name — so the ticker to link to is the
@@ -148,52 +148,8 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
   await expect(aapl).not.toContainText('182.500');
 });
 
-test('a buy with no broker names the holding it adds to — and, with two, which one and how to reach the other', async ({ page }) => {
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
-  await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
-  await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
-  await expect(page.getByLabel('Total')).toHaveText(/900\.000$/);
-  // m6: the note is about a buy with no broker. Kept at a broker, the buy lands there, and the note is gone.
-  await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Another broker…' });
-  await expect(page.getByText(/This adds to/)).toHaveCount(0);
-
-  // m7: the same stock named by hand is the stock already held, so the form says which holding it joins.
-  await addHoldingFlow(page, { search: 'BBCA', nameIt: BBCA_BY_HAND, broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
-  await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
-
-  // A holding from before, linked to BBCA with no broker: now there are two, and the form never picks silently.
-  await addHoldingFlow(page, {
-    search: 'BBCA old',
-    nameIt: { ticker: '', name: 'BBCA old', market: '', currency: 'IDR' },
-    broker: 'No broker',
-    quantity: '100',
-    price: '8.750',
-    paidFrom: 'Owned before this app',
-    date: await todayIn(page, 200),
-  });
-  await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.getByRole('link', { name: /BBCA old/ }).click();
-  await page.getByRole('link', { name: /Ticker/ }).click();
-  await page.getByLabel('Ticker or name').pressSequentially('BBCA');
-  await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
-  await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
-
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
-  await expect(
-    page.getByText('Held as BBCA twice with no broker named. This adds to BBCA, the first recorded; to add to BBCA old instead, record the buy on Buy & sell.'),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  // It went on the one it named: BBCA now holds 200 shares (100 × 8.750 + 100 × 9.000), BBCA old still its 100.
-  await page.goto('/net-worth/investments/broker/none');
-  await expect(page.getByRole('row').filter({ hasText: '1.775.000' })).toContainText('200');
-  await expect(page.getByRole('row').filter({ hasText: 'Rp 875.000' })).toContainText('100');
-});
-
 test('every way in reaches Investments and Add a holding: Buy & sell, the Assets group, the picker and the inline form', async ({ page }) => {
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
 

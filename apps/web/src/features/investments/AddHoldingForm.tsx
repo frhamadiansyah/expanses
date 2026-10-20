@@ -10,18 +10,15 @@ import { InsetGroup, InsetRow, rateLine, ReadOnlyRow, SelectRow, TextRow } from 
 import { useHeldRates } from '../accounts/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { usePositions } from '../networth/queries';
 import { baseCostPreview, tradeRatesForSave } from '../networth/trade-money';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { type AcquiredParts, acquiredOn, NO_DATE } from '../networth/acquired';
 import { AcquiredRow, MoneyRow } from '../networth/AssetRows';
-import { emptyHoldingDraft, type HoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
-import { useBrokerlessHoldings } from './queries';
+import { emptyHoldingDraft, type HoldingDraft, NEW_BROKER, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
 
-export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, onTicker }: {
+export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }: {
   /** The share chosen, or null before one is: every row is there from the start, and the ✓ waits for it. */
   picked: Picked | null;
-  accounts: readonly AccountRow[];
   /** `brokerChoices(accounts)`: fund accounts that are not pockets. */
   brokers: readonly AccountRow[];
   /** Units of this security already held at each broker account id. */
@@ -49,11 +46,6 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
-  // A buy with no broker lands on an existing holding of this stock with no broker named, when there is one: say which.
-  // A stock already held reaches here as `held` however it was picked (`asHeld`), named by hand included.
-  const brokerless = useBrokerlessHoldings(picked?.kind === 'held' ? picked.security.id : null).data ?? [];
-  const positions = usePositions().data ?? {};
-  const landsOn = picked ? landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name) : null;
 
   const cashCurrency = security.currency;
   const total = totalOf(draft, security.lotSize, security.currency);
@@ -119,7 +111,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         />
       </InsetGroup>
 
-      <InsetGroup footer={landsOn ?? undefined}>
+      <InsetGroup>
         <SelectRow
           label="Broker"
           value={draft.brokerChoice}
@@ -129,7 +121,6 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
             <option key={b.id} value={b.id}>{`${b.name}${heldAt[b.id] ? ` · held ${formatUnits(heldAt[b.id]!)}` : ''}`}</option>
           ))}
           <option value={NEW_BROKER}>Another broker…</option>
-          <option value={NO_BROKER_CHOICE}>No broker</option>
         </SelectRow>
         {draft.brokerChoice === NEW_BROKER ? (
           <TextRow label="Broker name" value={draft.brokerName} onChange={(e) => change({ brokerName: e.target.value })} placeholder="Required" required />
