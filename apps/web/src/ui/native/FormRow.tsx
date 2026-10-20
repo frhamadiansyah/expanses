@@ -245,7 +245,8 @@ export function optionLabel(children: ReactNode, value: string): string | null {
   for (const child of Children.toArray(children)) {
     if (!isValidElement(child)) continue;
     const props = child.props as { value?: unknown; children?: ReactNode };
-    if (child.type === 'option' && String(props.value ?? '') === value) return String(props.children ?? '');
+    // An option's text in pieces ({name}{' · held 5'}) reads as one, never as the array's "name,".
+    if (child.type === 'option' && String(props.value ?? '') === value) return Children.toArray(props.children).map(String).join('');
     if (child.type === 'optgroup') {
       const inside = optionLabel(props.children, value);
       if (inside !== null) return inside;
