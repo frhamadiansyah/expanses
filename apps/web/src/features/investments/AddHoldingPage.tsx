@@ -5,7 +5,7 @@ import { Check } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { PushedTitle, SCREEN } from '../../ui/native';
+import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { usePositions } from '../networth/queries';
 import { asHeld, brokerChoices, type Picked, securityOf } from './add-holding';
@@ -24,7 +24,9 @@ export function AddHoldingPage() {
   const links = useHoldingLinks().data ?? [];
   const positions = usePositions().data ?? {};
   const [query, setQuery] = useState('');
-  const [step, setStep] = useState<'search' | 'name' | 'form'>('search');
+  /* The form first, as every other asset opens: its first row is the ticker, which opens the search. Linking a holding
+     recorded before a ticker (spec §7.6) asks only for the ticker, so it starts at the search. */
+  const [step, setStep] = useState<'search' | 'name' | 'form'>(link ? 'search' : 'form');
   const [picked, setPicked] = useState<Picked | null>(null);
   const [error, setError] = useState<unknown>(null);
   // The step's ✓, drawn in the bar as Add asset draws its own.
@@ -55,15 +57,20 @@ export function AddHoldingPage() {
   }
 
   const leave = () => void navigate(link ? { to: '/net-worth/assets/$accountId', params: { accountId: link } } : { to: '/net-worth/investments' });
-  const back = () => (step === 'search' ? leave() : setStep('search'));
+  const back = () => {
+    if (step === 'name') setStep('search');
+    else if (step === 'search' && !link) setStep('form');
+    else leave();
+  };
+  const backLabel = step === 'name' ? 'Search' : step === 'search' && !link ? 'Add a holding' : link ? 'Asset' : 'Investments';
   return (
     <div className={SCREEN}>
       <PushedTitle
-        title={link ? 'Which ticker is it?' : step === 'name' ? 'Name it' : 'Add a holding'}
-        back={step === 'search' ? (link ? 'Asset' : 'Investments') : 'Search'}
+        title={link ? 'Which ticker is it?' : step === 'name' ? 'Name it' : step === 'search' ? 'Find a ticker' : 'Add a holding'}
+        back={backLabel}
         onBack={back}
         actions={
-          step !== 'search' && confirm
+          step !== 'search' && confirm && (step === 'name' || picked)
             ? [{ key: 'save', label: step === 'name' ? 'Continue' : 'Add holding', glyph: <Check size={20} aria-hidden />, disabled: confirm.disabled, run: confirm.run }]
             : []
         }
@@ -71,7 +78,23 @@ export function AddHoldingPage() {
       <ErrorBox error={error} />
       {step === 'search' && <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setStep('name')} />}
       {step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onConfirm} />}
-      {step === 'form' && picked && <AddHoldingForm picked={picked} accounts={accounts} brokers={brokerChoices(accounts)} heldAt={heldAt} onConfirm={onConfirm} />}
+      {step === 'form' &&
+        (picked ? (
+          <AddHoldingForm
+            key={picked.kind === 'held' ? picked.security.id : `${picked.security.ticker ?? ''}:${picked.security.name}`}
+            picked={picked}
+            accounts={accounts}
+            brokers={brokerChoices(accounts)}
+            heldAt={heldAt}
+            onConfirm={onConfirm}
+            onTicker={() => setStep('search')}
+          />
+        ) : (
+          // Nothing chosen yet: the form is its first row, and the rest follows the ticker (its lot, its currency).
+          <InsetGroup>
+            <InsetRow title="Ticker" value="Choose" onClick={() => setStep('search')} />
+          </InsetGroup>
+        ))}
     </div>
   );
 }

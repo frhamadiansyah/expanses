@@ -63,6 +63,7 @@ test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it
   await page.goto('/net-worth/investments');
   await page.getByRole('link', { name: 'Add a holding' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
+  await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('AAPL');
   await expect(page.getByText('Nothing on IDX matches AAPL')).toBeVisible();
   await expect(page.getByRole('button', { name: /Name it myself/ })).toBeVisible();
@@ -70,6 +71,7 @@ test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it
 
 test('9 (the list): the same search finds BBCA, so the empty answer is about the market, not a failure', async ({ page }) => {
   await page.goto('/net-worth/investments/new');
+  await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   await expect(page.getByRole('button', { name: /^BBCA\b/ }).first()).toBeVisible();
 });
@@ -92,6 +94,7 @@ test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked fo
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('stock-row').filter({ hasText: 'AAPL' })).toContainText('10 shares');
   await page.goto('/net-worth/investments/new');
+  await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('AAP');
   await expect(page.getByText('Held', { exact: true })).toBeVisible();
   await page.getByLabel('Ticker or name').fill('');
@@ -222,7 +225,8 @@ test('every way in reaches Investments and Add a holding: Buy & sell, the Assets
   await page.getByPlaceholder('Search everything that can be owned').pressSequentially('Listed shares');
   await page.getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
-  await expect(page.getByLabel('Ticker or name')).toBeVisible();
+  // The form opens first, as every other asset does: its first row is the ticker.
+  await expect(page.getByRole('button', { name: /^Ticker/ })).toBeVisible();
 });
 
 test.describe('with the list unreadable', () => {
@@ -231,6 +235,7 @@ test.describe('with the list unreadable', () => {
   test('search says the list could not be read, and Name it myself still works (§6.3)', async ({ page }) => {
     await page.route(/\/assets\/idx-[^/]+\.js$/, (route) => void route.abort());
     await page.goto('/net-worth/investments/new');
+    await page.getByRole('button', { name: /^Ticker/ }).click();
     await page.getByLabel('Ticker or name').pressSequentially('BBCA');
     await expect(page.getByText('The ticker list could not be read. Name it directly instead.')).toBeVisible();
     await page.getByRole('button', { name: /Name it myself/ }).click();
