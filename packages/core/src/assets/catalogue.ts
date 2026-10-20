@@ -203,7 +203,7 @@ const INVEST_ITEMS: readonly OwnableItem[] = [
       unitKind: 'units',
       lotSize: null,
       priceLabel: 'NAV per unit',
-    }),
+    }, 'money put in, and the value you type'),
     searchAlso: 'reksadana unit trust',
   },
   holding('corporate_bond', 'Corporate bonds', '0304', {
