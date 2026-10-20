@@ -20,7 +20,8 @@ import { emptyHoldingDraft, type HoldingDraft, landsOnNote, NEW_BROKER, NO_BROKE
 import { useBrokerlessHoldings } from './queries';
 
 export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, onTicker }: {
-  picked: Picked;
+  /** The share chosen, or null before one is: every row is there from the start, and the ✓ waits for it. */
+  picked: Picked | null;
   accounts: readonly AccountRow[];
   /** `brokerChoices(accounts)`: fund accounts that are not pockets. */
   brokers: readonly AccountRow[];
@@ -37,7 +38,8 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const resolveRates = useResolveRates();
   const goals = useGoals().data ?? [];
   const today = isoDate();
-  const security = securityOf(picked);
+  // Until a ticker is chosen the rows read in the workspace's own currency, a share at a time.
+  const security = picked ? securityOf(picked) : { ticker: null, name: '', market: '', currency: ws.baseCurrency, lotSize: null };
   const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft(today, security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER }));
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [manualRate, setManualRate] = useState('');
@@ -47,9 +49,9 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
   // A buy with no broker lands on an existing holding of this stock with no broker named, when there is one: say which.
   // A stock already held reaches here as `held` however it was picked (`asHeld`), named by hand included.
-  const brokerless = useBrokerlessHoldings(picked.kind === 'held' ? picked.security.id : null).data ?? [];
+  const brokerless = useBrokerlessHoldings(picked?.kind === 'held' ? picked.security.id : null).data ?? [];
   const positions = usePositions().data ?? {};
-  const landsOn = landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name);
+  const landsOn = picked ? landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name) : null;
 
   // Every account money can come out of — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy &
   // sell offers them. A broker's own cash is one of them: parking in the RDN and buying from it is the whole point.
@@ -63,7 +65,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   /** The plan the save sends, or null while it is incomplete: the one input the preview, the door and the save read. */
   const plan = ((): AddHoldingInput | null => {
     try {
-      return planAddHolding(picked, draft, today, cashCurrency);
+      return picked ? planAddHolding(picked, draft, today, cashCurrency) : null;
     } catch {
       return null;
     }
@@ -87,6 +89,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
     setError(null);
     setBusy(true);
     try {
+      if (!picked) throw new Error('Choose a ticker');
       const planned = planAddHolding(picked, draft, today, cashCurrency);
       const ratesToBase = await tradeRatesForSave({
         database, ws, input: { ...planned.buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
@@ -109,8 +112,8 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
       <InsetGroup>
         <InsetRow
           title="Ticker"
-          value={label}
-          subtitle={[security.ticker ? security.name : null, security.market || null, security.currency].filter(Boolean).join(' · ')}
+          value={picked ? label : 'Choose'}
+          subtitle={picked ? [security.ticker ? security.name : null, security.market || null, security.currency].filter(Boolean).join(' · ') : undefined}
           onClick={onTicker}
         />
       </InsetGroup>
