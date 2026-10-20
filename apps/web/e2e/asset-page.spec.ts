@@ -137,7 +137,7 @@ test('a car added with a year and month shows just that, and its Edit screen tak
 });
 
 test('a bond reads its price as a share of its face', async ({ page }) => {
-  await addPriced(page, 'Government bonds (ORI, SBSN)', 'ORI026', [['2026-01-15', '10000000', '10000000']]);
+  await addPriced(page, 'Government bonds', 'ORI026', [['2026-01-15', '10000000', '10000000']]);
   await openAsset(page, 'ORI026');
   await typePrice(page, '102');
   const grid = page.getByTestId('asset-grid');

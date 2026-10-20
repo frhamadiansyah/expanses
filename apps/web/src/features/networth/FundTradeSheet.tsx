@@ -11,9 +11,9 @@ import { CashRow, CashSheet, HoldingRow, MoreOptionsRow, ResultRow, signedMinor,
 const BUY_INFO =
   "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade.";
 const MONEY_SELL_INFO =
-  "A sell takes out the same share of the money you put in as it takes of the fund's value, and the rest is your gain. All takes everything. A reksadana gain isn't taxed for the holder (UU PPh Pasal 4(3) huruf i), but the fund still sits in the tax report's asset list.";
+  "A sell takes out the same share of the money you put in as it takes of the fund's value, and the rest is your gain. All takes everything.";
 const SELL_INFO =
-  "All sells every unit; its value is then units × NAV rather than a typed amount. A reksadana gain isn't taxed for the holder (UU PPh Pasal 4(3) huruf i), but the fund still sits in the tax report's asset list. A money market fund usually pays out in T+1 to T+2; the law allows up to T+7.";
+  "All sells every unit; its value is then units × NAV rather than a typed amount. A money market fund usually pays out within a few business days.";
 
 /**
  * Buy or Sell of a mutual fund (reksadana) from its own page, the way a fund app takes the order: an amount of money,
