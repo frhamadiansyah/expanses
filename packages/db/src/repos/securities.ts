@@ -1,4 +1,4 @@
-import { assetItem, isSupportedCurrency, type PriceRow, type SecurityKind, uuidv7 } from '@expanses/core';
+import { assetItem, cashItem, isSupportedCurrency, type PriceRow, type SecurityKind, uuidv7 } from '@expanses/core';
 import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -393,6 +393,8 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
       brokerName = broker.name;
     } else if (input.broker) {
       const opened = await createAccountTx(tx, ws, { name: input.broker.name, kind: 'asset', subtype: 'fund', currency: input.broker.currency });
+      // Opened here, it gets the profile Add account gives a broker's cash: its kas row, where its RDN bank is named.
+      await saveAssetProfileTx(tx, ws, { accountId: opened.id, assetKind: 'cash', planGroup: 'liquid', coretaxSection: 'kas', coretaxCode: cashItem('fund').code });
       brokerAccountId = opened.id;
       brokerName = opened.name;
     }
