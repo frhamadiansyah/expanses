@@ -218,7 +218,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
                 value={purchase.units}
                 inputMode="decimal"
                 placeholder={byMoney ? 'Optional' : byPar ? 'Amount' : 'Quantity'}
-                hint={byPar && index === 0 ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
+                info={byPar ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
                 onChange={(e) => setPurchase(index, { units: e.target.value })}
               />
               {/* One currency per holding: the first purchase sets it, the rest only say it. */}
