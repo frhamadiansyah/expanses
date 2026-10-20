@@ -257,12 +257,18 @@ export function optionLabel(children: ReactNode, value: string): string | null {
 /** A row that shows rather than asks: a computed total, a workspace's name. Quieter ink, and it points nowhere. */
 export function ReadOnlyRow({ label, value, position }: GroupChild & { label: string; value: string | null | undefined }) {
   const plan = planFormRow('static', value, '—');
+  // The figure is named by its label, as a field is, so a screen reader (and a test) finds "Total" and hears its value.
+  const id = useId();
   return (
     <div className="relative" style={{ minHeight: TAP }}>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
-        <span className={LABEL}>{label}</span>
-        <span className={cx('tabular min-w-0 flex-1 truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
+        <span id={id} className={LABEL}>
+          {label}
+        </span>
+        <span aria-labelledby={id} className={cx('tabular min-w-0 flex-1 truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>
+          {plan.text}
+        </span>
       </div>
     </div>
   );

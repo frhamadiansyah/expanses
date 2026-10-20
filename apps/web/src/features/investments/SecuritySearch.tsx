@@ -2,8 +2,8 @@ import { searchSecurities } from '@expanses/catalog';
 import type { SecurityRow } from '@expanses/db';
 import { formatUnits } from '@expanses/core';
 import { useEntitlement } from '../../lib/entitlements';
-import { cx, Input } from '../../ui';
-import { InsetGroup, InsetRow, useWide } from '../../ui/native';
+import { cx } from '../../ui';
+import { InsetGroup, InsetRow, SearchField, useWide } from '../../ui/native';
 import type { Picked } from './add-holding';
 import { useSecurityList } from './queries';
 
@@ -29,7 +29,7 @@ export function SecuritySearch({ query, onQuery, held, heldUnits, onPick, onName
   return (
     <>
       <div className={cx('w-full', wide ? '' : 'md:max-w-2xl')}>
-        <Input aria-label="Ticker or name" placeholder="Ticker or name" value={query} onChange={(e) => onQuery(e.target.value)} autoFocus />
+        <SearchField aria-label="Ticker or name" placeholder="Ticker or name" value={query} onChange={(e) => onQuery(e.target.value)} autoFocus />
       </div>
       {mine.length > 0 && (
         <InsetGroup header="Held">
