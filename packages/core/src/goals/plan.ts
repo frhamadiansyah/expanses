@@ -36,6 +36,8 @@ export interface GoalLink {
   /** Units tagged to the goal, or an amount set aside from a savings account. */
   kind: 'tagged' | 'earmark';
   unitsMicro: number | null;
+  /** A goal's money put in a holding tracked by money (a fund): what its share of the value is counted by. */
+  moneyMinor?: number | null;
   /**
    * What is set aside or tagged, **in the account's own money** — a US$100,03 set-aside on a USD account is
    * 10_003, not what it converts to. That is what the account holds and what will be withdrawn.

@@ -63,7 +63,8 @@ const amount = (text: string, currency: string, label: string): number => {
 };
 
 /** Turns what was typed into a trade to record, with messages meant for the screen. */
-export function draftToInput(draft: TradeDraft, currency: string, today: string): RecordTradeInput {
+/** `byMoney`: the holding is a fund tracked by money, whose buys and sells need no units (spec 2026-10-19-fund-by-amount). */
+export function draftToInput(draft: TradeDraft, currency: string, today: string, byMoney = false): RecordTradeInput {
   if (!draft.accountId) throw new Error('Choose what was bought or sold');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A trade cannot be dated after today');
@@ -78,14 +79,17 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string)
     return { accountId: draft.accountId, kind: 'income', occurredOn: draft.occurredOn, unitsMicro: 0, grossMinor: gross, feeMinor: 0, taxMinor: tax, cashAccountId: draft.cashAccountId || null, goalId: null };
   }
 
-  if (draft.units.trim() === '') throw new Error('Enter how many units, shares or grams');
-  let unitsMicro: number;
-  try {
-    unitsMicro = parseUnits(draft.units);
-  } catch {
-    throw new Error('Units must be a number');
+  const noUnits = byMoney && draft.kind !== 'unit_change' && draft.units.trim() === '';
+  if (draft.units.trim() === '' && !noUnits) throw new Error('Enter how many units, shares or grams');
+  let unitsMicro = 0;
+  if (!noUnits) {
+    try {
+      unitsMicro = parseUnits(draft.units);
+    } catch {
+      throw new Error('Units must be a number');
+    }
+    if (unitsMicro <= 0) throw new Error('Enter more than zero units');
   }
-  if (unitsMicro <= 0) throw new Error('Enter more than zero units');
 
   if (draft.kind === 'unit_change') {
     return { accountId: draft.accountId, kind: 'unit_change', occurredOn: draft.occurredOn, unitsMicro, grossMinor: 0, feeMinor: 0, taxMinor: 0, cashAccountId: null, goalId: null };

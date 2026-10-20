@@ -1,4 +1,4 @@
-import { formatUnits } from '@expanses/core';
+import { formatMinor, formatUnits } from '@expanses/core';
 import type { GoalLinkRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { Money } from '../../ui';
@@ -41,6 +41,8 @@ export function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow 
         subtitle={
           link.kind === 'tagged' && link.unitsMicro !== null ? (
             `${formatUnits(link.unitsMicro)} tagged`
+          ) : link.kind === 'tagged' && link.moneyMinor != null ? (
+            `${formatMinor(link.moneyMinor, link.currency)} put in`
           ) : link.shortMinor > 0 ? (
             <>
               set aside · short by <Money minor={link.shortMinor} currency={link.currency} />

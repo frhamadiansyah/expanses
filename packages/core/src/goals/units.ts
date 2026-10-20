@@ -1,3 +1,4 @@
+import { moneySells } from '../assets/by-money';
 import type { TradeRecord } from '../assets/position';
 import { divRound, formatUnits } from '../assets/units';
 
@@ -69,6 +70,51 @@ export function goalUnitsOf(trades: TradeRecord[], upTo?: string): GoalUnits {
   return { byGoal, unitsMicro };
 }
 
+/** Money put in per goal for one holding tracked by money, with untagged money under `UNTAGGED`. */
+export interface GoalMoney {
+  byGoal: Record<string, number>;
+  /** The money still in the holding: the sum of every goal's. */
+  costMinor: number;
+}
+
+/** Whether a holding's trades are tracked by money: a buy or sell with no units, or one saved with its cost. */
+export const tradedByMoney = (trades: readonly TradeRecord[]): boolean =>
+  trades.some((trade) => (trade.kind === 'buy' || trade.kind === 'sell') && (trade.unitsMicro <= 0 || trade.basisMinor != null));
+
+/**
+ * Money put in per goal for a holding tracked by money (spec 2026-10-19-fund-by-amount): a buy tagged to a goal adds
+ * what it cost to that goal; a sell named to a goal takes the money it gave up out of that goal alone, and cannot take
+ * more than the goal has in. A goal's value is then its share of the holding's value, by money put in.
+ */
+export function goalMoneyOf(trades: readonly TradeRecord[], upTo?: string): GoalMoney {
+  const sells = moneySells(trades);
+  const byGoal: Record<string, number> = {};
+  let costMinor = 0;
+  for (const trade of [...trades].sort(byTradeOrder)) {
+    if (upTo && trade.occurredOn > upTo) continue;
+    const key = trade.goalId ?? UNTAGGED;
+    if (trade.kind === 'buy') {
+      const cost = trade.grossMinor + trade.feeMinor + trade.taxMinor;
+      byGoal[key] = (byGoal[key] ?? 0) + cost;
+      costMinor += cost;
+    } else if (trade.kind === 'sell') {
+      const basis = sells.get(trade.id)?.basisMinor ?? 0;
+      const held = byGoal[key] ?? 0;
+      /* A rupiah of rounding is the holding's, not a goal overdrawn. A sell from the units days (saved with no cost)
+         was checked by units when it was saved; by money its average cost can be more than its goal put in, and that
+         history stands — it empties the goal rather than refusing. */
+      if (basis > held + 1 && trade.basisMinor != null) {
+        const whose = key === UNTAGGED ? 'Money with no goal' : `Goal "${key}"`;
+        throw new GoalError(`${whose} has less in this holding than that sell takes out`);
+      }
+      byGoal[key] = Math.max(0, held - basis);
+      costMinor -= Math.min(basis, held);
+    }
+  }
+  for (const [key, value] of Object.entries(byGoal)) if (value <= 0) delete byGoal[key];
+  return { byGoal, costMinor };
+}
+
 /** The same, for every holding that has trades. */
 export function goalUnitsFor(trades: TradeRecord[], upTo?: string): Record<string, GoalUnits> {
   const byAccount = new Map<string, TradeRecord[]>();
@@ -86,8 +132,11 @@ const ELSEWHERE = '\u0000elsewhere';
  */
 export function retagFits(trades: readonly TradeRecord[], tradeId: string, goalId?: string | null): boolean {
   const to = goalId === undefined ? ELSEWHERE : goalId;
+  const moved = trades.map((trade) => (trade.id === tradeId ? { ...trade, goalId: to } : trade));
   try {
-    goalUnitsOf(trades.map((trade) => (trade.id === tradeId ? { ...trade, goalId: to } : trade)));
+    // A holding tracked by money is shared out by money put in; one counted in units, by units.
+    if (tradedByMoney(trades)) goalMoneyOf(moved);
+    else goalUnitsOf(moved);
     return true;
   } catch (e) {
     if (e instanceof GoalError) return false;

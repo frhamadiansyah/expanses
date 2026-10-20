@@ -531,7 +531,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             <InsetRow
               key={link.goalId}
               title={(goals.data ?? []).find((goal) => goal.id === link.goalId)?.name ?? 'A goal'}
-              subtitle={link.unitsMicro === null ? undefined : `${formatUnits(link.unitsMicro)} ${unitLabel}`}
+              subtitle={link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} ${unitLabel}` : link.moneyMinor != null ? `${formatMinor(link.moneyMinor, currency)} put in` : undefined}
               value={<Money minor={link.valueMinor} currency={currency} />}
               valueTone="ink"
               chevron={false}

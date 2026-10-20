@@ -22,7 +22,8 @@ const KINDS: { value: TradeKind; label: string }[] = [
 ];
 
 export interface TradeFormProps {
-  holdings: { accountId: string; name: string; currency: string }[];
+  /** `byMoney`: a fund tracked by money, bought and sold by amount with its units optional. */
+  holdings: { accountId: string; name: string; currency: string; byMoney?: boolean }[];
   goals: { id: string; name: string }[];
   cashAccounts: AccountRow[];
   positions: Record<string, Position>;
@@ -55,7 +56,8 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const currency = holding?.currency ?? ws.baseCurrency;
   const position = positions[draft.accountId];
   const price = pricePreview(draft, currency);
-  const sell = sellPreview(draft, position, currency);
+  // A fund tracked by money gives up a share of its money in by value, worked out when saved: no unit-cost preview.
+  const sell = holding?.byMoney ? null : sellPreview(draft, position, currency);
   const change = (patch: Partial<TradeDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const cashAccount = cashAccounts.find((account) => account.id === draft.cashAccountId);
   // An opening position pays from Opening Balances, which moves in the holding's own currency.
@@ -66,13 +68,13 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const nothingReaches = (() => {
     if (draft.kind === 'buy' || draft.kind === 'unit_change') return false;
     try {
-      return tradeCashMovedMinor(draftToInput(draft, currency, today)) === 0;
+      return tradeCashMovedMinor(draftToInput(draft, currency, today, holding?.byMoney)) === 0;
     } catch {
       return false;
     }
   })();
   /** What `submit` sends, before its rates: the one input the door, the question and the save all read. */
-  const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today), charged, currency, cashCurrency);
+  const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today, holding?.byMoney), charged, currency, cashCurrency);
 
   /*
    * An edit of a trade that crossed a currency opens with "Charged in" filled from what its own transaction posted
@@ -167,11 +169,11 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         {draft.kind !== 'income' && (
           <InputRow
             label="Units, shares or grams"
-            hint={position ? `Held: ${(position.unitsMicro / 1_000_000).toLocaleString('id-ID')}` : undefined}
+            hint={holding?.byMoney ? undefined : position ? `Held: ${(position.unitsMicro / 1_000_000).toLocaleString('id-ID')}` : undefined}
             value={draft.units}
             onChange={(e) => change({ units: e.target.value })}
             inputMode="decimal"
-            placeholder="2"
+            placeholder={holding?.byMoney ? 'Optional' : '2'}
           />
         )}
         {draft.kind !== 'unit_change' && draft.kind !== 'income' && (

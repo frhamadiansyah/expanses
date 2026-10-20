@@ -3,6 +3,7 @@ import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { investmentTrades, tradeTemplates } from '../schema-assets';
+import { isByMoneyTx } from './by-money';
 import { AssetError, assertAccountInWorkspace } from './assets';
 
 export interface TradeTemplateRow {
@@ -58,6 +59,8 @@ export async function saveTradeTemplate(database: Database, ws: WorkspaceContext
   if (hasAmount === hasUnits) throw new AssetError('A monthly buy needs an amount or a number of units, not both');
   if (hasAmount && !(input.amountMinor! > 0)) throw new AssetError('A monthly buy needs an amount greater than zero');
   if (hasUnits && !(input.unitsMicro! > 0)) throw new AssetError('A monthly buy needs units greater than zero');
+  // A fund is tracked by money: its monthly buy is an amount (spec 2026-10-19-fund-by-amount).
+  if (hasUnits && (await isByMoneyTx(database.db, ws, input.accountId))) throw new AssetError('A monthly buy of a fund is an amount of money, not units');
   if (!Number.isInteger(input.dayOfMonth) || input.dayOfMonth < 1 || input.dayOfMonth > 28) {
     throw new AssetError('Pick a day between 1 and 28, so every month has it');
   }
