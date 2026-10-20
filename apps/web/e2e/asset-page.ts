@@ -11,7 +11,7 @@ export async function addPriced(page: Page, pick: string, name: string, lines: [
     await fillDay(page, 'Bought', on, i);
     // A bond's rows read by par value; everything else by how much.
     const bond = /bonds$/.test(pick);
-    await page.getByLabel(bond ? 'Par value' : 'How much').nth(i).fill(much);
+    await page.getByLabel(bond ? 'Par value' : 'How much', { exact: true }).nth(i).fill(much);
     await page.getByLabel(bond ? 'Purchase value' : 'Total cost', { exact: true }).nth(i).fill(cost);
   }
   await page.getByRole('button', { name: 'Add asset' }).last().click();

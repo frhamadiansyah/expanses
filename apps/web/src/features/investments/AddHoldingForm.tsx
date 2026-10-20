@@ -19,7 +19,7 @@ import { MoneyRow } from '../networth/AssetRows';
 import { emptyHoldingDraft, type HoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
 import { useBrokerlessHoldings } from './queries';
 
-export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm }: {
+export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, onTicker }: {
   picked: Picked;
   accounts: readonly AccountRow[];
   /** `brokerChoices(accounts)`: fund accounts that are not pockets. */
@@ -28,6 +28,8 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm }:
   heldAt: Readonly<Record<string, number>>;
   /** The screen's ✓, as Add asset draws it: whether it can save yet, and how to. */
   onConfirm: (confirm: FormConfirm | null) => void;
+  /** Its first row opens the search again, to pick another ticker. */
+  onTicker: () => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -105,7 +107,12 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm }:
     // Still a real `<form>`: Enter in any box saves, as the ✓ does.
     <form ref={form} onSubmit={submit}>
       <InsetGroup>
-        <InsetRow title={label} subtitle={[security.ticker ? security.name : null, security.market || null, security.currency].filter(Boolean).join(' · ')} chevron={false} />
+        <InsetRow
+          title="Ticker"
+          value={label}
+          subtitle={[security.ticker ? security.name : null, security.market || null, security.currency].filter(Boolean).join(' · ')}
+          onClick={onTicker}
+        />
       </InsetGroup>
 
       <InsetGroup footer={landsOn ?? undefined}>

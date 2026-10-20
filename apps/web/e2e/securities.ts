@@ -41,6 +41,8 @@ export async function addHoldingFlow(
   },
 ) {
   await page.goto('/net-worth/investments/new');
+  // The form opens first; its Ticker row opens the search.
+  await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially(o.search);
   if (o.nameIt) {
     await page.getByRole('button', { name: /Name it myself/ }).click();
