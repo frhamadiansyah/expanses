@@ -33,7 +33,7 @@ describe('dates and quantities', () => {
   });
 
   it('reads a bond’s price as a share of its face', () => {
-    expect(percentOfFace(1_020_000, 'IDR')).toBe('102% of face');
+    expect(percentOfFace(1_020_000, 'IDR')).toBe('102% of par');
   });
 });
 
@@ -68,10 +68,10 @@ describe('the numbers grid', () => {
   it('reads a bond in face and in % of face, never in units at Rp 1', () => {
     const tiles = pricedTiles({ unitKind: 'face', unitsMicro: 10_000_000 * M, costMinor: 10_000_000, lotSize: null, currency: 'IDR', priceMicro: 1_020_000, priceLabel: 'Price today' });
     expect(tiles.map((t) => [t.label, plain(t.value)])).toEqual([
-      ['Face value', 'Rp 10.000.000'],
+      ['Par value', 'Rp 10.000.000'],
       ['Invested', 'Rp 10.000.000'],
-      ['Average buy', '100% of face'],
-      ['Price today', '102% of face'],
+      ['Average buy', '100% of par'],
+      ['Price today', '102% of par'],
     ]);
   });
 

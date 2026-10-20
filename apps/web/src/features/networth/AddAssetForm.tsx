@@ -122,6 +122,9 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
 
   const estimated = needsEstimate(draft.itemId, draft.typedInstead);
   const byMoney = byMoneyItem(draft.itemId, draft.typedInstead);
+  // A bond is bought by its par value, at a price that is a share of it: its rows say so.
+  const chosenBehaviour = chosenItem(draft.itemId, draft.typedInstead).behaviour;
+  const byPar = chosenBehaviour.opens === 'holding' && chosenBehaviour.valuedBy === 'face';
   // Ready once it has a name and, where a year is asked, a year: the rest is optional or checked on save.
   const ready = draft.name.trim() !== '' && (!(estimated || legacyCash) || draft.acquired.year.trim() !== '');
   useEffect(() => {
@@ -213,10 +216,17 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
             >
               <AcquiredRow label="Bought" value={purchase.on} onChange={(on) => setPurchase(index, { on })} />
               {/* A fund tracked by money is bought by amount: its units only if the fund app shows them. */}
-              <TextRow label={byMoney ? 'Units' : 'How much'} value={purchase.units} inputMode="decimal" placeholder={byMoney ? 'Optional' : '10'} onChange={(e) => setPurchase(index, { units: e.target.value })} />
+              <TextRow
+                label={byMoney ? 'Units' : byPar ? 'Par value' : 'How much'}
+                value={purchase.units}
+                inputMode="decimal"
+                placeholder={byMoney ? 'Optional' : byPar ? '10.000.000' : '10'}
+                hint={byPar && index === 0 ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
+                onChange={(e) => setPurchase(index, { units: e.target.value })}
+              />
               {/* One currency per holding: the first purchase sets it, the rest only say it. */}
               <MoneyRow
-                label={byMoney ? 'Amount' : 'Total cost'}
+                label={byMoney ? 'Amount' : byPar ? 'Purchase value' : 'Total cost'}
                 value={purchase.cost}
                 onChange={(cost) => setPurchase(index, { cost })}
                 currency={draft.currency}

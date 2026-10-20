@@ -70,10 +70,10 @@ export function quantityLabel(unitsMicro: number, unitKind: UnitKind | null, lot
 /** A bond's face, held as units of one: 10.000.000 units is Rp 10.000.000 of face. */
 const faceMinor = (unitsMicro: number, currency: string) => Math.round((unitsMicro / 1_000_000) * 10 ** currencyInfo(currency).exponent);
 
-/** A price per unit of face as a share of it: 1,02 is "102% of face". */
+/** A price per unit of par as a share of it: 1,02 is "102% of par". */
 export function percentOfFace(priceMicro: number, currency: string): string {
   const major = priceMicro / (PRICE_SCALE * 10 ** currencyInfo(currency).exponent);
-  return `${(major * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}% of face`;
+  return `${(major * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}% of par`;
 }
 
 /**
@@ -133,7 +133,7 @@ export function pricedTiles(o: {
   const tiles: (Tile | null)[] =
     o.unitKind === 'face'
       ? [
-          { label: 'Face value', value: formatMinor(faceMinor(o.unitsMicro, o.currency), o.currency) },
+          { label: 'Par value', value: formatMinor(faceMinor(o.unitsMicro, o.currency), o.currency) },
           { label: 'Invested', value: formatMinor(o.costMinor, o.currency) },
           average === null ? null : { label: 'Average buy', value: percentOfFace(average, o.currency) },
           o.priceMicro === null ? null : { label: o.priceLabel, value: percentOfFace(o.priceMicro, o.currency) },
@@ -193,7 +193,7 @@ export function tradeLine(
 ): TradeLine {
   const quantity = o.unitKind === 'face' ? formatMinor(faceMinor(trade.unitsMicro, o.currency), o.currency) : quantityLabel(trade.unitsMicro, o.unitKind, o.lotSize);
   const unitPrice = trade.unitsMicro > 0 ? priceMicroFrom(trade.grossMinor, trade.unitsMicro) : null;
-  const at = unitPrice === null ? '' : ` · ${o.unitKind === 'face' ? percentOfFace(unitPrice, o.currency).replace(' of face', '') : perUnit(unitPrice, o.currency, o.unitKind)}`;
+  const at = unitPrice === null ? '' : ` · ${o.unitKind === 'face' ? percentOfFace(unitPrice, o.currency).replace(' of par', '') : perUnit(unitPrice, o.currency, o.unitKind)}`;
   if (trade.kind === 'buy') {
     const cost = trade.grossMinor + trade.feeMinor;
     if (o.priceMicro === null) return { title: `Bought ${quantity}`, subtitle: `${dayLabel(trade.occurredOn)}${at}`, value: formatMinor(cost, o.currency), note: null, tone: 'quiet' };

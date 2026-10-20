@@ -9,8 +9,10 @@ export async function addPriced(page: Page, pick: string, name: string, lines: [
   for (const [i, [on, much, cost]] of lines.entries()) {
     if (i > 0) await page.getByRole('button', { name: 'Add another purchase' }).click();
     await fillDay(page, 'Bought', on, i);
-    await page.getByLabel('How much').nth(i).fill(much);
-    await page.getByLabel('Total cost', { exact: true }).nth(i).fill(cost);
+    // A bond's rows read by par value; everything else by how much.
+    const bond = /bonds$/.test(pick);
+    await page.getByLabel(bond ? 'Par value' : 'How much').nth(i).fill(much);
+    await page.getByLabel(bond ? 'Purchase value' : 'Total cost', { exact: true }).nth(i).fill(cost);
   }
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);

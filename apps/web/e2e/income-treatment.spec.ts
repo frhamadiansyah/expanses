@@ -27,8 +27,8 @@ async function addBond(page: Page, name: string, cost: string) {
   await openNewAsset(page, 'Government bonds');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await fillDay(page, 'Bought', `${YEAR}-02-10`);
-  await page.getByLabel('How much').fill('100');
-  await page.getByLabel('Total cost', { exact: true }).fill(cost);
+  await page.getByLabel('Par value').fill('100');
+  await page.getByLabel('Purchase value', { exact: true }).fill(cost);
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);

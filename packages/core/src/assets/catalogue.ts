@@ -70,7 +70,7 @@ type ValuedByWord = Extract<OwnableBehaviour, { opens: 'holding' }>['valuedBy'] 
 /** The quiet line under an item, naming how it is valued — the mockup's own words. */
 const VALUED_BY_WORDS: Record<ValuedByWord, string> = {
   units: 'units × price',
-  face: 'face value × price',
+  face: 'par value × price',
   grams: 'grams × gold price',
   value: 'a typed value',
   ledger: 'from what is owed by people',
@@ -213,7 +213,7 @@ const INVEST_ITEMS: readonly OwnableItem[] = [
     valuedBy: 'face',
     unitKind: 'face',
     lotSize: null,
-    priceLabel: 'Face value',
+    priceLabel: 'Price (% of par)',
   }),
   {
     ...holding('bond', 'Government bonds', '0305', {
@@ -223,7 +223,7 @@ const INVEST_ITEMS: readonly OwnableItem[] = [
       valuedBy: 'face',
       unitKind: 'face',
       lotSize: null,
-      priceLabel: 'Face value',
+      priceLabel: 'Price (% of par)',
     }),
     searchAlso: 'ORI SBSN SBR obligasi treasury gilt',
   },
