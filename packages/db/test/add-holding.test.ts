@@ -101,7 +101,7 @@ describe('addHolding', () => {
       broker: { name: 'Interactive Brokers', currency: 'USD' },
       buy: { occurredOn: '2026-03-08', unitsMicro: shares(10), grossMinor: 123_457, feeMinor: 0, taxMinor: 0, cashAccountId: bca.id, cashMinor, ratesToBase: { USD: rateFromAmounts(123_457, 'USD', cashMinor, 'IDR') } },
     });
-    const lines = await database.db.select().from(schema.entries).where(and(eq(schema.entries.transactionId, result.trade.transactionId!), eq(schema.entries.accountId, result.accountId)));
+    const lines = await database.db.select().from(schema.entries).where(and(eq(schema.entries.transactionId, result.trade!.transactionId!), eq(schema.entries.accountId, result.accountId)));
     expect(lines.map((l) => [l.amountMinor, l.currency, l.amountBaseMinor])).toEqual([[123_457, 'USD', 20_000_001]]);
     expect((await nativeBalances(database, ws))[bca.id]).toBe(50_000_000 - 20_000_001);
     await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
@@ -248,7 +248,7 @@ describe('addHolding is a set-aside door, as recordTrade is', () => {
       buy: { occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 13_125, taxMinor: 0, cashAccountId: bca.id, goalId: pension },
     });
     expect(await listDraws(database, ws)).toEqual([
-      expect.objectContaining({ transactionId: result.trade.transactionId, goalId: pension, accountId: bca.id, intent: 'move', toAccountId: null, amountMinor: 8_763_125 }),
+      expect.objectContaining({ transactionId: result.trade!.transactionId, goalId: pension, accountId: bca.id, intent: 'move', toAccountId: null, amountMinor: 8_763_125 }),
     ]);
     expect((await listEarmarks(database, ws)).find((row) => row.goalId === pension)!.amountMinor).toBe(1_236_875);
   });
@@ -265,7 +265,7 @@ describe('addHolding is a set-aside door, as recordTrade is', () => {
         setAside: { accountId: bca.id, goalId: emergency, intent: 'borrow', overMinor: 3_763_125 },
       },
     });
-    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ transactionId: result.trade.transactionId, goalId: emergency, intent: 'borrow', amountMinor: 3_763_125 })]);
+    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ transactionId: result.trade!.transactionId, goalId: emergency, intent: 'borrow', amountMinor: 3_763_125 })]);
   });
 });
 
@@ -296,5 +296,16 @@ describe('on a database without 0051', () => {
 
     expect((await listAccounts(older, ows)).length).toBe(accountsBefore);
     expect(await nativeBalances(older, ows)).toEqual(balancesBefore);
+  });
+});
+
+describe('addHolding with nothing bought yet', () => {
+  it('opens the holding and links it at its broker, posting nothing, as Add asset adds a fund with no purchase', async () => {
+    const result = await addHolding(database, ws, { security: bbca, broker: { name: 'Stockbit', currency: 'IDR' }, buy: null });
+    expect(result).toMatchObject({ created: true, trade: null });
+    expect(await listHoldingLinks(database, ws)).toEqual([{ accountId: result.accountId, securityId: result.securityId, brokerAccountId: result.brokerAccountId }]);
+    expect((await nativeBalances(database, ws))[result.accountId] ?? 0).toBe(0);
+    expect((await positionsFor(database, ws))[result.accountId]).toBeUndefined();
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
   });
 });

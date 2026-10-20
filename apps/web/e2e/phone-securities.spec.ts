@@ -29,14 +29,12 @@ test('every securities screen fits a 390 px phone and is reached by thumb', asyn
   await noSideScroll(page);
 });
 
-test('a dollar stock named by hand and paid in rupiah reads its rate and rupiah cost on the phone', async ({ page }) => {
+test('a dollar stock named by hand and owned before asks the day\u2019s rate on the phone', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addHoldingFlow(page, {
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
+    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', rate: '15800',
   });
-  await expect(page.getByLabel('Rate that day')).toHaveText('15.800 IDR per 1 USD');
-  await expect(page.getByLabel('Cost in IDR')).toHaveText(/28\.835\.000$/);
   await noSideScroll(page);
   await page.getByRole('button', { name: 'Add holding' }).tap();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();

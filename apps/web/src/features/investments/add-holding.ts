@@ -102,7 +102,15 @@ export function asHeld(picked: Picked, held: readonly SecurityRow[]): Picked {
  */
 export function planAddHolding(picked: Picked, draft: HoldingDraft, today: string, cashCurrency: string): AddHoldingInput {
   const security = securityOf(picked);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
+  let broker: AddHoldingInput['broker'] = null;
+  if (draft.brokerChoice === NEW_BROKER) {
+    if (!draft.brokerName.trim()) throw new Error('Name the broker');
+    broker = { name: draft.brokerName.trim(), currency: draft.brokerCurrency };
+  } else if (draft.brokerChoice !== NO_BROKER_CHOICE) broker = { accountId: draft.brokerChoice };
+  const what = picked.kind === 'held' ? { id: picked.security.id } : security;
+  // Nothing typed about a purchase: the holding alone, its buys recorded on it after (as Add asset adds a fund).
+  if (draft.quantity.trim() === '' && draft.price.trim() === '' && draft.fee.trim() === '') return { security: what, broker, buy: null };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose when it was bought');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
   const unitsMicro = unitsOf(draft.quantity, security.lotSize);
   if (draft.price.trim() === '') throw new Error('Enter the price per share');
@@ -110,11 +118,6 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
   if (!(grossMinor > 0)) throw new Error('Enter a price greater than zero');
   const feeMinor = draft.fee.trim() === '' ? 0 : parseMajor(draft.fee, security.currency);
   if (feeMinor < 0) throw new Error('A fee cannot be negative');
-  let broker: AddHoldingInput['broker'] = null;
-  if (draft.brokerChoice === NEW_BROKER) {
-    if (!draft.brokerName.trim()) throw new Error('Name the broker');
-    broker = { name: draft.brokerName.trim(), currency: draft.brokerCurrency };
-  } else if (draft.brokerChoice !== NO_BROKER_CHOICE) broker = { accountId: draft.brokerChoice };
   const cashAccountId = draft.paidFrom === OPENING ? null : draft.paidFrom;
   const { accountId: _account, kind: _kind, ...buy } = withCharged(
     { accountId: '', kind: 'buy', occurredOn: draft.occurredOn, unitsMicro, grossMinor, feeMinor, taxMinor: 0, cashAccountId, goalId: draft.goalId || null },
@@ -122,7 +125,7 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
     security.currency,
     cashAccountId === null ? security.currency : cashCurrency,
   );
-  return { security: picked.kind === 'held' ? { id: picked.security.id } : security, broker, buy };
+  return { security: what, broker, buy };
 }
 
 /**

@@ -3,8 +3,7 @@ import { type AccountRow, addHolding, type AddHoldingInput, type RecordTradeInpu
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, rateLine, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
@@ -14,7 +13,8 @@ import { useSetAside } from '../goals/SetAsideQuestion';
 import { usePositions } from '../networth/queries';
 import { baseCostPreview, tradeRatesForSave } from '../networth/trade-money';
 import type { FormConfirm } from '../networth/AddAssetForm';
-import { MoneyRow } from '../networth/AssetRows';
+import { type AcquiredParts, acquiredOn, NO_DATE } from '../networth/acquired';
+import { AcquiredRow, MoneyRow } from '../networth/AssetRows';
 import { emptyHoldingDraft, type HoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
 import { useBrokerlessHoldings } from './queries';
 
@@ -38,19 +38,11 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const today = isoDate();
   // Until a ticker is chosen the rows read in the workspace's own currency, a share at a time.
   const security = picked ? securityOf(picked) : { ticker: null, name: '', market: '', currency: ws.baseCurrency, lotSize: null };
-  // Every account money can come out of — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy &
-  // sell offers them. A broker's own cash is one of them: parking in the RDN and buying from it is the whole point.
-  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && MONEY_SUBTYPES.includes(a.subtype));
-  /* A buy made today, paid from where it is kept: the broker's cash when that is an account, else the first account
-     money can come from. "Owned before this app" is a choice, never the default — beside today's date it said two
-     things at once. */
-  const paidFor = (brokerChoice: string): string => (money.some((a) => a.id === brokerChoice) ? brokerChoice : (money[0]?.id ?? OPENING));
-  const [draft, setDraft] = useState<HoldingDraft>(() => {
-    const brokerChoice = brokers[0]?.id ?? NEW_BROKER;
-    return { ...emptyHoldingDraft(today, security.currency), brokerChoice, paidFrom: paidFor(brokerChoice) };
-  });
-  // Paid from follows the broker until it is chosen by hand.
-  const [paidChosen, setPaidChosen] = useState(false);
+  /* What is already owned, as Add asset adds it (spec: Add a holding is past-only): a purchase from before the app,
+     recorded against Opening Balances so no bank moves, on a day picked as Add asset's Bought is — or nothing bought
+     yet, its buys recorded with Buy on its page after. */
+  const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft('', security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER, paidFrom: OPENING }));
+  const [bought, setBought] = useState<AcquiredParts>(NO_DATE);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -63,8 +55,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const positions = usePositions().data ?? {};
   const landsOn = picked ? landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name) : null;
 
-  const cash = money.find((a) => a.id === draft.paidFrom);
-  const cashCurrency = cash ? (cash.currency ?? ws.baseCurrency) : security.currency;
+  const cashCurrency = security.currency;
   const total = totalOf(draft, security.lotSize, security.currency);
   const lotted = (security.lotSize ?? 1) > 1;
   const foreign = security.currency !== ws.baseCurrency;
@@ -77,7 +68,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
       return null;
     }
   })();
-  const input: RecordTradeInput | null = plan ? { ...plan.buy, accountId: '', kind: 'buy' } : null;
+  const input: RecordTradeInput | null = plan?.buy ? { ...plan.buy, accountId: '', kind: 'buy' } : null;
   // A buy is a set-aside door (spec §4.6 of set-aside): it asks which goal paid when it takes more than is free.
   const setAside = useSetAside(input ? tradeDoor(input) : null);
   const held = useHeldRates(foreign ? [security.currency] : [], draft.occurredOn);
@@ -98,11 +89,14 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
     try {
       if (!picked) throw new Error('Choose a ticker');
       const planned = planAddHolding(picked, draft, today, cashCurrency);
-      const ratesToBase = await tradeRatesForSave({
-        database, ws, input: { ...planned.buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
-        needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
-      });
-      const result = await addHolding(database, ws, { ...planned, buy: { ...planned.buy, ratesToBase, setAside: setAside.choice } });
+      const buy = planned.buy;
+      const ratesToBase = buy
+        ? await tradeRatesForSave({
+            database, ws, input: { ...buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
+            needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+          })
+        : undefined;
+      const result = await addHolding(database, ws, { ...planned, buy: buy ? { ...buy, ratesToBase, setAside: setAside.choice } : null });
       await invalidate();
       await navigate({ to: '/net-worth/investments/security/$securityId', params: { securityId: result.securityId } });
     } catch (e) {
@@ -129,7 +123,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         <SelectRow
           label="Broker"
           value={draft.brokerChoice}
-          onChange={(e) => change(paidChosen ? { brokerChoice: e.target.value } : { brokerChoice: e.target.value, paidFrom: paidFor(e.target.value), charged: '' })}
+          onChange={(e) => change({ brokerChoice: e.target.value })}
         >
           {brokers.map((b) => (
             <option key={b.id} value={b.id}>{`${b.name}${heldAt[b.id] ? ` · held ${formatUnits(heldAt[b.id]!)}` : ''}`}</option>
@@ -151,7 +145,21 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         ) : null}
       </InsetGroup>
 
-      <InsetGroup>
+      <InsetGroup header="Already own some?" footer="Past purchases are recorded against Opening Balances, so bank balances do not move.">
+        <AcquiredRow
+          label="Bought"
+          value={bought}
+          onChange={(next) => {
+            setBought(next);
+            let occurredOn = '';
+            try {
+              occurredOn = acquiredOn(next, today).on;
+            } catch {
+              // No year yet: no day to buy on.
+            }
+            change({ occurredOn });
+          }}
+        />
         <TextRow
           label={lotted ? 'Lots' : 'Shares'}
           info={lotted ? `${security.lotSize} shares a lot.` : undefined}
@@ -163,44 +171,26 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
         <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
         <MoneyRow label="Fee" value={draft.fee} onChange={(fee) => change({ fee })} currency={security.currency} placeholder="Optional" />
-        <TextRow label="Bought" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
       </InsetGroup>
 
+      {/* A share in another currency: the rate its cost is filed at, in the workspace's money, for the tax report. */}
+      {needsRate || foreign ? (
       <InsetGroup>
-        <SelectRow
-          label="Paid from"
-          value={draft.paidFrom}
-          onChange={(e) => {
-            const paidFrom = e.target.value;
-            setPaidChosen(true);
-            /* Owned before this app is a holding from the past: its day is asked for, as Add asset asks it. Back to an
-               account, an empty day is today again. */
-            const occurredOn = paidFrom === OPENING ? '' : draft.occurredOn || today;
-            change({ paidFrom, charged: '', occurredOn });
-          }}
-        >
-          {money.map((a) => (
-            <option key={a.id} value={a.id}>{`${a.name} (${a.currency ?? ws.baseCurrency})`}</option>
-          ))}
-          <option value={OPENING}>Owned before this app</option>
-        </SelectRow>
-        {cashCurrency !== security.currency ? (
-          <MoneyRow label={`Charged in ${cashCurrency}`} value={draft.charged} onChange={(charged) => change({ charged })} currency={cashCurrency} />
-        ) : null}
-        {needsRate ? (
-          <TextRow
-            label="Rate that day"
-            hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
-            value={manualRate}
-            onChange={(e) => setManualRate(e.target.value)}
-            inputMode="decimal"
-            placeholder="Rate"
-          />
-        ) : foreign ? (
-          <ReadOnlyRow label="Rate that day" value={preview.rate === null ? null : rateLine(preview.rate, security.currency, ws.baseCurrency)} />
-        ) : null}
-        {foreign ? <ReadOnlyRow label={`Cost in ${ws.baseCurrency}`} value={preview.baseMinor === null ? null : formatMinor(preview.baseMinor, ws.baseCurrency)} /> : null}
-      </InsetGroup>
+          {needsRate ? (
+            <TextRow
+              label="Rate that day"
+              hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
+              value={manualRate}
+              onChange={(e) => setManualRate(e.target.value)}
+              inputMode="decimal"
+              placeholder="Rate"
+            />
+          ) : foreign ? (
+            <ReadOnlyRow label="Rate that day" value={preview.rate === null ? null : rateLine(preview.rate, security.currency, ws.baseCurrency)} />
+          ) : null}
+          {foreign ? <ReadOnlyRow label={`Cost in ${ws.baseCurrency}`} value={preview.baseMinor === null ? null : formatMinor(preview.baseMinor, ws.baseCurrency)} /> : null}
+        </InsetGroup>
+      ) : null}
 
       {setAside.node}
       <ErrorBox error={error} />

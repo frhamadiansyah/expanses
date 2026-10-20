@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { fillDay } from './add-asset';
 import { setCurrency } from './currency-field';
 
 /** BBCA as the IDX list carries it, typed through Name it myself — the walk that checks a stock named by hand is the listed one. */
@@ -32,7 +33,8 @@ export async function addHoldingFlow(
     quantity: string;
     price: string;
     fee?: string;
-    paidFrom: string;
+    /** Ignored: Add a holding is past-only (Opening Balances). Kept so callers read as they did. */
+    paidFrom?: string;
     charged?: string;
     /** The day it was bought, when it was not today. */
     date?: string;
@@ -64,11 +66,8 @@ export async function addHoldingFlow(
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
   if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
-  await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
-  // Owned before this app asks for its day; a buy from an account is today unless the caller says otherwise.
-  const day = o.date ?? (o.paidFrom === 'Owned before this app' ? new Date().toISOString().slice(0, 10) : undefined);
-  if (day) await page.getByLabel('Bought', { exact: true }).fill(day);
-  if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
+  // Add a holding is past-only: what was bought before the app, on a day picked as Add asset's Bought is.
+  await fillDay(page, 'Bought', o.date ?? new Date().toISOString().slice(0, 10));
   if (o.rate) {
     // A day the device holds no rate for is only asked once the form has looked: the first save says what is
     // missing and turns the read-only line into a field. The caller's own "Add holding" then saves it.
