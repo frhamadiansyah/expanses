@@ -230,7 +230,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           : tile,
       )
     : byMoney
-      ? [{ label: 'Money in', value: formatMinor(value.costMinor, currency), info: 'What you put in and have not taken out yet. The value above minus this is your gain.' }]
+      ? [{ label: 'Money in', value: formatMinor(value.costMinor, currency), info: 'Money put in and not taken out yet. The value above minus this is the gain.' }]
       : estimated
       ? estimatedTiles({
           costMinor: value.costMinor,

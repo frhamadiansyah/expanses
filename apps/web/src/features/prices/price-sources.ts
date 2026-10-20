@@ -25,7 +25,7 @@ export interface SourceOption {
 export function listedSourceOptions(security: PricedSecurity, yahoo: boolean = YAHOO_PRICES_ENABLED): SourceOption[] {
   return [
     ...(yahoo && yahooSymbol(security) ? [{ choice: 'yahoo' as const, label: 'Yahoo Finance', detail: 'Daily close, fetched automatically · delayed' }] : []),
-    ...(isIdxListing(security) ? [{ choice: 'idx' as const, label: 'IDX daily file', detail: 'Updated when you import IDX’s Ringkasan Saham file' }] : []),
+    ...(isIdxListing(security) ? [{ choice: 'idx' as const, label: 'IDX daily file', detail: 'Updated when IDX’s Ringkasan Saham file is imported' }] : []),
     { choice: 'typed', label: "I'll type it", detail: 'No automatic price' },
   ];
 }

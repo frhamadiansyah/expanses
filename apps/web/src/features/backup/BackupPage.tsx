@@ -265,7 +265,7 @@ export function BackupPage() {
         header="File"
         info={
           <>
-            A file you keep somewhere yourself — in Files, on a computer, sent to yourself. A backup made on any device will do: it is the same file everywhere. It is <strong>not encrypted</strong>: anyone with the file can read the finances in it, so keep it somewhere private.
+            A file kept somewhere else — in Files, on a computer, or sent by message or email. A backup made on any device will do: it is the same file everywhere. It is <strong>not encrypted</strong>: anyone with the file can read the finances in it, so keep it somewhere private.
           </>
         }
       >
