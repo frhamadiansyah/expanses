@@ -258,11 +258,11 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
                 value={normaPercent}
                 onChange={(e) => setNormaPercent(e.target.value)}
                 inputMode="decimal"
-                placeholder="50"
+                placeholder="Percent"
               />
             )}
             {scheme === 'nppn' && (
-              <TextRow label="KLU code" hint="Optional, for reference." value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="73100" />
+              <TextRow label="KLU code" hint="Optional, for reference." value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="Code" />
             )}
             {scheme === 'umkm_final' && (
               <SwitchRow

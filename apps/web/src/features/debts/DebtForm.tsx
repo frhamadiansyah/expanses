@@ -228,7 +228,7 @@ export function DebtForm({
             value={manualRate}
             onChange={(e) => setManualRate(e.target.value)}
             inputMode="decimal"
-            placeholder="16250"
+            placeholder="Rate"
           />
         ) : null}
         <TextRow
@@ -317,7 +317,7 @@ export function DebtForm({
           <SelectRow label="Category for points" value={draft.spendCategoryId} onChange={(e) => set({ spendCategoryId: e.target.value })}>
             <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
           </SelectRow>
-          <TextRow label="MCC" value={draft.mcc} inputMode="numeric" onChange={(e) => set({ mcc: e.target.value })} placeholder="5311" />
+          <TextRow label="MCC" value={draft.mcc} inputMode="numeric" onChange={(e) => set({ mcc: e.target.value })} placeholder="Code" />
         </InsetGroup>
       )}
 

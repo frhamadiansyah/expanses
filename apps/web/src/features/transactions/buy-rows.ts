@@ -55,7 +55,7 @@ export function amountRowText(mode: BuyMode, currency: string): BuyRowText {
  * "IDR", name neither of them — and the flag in the lead is already saying which currency this is.
  */
 export function feeRowText(currency: string): BuyRowText {
-  return { label: `Fee (${currency})`, caption: 'Fee', placeholder: '0' };
+  return { label: `Fee (${currency})`, caption: 'Fee', placeholder: 'Amount' };
 }
 
 /** How much of the holding moved: lots where the holding trades in them, otherwise its own word for a unit. */
@@ -79,7 +79,7 @@ export function chargedRowText({ mode, cashCurrency, moneyName }: { mode: BuyMod
   return {
     label: `Charged in ${cashCurrency}`,
     caption: `Charged in ${cashCurrency}`,
-    placeholder: '0',
+    placeholder: 'Amount',
     hint: mode === 'buy' ? `What left ${moneyName}, in ${cashCurrency}.` : `What reached ${moneyName}, in ${cashCurrency}.`,
   };
 }

@@ -83,7 +83,7 @@ export function ShareSplitSheet({
                     className="ph-focus-inset tabular w-28 shrink-0 rounded-lg bg-[var(--ph-fill)] px-2 py-1 text-right text-base text-[var(--ph-ink)] md:text-[15px]"
                     value={draft.amounts[p.personId] ?? ''}
                     inputMode="decimal"
-                    placeholder="0"
+                    placeholder="Amount"
                     onChange={(e) => set({ amounts: { ...draft.amounts, [p.personId]: e.target.value } })}
                   />
                 </span>

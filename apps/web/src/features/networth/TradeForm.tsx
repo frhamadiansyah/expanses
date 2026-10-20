@@ -173,7 +173,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
             value={draft.units}
             onChange={(e) => change({ units: e.target.value })}
             inputMode="decimal"
-            placeholder={holding?.byMoney ? 'Optional' : '2'}
+            placeholder={holding?.byMoney ? 'Optional' : 'Quantity'}
           />
         )}
         {draft.kind !== 'unit_change' && draft.kind !== 'income' && (
@@ -207,7 +207,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
             flag={currencyFlag(cashCurrency)}
             value={charged}
             onChange={setCharged}
-            placeholder="0"
+            placeholder="Amount"
             divided
             hint={
               draft.kind === 'buy'

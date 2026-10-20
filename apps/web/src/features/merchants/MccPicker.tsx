@@ -43,7 +43,7 @@ export function MccPicker({
           value={value}
           onChange={(e) => digits(e.target.value)}
           inputMode="numeric"
-          placeholder="5812"
+          placeholder="Code"
           hint={found && <span className={name ? undefined : 'text-[var(--ph-warn)]'}>{found}</span>}
         />
         <TextRow label="Find an MCC by name" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="fast food, supermarket" />
@@ -66,7 +66,7 @@ export function MccPicker({
   return (
     <div className="space-y-2">
       <Field label={label} hint={hint}>
-        <Input value={value} onChange={(e) => digits(e.target.value)} inputMode="numeric" placeholder="5812" />
+        <Input value={value} onChange={(e) => digits(e.target.value)} inputMode="numeric" placeholder="Code" />
       </Field>
       {value.length === 4 && <p className={name ? 'text-xs text-slate-600' : 'text-xs text-amber-700'}>{found}</p>}
       <Field label="Find an MCC by name">

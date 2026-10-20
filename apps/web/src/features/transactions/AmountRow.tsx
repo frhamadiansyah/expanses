@@ -326,7 +326,7 @@ export function AmountRow({
                   onChange={setCharged}
                   onKeypad={() => toggle('charged')}
                   className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
-                  placeholder="0"
+                  placeholder="Amount"
                   refund={refund}
                   disabled={locked}
                 />

@@ -488,8 +488,8 @@ export function CardDetailPage() {
               footer={step === 1 ? 'Start with the billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
               columns={[
                 [
-                  <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required />,
-                  <TextRow label="Due date" hint="Day of the month" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required />,
+                  <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
+                  <TextRow label="Due date" hint="Day of the month" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
                 ],
                 [
                   <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
@@ -551,7 +551,7 @@ export function CardDetailPage() {
             <ColumnGroup
               header="Add a card"
               columns={[
-                [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="8802" />],
+                [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="Last digits" />],
                 [<TextRow label="Whose card" hint="Optional. The account holder, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
                 [<SubmitRow label="Add card" />],
               ]}
@@ -966,10 +966,10 @@ export function CardDetailPage() {
                   columns={[
                     [
                       <TextRow label="Redemption" value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Statement credit" />,
-                      <TextRow label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="1000" required />,
+                      <TextRow label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="Points" required />,
                     ],
                     [
-                      <TextRow label="Worth" value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="2500" required />,
+                      <TextRow label="Worth" value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="Amount" required />,
                       <SelectRow label="Currency" value={redeemCurrency} onChange={(e) => setRedeemCurrency(e.target.value)}>
                         {CURRENCIES.map((c) => (
                           <option key={c.code} value={c.code}>

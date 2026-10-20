@@ -119,7 +119,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               inputMode="decimal"
-              placeholder="150000"
+              placeholder="Amount"
               aria-describedby={amountHint}
               /* The sentence keeps its id, so the box still says out loud which line explains it. */
               hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. It will be asked for each time.</span>}

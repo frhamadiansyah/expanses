@@ -115,7 +115,7 @@ export function QuickRowEditor({
       <input
         aria-label="Row date"
         autoComplete="off"
-        placeholder="15 Sep"
+        placeholder="Date"
         value={values.date}
         onPaste={paste}
         onChange={(event) => onChange({ date: event.target.value })}
@@ -136,14 +136,14 @@ export function QuickRowEditor({
         aria-label={`Row amount (${currency})`}
         autoComplete="off"
         inputMode="decimal"
-        placeholder="0"
+        placeholder="Amount"
         value={values.amount}
         onChange={(event) => onChange({ amount: event.target.value })}
         className={cx(CELL, 'tabular text-right', missing('amount') && MISSING)}
       />
       <CellCombo
         label="Row paid with"
-        placeholder="Name or last 4 digits"
+        placeholder="Name or last digits"
         value={paymentKey(values.accountId, values.cardId)}
         options={options.paidFor(paymentKey(values.accountId, values.cardId))}
         resolve={options.resolvePaid}

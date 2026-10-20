@@ -28,7 +28,7 @@ describe('what each Buy / sell row says', () => {
     const fee = feeRowText('USD');
     expect(fee.label).toBe('Fee (USD)');
     expect(fee.caption).toBe('Fee');
-    expect(fee.placeholder).toBe('0');
+    expect(fee.placeholder).toBe('Amount');
   });
 
   it('counts units by the holding’s own word, and lots by the lot', () => {

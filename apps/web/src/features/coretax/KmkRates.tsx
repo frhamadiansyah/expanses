@@ -78,14 +78,14 @@ export function KmkRates({ taxYear }: { taxYear: number }) {
             value={draftOf(currency).rate}
             onChange={(e) => change(currency, { rate: e.target.value })}
             inputMode="decimal"
-            placeholder="17714"
+            placeholder="Rate"
           />,
           <TextRow
             key={`${currency}-decree`}
             label={`${currency} decree`}
             value={draftOf(currency).note}
             onChange={(e) => change(currency, { note: e.target.value })}
-            placeholder="KMK 42/MK/EF.2/2026"
+            placeholder="Decree number"
           />,
         ])}
       </InsetGroup>

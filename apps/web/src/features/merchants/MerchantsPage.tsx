@@ -233,7 +233,7 @@ export function MerchantsPage() {
       )}
 
       <InsetGroup header="Find a typical merchant">
-        <TextRow label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="McDonald's, 5814, fuel" aria-label="Search typical merchants" />
+        <TextRow label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, code or kind" aria-label="Search typical merchants" />
       </InsetGroup>
       {rows.length === 0 ? (
         <Empty>No typical merchant matches that.</Empty>
