@@ -44,7 +44,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
 
   await held.click();
   await expect(page.getByText('Value now')).toBeVisible();
-  await expect(page.getByLabel('Kept at', { exact: true })).toHaveValue(/.+/);
+  await expect(page.getByLabel('Broker', { exact: true })).toHaveValue(/.+/);
   await expect(page.getByRole('main')).toContainText('Stockbit Sekuritas');
   await expect(page.getByRole('main')).toContainText('CustodianCIMB Niaga');
 });

@@ -122,7 +122,7 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
   // The list leads with what is held — which is this asset's own unlisted name — so the ticker to link to is the
   // listed BBCA, the only result with a market behind it.
   await page.getByRole('button', { name: /^BBCA\b.*IDX/ }).click();
-  await page.getByLabel('Kept at').selectOption({ label: 'Stockbit' });
+  await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Stockbit' });
   await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
   await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
   await page.goto('/net-worth/investments');
@@ -170,7 +170,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
   await expect(page.getByLabel('Total')).toHaveText(/900\.000$/);
   // m6: the note is about a buy with no broker. Kept at a broker, the buy lands there, and the note is gone.
-  await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
+  await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Another broker…' });
   await expect(page.getByText(/This adds to/)).toHaveCount(0);
 
   // m7: the same stock named by hand is the stock already held, so the form says which holding it joins.
@@ -249,7 +249,7 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   await page.goto('/net-worth/investments/new');
   // One page, as Add asset: the ticker is its first row, and the rest are there before one is chosen.
   await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('Choose');
-  await expect(page.getByLabel('Where is it kept')).toBeVisible();
+  await expect(page.getByLabel('Broker', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Paid from')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add holding' })).toBeDisabled();
   await page.getByLabel('Price per share', { exact: true }).pressSequentially('8750');

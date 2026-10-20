@@ -9,7 +9,6 @@ import { ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, rateLine, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
-import { useGoals } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { usePositions } from '../networth/queries';
@@ -36,11 +35,22 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const resolveRates = useResolveRates();
-  const goals = useGoals().data ?? [];
   const today = isoDate();
   // Until a ticker is chosen the rows read in the workspace's own currency, a share at a time.
   const security = picked ? securityOf(picked) : { ticker: null, name: '', market: '', currency: ws.baseCurrency, lotSize: null };
-  const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft(today, security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER }));
+  // Every account money can come out of — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy &
+  // sell offers them. A broker's own cash is one of them: parking in the RDN and buying from it is the whole point.
+  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && MONEY_SUBTYPES.includes(a.subtype));
+  /* A buy made today, paid from where it is kept: the broker's cash when that is an account, else the first account
+     money can come from. "Owned before this app" is a choice, never the default — beside today's date it said two
+     things at once. */
+  const paidFor = (brokerChoice: string): string => (money.some((a) => a.id === brokerChoice) ? brokerChoice : (money[0]?.id ?? OPENING));
+  const [draft, setDraft] = useState<HoldingDraft>(() => {
+    const brokerChoice = brokers[0]?.id ?? NEW_BROKER;
+    return { ...emptyHoldingDraft(today, security.currency), brokerChoice, paidFrom: paidFor(brokerChoice) };
+  });
+  // Paid from follows the broker until it is chosen by hand.
+  const [paidChosen, setPaidChosen] = useState(false);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -53,9 +63,6 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
   const positions = usePositions().data ?? {};
   const landsOn = picked ? landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name) : null;
 
-  // Every account money can come out of — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy &
-  // sell offers them. A broker's own cash is one of them: parking in the RDN and buying from it is the whole point.
-  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && MONEY_SUBTYPES.includes(a.subtype));
   const cash = money.find((a) => a.id === draft.paidFrom);
   const cashCurrency = cash ? (cash.currency ?? ws.baseCurrency) : security.currency;
   const total = totalOf(draft, security.lotSize, security.currency);
@@ -119,7 +126,11 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
       </InsetGroup>
 
       <InsetGroup footer={landsOn ?? undefined}>
-        <SelectRow label="Where is it kept" value={draft.brokerChoice} onChange={(e) => change({ brokerChoice: e.target.value })}>
+        <SelectRow
+          label="Broker"
+          value={draft.brokerChoice}
+          onChange={(e) => change(paidChosen ? { brokerChoice: e.target.value } : { brokerChoice: e.target.value, paidFrom: paidFor(e.target.value), charged: '' })}
+        >
           {brokers.map((b) => (
             <option key={b.id} value={b.id}>{`${b.name}${heldAt[b.id] ? ` · held ${formatUnits(heldAt[b.id]!)}` : ''}`}</option>
           ))}
@@ -156,7 +167,18 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
       </InsetGroup>
 
       <InsetGroup>
-        <SelectRow label="Paid from" value={draft.paidFrom} onChange={(e) => change({ paidFrom: e.target.value, charged: '' })}>
+        <SelectRow
+          label="Paid from"
+          value={draft.paidFrom}
+          onChange={(e) => {
+            const paidFrom = e.target.value;
+            setPaidChosen(true);
+            /* Owned before this app is a holding from the past: its day is asked for, as Add asset asks it. Back to an
+               account, an empty day is today again. */
+            const occurredOn = paidFrom === OPENING ? '' : draft.occurredOn || today;
+            change({ paidFrom, charged: '', occurredOn });
+          }}
+        >
           {money.map((a) => (
             <option key={a.id} value={a.id}>{`${a.name} (${a.currency ?? ws.baseCurrency})`}</option>
           ))}
@@ -180,18 +202,6 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         {foreign ? <ReadOnlyRow label={`Cost in ${ws.baseCurrency}`} value={preview.baseMinor === null ? null : formatMinor(preview.baseMinor, ws.baseCurrency)} /> : null}
       </InsetGroup>
 
-      {goals.length > 0 && (
-        <InsetGroup footer="Each purchase can fund a different goal.">
-          <SelectRow label="For goal" value={draft.goalId} onChange={(e) => change({ goalId: e.target.value })}>
-            <option value="">No goal</option>
-            {goals.map((goal) => (
-              <option key={goal.id} value={goal.id}>
-                {goal.name}
-              </option>
-            ))}
-          </SelectRow>
-        </InsetGroup>
-      )}
       {setAside.node}
       <ErrorBox error={error} />
     </form>

@@ -194,7 +194,7 @@ export function SecurityPage() {
                 destination={() => null}
                 columns={[
                   { key: 'trade', heading: 'Trade', cell: () => null },
-                  { key: 'where', heading: 'Kept at', cell: (line) => line.brokerName },
+                  { key: 'where', heading: 'Broker', cell: (line) => line.brokerName },
                   { key: 'day', heading: 'Day', cell: (line) => line.day },
                   { key: 'amount', heading: 'Amount', numeric: true, cell: (line) => formatMinor(line.grossMinor, line.currency) },
                   ...(foreign

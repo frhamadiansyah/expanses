@@ -543,7 +543,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ) : null,
           kind !== 'fund' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one.
-            <SelectRow key="kept" label="Kept at" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
+            <SelectRow key="kept" label="Broker" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
               <option value="none">No broker</option>
               {stock.brokers.map((b) => (
                 <option key={b.id} value={b.id}>

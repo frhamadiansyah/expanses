@@ -55,17 +55,19 @@ export async function addHoldingFlow(
   } else {
     await page.getByRole('button', { name: new RegExp(`^${o.pick ?? o.search}\\b`) }).first().click();
   }
-  if (typeof o.broker === 'string') await page.getByLabel('Where is it kept').selectOption({ label: o.broker });
+  if (typeof o.broker === 'string') await page.getByLabel('Broker', { exact: true }).selectOption({ label: o.broker });
   else {
-    await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
+    await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Another broker…' });
     await page.getByLabel('Broker name').pressSequentially(o.broker.new);
     if (o.broker.currency) await page.getByLabel('Its currency').selectOption(o.broker.currency);
   }
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
   if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
-  if (o.date) await page.getByLabel('Bought', { exact: true }).fill(o.date);
   await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
+  // Owned before this app asks for its day; a buy from an account is today unless the caller says otherwise.
+  const day = o.date ?? (o.paidFrom === 'Owned before this app' ? new Date().toISOString().slice(0, 10) : undefined);
+  if (day) await page.getByLabel('Bought', { exact: true }).fill(day);
   if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
   if (o.rate) {
     // A day the device holds no rate for is only asked once the form has looked: the first save says what is
