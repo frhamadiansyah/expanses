@@ -6,6 +6,8 @@ import {
   moneyPositionAfter,
   moneySellBasis,
   moneySells,
+  goalMoneyOf,
+  GoalError,
   inflowTo,
   outflowFrom,
   type Position,
@@ -294,6 +296,7 @@ export async function writeTradeTx(
   }
   if (input.kind === 'sell') {
     if (!byMoney) await checkGoalUnits(tx, ws, trades, input);
+    else await checkGoalMoney(tx, ws, trades, { ...input, basisMinor });
     if (input.cashAccountId) {
       const [cash] = await tx
         .select({ subtype: accounts.subtype })
@@ -389,6 +392,37 @@ async function checkGoalUnits(tx: Db, ws: WorkspaceContext, trades: TradeRow[], 
     whose = goal ? goal.name : 'That goal';
   }
   throw new AssetError(`${whose} holds ${held / 1_000_000}; enter up to that`);
+}
+
+/**
+ * A sell from a fund tracked by money can only take out money the named goal put in, so goals never borrow from each
+ * other: walked with the sell in place, its cost has to fit the goal's money.
+ */
+async function checkGoalMoney(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput & { basisMinor: number | null }): Promise<void> {
+  const probe: TradeRecord = {
+    id: '\u0000probe',
+    accountId: input.accountId,
+    kind: 'sell',
+    occurredOn: input.occurredOn,
+    createdAt: '\uffff',
+    unitsMicro: input.unitsMicro,
+    grossMinor: input.grossMinor,
+    feeMinor: input.feeMinor,
+    taxMinor: input.taxMinor,
+    goalId: input.goalId ?? null,
+    basisMinor: input.basisMinor,
+  };
+  try {
+    goalMoneyOf([...trades, probe]);
+  } catch (e) {
+    if (!(e instanceof GoalError)) throw e;
+    let whose = 'Money with no goal';
+    if (input.goalId) {
+      const [goal] = await tx.select({ name: goals.name }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
+      whose = goal ? goal.name : 'That goal';
+    }
+    throw new AssetError(`${whose} has less in this fund than that sell takes out; sell up to its share`);
+  }
 }
 
 /** What a tagged buy took off its goal's cash promise: the goal, the cash account, what it took and what left then. */

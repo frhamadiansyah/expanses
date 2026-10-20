@@ -263,7 +263,7 @@ export {
   type SheetTotals,
   WATCH_BAND,
 } from './assets/health';
-export { GoalError, type GoalUnits, goalUnitsFor, goalUnitsOf, retagFits, UNTAGGED } from './goals/units';
+export { GoalError, type GoalMoney, goalMoneyOf, type GoalUnits, goalUnitsFor, goalUnitsOf, retagFits, tradedByMoney, UNTAGGED } from './goals/units';
 export {
   fitByRank,
   futureValueMinor,

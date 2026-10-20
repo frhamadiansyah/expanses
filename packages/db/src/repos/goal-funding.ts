@@ -1,4 +1,5 @@
 import {
+  goalMoneyOf,
   addMonths,
   convertMinor,
   DEFAULT_EMERGENCY_BASE,
@@ -108,6 +109,31 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
 
   for (const [accountId, units] of Object.entries(unitsByAccount)) {
     const value = values.find((row) => row.accountId === accountId);
+    if (value?.mode === 'amount') {
+      /* A fund tracked by money: each goal holds its share of the value by the money it put in (spec
+         2026-10-19-fund-by-amount) — 600.000 of 1.500.000 in a fund worth 1.552.000 is 620.800. */
+      const own = trades.filter((trade) => trade.accountId === accountId);
+      const money = goalMoneyOf(own, date);
+      const risk = profiles.find((profile) => profile.accountId === accountId)?.risk ?? null;
+      for (const [goalId, moneyMinor] of Object.entries(money.byGoal)) {
+        if (!goalId || !known.has(goalId) || moneyMinor <= 0 || money.costMinor <= 0) continue;
+        links.push({
+          goalId,
+          accountId,
+          name: value.name,
+          kind: 'tagged',
+          unitsMicro: null,
+          moneyMinor,
+          valueMinor: Math.round((value.valueMinor * moneyMinor) / money.costMinor),
+          currency: value.currency,
+          risk,
+          overBalance: false,
+          promisedMinor: null,
+          shortMinor: 0,
+        });
+      }
+      continue;
+    }
     if (!value || !value.unitsMicro || value.unitsMicro <= 0) continue;
     const priceMicro = priceMicroFrom(value.valueMinor, value.unitsMicro);
     const risk = profiles.find((profile) => profile.accountId === accountId)?.risk ?? null;

@@ -138,3 +138,17 @@ describe('waitingForPostedMoney and tradeFormReady', () => {
     expect(tradeFormReady(false, false)).toBe(false);
   });
 });
+
+describe('a trade on a fund tracked by money', () => {
+  const draft = { ...emptyTradeDraft('fund', 'bank', '2026-10-20'), accountId: 'fund', kind: 'buy' as const, occurredOn: '2026-10-05', gross: '500.000', units: '', cashAccountId: 'bank' };
+
+  it('needs no units: the amount alone is the trade', () => {
+    expect(draftToInput(draft, 'IDR', '2026-10-20', true)).toMatchObject({ unitsMicro: 0, grossMinor: 500_000 });
+    expect(draftToInput({ ...draft, kind: 'sell' }, 'IDR', '2026-10-20', true)).toMatchObject({ kind: 'sell', unitsMicro: 0, grossMinor: 500_000 });
+  });
+
+  it('keeps units when typed, and still asks a holding counted in units for them', () => {
+    expect(draftToInput({ ...draft, units: '10' }, 'IDR', '2026-10-20', true).unitsMicro).toBe(10_000_000);
+    expect(() => draftToInput(draft, 'IDR', '2026-10-20')).toThrow('Enter how many units, shares or grams');
+  });
+});

@@ -268,8 +268,16 @@ export function MoveSheet({ plan, others, earmarks, onClose }: { plan: GoalPlanR
           key: `purchase-${trade.id}`,
           kind: 'purchase',
           tradeId: trade.id,
-          label: `${nameOf(trade.accountId)} · bought ${longDay(trade.occurredOn)} · ${formatUnits(trade.unitsMicro)} ${unitOf(trade.accountId)}`,
-          baseMinor: link ? purchaseShare(trade.unitsMicro, link.unitsMicro ?? 0, link.baseMinor ?? 0) : 0,
+          // A fund tracked by money: the purchase is its amount, worth its share of the goal's money put in.
+          label:
+            trade.unitsMicro > 0
+              ? `${nameOf(trade.accountId)} · bought ${longDay(trade.occurredOn)} · ${formatUnits(trade.unitsMicro)} ${unitOf(trade.accountId)}`
+              : `${nameOf(trade.accountId)} · bought ${longDay(trade.occurredOn)} · ${formatMinor(trade.grossMinor + trade.feeMinor + trade.taxMinor, link?.currency ?? ws.baseCurrency)}`,
+          baseMinor: !link
+            ? 0
+            : link.unitsMicro === null && link.moneyMinor != null
+              ? purchaseShare(trade.grossMinor + trade.feeMinor + trade.taxMinor, link.moneyMinor, link.baseMinor ?? 0)
+              : purchaseShare(trade.unitsMicro, link.unitsMicro ?? 0, link.baseMinor ?? 0),
         };
       }),
   ];

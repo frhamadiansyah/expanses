@@ -36,7 +36,7 @@ export function TradesPage() {
 
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market' || row.mode === 'amount')
-    .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
+    .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, byMoney: row.mode === 'amount' }));
   /*
    * The cash side of a trade, and the reason this set is not the payable one: a buy is paid out of the broker's own
    * cash, and a coupon or a dividend lands back in it. That money cannot be spent from directly — it is moved to a
