@@ -12,7 +12,7 @@ test.beforeEach(({ page }) => {
 test('1–4: BBCA at two brokers is one stock, one price values both, and the bank moved by exactly what was paid', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
-  await expect(page.getByLabel('Total')).toHaveValue(/8\.750\.000$/); // 10 lots × 100 × 8.750
+  await expect(page.getByLabel('Total')).toHaveText(/8\.750\.000$/); // 10 lots × 100 × 8.750
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await expectBalance(page, 'BCA Tahapan', '41.236.875'); // 50.000.000 − 8.750.000 − 13.125
@@ -51,8 +51,8 @@ test('5: a free user names AAPL, pays in rupiah, and the rupiah cost is exactly 
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
     broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
   });
-  await expect(page.getByLabel('Rate that day')).toHaveValue('15.800 IDR per 1 USD');
-  await expect(page.getByLabel('Cost in IDR')).toHaveValue(/28\.835\.000$/);
+  await expect(page.getByLabel('Rate that day')).toHaveText('15.800 IDR per 1 USD');
+  await expect(page.getByLabel('Cost in IDR')).toHaveText(/28\.835\.000$/);
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
   await expectBalance(page, 'BCA Tahapan', '21.165.000');
@@ -164,7 +164,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
   await expect(page.getByText('This adds to BBCA, the BBCA with no broker named.')).toBeVisible();
-  await expect(page.getByLabel('Total')).toHaveValue(/900\.000$/);
+  await expect(page.getByLabel('Total')).toHaveText(/900\.000$/);
   // m6: the note is about a buy with no broker. Kept at a broker, the buy lands there, and the note is gone.
   await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
   await expect(page.getByText(/This adds to/)).toHaveCount(0);

@@ -62,7 +62,7 @@ export async function addHoldingFlow(
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
   if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
-  if (o.date) await page.getByLabel('Date', { exact: true }).fill(o.date);
+  if (o.date) await page.getByLabel('Bought', { exact: true }).fill(o.date);
   await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
   if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
   if (o.rate) {
