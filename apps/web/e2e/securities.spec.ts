@@ -255,8 +255,12 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   await page.getByLabel('Price per share', { exact: true }).pressSequentially('8750');
 
   await page.getByRole('button', { name: /^Ticker/ }).click();
+  // A sheet over the form, not a page of its own: the address stays.
+  await expect(page.getByRole('dialog', { name: 'Choose a ticker' })).toBeVisible();
+  await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Choose a ticker' })).toHaveCount(0);
 
   await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('BBCA');
   await expect(page.getByLabel('Price per share', { exact: true })).toHaveValue(/^8\.?750$/);

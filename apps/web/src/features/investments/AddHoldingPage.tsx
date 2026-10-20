@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
+import { Sheet } from '../../app/Sheet';
 import { PushedTitle, SCREEN } from '../../ui/native';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { usePositions } from '../networth/queries';
@@ -27,12 +28,16 @@ export function AddHoldingPage() {
   /* The form first, as every other asset opens: its first row is the ticker, which opens the search. Linking a holding
      recorded before a ticker (spec §7.6) asks only for the ticker, so it starts at the search. */
   const [step, setStep] = useState<'search' | 'name' | 'form'>(link ? 'search' : 'form');
+  /* Adding (not linking): the ticker is chosen in a sheet over the form — the search, and Name it myself as its second
+     step — so the page never changes under what was typed. */
+  const [sheet, setSheet] = useState<'search' | 'name' | null>(null);
+  const [nameConfirm, setNameConfirm] = useState<FormConfirm | null>(null);
+  const onNameConfirm = useCallback((next: FormConfirm | null) => setNameConfirm(next), []);
   const [picked, setPicked] = useState<Picked | null>(null);
   const [error, setError] = useState<unknown>(null);
   // The step's ✓, drawn in the bar as Add asset draws its own.
   const [confirm, setConfirm] = useState<FormConfirm | null>(null);
   const onConfirm = useCallback((next: FormConfirm | null) => setConfirm(next), []);
-  const noConfirm = useCallback(() => undefined, []);
 
   const heldUnits: Record<string, number> = {};
   for (const l of links) if (l.securityId) heldUnits[l.securityId] = (heldUnits[l.securityId] ?? 0) + (positions[l.accountId]?.unitsMicro ?? 0);
@@ -44,7 +49,8 @@ export function AddHoldingPage() {
     const next = asHeld(pick, securities);
     if (!link) {
       setPicked(next);
-      setStep('form');
+      setSheet(null);
+      setQuery('');
       return;
     }
     // Linking a holding recorded before this build (spec §7.6): the same search, a different last step.
@@ -58,40 +64,44 @@ export function AddHoldingPage() {
   }
 
   const leave = () => void navigate(link ? { to: '/net-worth/assets/$accountId', params: { accountId: link } } : { to: '/net-worth/investments' });
-  const back = () => {
-    if (step === 'name') setStep('search');
-    else if (step === 'search' && !link) setStep('form');
-    else leave();
-  };
-  const backLabel = step === 'name' ? 'Search' : step === 'search' && !link ? 'Add a holding' : link ? 'Asset' : 'Investments';
+  const back = () => (link && step === 'name' ? setStep('search') : leave());
+  const backLabel = link ? (step === 'name' ? 'Search' : 'Asset') : 'Investments';
   return (
     <div className={SCREEN}>
       <PushedTitle
-        title={link ? 'Which ticker is it?' : step === 'name' ? 'Name it' : step === 'search' ? 'Find a ticker' : 'Add a holding'}
+        title={link ? (step === 'name' ? 'Name it' : 'Which ticker is it?') : 'Add a holding'}
         back={backLabel}
         onBack={back}
         actions={
-          step !== 'search' && confirm
+          (!link || step === 'name') && confirm
             ? [{ key: 'save', label: step === 'name' ? 'Continue' : 'Add holding', glyph: <Check size={20} aria-hidden />, disabled: confirm.disabled, run: confirm.run }]
             : []
         }
       />
       <ErrorBox error={error} />
-      {step === 'search' && <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setStep('name')} />}
-      {step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onConfirm} />}
-      {/* The whole form from the start, Ticker its first row; it stays mounted under the search, so what was typed
-          is still there after a ticker is chosen. */}
+      {/* Linking a holding to its ticker: the search is the page, and so is naming one by hand. */}
+      {link && step === 'search' && <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setStep('name')} />}
+      {link && step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onConfirm} />}
+      {/* Adding: the whole form, Ticker its first row, which opens the sheet below. */}
       {!link && (
-        <div className={step === 'form' ? undefined : 'hidden'}>
-          <AddHoldingForm
-            picked={picked}
-            accounts={accounts}
-            brokers={brokerChoices(accounts)}
-            heldAt={heldAt}
-            onConfirm={step === 'form' ? onConfirm : noConfirm}
-            onTicker={() => setStep('search')}
-          />
-        </div>
+        <AddHoldingForm picked={picked} accounts={accounts} brokers={brokerChoices(accounts)} heldAt={heldAt} onConfirm={onConfirm} onTicker={() => setSheet('search')} />
+      )}
+      {!link && sheet === 'search' && (
+        <Sheet title="Choose a ticker" grouped tall onClose={() => setSheet(null)}>
+          <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setSheet('name')} />
+        </Sheet>
+      )}
+      {!link && sheet === 'name' && (
+        <Sheet
+          title="Name it"
+          grouped
+          tall
+          back={{ label: 'Choose a ticker', run: () => setSheet('search') }}
+          onClose={() => setSheet(null)}
+          confirm={nameConfirm ? { label: 'Continue', ...nameConfirm } : undefined}
+        >
+          <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onNameConfirm} />
+        </Sheet>
       )}
     </div>
   );
