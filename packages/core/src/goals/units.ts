@@ -100,8 +100,10 @@ export function goalMoneyOf(trades: readonly TradeRecord[], upTo?: string): Goal
     } else if (trade.kind === 'sell') {
       const basis = sells.get(trade.id)?.basisMinor ?? 0;
       const held = byGoal[key] ?? 0;
-      // A rupiah of rounding is the holding's, not a goal overdrawn.
-      if (basis > held + 1) {
+      /* A rupiah of rounding is the holding's, not a goal overdrawn. A sell from the units days (saved with no cost)
+         was checked by units when it was saved; by money its average cost can be more than its goal put in, and that
+         history stands — it empties the goal rather than refusing. */
+      if (basis > held + 1 && trade.basisMinor != null) {
         const whose = key === UNTAGGED ? 'Money with no goal' : `Goal "${key}"`;
         throw new GoalError(`${whose} has less in this holding than that sell takes out`);
       }

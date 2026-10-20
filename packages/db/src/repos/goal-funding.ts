@@ -1,5 +1,8 @@
 import {
+  GoalError,
+  type GoalMoney,
   goalMoneyOf,
+  type GoalUnits,
   addMonths,
   convertMinor,
   DEFAULT_EMERGENCY_BASE,
@@ -102,8 +105,11 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
   const known = new Set(goalRows.map((goal) => goal.id));
 
   const trades = await listTrades(database, ws);
-  const unitsByAccount = goalUnitsFor(trades, date);
   const values = await assetValuesAt(database, ws, date);
+  // A fund tracked by money is shared out by money below; units are walked only for holdings counted in units.
+  const byMoney = new Set(values.filter((value) => value.mode === 'amount').map((value) => value.accountId));
+  const unitsByAccount: Record<string, GoalUnits | null> = goalUnitsFor(trades.filter((trade) => !byMoney.has(trade.accountId)), date);
+  for (const accountId of byMoney) if (trades.some((trade) => trade.accountId === accountId)) unitsByAccount[accountId] = null;
   const profiles = await listAssetProfiles(database, ws);
   const links: Omit<GoalLinkRow, 'baseMinor'>[] = [];
 
@@ -113,7 +119,14 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
       /* A fund tracked by money: each goal holds its share of the value by the money it put in (spec
          2026-10-19-fund-by-amount) — 600.000 of 1.500.000 in a fund worth 1.552.000 is 620.800. */
       const own = trades.filter((trade) => trade.accountId === accountId);
-      const money = goalMoneyOf(own, date);
+      let money: GoalMoney;
+      try {
+        money = goalMoneyOf(own, date);
+      } catch (e) {
+        // One fund whose history no longer adds up must not take every goal's figures with it.
+        if (e instanceof GoalError) continue;
+        throw e;
+      }
       const risk = profiles.find((profile) => profile.accountId === accountId)?.risk ?? null;
       for (const [goalId, moneyMinor] of Object.entries(money.byGoal)) {
         if (!goalId || !known.has(goalId) || moneyMinor <= 0 || money.costMinor <= 0) continue;
@@ -134,7 +147,7 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
       }
       continue;
     }
-    if (!value || !value.unitsMicro || value.unitsMicro <= 0) continue;
+    if (!units || !value || !value.unitsMicro || value.unitsMicro <= 0) continue;
     const priceMicro = priceMicroFrom(value.valueMinor, value.unitsMicro);
     const risk = profiles.find((profile) => profile.accountId === accountId)?.risk ?? null;
     for (const [goalId, unitsMicro] of Object.entries(units.byGoal)) {

@@ -70,4 +70,11 @@ describe('goals funded by a fund tracked by money', () => {
     expect(links.find((link) => link.goalId === house)).toMatchObject({ moneyMinor: 1_000_000 });
     expect(links.find((link) => link.goalId === umroh)).toBeUndefined();
   });
+
+  it('keeps the goals readable when a sell of a fund tracked by money also carries units', async () => {
+    await money('buy', '2026-08-01', 1_000_000, umroh);
+    await recordTrade(database, ws, { accountId: fund.id, kind: 'sell', occurredOn: '2026-08-05', unitsMicro: 5_000_000, grossMinor: 100_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id, goalId: umroh });
+    const links = await linksOn('2026-08-05');
+    expect(links.find((link) => link.goalId === umroh)).toMatchObject({ moneyMinor: 900_000, valueMinor: 900_000 });
+  });
 });

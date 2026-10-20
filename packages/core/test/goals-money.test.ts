@@ -40,4 +40,15 @@ describe('goals in a fund tracked by money', () => {
     const sold = [...trades, trade('s1', 'sell', '2026-09-01', 600_000, { goalId: 'umroh', basisMinor: 500_000 })];
     expect(retagFits(sold, 'b1', 'house')).toBe(false);
   });
+
+  it('lets a sell from the units days empty its goal when its average cost was more than the goal put in', () => {
+    const units = [
+      trade('g', 'buy', '2025-01-01', 100_000, { unitsMicro: 100_000_000, goalId: 'umroh' }),
+      trade('u', 'buy', '2025-01-02', 200_000, { unitsMicro: 100_000_000 }),
+      // Sold every goal unit at the fund's average cost, 150.000 — more than the 100.000 the goal put in.
+      trade('s', 'sell', '2025-06-01', 160_000, { unitsMicro: 100_000_000, goalId: 'umroh' }),
+      trade('m', 'buy', '2026-01-01', 50_000),
+    ];
+    expect(goalMoneyOf(units)).toEqual({ byGoal: { '': 250_000 }, costMinor: 250_000 });
+  });
 });
