@@ -1,5 +1,5 @@
-import { CASH_ITEMS } from '@expanses/core';
-import { archiveAccount, deleteUnusedAccount, taxTreatmentOf } from '@expanses/db';
+import { CASH_ITEMS, cashItem, type MoneyAccountSubtype } from '@expanses/core';
+import { archiveAccount, deleteUnusedAccount, profileDefaults, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -16,6 +16,8 @@ import { useAssetProfile, useAssetValues } from './queries';
 
 /** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
+/** The kas code a money account of this kind files under. */
+const cashCodeFor = (subtype: string | undefined): string | null => (subtype && CASH_SUBTYPES.has(subtype) ? cashItem(subtype as MoneyAccountSubtype).code : null);
 
 export function AssetSettingsRoute() {
   const { accountId } = useParams({ from: '/net-worth/assets/$accountId/settings' });
@@ -99,7 +101,15 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {account?.subtype === 'ewallet' && <WalletPhoneGroup accountId={accountId} />}
 
       {/* A money account's tax fields stay here; an asset's are on its Edit screen, with its name and when it was got. */}
-      {money && profile.data?.coretaxSection && <CoretaxFieldsGroup key={`fields-${accountId}`} profile={profile.data} section={profile.data.coretaxSection} />}
+      {/* A money account opened before it had a profile (a broker made from Add holding) still shows its kas row: saving a
+          field gives it the profile Add account would have. */}
+      {money && profile.isSuccess && (
+        <CoretaxFieldsGroup
+          key={`fields-${accountId}`}
+          profile={profile.data ?? { ...profileDefaults('cash'), coretaxSection: 'kas', coretaxCode: cashCodeFor(account?.subtype), accountId, workspaceId: ws.workspaceId, updatedAt: '' }}
+          section={profile.data?.coretaxSection ?? 'kas'}
+        />
+      )}
 
       {value && (
         <>

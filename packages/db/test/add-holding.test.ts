@@ -33,6 +33,8 @@ describe('addHolding', () => {
     expect(accounts.find((a) => a.id === result.accountId)).toMatchObject({ name: 'BBCA · Stockbit', subtype: 'investment', currency: 'IDR' });
     expect(accounts.find((a) => a.id === result.brokerAccountId)).toMatchObject({ name: 'Stockbit', subtype: 'fund', currency: 'IDR' });
     expect(await getAssetProfile(database, ws, result.accountId)).toMatchObject({ assetKind: 'stock', lotSize: 100, coretaxCode: '0303', unitKind: 'shares' });
+    // The broker it opened is a broker's cash, as Add account opens one: its kas row is where its RDN bank goes.
+    expect(await getAssetProfile(database, ws, result.brokerAccountId!)).toMatchObject({ assetKind: 'cash', coretaxSection: 'kas', coretaxCode: '0109' });
     const balances = await nativeBalances(database, ws);
     expect(balances[result.accountId]).toBe(8_763_125);
     expect(balances[bca.id]).toBe(41_236_875);
