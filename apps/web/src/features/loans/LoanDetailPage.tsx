@@ -100,7 +100,7 @@ function useRateForPayment(currency: string, onDate: string) {
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
         inputMode="decimal"
-        placeholder="16250"
+        placeholder="Rate"
       />
     ) : null,
   };
@@ -266,7 +266,7 @@ function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; 
           value={fromOn}
           onChange={(e) => setFromOn(e.target.value)}
         />
-        <TextRow label="New rate a year (%)" value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="11" />
+        <TextRow label="New rate a year (%)" value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="Percent" />
         <SelectRow label="Rate kind" value={kind} onChange={(e) => setKind(e.target.value as 'fixed' | 'floating')}>
           <option value="fixed">Fixed</option>
           <option value="floating">Floating</option>
@@ -364,7 +364,7 @@ function PayExtraSheet({
   return (
     <Sheet grouped tall title="Pay extra" onClose={onClose} confirm={{ label: 'Save extra payment', disabled: saving.busy || !setAside.ready, run: () => void save() }}>
       <InsetGroup>
-        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="50.000.000" />
+        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="Amount" />
         <SelectRow label="How often" value={repeat} onChange={(e) => setRepeat(e.target.value as 'once' | 'yearly' | 'monthly')}>
           <option value="once">Once</option>
           <option value="yearly">Every year</option>

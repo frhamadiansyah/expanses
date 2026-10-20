@@ -155,7 +155,7 @@ export function RepaymentForm({
           value={draft.interest}
           inputMode="decimal"
           onChange={(e) => set({ interest: e.target.value })}
-          placeholder="0"
+          placeholder="Amount"
         />
         <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
         <SelectRow label={direction === 'lent' ? 'Into' : 'From'} value={draft.moneyId} onChange={(e) => set({ moneyId: e.target.value })}>
@@ -172,7 +172,7 @@ export function RepaymentForm({
             value={manualRate}
             inputMode="decimal"
             onChange={(e) => setManualRate(e.target.value)}
-            placeholder="16250"
+            placeholder="Rate"
           />
         ) : null}
       </InsetGroup>

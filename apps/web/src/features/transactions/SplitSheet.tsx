@@ -62,7 +62,7 @@ export function SplitSheet({
               aria-label={`Split ${i + 1} amount`}
               value={row.amount}
               inputMode="decimal"
-              placeholder="0"
+              placeholder="Amount"
               onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
               className="ph-focus-inset tabular w-28 shrink-0 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
             />

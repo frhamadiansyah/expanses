@@ -149,16 +149,13 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
         value={draft.openingRate}
         onChange={(e) => change({ openingRate: e.target.value })}
         inputMode="decimal"
-        placeholder="16000"
+        placeholder="Rate"
       />
     ) : null;
 
-  // A thing valued by its owner needs no footer: its own rows say what is optional.
-  const footer = estimated
-    ? undefined
-    : itemId === undefined
-      ? 'This sets how the value is worked out and which tax-report table it belongs to.'
-      : item.sub;
+  /* No note under a chosen kind: how it is valued showed in the form as words like "par value × price" that only
+     got in the way. Only the open picker, before a kind is chosen, says what choosing one does. */
+  const footer = estimated || itemId !== undefined ? undefined : 'This sets how the value is worked out and which tax-report table it belongs to.';
 
   return (
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
@@ -220,7 +217,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
                 label={byMoney ? 'Units' : byPar ? 'Par value' : 'How much'}
                 value={purchase.units}
                 inputMode="decimal"
-                placeholder={byMoney ? 'Optional' : byPar ? '10.000.000' : '10'}
+                placeholder={byMoney ? 'Optional' : byPar ? 'Amount' : 'Quantity'}
                 hint={byPar && index === 0 ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
                 onChange={(e) => setPurchase(index, { units: e.target.value })}
               />

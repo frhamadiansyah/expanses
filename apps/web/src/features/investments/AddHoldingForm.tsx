@@ -110,7 +110,7 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onCancel }: 
         <InputRow label={lotted ? 'Lots' : 'Shares'} hint={lotted ? `${security.lotSize} shares a lot.` : undefined} value={draft.quantity} onChange={(e) => change({ quantity: e.target.value })} inputMode="decimal" />
         <InputRow label={`Price per share (${security.currency})`} value={draft.price} onChange={(e) => change({ price: e.target.value })} inputMode="decimal" />
         <InputRow label="Total" readOnly tabIndex={-1} value={total === null ? '—' : formatMinor(total, security.currency)} />
-        <InputRow label={`Fee (${security.currency})`} value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" placeholder="0" />
+        <InputRow label={`Fee (${security.currency})`} value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" placeholder="Amount" />
         <InputRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
         <SelectRow label="Paid from" value={draft.paidFrom} onChange={(e) => change({ paidFrom: e.target.value, charged: '' })}>
           {money.map((a) => <option key={a.id} value={a.id}>{`${a.name} (${a.currency ?? ws.baseCurrency})`}</option>)}

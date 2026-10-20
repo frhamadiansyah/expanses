@@ -194,7 +194,7 @@ export function CoretaxPage() {
                   value={npwp}
                   inputMode="numeric"
                   onChange={(e) => setNpwp(e.target.value)}
-                  placeholder="0011223344556677"
+                  placeholder="Number"
                 />
                 <TextRow label="Nama wajib pajak" value={taxpayerName} onChange={(e) => setTaxpayerName(e.target.value)} />
                 <SelectRow

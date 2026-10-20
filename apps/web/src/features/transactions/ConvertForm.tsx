@@ -62,7 +62,7 @@ export function ConvertForm({
           </Select>
         </Field>
         <Field label="Units, shares or grams">
-          <Input value={units} inputMode="decimal" onChange={(e) => setUnits(e.target.value)} placeholder="2" />
+          <Input value={units} inputMode="decimal" onChange={(e) => setUnits(e.target.value)} placeholder="Quantity" />
         </Field>
         {goals.length > 0 && (
           <Field label="For goal">

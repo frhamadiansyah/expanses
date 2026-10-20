@@ -992,7 +992,7 @@ function CardBody({
                 label="MCC"
                 caption="MCC"
                 hint="Gold and jewellery shops are 5944."
-                placeholder="5944"
+                placeholder="Code"
                 inputMode="numeric"
                 divided
                 value={purchase.mcc}

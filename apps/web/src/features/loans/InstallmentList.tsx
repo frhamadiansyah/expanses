@@ -99,7 +99,7 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
             columns={[
               [
                 <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />,
-                <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="12.000.000" required />,
+                <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="Amount" required />,
               ],
               [
                 <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />,

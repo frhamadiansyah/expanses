@@ -64,7 +64,7 @@ export function MccSheet({
               autoFocus
               value={typed}
               onChange={(e) => setTyped(e.target.value.slice(0, 60))}
-              placeholder="Code or a word, e.g. 5812 or restaurant"
+              placeholder="Code or a word"
               autoComplete="off"
               autoCapitalize="none"
               className="ph-focus-inset min-h-12 w-full bg-transparent px-3 text-[20px] font-semibold tracking-[0.5px] text-[var(--ph-ink)] tabular placeholder:text-[16px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[var(--ph-ink-3)] focus:outline-none"

@@ -176,7 +176,7 @@ function MoneyOutSheet({
     mode === 'withdraw' ? (
       <TextRow key="tax" label="Tax withheld" inputMode="decimal" value={draft.tax} onChange={(e) => set({ tax: e.target.value })} />
     ) : (
-      <TextRow key="penalty" label="Penalty fee" inputMode="decimal" placeholder="0" value={draft.penalty} onChange={(e) => set({ penalty: e.target.value })} />
+      <TextRow key="penalty" label="Penalty fee" inputMode="decimal" placeholder="Amount" value={draft.penalty} onChange={(e) => set({ penalty: e.target.value })} />
     ),
     <InsetRow
       key="lands"

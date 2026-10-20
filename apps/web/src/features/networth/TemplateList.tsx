@@ -150,7 +150,7 @@ export function TemplateList({
               </Field>
             )}
             <Field label={`Amount (${currency})`}>
-              <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="2.000.000" required />
+              <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" required />
             </Field>
             <Field label="Day of month" hint="1 to 28, so every month has it.">
               <Input value={day} onChange={(e) => setDay(e.target.value)} inputMode="numeric" />

@@ -87,7 +87,7 @@ export function TermsForm({
           value={draft.originalAmount}
           inputMode="decimal"
           onChange={(e) => set({ originalAmount: e.target.value })}
-          placeholder="700.000.000"
+          placeholder="Amount"
           required
         />
       </InsetGroup>
@@ -106,7 +106,7 @@ export function TermsForm({
           value={draft.rate}
           inputMode="decimal"
           onChange={(e) => set({ rate: e.target.value })}
-          placeholder="9"
+          placeholder="Percent"
         />
         <SelectRow
           label="Rate kind"
@@ -130,7 +130,7 @@ export function TermsForm({
           value={draft.tenorMonths}
           inputMode="numeric"
           onChange={(e) => set({ tenorMonths: e.target.value })}
-          placeholder="180"
+          placeholder="Months"
           required
         />
         <TextRow

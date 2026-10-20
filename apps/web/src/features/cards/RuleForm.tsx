@@ -95,9 +95,9 @@ export function RuleForm({
       <GroupColumns>
         <div className="min-w-0">
           <InsetGroup header={initial ? `Edit rule · ${initial.name}` : 'New rule'}>
-            <TextRow label="Rule name" value={name} onChange={(e) => setName(e.target.value)} placeholder="5x dining" required />
+            <TextRow label="Rule name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
             <TextRow label="Points" value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" required />
-            <TextRow label={`Per spend (${currency})`} value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="2500" required />
+            <TextRow label={`Per spend (${currency})`} value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="Amount" required />
           </InsetGroup>
 
           <InsetGroup header="Where it applies">

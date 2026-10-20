@@ -116,7 +116,7 @@ export function BonusForm({
                 value={tier.spend}
                 onChange={(e) => setTier(index, { spend: e.target.value })}
                 inputMode="decimal"
-                placeholder="20000000"
+                placeholder="Spend"
               />
               <TextRow
                 label={`Pays (${unit})`}
@@ -124,7 +124,7 @@ export function BonusForm({
                 value={tier.bonus}
                 onChange={(e) => setTier(index, { bonus: e.target.value })}
                 inputMode="numeric"
-                placeholder="1000"
+                placeholder="Points"
               />
               {tiers.length > 1 && <DestructiveRow label="Remove" onClick={() => setTiers((rows) => rows.filter((_, i) => i !== index))} />}
             </InsetGroup>

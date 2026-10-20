@@ -201,8 +201,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       <form id="item-form" onSubmit={save}>
         <InsetGroup header="The item" footer="No date. How many × price each makes the estimate; one of something is the ordinary case.">
           <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Stroller" />
-          <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="1" />
-          <TextRow label="Price each" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="500000" />
+          <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
+          <TextRow label="Price each" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Amount" />
           {/*
            * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It
            * stays an input rather than becoming a static row so that it keeps the label it is found by, and so the
