@@ -125,7 +125,7 @@ function DesktopTables({ view, base, rates }: { view: PortfolioView; base: strin
         destination={stockTo}
         columns={[
           { key: 'stock', heading: 'Stock', cell: (row) => (row.name !== row.title ? <span className="block text-[12.5px] leading-[16px]">{row.name}</span> : null) },
-          { key: 'kept', heading: 'Kept at', cell: keptAt },
+          { key: 'kept', heading: 'Broker', cell: keptAt },
           { key: 'shares', heading: 'Shares', numeric: true, cell: (row) => formatLots(row.unitsMicro, row.lotSize ?? 1) },
           {
             key: 'gain',
