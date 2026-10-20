@@ -170,7 +170,6 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onConfirm, o
         />
         <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
         <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
-        <MoneyRow label="Fee" value={draft.fee} onChange={(fee) => change({ fee })} currency={security.currency} placeholder="Optional" />
       </InsetGroup>
 
       {/* A share in another currency: the rate its cost is filed at, in the workspace's money, for the tax report. */}
