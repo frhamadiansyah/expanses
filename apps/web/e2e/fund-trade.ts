@@ -12,7 +12,7 @@ export const FUND = 'Sucorinvest Money Market Fund';
  */
 export async function fundByMoney(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA', balance: '10000000' });
-  await openNewAsset(page, 'Mutual fund (reksadana)');
+  await openNewAsset(page, 'Mutual fund');
   await page.getByLabel('Name', { exact: true }).fill(FUND);
   await fillDay(page, 'Bought', '2026-01-15');
   await expect(page.getByLabel('Units', { exact: true })).toHaveAttribute('placeholder', 'Optional');

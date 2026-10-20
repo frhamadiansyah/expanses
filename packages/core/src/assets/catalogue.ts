@@ -43,6 +43,11 @@ export interface OwnableItem {
   section: CoretaxSection | null;
   behaviour: OwnableBehaviour;
   /**
+   * Words a search also finds it by but the picker never shows — the name a market of its own gives the same thing
+   * ("reksadana" for a mutual fund). The labels stay plain and the same everywhere; only the tax report is local.
+   */
+  searchAlso?: string;
+  /**
    * False for an item a picker must never offer, however it is reached — a search included. Only the legacy
    * money-as-an-asset entry is marked: it stays in the catalogue for what is already there and in the inline
    * form's select, but money belongs under Add account. Absent everywhere else, which reads as "offer it".
@@ -189,15 +194,18 @@ const INVEST_ITEMS: readonly OwnableItem[] = [
     lotSize: null,
     priceLabel: null,
   }),
-  holding('fund', 'Mutual fund (reksadana)', '0307', {
-    assetKind: 'fund',
-    subtype: 'investment',
-    planGroup: 'invest',
-    valuedBy: 'units',
-    unitKind: 'units',
-    lotSize: null,
-    priceLabel: 'NAV per unit',
-  }),
+  {
+    ...holding('fund', 'Mutual fund', '0307', {
+      assetKind: 'fund',
+      subtype: 'investment',
+      planGroup: 'invest',
+      valuedBy: 'units',
+      unitKind: 'units',
+      lotSize: null,
+      priceLabel: 'NAV per unit',
+    }),
+    searchAlso: 'reksadana unit trust',
+  },
   holding('corporate_bond', 'Corporate bonds', '0304', {
     assetKind: 'bond',
     subtype: 'investment',
@@ -207,15 +215,18 @@ const INVEST_ITEMS: readonly OwnableItem[] = [
     lotSize: null,
     priceLabel: 'Face value',
   }),
-  holding('bond', 'Government bonds (ORI, SBSN)', '0305', {
-    assetKind: 'bond',
-    subtype: 'investment',
-    planGroup: 'invest',
-    valuedBy: 'face',
-    unitKind: 'face',
-    lotSize: null,
-    priceLabel: 'Face value',
-  }),
+  {
+    ...holding('bond', 'Government bonds', '0305', {
+      assetKind: 'bond',
+      subtype: 'investment',
+      planGroup: 'invest',
+      valuedBy: 'face',
+      unitKind: 'face',
+      lotSize: null,
+      priceLabel: 'Face value',
+    }),
+    searchAlso: 'ORI SBSN SBR obligasi treasury gilt',
+  },
   holding('derivative', 'Derivatives', '0308', {
     assetKind: 'other',
     subtype: 'investment',
@@ -452,7 +463,7 @@ const FLOW_ITEMS: Record<OwnableFlow, readonly OwnableItem[]> = {
  * jewellery" — only on words that actually are "gold".
  */
 function ownableWords(item: OwnableItem): string[] {
-  return `${item.label} ${item.sub} ${item.code}`
+  return `${item.label} ${item.sub} ${item.code} ${item.searchAlso ?? ''}`
     .toLowerCase()
     .split(/[^\p{L}\p{N}-]+/u)
     .filter(Boolean);

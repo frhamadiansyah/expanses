@@ -24,7 +24,7 @@ async function addStock(page: Page) {
 
 /** A bond named by hand, through the picker's own form. */
 async function addBond(page: Page, name: string, cost: string) {
-  await openNewAsset(page, 'Government bonds (ORI, SBSN)');
+  await openNewAsset(page, 'Government bonds');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await fillDay(page, 'Bought', `${YEAR}-02-10`);
   await page.getByLabel('How much').fill('100');

@@ -12,7 +12,7 @@ test('two levels by thumb: a family, the thing, and the way back', async ({ page
   await page.goto('/net-worth/assets/new');
   await expect(page.getByRole('heading', { name: 'New asset' })).toBeVisible();
   await page.getByRole('button', { name: 'Investments' }).click();
-  await expect(page.getByRole('button', { name: 'Mutual fund (reksadana)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mutual fund' })).toBeVisible();
   // The circle at the top left is the destination, named — "Assets" — not the word "Back": this screen was opened
   // from that list, and one tap undoes one step of this screen before it goes anywhere.
   await page.getByRole('button', { name: 'Assets' }).click();

@@ -139,9 +139,11 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
          cost of nothing, in the year it was first bought — or the report's year when it has no buy. */
       const firstBuy = trades.filter((trade) => trade.accountId === value.accountId && trade.kind === 'buy' && trade.occurredOn <= onDate)[0];
       const byYear = Object.values(held).some((bucket) => bucket.costMinor > 0) ? held : { [(firstBuy?.occurredOn ?? onDate).slice(0, 4)]: { unitsMicro: 0, costMinor: 0 } };
+      const security = link?.securityId ? (securityOf.get(link.securityId) ?? null) : null;
       inputs.holdings.push({
         accountId: value.accountId,
-        name: value.name,
+        // One row per place: the fund and where it is held ("Sucor Money Market — Bibit").
+        name: taxHoldingName(security, brokerName, value.name),
         code: code ?? '0307',
         currency: value.currency,
         priceMicro: 0,

@@ -23,7 +23,7 @@ describe('the rows a picker draws', () => {
   it('shows the five families first, then the things in one of them, then what is left of its table', () => {
     expect(pickerRows({ flow: 'asset', query: '' }).map((row) => row.id)).toEqual(['receivable', 'invest', 'movable', 'immovable', 'other']);
     const invest = pickerRows({ flow: 'asset', query: '', family: 'invest' });
-    expect(invest.map((row) => row.label)).toContain('Mutual fund (reksadana)');
+    expect(invest.map((row) => row.label)).toContain('Mutual fund');
     expect(invest.at(-1)).toMatchObject({ id: 'more', label: 'Something else', sub: '4 more kinds the form knows' });
     expect(pickerRows({ flow: 'asset', query: '', family: 'invest', more: true }).map((row) => row.label)).toEqual([
       'Shares bought to resell',
