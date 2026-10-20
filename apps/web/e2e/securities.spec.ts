@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { expectBalance, startReport } from './deposit-maturity';
 import { addHoldingFlow, BBCA_BY_HAND, setForeignList } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
@@ -241,4 +242,23 @@ test.describe('with the list unreadable', () => {
     await page.getByRole('button', { name: /Name it myself/ }).click();
     await expect(page.getByLabel('Ticker', { exact: true })).toBeVisible();
   });
+});
+
+test('Add a holding shows every row from the start, and what was typed stays when the ticker is chosen after', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA', balance: '50000000' });
+  await page.goto('/net-worth/investments/new');
+  // One page, as Add asset: the ticker is its first row, and the rest are there before one is chosen.
+  await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('Choose');
+  await expect(page.getByLabel('Where is it kept')).toBeVisible();
+  await expect(page.getByLabel('Paid from')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add holding' })).toBeDisabled();
+  await page.getByLabel('Price per share', { exact: true }).pressSequentially('8750');
+
+  await page.getByRole('button', { name: /^Ticker/ }).click();
+  await page.getByLabel('Ticker or name').pressSequentially('BBCA');
+  await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
+
+  await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('BBCA');
+  await expect(page.getByLabel('Price per share', { exact: true })).toHaveValue(/^8\.?750$/);
+  await expect(page.getByLabel('Lots', { exact: true })).toBeVisible();
 });

@@ -5,7 +5,7 @@ import { Check } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { PushedTitle, SCREEN } from '../../ui/native';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { usePositions } from '../networth/queries';
 import { asHeld, brokerChoices, type Picked, securityOf } from './add-holding';
@@ -32,6 +32,7 @@ export function AddHoldingPage() {
   // The step's ✓, drawn in the bar as Add asset draws its own.
   const [confirm, setConfirm] = useState<FormConfirm | null>(null);
   const onConfirm = useCallback((next: FormConfirm | null) => setConfirm(next), []);
+  const noConfirm = useCallback(() => undefined, []);
 
   const heldUnits: Record<string, number> = {};
   for (const l of links) if (l.securityId) heldUnits[l.securityId] = (heldUnits[l.securityId] ?? 0) + (positions[l.accountId]?.unitsMicro ?? 0);
@@ -70,7 +71,7 @@ export function AddHoldingPage() {
         back={backLabel}
         onBack={back}
         actions={
-          step !== 'search' && confirm && (step === 'name' || picked)
+          step !== 'search' && confirm
             ? [{ key: 'save', label: step === 'name' ? 'Continue' : 'Add holding', glyph: <Check size={20} aria-hidden />, disabled: confirm.disabled, run: confirm.run }]
             : []
         }
@@ -78,23 +79,20 @@ export function AddHoldingPage() {
       <ErrorBox error={error} />
       {step === 'search' && <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setStep('name')} />}
       {step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onConfirm} />}
-      {step === 'form' &&
-        (picked ? (
+      {/* The whole form from the start, Ticker its first row; it stays mounted under the search, so what was typed
+          is still there after a ticker is chosen. */}
+      {!link && (
+        <div className={step === 'form' ? undefined : 'hidden'}>
           <AddHoldingForm
-            key={picked.kind === 'held' ? picked.security.id : `${picked.security.ticker ?? ''}:${picked.security.name}`}
             picked={picked}
             accounts={accounts}
             brokers={brokerChoices(accounts)}
             heldAt={heldAt}
-            onConfirm={onConfirm}
+            onConfirm={step === 'form' ? onConfirm : noConfirm}
             onTicker={() => setStep('search')}
           />
-        ) : (
-          // Nothing chosen yet: the form is its first row, and the rest follows the ticker (its lot, its currency).
-          <InsetGroup>
-            <InsetRow title="Ticker" value="Choose" onClick={() => setStep('search')} />
-          </InsetGroup>
-        ))}
+        </div>
+      )}
     </div>
   );
 }
