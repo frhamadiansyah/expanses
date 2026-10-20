@@ -12,7 +12,7 @@ test.beforeEach(({ page }) => {
 
 test('1–4: BBCA at two brokers is one stock, one price values both, and adding what was owned before moves no bank', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
-  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750' });
   await expect(page.getByLabel('Total')).toHaveText(/8\.750\.000$/); // 10 lots × 100 × 8.750
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();

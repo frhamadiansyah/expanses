@@ -32,6 +32,7 @@ export async function addHoldingFlow(
     broker: string | { new: string; currency?: string };
     quantity: string;
     price: string;
+    /** Ignored: a purchase from before the app is added without its fee. */
     fee?: string;
     /** Ignored: Add a holding is past-only (Opening Balances). Kept so callers read as they did. */
     paidFrom?: string;
@@ -65,7 +66,6 @@ export async function addHoldingFlow(
   }
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
-  if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
   // Add a holding is past-only: what was bought before the app, on a day picked as Add asset's Bought is.
   await fillDay(page, 'Bought', o.date ?? new Date().toISOString().slice(0, 10));
   if (o.rate) {
