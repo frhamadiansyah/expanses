@@ -542,9 +542,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             </SelectRow>
           ) : null,
           kind !== 'fund' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
-            // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one.
+            // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
+            // share is always kept at a broker: it is offered only to a bond, or to a share recorded before one was named.
             <SelectRow key="kept" label="Broker" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
-              <option value="none">No broker</option>
+              {kind === 'bond' || !stock.link?.brokerAccountId ? <option value="none">No broker</option> : null}
               {stock.brokers.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}

@@ -84,7 +84,7 @@ export function AddHoldingPage() {
       {link && step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onConfirm={onConfirm} />}
       {/* Adding: the whole form, Ticker its first row, which opens the sheet below. */}
       {!link && (
-        <AddHoldingForm picked={picked} accounts={accounts} brokers={brokerChoices(accounts)} heldAt={heldAt} onConfirm={onConfirm} onTicker={() => setSheet('search')} />
+        <AddHoldingForm picked={picked} brokers={brokerChoices(accounts)} heldAt={heldAt} onConfirm={onConfirm} onTicker={() => setSheet('search')} />
       )}
       {!link && sheet === 'search' && (
         <Sheet title="Choose a ticker" grouped tall onClose={() => setSheet(null)}>

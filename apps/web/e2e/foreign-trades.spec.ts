@@ -14,7 +14,7 @@ async function addUsdStock(page: Page) {
   await addHoldingFlow(page, {
     search: 'AAPL',
     nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: 'No broker',
+    broker: { new: 'Stockbit' },
     quantity: '10',
     price: '182,50',
     paidFrom: 'Owned before this app',
@@ -22,7 +22,7 @@ async function addUsdStock(page: Page) {
     rate: '15800',
   });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(page.getByRole('link', { name: /AAPL/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
 }
 
 test('Buy & sell sells a USD holding into a rupiah account at exactly the rupiah that arrived', async ({ page }) => {
@@ -30,7 +30,7 @@ test('Buy & sell sells a USD holding into a rupiah account at exactly the rupiah
   await addUsdStock(page);
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('sell');
-  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL · Stockbit' });
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Units, shares or grams').pressSequentially('3');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('642,90');
@@ -46,7 +46,7 @@ test('the Buy / sell tab asks what the rupiah account was charged for a USD buy'
   await page.goto('/transactions');
   // A hand-named US stock carries no lot size, so the tab asks for shares: 100 of them, as a lot of an IDX
   // stock would have been. The money is what the tab must get right, and it is the same as before.
-  await addPurchase(page, { what: 'AAPL', amount: '214,30', units: '100', paidWith: 'BCA Tahapan (IDR)', charged: '3.482.375' });
+  await addPurchase(page, { what: 'AAPL · Stockbit', amount: '214,30', units: '100', paidWith: 'BCA Tahapan (IDR)', charged: '3.482.375' });
   await expectBalance(page, 'BCA Tahapan', '46.517.625'); // 50.000.000 − 3.482.375
 });
 
@@ -55,7 +55,7 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
   await addUsdStock(page);
   await page.goto('/net-worth/trades');
   await page.getByLabel('Money account').selectOption({ label: 'Jenius' });
-  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL · Stockbit' });
   await page.getByLabel('Units, shares or grams').pressSequentially('2');
   await page.getByLabel(/What it cost, before fees/).pressSequentially('418,50');
   await page.getByLabel('Charged in IDR').pressSequentially('6.800.000');
@@ -79,7 +79,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('radio', { name: 'Buy / sell' }).click();
-  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › AAPL' });
+  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › AAPL · Stockbit' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
   await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
@@ -99,7 +99,7 @@ test('editing a sell into a rupiah account opens with what arrived, and saves wi
   await addUsdStock(page);
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('sell');
-  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL · Stockbit' });
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Units, shares or grams').pressSequentially('3');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('642,90');
@@ -123,7 +123,7 @@ test('a USD sell whose fee took all of it records with nothing reaching the rupi
   await addUsdStock(page);
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('sell');
-  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL · Stockbit' });
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Units, shares or grams').pressSequentially('1');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('1.500,00');

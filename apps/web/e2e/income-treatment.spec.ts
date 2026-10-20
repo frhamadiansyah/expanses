@@ -17,9 +17,9 @@ async function addBankAsset(page: Page) {
 
 /** A listed holding owned before the app, paid from Opening Balances. */
 async function addStock(page: Page) {
-  await addHoldingFlow(page, { search: 'BBRI', pick: 'BBRI', broker: 'No broker', quantity: '100', price: '19.000', paidFrom: 'Owned before this app', date: `${YEAR}-02-10` });
+  await addHoldingFlow(page, { search: 'BBRI', pick: 'BBRI', broker: { new: 'Stockbit' }, quantity: '100', price: '19.000', paidFrom: 'Owned before this app', date: `${YEAR}-02-10` });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(page.getByRole('link', { name: /BBRI/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BBRI' })).toBeVisible();
 }
 
 /** A bond named by hand, through the picker's own form. */
@@ -39,7 +39,7 @@ async function addBond(page: Page, name: string, cost: string) {
 async function recordDividend(page: Page) {
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('income');
-  await page.getByLabel('Holding').selectOption({ label: 'BBRI' });
+  await page.getByLabel('Holding').selectOption({ label: 'BBRI · Stockbit' });
   await page.getByLabel('Date').fill(`${YEAR}-06-10`);
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Amount before tax (IDR)').fill('1000000');
