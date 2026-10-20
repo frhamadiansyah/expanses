@@ -19,6 +19,7 @@ import {
   type RoundAction,
   SCREEN,
   SelectRow,
+  TextRow,
 } from '../../ui/native';
 import { AccountPage } from '../accounts/AccountPage';
 import { BalanceCard } from '../accounts/BalanceCard';
@@ -133,6 +134,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [all, setAll] = useState(false);
+  const [typingPlace, setTypingPlace] = useState(false);
+  const allValues = useAssetValues();
 
   const kind = profile.data?.assetKind ?? null;
   const unitKind = profile.data?.unitKind ?? null;
@@ -170,6 +173,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
   const owedMinor = boughtWith ? Math.abs(balances.data?.[boughtWith.accountId] ?? 0) : 0;
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
+  // The other funds it can be the same fund as: every other fund holding, wherever it is held.
+  const fundIds = new Set((profiles.data ?? []).filter((row) => row.assetKind === 'fund').map((row) => row.accountId));
+  const otherFunds = (allValues.data ?? []).filter((row) => row.accountId !== accountId && fundIds.has(row.accountId));
   const canArchive = value.valueMinor === 0 && unitsMicro === 0 && (!byMoney || value.costMinor === 0);
   const holding = { accountId, name: value.name, currency };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
@@ -495,7 +501,47 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               search={{ link: accountId }}
             />
           ) : null,
-          (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
+          // A fund (spec 2026-10-19-fund-by-amount): held at a broker, a bank or a fund app — or a place typed by name.
+          kind === 'fund' ? (
+            <SelectRow
+              key="held"
+              label="Held at"
+              value={stock.link?.brokerAccountId ?? (typingPlace || profile.data?.coretaxFields.inst?.trim() ? 'typed' : 'none')}
+              onChange={(e) => {
+                const picked = e.target.value;
+                setTypingPlace(picked === 'typed');
+                void stock.keptAt(picked === 'none' || picked === 'typed' ? '' : picked);
+              }}
+            >
+              <option value="none">Not set</option>
+              {stock.places.map((place) => (
+                <option key={place.id} value={place.id}>
+                  {place.name}
+                </option>
+              ))}
+              <option value="typed">Somewhere not in the app</option>
+            </SelectRow>
+          ) : null,
+          kind === 'fund' && !stock.link?.brokerAccountId && profile.data && (typingPlace || profile.data.coretaxFields.inst?.trim()) ? (
+            <TextRow
+              key="held-name"
+              label="Place name"
+              defaultValue={profile.data.coretaxFields.inst ?? ''}
+              placeholder="Bibit, Bank Mandiri…"
+              onBlur={(e) => void stock.placeName(profile.data!, e.target.value)}
+            />
+          ) : null,
+          kind === 'fund' && otherFunds.length > 0 ? (
+            <SelectRow key="same-fund" label="Same fund as" value={stock.samePlaces[0] ?? 'none'} onChange={(e) => void stock.sameFund(e.target.value === 'none' ? '' : e.target.value)}>
+              <option value="none">No other place</option>
+              {otherFunds.map((other) => (
+                <option key={other.accountId} value={other.accountId}>
+                  {other.name}
+                </option>
+              ))}
+            </SelectRow>
+          ) : null,
+          kind !== 'fund' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one.
             <SelectRow key="kept" label="Kept at" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
               <option value="none">No broker</option>

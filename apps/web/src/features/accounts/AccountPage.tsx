@@ -208,6 +208,9 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
         <MaturitySettings accountId={account.id} currency={account.currency!} />
       ) : account.subtype === 'fund' ? (
         <HeldAtBroker brokerAccountId={account.id} />
+      ) : account.subtype === 'bank' || account.subtype === 'savings' || account.subtype === 'ewallet' ? (
+        // A mutual fund may be held at a bank or a fund app (spec 2026-10-19-fund-by-amount): listed here when one is.
+        <HeldAtBroker brokerAccountId={account.id} header="Funds held here" />
       ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
@@ -577,7 +580,7 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
  * What this broker keeps: every holding whose Kept at names this fund account, with how much of it and what it is
  * worth, each opening its own page. Nothing is drawn while it keeps nothing.
  */
-function HeldAtBroker({ brokerAccountId }: { brokerAccountId: string }) {
+function HeldAtBroker({ brokerAccountId, header = 'Held at this broker' }: { brokerAccountId: string; header?: string }) {
   const links = useHoldingLinks();
   const securities = useSecurities();
   const values = useAssetValues();
@@ -594,13 +597,19 @@ function HeldAtBroker({ brokerAccountId }: { brokerAccountId: string }) {
   });
   if (rows.length === 0) return null;
   return (
-    <InsetGroup header="Held at this broker">
+    <InsetGroup header={header}>
       {rows.map((row) => (
         <InsetRow
           key={row.id}
           testId="broker-holding"
           title={row.title}
-          subtitle={row.units > 0 ? quantityLabel(row.units, row.unitKind, row.lotSize) : 'Sold'}
+          subtitle={
+            row.units > 0
+              ? quantityLabel(row.units, row.unitKind, row.lotSize)
+              : row.value.mode === 'amount' && (row.value.valueMinor > 0 || row.value.costMinor > 0)
+                ? 'Mutual fund'
+                : 'Sold'
+          }
           value={<Money minor={row.value.valueMinor} currency={row.value.currency} />}
           valueTone="ink"
           to="/net-worth/assets/$accountId"

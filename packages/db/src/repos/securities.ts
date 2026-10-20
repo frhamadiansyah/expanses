@@ -154,10 +154,21 @@ export async function linkHoldingTx(
       .from(accounts)
       .where(and(eq(accounts.id, brokerAccountId), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.archivedAt)));
     if (!broker) throw new AssetError('Broker account not found in this workspace');
-    // The owner's ruling: a broker is its cash account, subtype `fund`. A pocket is its parent's money in one
-    // currency, so the parent is the broker and the pocket never is.
-    if (broker.kind !== 'asset' || broker.subtype !== 'fund') {
-      throw new AssetError('A broker is the cash account kept there — choose a fund account');
+    /* The owner's ruling: a broker is its cash account, subtype `fund`. A mutual fund is also held at a bank or a fund
+       app (spec 2026-10-19-fund-by-amount, "Held at"), so a fund may name a bank, a savings or a digital-wallet
+       account as well. A pocket is its parent's money in one currency, so the parent is the place and the pocket
+       never is. */
+    const [profile] = await tx
+      .select({ assetKind: assetProfiles.assetKind })
+      .from(assetProfiles)
+      .where(and(eq(assetProfiles.accountId, input.accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+    const places: readonly string[] = profile?.assetKind === 'fund' ? HELD_AT_SUBTYPES : ['fund'];
+    if (broker.kind !== 'asset' || !places.includes(broker.subtype)) {
+      throw new AssetError(
+        profile?.assetKind === 'fund'
+          ? 'A fund is held at a broker, a bank or a fund app — choose one of those accounts'
+          : 'A broker is the cash account kept there — choose a fund account',
+      );
     }
     if (broker.parentId) {
       const [parent] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, broker.parentId), eq(accounts.workspaceId, ws.workspaceId)));
@@ -222,6 +233,45 @@ export async function linkHoldingTx(
 }
 
 /** The same, recording the security first when it is handed as a new one. One database transaction. */
+/** The accounts a mutual fund can be held at: a broker's cash, a bank, a savings account or a fund app's wallet. */
+export const HELD_AT_SUBTYPES: readonly string[] = ['fund', 'bank', 'savings', 'ewallet'];
+
+/**
+ * The same fund at two places (spec 2026-10-19-fund-by-amount): this holding joins `otherAccountId` under one fund —
+ * the other's security, or one made for it from its name — so the fund reads as one total with each place below it.
+ * Null takes this holding out of any fund it shared. Each place keeps its own money, value and trades.
+ */
+export function sameFundAs(database: Database, ws: WorkspaceContext, accountId: string, otherAccountId: string | null): Promise<void> {
+  return database.transaction(async (tx) => {
+    if (otherAccountId === null) {
+      await linkHoldingTx(tx, ws, { accountId, securityId: null });
+      return;
+    }
+    if (otherAccountId === accountId) throw new AssetError('Choose another holding of the same fund');
+    const [other] = await tx
+      .select({ name: accounts.name, currency: accounts.currency })
+      .from(accounts)
+      .where(and(eq(accounts.id, otherAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!other) throw new AssetError('That holding is not in this workspace');
+    const [link] = await tx.select({ securityId: holdingLinks.securityId }).from(holdingLinks).where(eq(holdingLinks.accountId, otherAccountId));
+    let securityId = link?.securityId ?? null;
+    if (!securityId) {
+      const made = await ensureSecurityTx(tx, ws, {
+        ticker: null,
+        name: other.name,
+        market: '',
+        currency: other.currency ?? ws.baseCurrency,
+        lotSize: null,
+        kind: 'other',
+        source: 'owner',
+      });
+      securityId = made.id;
+      await linkHoldingTx(tx, ws, { accountId: otherAccountId, securityId });
+    }
+    await linkHoldingTx(tx, ws, { accountId, securityId });
+  });
+}
+
 export function linkHolding(
   database: Database,
   ws: WorkspaceContext,
