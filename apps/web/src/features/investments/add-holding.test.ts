@@ -70,7 +70,7 @@ describe('planAddHolding', () => {
     const draft = { ...emptyHoldingDraft('2026-09-21', 'USD'), quantity: '10', price: '123,457', paidFrom: OPENING, charged: '' };
     const plan = planAddHolding({ kind: 'listed', security: aapl }, draft, '2026-09-21', 'IDR');
     expect(plan.buy).toMatchObject({ grossMinor: 123_457, cashAccountId: null });
-    expect(plan.buy.cashMinor).toBeUndefined();
+    expect(plan.buy!.cashMinor).toBeUndefined();
   });
   it('refuses a date after today and a nameless new broker', () => {
     const draft = { ...emptyHoldingDraft('2026-09-21', 'IDR'), quantity: '1', price: '1', paidFrom: OPENING };
@@ -151,5 +151,13 @@ describe('landsOnNote (m6, m8)', () => {
   it('says nothing for a buy kept at a broker, or a new one', () => {
     expect(landsOnNote('stockbit-id', ['a', 'b'], accounts, positions, 'BBCA')).toBeNull();
     expect(landsOnNote(NEW_BROKER, ['a'], accounts, positions, 'BBCA')).toBeNull();
+  });
+});
+
+describe('planAddHolding with nothing bought yet', () => {
+  it('adds the holding alone when no purchase is typed, and asks the day of one that is', () => {
+    const empty = { ...emptyHoldingDraft('', 'IDR'), brokerChoice: NO_BROKER_CHOICE };
+    expect(planAddHolding({ kind: 'listed', security: bbca }, empty, '2026-09-21', 'IDR')).toMatchObject({ broker: null, buy: null });
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...empty, quantity: '10', price: '8.750' }, '2026-09-21', 'IDR')).toThrow('Choose when it was bought');
   });
 });

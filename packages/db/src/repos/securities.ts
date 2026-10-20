@@ -324,8 +324,12 @@ export interface AddHoldingInput {
   security: { id: string } | NewSecurity;
   /** Where it is kept: a money account already open, a broker account to open now, or no broker. */
   broker: { accountId: string } | { name: string; currency: string } | null;
-  /** The buy: the charged amount on it (`withCharged`), the rates `tradeRatesForSave` worked out, and its goal and set-aside answer. */
-  buy: Omit<RecordTradeInput, 'accountId' | 'kind'>;
+  /**
+   * The buy: the charged amount on it (`withCharged`), the rates `tradeRatesForSave` worked out, and its goal and
+   * set-aside answer. Null adds the holding with nothing bought yet, as Add asset adds a fund with no purchase: its
+   * buys are recorded on it after.
+   */
+  buy: Omit<RecordTradeInput, 'accountId' | 'kind'> | null;
 }
 
 export interface AddHoldingResult {
@@ -334,7 +338,8 @@ export interface AddHoldingResult {
   brokerAccountId: string | null;
   /** False when the buy went on a holding of this security at this broker that already existed. */
   created: boolean;
-  trade: TradeResult;
+  /** Null when nothing was bought. */
+  trade: TradeResult | null;
 }
 
 /**
@@ -421,7 +426,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
       await linkHoldingTx(tx, ws, { accountId: holding.id, securityId: security.id, brokerAccountId });
       accountId = holding.id;
     }
-    const trade = await writeTradeTx(tx, ws, { ...input.buy, accountId, kind: 'buy' }, null);
+    const trade = input.buy ? await writeTradeTx(tx, ws, { ...input.buy, accountId, kind: 'buy' }, null) : null;
     return { accountId, securityId: security.id, brokerAccountId, created: existing === null, trade };
   });
 }

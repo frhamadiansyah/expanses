@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { expectBalance, startReport } from './deposit-maturity';
 import { addHoldingFlow, BBCA_BY_HAND, setForeignList } from './securities';
-import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
+import { addMoneyAccount } from './set-aside';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -10,24 +10,25 @@ test.beforeEach(({ page }) => {
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-test('1–4: BBCA at two brokers is one stock, one price values both, and the bank moved by exactly what was paid', async ({ page }) => {
+test('1–4: BBCA at two brokers is one stock, one price values both, and adding what was owned before moves no bank', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
   await expect(page.getByLabel('Total')).toHaveText(/8\.750\.000$/); // 10 lots × 100 × 8.750
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await expectBalance(page, 'BCA Tahapan', '41.236.875'); // 50.000.000 − 8.750.000 − 13.125
+  // Past purchases go against Opening Balances, as Add asset's do: the bank is where it was.
+  await expectBalance(page, 'BCA Tahapan', '50.000.000');
 
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Mandiri Sekuritas' }, quantity: '5', price: '9.400', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await expectBalance(page, 'BCA Tahapan', '41.236.875');
+  await expectBalance(page, 'BCA Tahapan', '50.000.000');
 
   // BBCA is held now, so it is picked from You hold, and Stockbit says what it holds.
   await addHoldingFlow(page, { search: 'BBCA', broker: 'Stockbit · held 1.000', quantity: '5', price: '9.000', paidFrom: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await expectBalance(page, 'BCA Tahapan', '36.736.875'); // − 500 × 9.000
+  await expectBalance(page, 'BCA Tahapan', '50.000.000');
 
   await page.goto('/net-worth/investments');
   const bbca = page.getByTestId('stock-row').filter({ hasText: 'BBCA' });
@@ -46,17 +47,16 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and the ba
   await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('19.550.000'); // 2.000 × 9.775
 });
 
-test('5: a free user names AAPL, pays in rupiah, and the rupiah cost is exactly what left', async ({ page }) => {
+test('5: a free user names AAPL owned before, and its rupiah cost is filed at the day\u2019s rate it asks for', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
+  // No rate for the day on this device: the first save asks for it, and the cost is 10 × 182,50 at 15.800.
   await addHoldingFlow(page, {
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
+    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', rate: '15800',
   });
-  await expect(page.getByLabel('Rate that day')).toHaveText('15.800 IDR per 1 USD');
-  await expect(page.getByLabel('Cost in IDR')).toHaveText(/28\.835\.000$/);
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
-  await expectBalance(page, 'BCA Tahapan', '21.165.000');
+  await expectBalance(page, 'BCA Tahapan', '50.000.000');
 });
 
 test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it myself', async ({ page }) => {
@@ -136,7 +136,7 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await addHoldingFlow(page, {
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
+    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', rate: '15800',
   });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
@@ -146,20 +146,6 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
   const aapl = page.getByRole('row').filter({ hasText: 'Saham AAPL — Interactive Brokers' });
   await expect(aapl).toContainText('28.835.000');
   await expect(aapl).not.toContainText('182.500');
-});
-
-test('the Add a holding form is a set-aside door: a buy that takes promised money asks which goal paid', async ({ page }) => {
-  await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
-  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '6.800', paidFrom: 'Jenius (IDR)' });
-  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  const add = page.getByRole('button', { name: 'Add holding' });
-  await expect(add).toBeDisabled();
-  await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
-  await page.getByRole('button', { name: 'No — borrowing from it' }).click();
-  await add.click();
-  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await page.goto('/goals');
-  await expect((await goalCard(page, 'Emergency fund')).getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 
 test('a buy with no broker names the holding it adds to — and, with two, which one and how to reach the other', async ({ page }) => {
@@ -250,7 +236,7 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   // One page, as Add asset: the ticker is its first row, and the rest are there before one is chosen.
   await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('Choose');
   await expect(page.getByLabel('Broker', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Paid from')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Bought/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add holding' })).toBeDisabled();
   await page.getByLabel('Price per share', { exact: true }).pressSequentially('8750');
 
