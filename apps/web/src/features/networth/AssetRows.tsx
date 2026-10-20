@@ -135,7 +135,7 @@ export function AcquiredRow({ label = 'Acquired', value, onChange, position }: G
             <Wheel label="Day" items={days} value={draft.day} onChange={(day) => change({ day })} disabled={draft.month === ''} />
           </div>
           <p className="px-[16px] pb-[12px] text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-            Leave month and day at — if you only know the year.
+            Leave month and day at — when only the year is known.
           </p>
         </Sheet>
       )}

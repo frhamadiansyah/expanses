@@ -11,7 +11,7 @@ import { CashRow, CashSheet, HoldingRow, MoreOptionsRow, ResultRow, signedMinor,
 const BUY_INFO =
   "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade.";
 const MONEY_SELL_INFO =
-  "A sell takes out the same share of the money you put in as it takes of the fund's value, and the rest is your gain. All takes everything.";
+  "A sell takes out the same share of the money put in as it takes of the fund's value; the rest is gain. All takes everything.";
 const SELL_INFO =
   "All sells every unit; its value is then units × NAV rather than a typed amount. A money market fund usually pays out within a few business days.";
 

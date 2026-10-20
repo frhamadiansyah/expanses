@@ -88,7 +88,7 @@ export function ICloudGroup({ blocked }: { blocked: boolean }) {
         <>
           <Panel header="New: iCloud backup">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-              cicis can save an encrypted copy to your iCloud Drive every day, so a new iPhone can pick up where this one left off.
+              cicis can save an encrypted copy to iCloud Drive every day, so a new iPhone can pick up where this one left off.
             </p>
           </Panel>
           <InsetGroup>
