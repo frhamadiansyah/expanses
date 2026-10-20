@@ -11,6 +11,12 @@ import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './cat
  * Where the circle at the top left goes, named: the list this screen was opened from. A screen reached from two
  * places cannot just say "Back" — and when there is still a step to undo inside this screen, Back does that first.
  */
+/** Where the list stands: the family open, and what is typed in its search. */
+export interface PickerPlace {
+  family?: OwnableFamily;
+  query?: string;
+}
+
 const BACK_TO: Record<OwnableFlow, string> = { account: 'Accounts', asset: 'Assets', debt: 'Liabilities' };
 
 /**
@@ -30,6 +36,7 @@ export function OwnablePicker({
   moreHint,
   chosen,
   onChoose,
+  start,
   handOver = [],
   confirm,
   children,
@@ -42,7 +49,10 @@ export function OwnablePicker({
   moreHint?: (familyLabel: string) => ReactNode;
   /** The item id whose form is open, or null while nobody has chosen. */
   chosen: string | null;
-  onChoose: (id: string | null) => void;
+  /** `at` is where the list stood when the row was chosen, for a caller that leaves this screen to come back to it. */
+  onChoose: (id: string | null, at?: PickerPlace) => void;
+  /** Where the list opens: the place a screen left from, when Back returns to it. */
+  start?: PickerPlace;
   handOver?: HandOverRow[];
   /** The chosen item's form. */
   children?: ReactNode;
@@ -54,13 +64,13 @@ export function OwnablePicker({
 }) {
   const phone = usePhone();
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(start?.query ?? '');
   /*
    * On a phone the search box stands down and a corner takes its place, the way Cashflow's does: the field is in the
    * bar where a thumb already is, and the list below it never loses its first row to a control nobody is using.
    */
-  const [showSearch, setShowSearch] = useState(false);
-  const [family, setFamily] = useState<OwnableFamily | null>(null);
+  const [showSearch, setShowSearch] = useState(Boolean(start?.query));
+  const [family, setFamily] = useState<OwnableFamily | null>(start?.family ?? null);
   const [more, setMore] = useState(false);
 
   const searching = query.trim() !== '';
@@ -93,7 +103,7 @@ export function OwnablePicker({
       setFamily(id as OwnableFamily);
       return;
     }
-    onChoose(id);
+    onChoose(id, { family: family ?? undefined, query: query || undefined });
   }
 
   /*
