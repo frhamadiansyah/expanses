@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { Sheet } from '../../app/Sheet';
+import { useBack } from '../../app/BackHeader';
 import { PushedTitle, SCREEN } from '../../ui/native';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { usePositions } from '../networth/queries';
@@ -63,9 +64,11 @@ export function AddHoldingPage() {
     }
   }
 
-  const leave = () => void navigate(link ? { to: '/net-worth/assets/$accountId', params: { accountId: link } } : { to: '/net-worth/investments' });
+  // Opened from New asset or from Investments, Back returns to whichever it was; opened cold, to Investments.
+  const goBack = useBack('/net-worth/investments');
+  const leave = () => (link ? void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: link } }) : goBack());
   const back = () => (link && step === 'name' ? setStep('search') : leave());
-  const backLabel = link ? (step === 'name' ? 'Search' : 'Asset') : 'Investments';
+  const backLabel = link ? (step === 'name' ? 'Search' : 'Asset') : 'Back';
   return (
     <div className={SCREEN}>
       <PushedTitle

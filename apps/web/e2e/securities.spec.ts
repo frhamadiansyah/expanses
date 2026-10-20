@@ -170,6 +170,25 @@ test('every way in reaches Investments and Add a holding: Buy & sell, the Assets
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   // The form opens first, as every other asset does: its first row is the ticker.
   await expect(page.getByRole('button', { name: /^Ticker/ })).toBeVisible();
+  // Back returns to the list it was chosen from, still searched — not to Investments.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/new/);
+  await expect(page.getByPlaceholder('Search everything that can be owned')).toHaveValue('Listed shares');
+
+  // Through the Investments family, Back reopens that family.
+  await page.getByPlaceholder('Search everything that can be owned').fill('');
+  await page.getByRole('button', { name: /^Investments/ }).click();
+  await page.getByRole('button', { name: 'Listed shares' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Listed shares' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mutual fund' })).toBeVisible();
+
+  // From Investments, Back returns to Investments.
+  await page.goto('/net-worth/investments');
+  await page.getByRole('link', { name: 'Add a holding' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments$/);
 });
 
 test.describe('with the list unreadable', () => {

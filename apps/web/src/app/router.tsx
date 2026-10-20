@@ -38,6 +38,7 @@ import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
+import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
@@ -241,7 +242,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/none', component: () => <BrokerPage none /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/$accountId', component: () => <BrokerPage /> }),
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage, validateSearch: addAssetSearch }),
   // Every share and fund held, one price box each, and IDX's daily file to fill the shares.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/prices', component: UpdatePricesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
