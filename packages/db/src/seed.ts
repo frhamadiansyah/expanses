@@ -20,7 +20,7 @@ export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, type DefaultCategory } from 
 export const DEFAULT_CATEGORY_SETS: readonly { name: string; categories: readonly string[] }[] = [
   {
     name: 'Holiday',
-    categories: ['Flights', 'Lodging', 'Activities', 'Transport', 'Meals', 'Shopping', 'Souvenirs', 'Miscellaneous', 'Business H', 'Intercity', 'Photo'],
+    categories: ['Flights', 'Lodging', 'Activities', 'Transport', 'Meals', 'Shopping', 'Souvenirs', 'Miscellaneous', 'Intercity', 'Photo'],
   },
   {
     name: 'Newborn',
@@ -45,7 +45,6 @@ export const SET_CATEGORY_ICONS: Readonly<Record<string, string>> = {
   Shopping: 'shopping-bag',
   Souvenirs: 'gift',
   Miscellaneous: 'circle-ellipsis',
-  'Business H': 'briefcase',
   Intercity: 'bus',
   Photo: 'camera',
   Postpartum: 'heart-pulse',
@@ -69,3 +68,9 @@ export const SET_CATEGORY_ICONS: Readonly<Record<string, string>> = {
   'Lighting & Sockets': 'lightbulb',
   Landscape: 'plant-pot',
 };
+
+/**
+ * Default set categories taken out of the defaults after workspaces were given them. Removed on open where nothing
+ * uses them — no spending, plan, budget, bill or rule — and left exactly as they are where something does.
+ */
+export const RETIRED_SET_CATEGORIES: readonly { set: string; name: string }[] = [{ set: 'Holiday', name: 'Business H' }];

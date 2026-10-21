@@ -8,6 +8,7 @@ import {
   type Database,
   ensureCategoryKeys,
   ensureDefaultCategorySets,
+  retireDefaultSetCategories,
   inBook,
   listWorkspaces,
   migrate,
@@ -100,6 +101,7 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
   // Upkeep too: the sets are given in one transaction, so a failure leaves none half-made and the next open tries again.
   try {
     await ensureDefaultCategorySets(database, ws);
+    await retireDefaultSetCategories(database, ws);
   } catch (error) {
     console.warn('Default category sets could not be added; trying again at the next open', error);
   }

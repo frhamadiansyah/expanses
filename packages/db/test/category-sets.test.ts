@@ -41,7 +41,7 @@ describe('the sets a workspace starts with', () => {
 
     const holiday = await listSetCategories(current.database, current.ws, (await setNamed(current, 'Holiday')).id);
     expect(holiday.map((row) => row.name)).toEqual([
-      'Flights', 'Lodging', 'Activities', 'Transport', 'Meals', 'Shopping', 'Souvenirs', 'Miscellaneous', 'Business H', 'Intercity', 'Photo',
+      'Flights', 'Lodging', 'Activities', 'Transport', 'Meals', 'Shopping', 'Souvenirs', 'Miscellaneous', 'Intercity', 'Photo',
     ]);
     const renovation = await listSetCategories(current.database, current.ws, (await setNamed(current, 'Renovation')).id);
     expect(renovation[0]!.name).toBe('Design & Planning');
