@@ -1,10 +1,9 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus, UserPlus } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { ChevronRight, Plus, UserPlus } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { usePhone } from '../../app/use-phone';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
@@ -31,7 +30,7 @@ import { buildRows } from '../transactions/list-model';
 import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { PlanCard } from './PlanCard';
-import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
+import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, planCardRows, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
 import { ShareEventSheet } from './ShareEventSheet';
@@ -148,8 +147,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
   const { ws: openedIn } = useSearch({ from: '/events/$eventId' });
   const { database, ws } = useApp();
-  // Which shell is drawing this page. The history's item pills are capped on the phone and whole on the desktop.
-  const phone = usePhone();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const events = useEvents();
@@ -310,18 +307,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     if (next !== null) requestAnimationFrame(() => historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
-  /*
-   * What each payment in the history answered, read off the plan rather than worked out again here.
-   *
-   * `purchase` is the item's side of the link and `unplanned` the plan's own leftover rows — the very rows the plan
-   * screen prints — so a history row says what the plan says, in the plan's words, and the two cannot drift apart.
-   */
-  const answers = new Map<string, string[]>();
-  for (const item of (data?.lines ?? []).flatMap((line) => line.items)) {
-    const id = item.purchase?.transactionId;
-    if (id) answers.set(id, [...(answers.get(id) ?? []), item.name]);
-  }
-  const leftovers = new Set((data?.lines ?? []).flatMap((line) => line.unplanned).map((row) => row.transactionId));
 
   // No longer gated on a category set: an event without one plans against the monthly tree, and it may record
   // spending against that same tree. Gating it left such an event able to plan and unable to pay. It opens the
@@ -486,12 +471,74 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
               ))}
             </div>
           )}
+
+          {/*
+           * Against the plan's own rows, in the same card and the same shape as Where it went's: each planned category
+           * with its share of its plan spent, tappable to read its payments below, then the ways into the plan itself.
+           */}
+          {onPlan && data && (
+            <div
+              data-testid="event-plan-card"
+              className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]"
+            >
+              {planCardRows(data).map((row) => (
+                <button
+                  type="button"
+                  key={row.categoryId ?? 'none'}
+                  onClick={() => pick(row.categoryId ?? 'none')}
+                  aria-pressed={picked === (row.categoryId ?? 'none')}
+                  data-testid="event-plan-row"
+                  className={cx(
+                    'ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left',
+                    picked === (row.categoryId ?? 'none') && 'bg-[var(--ph-fill)]',
+                  )}
+                >
+                  <ShareLine
+                    colour={chartColour(row.categoryId ?? 'none', chosenColours)}
+                    name={row.categoryId === null ? row.name : planName(row.categoryId)}
+                    amountMinor={Math.max(0, row.actualMinor)}
+                    wholeMinor={row.plannedMinor}
+                    currency={ws.baseCurrency}
+                    chevron={false}
+                    figure={
+                      <span className="shrink-0 text-[13px]">
+                        <Money minor={Math.max(0, row.actualMinor)} currency={ws.baseCurrency} className="font-semibold" />{' '}
+                        <span className="text-[var(--ph-ink-3)]">of</span>{' '}
+                        <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="text-[var(--ph-ink-3)]" />
+                      </span>
+                    }
+                  />
+                  <span className="mt-1 ml-[22px] text-[12.5px] text-[var(--ph-ink-3)]">{row.subline}</span>
+                </button>
+              ))}
+              <div data-testid="open-plan">
+                <Link
+                  to="/events/$eventId/plan"
+                  params={{ eventId }}
+                  search={{ ws: openTab ?? undefined }}
+                  className="ph-focus-inset -mx-[13px] flex min-h-12 items-center px-[13px] text-[15px] font-semibold text-[var(--ph-tint)]"
+                >
+                  <span className="flex-1">See the whole plan</span>
+                  <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
+                </Link>
+              </div>
+              <Link
+                to="/events/$eventId/plan/new"
+                params={{ eventId }}
+                search={{ ws: openTab ?? undefined }}
+                className="ph-focus-inset -mx-[13px] flex min-h-12 items-center px-[13px] text-[15px] text-[var(--ph-ink)]"
+              >
+                <span className="flex-1">Add an item</span>
+                <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
+              </Link>
+            </div>
+          )}
         </Panel>
       )}
 
       {/* Between the chart and the suggestions: the plan is a card here, and its own screen is one tap away. */}
-      {/* With a plan, the card belongs to Against the plan, the page that reads it; without one it is the way to start one. */}
-      {data && (!hasPlan || onPlan) && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
+      {/* With a plan, its rows are in the chart's own card under Against the plan; without one, this is the way to start one. */}
+      {data && !hasPlan && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (
         <div data-testid="event-suggestions">
@@ -546,14 +593,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                   {txs.map((tx) => {
                     const expense = tx.entries.find((entry) => entry.accountKind === 'expense');
                     const paidWith = tx.entries.find((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability');
-                    /*
-                     * What this payment answered, in the plan's own words: one pill per item it settled, and an
-                     * amber one when it still has something left on it that no item claims. A receipt that bought
-                     * two things and left a little over says all three, which is exactly what it did — and a
-                     * payment nobody planned at all says only "not planned", which is the honest whole of it.
-                     */
-                    const answered = answers.get(tx.id) ?? [];
-                    const leftover = leftovers.has(tx.id);
                     // The same row every other transaction list draws, so this history gains the gestures too:
                     // tap it for its receipt, tap its circle to re-file it. Nothing here deletes or edits in
                     // place — an event has never offered either, and a new way in inherits every refusal.
@@ -576,45 +615,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                             {tx.description}
                             {paidWith && ` · ${paidWith.accountName}`}
                           </>
-                        }
-                        under={
-                          (answered.length > 0 || leftover) && (
-                            <span className="mt-1 flex flex-wrap items-center gap-1">
-                              {/*
-                               * On a phone, at most three and then a count: a shopping trip answering eight items
-                               * printed eight pills that wrapped, and the row grew taller than the day card around
-                               * it. That is a 390px problem and nothing else — a desktop day card has room for all
-                               * eight — so the desktop keeps every pill and the whole of every name. Capping both
-                               * shells for one shell's sake takes the answer away from the wider one, and the wide
-                               * screen is never made poorer to fix the narrow one.
-                               *
-                               * `usePhone` rather than a `md:` class, because this is which pills exist and not how
-                               * they look: hidden by CSS they are still in the page, where a screen reader reads out
-                               * the three the eye is being spared. It is the same mechanism the shell itself uses.
-                               *
-                               * Keyed by position as well as name, because two items on one plan may share a name —
-                               * "Nappies" bought twice is two items, and two pills keyed alike is one pill React
-                               * drops.
-                               */}
-                              {(phone ? answered.slice(0, 3) : answered).map((name, at) => (
-                                <span
-                                  key={`${name}-${at}`}
-                                  className={cx(
-                                    'truncate rounded-full bg-[var(--ph-fill)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ph-ink-2)]',
-                                    // Bounded by the row either way, so nothing overflows; the phone's bound is tighter.
-                                    phone ? 'max-w-[10rem]' : 'max-w-full',
-                                  )}
-                                >
-                                  {name}
-                                </span>
-                              ))}
-                              {phone && answered.length > 3 && (
-                                <span className="rounded-full bg-[var(--ph-fill)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ph-ink-2)]">{`+${answered.length - 3} more`}</span>
-                              )}
-                              {/* In the warning ink the plan screen names the same fact in, rather than an amber pill. */}
-                              {leftover && <span className="text-[11px] font-semibold text-[var(--ph-warn)]">not planned</span>}
-                            </span>
-                          )
                         }
                       />
                     );
