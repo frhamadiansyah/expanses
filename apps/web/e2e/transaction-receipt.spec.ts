@@ -77,6 +77,8 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   page.on('dialog', (dialog) => void dialog.accept());
 
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
+  // Opening balances are out of the list unless asked for; this test opens one, so it asks.
+  await page.evaluate(() => localStorage.setItem('transactions-show-opening', '1'));
 
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');

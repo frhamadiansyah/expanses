@@ -20,7 +20,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Landmark, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -130,6 +130,9 @@ function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLab
   );
 }
 
+
+/** Where this device remembers whether opening balances and past purchases are shown in the list. */
+const SHOW_OPENING_KEY = 'transactions-show-opening';
 export function TransactionsPage() {
   const { database, ws, workspaceName } = useApp();
   const invalidate = useInvalidateAll();
@@ -151,6 +154,22 @@ export function TransactionsPage() {
   const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
+  // Remembered on this device: whether opening balances and past purchases are in the list. Off unless asked for.
+  const [showOpening, setShowOpeningState] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_OPENING_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setShowOpening = (on: boolean) => {
+    setShowOpeningState(on);
+    try {
+      localStorage.setItem(SHOW_OPENING_KEY, on ? '1' : '0');
+    } catch {
+      // No storage: it holds for this visit.
+    }
+  };
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
   const [adding, setAdding] = useState(false);
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
@@ -333,7 +352,7 @@ export function TransactionsPage() {
     if (needsCategoryShown && needCategoryCount === 0) hideNeedsCategory();
     // `hideNeedsCategory` is rebuilt every render; what decides is the count reaching nought while the filter is on.
   }, [needsCategoryShown, needCategoryCount]);
-  const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
+  const shown = sortRows(filterRows(rows, { ...filters, month, showOpening }, accounts), sort);
   const sum = totals(shown);
   /*
    * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
@@ -1110,6 +1129,21 @@ export function TransactionsPage() {
                 <span className="flex-1">Select</span>
               </button>
             )}
+            {/* How the books were started rather than money that moved: out of the list unless asked for. */}
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={showOpening}
+              onClick={() => {
+                setShowFilters(false);
+                setShowOpening(!showOpening);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
+            >
+              <Landmark size={17} aria-hidden className="text-slate-500" />
+              <span className="flex-1">Show opening balances</span>
+              {showOpening && <Check size={16} aria-hidden className="text-emerald-700" />}
+            </button>
           </div>
         </>
       )}
@@ -1200,6 +1234,10 @@ export function TransactionsPage() {
             <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
               <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
               Show deleted
+            </label>
+            <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
+              <input type="checkbox" checked={showOpening} onChange={(event) => setShowOpening(event.target.checked)} />
+              Show opening balances
             </label>
             {narrowed && (
               <button type="button" onClick={clearAll} className="px-1.5 py-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
