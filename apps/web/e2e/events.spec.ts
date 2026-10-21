@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 // The wallet, the spending and the event are shared with the plan specs, which drive the same three screens.
-import { addEvent, addWallet, fillItem, planFor, spend } from './event-plan';
+import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard } from './event-plan';
 import { addCap, budgetTab, monthSoFar } from './budget';
 
 test.beforeEach(({ page }) => {
@@ -24,6 +24,7 @@ test('an event is planned as a list of things to buy, and suggests what to tag',
   await suggestions.getByRole('button', { name: 'Tag Hampers' }).click();
 
   // Tagged but unclaimed: it is spending nobody planned, and the event is over what it meant to spend.
+  await showPlanCard(page);
   await expect(page.getByTestId('event-plan-card')).toContainText('3.000.000');
   await page.getByTestId('event-sheet').getByRole('button', { name: 'Against the plan' }).click();
   await expect(page.getByTestId('event-sheet')).toContainText('Over the plan by');
@@ -56,4 +57,21 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   await monthSoFar(page);
   await expect(page.getByTestId('month-spent')).toContainText('Rp 0');
   expect(await page.getByTestId('left-over-actual').textContent()).toBe(leftOverBefore);
+});
+
+test('a category on Where it went filters the history to its own payments, and Show all brings the rest back', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Bandung weekend');
+  await recordIntoEvent(page, { description: 'Kopi Aroma', amount: '120000', category: 'Food and beverage' });
+  await recordIntoEvent(page, { description: 'Parkir Braga', amount: '30000', category: 'Groceries' });
+  const history = page.getByTestId('event-history');
+  await expect(history).toHaveCount(2);
+
+  await page.getByTestId('event-category-row').filter({ hasText: 'Groceries' }).click();
+  await expect(history).toHaveCount(1);
+  await expect(history).toContainText('Parkir Braga');
+  await expect(page.getByRole('heading', { name: /Transaction history · Groceries/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show all' }).click();
+  await expect(history).toHaveCount(2);
 });
