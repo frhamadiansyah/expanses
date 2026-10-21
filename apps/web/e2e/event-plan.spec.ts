@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
-import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, fillItem, moneyIn, recordIntoEvent, spend, showPlanCard } from './event-plan';
+import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, expectPlanHero, figures, fillItem, moneyIn, recordIntoEvent, spend, showPlanCard } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
 test.beforeEach(({ page }) => {
@@ -139,7 +139,7 @@ test('a plan is a list of things to buy, and a category is only their sum', asyn
   // Six at Rp500.000 is Rp3.000.000, and the arithmetic is shown on the row.
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Check-ups' })).toContainText('6 × Rp 500.000');
   await expect(page.getByTestId('plan-totals')).toContainText('15.000.000');
-  await expect(page.getByTestId('plan-totals')).toContainText('Still to buy');
+  await expect(page.getByTestId('plan-totals')).toContainText('to go');
   // Nowhere on the plan is there a figure to set for a category.
   await expect(page.getByLabel('Planned', { exact: true })).toHaveCount(0);
 });
@@ -219,7 +219,7 @@ test('an edit changes the item it opened, and never quietly makes a second one',
 });
 
 /** Spending that was already tagged is not lost by planning: it reads as "not planned" beside the items. */
-test('what was tagged before the plan sits under its category as not planned', async ({ page }) => {
+test('what was tagged before the plan is not planned: said on the event, and kept off the plan’s checklist', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
   await addEvent(page, 'Lebaran');
@@ -235,11 +235,13 @@ test('what was tagged before the plan sits under its category as not planned', a
   // One item is planned by now, so the card's link has changed from an invitation into a way back in.
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
-  // Label to figure, not two substring assertions that never meet: `toContainText('Not planned')` beside
-  // `toContainText('4.200.000')` passes on a card holding both words anywhere, the figure belonging to any row.
-  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 4.200.000' });
-  // The receipt's own row, in the group headed "Not planned" under its category — not the summary's figure.
-  await expect(page.getByTestId('plan-unplanned').filter({ hasText: 'Hampers' })).toBeVisible();
+  // The plan is the list of things to buy and nothing else: the hampers are not a line on it.
+  await expect(page.getByTestId('plan-item')).toHaveCount(1);
+  await expect(page.getByTestId('plan-item').filter({ hasText: 'Hampers' })).toContainText('Hampers for the office');
+  // Spending nobody planned is said on the event, under the plan's ring, label to figure.
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await showPlanCard(page);
+  await expect.poll(() => figures(page.getByTestId('event-sheet'))).toMatchObject({ 'Not planned': 'Rp 4.200.000' });
 });
 
 /**
@@ -295,10 +297,8 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await expect(page.getByTestId('cover-totals')).toContainText('1.950.000'); // left on this receipt
   await page.getByRole('button', { name: 'Save' }).click();
 
-  await expect(page.getByTestId('plan-totals')).toContainText('Still to buy');
+  await expect(page.getByTestId('plan-totals')).toContainText('All bought');
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('exactly');
-  // The leftover is spending in its category, marked as part of a receipt that did answer something.
-  await expect(page.getByText('part of this receipt')).toBeVisible();
 
   // Unticking one leaves the other, and hands its share back to the receipt.
   await page.getByRole('button', { name: 'Unlink Muslin wraps' }).click();
@@ -408,11 +408,7 @@ test('the figures agree with each other', async ({ page }) => {
    * are both Rp7.200.000 — and a pair of figures that are equal cannot tell which label belongs to which. Here they
    * are Rp0 and the whole plan, so the two are pinned to their own words and a swap of the two fails.
    */
-  await expectKitFigures(page.getByTestId('plan-totals'), {
-    Planned: 'Rp 14.700.000',
-    'Bought so far': 'Rp 0',
-    'Still to buy': 'Rp 14.700.000',
-  });
+  await expectPlanHero(page, { count: '0 of 3 bought', toGo: 'Rp 14.700.000 to go', planned: 'Planned Rp 14.700.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   // Tagged, and nothing on the plan claims it: Rp900.000 of spending nobody planned.
@@ -422,16 +418,7 @@ test('the figures agree with each other', async ({ page }) => {
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await buyItNow(page, { paid: '7200000' });
 
-  const totals = page.getByTestId('plan-totals');
-  await expectKitFigures(totals, {
-    Planned: 'Rp 14.700.000',
-    'Bought so far': 'Rp 7.200.000',
-    'Still to buy': 'Rp 7.200.000',
-    'Difference so far': '−Rp 300.000',
-  });
-  // Outside the grid, under a rule of its own: money spent on the event that no item on the plan claims — and
-  // read as label → figure like every other, rather than as a sweep of the card for that number somewhere in it.
-  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 900.000' });
+  await expectPlanHero(page, { count: '1 of 3 bought', toGo: 'Rp 7.200.000 to go', planned: 'Planned Rp 14.700.000 · Bought Rp 7.200.000 · −Rp 300.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -492,7 +479,6 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
   await page.getByRole('button', { name: 'Save' }).click();
 
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('exactly');
-  await expect(page.getByText('part of this receipt')).toBeVisible();
 
   const after = await ledgerOf(page);
   // Two items now hold a share of that one receipt — so something certainly happened.
@@ -527,24 +513,10 @@ test('money back is named with the rows it adds up, beside spending nobody plann
 
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
-  const totals = page.getByTestId('plan-totals');
   // "Planned so far", not "Planned": a refund answers no item, so the plan is not the whole account of the money.
-  await expectKitFigures(totals, {
-    'Planned so far': 'Rp 3.000.000',
-    'Bought so far': 'Rp 3.000.000',
-    'Still to buy': 'Rp 0',
-    'Difference so far': 'exactly',
-  });
-
-  const back = page.getByTestId('plan-money-back');
-  await expect(back).toContainText('Money back');
-  const [heading, ...rows] = await moneyIn(back);
-  expect(rows).toEqual([400_000, 600_000]); // newest first, as the rows are sorted
-  expect(heading).toBe(rows.reduce((total, row) => total + row, 0));
-
-  // And "Not planned" is the hampers alone — never the hampers with a refund netted off them.
-  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 5.000.000' });
-  await expect(page.getByText('Hampers')).toBeVisible();
+  await expectPlanHero(page, { count: '1 of 1 bought', toGo: 'All bought', planned: 'Planned so far Rp 3.000.000 · Bought Rp 3.000.000 · exactly' });
+  // The plan is the list of things to buy: the hampers and the refunds are not lines on it.
+  await expect(page.getByTestId('plan-item')).toHaveCount(1);
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -619,12 +591,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
     await buyItNow(page, { paid });
     await expect(page.getByRole('button', { name: `Unlink ${name}` })).toBeVisible();
   }
-  await expectKitFigures(page.getByTestId('plan-totals'), {
-    Planned: 'Rp 14.000.000',
-    'Bought so far': 'Rp 13.700.000',
-    'Still to buy': 'Rp 0',
-    'Difference so far': '−Rp 300.000',
-  });
+  await expectPlanHero(page, { count: '2 of 2 bought', toGo: 'All bought', planned: 'Planned Rp 14.000.000 · Bought Rp 13.700.000 · −Rp 300.000' });
 
   // What bought it, on the item's own page: the payment, the day, and the two ways out.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
@@ -641,24 +608,17 @@ test('a purchase can be unticked from either screen, and the item itself removed
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByRole('button', { name: 'Unlink Car seat' }).click();
   await expect(page.getByRole('button', { name: 'Unlink Car seat' })).toHaveCount(0);
-  await expectKitFigures(page.getByTestId('plan-totals'), {
-    Planned: 'Rp 14.000.000',
-    'Bought so far': 'Rp 0',
-    'Still to buy': 'Rp 14.000.000',
-  });
-  // Both payments are still on the event, answering nothing: two rows in the group headed "Not planned".
-  await expect(page.getByTestId('plan-unplanned')).toHaveCount(2);
+  await expectPlanHero(page, { count: '0 of 2 bought', toGo: 'Rp 14.000.000 to go', planned: 'Planned Rp 14.000.000' });
 
   // And removing an item leaves its purchase exactly where it is.
   await page.getByTestId('plan-item').filter({ hasText: 'Car seat' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Remove this item' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Car seat' })).toHaveCount(0);
-  await expectKitFigures(page.getByTestId('plan-totals'), {
-    Planned: 'Rp 7.500.000',
-    'Bought so far': 'Rp 0',
-    'Still to buy': 'Rp 7.500.000',
-  });
-  await expect(page.getByTestId('plan-unplanned')).toHaveCount(2);
+  await expectPlanHero(page, { count: '0 of 1 bought', toGo: 'Rp 7.500.000 to go', planned: 'Planned Rp 7.500.000' });
+  // Both payments are still on the event, answering nothing: the event says so under the plan's ring.
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await showPlanCard(page);
+  await expect.poll(() => figures(page.getByTestId('event-sheet'))).toMatchObject({ 'Not planned': 'Rp 13.700.000' });
 });
 
 /**

@@ -269,6 +269,19 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
 /** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. */
 export async function showPlanCard(page: Page) {
   await expect(page.getByTestId('event-sheet')).toBeVisible();
-  const dot = page.getByRole('button', { name: 'Against the plan', exact: true });
-  if ((await dot.count()) > 0) await dot.click();
+  const card = page.getByTestId('open-plan');
+  // Retried, because a workspace tab just chosen redraws the chart under the click.
+  await expect(async () => {
+    if (!(await card.isVisible())) {
+      const dot = page.getByRole('button', { name: 'Against the plan', exact: true });
+      if ((await dot.count()) > 0) await dot.click();
+    }
+    await expect(card).toBeVisible({ timeout: 1000 });
+  }).toPass();
+}
+
+/** The plan screen's top: how many are bought, what is left to buy, and what was planned (with any difference). */
+export async function expectPlanHero(page: Page, expected: { count: string; toGo: string; planned: string }) {
+  const read = async (id: string) => ((await page.getByTestId(id).textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  await expect.poll(async () => ({ count: await read('plan-count'), toGo: await read('plan-to-go'), planned: await read('plan-planned') })).toEqual(expected);
 }
