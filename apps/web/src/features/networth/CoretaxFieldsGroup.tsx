@@ -12,7 +12,19 @@ import { fieldsToSave } from './settings-model';
  * that does not read well (an NPWP with a digit short) says so under itself and is not saved; the rest still are.
  * Nothing here is required to save: the report is what says what is still missing.
  */
-export function CoretaxFieldsGroup({ profile, section }: { profile: AssetProfileRow; section: CoretaxSection }) {
+export function CoretaxFieldsGroup({
+  profile,
+  section,
+  fallbacks = {},
+}: {
+  profile: AssetProfileRow;
+  section: CoretaxSection;
+  /**
+   * What the report puts in a field left empty, by field key — a holding's Nama institusi is the place it is held at.
+   * Shown in the empty field, so nobody types it twice; what is typed still stands.
+   */
+  fallbacks?: Record<string, { value: string; from: string }>;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [fields, setFields] = useState<Record<string, string>>(profile.coretaxFields);
@@ -20,7 +32,7 @@ export function CoretaxFieldsGroup({ profile, section }: { profile: AssetProfile
 
   const problems = validateCoretaxFields(section, fields);
   // What the report will find missing: counted from what is saved, so it changes when a row has been kept.
-  const missing = missingCoretaxFields(section, profile.coretaxFields);
+  const missing = missingCoretaxFields(section, { ...Object.fromEntries(Object.entries(fallbacks).map(([key, f]) => [key, f.value])), ...profile.coretaxFields });
 
   async function save() {
     const wrong = new Set(problems.map((problem) => problem.key));
@@ -62,7 +74,8 @@ export function CoretaxFieldsGroup({ profile, section }: { profile: AssetProfile
             onBlur={() => void save()}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             inputMode={field.kind === 'number' || field.kind === 'npwp' ? 'numeric' : undefined}
-            placeholder={field.kind === 'country' ? 'Country code' : 'Not set'}
+            placeholder={fallbacks[field.key]?.value ?? (field.kind === 'country' ? 'Country code' : 'Not set')}
+            info={fallbacks[field.key] && !(fields[field.key] ?? '').trim() ? `Left empty, the report uses ${fallbacks[field.key]!.from}: ${fallbacks[field.key]!.value}.` : undefined}
             hint={problem ? errorHint(problem.message) : i === all.length - 1 ? errorHint(error) : undefined}
           />
         );

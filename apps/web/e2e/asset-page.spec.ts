@@ -102,9 +102,9 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await expect(page.getByLabel('Note')).toHaveValue('');
 });
 
-test('a car added with a year and month shows just that, and its Edit screen takes the date and the tax details', async ({ page }) => {
+test('a car added with a year and month shows just that, and its Settings take the date and the tax details', async ({ page }) => {
   await openNewAsset(page, 'Passenger car');
-  // The prompt says it is required, as Current value's says optional; the tax report's questions wait for Edit.
+  // The prompt says it is required, as Current value's says optional; the tax report's questions wait for Settings.
   await expect(page.getByLabel('Name', { exact: true })).toHaveAttribute('placeholder', 'Required');
   await expect(page.getByLabel('Merk/model')).toHaveCount(0);
   await page.getByLabel('Name', { exact: true }).fill('Family car');
@@ -117,23 +117,25 @@ test('a car added with a year and month shows just that, and its Edit screen tak
   await openAsset(page, 'Family car');
   await expect(page.getByTestId('asset-grid')).toContainText('AcquiredMar 2021');
 
+  // One screen for all of it: Edit is folded into Settings, and each row saves when it is left.
   await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
   // The row reads back only what was picked; month set back to — leaves the year alone.
   await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('Mar 2021');
   await fillDay(page, 'Acquired', '2020');
   await page.getByLabel('Merk/model').fill('Hatchback 1.5');
+  await page.getByLabel('Merk/model').blur();
   await page.getByLabel('Nomor polisi/registrasi').fill('X 1234 YZ');
-  await page.getByRole('main').getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByLabel('Nomor polisi/registrasi').blur();
 
-  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
-  await expect(page.getByTestId('asset-grid')).toContainText('Acquired2020');
-  await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  await page.reload();
   await expect(page.getByLabel('Merk/model')).toHaveValue('Hatchback 1.5');
   await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('2020');
   await expect(page.getByRole('button', { name: /^Acquired/ })).not.toContainText('Mar');
+  await page.goBack();
+  await expect(page.getByTestId('asset-grid')).toContainText('Acquired2020');
 });
 
 test('a bond reads its price as a share of its face', async ({ page }) => {

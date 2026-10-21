@@ -1,7 +1,7 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
 import { archiveAccount, type AssetValueRow, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Pencil, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
+import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -323,9 +323,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       label: 'More',
       glyph: <MoreHorizontal size={20} aria-hidden />,
       menu: [
+        // Its name, when it was acquired, what it counts as and everything the tax report asks of it, on one screen.
         { key: 'settings', label: 'Settings', glyph: <Settings size={18} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
-        // Its name, when it was acquired, and what the tax report asks of it, on a screen of their own.
-        { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, to: '/net-worth/assets/$accountId/edit', params: { accountId } },
         {
           key: 'archive',
           label: 'Archive',

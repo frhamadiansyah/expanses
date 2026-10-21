@@ -40,6 +40,8 @@ export function AssetSettings({
   reportable,
   coretaxCode: currentCode,
   taxTreatment,
+  afterName,
+  taxFields,
 }: {
   accountId: string;
   /** What it is called; renameAccount changes it, pockets named after it included. */
@@ -57,6 +59,10 @@ export function AssetSettings({
   coretaxCode: string | null;
   /** How its income is taxed. Null means the owner has not said. */
   taxTreatment: Treatment | null;
+  /** A row under Name: an asset's Acquired, which used to wait on an Edit screen of its own. */
+  afterName?: ReactNode;
+  /** The tax report's own questions for it, under the Tax report group. */
+  taxFields?: ReactNode;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -114,6 +120,7 @@ export function AssetSettings({
           placeholder="Name"
           hint={errorHint(errors.name)}
         />
+        {afterName}
         <SelectRow
           label="Counts as"
           value={current}
@@ -174,6 +181,7 @@ export function AssetSettings({
         <PickerRow label="What it is" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />
         <PickerRow label="Tax report code" value={codeLine(code)} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />
       </InsetGroup>
+      {taxFields}
 
       {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
       {sheet === 'code' && <CodeSheet code={code} onSave={saveCode} onClose={() => setSheet(null)} />}

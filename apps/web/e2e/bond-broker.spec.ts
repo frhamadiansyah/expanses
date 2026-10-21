@@ -21,6 +21,11 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
   const held = page.getByLabel('Held at', { exact: true });
   await held.selectOption({ label: 'BCA Tahapan' });
   await expect(held.locator('option:checked')).toHaveText('BCA Tahapan');
+  // Held at a bank, that bank is the tax report's Nama institusi unless another name is typed.
+  await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Nama institusi' })).toHaveAttribute('placeholder', 'BCA Tahapan');
+  await page.goBack();
 
   await held.selectOption({ label: 'Somewhere not in the app' });
   await page.getByLabel('Place name', { exact: true }).fill('Bank Mandiri');
