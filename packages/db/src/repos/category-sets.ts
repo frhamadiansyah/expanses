@@ -4,7 +4,8 @@ import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { bookCategories, bookCategorySets } from '../schema-books';
-import { DEFAULT_CATEGORY_SETS, SET_CATEGORY_ICONS } from '../seed';
+import { DEFAULT_CATEGORY_SETS, RETIRED_SET_CATEGORIES, SET_CATEGORY_ICONS } from '../seed';
+import { CategoryDeleteError, deleteCategory } from './category-delete';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
@@ -202,4 +203,29 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
     }
   }));
   return missing.map((set) => set.name);
+}
+
+/**
+ * Takes a retired default (`RETIRED_SET_CATEGORIES`) out of the sets it was given to, where nothing uses it. One in use
+ * stays: `deleteCategory` refuses it, and that refusal is the answer, not an error. Answers how many were removed.
+ */
+export async function retireDefaultSetCategories(database: Database, ws: WorkspaceContext): Promise<number> {
+  let removed = 0;
+  for (const retired of RETIRED_SET_CATEGORIES) {
+    const rows = await database.db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .innerJoin(categorySetMembers, eq(categorySetMembers.categoryAccountId, accounts.id))
+      .innerJoin(categorySets, eq(categorySets.id, categorySetMembers.setId))
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.name, retired.name), eq(categorySets.name, retired.set), isNull(accounts.archivedAt)));
+    for (const row of rows) {
+      try {
+        await deleteCategory(database, ownerScope(ws), row.id);
+        removed += 1;
+      } catch (error) {
+        if (!(error instanceof CategoryDeleteError)) throw error;
+      }
+    }
+  }
+  return removed;
 }
