@@ -20,6 +20,7 @@ const LIST: CurrencyInfo[] = [
   { code: 'TWD', exponent: 2, symbol: 'NT$', name: 'New Taiwan Dollar', flag: '🇹🇼' },
   { code: 'PHP', exponent: 2, symbol: '₱', name: 'Philippine Peso', flag: '🇵🇭' },
   { code: 'AUD', exponent: 2, symbol: 'A$', name: 'Australian Dollar', flag: '🇦🇺' },
+  { code: 'NZD', exponent: 2, symbol: 'NZ$', name: 'New Zealand Dollar', flag: '🇳🇿' },
   { code: 'EUR', exponent: 2, symbol: '€', name: 'Euro', flag: '🇪🇺' },
   { code: 'GBP', exponent: 2, symbol: '£', name: 'British Pound', flag: '🇬🇧' },
   { code: 'TRY', exponent: 2, symbol: '₺', name: 'Turkish Lira', flag: '🇹🇷' },
