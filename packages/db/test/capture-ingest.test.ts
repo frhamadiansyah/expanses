@@ -17,6 +17,7 @@ import {
   createWorkspace,
   type WorkspaceContext,
   addCard,
+  setAccountNumberLast4,
   archiveCard,
   createCardAccount,
   listCards,
@@ -279,6 +280,19 @@ describe('what is not worth a draft', () => {
     expect(draft).toMatchObject({ amountMinor: 48_300, occurredOn: '2026-09-03', kind: 'expense', accountId: visa.id });
     // The bank's own message: the shop alone, never the sender before it as if an app had paid.
     expect(draft!.description).toBe('TOKO ROTI CONTOH');
+  });
+
+  it('files a bank message on the account whose own number it names, when no card ends so (0080)', async () => {
+    const { database, ws, bank } = await workspace();
+    await setAccountNumberLast4(database, ws, bank.id, '4321');
+    const sms = at('10:16', {
+      id: 'sms-rek',
+      app: 'BANKCONTOH',
+      title: 'BANKCONTOH',
+      body: 'Terima kasih utk trx rek XXXX4321 tgl 03-09-2026 10:15:00 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000',
+    });
+    expect(await ingestCaptures(database, ws, [sms], { today: DAY })).toMatchObject({ drafts: 1 });
+    expect((await listDrafts(database, ws, 'pending'))[0]).toMatchObject({ amountMinor: 48_300, accountId: bank.id });
   });
 
   it('notes a bank message that names no shop by its sender, never by a title the whole message ran into', async () => {

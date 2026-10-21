@@ -9,6 +9,7 @@ import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
+import { BankNumberGroup } from '../accounts/BankNumberGroup';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -144,6 +145,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}
       {/* A digital wallet says which phone number it is tied to, by its last four digits. */}
       {account?.subtype === 'ewallet' && <WalletPhoneGroup accountId={accountId} />}
+      {/* A bank account says which account number it is, by its last four digits. */}
+      {(account?.subtype === 'bank' || account?.subtype === 'savings') && <BankNumberGroup accountId={accountId} />}
 
       {/* A money account's tax fields stay here; an asset's are on its Edit screen, with its name and when it was got. */}
       {/* A money account opened before it had a profile (a broker made from Add holding) still shows its kas row: saving a

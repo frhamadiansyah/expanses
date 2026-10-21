@@ -1,5 +1,5 @@
 import { CATALOG } from '@expanses/catalog';
-import { listCardIdentities, listCards, listIssuers, listPrograms, listWalletLast4 } from '@expanses/db';
+import { accountNumberLast4s, listCardIdentities, listCards, listIssuers, listPrograms, listWalletLast4 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -18,6 +18,12 @@ export function useCardsWithArchived() {
 }
 
 /** The last four digits of each digital wallet's phone number, by account: never among `useCards`. */
+/** Each bank account's number digits, by account id (0080). */
+export function useAccountNumberLast4() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['account-number-last4', ws.workspaceId], queryFn: () => accountNumberLast4s(database, ws) });
+}
+
 export function useWalletLast4() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['wallet-last4', ws.workspaceId], queryFn: () => listWalletLast4(database, ws) });

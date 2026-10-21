@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, type Database, migrate, MIGRATIONS, nativeBalances, type WorkspaceContext } from '../src/index';
+
+/** Every migration before 0080, the first after these to change the accounts table's columns. */
+const BEFORE_0080 = MIGRATIONS.filter((m) => m.version < 80);
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 
 let executor: NodeExecutor | undefined;
@@ -91,7 +94,8 @@ describe('migration 0045', () => {
     const balancesBefore = await nativeBalances(database, ws);
     expect(before.rows.length).toBeGreaterThan(6);
 
-    expect(await migrate(database)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v > 44));
+    // Up to 0080, which gives accounts a column of its own (number_last4): this reads what the migrations before it left.
+    expect(await migrate(database, BEFORE_0080)).toEqual(BEFORE_0080.map((m) => m.version).filter((v) => v > 44));
 
     const after = await accountsSchema();
     expect(after.rows).toEqual(before.rows);
@@ -112,7 +116,7 @@ describe('migration 0045', () => {
   it('rewrites nothing in the table but the list of subtypes', async () => {
     const before = await accountsSchema();
 
-    await migrate(database);
+    await migrate(database, BEFORE_0080);
 
     const after = await accountsSchema();
     // Every column, default, foreign key, primary key and other CHECK, written exactly as 0001 wrote them.

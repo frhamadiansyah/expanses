@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readWalletLast4 } from './wallet-last4';
+import { readAccountNumberLast4, readWalletLast4 } from './wallet-last4';
 
 describe('readWalletLast4', () => {
   it('reads four digits as the digits, with the spaces around them dropped', () => {
@@ -22,5 +22,13 @@ describe('readWalletLast4', () => {
     for (const typed of ['552', '55a1', '+62', 'abcd']) {
       expect(readWalletLast4(typed)).toEqual({ ok: false, error: 'The last 4 digits of the phone number are four numbers, like 5521.' });
     }
+  });
+});
+
+describe('readAccountNumberLast4', () => {
+  it('keeps the last four of a whole number pasted in, empties to nothing, and refuses fewer than four', () => {
+    expect(readAccountNumberLast4('123-456-7890')).toEqual({ ok: true, last4: '7890' });
+    expect(readAccountNumberLast4('  ')).toEqual({ ok: true, last4: null });
+    expect(readAccountNumberLast4('12')).toMatchObject({ ok: false });
   });
 });

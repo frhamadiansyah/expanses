@@ -1,6 +1,6 @@
 import { bankMatches, takesPockets, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { openCashAccount, openPocketedAccount, setWalletLast4 } from '@expanses/db';
-import { readWalletLast4 } from '../accounts/wallet-last4';
+import { NUMBERED_SUBTYPES, openCashAccount, openPocketedAccount, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
+import { readAccountNumberLast4, readWalletLast4 } from '../accounts/wallet-last4';
 import { openOnce } from './open-once';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -291,13 +291,16 @@ export function CashAccountForm({
   const [pockets, setPockets] = useState<PocketDraft[]>([]);
   // A wallet's phone number, by its last four digits: optional, and only ever asked of a wallet.
   const [phoneLast4, setPhoneLast4] = useState('');
+  const [numberLast4, setNumberLast4] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   // The account this form has already opened, so a second Save after a failure finishes it rather than opening another.
   const opened = useRef<{ id: string | null }>({ id: null });
   const phone = item === 'ewallet' ? readWalletLast4(phoneLast4) : null;
-  const canSave = !busy && name.trim() !== '' && phone?.ok !== false;
+  // A bank's alerts name the account by the end of its number ("rek ****1234"): the capture reader files them by it.
+  const numbered = NUMBERED_SUBTYPES.includes(item) ? readAccountNumberLast4(numberLast4) : null;
+  const canSave = !busy && name.trim() !== '' && phone?.ok !== false && numbered?.ok !== false;
   const onCanSave = embedded?.onCanSave;
   useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
 
@@ -348,6 +351,7 @@ export function CashAccountForm({
           });
         }
         const { parent, pockets: opened } = await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
+        if (numbered?.ok && numbered.last4) await setAccountNumberLast4(database, ws, parent.id, numbered.last4);
         await household.save([parent.id, ...opened.map((pocket) => pocket.id)]);
         await invalidate();
         if (onCreated) onCreated(parent.id);
@@ -377,6 +381,7 @@ export function CashAccountForm({
         },
         async (id) => {
           if (phone?.ok && phone.last4) await setWalletLast4(database, ws, id, phone.last4);
+          if (numbered?.ok && numbered.last4) await setAccountNumberLast4(database, ws, id, numbered.last4);
           await household.save([id]);
         },
       );
@@ -458,6 +463,18 @@ export function CashAccountForm({
             placeholder="Optional"
             className="tabular"
             hint={phone?.ok === false ? phone.error : undefined}
+          />
+        )}
+        {/* What a bank's own alerts name the account by, shown on its rows as a card's digits are: "···· 1234". */}
+        {numbered && (
+          <TextRow
+            label="Last 4 digits of account number"
+            value={numberLast4}
+            onChange={(e) => setNumberLast4(e.target.value)}
+            inputMode="numeric"
+            placeholder="Optional"
+            className="tabular"
+            hint={numbered.ok === false ? numbered.error : undefined}
           />
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}

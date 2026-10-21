@@ -1,3 +1,4 @@
+import { numberColumnExists } from '../repos/cards';
 /**
  * Turning what the phone handed over into drafts.
  *
@@ -105,7 +106,14 @@ async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null 
     .where(
       and(eq(cards.workspaceId, workspaceId), eq(cards.last4, last4), isNull(cards.archivedAt), isNull(accounts.archivedAt), ne(accounts.subtype, 'ewallet')),
     );
-  return rows.length === 1 ? rows[0]! : null;
+  if (rows.length === 1) return rows[0]!;
+  if (rows.length > 1) return null;
+  // No card ends so: a bank account whose own number does ("rek ****1234", 0080).
+  if (!(await numberColumnExists(tx))) return null;
+  const numbered = await tx.values<[string, string | null]>(
+    sql`SELECT id, currency FROM accounts WHERE workspace_id = ${workspaceId} AND number_last4 = ${last4} AND archived_at IS NULL`,
+  );
+  return numbered.length === 1 ? { id: numbered[0]![0], currency: numbered[0]![1] } : null;
 }
 
 /**
