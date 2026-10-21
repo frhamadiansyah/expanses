@@ -118,7 +118,9 @@ test('the ⓘ opens a receipt from the table, on an editable row and on a locked
   await expect(page.getByTestId('receipt-hero')).toContainText('450.000');
 
   // The locked row — an opening balance has no "Open in form", and used to have no way to a receipt either.
-  // The view is remembered, so coming back to the list comes back to the table.
+  // The view is remembered, so coming back to the list comes back to the table. Opening balances are shown only when
+  // asked for; asked for here.
+  await page.evaluate(() => localStorage.setItem('transactions-show-opening', '1'));
   await page.goto('/transactions');
   await expect(page.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('link', { name: 'Receipt for Opening balance: BCA Tahapan' }).click();

@@ -459,3 +459,17 @@ describe('what the list model is built from', () => {
     expect(runtime.filter((line) => /useCardPoints|@expanses\/db|purchase-points/.test(line))).toEqual([]);
   });
 });
+
+describe('opening balances and past purchases', () => {
+  const opening = account('ob', 'equity', 'equity', { name: 'Opening Balances', systemKey: 'opening_balance' });
+  const withOpening = [...accounts, opening];
+  byId.set(opening.id, opening);
+
+  it('are out of the list unless asked for, and the spending around them stays', () => {
+    const start = tx('2026-09-01', 'Opening balance', [['bca', 5_000_000], ['ob', -5_000_000]]);
+    const built = buildRows([start, superindo], [], withOpening, cards);
+    expect(built.find((row) => row.id === start.id)!.type).toBe('opening');
+    expect(filterRows(built, EMPTY_FILTERS, withOpening).map((row) => row.id)).toEqual([superindo.id]);
+    expect(filterRows(built, { ...EMPTY_FILTERS, showOpening: true }, withOpening).map((row) => row.id).sort()).toEqual([start.id, superindo.id].sort());
+  });
+});

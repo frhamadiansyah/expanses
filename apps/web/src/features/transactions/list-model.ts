@@ -75,6 +75,11 @@ export interface ListFilters {
   onlyDrafts: boolean;
   /** Only what was saved under Uncategorised and still waits for a category. */
   needsCategory?: boolean;
+  /**
+   * Opening balances and what was owned before the app (a past purchase) are how the books were started, not money that
+   * moved: hidden unless asked for, so the month's spending is not buried under them.
+   */
+  showOpening?: boolean;
 }
 
 export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all', month: 'all', showDeleted: false, onlyDrafts: false, needsCategory: false };
@@ -222,6 +227,7 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
   return rows.filter((row) => {
     if (f.onlyDrafts && row.kind !== 'draft') return false;
     if (row.deleted && !f.showDeleted) return false;
+    if (row.type === 'opening' && !f.showOpening) return false;
     // A draft with no date yet is never hidden by the month it cannot be placed in, and asking for
     // what is not recorded shows all of it, whichever month it belongs to.
     if (f.month !== 'all' && !f.onlyDrafts && row.date) {
