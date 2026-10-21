@@ -37,6 +37,7 @@ import { SetsPage } from '../features/categories/SetsPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
+import { DividendsPage } from '../features/investments/DividendsPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
@@ -236,6 +237,7 @@ const routeTree = rootRoute.addChildren([
     component: AddHoldingPage,
     validateSearch: (search: Record<string, unknown>): { link?: string } => ({ link: typeof search.link === 'string' ? search.link : undefined }),
   }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/dividends', component: DividendsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId', component: SecurityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId/price', component: SecurityPricePage }),
   // The static `none` outranks `$accountId`: holdings kept with no broker named.

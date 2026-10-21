@@ -68,6 +68,7 @@ function PortfolioFacts({ view, base }: { view: PortfolioView; base: string }) {
         label="Holdings"
         value={`${view.stocks.length} ${view.stocks.length === 1 ? 'stock' : 'stocks'} · ${brokers} ${brokers === 1 ? 'broker' : 'brokers'}`}
       />
+      <InsetRow title="Dividends" to="/net-worth/investments/dividends" />
     </InsetGroup>
   );
 }
