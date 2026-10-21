@@ -1,5 +1,5 @@
-import { CASH_ITEMS, cashItem, type MoneyAccountSubtype } from '@expanses/core';
-import { archiveAccount, deleteUnusedAccount, profileDefaults, taxTreatmentOf } from '@expanses/db';
+import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
+import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -12,7 +12,10 @@ import { AssetSettings } from './AssetSettings';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
-import { useAssetProfile, useAssetValues } from './queries';
+import { useOpenings } from '../accounts/queries';
+import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
+import { AcquiredRow } from './AssetRows';
+import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
 
 /** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -41,6 +44,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const profile = useAssetProfile(accountId);
   const accounts = useAccounts();
   const links = useHoldingLinks();
+  const acquiredDates = useAcquiredDates();
+  const openings = useOpenings([accountId]);
   const [error, setError] = useState<unknown>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
@@ -49,6 +54,34 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   // A holding linked to a security takes its lot size from the security, so the row is not offered.
   const linkedToSecurity = (links.data ?? []).some((link) => link.accountId === accountId && link.securityId !== null);
   const name = value?.name ?? account?.name ?? 'Asset';
+  /*
+   * When it was acquired, for a thing given a value (a holding is dated by its purchases): what was saved, else the day
+   * it was opened, else the year on its profile. It saves when the wheel is closed, as every row here saves when left.
+   */
+  const stored = acquiredDates.data?.[accountId];
+  const openedOn = openings.data?.[accountId]?.occurredOn;
+  const acquired: AcquiredParts | null =
+    value?.mode !== 'snapshot'
+      ? null
+      : stored
+        ? partsOf(stored.on, stored.precision)
+        : openedOn
+          ? partsOf(openedOn, 'day')
+          : { year: profile.data?.acquiredYear ? String(profile.data.acquiredYear) : '', month: '', day: '' };
+  const saveAcquired = (parts: AcquiredParts) =>
+    void (async () => {
+      setError(null);
+      try {
+        await changeAcquired(database, ws, accountId, acquiredOn(parts, isoDate()), isoDate());
+        await invalidate();
+      } catch (e) {
+        setError(e);
+      }
+    })();
+  // Where it is held, when that is an account: the tax report's Nama institusi unless another name is typed.
+  const link = (links.data ?? []).find((row) => row.accountId === accountId);
+  const heldAt = link?.brokerAccountId ? (accounts.data ?? []).find((row) => row.id === link.brokerAccountId) : undefined;
+  const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'Held at';
   const list = () => navigate(money ? { to: '/accounts' } : { to: '/net-worth/assets' });
 
   async function leaveBy(ask: string, act: () => Promise<void>) {
@@ -92,6 +125,18 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
+          afterName={acquired ? <AcquiredRow value={acquired} onChange={saveAcquired} /> : undefined}
+          // The tax report's own questions, here rather than on an Edit screen of their own (a money account's stay below).
+          taxFields={
+            !money && profile.data?.coretaxSection ? (
+              <CoretaxFieldsGroup
+                key={`fields-${accountId}`}
+                profile={profile.data}
+                section={profile.data.coretaxSection}
+                fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
+              />
+            ) : undefined
+          }
         />
       )}
 
