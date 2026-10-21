@@ -19,6 +19,7 @@ import {
   type RoundAction,
   SCREEN,
   SelectRow,
+  SubmitRow,
   TextRow,
 } from '../../ui/native';
 import { AccountPage } from '../accounts/AccountPage';
@@ -29,6 +30,7 @@ import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { acquiredLabel } from './acquired';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
+import { Sheet as SheetFrame } from '../../app/Sheet';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
@@ -59,6 +61,31 @@ const PRICE_TILE: Record<UnitKind, string> = { grams: 'Buyback today', shares: '
 /** The word for a payment a holding makes: a share's dividend, a bond's coupon. */
 const incomeWordOf = (kind: AssetKind | null) => (kind === 'stock' ? 'Dividend' : kind === 'bond' ? 'Coupon' : 'Income');
 
+/** The Broker row's choice that opens a broker by name rather than picking one. */
+const NEW_BROKER = 'new-broker';
+
+/** A broker not in the app yet, named and opened where a holding is kept. */
+function NewBrokerSheet({ onSave, onClose }: { onSave: (name: string) => void; onClose: () => void }) {
+  const [name, setName] = useState('');
+  return (
+    <SheetFrame grouped title="New broker" onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) onSave(name.trim());
+        }}
+      >
+        <InsetGroup footer="Opened as a broker's cash account, as Add a holding opens one. Its RDN bank is named in its Settings.">
+          <TextRow label="Broker name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Required" required />
+        </InsetGroup>
+        <InsetGroup>
+          <SubmitRow label="Add broker" disabled={!name.trim()} />
+        </InsetGroup>
+      </form>
+    </SheetFrame>
+  );
+}
+
 type Sheet =
   | { kind: 'price' }
   | { kind: 'value' }
@@ -68,7 +95,8 @@ type Sheet =
   | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
   | { kind: 'gold-trade'; trade: 'buy' | 'sell' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
-  | { kind: 'row'; trade: TradeRow; title: string };
+  | { kind: 'row'; trade: TradeRow; title: string }
+  | { kind: 'new-broker' };
 
 /**
  * `/net-worth/assets/$accountId` — one page for everything owned that is not money: priced things (gold, shares, a
@@ -501,8 +529,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               search={{ link: accountId }}
             />
           ) : null,
-          // A fund (spec 2026-10-19-fund-by-amount): held at a broker, a bank or a fund app — or a place typed by name.
-          kind === 'fund' ? (
+          // A fund (spec 2026-10-19-fund-by-amount) or a bond: held at a broker, a bank or a fund app — banks sell both —
+          // or a place typed by name.
+          kind === 'fund' || kind === 'bond' ? (
             <SelectRow
               key="held"
               label="Held at"
@@ -522,7 +551,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               <option value="typed">Somewhere not in the app</option>
             </SelectRow>
           ) : null,
-          kind === 'fund' && !stock.link?.brokerAccountId && profile.data && (typingPlace || profile.data.coretaxFields.inst?.trim()) ? (
+          (kind === 'fund' || kind === 'bond') && !stock.link?.brokerAccountId && profile.data && (typingPlace || profile.data.coretaxFields.inst?.trim()) ? (
             <TextRow
               key="held-name"
               label="Place name"
@@ -541,16 +570,23 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               ))}
             </SelectRow>
           ) : null,
-          kind !== 'fund' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
+          kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
-            // share is always kept at a broker: it is offered only to a bond, or to a share recorded before one was named.
-            <SelectRow key="kept" label="Broker" value={stock.link?.brokerAccountId ?? 'none'} onChange={(e) => void stock.keptAt(e.target.value === 'none' ? '' : e.target.value)}>
-              {kind === 'bond' || !stock.link?.brokerAccountId ? <option value="none">No broker</option> : null}
+            // share is always kept at a broker: it is offered only to a share recorded before one was named.
+            <SelectRow
+              key="kept"
+              label="Broker"
+              value={stock.link?.brokerAccountId ?? 'none'}
+              onChange={(e) => (e.target.value === NEW_BROKER ? setSheet({ kind: 'new-broker' }) : void stock.keptAt(e.target.value === 'none' ? '' : e.target.value))}
+            >
+              {!stock.link?.brokerAccountId ? <option value="none">No broker</option> : null}
               {stock.brokers.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
+              {/* One not in the app yet is opened here by name, as Add a holding opens one. */}
+              <option value={NEW_BROKER}>Another broker…</option>
             </SelectRow>
           ) : null,
           choice ? (
@@ -599,6 +635,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onClose={() => setSheet(null)}
         />
       )}
+      {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet(null))} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'source' && choice && (
         <PriceSourceSheet
           choice={choice}

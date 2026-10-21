@@ -162,11 +162,13 @@ export async function linkHoldingTx(
       .select({ assetKind: assetProfiles.assetKind })
       .from(assetProfiles)
       .where(and(eq(assetProfiles.accountId, input.accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
-    const places: readonly string[] = profile?.assetKind === 'fund' ? HELD_AT_SUBTYPES : ['fund'];
+    // A fund or a bond is sold by banks as well as brokers, so either is held at any of those places; a share is kept at a broker.
+    const heldAnywhere = profile?.assetKind === 'fund' || profile?.assetKind === 'bond';
+    const places: readonly string[] = heldAnywhere ? HELD_AT_SUBTYPES : ['fund'];
     if (broker.kind !== 'asset' || !places.includes(broker.subtype)) {
       throw new AssetError(
-        profile?.assetKind === 'fund'
-          ? 'A fund is held at a broker, a bank or a fund app — choose one of those accounts'
+        heldAnywhere
+          ? 'It is held at a broker, a bank or a fund app — choose one of those accounts'
           : 'A broker is the cash account kept there — choose a fund account',
       );
     }
@@ -233,7 +235,7 @@ export async function linkHoldingTx(
 }
 
 /** The same, recording the security first when it is handed as a new one. One database transaction. */
-/** The accounts a mutual fund can be held at: a broker's cash, a bank, a savings account or a fund app's wallet. */
+/** The accounts a mutual fund or a bond can be held at: a broker's cash, a bank, a savings account or a fund app's wallet. */
 export const HELD_AT_SUBTYPES: readonly string[] = ['fund', 'bank', 'savings', 'ewallet'];
 
 /**
@@ -378,6 +380,23 @@ export async function brokerlessHoldingsOf(database: Database, ws: WorkspaceCont
 }
 
 /**
+ * A broker opened by name where a holding is being put: a fund account, with the profile Add account gives a broker's
+ * cash — its kas row, where its RDN bank is named.
+ */
+async function openBrokerTx(tx: Db, ws: WorkspaceContext, broker: { name: string; currency: string }) {
+  const opened = await createAccountTx(tx, ws, { name: broker.name, kind: 'asset', subtype: 'fund', currency: broker.currency });
+  await saveAssetProfileTx(tx, ws, { accountId: opened.id, assetKind: 'cash', planGroup: 'liquid', coretaxSection: 'kas', coretaxCode: cashItem('fund').code });
+  return opened;
+}
+
+/** Opens a broker by name, for a holding's Broker row — the "Another broker…" Add a holding already offers. */
+export function openBroker(database: Database, ws: WorkspaceContext, broker: { name: string; currency: string }) {
+  const name = broker.name.trim();
+  if (!name) throw new AssetError('Name the broker');
+  return database.transaction((tx) => openBrokerTx(tx, ws, { ...broker, name }));
+}
+
+/**
  * Record the security, open the broker, open and link the holding, record the buy — all or nothing (spec §7.5). The buy
  * goes through `writeTradeTx` untouched, so its `goalId` and `setAside` answer post exactly as `recordTrade`'s do.
  */
@@ -397,9 +416,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
       brokerAccountId = broker.id;
       brokerName = broker.name;
     } else if (input.broker) {
-      const opened = await createAccountTx(tx, ws, { name: input.broker.name, kind: 'asset', subtype: 'fund', currency: input.broker.currency });
-      // Opened here, it gets the profile Add account gives a broker's cash: its kas row, where its RDN bank is named.
-      await saveAssetProfileTx(tx, ws, { accountId: opened.id, assetKind: 'cash', planGroup: 'liquid', coretaxSection: 'kas', coretaxCode: cashItem('fund').code });
+      const opened = await openBrokerTx(tx, ws, input.broker);
       brokerAccountId = opened.id;
       brokerName = opened.name;
     }
