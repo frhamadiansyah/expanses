@@ -5,7 +5,9 @@ import {
   eventBalanceRows,
   eventPostingOf,
   initialsOf,
+  addSharedItemPurchase,
   linkSharedItem,
+  setSharedItemDone,
   openEventBookTx,
   ownerScope,
   recordSettlement,
@@ -174,6 +176,76 @@ describe('the shared plan (D7)', () => {
     await voidSharedExpense(t.database, t.ws, t.eventId, dinner.expenseId);
     const after = (await sharedEventPlan(t.database, t.ws, t.eventId))!;
     expect(after.lines.flatMap((l) => l.items)).toEqual([expect.objectContaining({ name: 'Fish dinner', bought: false })]);
+  });
+});
+
+describe('a shared plan item paid for several times (0079)', () => {
+  const souvenirs = async () => {
+    const t = await coastWeek();
+    const view = (await sharedEventView(t.database, t.ws, t.eventId))!;
+    const dinner = view.expenses.find((e) => e.note === 'Fish dinner')!.expenseId;
+    const market = view.expenses.find((e) => e.note === 'Market')!.expenseId;
+    const item = await saveSharedItem(t.database, t.ws, t.eventId, { name: 'Souvenirs', quantity: 1, unitPriceMinor: 500_000, categoryId: null, link: null, note: null });
+    return { ...t, dinner, market, item };
+  };
+  const row = async (t: Awaited<ReturnType<typeof souvenirs>>) =>
+    (await t.database.db.values<[string | null, number | null, string | null, string | null]>(
+      sql`SELECT expense_id, share_minor, purchases_json, done_at FROM event_items_shared WHERE id = ${t.item}`,
+    ))[0]!;
+  const read = async (t: Awaited<ReturnType<typeof souvenirs>>) => (await sharedEventPlan(t.database, t.ws, t.eventId))!.lines.flatMap((l) => l.items)[0]!;
+
+  it('holds each payment, stays open until done, and shows a phone a version behind only what is done', async () => {
+    const t = await souvenirs();
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.dinner, shareMinor: 100_000 });
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.market, shareMinor: 150_000 });
+    expect(await read(t)).toMatchObject({ bought: false, actualMinor: 250_000, purchaseCount: 2 });
+    // Open: the old pair is empty, so a phone a version behind reads it as still to buy.
+    expect((await row(t)).slice(0, 2)).toEqual([null, null]);
+
+    await setSharedItemDone(t.database, t.ws, t.eventId, t.item, true);
+    expect(await read(t)).toMatchObject({ bought: true, actualMinor: 250_000, differenceMinor: -250_000 });
+    // Done: the old pair carries the largest payment.
+    expect((await row(t)).slice(0, 2)).toEqual([t.market, 150_000]);
+  });
+
+  it('loses only the deleted expense, keeping its mark while another payment is left', async () => {
+    const t = await souvenirs();
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.dinner, shareMinor: 100_000 });
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.market, shareMinor: 150_000 });
+    await setSharedItemDone(t.database, t.ws, t.eventId, t.item, true);
+    await voidSharedExpense(t.database, t.ws, t.eventId, t.market);
+    expect(await read(t)).toMatchObject({ bought: true, actualMinor: 100_000, purchaseCount: 1 });
+    expect((await row(t)).slice(0, 2)).toEqual([t.dinner, 100_000]);
+    // The last one gone, it is back on the list.
+    await voidSharedExpense(t.database, t.ws, t.eventId, t.dinner);
+    expect(await read(t)).toMatchObject({ bought: false, actualMinor: null, purchaseCount: 0 });
+  });
+
+  it('reads an item written before 0079, or by a phone a version behind, as its one payment and done', async () => {
+    const t = await souvenirs();
+    await t.database.db.run(sql`UPDATE event_items_shared SET expense_id = ${t.dinner}, share_minor = 200000, purchases_json = NULL, done_at = NULL WHERE id = ${t.item}`);
+    expect(await read(t)).toMatchObject({ bought: true, actualMinor: 200_000 });
+    // And a payment added on top keeps the one it had.
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.market, shareMinor: 50_000 });
+    expect(await read(t)).toMatchObject({ bought: true, actualMinor: 250_000, purchaseCount: 2 });
+  });
+
+  it('follows a phone a version behind that ticks or unticks it, so every phone reads it alike', async () => {
+    const t = await souvenirs();
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.dinner, shareMinor: 100_000 });
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.market, shareMinor: 150_000 });
+    await setSharedItemDone(t.database, t.ws, t.eventId, t.item, true);
+    // The older phone unticks: it writes only the pair.
+    await t.database.db.run(sql`UPDATE event_items_shared SET expense_id = NULL, share_minor = NULL WHERE id = ${t.item}`);
+    expect(await read(t)).toMatchObject({ bought: false, purchaseCount: 0 });
+    // And ticks it against the dinner: one payment, done.
+    await t.database.db.run(sql`UPDATE event_items_shared SET expense_id = ${t.dinner}, share_minor = 120000 WHERE id = ${t.item}`);
+    expect(await read(t)).toMatchObject({ bought: true, actualMinor: 120_000, purchaseCount: 1 });
+  });
+
+  it('refuses a part above the expense', async () => {
+    const t = await souvenirs();
+    await expect(addSharedItemPurchase(t.database, t.ws, t.eventId, t.item, { expenseId: t.market, shareMinor: 180_001 })).rejects.toThrow(/no more than the expense/);
   });
 });
 
