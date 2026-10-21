@@ -192,8 +192,11 @@ export function AmountRow({
   const phone = usePhone();
   const { ws } = useApp();
   const [keypad, setKeypad] = useState<'amount' | 'charged' | null>(phone && selectOnOpen ? 'amount' : null);
-  // The copied figure stands until the first key of the keypad it opened on; then it is the user's own.
-  const [replace, setReplace] = useState(selectOnOpen);
+  /*
+   * The field whose figure the first key types over: a copied amount (it stands until the first key of the keypad it
+   * opened on), or the charged row's ≈ estimate, which the bank's own figure replaces rather than extends.
+   */
+  const [replace, setReplace] = useState<'amount' | 'charged' | null>(selectOnOpen ? 'amount' : null);
   const [picking, setPicking] = useState(false);
   const account = accounts.find((a) => a.id === draft.moneyId);
   const currency = typedCurrency(draft, accounts);
@@ -238,7 +241,14 @@ export function AmountRow({
   /** A code and the figure it names, side by side: the pair is what shares out the row's width. */
   const codeGroup = 'flex min-w-0 items-center gap-[5px] self-stretch';
   const codeClass = 'shrink-0 text-[12.5px] leading-4 font-semibold tracking-[0.2px] text-[var(--ph-ink-3)]';
-  const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
+  const toggle = (which: 'amount' | 'charged') => {
+    if (which === 'charged' && keypad !== 'charged' && guessed) setReplace('charged');
+    setKeypad((was) => (was === which ? null : which));
+  };
+  /* Which figure the open keypad types into, marked under it, so a tap from one figure to the other shows it landed. */
+  const typingMark = (which: 'amount' | 'charged') =>
+    keypad === which ? <span aria-hidden data-testid="typing-mark" className="pointer-events-none absolute inset-x-0 bottom-[7px] h-[2px] rounded-full bg-[var(--ph-tint)]" /> : null;
+  const codeTone = (which: 'amount' | 'charged') => (keypad === which ? 'text-[var(--ph-tint)]' : '');
   /** The field the dock is typing into, or null when it is shut. */
   const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
   // The same 28 px circle every other row of the card leads with; the flag is its glyph.
@@ -292,9 +302,10 @@ export function AmountRow({
           {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
-          <span className={cx(codeGroup, fields.charged ? 'shrink' : 'flex-1', unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
+          <span className={cx(codeGroup, 'relative', fields.charged ? 'shrink' : 'flex-1', unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
+            {fields.charged && typingMark('amount')}
             {named && (
-              <span aria-hidden className={codeClass}>
+              <span aria-hidden className={cx(codeClass, codeTone('amount'))}>
                 {fields.amount.currency}
               </span>
             )}
@@ -314,10 +325,11 @@ export function AmountRow({
               {/* What parts the two figures. A rule rather than a printed bar: the app spends "·" as a joiner in
                   running text, and a second kind of punctuation between two money figures reads as arithmetic. */}
               <span aria-hidden className="h-[18px] w-px shrink-0 bg-[var(--ph-hair)]" />
-              <span className={cx(codeGroup, 'flex-1')}>
+              <span className={cx(codeGroup, 'relative flex-1')}>
+                {typingMark('charged')}
                 {/* The ≈ is the whole of what the line under this row used to say: this figure is the day's
                     estimate, not what the bank took. It goes on the first keystroke of the user's own. */}
-                <span aria-hidden className={codeClass}>
+                <span aria-hidden className={cx(codeClass, codeTone('charged'))}>
                   {guessed ? `≈ ${fields.charged.currency}` : fields.charged.currency}
                 </span>
                 <MoneyField
@@ -375,8 +387,9 @@ export function AmountRow({
           value={open.value}
           currency={open.currency}
           fractional={open.fractional}
-          replaceFirst={replace && open.which === 'amount'}
-          onFirstKey={() => setReplace(false)}
+          label={fields.charged ? (open.which === 'amount' ? `Amount in ${open.currency}` : open.label) : undefined}
+          replaceFirst={replace === open.which}
+          onFirstKey={() => setReplace(null)}
           onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}
           refund={open.which === 'amount' ? refundable : refund}
           onClose={() => setKeypad(null)}

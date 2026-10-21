@@ -1,6 +1,6 @@
 import { isoDate } from '@expanses/core';
-import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { type CSSProperties, useId } from 'react';
+import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { type CSSProperties, useId, useRef } from 'react';
 import { cx } from '../../ui';
 import { ROW_BODY, RowGlyph, RowLead } from './FormRow';
 
@@ -46,6 +46,7 @@ export function NoteRow({
   disabled?: boolean;
 }) {
   const id = useId();
+  const input = useRef<HTMLInputElement>(null);
   return (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -55,6 +56,7 @@ export function NoteRow({
       </RowLead>
       <span className={ROW_BODY}>
         <input
+          ref={input}
           id={id}
           aria-label="Note"
           value={value}
@@ -65,6 +67,22 @@ export function NoteRow({
           placeholder="Note"
           className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
         />
+        {/* The amount row's own ×: the whole note gone in one tap, and the cursor left in the empty field. */}
+        {value !== '' && !disabled && (
+          <button
+            type="button"
+            aria-label="Clear text"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onChange('');
+              input.current?.focus();
+            }}
+            className="ph-focus ph-tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]"
+            style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
+          >
+            <X size={12} aria-hidden />
+          </button>
+        )}
       </span>
     </div>
   );

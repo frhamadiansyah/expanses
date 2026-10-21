@@ -34,6 +34,7 @@ export function Keypad({
   onClose,
   replaceFirst = false,
   onFirstKey,
+  label,
   refund = false,
   fractional,
 }: {
@@ -48,6 +49,8 @@ export function Keypad({
   /** The figure shown is a copy to type over: the first digit starts a new figure, an operator carries on from it. */
   replaceFirst?: boolean;
   onFirstKey?: () => void;
+  /** Which figure it is typing into, where a row has two: "Amount in USD", "Charged in IDR". */
+  label?: string;
 }) {
   const phone = usePhone();
 
@@ -78,7 +81,13 @@ export function Keypad({
         aria-label="Keypad"
       >
         <div className="flex items-center justify-between px-1">
-          <span className="text-[12px] text-[var(--ph-ink-3)]">{currency}</span>
+          {label ? (
+            <span data-testid="keypad-label" className="text-[13px] font-semibold text-[var(--ph-tint)]">
+              {label}
+            </span>
+          ) : (
+            <span className="text-[12px] text-[var(--ph-ink-3)]">{currency}</span>
+          )}
           <button
             type="button"
             onClick={onClose}
