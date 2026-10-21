@@ -1,4 +1,4 @@
-import { type AssetProfileRow, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile } from '@expanses/db';
+import { type AssetProfileRow, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile, openBroker } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -36,6 +36,13 @@ export function useStockAndBroker(accountId: string) {
   }
 
   const keptAt = (brokerAccountId: string) => run(() => linkHolding(database, ws, { accountId, brokerAccountId: brokerAccountId || null }));
+  /** A broker not yet in the app, opened by name in the holding's own currency and picked at once. */
+  const newBroker = (name: string) =>
+    run(async () => {
+      const currency = accounts.find((a) => a.id === accountId)?.currency ?? ws.baseCurrency;
+      const broker = await openBroker(database, ws, { name, currency });
+      await linkHolding(database, ws, { accountId, brokerAccountId: broker.id });
+    });
   const sameFund = (otherAccountId: string) => run(() => sameFundAs(database, ws, accountId, otherAccountId || null));
   /** A place not in the app, by name: it is the tax report's Nama institusi, written whole as the profile's other fields are. */
   const placeName = (profile: AssetProfileRow, name: string) =>
@@ -57,5 +64,5 @@ export function useStockAndBroker(accountId: string) {
       });
     });
 
-  return { link, security, brokers, places, samePlaces, keptAt, sameFund, placeName, error };
+  return { link, security, brokers, places, samePlaces, keptAt, newBroker, sameFund, placeName, error };
 }

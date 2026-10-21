@@ -46,7 +46,7 @@ describe('where a fund is held', () => {
 
   it('is never a credit card, and a share is still kept only at a broker', async () => {
     const card = await createAccount(database, ws, { name: 'Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
-    await expect(linkHolding(database, ws, { accountId: atBank.id, brokerAccountId: card.id })).rejects.toThrow('A fund is held at a broker, a bank or a fund app');
+    await expect(linkHolding(database, ws, { accountId: atBank.id, brokerAccountId: card.id })).rejects.toThrow('It is held at a broker, a bank or a fund app');
     const share = await createAccount(database, ws, { name: 'BBCA', kind: 'asset', subtype: 'investment', currency: 'IDR' });
     await saveAssetProfile(database, ws, { accountId: share.id, assetKind: 'stock' });
     await expect(linkHolding(database, ws, { accountId: share.id, brokerAccountId: bank.id })).rejects.toThrow('A broker is the cash account kept there');
