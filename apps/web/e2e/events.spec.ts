@@ -75,3 +75,19 @@ test('a category on Where it went filters the history to its own payments, and S
   await page.getByRole('button', { name: 'Show all' }).click();
   await expect(history).toHaveCount(2);
 });
+
+test('Edit event renames it and moves its dates; its categories stay once something is tagged', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Bandung weekend');
+  await page.getByRole('button', { name: 'Edit Bandung weekend' }).click();
+  const form = page.getByTestId('edit-event');
+  await form.getByLabel('Name', { exact: true }).fill('Bandung long weekend');
+  await form.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Bandung long weekend', exact: true })).toBeVisible();
+  await expect(form).toHaveCount(0);
+
+  await recordIntoEvent(page, { description: 'Kopi Aroma', amount: '120000', category: 'Food and beverage' });
+  await page.getByRole('button', { name: 'Edit Bandung long weekend' }).click();
+  await expect(page.getByTestId('edit-event').getByRole('combobox', { name: 'Categories' })).toHaveCount(0);
+  await expect(page.getByTestId('edit-event')).toContainText('The monthly categories');
+});

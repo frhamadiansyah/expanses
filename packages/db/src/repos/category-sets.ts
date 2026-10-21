@@ -4,7 +4,7 @@ import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { bookCategories, bookCategorySets } from '../schema-books';
-import { DEFAULT_CATEGORY_SETS } from '../seed';
+import { DEFAULT_CATEGORY_SETS, SET_CATEGORY_ICONS } from '../seed';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
@@ -188,7 +188,7 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
           kind: 'expense',
           subtype: 'category',
           name,
-          icon: null,
+          icon: SET_CATEGORY_ICONS[name] ?? null,
           currency: null,
           valuationMode: 'derived',
           systemKey: null,

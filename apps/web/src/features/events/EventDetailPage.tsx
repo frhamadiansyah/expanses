@@ -29,6 +29,7 @@ import { Donut } from '../transactions/Donut';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
+import { EditEventForm } from './EditEventForm';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
@@ -189,6 +190,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [error, setError] = useState<unknown>(null);
   /* A category row tapped on Where it went: the history below shows only its payments, until it is tapped again. */
   const [picked, setPicked] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
 
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
@@ -567,9 +569,13 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
         </section>
       )}
 
-      {event && (
+      {event && editing && (
+        <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasPlan || transactions > 0} onDone={() => setEditing(false)} />
+      )}
+      {event && !editing && (
         <>
           <InsetGroup>
+            <InsetRow title="Edit event" label={`Edit ${event.name}`} onClick={() => setEditing(true)} />
             <InsetRow
               title={event.finishedAt === null ? 'Mark as done' : 'Reopen'}
               label={event.finishedAt === null ? `Finish ${event.name}` : `Reopen ${event.name}`}
