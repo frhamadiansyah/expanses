@@ -22,7 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Landmark, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
@@ -31,7 +31,7 @@ import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidate
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { useCards, useCardsWithArchived, useWalletLast4 } from '../cards/card-queries';
+import { useAccountNumberLast4, useCards, useCardsWithArchived, useWalletLast4 } from '../cards/card-queries';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
@@ -149,7 +149,10 @@ export function TransactionsPage() {
   // to, because it went through a second filter that had no membership test.
   const membership = useCategorySetMembership().data ?? {};
   const cards = useCards().data ?? [];
-  const walletLast4 = useWalletLast4().data ?? {};
+  // The digits a row shows when no card paid: a wallet's phone, or a bank account's own number (0080).
+  const wallets = useWalletLast4().data;
+  const numbers = useAccountNumberLast4().data;
+  const walletLast4 = useMemo(() => ({ ...(numbers ?? {}), ...(wallets ?? {}) }), [numbers, wallets]);
   // What a row names may have been put away since; the rows read it from every card, archived ones too.
   const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();

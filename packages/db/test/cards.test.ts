@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setWalletLast4 } from '../src/index';
+import { accountNumberLast4s, addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setAccountNumberLast4, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -214,5 +214,19 @@ describe('the last four digits of a wallet’s phone number', () => {
     await expect(setWalletLast4(database, ws, wallet.id, '55210')).rejects.toThrow(/four numbers/);
     await expect(setWalletLast4(database, ws, bank.id, '5521')).rejects.toThrow(/digital wallet/);
     expect(await listWalletLast4(database, ws)).toEqual({});
+  });
+});
+
+describe('a bank account’s number, by its last four digits (0080)', () => {
+  it('is kept on a bank or savings account, cleared with blanks, and refused on anything else', async () => {
+    const { database, ws } = await setupDb();
+    const bank = await createAccount(database, ws, { name: 'Everyday bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const wallet = await createAccount(database, ws, { name: 'Phone wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    await setAccountNumberLast4(database, ws, bank.id, '4321');
+    expect(await accountNumberLast4s(database, ws)).toEqual({ [bank.id]: '4321' });
+    await expect(setAccountNumberLast4(database, ws, bank.id, '43')).rejects.toThrow(/four numbers/);
+    await expect(setAccountNumberLast4(database, ws, wallet.id, '4321')).rejects.toThrow(/bank or savings/);
+    await setAccountNumberLast4(database, ws, bank.id, '  ');
+    expect(await accountNumberLast4s(database, ws)).toEqual({});
   });
 });

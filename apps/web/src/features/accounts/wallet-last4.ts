@@ -9,3 +9,14 @@ export function readWalletLast4(typed: string): { ok: true; last4: string | null
   if (digits.length >= 4) return { ok: true, last4: digits.slice(-4) };
   return { ok: false, error: 'The last 4 digits of the phone number are four numbers, like 5521.' };
 }
+
+/**
+ * The same reading for a bank account's number: its last four digits, or nothing. A whole account number pasted in
+ * keeps its last four; fewer than four is refused in words, before the save is tried.
+ */
+export function readAccountNumberLast4(typed: string): { ok: true; last4: string | null } | { ok: false; error: string } {
+  if (typed.trim() === '') return { ok: true, last4: null };
+  const digits = typed.replace(/\D/g, '');
+  if (digits.length >= 4) return { ok: true, last4: digits.slice(-4) };
+  return { ok: false, error: 'The last 4 digits of the account number are four numbers.' };
+}

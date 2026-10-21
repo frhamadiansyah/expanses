@@ -1,7 +1,7 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, desc, eq, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Tx } from '../database';
+import type { Database, Db, Tx } from '../database';
 import { accounts } from '../schema';
 import { type AccountRow, createAccountTx } from './accounts';
 import { cardIdentity, cards } from '../schema-cards';
@@ -139,6 +139,50 @@ export async function setWalletLast4(database: Database, ws: WorkspaceContext, a
     for (const row of extra) await tx.update(cards).set({ archivedAt: new Date().toISOString() }).where(eq(cards.id, row.id));
     markAccountDirtyTx(tx, accountId);
   });
+}
+
+/** The kinds of account whose number a bank names: a bank account and a savings account. */
+export const NUMBERED_SUBTYPES: readonly string[] = ['bank', 'savings'];
+
+/**
+ * Records, changes or (with null or blanks) clears the last four digits of a bank account's number — how its alerts and
+ * statements name it ("rek ****1234"). Its cards keep their own digits; these are the account's.
+ */
+export async function setAccountNumberLast4(database: Database, ws: WorkspaceContext, accountId: string, last4: string | null): Promise<void> {
+  const digits = last4?.trim() || null;
+  if (digits !== null && !FOUR_DIGITS.test(digits)) throw new CardError('LAST4', 'Last four digits are four numbers, like 1467');
+  await database.transaction(async (tx) => {
+    const [account] = await tx
+      .select({ subtype: accounts.subtype })
+      .from(accounts)
+      .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new CardError('NOT_FOUND', 'That account is not in this workspace');
+    if (!NUMBERED_SUBTYPES.includes(account.subtype)) throw new CardError('NOT_A_BANK', 'Only a bank or savings account keeps the last four digits of its number');
+    if (!(await numberColumnExists(tx))) return;
+    await tx.run(sql`UPDATE accounts SET number_last4 = ${digits} WHERE id = ${accountId}`);
+    markAccountDirtyTx(tx, accountId);
+  });
+}
+
+/*
+ * The column is read and written by name, never through the table's schema: a database stopped before 0080 has no
+ * number_last4, and every insert the schema writes would name it. Asked once per handle, and only a yes is kept.
+ */
+const numberColumn = new WeakMap<object, boolean>();
+export async function numberColumnExists(tx: Db): Promise<boolean> {
+  if (numberColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'number_last4'`);
+  if (rows.length > 0) numberColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/** Each bank account's number digits, by account id: what its rows show as "···· 1234" when no card paid. */
+export async function accountNumberLast4s(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  if (!(await numberColumnExists(database.db))) return {};
+  const rows = await database.db.values<[string, string]>(
+    sql`SELECT id, number_last4 FROM accounts WHERE workspace_id = ${ws.workspaceId} AND number_last4 IS NOT NULL AND archived_at IS NULL`,
+  );
+  return Object.fromEntries(rows);
 }
 
 /** A wallet's one row for its phone digits: never a card, so never through `addCard`. */
