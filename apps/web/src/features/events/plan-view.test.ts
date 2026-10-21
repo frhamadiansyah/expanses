@@ -28,9 +28,9 @@ const plain = (text: string) => text.replace(/ /g, ' ');
 const input: EventPlanInput = {
   categoryNames: { gear: 'Baby gear', clothes: 'Clothes' },
   items: [
-    { id: 'i1', name: 'Stroller', quantity: 1, unitPriceMinor: 12_000_000, categoryId: 'gear', link: null, note: null, purchase: null },
-    { id: 'i2', name: 'Crib', quantity: 1, unitPriceMinor: 7_500_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 't1', shareMinor: 7_800_000 } },
-    { id: 'i3', name: 'Muslin wraps', quantity: 4, unitPriceMinor: 175_000, categoryId: 'clothes', link: null, note: null, purchase: null },
+    { id: 'i1', name: 'Stroller', quantity: 1, unitPriceMinor: 12_000_000, categoryId: 'gear', link: null, note: null, purchases: [], done: false },
+    { id: 'i2', name: 'Crib', quantity: 1, unitPriceMinor: 7_500_000, categoryId: 'gear', link: null, note: null, purchases: [{ transactionId: 't1', shareMinor: 7_800_000 }], done: true },
+    { id: 'i3', name: 'Muslin wraps', quantity: 4, unitPriceMinor: 175_000, categoryId: 'clothes', link: null, note: null, purchases: [], done: false },
   ],
   actuals: [{ transactionId: 't1', occurredOn: '2026-09-12', description: 'Toko Bayi', categoryId: 'gear', amountBaseMinor: 7_800_000 }],
 };
@@ -153,7 +153,7 @@ describe('the cards', () => {
  * plan. Never a negative, and never a silence either.
  */
 describe('an event whose card would read below nought', () => {
-  const crib = { id: 'g1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchase: null };
+  const crib = { id: 'g1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchases: [], done: false };
   const givenBack = (items: EventPlanInput['items']) =>
     eventPlan({
       categoryNames: { gear: 'Baby gear' },
@@ -311,9 +311,9 @@ describe('a receipt that is the item', () => {
 const shared: EventPlanInput = {
   categoryNames: { clothes: 'Clothes', gear: 'Baby gear', food: 'Restaurants' },
   items: [
-    { id: 's1', name: 'Newborn clothes', quantity: 10, unitPriceMinor: 150_000, categoryId: 'clothes', link: null, note: null, purchase: { transactionId: 'm1', shareMinor: 1_280_000 } },
-    { id: 's2', name: 'Muslin wraps', quantity: 4, unitPriceMinor: 175_000, categoryId: 'clothes', link: null, note: null, purchase: { transactionId: 'm1', shareMinor: 700_000 } },
-    { id: 's3', name: 'Stroller', quantity: 1, unitPriceMinor: 12_000_000, categoryId: 'gear', link: null, note: null, purchase: null },
+    { id: 's1', name: 'Newborn clothes', quantity: 10, unitPriceMinor: 150_000, categoryId: 'clothes', link: null, note: null, purchases: [{ transactionId: 'm1', shareMinor: 1_280_000 }], done: true },
+    { id: 's2', name: 'Muslin wraps', quantity: 4, unitPriceMinor: 175_000, categoryId: 'clothes', link: null, note: null, purchases: [{ transactionId: 'm1', shareMinor: 700_000 }], done: true },
+    { id: 's3', name: 'Stroller', quantity: 1, unitPriceMinor: 12_000_000, categoryId: 'gear', link: null, note: null, purchases: [], done: false },
   ],
   actuals: [
     { transactionId: 'm1', occurredOn: '2026-09-14', description: 'Mothercare', categoryId: 'clothes', amountBaseMinor: 4_150_000 },
@@ -376,7 +376,7 @@ describe('the figures add up', () => {
  */
 const refunded = eventPlan({
   categoryNames: { gear: 'Baby gear' },
-  items: [{ id: 'r1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'p1', shareMinor: 3_000_000 } }],
+  items: [{ id: 'r1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchases: [{ transactionId: 'p1', shareMinor: 3_000_000 }], done: true }],
   actuals: [
     { transactionId: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', categoryId: 'gear', amountBaseMinor: 3_000_000 },
     { transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId: 'gear', amountBaseMinor: -1_000_000 },
@@ -453,7 +453,7 @@ describe('nothing on screen reads below nought', () => {
   const alongside = (refundMinor: number, unplannedMinor: number) =>
     eventPlan({
       categoryNames: { gear: 'Baby gear', food: 'Restaurants' },
-      items: [{ id: 'a1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'p1', shareMinor: 3_000_000 } }],
+      items: [{ id: 'a1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchases: [{ transactionId: 'p1', shareMinor: 3_000_000 }], done: true }],
       actuals: [
         { transactionId: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', categoryId: 'gear', amountBaseMinor: 3_000_000 },
         { transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId: 'gear', amountBaseMinor: -refundMinor },
@@ -525,7 +525,7 @@ describe('nothing on screen reads below nought', () => {
  * category it does, which is the one that drove the ring itself under.
  */
 describe('an event whose refunds outran it', () => {
-  const crib = { id: 'n1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchase: null };
+  const crib = { id: 'n1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchases: [], done: false };
   const netNegative = (categoryId: string) =>
     eventPlan({
       categoryNames: { gear: 'Baby gear', food: 'Restaurants' },
@@ -621,7 +621,7 @@ describe('the ring on "Where it went"', () => {
   /** Travel spends, Hotels refunds: the arrangement in which the net is not what the slices add up to. */
   const split = eventPlan({
     categoryNames: { travel: 'Travel', hotels: 'Hotels' },
-    items: [{ id: 'w1', name: 'Flights', quantity: 1, unitPriceMinor: 6_000_000, categoryId: 'travel', link: null, note: null, purchase: null }],
+    items: [{ id: 'w1', name: 'Flights', quantity: 1, unitPriceMinor: 6_000_000, categoryId: 'travel', link: null, note: null, purchases: [], done: false }],
     actuals: [
       { transactionId: 'w1', occurredOn: '2026-09-12', description: 'Garuda', categoryId: 'travel', amountBaseMinor: 5_000_000 },
       { transactionId: 'w2', occurredOn: '2026-09-13', description: 'Hotel refund', categoryId: 'hotels', amountBaseMinor: -1_000_000 },
@@ -704,10 +704,10 @@ describe('whether the money-back rows add up to their heading', () => {
  * item's estimate and its category and nothing about where its money actually was.
  */
 describe('an item another receipt already answers', () => {
-  it('says which payment holds it, and that ticking it here moves it', () => {
+  it('says which payment already paid for it, and that ticking it here adds this one', () => {
     const crib = plan.lines[0]!.items[1]!;
     expect(crib.purchase!.transactionId).toBe('t1');
-    expect(answeredElsewhere(crib, 't2')).toBe('answered by Toko Bayi · 12 Sep — ticking it here moves it');
+    expect(answeredElsewhere(crib, 't2')).toBe('already paid by Toko Bayi · 12 Sep — ticking it here adds this one');
     // On its own receipt there is nothing to move and nothing to say.
     expect(answeredElsewhere(crib, 't1')).toBeNull();
     // An item nothing has answered yet is the ordinary row.
@@ -719,12 +719,12 @@ describe('an item another receipt already answers', () => {
     // null, and the one thing still true — that something else holds this item — is the thing that must be said.
     const elsewhere = eventPlan({
       categoryNames: { gear: 'Baby gear' },
-      items: [{ id: 'e1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'gone', shareMinor: 3_000_000 } }],
+      items: [{ id: 'e1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchases: [{ transactionId: 'gone', shareMinor: 3_000_000 }], done: true }],
       actuals: [],
     });
     const item = elsewhere.lines[0]!.items[0]!;
     expect(item.bought).toBe(false);
-    expect(answeredElsewhere(item, 't9')).toBe('answered by another payment — ticking it here moves it');
+    expect(answeredElsewhere(item, 't9')).toBe('already paid by another payment — ticking it here adds this one');
   });
 });
 
@@ -744,5 +744,19 @@ describe('what the item form may do while it is still asking whether it can keep
     expect(itemFormGate({ isSuccess: true, data: true })).toEqual({ blocked: false, saveOff: false });
     // Answered no: both.
     expect(itemFormGate({ isSuccess: true, data: false })).toEqual({ blocked: true, saveOff: true });
+  });
+});
+
+describe('afterSaving an item paid towards and still open', () => {
+  it('counts only what is still to pay on it, before the edit and after', () => {
+    // Souvenirs at Rp100.000, Rp150.000 already paid and not marked done: nothing to go on it.
+    const plan = eventPlan({
+      categoryNames: { gear: 'Gear' },
+      items: [{ id: 's', name: 'Souvenirs', quantity: 1, unitPriceMinor: 100_000, categoryId: 'gear', link: null, note: null, purchases: [{ transactionId: 't', shareMinor: 150_000 }], done: false }],
+      actuals: [{ transactionId: 't', occurredOn: '2026-10-01', description: 'Joger', categoryId: 'gear', amountBaseMinor: 150_000 }],
+    });
+    expect(plan.toBuyMinor).toBe(0);
+    expect(afterSaving(plan, { estimateMinor: 200_000, replacing: 's' }).toBuyMinor).toBe(50_000);
+    expect(afterSaving(plan, { estimateMinor: 120_000, replacing: 's' }).toBuyMinor).toBe(0);
   });
 });

@@ -189,8 +189,14 @@ export function afterSaving(plan: EventPlan, typed: { estimateMinor: number; rep
   const { notPlannedMinor, moneyBackMinor } = planTotals(plan);
   return {
     plannedMinor: Math.max(0, plan.plannedMinor - (old?.estimateMinor ?? 0) + typed.estimateMinor),
-    // Editing something already bought does not put it back on the list of things to buy.
-    toBuyMinor: Math.max(0, plan.toBuyMinor - (wasBought ? 0 : (old?.estimateMinor ?? 0)) + (wasBought ? 0 : typed.estimateMinor)),
+    // Editing something already bought does not put it back on the list of things to buy. An open item wants its
+    // estimate less what was already paid towards it, never below nothing — before the edit and after it alike.
+    toBuyMinor: Math.max(
+      0,
+      plan.toBuyMinor -
+        (wasBought ? 0 : Math.max(0, (old?.estimateMinor ?? 0) - (old?.actualMinor ?? 0))) +
+        (wasBought ? 0 : Math.max(0, typed.estimateMinor - (old?.actualMinor ?? 0))),
+    ),
     notPlannedMinor,
     moneyBackMinor,
   };
@@ -322,16 +328,18 @@ export function moneyBackUnder(headingMinor: number, rows: readonly { amountMino
 }
 
 /**
- * What a row on "What it covers" says about an item another receipt already answers.
+ * What a row on "What it covers" says about an item other receipts already paid towards.
  *
- * Ticking it here moves its money: the write sets one purchase against one item, so the share the other receipt
- * holds is given up. That is often exactly what is meant — a receipt was corrected, or the wrong one was picked —
- * but it happened silently, with the row saying nothing about where the item's money currently is.
+ * An item may be paid for several times, so ticking it here adds this receipt to what it already holds — it takes
+ * nothing away from the others. The row says where the item's money already is, so that is not a surprise.
  */
 export function answeredElsewhere(item: EventPlanItemView, transactionId: string): string | null {
-  if (!item.purchase || item.purchase.transactionId === transactionId) return null;
-  const where = item.bought && item.description ? `${item.description}${item.occurredOn ? ` · ${dayMonth(item.occurredOn)}` : ''}` : 'another payment';
-  return `answered by ${where} — ticking it here moves it`;
+  const others = item.purchases.filter((purchase) => purchase.transactionId !== transactionId);
+  if (others.length === 0) return null;
+  if (others.length > 1) return `already paid by ${others.length} other payments — ticking it here adds this one`;
+  const known = item.purchaseCount > 0 && item.description && item.purchase?.transactionId !== transactionId;
+  const where = known ? `${item.description}${item.occurredOn ? ` · ${dayMonth(item.occurredOn)}` : ''}` : 'another payment';
+  return `already paid by ${where} — ticking it here adds this one`;
 }
 
 /**

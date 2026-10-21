@@ -1,9 +1,9 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { eventItems } from '../schema-events';
+import { eventItemPurchases, eventItems } from '../schema-events';
 import { EventError, eventOf } from './event-scope';
 
 export interface EventItemRow {
@@ -15,9 +15,10 @@ export interface EventItemRow {
   categoryAccountId: string | null;
   link: string | null;
   note: string | null;
-  /** The purchase that answered it, posted or since voided. */
-  transactionId: string | null;
-  shareMinor: number | null;
+  /** The purchases that paid for it, posted or since voided, each with this item's share of it. Oldest first. */
+  purchases: { transactionId: string; shareMinor: number }[];
+  /** Marked done: nothing more is to be bought for it. */
+  done: boolean;
   sortOrder: number;
 }
 
@@ -47,7 +48,31 @@ export async function eventItemsExist(tx: Db): Promise<boolean> {
   return exists;
 }
 
-const toItem = (row: typeof eventItems.$inferSelect): EventItemRow => ({
+/* The same question of 0078's table: a database stopped between 0049 and 0078 reads as one whose items were never paid. */
+const purchasesTable = new WeakMap<Db, boolean>();
+
+async function purchasesExist(tx: Db): Promise<boolean> {
+  if (purchasesTable.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_item_purchases'`);
+  const exists = rows.length > 0;
+  if (exists) purchasesTable.set(tx, true);
+  return exists;
+}
+
+/** Each item's purchases, by item id, oldest first. */
+async function purchasesOf(tx: Db, ws: WorkspaceContext, itemIds: readonly string[]): Promise<Map<string, { transactionId: string; shareMinor: number }[]>> {
+  const out = new Map<string, { transactionId: string; shareMinor: number }[]>();
+  if (itemIds.length === 0 || !(await purchasesExist(tx))) return out;
+  const rows = await tx
+    .select()
+    .from(eventItemPurchases)
+    .where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), inArray(eventItemPurchases.itemId, [...itemIds])))
+    .orderBy(asc(eventItemPurchases.createdAt), asc(eventItemPurchases.transactionId));
+  for (const row of rows) out.set(row.itemId, [...(out.get(row.itemId) ?? []), { transactionId: row.transactionId, shareMinor: row.shareMinor }]);
+  return out;
+}
+
+const toItem = (row: typeof eventItems.$inferSelect, purchases: { transactionId: string; shareMinor: number }[] = []): EventItemRow => ({
   id: row.id,
   eventId: row.eventId,
   name: row.name,
@@ -56,8 +81,8 @@ const toItem = (row: typeof eventItems.$inferSelect): EventItemRow => ({
   categoryAccountId: row.categoryAccountId,
   link: row.link,
   note: row.note,
-  transactionId: row.transactionId,
-  shareMinor: row.shareMinor,
+  purchases,
+  done: row.doneAt !== null && row.doneAt !== undefined,
   sortOrder: row.sortOrder,
 });
 
@@ -88,7 +113,8 @@ export async function listEventItems(database: Database, ws: WorkspaceContext, e
     .from(eventItems)
     .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.eventId, eventId)))
     .orderBy(asc(eventItems.sortOrder), asc(eventItems.createdAt));
-  return rows.map(toItem);
+  const purchases = await purchasesOf(database.db, ws, rows.map((row) => row.id));
+  return rows.map((row) => toItem(row, purchases.get(row.id) ?? []));
 }
 
 /** Adds a thing to buy, or edits one. An edit never moves it and never touches the purchase behind it. */
@@ -153,26 +179,29 @@ export async function saveEventItem(database: Database, ws: WorkspaceContext, ev
 /** Drops an item. Whatever bought it stays where it is; its share returns to that receipt's leftover. */
 export async function removeEventItem(database: Database, ws: WorkspaceContext, itemId: string): Promise<void> {
   if (!(await eventItemsExist(database.db))) return;
-  await database.db.delete(eventItems).where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+  await database.transaction(async (tx) => {
+    if (await purchasesExist(tx)) {
+      await tx.delete(eventItemPurchases).where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), eq(eventItemPurchases.itemId, itemId)));
+    }
+    await tx.delete(eventItems).where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+  });
 }
 
 /**
- * The purchase that answered an item and how much of it that item is: one fact, in two columns.
- *
- * 0049 says "both NULL, or both set" in a comment and nothing enforces it, so the rule is kept here instead — every
- * write of the pair goes through `writeCover`, which takes the two together or neither, so a row settled by a purchase
- * with no figure, or carrying a figure against no purchase, is not a value this module can even express. SQLite cannot
- * be given a CHECK after the fact without rebuilding the table, and amending 0049 in place would leave the constraint
- * present on a fresh database and absent on one that already ran it — an invariant true in some copies and not others
- * is worse than one upheld in the single module that writes the table.
+ * One item's share of one purchase: written, replaced, or — with null — taken off. A replaced share keeps the day it
+ * was first given (or `since`, carried from the purchase it corrects), so an item's payments keep their order.
  */
-type Cover = { transactionId: string; shareMinor: number } | null;
-
-function writeCover(tx: Db, ws: WorkspaceContext, itemId: string, cover: Cover): Promise<unknown> {
-  return tx
-    .update(eventItems)
-    .set({ transactionId: cover?.transactionId ?? null, shareMinor: cover?.shareMinor ?? null })
-    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+async function writeShare(tx: Db, ws: WorkspaceContext, itemId: string, transactionId: string, shareMinor: number | null, since?: string): Promise<void> {
+  const [was] = await tx
+    .select({ createdAt: eventItemPurchases.createdAt })
+    .from(eventItemPurchases)
+    .where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), eq(eventItemPurchases.itemId, itemId), eq(eventItemPurchases.transactionId, transactionId)));
+  await tx
+    .delete(eventItemPurchases)
+    .where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), eq(eventItemPurchases.itemId, itemId), eq(eventItemPurchases.transactionId, transactionId)));
+  if (shareMinor !== null) {
+    await tx.insert(eventItemPurchases).values({ itemId, workspaceId: ws.workspaceId, transactionId, shareMinor, createdAt: since ?? was?.createdAt ?? new Date().toISOString() });
+  }
 }
 
 /** A share is whole minor units above nought. Nought is not a share — it is the absence of one, which is unlinking. */
@@ -180,10 +209,32 @@ function checkShare(share: number): void {
   if (!Number.isInteger(share) || share <= 0) throw new EventError('SHARE_RANGE', 'A share is a whole figure above nought');
 }
 
-/** Takes the tick off. The payment is untouched, and the other items on the same receipt keep their shares. */
-export async function unlinkEventItem(database: Database, ws: WorkspaceContext, itemId: string): Promise<void> {
+/**
+ * Takes a purchase off an item — the one named, or every one when none is. The payment is untouched, and the other
+ * items on the same receipt keep their shares. Whether the item is done is its own mark, and stays as it was.
+ */
+export async function unlinkEventItem(database: Database, ws: WorkspaceContext, itemId: string, transactionId?: string): Promise<void> {
+  if (!(await eventItemsExist(database.db)) || !(await purchasesExist(database.db))) return;
+  await database.db
+    .delete(eventItemPurchases)
+    .where(
+      and(
+        eq(eventItemPurchases.workspaceId, ws.workspaceId),
+        eq(eventItemPurchases.itemId, itemId),
+        ...(transactionId ? [eq(eventItemPurchases.transactionId, transactionId)] : []),
+      ),
+    );
+}
+
+/** Marks an item done — nothing more is to be bought for it — or puts it back on the list. Its purchases stay. */
+export async function setEventItemDone(database: Database, ws: WorkspaceContext, itemId: string, done: boolean): Promise<void> {
   if (!(await eventItemsExist(database.db))) return;
-  await writeCover(database.db, ws, itemId, null);
+  const [item] = await database.db.select({ id: eventItems.id }).from(eventItems).where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+  if (!item) throw new EventError('ITEM_NOT_FOUND', 'That item is not on this event');
+  await database.db
+    .update(eventItems)
+    .set({ doneAt: done ? new Date().toISOString() : null })
+    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
 }
 
 /**
@@ -241,22 +292,18 @@ async function coverOf(tx: Db, ws: WorkspaceContext, transactionId: string): Pro
   const { eventId, ...row } = found;
   const totalMinor = await expenseTotalOf(tx, ws, transactionId);
   const covers =
-    eventId !== null && (await eventItemsExist(tx))
-      ? (
-          await tx
-            .select({ itemId: eventItems.id, shareMinor: eventItems.shareMinor })
-            .from(eventItems)
-            .where(
-              and(
-                eq(eventItems.workspaceId, ws.workspaceId),
-                eq(eventItems.transactionId, transactionId),
-                eq(eventItems.eventId, eventId),
-              ),
-            )
-        )
-        // A share of null answers for nothing. The pair is kept whole above, so this only guards a row some other
-        // hand left half set: it reads as unsettled, which cannot make the leftover smaller than it truly is.
-          .map((cover) => ({ itemId: cover.itemId, shareMinor: cover.shareMinor ?? 0 }))
+    eventId !== null && (await eventItemsExist(tx)) && (await purchasesExist(tx))
+      ? await tx
+          .select({ itemId: eventItemPurchases.itemId, shareMinor: eventItemPurchases.shareMinor })
+          .from(eventItemPurchases)
+          .innerJoin(eventItems, eq(eventItems.id, eventItemPurchases.itemId))
+          .where(
+            and(
+              eq(eventItemPurchases.workspaceId, ws.workspaceId),
+              eq(eventItemPurchases.transactionId, transactionId),
+              eq(eventItems.eventId, eventId),
+            ),
+          )
       : [];
   const givenMinor = covers.reduce((total, cover) => total + cover.shareMinor, 0);
   return { transactionId, ...row, totalMinor, givenMinor, leftMinor: totalMinor - givenMinor, covers };
@@ -314,7 +361,7 @@ export async function linkEventItem(
   transactionId: string,
   shareMinor?: number,
 ): Promise<void> {
-  if (!(await eventItemsExist(database.db))) return;
+  if (!(await eventItemsExist(database.db)) || !(await purchasesExist(database.db))) return;
   await database.transaction(async (tx) => {
     const [item] = await tx
       .select()
@@ -325,7 +372,7 @@ export async function linkEventItem(
 
     const cover = await coverOf(tx, ws, transactionId);
     // Re-linking the same item does not have to fit twice over: its own share is what it is replacing.
-    const left = cover.leftMinor + (item.transactionId === transactionId ? (item.shareMinor ?? 0) : 0);
+    const left = cover.leftMinor + (cover.covers.find((row) => row.itemId === itemId)?.shareMinor ?? 0);
     // What is left is always a figure this receipt can answer, so the default needs no clamping of its own. Nought
     // left is not a share but the absence of one, and `checkShare` refuses it: a receipt already spoken for cannot
     // also buy this, and saying so is better than writing a share nobody could read.
@@ -343,7 +390,7 @@ export async function linkEventItem(
     checkShare(share);
     if (share > left) throw new EventError('OVER_ALLOCATED', `Only ${left} of this payment is still unaccounted for`);
 
-    await writeCover(tx, ws, itemId, { transactionId, shareMinor: share });
+    await writeShare(tx, ws, itemId, transactionId, share);
   });
 }
 
@@ -371,7 +418,7 @@ export async function setPurchaseCover(
   transactionId: string,
   covers: readonly { itemId: string; shareMinor: number }[],
 ): Promise<void> {
-  if (!(await eventItemsExist(database.db))) return;
+  if (!(await eventItemsExist(database.db)) || !(await purchasesExist(database.db))) return;
   for (const cover of covers) checkShare(cover.shareMinor);
   // Keyed by item, so an item named twice is one share and not two — the figure checked is the figure written.
   const wanted = new Map(covers.map((cover) => [cover.itemId, cover.shareMinor]));
@@ -396,17 +443,18 @@ export async function setPurchaseCover(
       taggedTo === null
         ? []
         : await tx
-            .select({ id: eventItems.id })
-            .from(eventItems)
+            .select({ id: eventItemPurchases.itemId })
+            .from(eventItemPurchases)
+            .innerJoin(eventItems, eq(eventItems.id, eventItemPurchases.itemId))
             .where(
               and(
-                eq(eventItems.workspaceId, ws.workspaceId),
-                eq(eventItems.transactionId, transactionId),
+                eq(eventItemPurchases.workspaceId, ws.workspaceId),
+                eq(eventItemPurchases.transactionId, transactionId),
                 eq(eventItems.eventId, taggedTo),
               ),
             );
-    for (const row of rows) if (!wanted.has(row.id)) await writeCover(tx, ws, row.id, null);
-    for (const [itemId, shareMinor] of wanted) await writeCover(tx, ws, itemId, { transactionId, shareMinor });
+    for (const row of rows) if (!wanted.has(row.id)) await writeShare(tx, ws, row.id, transactionId, null);
+    for (const [itemId, shareMinor] of wanted) await writeShare(tx, ws, itemId, transactionId, shareMinor);
   });
 }
 
@@ -431,19 +479,19 @@ export async function setPurchaseCover(
  * covers that still fit are left exactly as they are.
  */
 export async function clampEventItemsTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<void> {
-  if (!(await eventItemsExist(tx))) return;
+  if (!(await eventItemsExist(tx)) || !(await purchasesExist(tx))) return;
   const [row] = await tx.values<[number | null]>(sql`
-    SELECT sum(max(0, coalesce(share_minor, 0))) FROM event_items WHERE workspace_id = ${ws.workspaceId} AND transaction_id = ${transactionId}`);
+    SELECT sum(max(0, share_minor)) FROM event_item_purchases WHERE workspace_id = ${ws.workspaceId} AND transaction_id = ${transactionId}`);
   const given = Number(row?.[0] ?? 0);
   if (given > 0 && given > (await expenseTotalOf(tx, ws, transactionId))) await carryEventItemTx(tx, ws, transactionId, transactionId);
 }
 
 export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: string, to: string): Promise<void> {
-  if (!(await eventItemsExist(tx))) return;
+  if (!(await eventItemsExist(tx)) || !(await purchasesExist(tx))) return;
   const rows = await tx
-    .select({ id: eventItems.id, shareMinor: eventItems.shareMinor })
-    .from(eventItems)
-    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, from)));
+    .select({ id: eventItemPurchases.itemId, shareMinor: eventItemPurchases.shareMinor, createdAt: eventItemPurchases.createdAt })
+    .from(eventItemPurchases)
+    .where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), eq(eventItemPurchases.transactionId, from)));
   if (rows.length === 0) return;
 
   // Read as nought below nought, the same defensiveness `coverOf` shows a half-set row. Nothing here can write a
@@ -452,7 +500,7 @@ export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: strin
   // negative row would leave the shares written adding to more than the receipt.
   const shares = rows.map((row) => {
     const was = Math.max(0, row.shareMinor ?? 0);
-    return { id: row.id, was, share: was };
+    return { id: row.id, was, share: was, since: row.createdAt };
   });
   const old = shares.reduce((total, row) => total + row.was, 0);
   const now = await expenseTotalOf(tx, ws, to);
@@ -464,6 +512,7 @@ export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: strin
   }
   for (const row of shares) {
     // A share rounded down to nothing is not a share: that item simply stops being answered by this receipt.
-    await writeCover(tx, ws, row.id, row.share > 0 ? { transactionId: to, shareMinor: row.share } : null);
+    if (from !== to) await writeShare(tx, ws, row.id, from, null);
+    await writeShare(tx, ws, row.id, to, row.share > 0 ? row.share : null, row.since);
   }
 }

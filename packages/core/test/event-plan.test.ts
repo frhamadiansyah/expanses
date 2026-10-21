@@ -10,7 +10,9 @@ const item = (
   unitPriceMinor: number,
   categoryId: string | null,
   purchase: { transactionId: string; shareMinor: number } | null = null,
-): EventPlanItemInput => ({ id, name, quantity, unitPriceMinor, categoryId, link: null, note: null, purchase });
+  // A purchase ticks it off unless told otherwise: the single-purchase case every older test was written for.
+  over: Partial<EventPlanItemInput> = {},
+): EventPlanItemInput => ({ id, name, quantity, unitPriceMinor, categoryId, link: null, note: null, purchases: purchase ? [purchase] : [], done: purchase !== null, ...over });
 
 const actual = (transactionId: string, categoryId: string, amountBaseMinor: number, occurredOn: string, description: string) => ({
   transactionId,
@@ -281,5 +283,63 @@ describe('the awkward cases', () => {
     });
     expect(plan).toMatchObject({ differenceMinor: 0, overCount: 0, notPlannedMinor: 0 });
     expect(plan.lines[0]!.items[0]!.differenceMinor).toBe(0);
+  });
+});
+
+describe('an item paid for several times', () => {
+  // Souvenirs planned at Rp1.000.000, bought at three shops; one of those receipts also paid for a T-shirt.
+  const trip = (done: boolean): EventPlanInput => ({
+    categoryNames: { shopping: 'Shopping' },
+    items: [
+      item('s', 'Souvenirs', 1, 1_000_000, 'shopping', null, {
+        purchases: [
+          { transactionId: 'a', shareMinor: 200_000 },
+          { transactionId: 'b', shareMinor: 250_000 },
+          { transactionId: 'c', shareMinor: 200_000 },
+        ],
+        done,
+      }),
+      item('t', 'T-shirt', 1, 150_000, 'shopping', { transactionId: 'c', shareMinor: 150_000 }),
+    ],
+    actuals: [
+      actual('a', 'shopping', 200_000, '2026-10-01', 'Krisna'),
+      actual('b', 'shopping', 250_000, '2026-10-02', 'Pasar Seni'),
+      actual('c', 'shopping', 400_000, '2026-10-03', 'Joger'),
+    ],
+  });
+
+  it('stays on the list while open: its payments count as bought money, and only the rest of its estimate is to go', () => {
+    const plan = eventPlan(trip(false));
+    const souvenirs = plan.lines[0]!.items.find((view) => view.id === 's')!;
+    expect(souvenirs).toMatchObject({ bought: false, actualMinor: 650_000, purchaseCount: 3, differenceMinor: null, description: 'Joger' });
+    expect(plan.boughtCount).toBe(1);
+    expect(plan.boughtActualMinor).toBe(800_000);
+    expect(plan.toBuyMinor).toBe(350_000);
+    // Only the T-shirt is done, and it cost what was planned.
+    expect(plan.differenceMinor).toBe(0);
+    // Joger's Rp50.000 nobody claimed is the only spending nobody planned.
+    expect(plan.notPlannedMinor).toBe(50_000);
+  });
+
+  it('is measured against its estimate once marked done', () => {
+    const plan = eventPlan(trip(true));
+    const souvenirs = plan.lines[0]!.items.find((view) => view.id === 's')!;
+    expect(souvenirs).toMatchObject({ bought: true, actualMinor: 650_000, differenceMinor: -350_000 });
+    expect(plan.boughtCount).toBe(2);
+    expect(plan.toBuyMinor).toBe(0);
+    expect(plan.differenceMinor).toBe(-350_000);
+  });
+
+  it('counts only the payments in the scope being read', () => {
+    const input = trip(false);
+    const plan = eventPlan({ ...input, actuals: input.actuals.filter((row) => row.transactionId !== 'b') });
+    expect(plan.lines[0]!.items.find((view) => view.id === 's')).toMatchObject({ actualMinor: 400_000, purchaseCount: 2 });
+  });
+
+  it('can be done with nothing paid, and then is all under', () => {
+    const plan = eventPlan({ categoryNames: {}, items: [item('x', 'Gift', 1, 300_000, null, null, { done: true })], actuals: [] });
+    expect(plan.boughtCount).toBe(1);
+    expect(plan.differenceMinor).toBe(-300_000);
+    expect(plan.toBuyMinor).toBe(0);
   });
 });

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -5,9 +6,11 @@ import {
   type Database,
   eventPlanFor,
   linkEventItem,
+  setEventItemDone,
   listEventItems,
   postTransaction,
   purchaseCover,
+  removeEventItem,
   replaceTransaction,
   saveEvent,
   saveEventItem,
@@ -27,7 +30,8 @@ async function transactionRow(database: Database, id: string) {
 /** The raw pair, so a test can see that a purchase and a share are never stored one without the other. */
 async function coverPairs(database: Database) {
   const rows = await database.db.values<[string, string | null, number | null]>(
-    sql`SELECT id, transaction_id, share_minor FROM event_items ORDER BY sort_order`,
+    // Each item's one purchase: these tests are about one receipt per item, which is what 0078 carried over.
+    sql`SELECT i.id, p.transaction_id, p.share_minor FROM event_items i LEFT JOIN event_item_purchases p ON p.item_id = i.id ORDER BY i.sort_order`,
   );
   return rows.map(([, transactionId, shareMinor]) => [transactionId, shareMinor]);
 }
@@ -35,9 +39,14 @@ async function coverPairs(database: Database) {
 /** The same pair for one named item, for the tests that span two occasions and cannot sort by one's order. */
 async function coverOfItem(database: Database, itemId: string) {
   const rows = await database.db.values<[string | null, number | null]>(
-    sql`SELECT transaction_id, share_minor FROM event_items WHERE id = ${itemId}`,
+    sql`SELECT p.transaction_id, p.share_minor FROM event_items i LEFT JOIN event_item_purchases p ON p.item_id = i.id WHERE i.id = ${itemId}`,
   );
   return rows[0]!;
+}
+
+/** Each item with its one purchase spread on it, as the single-purchase rows these tests were written against read. */
+async function flatItems(database: Database, ws: Parameters<typeof listEventItems>[1], eventId: string) {
+  return (await listEventItems(database, ws, eventId)).map((row) => ({ ...row, transactionId: row.purchases[0]?.transactionId ?? null, shareMinor: row.purchases[0]?.shareMinor ?? null }));
 }
 
 async function mothercare() {
@@ -168,7 +177,7 @@ describe('one receipt over several items', () => {
       givenMinor: 2_880_000,
       leftMinor: 1_270_000,
     });
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => [row.name, row.transactionId, row.shareMinor])).toEqual([
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => [row.name, row.transactionId, row.shareMinor])).toEqual([
       ['Newborn clothes', receipt, 1_280_000],
       ['Muslin wraps', receipt, 700_000],
       ['Bottle steriliser', receipt, 900_000],
@@ -187,7 +196,7 @@ describe('one receipt over several items', () => {
         { itemId: wraps, shareMinor: 700_000 },
       ]),
     ).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.transactionId)).toEqual([null, null]);
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => row.transactionId)).toEqual([null, null]);
   });
 
   it('unticking one item leaves the others, and raises what is left', async () => {
@@ -201,7 +210,7 @@ describe('one receipt over several items', () => {
     ]);
 
     await setPurchaseCover(h.database, h.ws, receipt, [{ itemId: clothes, shareMinor: 1_280_000 }]);
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([1_280_000, null]);
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([1_280_000, null]);
     expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ givenMinor: 1_280_000, leftMinor: 2_870_000 });
 
     await unlinkEventItem(h.database, h.ws, clothes);
@@ -224,7 +233,8 @@ describe('linking one item at a time', () => {
     const receipt = await h.buy(h.clothes.id, 1_800_000, 'Mothercare');
 
     await linkEventItem(h.database, h.ws, clothes, receipt);
-    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.shareMinor).toBe(1_800_000);
+    expect((await flatItems(h.database, h.ws, h.eventId))[0]!.shareMinor).toBe(1_800_000);
+    await setEventItemDone(h.database, h.ws, clothes, true);
 
     // Rp15.000 planned, Rp18.000 spent, Rp3.000 over — and nothing left over for the plan to call unplanned.
     expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({
@@ -259,7 +269,7 @@ describe('linking one item at a time', () => {
       { itemId: clothes, shareMinor: 1_100_000 },
       { itemId: wraps, shareMinor: 700_000 },
     ]);
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([1_100_000, 700_000]);
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([1_100_000, 700_000]);
     expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ givenMinor: 1_800_000, leftMinor: 0 });
   });
 
@@ -296,7 +306,7 @@ describe('a purchase that changes', () => {
     });
     expect(corrected).not.toBe(receipt);
     // Still fits, so the shares are kept exactly as they were.
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
       [corrected, 1_280_000],
       [corrected, 700_000],
     ]);
@@ -321,7 +331,7 @@ describe('a purchase that changes', () => {
       ],
     });
     // Halved in proportion, and the remainder goes to the largest, so they still add to exactly the new figure.
-    const shares = (await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor);
+    const shares = (await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor);
     expect(shares).toEqual([650_000, 350_000]);
     expect(shares[0]! + shares[1]!).toBe(1_000_000);
     expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ totalMinor: 1_000_000, leftMinor: 0 });
@@ -335,10 +345,14 @@ describe('a purchase that changes', () => {
     await voidTransaction(h.database, h.ws, receipt);
 
     // The row is kept — the plan reads the item as unbought because the purchase is no longer posted (Task 4).
-    expect((await listEventItems(h.database, h.ws, h.eventId))[0]).toMatchObject({ transactionId: receipt, shareMinor: 7_200_000 });
+    expect((await flatItems(h.database, h.ws, h.eventId))[0]).toMatchObject({ transactionId: receipt, shareMinor: 7_200_000 });
     const right = await h.buy(h.gear.id, 6_900_000, 'Toko Bayi Baru');
     await linkEventItem(h.database, h.ws, crib, right);
-    expect((await listEventItems(h.database, h.ws, h.eventId))[0]).toMatchObject({ transactionId: right, shareMinor: 6_900_000 });
+    // An item may be paid for more than once, so the corrected payment joins the voided one rather than replacing it.
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.purchases).toEqual([
+      { transactionId: receipt, shareMinor: 7_200_000 },
+      { transactionId: right, shareMinor: 6_900_000 },
+    ]);
   });
 });
 
@@ -371,7 +385,7 @@ describe('shares that do not divide evenly', () => {
       ],
     });
 
-    const shares = (await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
+    const shares = (await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
     // Every share is a whole number, the odd rupiah lands on one item only, and nothing is lost or invented.
     expect(shares.every((share) => Number.isInteger(share))).toBe(true);
     expect(shares).toEqual([1_600_001, 1_600_000, 1_600_000]);
@@ -399,7 +413,7 @@ describe('shares that do not divide evenly', () => {
       ],
     });
 
-    const shares = (await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
+    const shares = (await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
     expect(shares.reduce((total, share) => total + share, 0)).toBe(10_000_000_001);
     expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ leftMinor: 0 });
   });
@@ -433,7 +447,7 @@ describe('shares that do not divide evenly', () => {
       ],
     });
 
-    const shares = (await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
+    const shares = (await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
     // Each is exactly a third of what it was, so a third of the receipt divides with nothing left over at all.
     expect(shares).toEqual([4_000_000_000, 3_000_000_005, 2_999_999_995]);
     expect(shares.reduce((total, share) => total + share, 0)).toBe(10_000_000_000);
@@ -464,7 +478,7 @@ describe('shares that do not divide evenly', () => {
     });
 
     // Both floor short by a fraction; the rupiah between them belongs to the cot, which is second on the list.
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([333_333, 666_667]);
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([333_333, 666_667]);
     expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ givenMinor: 1_000_000, leftMinor: 0 });
   });
 
@@ -492,7 +506,7 @@ describe('shares that do not divide evenly', () => {
     });
 
     // The negative reads as nothing, so the cot takes the whole of the corrected figure and the bib is simply untied.
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
       [corrected, 1_000_000],
       [null, null],
     ]);
@@ -519,7 +533,7 @@ describe('shares that do not divide evenly', () => {
     });
 
     // The bib's share rounds to nothing, so it is untied rather than left settled by nothing at all.
-    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
+    expect((await flatItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
       [corrected, 100],
       [null, null],
     ]);
@@ -760,6 +774,7 @@ describe('a cover saved on the occasion a receipt has moved to', () => {
     const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
     const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
     await linkEventItem(h.database, h.ws, cot, receipt, 1_000_000);
+    await setEventItemDone(h.database, h.ws, cot, true);
 
     const shower = await saveEvent(h.database, h.ws, { name: 'Baby shower', startsOn: '2026-09-01', endsOn: '2026-09-30' });
     const hampers = await saveEventItem(h.database, h.ws, shower, { name: 'Hampers', unitPriceMinor: 2_000_000, categoryAccountId: h.gear.id });
@@ -808,5 +823,72 @@ describe('a cover saved on the occasion a receipt has moved to', () => {
     await setPurchaseCover(h.database, h.ws, h.receipt, []);
     expect(await coverOfItem(h.database, h.cot)).toEqual([h.receipt, 1_000_000]);
     expect(await coverOfItem(h.database, h.hampers)).toEqual([h.receipt, 2_000_000]);
+  });
+});
+
+describe('an item paid for several times', () => {
+  it('takes a share of each purchase, stays open until marked done, and gives one back without the rest', async () => {
+    const h = await mothercare();
+    const souvenirs = await h.item('Souvenirs', 1, 1_000_000, h.gear.id);
+    const krisna = await h.buy(h.gear.id, 200_000, 'Krisna');
+    const joger = await h.buy(h.gear.id, 400_000, 'Joger');
+    await linkEventItem(h.database, h.ws, souvenirs, krisna);
+    await linkEventItem(h.database, h.ws, souvenirs, joger, 250_000);
+
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]).toMatchObject({
+      done: false,
+      purchases: [
+        { transactionId: krisna, shareMinor: 200_000 },
+        { transactionId: joger, shareMinor: 250_000 },
+      ],
+    });
+    // Open: what was paid is bought money, the rest of its estimate is still to go, and Joger's Rp150.000 is unclaimed.
+    expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({ boughtCount: 0, boughtActualMinor: 450_000, toBuyMinor: 550_000, notPlannedMinor: 150_000 });
+    expect(await purchaseCover(h.database, h.ws, joger)).toMatchObject({ givenMinor: 250_000, leftMinor: 150_000 });
+
+    await setEventItemDone(h.database, h.ws, souvenirs, true);
+    expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({ boughtCount: 1, toBuyMinor: 0, differenceMinor: -550_000 });
+
+    // One purchase taken off: the other stays, and so does the mark.
+    await unlinkEventItem(h.database, h.ws, souvenirs, krisna);
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]).toMatchObject({ done: true, purchases: [{ transactionId: joger, shareMinor: 250_000 }] });
+    await setEventItemDone(h.database, h.ws, souvenirs, false);
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.done).toBe(false);
+  });
+
+  it('linking the same purchase again replaces its share rather than adding a second', async () => {
+    const h = await mothercare();
+    const souvenirs = await h.item('Souvenirs', 1, 1_000_000, h.gear.id);
+    const joger = await h.buy(h.gear.id, 400_000, 'Joger');
+    await linkEventItem(h.database, h.ws, souvenirs, joger, 100_000);
+    await linkEventItem(h.database, h.ws, souvenirs, joger, 300_000);
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.purchases).toEqual([{ transactionId: joger, shareMinor: 300_000 }]);
+  });
+
+  it('a removed item takes its purchases with it, and the receipts are whole again', async () => {
+    const h = await mothercare();
+    const souvenirs = await h.item('Souvenirs', 1, 1_000_000, h.gear.id);
+    const joger = await h.buy(h.gear.id, 400_000, 'Joger');
+    await linkEventItem(h.database, h.ws, souvenirs, joger);
+    await removeEventItem(h.database, h.ws, souvenirs);
+    expect(await purchaseCover(h.database, h.ws, joger)).toMatchObject({ givenMinor: 0, leftMinor: 400_000 });
+    const [[left]] = (await h.database.db.values<[number]>(sql`SELECT count(*) FROM event_item_purchases`)) as [[number]];
+    expect(left).toBe(0);
+  });
+
+  it('migration 0078 carries a link made before it over as one purchase, and the item done', async () => {
+    const h = await mothercare();
+    const crib = await h.item('Crib', 1, 7_500_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 7_200_000, 'Toko Bayi');
+    // As 0049's columns held it, with 0078's table empty.
+    await h.database.db.run(sql`UPDATE event_items SET transaction_id = ${receipt}, share_minor = 7200000 WHERE id = ${crib}`);
+    const migration = readFileSync(new URL('../migrations/0078_event_item_purchases.sql', import.meta.url), 'utf8');
+    const tail = migration.slice(migration.indexOf('-- What was linked before'));
+    const statements = tail.replace(/^\s*--.*$/gm, '').split(';').map((part) => part.trim()).filter(Boolean);
+    for (const statement of statements) await h.database.db.run(sql.raw(statement));
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]).toMatchObject({ done: true, purchases: [{ transactionId: receipt, shareMinor: 7_200_000 }] });
+    const [[old]] = (await h.database.db.values<[string | null]>(sql`SELECT transaction_id FROM event_items WHERE id = ${crib}`)) as [[string | null]];
+    expect(old).toBeNull();
+    expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({ boughtCount: 1, differenceMinor: -300_000 });
   });
 });

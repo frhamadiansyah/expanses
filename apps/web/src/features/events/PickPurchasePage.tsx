@@ -53,13 +53,13 @@ export function PickPurchasePage() {
 
   /*
    * What each receipt has already given away, read off the plan already on screen rather than by a query per row.
-   * The share is taken from `item.purchase` and not from `item.actualMinor`: a share given by an item whose purchase
+   * The shares are taken from `item.purchases` and not from `item.actualMinor`: a share given by an item whose purchase
    * sits outside the open workspace tab is still a share of this receipt, and reading the scoped figure would report
    * a receipt as free when the write would refuse it.
    */
   const givenTo = new Map<string, number>();
   for (const row of items) {
-    if (row.purchase) givenTo.set(row.purchase.transactionId, (givenTo.get(row.purchase.transactionId) ?? 0) + row.purchase.shareMinor);
+    for (const purchase of row.purchases) givenTo.set(purchase.transactionId, (givenTo.get(purchase.transactionId) ?? 0) + purchase.shareMinor);
   }
 
   const rows: PurchaseRow[] = (history.data ?? []).map((tx) => {

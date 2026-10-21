@@ -267,7 +267,8 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
       categoryId: item.categoryAccountId,
       link: item.link,
       note: item.note,
-      purchase: item.transactionId && item.shareMinor !== null ? { transactionId: item.transactionId, shareMinor: item.shareMinor } : null,
+      purchases: item.purchases,
+      done: item.done,
     })),
     // Signed, never absolved line by line. An expense entry is debit-positive, so a discount, a partial refund or a
     // price correction booked back to a spending category is a negative row on the same receipt, and taking each

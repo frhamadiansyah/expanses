@@ -252,7 +252,9 @@ export async function recordIntoEvent(
  * Only Paid with has to be chosen. `paid` is the receipt's real figure typed over the estimate — cleared first, so a
  * phone's keypad replaces the estimate rather than typing after it. Returns the form, still open when Save refused.
  */
-export async function buyItNow(page: Page, options: { paid?: string; paidWith?: string } = {}) {
+export async function buyItNow(page: Page, options: { paid?: string; paidWith?: string; done?: boolean } = {}) {
+  // The item's page is titled with its name: kept to tick it off on the plan once the payment is saved.
+  const name = ((await page.getByRole('heading', { level: 1 }).first().textContent()) ?? '').trim();
   await page.getByRole('button', { name: 'Buy it now' }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
@@ -263,6 +265,13 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
     await fillAmount(page, form, options.paid);
   }
   await saveButton(form).click();
+  // One receipt for one thing, the ordinary case: done once paid. An item may stay open to take more payments.
+  if (options.done !== false) {
+    await expect(form).toHaveCount(0);
+    const tick = page.getByRole('button', { name: `Done buying ${name}` });
+    await tick.click();
+    await expect(page.getByRole('button', { name: `Reopen ${name}` })).toBeVisible();
+  }
   return form;
 }
 

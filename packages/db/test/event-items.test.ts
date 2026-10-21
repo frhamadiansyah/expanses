@@ -50,8 +50,8 @@ describe('saving an item', () => {
         // A link with no scheme is given one; nothing is ever fetched.
         link: 'https://tokopedia.com/bugaboo-fox-5',
         note: 'Second-hand is fine',
-        transactionId: null,
-        shareMinor: null,
+        purchases: [],
+        done: false,
         sortOrder: 0,
       },
       {
@@ -64,8 +64,8 @@ describe('saving an item', () => {
         categoryAccountId: null,
         link: null,
         note: null,
-        transactionId: null,
-        shareMinor: null,
+        purchases: [],
+        done: false,
         sortOrder: 1,
       },
     ]);
@@ -119,15 +119,14 @@ describe('unlinking a purchase', () => {
     const { database, ws, eventId, gear } = await newborn();
     const id = await saveEventItem(database, ws, eventId, { name: 'Crib', unitPriceMinor: 7_500_000, categoryAccountId: gear.id });
     // Task 3 is what writes these; written straight in here so the undo can be proved on its own.
-    await database.db.values(sql`UPDATE event_items SET transaction_id = 't1', share_minor = 6900000 WHERE id = ${id}`);
+    await database.db.values(sql`INSERT INTO event_item_purchases (item_id, workspace_id, transaction_id, share_minor, created_at) VALUES (${id}, ${ws.workspaceId}, 't1', 6900000, '2026-09-01')`);
 
     await unlinkEventItem(database, ws, id);
     expect((await listEventItems(database, ws, eventId))[0]).toMatchObject({
       name: 'Crib',
       unitPriceMinor: 7_500_000,
       categoryAccountId: gear.id,
-      transactionId: null,
-      shareMinor: null,
+      purchases: [],
     });
   });
 });
