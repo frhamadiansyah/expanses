@@ -1,6 +1,7 @@
 import { formatMinor, type EventPlan } from '@expanses/core';
 import { useApp } from '../../app/context';
 import { InsetGroup, InsetRow, type GroupChild, type InsetRowProps } from '../../ui/native';
+import { GROUP_GAP } from '../../ui/native/metrics';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { planCardRows, planTotals } from './plan-view';
 
@@ -23,7 +24,13 @@ function WayIn({ position, ...row }: GroupChild & InsetRowProps) {
  *
  * Every figure comes from `planCardRows` or `planTotals`; nothing is added up or clamped on this screen.
  */
-export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: EventPlan; bookId: string | null }) {
+export function PlanCard({ eventId, plan, bookId, inPanel = false }: {
+  eventId: string;
+  plan: EventPlan;
+  bookId: string | null;
+  /** Drawn inside the chart's own card, straight under the gauge, rather than as a group of its own below it. */
+  inPanel?: boolean;
+}) {
   const { ws } = useApp();
   // Two workspaces can hold copies of one category — the same word twice — so a row says which one it belongs to.
   const workspaceOf = useCategoryWorkspaces();
@@ -38,11 +45,19 @@ export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: Eve
 
   return (
     <div data-testid="event-plan-card">
+      {plan.hasPlan && inPanel && (
+        // The group's own header, drawn inside the card at the card's padding, under a hairline like Where it went's rows.
+        <div className="mt-2 flex items-baseline justify-between gap-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3 pb-[2px] text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+          <span>Plan</span>
+          <span>{`${rp(totals.plannedSpentMinor)} of ${rp(totals.plannedMinor)}`}</span>
+        </div>
+      )}
       {plan.hasPlan ? (
+        <div className={inPanel ? '-mx-[13px]' : undefined} style={inPanel ? { marginBottom: -GROUP_GAP - 13 } : undefined}>
         <InsetGroup
-          header="Plan"
+          header={inPanel ? undefined : 'Plan'}
           /* The two figures of the ring's own page, so the group and the chart cannot say different things. */
-          trailing={`${rp(totals.plannedSpentMinor)} of ${rp(totals.plannedMinor)}`}
+          trailing={inPanel ? undefined : `${rp(totals.plannedSpentMinor)} of ${rp(totals.plannedMinor)}`}
         >
           {rows.map((row) => (
             <InsetRow
@@ -67,6 +82,7 @@ export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: Eve
           />
           <InsetRow title="Add an item" subtitle="plan another thing, in any category" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
         </InsetGroup>
+        </div>
       ) : (
         /* Said plainly, because the chart above is a complete answer on its own: an event may simply be tagged. */
         <InsetGroup footer="An event needs no plan. Without one it simply adds up what was tagged to it.">

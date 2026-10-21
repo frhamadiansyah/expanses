@@ -127,7 +127,6 @@ export function planCardRows(plan: EventPlan) {
       categoryId: line.categoryId,
       name: line.name,
       plannedMinor: line.plannedMinor,
-      actualMinor: line.actualMinor,
       subline: `${plural(line.itemCount, 'item')} · ${line.boughtCount === 0 ? 'none bought' : `${line.boughtCount} bought`}`,
     }));
 }
