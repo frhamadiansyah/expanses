@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronRight, Plus, UserPlus } from 'lucide-react';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Plus, UserPlus } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
@@ -30,7 +30,7 @@ import { buildRows } from '../transactions/list-model';
 import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { PlanCard } from './PlanCard';
-import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, planCardRows, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
+import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
 import { ShareEventSheet } from './ShareEventSheet';
@@ -472,72 +472,13 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
             </div>
           )}
 
-          {/*
-           * Against the plan's own rows, in the same card and the same shape as Where it went's: each planned category
-           * with its share of its plan spent, tappable to read its payments below, then the ways into the plan itself.
-           */}
-          {onPlan && data && (
-            <div
-              data-testid="event-plan-card"
-              className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]"
-            >
-              {planCardRows(data).map((row) => (
-                <button
-                  type="button"
-                  key={row.categoryId ?? 'none'}
-                  onClick={() => pick(row.categoryId ?? 'none')}
-                  aria-pressed={picked === (row.categoryId ?? 'none')}
-                  data-testid="event-plan-row"
-                  className={cx(
-                    'ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left',
-                    picked === (row.categoryId ?? 'none') && 'bg-[var(--ph-fill)]',
-                  )}
-                >
-                  <ShareLine
-                    colour={chartColour(row.categoryId ?? 'none', chosenColours)}
-                    name={row.categoryId === null ? row.name : planName(row.categoryId)}
-                    amountMinor={Math.max(0, row.actualMinor)}
-                    wholeMinor={row.plannedMinor}
-                    currency={ws.baseCurrency}
-                    chevron={false}
-                    figure={
-                      <span className="shrink-0 text-[13px]">
-                        <Money minor={Math.max(0, row.actualMinor)} currency={ws.baseCurrency} className="font-semibold" />{' '}
-                        <span className="text-[var(--ph-ink-3)]">of</span>{' '}
-                        <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="text-[var(--ph-ink-3)]" />
-                      </span>
-                    }
-                  />
-                  <span className="mt-1 ml-[22px] text-[12.5px] text-[var(--ph-ink-3)]">{row.subline}</span>
-                </button>
-              ))}
-              <div data-testid="open-plan">
-                <Link
-                  to="/events/$eventId/plan"
-                  params={{ eventId }}
-                  search={{ ws: openTab ?? undefined }}
-                  className="ph-focus-inset -mx-[13px] flex min-h-12 items-center px-[13px] text-[15px] font-semibold text-[var(--ph-tint)]"
-                >
-                  <span className="flex-1">See the whole plan</span>
-                  <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
-                </Link>
-              </div>
-              <Link
-                to="/events/$eventId/plan/new"
-                params={{ eventId }}
-                search={{ ws: openTab ?? undefined }}
-                className="ph-focus-inset -mx-[13px] flex min-h-12 items-center px-[13px] text-[15px] text-[var(--ph-ink)]"
-              >
-                <span className="flex-1">Add an item</span>
-                <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
-              </Link>
-            </div>
-          )}
+          {/* Against the plan's own list, in the gauge's card: no gap between the reading and what it reads. */}
+          {onPlan && data && <PlanCard eventId={eventId} plan={data} bookId={openTab} inPanel />}
         </Panel>
       )}
 
       {/* Between the chart and the suggestions: the plan is a card here, and its own screen is one tap away. */}
-      {/* With a plan, its rows are in the chart's own card under Against the plan; without one, this is the way to start one. */}
+      {/* With a plan, the card is inside the chart's card under Against the plan; without one it is the way to start one. */}
       {data && !hasPlan && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (

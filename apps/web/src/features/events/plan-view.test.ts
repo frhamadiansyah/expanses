@@ -98,8 +98,8 @@ describe('words', () => {
 describe('the cards', () => {
   it('is one Plan row per planned category, with how many items and how many are bought', () => {
     expect(planCardRows(plan)).toEqual([
-      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, actualMinor: 7_800_000, subline: '2 items · 1 bought' },
-      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, actualMinor: 0, subline: '1 item · none bought' },
+      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, subline: '2 items · 1 bought' },
+      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, subline: '1 item · none bought' },
     ]);
   });
 
