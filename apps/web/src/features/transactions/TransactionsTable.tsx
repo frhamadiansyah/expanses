@@ -223,7 +223,11 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   const tx = row.tx!;
   // Money back on a purchase reads as money in.
   const sign = row.refund ? '+' : row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
-  const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
+  // A holding owned before the app is bought against Opening Balances, but it is a purchase, not an account's first balance.
+  const pastPurchase = row.type === 'opening' && handlers.tradeIds.has(tx.id);
+  const kind = pastPurchase
+    ? 'Past purchase'
+    : { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
   const why = row.refund ? 'a refund' : row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);

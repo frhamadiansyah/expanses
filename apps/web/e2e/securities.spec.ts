@@ -227,3 +227,12 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   await expect(page.getByLabel('Price per share', { exact: true })).toHaveValue(/^8\.?750$/);
   await expect(page.getByLabel('Lots', { exact: true })).toBeVisible();
 });
+
+test('a share owned before the app reads as a past purchase in the transaction list, not as an opening balance', async ({ page }) => {
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', date: await todayIn(page) });
+  await page.getByRole('button', { name: 'Add holding' }).click();
+  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
+  await page.goto('/transactions');
+  await expect(page.getByText('Past purchase').first()).toBeVisible();
+  await expect(page.getByText('Opening balance', { exact: true })).toHaveCount(0);
+});
