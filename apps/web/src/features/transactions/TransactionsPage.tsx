@@ -826,7 +826,10 @@ export function TransactionsPage() {
         : row.type === 'transfer'
           ? 'Transfer'
           : row.type === 'opening'
-            ? 'Opening balance'
+            ? // A holding owned before the app is bought against Opening Balances: a purchase, not a first balance.
+              tradeByTransaction.has(tx.id)
+              ? 'Past purchase'
+              : 'Opening balance'
             : row.type === 'correction'
               ? 'Balance correction'
               : tx.entries
