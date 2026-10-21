@@ -2,7 +2,7 @@ import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus, UserPlus } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
@@ -190,6 +190,9 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
   const [page, setPage] = useState(0);
   const [error, setError] = useState<unknown>(null);
+  /* A category row tapped on Where it went: the history below shows only its payments, until it is tapped again. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const historyRef = useRef<HTMLElement>(null);
 
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
@@ -292,8 +295,20 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   // Oldest day last, like Cashflow; each day a card of its own.
   // The history as the list's own rows, so an event draws transactions the way every other screen does.
   const historyRows = new Map(buildRows(history.data ?? [], [], accounts, []).map((row) => [row.id, row]));
+  /** Whether an expense line is the picked category's: `none` is the row of spending with no category. */
+  const inPicked = (entry: { accountKind: string; accountId: string }) => entry.accountKind === 'expense' && (picked === 'none' ? false : entry.accountId === picked);
+  const shown = (history.data ?? []).filter((tx) =>
+    picked === null ? true : picked === 'none' ? !tx.entries.some((e) => e.accountKind === 'expense') : tx.entries.some(inPicked),
+  );
   const days = new Map<string, NonNullable<typeof history.data>>();
-  for (const tx of history.data ?? []) days.set(tx.occurredOn, [...(days.get(tx.occurredOn) ?? []), tx]);
+  for (const tx of shown) days.set(tx.occurredOn, [...(days.get(tx.occurredOn) ?? []), tx]);
+  const pickedRow = picked === null ? null : (rows.find((row) => (row.categoryId ?? 'none') === picked) ?? null);
+  const pick = (key: string) => {
+    const next = picked === key ? null : key;
+    setPicked(next);
+    // The answer is the list below the chart: take the eye there, the way a filter on Cashflow lands on its list.
+    if (next !== null) requestAnimationFrame(() => historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   /*
    * What each payment in the history answered, read off the plan rather than worked out again here.
@@ -431,7 +446,17 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           {!onPlan && rows.length > 0 && (
             <div className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]" data-testid="event-detail-sheet">
               {rows.map((row) => (
-                <div key={row.categoryId ?? 'none'} className="flex min-h-12 flex-col justify-center py-2.5">
+                <button
+                  type="button"
+                  key={row.categoryId ?? 'none'}
+                  onClick={() => pick(row.categoryId ?? 'none')}
+                  aria-pressed={picked === (row.categoryId ?? 'none')}
+                  data-testid="event-category-row"
+                  className={cx(
+                    'ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left',
+                    picked === (row.categoryId ?? 'none') && 'bg-[var(--ph-fill)]',
+                  )}
+                >
                   <ShareLine
                     colour={chartColour(row.categoryId ?? 'none', chosenColours)}
                     name={row.categoryId === null ? row.name : planName(row.categoryId)}
@@ -457,7 +482,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                     {hasPlan && !row.planned && <span className="font-semibold text-[var(--ph-ink-3)]">no items</span>}
                     {row.subline}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -465,7 +490,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
       )}
 
       {/* Between the chart and the suggestions: the plan is a card here, and its own screen is one tap away. */}
-      {data && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
+      {/* With a plan, the card belongs to Against the plan, the page that reads it; without one it is the way to start one. */}
+      {data && (!hasPlan || onPlan) && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (
         <div data-testid="event-suggestions">
@@ -490,12 +516,22 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
         </div>
       )}
 
-      {days.size > 0 && (
-        <section>
-          <h2 className="px-[4px] pb-[6px] text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Transaction history</h2>
+      {(days.size > 0 || picked !== null) && (
+        <section ref={historyRef} className="scroll-mt-4">
+          <div className="flex items-baseline justify-between px-[4px] pb-[6px]">
+            <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+              {pickedRow ? `Transaction history · ${pickedRow.categoryId === null ? pickedRow.name : nameOf(pickedRow.categoryId)}` : 'Transaction history'}
+            </h2>
+            {picked !== null && (
+              <button type="button" onClick={() => setPicked(null)} className="ph-focus text-[13px] font-semibold text-[var(--ph-tint)]">
+                Show all
+              </button>
+            )}
+          </div>
+          {days.size === 0 && <p className="px-[4px] pb-3 text-[13px] text-[var(--ph-ink-3)]">No payments in this category.</p>}
           {[...days.entries()].map(([date, txs]) => {
             const d = new Date(`${date}T00:00:00`);
-            const total = txs.reduce((sum, tx) => sum + tx.entries.filter((e) => e.accountKind === 'expense').reduce((s, e) => s + e.amountBaseMinor, 0), 0);
+            const total = txs.reduce((sum, tx) => sum + tx.entries.filter((e) => e.accountKind === 'expense' && (picked === null || picked === 'none' || inPicked(e))).reduce((s, e) => s + e.amountBaseMinor, 0), 0);
             return (
               <Panel key={date}>
                 <div className="-mx-[13px] flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[13px] pb-2">

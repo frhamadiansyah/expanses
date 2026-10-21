@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent } from './event-plan';
+import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -61,6 +61,7 @@ test('planning one category never calls the rest of the trip over plan', async (
   await expect(page.getByTestId('event-detail-sheet')).toContainText('no items');
   await expect(page.getByTestId('event-detail-sheet')).toContainText('9.200.000');
   // The Plan card holds only what was planned.
+  await showPlanCard(page);
   await expect(page.getByTestId('event-plan-card')).toContainText('Transportation');
   await expect(page.getByTestId('event-plan-card')).toContainText('1 item · 1 bought');
 });

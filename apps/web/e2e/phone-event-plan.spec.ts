@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { buyItNow, expectCover, expectKitFigures, fillItem, TODAY } from './event-plan';
+import { buyItNow, expectCover, expectKitFigures, fillItem, TODAY, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
 
 /*
@@ -113,6 +113,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
   await expect(page.getByTestId('event-total')).toContainText('4.150.000');
   await noSideways(page, 'an event with a plan');
+  await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
 
   // Buying: the item's page, then the Add screen filled in from the estimate, with the real price typed over it.
@@ -201,6 +202,7 @@ test('a receipt answering more items than a phone row can hold says three and co
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a purchase' }).click();

@@ -211,9 +211,11 @@ export async function addItem(page: Page, options: ItemFields) {
 export async function planFor(page: Page, category: string, amount: string, option = category) {
   // By test id, not by words: the card's link says "Plan what to buy" while nothing is planned and "See the whole
   // plan" once there are items, and this helper is called both before and after the first one.
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await addItem(page, { name: category, price: amount, category: option });
   await page.getByRole('link', { name: 'Back to the event' }).click();
+  await showPlanCard(page);
   await expect(page.getByTestId('open-plan')).toBeVisible();
 }
 
@@ -262,4 +264,11 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
   }
   await saveButton(form).click();
   return form;
+}
+
+/** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. */
+export async function showPlanCard(page: Page) {
+  await expect(page.getByTestId('event-sheet')).toBeVisible();
+  const dot = page.getByRole('button', { name: 'Against the plan', exact: true });
+  if ((await dot.count()) > 0) await dot.click();
 }

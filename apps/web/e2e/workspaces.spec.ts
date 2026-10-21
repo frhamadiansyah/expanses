@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openTypes } from './accounts';
-import { addItem, moneyIn, planFor } from './event-plan';
+import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
 
 /**
@@ -371,6 +371,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
   // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
   // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await page.getByRole('link', { name: 'Add an item' }).first().click();
   await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
@@ -404,6 +405,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
    * It was carried in and lost coming home: the plan read in Business, and "Back to the event" landed on All,
    * because the event held its tab in a screen's memory rather than in the URL the plan hands back.
    */
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await expect(page.getByRole('heading', { name: 'Plan · Singapore holiday' })).toBeVisible();
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -444,6 +446,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   const url = page.url();
 
   // Personal's side of the trip: one thing still to buy, and a dinner tagged so the workspace has a tab at all.
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await addItem(page, { name: 'Welcome dinner', price: '1000000', category: 'Restaurants' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -457,6 +460,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await spendOn(page, 'Supplier lunch', 'Client lunches', '640000');
 
   await page.goto(url);
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await addItem(page, { name: 'Client entertaining', price: '1000000', category: 'Client lunches · Business' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -464,6 +468,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
 
   // Read whole, the Personal item takes Rp400.000 of the Business receipt. Odd of a person, and perfectly legal:
   // an event is one trip and the workspaces are only how its money is filed.
+  await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Welcome dinner' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a purchase' }).click();
@@ -475,6 +480,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   // Now read under the Business tab, where the Personal item is not part of the plan being shown.
   await page.goto(url);
   await page.getByTestId('event-workspaces').getByRole('radio', { name: 'Business' }).click();
+  await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await page.getByTestId('plan-item').filter({ hasText: 'Client entertaining' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a purchase' }).click();
