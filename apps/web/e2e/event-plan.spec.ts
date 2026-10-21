@@ -345,10 +345,10 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
  * The two readings a plan owes outside its own screen.
  *
  * On the list an event says what is still to buy, and its figure is read against the plan rather than against
- * nothing. In the history each payment says what it answered: the items it settled, and — when there is still
- * something left on the receipt — that the remainder was not planned. A receipt can honestly say both.
+ * nothing. In the history each payment is a plain row: its category already says where it went, and the items it
+ * settled are the plan's to show.
  */
-test('the list says what is still to buy, and the history says what each payment answered', async ({ page }) => {
+test('the list says what is still to buy, and the history row is the payment alone, with no item pills', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Mothercare', '4150000');
   await addEvent(page, 'Newborn');
@@ -368,9 +368,10 @@ test('the list says what is still to buy, and the history says what each payment
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await expect(page.getByRole('heading', { name: 'Transaction history' })).toBeVisible();
   const mothercare = page.getByTestId('event-history').filter({ hasText: 'Mothercare' });
-  // It answered one item and left Rp2.650.000 on the receipt, so it says both.
-  await expect(mothercare).toContainText('Newborn clothes');
-  await expect(mothercare).toContainText('not planned');
+  // The row is the payment and its category: what it answered is on the plan, not repeated here as pills.
+  await expect(mothercare).toBeVisible();
+  await expect(mothercare).not.toContainText('Newborn clothes');
+  await expect(mothercare).not.toContainText('not planned');
 
   await page.getByRole('link', { name: 'All events' }).click();
   // The line says what is left to buy, and the figure is read against the plan rather than against nothing.
@@ -723,44 +724,3 @@ test('data from before the plan says so, instead of losing what is typed into it
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
-/**
- * A receipt that answered four items says all four of them — on the wide screen, which has room.
- *
- * The history's pills were capped at three with a "+N more" on both shells at once, to stop eight pills wrapping
- * and growing a row taller than the day card around it. That is a 390px problem: a desktop day card fits them.
- * Desktop is this product's strongest tier and is never made poorer to fix the phone, so the cap lives in the phone
- * shell alone — `phone-event-plan.spec.ts` holds the other half of this, where the cap is what is asserted.
- */
-test('the desktop history names every item a receipt answered, with nothing folded into a count', async ({ page }) => {
-  await addWallet(page);
-  await spend(page, 'Mothercare', '4150000');
-  await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
-  await fillItem(page, { name: 'Newborn clothes', price: '1000000', category: 'Food and beverage' });
-  for (const item of [
-    { name: 'Muslin wraps', price: '700000' },
-    { name: 'Bottle steriliser', price: '800000' },
-    { name: 'Nappies', price: '500000' },
-  ]) {
-    await addItem(page, { ...item, category: 'Food and beverage' });
-  }
-
-  await page.getByRole('link', { name: 'Back to the event' }).click();
-  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
-  await showPlanCard(page);
-  await page.getByRole('link', { name: 'See the whole plan' }).click();
-  await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
-  await page.getByRole('link', { name: /Mothercare/ }).click();
-  for (const name of ['Muslin wraps', 'Bottle steriliser', 'Nappies']) await page.getByRole('checkbox', { name }).check();
-  await page.getByRole('button', { name: 'Save' }).click();
-
-  await page.getByRole('link', { name: 'Back to the event' }).click();
-  const receipt = page.getByTestId('event-history').filter({ hasText: 'Mothercare' });
-  await expect(receipt).toBeVisible();
-  for (const name of ['Newborn clothes', 'Muslin wraps', 'Bottle steriliser', 'Nappies']) await expect(receipt).toContainText(name);
-  // Nothing folded away, and the leftover still said: four pills and the amber one, never a count in place of a name.
-  await expect(receipt.getByText(/\+\d+ more/)).toHaveCount(0);
-  await expect(receipt).toContainText('not planned');
-});
