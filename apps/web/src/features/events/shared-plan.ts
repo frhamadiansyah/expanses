@@ -27,30 +27,29 @@ export interface ItemDraft {
   name: string;
   /** Price each, as typed, in the event currency. */
   price: string;
-  /** The expense it was bought with, or '' for not bought. */
+  /** An expense to add as a payment towards it, or '' for none. */
   expenseId: string;
   /** Its part of that expense, as typed. */
   part: string;
 }
 
 /**
- * What saving an opened item writes: the item itself when its name or price changed (everything else kept), and the
- * tick when it changed — `null` takes it off, `undefined` leaves it alone.
+ * What saving an opened item writes: the item itself when its name or price changed (everything else kept), and a
+ * payment to add when an expense was chosen — `null` when none was, or when it is already there at that part.
  */
 export function itemChanges(
   item: SharedPlanItem,
   draft: ItemDraft,
   currency: string,
-): { save: SharedItemInput | null; link: { expenseId: string; shareMinor: number } | null | undefined } {
+): { save: SharedItemInput | null; add: { expenseId: string; shareMinor: number } | null } {
   const unitPriceMinor = parseMajor(draft.price, currency);
   const name = draft.name.trim();
   const save =
     name !== item.name || unitPriceMinor !== item.unitPriceMinor
       ? { id: item.id, name, quantity: item.quantity, unitPriceMinor, categoryId: item.categoryId, link: item.link, note: item.note }
       : null;
-  const was = item.purchase;
-  if (!draft.expenseId) return { save, link: was ? null : undefined };
+  if (!draft.expenseId) return { save, add: null };
   const shareMinor = parseMajor(draft.part, currency);
-  const link = was && was.transactionId === draft.expenseId && was.shareMinor === shareMinor ? undefined : { expenseId: draft.expenseId, shareMinor };
-  return { save, link };
+  const already = item.purchases.find((part) => part.transactionId === draft.expenseId);
+  return { save, add: already && already.shareMinor === shareMinor ? null : { expenseId: draft.expenseId, shareMinor } };
 }

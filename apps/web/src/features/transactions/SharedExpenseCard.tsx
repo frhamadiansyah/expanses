@@ -1,5 +1,5 @@
 import { CASH_ITEMS, isoDate, type MoneyAccountSubtype } from '@expanses/core';
-import { editSharedExpense, linkSharedItem, ownerScope, recordSharedExpense, type SharedEventView, sharedEventView, voidSharedExpense } from '@expanses/db';
+import { editSharedExpense, addSharedItemPurchase, ownerScope, recordSharedExpense, type SharedEventView, sharedEventView, voidSharedExpense } from '@expanses/db';
 import { Check, CreditCard, Percent, Plane, Shapes, Split, Users } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -177,11 +177,12 @@ export function SharedExpenseCard({
         await editSharedExpense(database, ownerScope(ws), view.eventId, editing.expenseId, sharedDraftToPatch(draft, view, editing.expenseId));
       } else {
         const id = await recordSharedExpense(database, ownerScope(ws), view.eventId, sharedDraftToInput(draft, view, accounts));
-        // Buy it now: the expense is the item, so the item takes the whole of it as its share (D7).
+        // Buy it now: the expense is a payment towards the item, the whole of it its share (D7). It adds to what the item
+        // already holds, and the item stays open until it is marked done.
         if (itemId) {
           const fresh = await sharedEventView(database, ownerScope(ws), view.eventId);
           const share = fresh?.expenses.find((e) => e.expenseId === id)?.eventAmountMinor;
-          if (share) await linkSharedItem(database, ownerScope(ws), view.eventId, itemId, { expenseId: id, shareMinor: share });
+          if (share) await addSharedItemPurchase(database, ownerScope(ws), view.eventId, itemId, { expenseId: id, shareMinor: share });
         }
       }
       await invalidate();

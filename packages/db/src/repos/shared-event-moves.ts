@@ -7,7 +7,7 @@ import { listSetCategories } from './category-sets';
 import { listEventItems } from './event-items';
 import { eventOf } from './event-scope';
 import { listTransactions } from './ledger';
-import { linkSharedItem, saveSharedItem } from './shared-event-plan';
+import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shared-event-plan';
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, expenseRecordTx } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
@@ -242,19 +242,20 @@ export async function convertEventToShared(database: Database, ws: WorkspaceCont
       link: item.link,
       note: item.note,
     });
-    // A shared event's item still takes one purchase: an item paid for several times keeps its largest. The others
-    // stay on the event as spending, read there as not planned.
-    const largest = [...item.purchases].filter((purchase) => expenseOf.has(purchase.transactionId)).sort((a, b) => b.shareMinor - a.shareMinor)[0];
-    const expenseId = largest ? expenseOf.get(largest.transactionId) : undefined;
-    if (!largest || !expenseId || largest.shareMinor <= 0) continue;
-    // The item's part of the purchase, as that part of the expense in the event currency: converted the way the
-    // expense itself was (its own rate on its own day), so it never comes out above what the expense paid.
-    const record = await expenseRecordTx(database.db, book.bookId, expenseId);
-    const total = spent.get(largest.transactionId) ?? 0;
-    if (!record || total <= 0) continue;
-    const { paidMinor } = expenseInEvent(record, book.currency);
-    const share = Math.min(paidMinor, Number((BigInt(paidMinor) * BigInt(Math.min(largest.shareMinor, total)) + BigInt(total) / 2n) / BigInt(total)));
-    if (share > 0) await linkSharedItem(database, ws, eventId, sharedId, { expenseId, shareMinor: share });
+    // Every payment that moved comes along, each as that part of its expense in the event currency: converted the way
+    // the expense itself was (its own rate on its own day), so it never comes out above what the expense paid.
+    for (const purchase of item.purchases) {
+      const expenseId = expenseOf.get(purchase.transactionId);
+      if (!expenseId || purchase.shareMinor <= 0) continue;
+      const record = await expenseRecordTx(database.db, book.bookId, expenseId);
+      const total = spent.get(purchase.transactionId) ?? 0;
+      if (!record || total <= 0) continue;
+      const { paidMinor } = expenseInEvent(record, book.currency);
+      const share = Math.min(paidMinor, Number((BigInt(paidMinor) * BigInt(Math.min(purchase.shareMinor, total)) + BigInt(total) / 2n) / BigInt(total)));
+      if (share > 0) await addSharedItemPurchase(database, ws, eventId, sharedId, { expenseId, shareMinor: share });
+    }
+    // Done or not, as it was on the owner's own plan.
+    if (item.done) await setSharedItemDone(database, ws, eventId, sharedId, true);
   }
   return { moved: moved.length, kept };
 }

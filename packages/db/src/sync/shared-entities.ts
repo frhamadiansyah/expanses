@@ -460,6 +460,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       expenseId: 'expense_id',
       shareMinor: 'share_minor',
       sortOrder: 'sort_order',
+      // 0079: every payment, as one JSON array field, and the done mark. A phone a version behind drops both on apply.
+      purchases: 'purchases_json',
+      doneAt: 'done_at',
     },
     localOnInsert: ['book_id'],
   },

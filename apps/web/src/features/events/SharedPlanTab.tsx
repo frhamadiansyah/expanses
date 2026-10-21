@@ -50,7 +50,14 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
           <InsetRow
             key={item.id}
             title={item.name}
-            subtitle={item.bought ? `Bought · ${formatMinor(item.actualMinor ?? 0, view.currency)}` : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`}
+            subtitle={
+              item.bought
+                ? `Bought · ${formatMinor(item.actualMinor ?? 0, view.currency)}`
+                : item.purchaseCount > 0
+                  ? // Paid towards and still open: what was paid against what was planned, and how many payments made it.
+                    `${formatMinor(item.actualMinor ?? 0, view.currency)} of ${formatMinor(item.estimateMinor, view.currency)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}`
+                  : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`
+            }
             value={formatMinor(item.estimateMinor, view.currency)}
             onClick={locked ? undefined : () => setOpened(item)}
             label={item.name}

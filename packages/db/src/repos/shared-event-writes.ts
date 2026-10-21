@@ -5,6 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { withCapture } from '../sync/capture';
 import { secondDeviceInTx } from '../sync/authority';
 import { followEventOpTx, postEventRecordTx, rateToBaseTx, recordsReadingTx, setPaidFromTx } from './shared-event-postings';
+import { takeExpenseOffItemsTx } from './shared-item-state';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseRecordTx, settlementRecordTx, type StoredExpense } from './shared-event-records';
 
 /*
@@ -243,10 +244,9 @@ export async function voidSharedExpense(database: Database, ws: WorkspaceContext
     await withCapture(tx, { entity: 'event_expense', id: expenseId, bookId: book.bookId }, () =>
       tx.run(sql`UPDATE event_expenses SET voided_at = ${new Date().toISOString()} WHERE book_id = ${book.bookId} AND id = ${expenseId}`),
     );
-    // Any plan item it answered is put back on the list.
-    await withCapture(tx, { entity: 'event_item', bookId: book.bookId }, () =>
-      tx.run(sql`UPDATE event_items_shared SET expense_id = NULL, share_minor = NULL WHERE book_id = ${book.bookId} AND expense_id = ${expenseId}`),
-    );
+    // Any plan item it paid towards loses that payment. One whose only payment it was goes back on the list; one paid
+    // in parts keeps its other payments and its mark.
+    await takeExpenseOffItemsTx(tx, book.bookId, expenseId);
     await postEventRecordTx(tx, book.bookId, 'expense', expenseId, null);
   });
 }

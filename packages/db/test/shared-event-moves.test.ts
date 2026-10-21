@@ -11,6 +11,7 @@ import {
   createCategorySet,
   inBook,
   linkEventItem,
+  setEventItemDone,
   listAccounts,
   listTransactions,
   moveIntoSharedEvent,
@@ -129,6 +130,7 @@ describe('convertEventToShared', () => {
     });
     const item = await saveEventItem(t.database, t.ws, t.eventId, { name: 'Lunch by the sea', unitPriceMinor: 1_120_000, categoryAccountId: meals });
     await linkEventItem(t.database, t.ws, item, lunch, 840_000);
+    await setEventItemDone(t.database, t.ws, item, true);
     await t.share();
 
     const out = await convertEventToShared(t.database, t.ws, t.eventId);
