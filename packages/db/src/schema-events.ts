@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const events = sqliteTable('events', {
   id: text('id').primaryKey(),
@@ -30,9 +30,25 @@ export const eventItems = sqliteTable('event_items', {
   /** A shop page. Never fetched by anything in this app. */
   link: text('link'),
   note: text('note'),
+  /** Retired by 0078: its purchases are `eventItemPurchases`. Emptied there, and read by nothing. */
   transactionId: text('transaction_id'),
-  /** How much of that purchase this item is. One receipt may answer several. */
+  /** Retired by 0078 with `transactionId`. */
   shareMinor: integer('share_minor'),
   sortOrder: integer('sort_order').notNull(),
   createdAt: text('created_at').notNull(),
+  /** Marked done: nothing more is to be bought for it (0078). Null while it is still on the list. */
+  doneAt: text('done_at'),
 });
+
+/** The purchases that paid for an item, and how much of each this item is (0078). One receipt may answer several. */
+export const eventItemPurchases = sqliteTable(
+  'event_item_purchases',
+  {
+    itemId: text('item_id').notNull(),
+    workspaceId: text('workspace_id').notNull(),
+    transactionId: text('transaction_id').notNull(),
+    shareMinor: integer('share_minor').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.itemId, table.transactionId] })],
+);

@@ -1,5 +1,5 @@
 import { dayMonth, formatMinor } from '@expanses/core';
-import { removeEventItem, unlinkEventItem } from '@expanses/db';
+import { removeEventItem, setEventItemDone, unlinkEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Pencil } from 'lucide-react';
 import { useState } from 'react';
@@ -9,7 +9,7 @@ import { cx, Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, toneClass, type CornerAction } from '../../ui/native';
 import { buyTarget, coverTarget } from './buy-item';
 import { differenceWords } from './plan-view';
-import { useEventPlan } from './queries';
+import { useEventHistory, useEventPlan } from './queries';
 
 /** The kit's tones for the three things a difference can be. The words themselves come from `differenceWords`. */
 const HERE: Record<'over' | 'under' | 'exact', 'alarm' | 'tint' | 'ink-3'> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
@@ -32,6 +32,8 @@ export function ItemPage() {
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const plan = useEventPlan(eventId, tab ?? null);
+  // Each payment's shop and day, read off the event's own history: the plan names only the latest.
+  const history = useEventHistory(eventId, tab ?? null);
   const accounts = useAccounts().data ?? [];
   const [error, setError] = useState<unknown>(null);
 
@@ -82,14 +84,22 @@ export function ItemPage() {
         {item && (
           <>
             <Hero
-              minor={item.bought ? item.actualMinor! : item.estimateMinor}
+              minor={item.bought || item.purchaseCount > 0 ? (item.actualMinor ?? 0) : item.estimateMinor}
               currency={ws.baseCurrency}
               // An estimate is not money that has moved, so it is not drawn in the colour of money that has.
-              direction={item.bought ? 'out' : 'neutral'}
+              direction={item.bought || item.purchaseCount > 0 ? 'out' : 'neutral'}
               caption={
                 <>
                   <span className="block">
-                    {item.bought ? `${item.description} · ${dayMonth(item.occurredOn!)}` : 'estimate'}
+                    {item.bought
+                      ? item.purchaseCount === 0
+                        ? 'done, nothing paid'
+                        : item.purchaseCount === 1
+                          ? `${item.description} · ${dayMonth(item.occurredOn!)}`
+                          : `${item.purchaseCount} purchases`
+                      : item.purchaseCount > 0
+                        ? `paid so far, of ${formatMinor(item.estimateMinor, ws.baseCurrency)}`
+                        : 'estimate'}
                     {boughtElsewhere && ` · bought in ${nameOf(item.boughtInCategoryId)}`}
                     {item.categoryId && !item.bought && ` · ${nameOf(item.categoryId)}`}
                   </span>
@@ -128,35 +138,76 @@ export function ItemPage() {
               <ReadOnlyRow label="Note" value={item.note || '—'} />
             </InsetGroup>
 
-            {item.bought ? (
-              <InsetGroup header="What bought it" footer="The purchase stays on the event; it simply stops answering this item.">
-                <InsetRow
-                  title={item.description}
-                  subtitle={dayMonth(item.occurredOn!)}
-                  value={formatMinor(item.actualMinor!, ws.baseCurrency)}
-                  valueTone="ink"
-                />
-                {/* One receipt often answers several items; this is where its shares are set side by side. */}
-                {item.purchase && <InsetRow title="Say what it covers" {...coverTarget(eventId, item.purchase.transactionId, { item: item.id, ws: tab })} />}
-                <InsetRow title="Remove the link" onClick={() => void run(() => unlinkEventItem(database, ws, item.id))} chevron={false} />
-              </InsetGroup>
-            ) : (
+            {item.purchases.length > 0 && (
               <InsetGroup
-                header="Already bought it?"
-                footer="Buying it records the payment against this item. Linking picks something already tagged to the event, and says what else the same receipt covers."
+                header="What bought it"
+                footer={
+                  item.purchases.length === 1
+                    ? 'The purchase stays on the event; it simply stops answering this item.'
+                    : 'Tap a payment to say what else it covers, or to take it off this item. The payments stay on the event.'
+                }
+              >
+                {item.purchases.map((purchase) => {
+                  const tx = (history.data ?? []).find((row) => row.id === purchase.transactionId);
+                  return (
+                    <InsetRow
+                      key={purchase.transactionId}
+                      testId="item-payment"
+                      title={tx?.description || 'Another payment'}
+                      subtitle={tx ? dayMonth(tx.occurredOn) : 'not in this view'}
+                      value={formatMinor(purchase.shareMinor, ws.baseCurrency)}
+                      valueTone="ink"
+                      {...(item.purchases.length > 1 ? coverTarget(eventId, purchase.transactionId, { item: item.id, ws: tab }) : {})}
+                    />
+                  );
+                })}
+                {/* One receipt often answers several items; this is where its shares are set side by side. */}
+                {item.purchases.length === 1 && <InsetRow title="Say what it covers" {...coverTarget(eventId, item.purchases[0]!.transactionId, { item: item.id, ws: tab })} />}
+                <InsetRow
+                  title={item.purchases.length === 1 ? 'Remove the link' : 'Remove every payment'}
+                  // Every payment off puts the item back on the list: nothing is left to say it was bought.
+                  onClick={() =>
+                    void run(async () => {
+                      await unlinkEventItem(database, ws, item.id);
+                      await setEventItemDone(database, ws, item.id, false);
+                    })
+                  }
+                  chevron={false}
+                />
+              </InsetGroup>
+            )}
+
+            {!item.bought && (
+              <InsetGroup
+                header={item.purchases.length > 0 ? 'Bought more of it?' : 'Already bought it?'}
+                footer="Buying it records the payment against this item. Linking picks something already tagged to the event, and says what else the same receipt covers. An item can be paid for more than once."
               >
                 {/*
                  * Two ways, and both of them named rows on this page rather than a gesture anywhere.
                  *
-                 * "Buy it now" records the payment and ties it to this item in one go, which is the ordinary case of
-                 * one receipt for one thing. "Link a purchase" is for a payment already on the event — and since
-                 * ticking an item off claims what is *left* of a receipt, a shopping trip that answered three items
-                 * goes that way, through the screen where the three shares are typed together.
+                 * "Buy it now" records the payment and ties it to this item in one go. "Link a purchase" is for a
+                 * payment already on the event — a shopping trip that answered three items goes that way, through the
+                 * screen where the three shares are typed together. Either adds to what the item already holds.
                  */}
                 <InsetRow title="Buy it now" onClick={() => void navigate(buyTarget(eventId, item.id, tab))} chevron />
-                <InsetRow title="Link a purchase" to="/events/$eventId/plan/link" params={{ eventId }} search={{ ws: tab, item: item.id }} />
+                <InsetRow
+                  title={item.purchases.length > 0 ? 'Link another purchase' : 'Link a purchase'}
+                  to="/events/$eventId/plan/link"
+                  params={{ eventId }}
+                  search={{ ws: tab, item: item.id }}
+                />
               </InsetGroup>
             )}
+
+            {/* Done is its own mark: an item paid for in parts stays on the list until nothing more is to be bought. */}
+            {/* The mark itself, not the reading: done on payments another tab holds still reads Reopen here. */}
+            <InsetGroup footer={item.done ? undefined : 'Done when nothing more is to be bought for it; until then it stays on the list.'}>
+              <InsetRow
+                title={item.done ? 'Reopen' : 'Done buying'}
+                onClick={() => void run(() => setEventItemDone(database, ws, item.id, !item.done))}
+                chevron={false}
+              />
+            </InsetGroup>
 
             <InsetGroup footer="Removing an item leaves any purchase alone — it becomes “not planned”.">
               <DestructiveRow

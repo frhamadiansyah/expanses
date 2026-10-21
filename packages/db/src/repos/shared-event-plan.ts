@@ -88,7 +88,9 @@ export async function sharedEventPlan(database: Database, ws: WorkspaceContext, 
       categoryId,
       link,
       note,
-      purchase: expenseId && shareMinor !== null ? { transactionId: expenseId, shareMinor: Number(shareMinor) } : null,
+      // One expense at most, and linked is bought: a shared event's item is not yet paid for in parts.
+      purchases: expenseId && shareMinor !== null ? [{ transactionId: expenseId, shareMinor: Number(shareMinor) }] : [],
+      done: Boolean(expenseId && shareMinor !== null),
     })),
     // One that cannot be added up (I2) is in no figure here either, as on the event page.
     actuals: expenses

@@ -9,6 +9,7 @@ import {
   eventPlanFor,
   inBook,
   linkEventItem,
+  setEventItemDone,
   listTransactions,
   ownerScope,
   personalBook,
@@ -80,6 +81,7 @@ describe('an event across workspaces', () => {
     // The whole hotel bill is the hotel item, so it answers for all of it: with no share typed, ticking it off
     // claims what is left of the receipt, which here is the receipt.
     await linkEventItem(database, ws, mine, await spend(personal, hotels, 11_200_000));
+    await setEventItemDone(database, ws, mine, true);
     await spend(business, meals, 640_000);
 
     const whole = await eventPlanFor(database, ownerScope(ws), eventId);

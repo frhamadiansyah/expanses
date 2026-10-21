@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, categoryTotalsBetween, createAccount, createWorkspace, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, tagTransactions, voidTransaction } from '../src/index';
+import { budgetSheetFor, categoryTotalsBetween, createAccount, createWorkspace, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, setEventItemDone, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, tagTransactions, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -97,6 +97,7 @@ describe('the plan', () => {
     // No share typed: the whole receipt is this one item, and that is what ticking it off claims. The 450.000 it
     // went over by is therefore an item bought over, not money nobody planned.
     await linkEventItem(context.database, context.ws, item, bought);
+    await setEventItemDone(context.database, context.ws, item, true);
     const extra = await spend(context, context.food.id, `${MONTH}-21`, 200_000, 'Ketupat');
     await tagTransaction(context.database, context.ws, extra, id);
 

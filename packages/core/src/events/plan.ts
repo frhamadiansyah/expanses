@@ -16,8 +16,13 @@ export interface EventPlanItemInput {
   categoryId: string | null;
   link: string | null;
   note: string | null;
-  /** The purchase that answered it, and how much of that purchase this item is. */
-  purchase: { transactionId: string; shareMinor: number } | null;
+  /**
+   * The purchases that paid for it, each with how much of that purchase this item is. An item may be paid for several
+   * times — souvenirs from three shops — and one purchase may answer several items.
+   */
+  purchases: readonly { transactionId: string; shareMinor: number }[];
+  /** Marked done: nothing more is to be bought for it. Until then it stays on the list, whatever was paid. */
+  done: boolean;
 }
 
 /** One expense entry of one posted transaction tagged to the event, in the scope being read. */
@@ -39,15 +44,21 @@ export interface EventPlanInput {
 export interface EventPlanItemView extends EventPlanItemInput {
   /** Quantity times price each, in minor units. Derived, never stored: two integers cannot round. */
   estimateMinor: number;
-  /** True only when the purchase is in the scope being read: a tab can put an item back on the list. */
+  /**
+   * Done, and — when it was paid for at all — paid for in the scope being read: a tab can put an item back on the list.
+   */
   bought: boolean;
-  /** This item's share of the purchase — never the whole receipt. */
+  /** The largest purchase in this reading, for the screens that name one; null when none is. */
+  purchase: { transactionId: string; shareMinor: number } | null;
+  /** How many of its purchases are in this reading. */
+  purchaseCount: number;
+  /** What its purchases in this reading add up to — its shares of them, never the whole receipts. Null when none. */
   actualMinor: number | null;
   occurredOn: string | null;
   description: string | null;
   /** Where the money actually landed, which is the item's own category unless it was changed at the till. */
   boughtInCategoryId: string | null;
-  /** Share minus estimate. Positive is over. Null while it is not bought. */
+  /** What was paid minus the estimate. Positive is over. Null while it is not bought. */
   differenceMinor: number | null;
 }
 
@@ -108,30 +119,37 @@ export function eventPlan(input: EventPlanInput): EventPlan {
 
   const views: EventPlanItemView[] = input.items.map((item) => {
     const estimateMinor = item.quantity * item.unitPriceMinor;
-    // An item is bought only when its purchase is in this reading: under a workspace tab the money may be elsewhere,
-    // and then the honest answer is that it is still to buy here.
-    const rows = item.purchase ? (byTransaction.get(item.purchase.transactionId) ?? []) : [];
-    if (rows.length === 0) {
-      return { ...item, estimateMinor, bought: false, actualMinor: null, occurredOn: null, description: null, boughtInCategoryId: null, differenceMinor: null };
-    }
-    // The biggest entry is the purchase's own category when it was split; for the ordinary purchase it is the only one.
-    const main = [...rows].sort((a, b) => b.amountBaseMinor - a.amountBaseMinor || a.categoryId.localeCompare(b.categoryId))[0]!;
+    // Only the purchases in this reading count: under a workspace tab the money may be elsewhere.
+    const here = item.purchases.filter((purchase) => byTransaction.has(purchase.transactionId));
+    const paid = here.length > 0 ? sum(here.map((purchase) => purchase.shareMinor)) : null;
+    // Done, and paid for here when it was paid for at all: an item done on money read under another tab is still to buy here.
+    const bought = item.done && (item.purchases.length === 0 || here.length > 0);
+    const largest = [...here].sort((a, b) => b.shareMinor - a.shareMinor || a.transactionId.localeCompare(b.transactionId))[0] ?? null;
+    // The latest purchase names the day and the shop; its biggest entry is where the money landed.
+    const latest = here
+      .map((purchase) => byTransaction.get(purchase.transactionId)!)
+      .map((rows) => [...rows].sort((a, b) => b.amountBaseMinor - a.amountBaseMinor || a.categoryId.localeCompare(b.categoryId))[0]!)
+      .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn))[0];
     return {
       ...item,
       estimateMinor,
-      bought: true,
-      actualMinor: item.purchase!.shareMinor,
-      occurredOn: main.occurredOn,
-      description: main.description,
-      boughtInCategoryId: main.categoryId,
-      differenceMinor: item.purchase!.shareMinor - estimateMinor,
+      bought,
+      purchase: largest,
+      purchaseCount: here.length,
+      actualMinor: paid,
+      occurredOn: latest?.occurredOn ?? null,
+      description: latest?.description ?? null,
+      boughtInCategoryId: latest?.categoryId ?? null,
+      differenceMinor: bought ? (paid ?? 0) - estimateMinor : null,
     };
   });
 
   // What each purchase has already answered, so the rest of it can be read as spending nobody planned.
   const givenTo = new Map<string, number>();
   for (const view of views) {
-    if (view.bought) givenTo.set(view.purchase!.transactionId, (givenTo.get(view.purchase!.transactionId) ?? 0) + view.actualMinor!);
+    for (const purchase of view.purchases) {
+      if (byTransaction.has(purchase.transactionId)) givenTo.set(purchase.transactionId, (givenTo.get(purchase.transactionId) ?? 0) + purchase.shareMinor);
+    }
   }
 
   /** One row per purchase with something left on it, filed under its largest entry. */
@@ -152,7 +170,10 @@ export function eventPlan(input: EventPlanInput): EventPlan {
   const plannedMinor = sum(views.map((view) => view.estimateMinor));
   const spentMinor = sum(input.actuals.map((row) => row.amountBaseMinor));
   const boughtEstimateMinor = sum(bought.map((view) => view.estimateMinor));
-  const boughtActualMinor = sum(bought.map((view) => view.actualMinor!));
+  // Every payment towards the plan, the items still open included: it is what the plan has spent so far.
+  const boughtActualMinor = sum(views.map((view) => view.actualMinor ?? 0));
+  // What the open items still want: each one's estimate less what was already paid towards it, never below nothing.
+  const toBuyMinor = sum(views.filter((view) => !view.bought).map((view) => Math.max(0, view.estimateMinor - (view.actualMinor ?? 0))));
 
   const categoryIds = [...new Set<string | null>([...views.map((view) => view.categoryId), ...input.actuals.map((row) => row.categoryId)])];
   const lines: EventPlanLine[] = categoryIds
@@ -192,10 +213,11 @@ export function eventPlan(input: EventPlanInput): EventPlan {
     // Only the categories that were planned: measuring a trip's food against tickets nobody planned would call every
     // unplanned rupiah "over the plan", which is false.
     plannedSpentMinor: sum(lines.filter((line) => line.planned).map((line) => line.actualMinor)),
-    toBuyMinor: plannedMinor - boughtEstimateMinor,
+    toBuyMinor,
     boughtEstimateMinor,
     boughtActualMinor,
-    differenceMinor: boughtActualMinor - boughtEstimateMinor,
+    // Only what is done is measured against its estimate: an open item's payments so far are not yet its cost.
+    differenceMinor: sum(bought.map((view) => view.differenceMinor!)),
     // By subtraction, so what was spent always equals the items' shares plus what nobody planned — a part-allocated
     // receipt's remainder needs no special case to land here.
     notPlannedMinor: spentMinor - boughtActualMinor,

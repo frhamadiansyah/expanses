@@ -242,15 +242,18 @@ export async function convertEventToShared(database: Database, ws: WorkspaceCont
       link: item.link,
       note: item.note,
     });
-    const expenseId = item.transactionId ? expenseOf.get(item.transactionId) : undefined;
-    if (!expenseId || item.shareMinor === null || item.shareMinor <= 0) continue;
+    // A shared event's item still takes one purchase: an item paid for several times keeps its largest. The others
+    // stay on the event as spending, read there as not planned.
+    const largest = [...item.purchases].filter((purchase) => expenseOf.has(purchase.transactionId)).sort((a, b) => b.shareMinor - a.shareMinor)[0];
+    const expenseId = largest ? expenseOf.get(largest.transactionId) : undefined;
+    if (!largest || !expenseId || largest.shareMinor <= 0) continue;
     // The item's part of the purchase, as that part of the expense in the event currency: converted the way the
     // expense itself was (its own rate on its own day), so it never comes out above what the expense paid.
     const record = await expenseRecordTx(database.db, book.bookId, expenseId);
-    const total = spent.get(item.transactionId!) ?? 0;
+    const total = spent.get(largest.transactionId) ?? 0;
     if (!record || total <= 0) continue;
     const { paidMinor } = expenseInEvent(record, book.currency);
-    const share = Math.min(paidMinor, Number((BigInt(paidMinor) * BigInt(Math.min(item.shareMinor, total)) + BigInt(total) / 2n) / BigInt(total)));
+    const share = Math.min(paidMinor, Number((BigInt(paidMinor) * BigInt(Math.min(largest.shareMinor, total)) + BigInt(total) / 2n) / BigInt(total)));
     if (share > 0) await linkSharedItem(database, ws, eventId, sharedId, { expenseId, shareMinor: share });
   }
   return { moved: moved.length, kept };

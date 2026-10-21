@@ -75,6 +75,7 @@ import assetAcquired from '../migrations/0074_asset_acquired.sql?raw';
 import tradeBasis from '../migrations/0075_trade_basis.sql?raw';
 import fundTemplatesByMoney from '../migrations/0076_fund_templates_by_money.sql?raw';
 import setCategoryIcons from '../migrations/0077_set_category_icons.sql?raw';
+import eventItemPurchases from '../migrations/0078_event_item_purchases.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -160,6 +161,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 75, name: 'trade_basis', sql: tradeBasis },
   { version: 76, name: 'fund_templates_by_money', sql: fundTemplatesByMoney },
   { version: 77, name: 'set_category_icons', sql: setCategoryIcons },
+  { version: 78, name: 'event_item_purchases', sql: eventItemPurchases },
 ];
 
 /** The highest version this build of the app knows how to produce. */

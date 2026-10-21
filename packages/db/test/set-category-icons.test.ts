@@ -30,8 +30,8 @@ describe('the default sets’ category icons', () => {
     const migration = readFileSync(new URL('../migrations/0077_set_category_icons.sql', import.meta.url), 'utf8');
     await database.db.run(sql.raw(migration));
     expect(await iconsOf(database, ['Flights', 'Lodging', 'Photo', 'Vaccination'])).toEqual({ Flights: 'plane', Lodging: 'tent', Photo: 'camera', Vaccination: 'syringe' });
-    const [[own]] = await database.db.values<[string | null]>(sql`SELECT icon FROM accounts WHERE id = 'own-photo'`);
-    expect(own).toBeNull();
+    const own = await database.db.values<[string | null]>(sql`SELECT icon FROM accounts WHERE id = 'own-photo'`);
+    expect(own[0]![0]).toBeNull();
   });
 });
 
@@ -40,7 +40,7 @@ describe('a retired default set category', () => {
     const { database, ws } = await setupDb();
     await ensureDefaultCategorySets(database, ws);
     // As a Holiday set made before Business H left the defaults had it.
-    const [[setId]] = await database.db.values<[string]>(sql`SELECT id FROM category_sets WHERE name = 'Holiday'`);
+    const setId = (await database.db.values<[string]>(sql`SELECT id FROM category_sets WHERE name = 'Holiday'`))[0]![0];
     await database.db.run(sql`INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, icon, currency, valuation_mode, system_key, sort_order, archived_at, created_at)
       VALUES ('business-h', ${ws.workspaceId}, NULL, 'expense', 'category', 'Business H', NULL, NULL, 'derived', NULL, 8, NULL, '2026-01-01')`);
     await database.db.run(sql`INSERT INTO category_set_members (category_account_id, workspace_id, set_id) VALUES ('business-h', ${ws.workspaceId}, ${setId})`);
