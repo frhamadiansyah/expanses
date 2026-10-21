@@ -181,6 +181,47 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('155.000');
 });
 
+test('tapping from the typed figure to the charged one shows the move, and the bank’s figure replaces the estimate', async ({ page }) => {
+  const TODAY = await todayIn(page);
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addWallet(page);
+  await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2270', opened: TODAY });
+
+  await page.goto('/transactions/new');
+  await page.getByRole('button', { name: 'Paid with' }).click();
+  await choosePayment(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
+
+  const keypad = page.getByTestId('keypad');
+  await page.getByRole('button', { name: 'Amount', exact: true }).click();
+  // The dock says which figure it is typing into, and only that figure carries the mark under it.
+  await expect(page.getByTestId('keypad-label')).toHaveText('Amount in CNY');
+  await expect(page.getByTestId('typing-mark')).toHaveCount(1);
+  for (const key of '120') await keypad.getByRole('button', { name: key, exact: true }).click();
+
+  const charged = page.getByRole('button', { name: 'Charged in IDR' });
+  await expect(charged).toHaveText('272.400');
+  // Straight from one figure to the other, the dock still open: it says so, and the first digit starts afresh.
+  await charged.click();
+  await expect(page.getByTestId('keypad-label')).toHaveText('Charged in IDR');
+  await expect(page.getByTestId('typing-mark')).toHaveCount(1);
+  for (const key of '275000') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await expect(charged).toHaveText('275.000');
+  await expect(page.getByText('≈ IDR', { exact: true })).toHaveCount(0);
+});
+
+test('Note clears in one tap', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  const note = page.getByLabel('Note');
+  await expect(page.getByRole('button', { name: 'Clear text' })).toHaveCount(0);
+  await note.fill('Lantern Noodle Bar');
+  await page.getByRole('button', { name: 'Clear text' }).click();
+  await expect(note).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Clear text' })).toHaveCount(0);
+});
+
 /**
  * §C1 and C2 by thumb: the flag, the second figure it brings, and what happens when the flag goes back.
  *
