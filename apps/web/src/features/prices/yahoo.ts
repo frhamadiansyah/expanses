@@ -1,7 +1,7 @@
 import { CapacitorHttp } from '@capacitor/core';
-import { closePriceMicro, isoDate, type ListedPriceChoice, parseYahooChart, type YahooClose, yahooChartUrl, yahooSymbol } from '@expanses/core';
+import { closePriceMicro, isoDate, type ListedPriceChoice, parseYahooChart, parseYahooDividends, type YahooClose, yahooChartUrl, type YahooDividend, yahooDividendsUrl, yahooSymbol } from '@expanses/core';
 import { type Database, latestSecurityPrices, listHoldingLinks, listSecurities, recordListedClose, listSecurityPriceChoices, type WorkspaceContext } from '@expanses/db';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -155,4 +155,61 @@ export function useYahooClose(o: {
   }, [wanted, fetchNow]);
 
   return { state, retry: () => void fetchNow() };
+}
+
+/*
+ * Dividend history, for the Dividends page: market data rather than the owner's, so it is kept on this device for the
+ * day it was read and never written to the book. Lost, it is read again.
+ */
+const DIVIDENDS_KEY = 'yahoo-dividends';
+type DividendMemo = Record<string, { on: string; payments: YahooDividend[] }>;
+function dividendMemo(): DividendMemo {
+  try {
+    return JSON.parse(localStorage.getItem(DIVIDENDS_KEY) ?? '{}') as DividendMemo;
+  } catch {
+    return {};
+  }
+}
+function rememberDividends(symbol: string, on: string, payments: YahooDividend[]): void {
+  try {
+    localStorage.setItem(DIVIDENDS_KEY, JSON.stringify({ ...dividendMemo(), [symbol]: { on, payments } }));
+  } catch {
+    // No storage: read again next time.
+  }
+}
+
+/** A security's dividends, oldest first: today's memo, else Yahoo, else the last memo kept — null when there is none. */
+export async function yahooDividendsOf(symbol: string, currency: string, o: { get?: YahooGet; now?: Date } = {}): Promise<YahooDividend[] | null> {
+  const today = isoDate(o.now ?? new Date());
+  const kept = dividendMemo()[symbol];
+  if (kept?.on === today) return kept.payments;
+  if (!YAHOO_PRICES_ENABLED) return kept?.payments ?? null;
+  try {
+    const response = await (o.get ?? capacitorGet)(yahooDividendsUrl(symbol));
+    if (response.status < 200 || response.status >= 300) throw new Error(`Yahoo Finance responded ${response.status}`);
+    const payments = parseYahooDividends(response.data, { currency });
+    rememberDividends(symbol, today, payments);
+    return payments;
+  } catch (error) {
+    console.warn(`No Yahoo Finance dividends for ${symbol}`, error);
+    return kept?.payments ?? null;
+  }
+}
+
+/** Each security's dividends by security id (null: none could be read), three asked at a time. */
+export function useDividendHistory(securities: readonly { id: string; ticker: string | null; market: string; currency: string }[]) {
+  const asked = securities.map((s) => ({ id: s.id, symbol: yahooSymbol(s), currency: s.currency }));
+  return useQuery({
+    queryKey: ['yahoo-dividends', asked.map((a) => a.symbol ?? a.id).join(',')],
+    queryFn: async () => {
+      const out: Record<string, YahooDividend[] | null> = {};
+      const queue = [...asked];
+      const worker = async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) out[next.id] = next.symbol ? await yahooDividendsOf(next.symbol, next.currency) : null;
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      return out;
+    },
+    staleTime: 60 * 60 * 1000,
+  });
 }

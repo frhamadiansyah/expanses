@@ -84,3 +84,32 @@ export function parseYahooChart(body: unknown, o: { currency: string; now: Date 
   }
   throw new YahooPriceError('Yahoo Finance has no finished close yet');
 }
+
+/** The same chart endpoint asked for dividends: two years of monthly bars, so last calendar year is whole. */
+export function yahooDividendsUrl(symbol: string): string {
+  return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1mo&events=div`;
+}
+
+/** One dividend as Yahoo lists it: the ex-dividend day, on the exchange's calendar, and the amount per share. */
+export interface YahooDividend {
+  exDate: string;
+  perShare: number;
+}
+
+/**
+ * Every dividend in a chart payload, oldest first, refused unless quoted in `currency`. A payload with no
+ * `events.dividends` is a security that paid none in the range: an empty list, not an error.
+ */
+export function parseYahooDividends(body: unknown, o: { currency: string }): YahooDividend[] {
+  const result = (body as { chart?: { result?: unknown[] } } | null)?.chart?.result?.[0] as
+    | { meta?: ChartMeta; events?: { dividends?: Record<string, { amount?: unknown; date?: unknown }> } }
+    | undefined;
+  if (!result?.meta) throw new YahooPriceError('Yahoo Finance sent no chart');
+  if (result.meta.currency !== o.currency) throw new YahooPriceError(`Yahoo Finance quotes this in ${result.meta.currency ?? 'no currency'}; the holding is in ${o.currency}`);
+  const out: YahooDividend[] = [];
+  for (const entry of Object.values(result.events?.dividends ?? {})) {
+    if (typeof entry.date !== 'number' || typeof entry.amount !== 'number' || !(entry.amount > 0)) continue;
+    out.push({ exDate: exchangeDate(entry.date, result.meta), perShare: entry.amount });
+  }
+  return out.sort((a, b) => a.exDate.localeCompare(b.exDate));
+}
