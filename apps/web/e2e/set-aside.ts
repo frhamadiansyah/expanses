@@ -46,6 +46,22 @@ export async function typeAmount(page: Page, form: Locator, amount: string) {
   await input.press('Tab');
 }
 
+/**
+ * A second figure on the Amount row — a transfer's received amount, its fee — typed as a person types it: on the dock on
+ * a phone, where the figure is a button, and straight into the field on a desktop. "." is typed as the dock's ",".
+ */
+export async function typeSecondFigure(page: Page, form: Locator, label: RegExp, amount: string) {
+  const field = form.getByLabel(label);
+  if ((await field.evaluate((node) => node.tagName)) === 'BUTTON') {
+    await field.click();
+    const keypad = page.getByTestId('keypad');
+    for (const key of amount.replace('.', ',')) await keypad.getByRole('button', { name: key, exact: true }).click();
+    await keypad.getByRole('button', { name: 'DONE' }).click();
+    return;
+  }
+  await field.pressSequentially(amount);
+}
+
 /** A money account, opened through the picker — the same walk the Accounts page's `+` takes. */
 export async function addMoneyAccount(page: Page, name: string, subtype: string, balance: string, currency = 'IDR', rate?: string) {
   await openAccount(page, { subtype, name, balance, currency, rate });

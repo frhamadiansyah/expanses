@@ -176,6 +176,7 @@ export function AmountRow({
   anyCurrency = false,
   locked = false,
   photos,
+  second,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
@@ -198,6 +199,11 @@ export function AmountRow({
    * that opens them. A receipt is where the amount comes from, so its way in is the amount's row.
    */
   photos?: { count: number; open: () => void };
+  /**
+   * A second figure beside the amount that is not "Charged in …": a transfer's received amount between two currencies,
+   * or its fee within one. Its code is printed before it ("IDR", "FEE"), and the dock types into it as into a charge.
+   */
+  second?: { field: MoneyFieldSpec; code: string; placeholder: string; onChange: (value: string) => void };
 }) {
   const phone = usePhone();
   const { ws } = useApp();
@@ -252,7 +258,7 @@ export function AmountRow({
   const codeGroup = 'flex min-w-0 items-center gap-[5px] self-stretch';
   const codeClass = 'shrink-0 text-[12.5px] leading-4 font-semibold tracking-[0.2px] text-[var(--ph-ink-3)]';
   const toggle = (which: 'amount' | 'charged') => {
-    if (which === 'charged' && keypad !== 'charged' && guessed) setReplace('charged');
+    if (which === 'charged' && !second && keypad !== 'charged' && guessed) setReplace('charged');
     setKeypad((was) => (was === which ? null : which));
   };
   /* Which figure the open keypad types into, marked under it, so a tap from one figure to the other shows it landed. */
@@ -260,9 +266,7 @@ export function AmountRow({
    * Which figure the dock is typing into: a cursor after that one (`MoneyField`'s `typing`), and the other of the two
    * stepping back while the dock is up. No colour of its own — the tint is spent on actions and on money in.
    */
-  const fadeUnlessTyping = (which: 'amount' | 'charged') => (fields.charged && keypad !== null && keypad !== which ? 'opacity-45' : '');
-  /** The field the dock is typing into, or null when it is shut. */
-  const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
+  const fadeUnlessTyping = (which: 'amount' | 'charged') => (other && keypad !== null && keypad !== which ? 'opacity-45' : '');
   // The same 28 px circle every other row of the card leads with; the flag is its glyph.
   const flagCircle = 'flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none';
   /*
@@ -271,6 +275,12 @@ export function AmountRow({
    * ref also calls `set`, which is what brings us back here.
    */
   const guessed = fields.charged !== null && chargedIsEstimate({ value: fields.charged.value, touched: touched.current });
+  /** The figure beside the amount, whichever it is: the caller's, else what a foreign purchase was charged. */
+  const other =
+    second ??
+    (fields.charged ? { field: fields.charged, code: guessed ? `≈ ${fields.charged.currency}` : fields.charged.currency, placeholder: 'Amount', onChange: setCharged } : null);
+  /** The field the dock is typing into, or null when it is shut. */
+  const open = keypad === null ? null : keypad === 'amount' ? fields.amount : (other?.field ?? null);
 
   /*
    * Option B's amount row (§3.3, C1-C3), with both figures on it: it reads like any other row — a round flag for
@@ -314,7 +324,7 @@ export function AmountRow({
           {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
-          <span className={cx(codeGroup, 'relative transition-opacity', fields.charged ? 'shrink' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
+          <span className={cx(codeGroup, 'relative transition-opacity', other ? 'shrink' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
             {named && (
               <span aria-hidden className={codeClass}>
                 {fields.amount.currency}
@@ -332,7 +342,7 @@ export function AmountRow({
               disabled={locked}
             />
           </span>
-          {fields.charged && (
+          {other && (
             <>
               {/* What parts the two figures. A rule rather than a printed bar: the app spends "·" as a joiner in
                   running text, and a second kind of punctuation between two money figures reads as arithmetic. */}
@@ -341,17 +351,17 @@ export function AmountRow({
                 {/* The ≈ is the whole of what the line under this row used to say: this figure is the day's
                     estimate, not what the bank took. It goes on the first keystroke of the user's own. */}
                 <span aria-hidden className={codeClass}>
-                  {guessed ? `≈ ${fields.charged.currency}` : fields.charged.currency}
+                  {other.code}
                 </span>
                 <MoneyField
-                  field={fields.charged}
+                  field={other.field}
                   phone={phone}
-                  onChange={setCharged}
+                  onChange={other.onChange}
                   onKeypad={() => toggle('charged')}
                   typing={keypad === 'charged'}
                   className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
-                  placeholder="Amount"
-                  refund={refund}
+                  placeholder={other.placeholder}
+                  refund={!second && refund}
                   disabled={locked}
                 />
               </span>
@@ -415,11 +425,11 @@ export function AmountRow({
           value={open.value}
           currency={open.currency}
           fractional={open.fractional}
-          label={fields.charged ? (open.which === 'amount' ? `Amount in ${open.currency}` : open.label) : undefined}
+          label={other ? (open.which === 'amount' ? `Amount in ${open.currency}` : open.label) : undefined}
           replaceFirst={replace === open.which}
           onFirstKey={() => setReplace(null)}
-          onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}
-          refund={open.which === 'amount' ? refundable : refund}
+          onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : other?.onChange(text))}
+          refund={open.which === 'amount' ? refundable : !second && refund}
           onClose={() => setKeypad(null)}
         />
       )}
