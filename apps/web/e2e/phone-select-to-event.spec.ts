@@ -9,6 +9,18 @@ const face = (page: Page, what: string, category: string) => row(page, what).get
 const tick = (page: Page, what: string) => page.getByRole('checkbox', { name: `Select ${what}` });
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 const bar = (page: Page) => page.getByRole('toolbar', { name: 'Selected transactions' });
+/** One of the ticked rows' actions: Actions on the toolbar, then its row on the sheet that opens. */
+async function act(page: Page, action: string) {
+  await bar(page).getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('dialog', { name: /transactions?$/ }).getByRole('button', { name: action }).click();
+}
+/** Whether an action is offered for what is ticked, read off the Actions sheet and the sheet put away again. */
+async function expectActionDisabled(page: Page, action: string) {
+  await bar(page).getByRole('button', { name: 'Actions' }).click();
+  const sheet = page.getByRole('dialog', { name: /transactions?$/ });
+  await expect(sheet.getByRole('button', { name: action })).toBeDisabled();
+  await sheet.getByRole('button', { name: 'Close' }).click();
+}
 
 /** Select mode, from the header's ⋯ — the list's own way to tick rows. */
 async function startSelecting(page: Page) {
@@ -42,8 +54,7 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   await startSelecting(page);
   await expect(bar(page)).toContainText('None selected');
   // Nothing on the bar works until a row is ticked.
-  await expect(bar(page).getByRole('button', { name: 'Add to event…' })).toBeDisabled();
-  await expect(bar(page).getByRole('button', { name: 'Remove from event' })).toBeDisabled();
+  await expect(bar(page).getByRole('button', { name: 'Actions' })).toBeDisabled();
   // An opening balance is not spending to put anywhere: hidden from the list by default, so there is nothing to tick.
   await expect(row(page, 'Opening balance')).toHaveCount(0);
 
@@ -57,9 +68,9 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   // The tick itself does the same.
   await tick(page, 'Pertashop').click();
   await expect(tick(page, 'Pertashop')).toBeChecked();
-  await expect(bar(page)).toContainText('2 selected');
+  await expect(bar(page)).toContainText('2 Selected');
 
-  await bar(page).getByRole('button', { name: 'Add to event…' }).click();
+  await act(page, 'Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Lombok trip' }).click();
   await expect(toast(page)).toContainText('2 transactions added to Lombok trip');
   // Done: select mode is over, and a row's tap is the receipt's again.
@@ -77,7 +88,7 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   await page.goto('/transactions');
   await startSelecting(page);
   await tick(page, 'Pertashop').click();
-  await bar(page).getByRole('button', { name: 'Remove from event' }).click();
+  await act(page, 'Remove from event');
   await expect(toast(page)).toContainText('1 transaction removed from Lombok trip');
   await expect(bar(page)).toHaveCount(0);
 
@@ -102,7 +113,7 @@ test('Undo takes a whole selection back out of the event', async ({ page }) => {
   await addTransaction(page, { description: 'Sate Rembiga', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '85000' });
   await startSelecting(page);
   await tick(page, 'Sate Rembiga').click();
-  await bar(page).getByRole('button', { name: 'Add to event…' }).click();
+  await act(page, 'Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Lombok trip' }).click();
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(toast(page)).toHaveCount(0);
@@ -110,7 +121,7 @@ test('Undo takes a whole selection back out of the event', async ({ page }) => {
   // is in no event, so there is nothing to remove it from.
   await startSelecting(page);
   await tick(page, 'Sate Rembiga').click();
-  await expect(bar(page).getByRole('button', { name: 'Remove from event' })).toBeDisabled();
+  await expectActionDisabled(page, 'Remove from event');
 
   await page.goto(eventUrl);
   await expect(page.getByRole('heading', { name: 'Lombok trip', exact: true })).toBeVisible();

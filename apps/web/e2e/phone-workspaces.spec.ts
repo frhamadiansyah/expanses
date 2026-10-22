@@ -158,7 +158,8 @@ test('a saved purchase moves to another workspace from its Edit screen, and seve
   await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
   await page.getByRole('checkbox', { name: 'Select Client lunch' }).click();
   const bar = page.getByRole('toolbar', { name: 'Selected transactions' });
-  await bar.getByRole('button', { name: 'Move to workspace…' }).click();
+  await bar.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('dialog', { name: '1 transaction' }).getByRole('button', { name: 'Move to workspace' }).click();
   // The bar stands down while the sheet is up, so nothing sits over its rows.
   await expect(bar).toHaveCount(0);
   const business = page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Business' });
