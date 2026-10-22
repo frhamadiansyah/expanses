@@ -623,8 +623,9 @@ function CardBody({
   const offersFee = draft.mode === 'transfer' && !draft.goalId && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
-  // Photos live on the Amount row's camera wherever there is one — every tab but Buy / sell, new or saved.
-  const photosOnAmount = draft.mode !== 'trade' && offered.includes('photos');
+  // Photos live on the Amount row's camera for a purchase, new or saved: its receipt. Income, a transfer and a buy or
+  // sell keep them under Add more details.
+  const photosOnAmount = draft.mode === 'expense' && offered.includes('photos');
   const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
