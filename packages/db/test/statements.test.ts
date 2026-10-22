@@ -4,6 +4,7 @@ import {
   billOnNextStatement,
   cardSpendLines,
   cardStatement,
+  cardStatementLines,
   createAccount,
   createCardAccount,
   listAccounts,
@@ -58,6 +59,29 @@ describe('a card statement', () => {
 
     const september = await cardStatement(h.database, h.ws, h.card.id, SEPTEMBER, '2026-09-01');
     expect(september).toMatchObject({ openingMinor: 450_000, chargesMinor: 80_000, creditsMinor: 200_000, closingMinor: 330_000, closed: false, leftToPayMinor: null });
+  });
+});
+
+describe('a purchase paid off before the app', () => {
+  it('shows as one marked line, its balancing settlement kept in the totals but not drawn, and nothing to pay', async () => {
+    const h = await household();
+    const groceries = (await listAccounts(h.database, h.ws)).find((a) => a.systemKey === 'household.groceries')!.id;
+    const paidOff = await postTransaction(h.database, h.ws, {
+      occurredOn: '2026-08-02',
+      description: 'Hero Market',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: h.card.id, amountMinor: 230_000, currency: 'IDR' }),
+      settledBeforeApp: true,
+    });
+    await h.buy('2026-08-03', 'Kopi', 40_000);
+
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.lines.map((line) => [line.description, line.paidOff])).toEqual([
+      ['Hero Market', true],
+      ['Kopi', false],
+    ]);
+    expect(august).toMatchObject({ chargesMinor: 270_000, creditsMinor: 230_000, closingMinor: 40_000, leftToPayMinor: 40_000 });
+    expect((await cardStatementLines(h.database, h.ws, h.card.id)).map((line) => line.description)).toEqual(['Hero Market', 'Kopi']);
+    expect(august.lines.find((line) => line.transactionId === paidOff)?.balancing).toBe(false);
   });
 });
 

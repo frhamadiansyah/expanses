@@ -8,7 +8,7 @@ const cards: CardRow[] = [
 ];
 
 function line(key: string, cardId: string | null, countedMinor: number, spending = true): StatementLine {
-  return { key, transactionId: key, occurredOn: '2026-09-01', postedOn: null, statementOn: '2026-09-01', description: key, cardId, owedMinor: countedMinor, countedMinor, instalment: null, convertedTo: null, spending, originalCurrency: null, originalAmountMinor: null, paidBy: null, settles: 0 };
+  return { key, transactionId: key, occurredOn: '2026-09-01', postedOn: null, statementOn: '2026-09-01', description: key, cardId, owedMinor: countedMinor, countedMinor, instalment: null, convertedTo: null, spending, originalCurrency: null, originalAmountMinor: null, paidBy: null, settles: 0, paidOff: false, balancing: false };
 }
 
 describe('groupStatementLines', () => {
