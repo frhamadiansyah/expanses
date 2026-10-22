@@ -324,8 +324,10 @@ export function AmountRow({
           {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
-          <span className={cx(codeGroup, 'relative transition-opacity', other ? 'shrink' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
-            {named && (
+          {/* Two figures share the row by what each needs, the room left over split between them, so neither is cut while both fit. */}
+          <span className={cx(codeGroup, 'relative transition-opacity', other ? 'flex-[1_1_auto]' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
+            {/* Beside a fee the flag already names the one currency both are in, so the code would only take room. */}
+            {named && second?.field.which !== 'fee' && (
               <span aria-hidden className={codeClass}>
                 {fields.amount.currency}
               </span>
@@ -346,8 +348,8 @@ export function AmountRow({
             <>
               {/* What parts the two figures. A rule rather than a printed bar: the app spends "·" as a joiner in
                   running text, and a second kind of punctuation between two money figures reads as arithmetic. */}
-              <span aria-hidden className="h-[18px] w-px shrink-0 bg-[var(--ph-hair)]" />
-              <span className={cx(codeGroup, 'relative flex-1 transition-opacity', fadeUnlessTyping('charged'))}>
+              <span aria-hidden className="mx-[4px] h-[22px] w-px shrink-0 bg-[var(--ph-hair)]" />
+              <span className={cx(codeGroup, 'relative flex-[1_1_auto] transition-opacity', fadeUnlessTyping('charged'))}>
                 {/* The ≈ is the whole of what the line under this row used to say: this figure is the day's
                     estimate, not what the bank took. It goes on the first keystroke of the user's own. */}
                 <span aria-hidden className={codeClass}>
