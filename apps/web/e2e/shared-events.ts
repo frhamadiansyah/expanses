@@ -21,7 +21,7 @@ export async function eventually(page: Page, check: () => Promise<void>) {
 export async function corner(page: Page, name: string) {
   const inline = page.getByRole('button', { name, exact: true });
   if ((await inline.count()) > 0) return inline.first().click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: /^(More|Event settings)$/ }).click();
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
 }
 

@@ -1,13 +1,12 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus, UserPlus } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { Plus, Settings } from 'lucide-react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
-  DestructiveRow,
   InsetGroup,
   InsetRow,
   LargeTitle,
@@ -192,6 +191,11 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
+  // Edit opens from the gear at the top, and its form sits at the foot of the page: taken there once, as it opens.
+  const editRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editing) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editing]);
 
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
@@ -319,14 +323,44 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     glyph: <Plus size={22} aria-hidden />,
     run: () => void navigate(addSpendingTarget(eventId)),
   };
-  // Only an event that is not shared reaches this page (a shared one is `SharedEventScreen`), so an event can be shared once.
-  // A corner button carries a glyph, never a word: without one this drew an empty circle beside + (I1).
-  const share: CornerAction = { key: 'share', label: 'Share this event', glyph: <UserPlus size={21} aria-hidden />, run: onShare };
+  /*
+   * Everything done to the event itself, behind the gear rather than in a list at the foot of the page: Edit, Share,
+   * done or not, and Remove last, in alarm. Only an event that is not shared reaches this page (a shared one is
+   * `SharedEventScreen`), so an event can be shared once.
+   */
+  const settings: CornerAction = {
+    key: 'settings',
+    label: 'Event settings',
+    glyph: <Settings size={19} aria-hidden />,
+    menu: event
+      ? [
+          { key: 'edit', label: 'Edit event', run: () => setEditing(true) },
+          { key: 'share', label: 'Share this event', run: onShare },
+          {
+            key: 'done',
+            label: event.finishedAt === null ? 'Mark as done' : 'Reopen',
+            run: () => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null)),
+          },
+          {
+            key: 'remove',
+            label: 'Remove event',
+            destructive: true,
+            run: () => {
+              if (!window.confirm(`Remove ${event.name}? Its transactions stay where they are.`)) return;
+              void run(async () => {
+                await deleteEvent(database, ws, event.id);
+                await navigate({ to: '/events' });
+              });
+            },
+          },
+        ]
+      : [],
+  };
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, share]} />
+      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}
@@ -570,34 +604,10 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
       )}
 
       {event && editing && (
-        <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasPlan || transactions > 0} onDone={() => setEditing(false)} />
+        <div ref={editRef}>
+          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasPlan || transactions > 0} onDone={() => setEditing(false)} />
+        </div>
       )}
-      {event && !editing && (
-        <>
-          <InsetGroup>
-            <InsetRow title="Edit event" label={`Edit ${event.name}`} onClick={() => setEditing(true)} />
-            <InsetRow
-              title={event.finishedAt === null ? 'Mark as done' : 'Reopen'}
-              label={event.finishedAt === null ? `Finish ${event.name}` : `Reopen ${event.name}`}
-              chevron={false}
-              onClick={() => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null))}
-            />
-          </InsetGroup>
-          {/* Its own group: the air around a destructive row is the only undo a finger gets. */}
-          <InsetGroup>
-            <DestructiveRow
-              label="Remove event"
-              onClick={() =>
-                void run(async () => {
-                  await deleteEvent(database, ws, event.id);
-                  await navigate({ to: '/events' });
-                })
-              }
-            />
-          </InsetGroup>
-        </>
-      )}
-
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
       </div>
