@@ -11,6 +11,8 @@ describe('searching Paid with', () => {
     expect(matchesPayment(option({ holderName: 'Andi' }), 'IDR', 'andi')).toBe(true);
     expect(matchesPayment(option({ accountName: 'Wise' }), 'USD', 'usd')).toBe(true);
     expect(matchesPayment(option({}), 'IDR', 'jago')).toBe(false);
+    // An account with one card, a bank account's number, a wallet's phone: their digits find them too.
+    expect(matchesPayment(option({ accountName: 'BCA Visa', cardId: null, last4: '1467' }), 'IDR', '1467')).toBe(true);
   });
 
   it('keeps every row while nothing is typed', () => {

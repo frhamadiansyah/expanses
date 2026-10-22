@@ -9,6 +9,7 @@ import { NewCardForm } from '../ownables/AddDebtPage';
 import { CashAccountForm } from '../ownables/CashAccountForm';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
+import { useAccountNumberLast4, useWalletLast4 } from '../cards/card-queries';
 
 /**
  * What one Paid with row is called.
@@ -28,7 +29,7 @@ export function paymentLabel(option: PaymentOption): string {
 export function matchesPayment(option: PaymentOption, currency: string | null | undefined, typed: string): boolean {
   const wanted = typed.trim().toLowerCase();
   if (!wanted) return true;
-  return [paymentLabel(option), option.holderName ?? '', currency ?? ''].some((text) => text.toLowerCase().includes(wanted));
+  return [paymentLabel(option), option.last4 ?? '', option.holderName ?? '', currency ?? ''].some((text) => text.toLowerCase().includes(wanted));
 }
 
 /** What the Paid with row shows once something is chosen, or nothing when it is still empty. */
@@ -218,7 +219,16 @@ export function PaymentSheet({
     title?: (ownerName: string | null) => string;
   };
 }) {
-  const options = allOptions.filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId);
+  /*
+   * Every row carries the digits it is known by, shown beside its name and found by search: a card's own, else a bank
+   * account's number (0080), else a wallet's phone. An account with one card used to show none, since its name alone
+   * was enough to choose by — but the digits are how a statement or an alert names it.
+   */
+  const numbers = useAccountNumberLast4().data;
+  const phones = useWalletLast4().data;
+  const options = allOptions
+    .filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId)
+    .map((option) => ({ ...option, last4: option.last4 ?? numbers?.[option.accountId] ?? phones?.[option.accountId] ?? null }));
   const [search, setSearch] = useState('');
   // D of the search mockup: no field on screen until ⌕ in the header asks for one; it then takes the tabs' row.
   const [finding, setFinding] = useState(false);
@@ -268,11 +278,12 @@ export function PaymentSheet({
             )}
           </span>
           <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+            {/* The name may be cut short; the digits never are, so they stand apart from it, at the row's end. */}
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
-              <Marked text={label} typed={search} />
+              <Marked text={placeholders.has(option.accountId) ? label : option.accountName} typed={search} />
             </span>
-            <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
-              {[option.holderName, account?.currency].filter(Boolean).join(' · ')}
+            <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
+              {[option.last4 ? `···· ${option.last4}` : null, option.holderName, account?.currency].filter(Boolean).join(' · ')}
             </span>
           </span>
         </button>
