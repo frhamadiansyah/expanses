@@ -253,8 +253,9 @@ test('net worth’s Assets list shows the account once, at the ≈ total, and op
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Valas Plus · USD/ })).toHaveCount(0);
   const row = page.getByRole('link', { name: /^Valas Plus/ });
-  await expect(row).toContainText('3 pockets');
-  await expect(row).toContainText('58.982.000');
+  // One line: the ≈ on the figure is what says it holds more than one currency.
+  await expect(row).not.toContainText('pockets');
+  await expect(row).toContainText('≈ Rp 58.982.000');
   await row.click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });

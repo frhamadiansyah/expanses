@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { cx } from '../index';
 import { RowIcon } from './InsetList';
 import { NESTED_ICON, nestedPad, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
+import { type TreePlace, TreeLines, TreeStem } from './TreeLines';
 
 /**
  * Primitive 11: the drawer — a line that folds the rows of one kind away, and says how many there are and what they
@@ -50,6 +51,7 @@ export function Drawer({
   testId,
   onToggle,
   stem = false,
+  tree,
 }: {
   /** The kind's own glyph, in the circle a row draws one in, so a drawer and the rows under it line up. */
   icon?: ReactNode;
@@ -68,6 +70,8 @@ export function Drawer({
   onToggle: () => void;
   /** Open with rows under it drawn as its children: the tree line starts below this drawer's icon. */
   stem?: boolean;
+  /** Itself a child in an open tree (a section's kind): its place on the tree line. */
+  tree?: TreePlace;
 }) {
   return (
     <div className="relative">
@@ -82,15 +86,17 @@ export function Drawer({
       >
         {icon && <RowIcon size={depth > 0 ? NESTED_ICON : undefined}>{icon}</RowIcon>}
         {/* The tree line's start: from under the icon to the foot of the row, where the first child picks it up. */}
-        {stem && icon && depth === 0 && (
-          <span aria-hidden className="pointer-events-none absolute bottom-0 w-px bg-[var(--ph-chevron)]" style={{ left: ROW_PAD_X + ROW_ICON / 2, top: 'calc(50% + 16px)' }} />
-        )}
+        {stem && icon && <TreeStem depth={depth} iconSize={depth > 0 ? NESTED_ICON : ROW_ICON} />}
+        {tree && depth > 0 && <TreeLines depth={depth} tree={tree} />}
         <span className="min-w-0 flex-1">
-          {/* The phone's 17 px, as the rows inside it are: a parent never reads smaller than its children. */}
-          <span className={cx('block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-ink)]', depth === 0 && 'font-medium')}>{label}</span>
+          {/* 15 px, as the rows inside it are, the top of a tree in medium weight; a long kind's name ("Other cash
+              equivalents") takes a second line rather than being cut short beside its figure. */}
+          <span className={cx('line-clamp-2 block text-[15px] leading-[20px] text-[var(--ph-ink)]', depth === 0 && 'font-medium')}>{label}</span>
           {under !== undefined && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{under}</span>}
         </span>
-        {figure !== undefined && <span className="tabular shrink-0 text-[17px] leading-[22px] whitespace-nowrap text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{figure}</span>}
+        {figure !== undefined && (
+          <span className="tabular shrink-0 text-[15px] leading-[20px] whitespace-nowrap text-[var(--ph-ink)]">{figure}</span>
+        )}
         <span aria-hidden className={cx('shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]', open && 'rotate-90')}>
           {'›'}
         </span>

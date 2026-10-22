@@ -5,7 +5,7 @@ import { ArrowLeftRight, ChartColumn, ChartLine, ChevronRight, Gauge, type Lucid
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
-import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
+import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers, iconCentre, type TreePlace } from '../../ui/native';
 import { assetKindTile, assetSectionTile, debtKindTile } from '../ownables/catalogue-view';
 import type { BarMonth } from './bar-chart';
 import { NetWorthBars } from './NetWorthBars';
@@ -169,6 +169,7 @@ function SheetColumn({
                 label={group.label}
                 figure={<SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}
                 open={shown}
+                stem={shown && group.rows.length > 0}
                 /* A hairline above every section but the box's first: with the section headers inside the box, the
                    line is what tells one section from the next. */
                 separator={index > 0}
@@ -229,7 +230,7 @@ type OwnerOf = (accountId: string) => RowOwner | null;
  * On the household's sheet (D12, D13) the owner is the ring round the circle and nothing else — the row stays one
  * line, with no name and no date under it — and a screen reader hears whose it is. The other's item opens its own page.
  */
-function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0) {
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0, tree?: TreePlace) {
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
@@ -254,6 +255,7 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
       }
       subtitle={row.note ?? undefined}
       depth={depth}
+      tree={tree}
       value={<Money minor={shownMinor} currency={shownCurrency} />}
       valueTone="ink"
       chevron={shared || link ? undefined : false}
@@ -300,8 +302,23 @@ function fold(
         depth={depth}
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
+        // Inside a section's drawer, the kinds hang from the section on the tree line, and their accounts from them.
+        {...(depth > 0 ? { tree: { last: index === drawers.length - 1 }, stem: shown && drawer.rows.length > 0 } : {})}
       />,
-      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon, ownerOf?.(row.accountId) ?? null, linkOf?.(row.accountId), depth > 0 ? depth + 1 : 0)) : []),
+      ...(shown
+        ? drawer.rows.map((row, at) =>
+            sheetLine(
+              row,
+              currency,
+              icon,
+              ownerOf?.(row.accountId) ?? null,
+              linkOf?.(row.accountId),
+              depth > 0 ? depth + 1 : 0,
+              // The section's own line carries on past these to its next kind, unless this kind is its last.
+              depth > 0 ? { last: at === drawer.rows.length - 1, rails: index === drawers.length - 1 ? [] : [iconCentre(depth - 1)] } : undefined,
+            ),
+          )
+        : []),
     ];
   });
 }
