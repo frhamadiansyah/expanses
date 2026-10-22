@@ -70,8 +70,8 @@ function PlanItemRow({
 }
 
 /**
- * An event's plan, as a checklist: how many are bought and what is left to buy on top, then every item in one list —
- * still to buy first, bought after it, greyed — with its category as the line under it.
+ * An event's plan, as a checklist: how many are bought and what is left to buy on top, then a group per category —
+ * its header what was paid of what it plans, its items still to buy first and bought after, greyed.
  *
  * Only the plan is here. Spending nobody planned, and money that came back, are on the event's own page, under the
  * chart of everything it spent: this screen is the list of things to buy and nothing else.
@@ -117,8 +117,6 @@ export function PlanPage() {
 
   const data = plan.data;
   const totals = data ? planTotals(data) : null;
-  // Every item of every category as one list, each carrying its category's name for the line under it.
-  const checklist = (data?.lines ?? []).flatMap((line) => line.items.map((item) => ({ item, category: line.name })));
   // Worked out once rather than at each of the two places it is read: the words and the tone are one reading.
   const difference = data && data.boughtCount > 0 ? differenceWords(data.differenceMinor, ws.baseCurrency) : null;
   const search = { ws: tab };
@@ -200,28 +198,43 @@ export function PlanPage() {
               </InsetGroup>
             </div>
 
-            {/* The checklist: what is still to buy first, what was bought after it, greyed, each with its category. */}
-            <InsetGroup>
-              {[...checklist.filter((row) => !row.item.bought), ...checklist.filter((row) => row.item.bought)].map(({ item, category }) => {
-                const words = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
-                const many = quantityWords(item, ws.baseCurrency);
-                // Paid towards but still open: what was paid against what was planned, and how many payments made it.
-                const partly = !item.bought && item.purchaseCount > 0 ? `of ${rp(item.estimateMinor)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}` : null;
+            {/*
+              * The checklist, a group per category: its header says what was paid towards it of what it plans, and its
+              * items follow — still to buy first, bought after, greyed — each with how many and at what price.
+              */}
+            {(data.lines ?? [])
+              .filter((line) => line.items.length > 0)
+              .map((line) => {
+                const paid = line.items.reduce((total, item) => total + (item.actualMinor ?? 0), 0);
+                const ordered = [...line.items.filter((item) => !item.bought), ...line.items.filter((item) => item.bought)];
                 return (
-                  <PlanItemRow
-                    key={item.id}
-                    eventId={eventId}
-                    itemId={item.id}
-                    name={item.name}
-                    subtitle={[category, item.bought ? (words?.text ?? null) : (partly ?? many)].filter(Boolean).join(' · ')}
-                    figure={rp(item.actualMinor ?? item.estimateMinor)}
-                    state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
-                    search={search}
-                    onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}
-                    onDone={(done) => void run(() => setEventItemDone(database, ws, item.id, done))}
-                  />
+                  <div key={line.categoryId ?? 'none'} data-testid="plan-category">
+                    <InsetGroup header={line.name} trailing={`${rp(paid)} of ${rp(line.plannedMinor)}`}>
+                      {ordered.map((item) => {
+                        const words = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
+                        const many = quantityWords(item, ws.baseCurrency);
+                        // Paid towards but still open: what was paid against what was planned, and how many payments made it.
+                        const partly = !item.bought && item.purchaseCount > 0 ? `of ${rp(item.estimateMinor)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}` : null;
+                        return (
+                          <PlanItemRow
+                            key={item.id}
+                            eventId={eventId}
+                            itemId={item.id}
+                            name={item.name}
+                            subtitle={[item.bought ? many : null, item.bought ? (words?.text ?? null) : (partly ?? many)].filter(Boolean).join(' · ')}
+                            figure={rp(item.actualMinor ?? item.estimateMinor)}
+                            state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
+                            search={search}
+                            onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}
+                            onDone={(done) => void run(() => setEventItemDone(database, ws, item.id, done))}
+                          />
+                        );
+                      })}
+                    </InsetGroup>
+                  </div>
                 );
               })}
+            <InsetGroup>
               <InsetRow title={addLabel} to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
             </InsetGroup>
             <p className="px-[4px] text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
