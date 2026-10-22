@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { formatMinor, type EventPlan } from '@expanses/core';
 import { useApp } from '../../app/context';
 import { InsetGroup, InsetRow, type GroupChild, type InsetRowProps } from '../../ui/native';
 import { GROUP_GAP } from '../../ui/native/metrics';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { planCardRows, planTotals } from './plan-view';
+import { planCardRows, planTotals, quantityWords } from './plan-view';
 
 /** The way into the plan, wrapped so the test id rides on it and the group can still hand it its separator. */
 function WayIn({ position, ...row }: GroupChild & InsetRowProps) {
@@ -42,6 +43,16 @@ export function PlanCard({ eventId, plan, bookId, inPanel = false }: {
   // card came to print Rp0 beside a ring drawing −Rp1.000.000 of the very same quantity.
   const totals = planTotals(plan);
   const rp = (minor: number) => formatMinor(minor, currency);
+  // A category opens in place to show its items; tapped again, it folds.
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((was) => {
+      const next = new Set(was);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const itemsOf = (categoryId: string | null) => plan.lines.find((line) => line.categoryId === categoryId)?.items ?? [];
 
   return (
     <div data-testid="event-plan-card">
@@ -59,20 +70,44 @@ export function PlanCard({ eventId, plan, bookId, inPanel = false }: {
           /* The two figures of the ring's own page, so the group and the chart cannot say different things. */
           trailing={inPanel ? undefined : `${rp(totals.plannedSpentMinor)} of ${rp(totals.plannedMinor)}`}
         >
-          {rows.map((row) => (
-            <InsetRow
-              key={row.categoryId ?? 'none'}
-              title={row.categoryId === null ? row.name : workspaceOf(row.categoryId) ? `${row.name} · ${workspaceOf(row.categoryId)}` : row.name}
-              subtitle={row.subline}
-              value={
-                <span className="block text-right">
-                  <span className="block">{rp(row.plannedMinor)}</span>
-                  <span className="block text-[11.5px] leading-[14px] font-semibold text-[var(--ph-ink-3)]">planned</span>
-                </span>
-              }
-              valueTone="ink"
-            />
-          ))}
+          {rows.flatMap((row) => {
+            const key = row.categoryId ?? 'none';
+            const opened = open.has(key);
+            return [
+              <InsetRow
+                key={key}
+                testId="plan-card-category"
+                title={row.categoryId === null ? row.name : workspaceOf(row.categoryId) ? `${row.name} · ${workspaceOf(row.categoryId)}` : row.name}
+                subtitle={row.subline}
+                label={`${opened ? 'Fold' : 'Open'} ${row.name}`}
+                onClick={() => toggle(key)}
+                value={
+                  <span className="block text-right">
+                    <span className="block">{rp(row.plannedMinor)}</span>
+                    <span className="block text-[11.5px] leading-[14px] font-semibold text-[var(--ph-ink-3)]">planned</span>
+                  </span>
+                }
+                valueTone="ink"
+              />,
+              // Its items, once opened: each opens its own page, as on the whole plan.
+              ...(opened
+                ? itemsOf(row.categoryId).map((item) => (
+                    <InsetRow
+                      key={`${key}-${item.id}`}
+                      testId="plan-card-item"
+                      depth={1}
+                      title={item.name}
+                      subtitle={item.bought ? 'bought' : (quantityWords(item, currency) ?? undefined)}
+                      value={rp(item.actualMinor ?? item.estimateMinor)}
+                      valueTone={item.bought ? 'ink-3' : 'ink'}
+                      to="/events/$eventId/plan/$itemId"
+                      params={{ eventId, itemId: item.id }}
+                      search={search}
+                    />
+                  ))
+                : []),
+            ];
+          })}
           <WayIn
             title="See the whole plan"
             subtitle="tick things off, add items"

@@ -758,3 +758,30 @@ test('souvenirs bought at two shops: one item, two payments, open until marked d
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await expectPlanHero(page, { count: '1 of 1 bought', toGo: 'All bought', planned: 'Planned Rp 1.000.000 · Bought Rp 450.000 · −Rp 550.000' });
 });
+
+test('the plan reads by category: a group each on the whole plan, and each opens in place on the event', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Stroller', price: '8000000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Car seat', price: '4500000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Bodysuit', quantity: '6', price: '50000', category: 'Groceries' });
+
+  // The whole plan: one group per category, its header what was paid of what it plans, its items under it.
+  const groups = page.getByTestId('plan-category');
+  await expect(groups).toHaveCount(2);
+  await expect(groups.filter({ hasText: 'Stroller' })).toContainText('Car seat');
+  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('6 × Rp 50.000');
+  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText(/Rp\s?0 of Rp\s?300\.000/);
+
+  // The event page: a category opens to its items, and folds again.
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await showPlanCard(page);
+  await expect(page.getByTestId('plan-card-item')).toHaveCount(0);
+  await page.getByTestId('plan-card-category').filter({ hasText: 'Food and beverage' }).click();
+  await expect(page.getByTestId('plan-card-item')).toHaveCount(2);
+  await expect(page.getByTestId('plan-card-item').first()).toContainText('Stroller');
+  await page.getByTestId('plan-card-category').filter({ hasText: 'Food and beverage' }).click();
+  await expect(page.getByTestId('plan-card-item')).toHaveCount(0);
+});
