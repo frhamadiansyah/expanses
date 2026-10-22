@@ -22,10 +22,11 @@ test('an old card purchase already paid off is spending, and the card still owes
   const paidOff = form.getByRole('button', { name: 'Already paid off' });
   await expect(paidOff).toHaveAttribute('aria-pressed', 'false');
   await expect(form.getByTestId('paid-off-tick')).toHaveCount(0);
-  // Before the card started in the app: ticked by itself.
+  // Before the card started in the app: still unticked until it is ticked by hand.
   const day = await todayIn(page, 90);
   await form.getByLabel('Date').fill(day);
-  await expect(paidOff).toHaveAttribute('aria-pressed', 'true');
+  await expect(paidOff).toHaveAttribute('aria-pressed', 'false');
+  await paidOff.click();
   await expect(form.getByTestId('paid-off-tick')).toBeVisible();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);

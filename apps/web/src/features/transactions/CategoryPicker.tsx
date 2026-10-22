@@ -10,7 +10,7 @@ import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon, ICONS } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories, setCategoriesElsewhere } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { useCategoryWorkspaces } from '../workspaces/queries';
+import { useCategoryBooks, useCategoryWorkspaces } from '../workspaces/queries';
 import { RowGlyph } from './FormRow';
 import { useNewCategoryForm } from './NewCategorySheet';
 import { useShareCategoryIds } from './queries';
@@ -160,6 +160,7 @@ export function CategoryPicker({
   onClose,
   onSplit,
   splitRefusal = null,
+  bookId,
 }: {
   /** The tab the form is on, which is the kind the sheet opens showing. */
   kind: 'expense' | 'income';
@@ -189,6 +190,11 @@ export function CategoryPicker({
   onSplit?: () => void;
   /** Why a split cannot be taken now — With already names people — said on the button, which is then greyed. */
   splitRefusal?: string | null;
+  /**
+   * The workspace to offer categories from instead of the open one: a saved transaction being moved to another
+   * workspace picks among that workspace's categories. No New category then — it would be made in the open one.
+   */
+  bookId?: string;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -199,7 +205,8 @@ export function CategoryPicker({
    * open, so a trip's "Dinners" is never offered as one of this workspace's categories.
    */
   const shareIds = useShareCategoryIds();
-  const inOpenBook = (a: AccountRow) => inBook(a) && !shareIds.has(a.id);
+  const categoryBooks = useCategoryBooks().data;
+  const inOpenBook = (a: AccountRow) => (bookId ? categoryBooks?.[a.id] === bookId : inBook(a)) && !shareIds.has(a.id);
   const [showing, setShowing] = useState<'expense' | 'income'>(kind);
   const [search, setSearch] = useState('');
   // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
@@ -262,7 +269,7 @@ export function CategoryPicker({
             action: (
               <>
                 {/* Making the category you meant, when none of the rows is it: in the corner, out of the list's way. */}
-                {!finding && (
+                {!finding && !bookId && (
                   <SheetAddButton
                     label="New category"
                     onClick={() => {

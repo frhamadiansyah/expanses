@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addForm, saveButton, chooseTo } from './add-transaction';
+import { addForm, addTransaction, saveButton, chooseTo } from './add-transaction';
 
 /**
  * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
@@ -108,4 +108,62 @@ test('a transfer is filed in no workspace, so every workspace shows it and none 
   // Business: the same transfer, still there, and still counted in nothing.
   await expect(page.getByText('Top up').first()).toBeVisible();
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
+});
+
+/** Opens the workspace switcher from ⋯ and picks one. */
+async function switchTo(page: Page, name: string) {
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: name }).click();
+  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+}
+
+const listRow = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
+
+test('a saved purchase moves to another workspace from its Edit screen, and several from Select', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Business');
+  await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(sheet).toHaveCount(0);
+  await switchTo(page, 'Personal');
+
+  await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });
+  await addTransaction(page, { description: 'Client lunch', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '210000' });
+
+  // One, from its Edit screen: the Workspace row moves it, its category becomes Business's Restaurants.
+  await listRow(page, 'Supplier dinner').getByRole('button', { name: /^Restaurants/ }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
+  const workspace = edit.getByRole('button', { name: 'Workspace for this transaction' });
+  await expect(workspace).toBeEnabled();
+  await workspace.click();
+  await page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Business' }).click();
+  await expect(workspace).toContainText('Business');
+  await expect(workspace).toContainText('Moving to');
+  await expect(edit.getByRole('button', { name: 'Category' })).toContainText('Restaurants');
+  await saveButton(edit).click();
+  await expect(edit).toHaveCount(0);
+  await page.goto('/transactions');
+  await expect(listRow(page, 'Supplier dinner')).toHaveCount(0);
+
+  // Several, from Select.
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await page.getByRole('checkbox', { name: 'Select Client lunch' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected transactions' });
+  await bar.getByRole('button', { name: 'Move to workspace…' }).click();
+  await page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Business' }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(listRow(page, 'Client lunch')).toHaveCount(0);
+
+  await switchTo(page, 'Business');
+  await expect(listRow(page, 'Supplier dinner')).toContainText('640.000');
+  await expect(listRow(page, 'Client lunch')).toContainText('210.000');
 });

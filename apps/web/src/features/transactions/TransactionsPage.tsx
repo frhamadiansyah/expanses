@@ -20,7 +20,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Landmark, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, Landmark, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -70,7 +70,11 @@ import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
-import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
+import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
+import { ChoiceSheet } from './ChoiceSheet';
+import { draftIn } from './move-workspace';
+import { formFromTransaction, formToPost } from './tx-form';
+import { ratesForSave } from './tx-save';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
 import { payerLine, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
@@ -232,6 +236,10 @@ export function TransactionsPage() {
   const [tagging, setTagging] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null });
   /** What the last Add to event or Remove from event did, with the way back. */
   const [tagToast, setTagToast] = useState<{ text: string; back: () => Promise<void> } | null>(null);
+  // Move to workspace…: the ticked purchases re-filed in another workspace, each category swapped for its copy there.
+  const [pickingBook, setPickingBook] = useState(false);
+  const allBooks = useBooks().data ?? [];
+  const categoryBooks = useCategoryBooks().data ?? {};
   const events = useEvents();
   /** A row being edited in place. */
   const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
@@ -480,6 +488,53 @@ export function TransactionsPage() {
         await invalidate();
       },
     });
+  }
+
+  /*
+   * Each ticked row is corrected as the form would correct it, with its category (or each split line's) swapped for
+   * the copy in the other workspace. One that cannot go — a transfer, which is in every workspace already; a category
+   * with no copy there; a row only its own screen can change — stays ticked, with the reason, as Add to event does.
+   */
+  async function moveChosen(toBook: string) {
+    setPickingBook(false);
+    setTagging({ busy: true, error: null });
+    const where = allBooks.find((book) => book.id === toBook)?.name ?? 'that workspace';
+    const kept: { id: string; why: string }[] = [];
+    for (const row of chosen) {
+      const tx = row.tx!;
+      const what = tx.description || 'A transaction';
+      try {
+        const draft = formFromTransaction(tx, accounts, ws.bookId ?? '');
+        if (draft.mode !== 'expense' && draft.mode !== 'income') {
+          kept.push({ id: tx.id, why: `${what} is a transfer, which every workspace shows` });
+          continue;
+        }
+        const { draft: next, missing } = draftIn(draft, toBook, accounts, categoryBooks);
+        if (missing.length > 0) {
+          kept.push({ id: tx.id, why: `${where} has no ${missing[0]} for ${what}` });
+          continue;
+        }
+        const post = formToPost(next, accounts);
+        if (post.kind !== 'post') {
+          kept.push({ id: tx.id, why: `${what} moves from its own screen` });
+          continue;
+        }
+        const ratesToBase = await ratesForSave({
+          database, ws, draft: next, post, accounts, rateDate: tx.occurredOn > isoDate() ? isoDate() : tx.occurredOn, needsRate: null, resolveRates,
+          onMissing: () => undefined, where: 'Edit',
+        });
+        await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, moveToBook: true });
+      } catch (e) {
+        kept.push({ id: tx.id, why: `${what}: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    }
+    await invalidate();
+    if (kept.length === 0) {
+      stopSelecting();
+      return;
+    }
+    setSelected(new Set(kept.map((row) => row.id)));
+    setTagging({ busy: false, error: new Error(kept.map((row) => row.why).join('. ') + '.') });
   }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
@@ -1475,8 +1530,19 @@ export function TransactionsPage() {
             onAdd={() => setPickingEvent(true)}
             onRemove={() => void tagChosen(null)}
             onCancel={stopSelecting}
+            {...(allBooks.length > 1 ? { onMove: () => setPickingBook(true) } : {})}
           />
         </>
+      )}
+      {pickingBook && (
+        <ChoiceSheet
+          title="Move to workspace"
+          value={ws.bookId ?? ''}
+          groups={[{ choices: allBooks.map((book) => ({ value: book.id, label: book.name, glyph: <Home size={16} /> })) }]}
+          footer="Each category is matched in that workspace; the card or account, amount and date stay as they are."
+          onPick={(bookId) => (bookId === ws.bookId ? setPickingBook(false) : void moveChosen(bookId))}
+          onClose={() => setPickingBook(false)}
+        />
       )}
       {pickingEvent && <EventSheet title="Add to event" withNone={false} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
       {tagToast && (

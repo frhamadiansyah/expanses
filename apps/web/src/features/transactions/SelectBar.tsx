@@ -16,6 +16,7 @@ export function SelectBar({
   onAdd,
   onRemove,
   onCancel,
+  onMove,
 }: {
   count: number;
   /** Whether any ticked row is in an event at all; nothing else could be taken out of one. */
@@ -25,6 +26,8 @@ export function SelectBar({
   onAdd: () => void;
   onRemove: () => void;
   onCancel: () => void;
+  /** Move to workspace…, offered while there is more than one workspace to move to. */
+  onMove?: () => void;
 }) {
   return (
     <div
@@ -49,6 +52,11 @@ export function SelectBar({
           Remove from event
         </Button>
       </div>
+      {onMove && (
+        <Button variant="secondary" className="min-h-11" disabled={count === 0 || busy} onClick={onMove}>
+          Move to workspace…
+        </Button>
+      )}
       <ErrorBox error={error} />
     </div>
   );
