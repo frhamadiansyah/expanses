@@ -21,6 +21,7 @@ import {
   saveCardTerms,
   voidTransaction,
 } from '../src/index';
+import { assertShareableTx } from '../src/sync/seed';
 import { setupDb, type TestDb } from './helpers';
 
 /*
@@ -229,5 +230,16 @@ describe('editing and deleting a split across workspaces', () => {
     const [view] = await listTransactions(h.database, inBook(h.ws, h.family), { id });
     expect(view!.splitBooks).toBeUndefined();
     expect((await cardStatementLines(h.database, h.ws, h.card))[0]!.splitCategories).toBeUndefined();
+  });
+
+  it('keeps a workspace holding a split from being shared, until the split is folded back', async () => {
+    const h = await threeBooks();
+    const id = await postTransaction(h.database, inBook(h.ws, h.family), { ...market(h), acrossBooks: true });
+    const shareable = (bookId: string) => h.database.transaction((tx) => assertShareableTx(tx, bookId));
+    await expect(shareable(h.family)).rejects.toMatchObject({ code: 'HAS_SPLITS' });
+    await expect(shareable(h.business)).rejects.toMatchObject({ code: 'HAS_SPLITS' });
+    await expect(shareable(h.personal)).resolves.toBeUndefined();
+    await voidTransaction(h.database, inBook(h.ws, h.family), id);
+    await expect(shareable(h.family)).resolves.toBeUndefined();
   });
 });

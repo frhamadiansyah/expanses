@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Db, Tx } from '../database';
+import { bookSplitsExist } from '../repos/book-splits';
 import { AuthorityError, viewRoleOfDevice } from './authority';
 import { isRevivable, lineageOfTransaction, localDeviceId, paidFromOf, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
 import { localTick } from './hlc';
@@ -22,6 +23,7 @@ import type { ChangeSet, DevicePublic, Op } from './types';
 export type SharingErrorCode =
   | 'CURRENCY'
   | 'ALREADY_SHARED'
+  | 'HAS_SPLITS'
   | 'NOT_FOUND'
   | 'BAD_CODE'
   | 'INVITE_CLAIMED'
@@ -86,6 +88,17 @@ export async function assertShareableTx(tx: Tx, bookId: string): Promise<void> {
   }
   if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0) {
     throw new SharingError('ALREADY_SHARED', 'This workspace is already shared');
+  }
+  // A shared workspace keeps each purchase whole (0084): a purchase split with another workspace has no single
+  // workspace to sync under, so it would never reach the partner. Refused until each split is folded back.
+  if (
+    (await bookSplitsExist(tx)) &&
+    (await tx.values(sql`SELECT 1 FROM book_transaction_splits s JOIN transactions t ON t.id = s.transaction_id WHERE s.book_id = ${bookId} AND t.status = 'posted' LIMIT 1`)).length > 0
+  ) {
+    throw new SharingError(
+      'HAS_SPLITS',
+      'This workspace holds a purchase split with another workspace. A shared workspace keeps each purchase whole: record its part as a purchase of its own first.',
+    );
   }
 }
 
