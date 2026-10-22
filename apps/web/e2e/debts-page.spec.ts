@@ -251,11 +251,11 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
-  await tile.getByRole('button', { name: 'Pay', exact: true }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   await tile.getByLabel('Amount (IDR)').fill('350000');
   await tile.getByRole('button', { name: 'Record payment' }).click();
 
-  // The card owes nothing — Unpaid is at nothing, exactly as the Debts row says — and the surplus is named under it.
+  // The card owes nothing — Owed now is at nothing, exactly as the Debts row says — and the surplus is named under it.
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');
   await expect(tile.getByTestId('tile-credit')).toHaveText('Credit Rp 250.000');
 

@@ -2,12 +2,13 @@ import { formatMinor, installmentSplit, minorToMajorString, parseMajor, transfer
 import type { SpendLine } from '@expanses/core';
 import { type AccountRow, cardStatement, type CardRow, postTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
+import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { ActionButtons, InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
@@ -18,7 +19,7 @@ import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
+import { type CardPoints, formatPoints, pointsValue, shortDate } from './useCardPoints';
 
 export type CardTab = 'statement' | 'points' | 'rules' | 'card';
 
@@ -105,11 +106,16 @@ function LatestTransactions({
   lines,
   accounts,
   currency,
+  pointsOf,
+  unit,
   onSeeAll,
 }: {
   lines: readonly SpendLine[];
   accounts: readonly AccountRow[];
   currency: string;
+  /** What a purchase earned, or null when there is nothing to say: no rewards, or a purchase the rules never read. */
+  pointsOf: (transactionId: string) => number | null;
+  unit: string;
   onSeeAll: () => void;
 }) {
   const chosen = useCategoryColours().data;
@@ -128,13 +134,14 @@ function LatestTransactions({
         {latest.length === 0 && <InsetRow title="No purchases this cycle" subtitle="What this card pays for shows here." />}
         {latest.map((purchase) => {
           const mark = categoryMark(purchase.categoryId, accounts, chosen);
+          const earned = pointsOf(purchase.id);
           return (
             <InsetRow
               key={purchase.id}
               icon={<mark.Glyph size={16} strokeWidth={2.2} />}
               iconColour={mark.colour}
               title={purchase.description || mark.name || 'Purchase'}
-              subtitle={[mark.name, shortDate(purchase.on)].filter(Boolean).join(' · ')}
+              subtitle={[mark.name, shortDate(purchase.on), earned ? `+${formatPoints(earned)} ${unit}` : null].filter(Boolean).join(' · ')}
               value={formatMinor(purchase.amountMinor, currency)}
               valueTone="ink"
               to="/transactions/$transactionId"
@@ -292,6 +299,10 @@ export function CardHero({
   const unitLabel = unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points';
   const result = cp.current;
   const bonus = result ? cp.bonuses.find((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : undefined;
+  const worth = cp.program ? pointsValue(pointsBalance?.total ?? 0, cp.best) : null;
+  /** What one purchase earned, by this cycle's or the last one's rules; nothing when the card earns nothing. */
+  const pointsOf = (transactionId: string): number | null =>
+    cp.program ? (cp.current?.earn.pointsByTransaction[transactionId] ?? cp.previous?.earn.pointsByTransaction[transactionId] ?? null) : null;
   const standing = bonus && result ? bonusStanding(bonus, result.earn.eligibleSpendByBonus[bonus.id] ?? 0, result.earn.bonusById[bonus.id] ?? 0) : null;
 
   const dueOn = lastCycle && cp.terms ? dueDateAfter(lastCycle.end, cp.terms.dueDay) : null;
@@ -318,7 +329,11 @@ export function CardHero({
     );
   };
 
-  const limitBlock = (
+  /**
+   * The limit bar and the lines under it. Compact on Wallet's summary: the instalments are a group of their own
+   * there, so the bar is read by what is left — "Rp29.300.000 available of Rp50.000.000" — and nothing more.
+   */
+  const limitBlock = (compact = false) => (
     <>
         {/*
          * The limit bar. Two fills, not one: what is owed outright, and the part of it an instalment plan has not
@@ -339,13 +354,13 @@ export function CardHero({
             )}
           </div>
         )}
-        {!debit && (
+        {!debit && !compact && (
           <div className="mt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="card-owed">
             Used {formatMinor(usage.usedMinor, currency)}
             {usage.usedPct !== null ? ` · ${usage.usedPct}%` : ''}
           </div>
         )}
-        {usage.heldMinor > 0 && (
+        {usage.heldMinor > 0 && !compact && (
           <div
             className="relative text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]"
             data-testid="card-instalments"
@@ -374,10 +389,18 @@ export function CardHero({
         )}
         {usage.availableMinor !== null && limit !== null && (
           <div
-            className={cx('text-[12.5px] leading-[16px]', usage.availableMinor < 0 ? 'font-medium text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}
+            className={cx('text-[12.5px] leading-[16px]', compact && 'mt-[6px]', usage.availableMinor < 0 ? 'font-medium text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}
             data-testid="card-available"
           >
-            {usage.availableMinor < 0 ? `Over the limit by ${formatMinor(-usage.availableMinor, currency)}` : `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`}
+            {usage.availableMinor < 0 ? (
+              `Over the limit by ${formatMinor(-usage.availableMinor, currency)}`
+            ) : compact ? (
+              <>
+                <span className="tabular font-semibold text-[var(--ph-ink)]">{formatMinor(usage.availableMinor, currency)} available</span> of {formatMinor(limit, currency)}
+              </>
+            ) : (
+              `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`
+            )}
           </div>
         )}
     </>
@@ -422,44 +445,89 @@ export function CardHero({
           </div>
         )}
         {/* Under the card on its own page; inside the Unpaid tile when the card is Wallet's raised pass. */}
-        {!slot && limitBlock}
+        {!slot && limitBlock()}
       </div>
 
       {slot ? (
         /*
-         * Opened from the Wallet stack: Wallet's tiles under the pass — what is unpaid, with Pay, and the points,
-         * with Use — and the latest transactions. The sections are behind ⋯.
+         * Opened from the Wallet stack: what is owed now, then the card's round actions — Pay, Spend, Points,
+         * Statement — then the points in one row, each instalment plan still holding part of the limit, and the
+         * latest purchases with what each earned. Rewards rules and Card details are behind ⋯.
          */
         <div className="flex min-w-0 flex-col gap-[10px]">
           {!debit && (
             <WalletTile
               testId="tile-left-to-pay"
-              label="Unpaid"
+              label="Owed now"
               figure={formatMinor(owedMinor, currency)}
               figureTestId="tile-unpaid-balance"
               caption={billCaption()}
               note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this as credit">{creditLine(creditMinor, currency)}</span> : undefined}
-              action={paying ? undefined : 'Pay'}
-              onAction={() => setPaying(true)}
             >
-              <div className="mt-[4px]">{limitBlock}</div>
+              {limitBlock(true)}
               {paying && <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
             </WalletTile>
           )}
-          <WalletTile
-            testId="tile-points"
-            label={unitLabel}
-            figure={cp.program ? `${formatPoints(pointsBalance?.total ?? 0)} ${unit}` : '—'}
-            figureTestId="tile-points-balance"
-            caption={
-              cp.program
-                ? pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)
-                : 'Rewards are not set up for this card.'
-            }
-            action={cp.program ? 'Use' : 'Set up'}
-            onAction={() => (cp.program ? onTab('points', 'spend-points') : onTab(cp.terms ? 'rules' : 'card'))}
-          />
-          <LatestTransactions lines={lines} accounts={accounts} currency={currency} onSeeAll={() => onTab(debit ? 'points' : 'statement')} />
+          <div className="mt-[6px]">
+            <ActionButtons
+              actions={[
+                ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
+                { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
+                { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, run: () => onTab(cp.program ? 'points' : cp.terms ? 'rules' : 'card') },
+                ...(debit ? [] : [{ key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, run: () => onTab('statement') }]),
+              ]}
+            />
+          </div>
+          <div data-testid="tile-points" className="-mt-[10px]">
+            <InsetGroup>
+              {cp.program ? (
+                <InsetRow
+                  title={
+                    <span data-testid="tile-points-balance" className="tabular font-semibold">
+                      {formatPoints(pointsBalance?.total ?? 0)} {unit}
+                    </span>
+                  }
+                  subtitle={[cp.program.name, result ? `+${formatPoints(result.earn.totalPoints)} this cycle` : null].filter(Boolean).join(' · ')}
+                  value={worth !== null && cp.best ? `≈ ${formatMinor(worth, cp.best.currency)}` : undefined}
+                  valueTone="ink"
+                  onClick={() => onTab('points')}
+                />
+              ) : (
+                <InsetRow title={unitLabel} subtitle="Rewards are not set up for this card." onClick={() => onTab(cp.terms ? 'rules' : 'card')} />
+              )}
+            </InsetGroup>
+          </div>
+          {holding.length > 0 && (
+            <div data-testid="card-instalments">
+              <InsetGroup header="Instalments" trailing={`${formatMinor(usage.heldMinor, currency)} held`}>
+                {holding.map(({ plan, split }) => {
+                  const paid = plan.months - split.monthsLeft;
+                  return (
+                    <InsetRow
+                      key={plan.id}
+                      testId="card-instalment"
+                      title={plan.description}
+                      subtitle={
+                        <>
+                          <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
+                          {paid} of {plan.months} paid · {formatMinor(plan.monthlyMinor, currency)} a month
+                        </>
+                      }
+                      value={
+                        <span className="text-right">
+                          <span className="tabular block">{formatMinor(split.unbilledMinor, currency)}</span>
+                          <span className="block text-[12px] leading-[16px] text-[var(--ph-ink-3)]">still held</span>
+                        </span>
+                      }
+                      valueTone="ink"
+                      onClick={() => onTab('card')}
+                    />
+                  );
+                })}
+              </InsetGroup>
+            </div>
+          )}
+          <LatestTransactions lines={lines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} onSeeAll={() => onTab(debit ? 'points' : 'statement')} />
         </div>
       ) : (
       /* The bill and the points as equals. The sections follow the whole hero, in a column of their own. */

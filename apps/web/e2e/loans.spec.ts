@@ -210,24 +210,18 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await page.getByLabel('Over how many months').fill('12');
   await page.getByRole('button', { name: 'Save plan' }).click();
 
-  await expect(page.getByText('iBox Grand Indonesia')).toBeVisible();
-  await expect(page.getByText('earns no points')).toBeVisible();
-  await expect(page.getByText(/1\.000\.000 a month/)).toBeVisible();
+  const saved = page.getByTestId('instalment-plan');
+  await expect(saved).toContainText('iBox Grand Indonesia');
+  await expect(saved).toContainText('earns no points');
+  await expect(saved).toContainText(/1\.000\.000 a month/);
 
-  // The unbilled part is shown as held inside what the card owes, with the plan behind it on hover.
+  // The unbilled part is shown as held inside what the card owes: on the summary, a row per plan with its months.
   const held = page.getByTestId('card-instalments');
-  await expect(held).toContainText(/Instalments hold Rp\s[\d.]+/);
-  await held.getByText(/Instalments hold/).hover();
-  await expect(held.getByRole('tooltip')).toContainText('iBox Grand Indonesia');
-
-  // The tip is drawn in the ink, which turns light at night, so its words take the surface rather than white.
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const colours = await held.getByRole('tooltip').evaluate((node) => {
-    const style = getComputedStyle(node);
-    return { text: style.color, fill: style.backgroundColor };
-  });
-  expect(colours.text).not.toBe(colours.fill);
-  expect(colours.text).toBe('rgb(28, 28, 30)');
+  await expect(held).toContainText(/Rp\s[\d.]+ held/);
+  const plan = held.getByTestId('card-instalment');
+  await expect(plan).toContainText('iBox Grand Indonesia');
+  await expect(plan).toContainText(/\d+ of 12 paid · Rp\s1\.000\.000 a month/);
+  await expect(plan).toContainText('still held');
 });
 
 test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {

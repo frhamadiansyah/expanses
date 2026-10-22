@@ -124,7 +124,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
   await expect(tile.getByTestId('due-date')).toContainText(/^Due \d+ \w+ · /);
-  await tile.getByRole('button', { name: 'Pay' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   await expect(tile.getByLabel('Amount (IDR)')).toHaveValue('2000000');
   await tile.getByRole('button', { name: 'Record payment' }).click();
 

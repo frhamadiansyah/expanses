@@ -124,14 +124,11 @@ export function CardsPage() {
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];
   /*
-   * An open card's sections — what the segmented tabs held on the card's page — are behind ⋯, each its own screen
-   * under the raised card. A debit card has no statement: its spending settles against the account as it happens.
+   * An open card's settings sections are behind ⋯, each its own screen under the raised card. Its statement and its
+   * points are round buttons on the summary itself, so they are not repeated here.
    */
-  const debit = all.find((account) => account.id === cardId)?.subtype !== 'credit_card';
   const sections: CornerAction[] = cardId
     ? [
-        ...(debit ? [] : [{ key: 'statement', label: 'Statement', search: { tab: 'statement' } }]),
-        { key: 'points', label: 'Points', search: { tab: 'points' } },
         { key: 'rules', label: 'Rewards rules', search: { tab: 'rules' } },
         { key: 'card', label: 'Card details', search: { tab: 'card' } },
       ].map((item) => ({ ...item, to: '/cards/$cardId' as const, params: { cardId } }))

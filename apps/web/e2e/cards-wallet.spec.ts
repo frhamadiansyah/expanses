@@ -48,7 +48,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   // Wallet's summary, beside the card on a desktop: the tiles sit to its right.
   const unpaid = (await page.getByTestId('tile-left-to-pay').boundingBox())!;
   expect(unpaid.x).toBeGreaterThanOrEqual((await raised.boundingBox())!.x + 380);
-  await expect(page.getByTestId('tile-points').getByRole('button', { name: 'Use', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Points', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Latest transactions' })).toBeVisible();
 
   // ⋯ → Card details keeps every section of the old page, the segmented control and its desktop forms included.
