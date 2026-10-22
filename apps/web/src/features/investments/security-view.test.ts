@@ -6,7 +6,7 @@ import { baseGainLine, baseGainOf, boughtAtRate, brokerPageModel, idleCash, rece
 
 const line = (accountId: string, brokerName: string, currency = 'USD'): HoldingLine => ({
   accountId, name: accountId, brokerAccountId: brokerName === 'No broker named' ? null : `b-${accountId}`, brokerName, currency,
-  unitsMicro: 10_000_000, valueMinor: 214_300, costMinor: 182_500, costBaseMinor: 28_835_000, stale: false,
+  unitsMicro: 10_000_000, valueMinor: 214_300, costMinor: 182_500, costBaseMinor: 28_835_000, stale: false, place: null,
 });
 const trade = (id: string, accountId: string, kind: TradeRow['kind'], occurredOn: string, grossMinor: number, feeMinor = 0, createdAt = `${occurredOn}T09:00:00Z`, taxMinor = 0): TradeRow =>
   ({ id, accountId, kind, occurredOn, createdAt, unitsMicro: 4_000_000, grossMinor, feeMinor, taxMinor, status: 'active' }) as TradeRow;

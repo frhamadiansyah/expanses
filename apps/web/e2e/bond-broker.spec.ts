@@ -21,16 +21,16 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
   const held = page.getByLabel('Held at', { exact: true });
   await held.selectOption({ label: 'BCA Tahapan' });
   await expect(held.locator('option:checked')).toHaveText('BCA Tahapan');
-  // Held at a bank, that bank is the tax report's Nama institusi unless another name is typed.
+  // Held at a bank, that bank is the tax report's Nama institusi: one name, kept once.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Nama institusi' })).toHaveAttribute('placeholder', 'BCA Tahapan');
+  await expect(page.getByRole('textbox', { name: 'Nama institusi' })).toHaveValue('BCA Tahapan');
   await page.goBack();
 
-  await held.selectOption({ label: 'Somewhere not in the app' });
+  await held.selectOption({ label: 'Another…' });
   await page.getByLabel('Place name', { exact: true }).fill('Bank Mandiri');
   await page.getByLabel('Place name', { exact: true }).blur();
   await page.reload();
-  await expect(page.getByLabel('Place name', { exact: true })).toHaveValue('Bank Mandiri');
+  await expect(held).toHaveValue('Bank Mandiri');
 });
 
 test('a share’s Broker row opens a broker not yet in the app, by name, and keeps the share there', async ({ page }) => {

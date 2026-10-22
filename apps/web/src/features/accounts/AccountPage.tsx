@@ -44,6 +44,7 @@ import { dayLabel, quantityLabel } from '../networth/asset-page';
 import { MaturitySettings } from '../networth/MaturitySettings';
 import { RecordedByHand } from '../networth/RecordedByHand';
 import { SetAsidePanel } from '../networth/SetAsidePanel';
+import { institutionOf, sameInstitution } from '../networth/institutions';
 import { useAssetProfiles, useAssetValues, useDepositAutomation, usePositions } from '../networth/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { buildRows } from '../transactions/list-model';
@@ -209,8 +210,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       ) : account.subtype === 'fund' ? (
         <HeldAtBroker brokerAccountId={account.id} />
       ) : account.subtype === 'bank' || account.subtype === 'savings' || account.subtype === 'ewallet' ? (
-        // A mutual fund may be held at a bank or a fund app (spec 2026-10-19-fund-by-amount): listed here when one is.
-        <HeldAtBroker brokerAccountId={account.id} header="Funds held here" />
+        // Bonds and funds are held at the institution, not in this account: listed here when it is this one's.
+        <AlsoAtInstitution account={account} />
       ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />
@@ -573,6 +574,41 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
         </ul>
       )}
     </Panel>
+  );
+}
+
+/**
+ * The bonds and funds held at the institution this account is at — "Also at Bank Mandiri". Read only: they are held at
+ * the bank, not inside this account, and each opens its own page.
+ */
+function AlsoAtInstitution({ account }: { account: AccountRow }) {
+  const values = useAssetValues();
+  const profiles = useAssetProfiles();
+  const positions = usePositions();
+  const mine = (profiles.data ?? []).find((profile) => profile.accountId === account.id);
+  const institution = institutionOf(account, mine);
+  const rows = (profiles.data ?? []).flatMap((profile) => {
+    if ((profile.assetKind !== 'fund' && profile.assetKind !== 'bond') || !sameInstitution(profile.coretaxFields.inst, institution)) return [];
+    const value = (values.data ?? []).find((row) => row.accountId === profile.accountId);
+    if (!value) return [];
+    return [{ id: profile.accountId, title: value.name, units: positions.data?.[profile.accountId]?.unitsMicro ?? 0, unitKind: profile.unitKind, kind: profile.assetKind, value }];
+  });
+  if (rows.length === 0) return null;
+  return (
+    <InsetGroup header={`Also at ${institution}`}>
+      {rows.map((row) => (
+        <InsetRow
+          key={row.id}
+          testId="institution-holding"
+          title={row.title}
+          subtitle={row.kind === 'bond' ? 'Bond' : 'Mutual fund'}
+          value={<Money minor={row.value.valueMinor} currency={row.value.currency} />}
+          valueTone="ink"
+          to="/net-worth/assets/$accountId"
+          params={{ accountId: row.id }}
+        />
+      ))}
+    </InsetGroup>
   );
 }
 

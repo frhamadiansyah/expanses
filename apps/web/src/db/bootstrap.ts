@@ -9,6 +9,7 @@ import {
   ensureCategoryKeys,
   ensureDefaultCategorySets,
   retireDefaultSetCategories,
+  moveHeldAtToInstitutions,
   inBook,
   listWorkspaces,
   migrate,
@@ -102,6 +103,8 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
   try {
     await ensureDefaultCategorySets(database, ws);
     await retireDefaultSetCategories(database, ws);
+    // Funds and bonds held at an institution rather than inside one of its accounts: links from before become names.
+    await moveHeldAtToInstitutions(database, ws);
   } catch (error) {
     console.warn('Default category sets could not be added; trying again at the next open', error);
   }

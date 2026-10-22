@@ -31,6 +31,7 @@ import { useLoans } from '../loans/queries';
 import { acquiredLabel } from './acquired';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { Sheet as SheetFrame } from '../../app/Sheet';
+import { institutionChoices } from './institutions';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
@@ -60,6 +61,9 @@ const PRICE_TILE: Record<UnitKind, string> = { grams: 'Buyback today', shares: '
 
 /** The word for a payment a holding makes: a share's dividend, a bond's coupon. */
 const incomeWordOf = (kind: AssetKind | null) => (kind === 'stock' ? 'Dividend' : kind === 'bond' ? 'Coupon' : 'Income');
+
+/** The Held at row's choice that types an institution not in the list. */
+const ANOTHER_PLACE = 'another-place';
 
 /** The Broker row's choice that opens a broker by name rather than picking one. */
 const NEW_BROKER = 'new-broker';
@@ -158,6 +162,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const held = useHeldRates(currency === ws.baseCurrency ? [] : [currency]);
   const stock = useStockAndBroker(accountId);
   const profiles = useAssetProfiles();
+  const everyAccount = useAccounts().data ?? [];
   const brokerId = stock.link?.brokerAccountId ?? null;
   const rdnBank = brokerId ? (profiles.data ?? []).find((row) => row.accountId === brokerId)?.coretaxFields.inst?.trim() || null : null;
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -211,6 +216,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
   // The other funds it can be the same fund as: every other fund holding, wherever it is held.
   const fundIds = new Set((profiles.data ?? []).filter((row) => row.assetKind === 'fund').map((row) => row.accountId));
+  // Where a fund or bond is held: an institution's name, kept as its Nama institusi (0082).
+  const institutions = institutionChoices(everyAccount, profiles.data ?? []);
+  const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
+  const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
   const otherFunds = (allValues.data ?? []).filter((row) => row.accountId !== accountId && fundIds.has(row.accountId));
   const holding = { accountId, name: value.name, currency };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
@@ -530,29 +539,29 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               search={{ link: accountId }}
             />
           ) : null,
-          // A fund (spec 2026-10-19-fund-by-amount) or a bond: held at a broker, a bank or a fund app — banks sell both —
-          // or a place typed by name.
+          // A fund or a bond is held at an institution — a bank, a broker, a fund app — never inside one of its accounts:
+          // the institution's name, picked from those the accounts are at or typed, is its Nama institusi.
           kind === 'fund' || kind === 'bond' ? (
             <SelectRow
               key="held"
               label="Held at"
-              value={stock.link?.brokerAccountId ?? (typingPlace || profile.data?.coretaxFields.inst?.trim() ? 'typed' : 'none')}
+              value={heldAtValue}
               onChange={(e) => {
                 const picked = e.target.value;
-                setTypingPlace(picked === 'typed');
-                void stock.keptAt(picked === 'none' || picked === 'typed' ? '' : picked);
+                setTypingPlace(picked === ANOTHER_PLACE);
+                if (picked !== ANOTHER_PLACE && profile.data) void stock.placeName(profile.data, picked);
               }}
             >
-              <option value="none">Not set</option>
-              {stock.places.map((place) => (
-                <option key={place.id} value={place.id}>
-                  {place.name}
+              <option value="">Not set</option>
+              {institutions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
-              <option value="typed">Somewhere not in the app</option>
+              <option value={ANOTHER_PLACE}>Another…</option>
             </SelectRow>
           ) : null,
-          // The next coupon, from the bond's terms in its Settings: the day, and what lands after the tax withheld.
+          // The coupon's day and what lands after the tax withheld, from the bond's terms in its Settings.
           coupon ? (
             <InsetRow
               key="coupon"
@@ -562,13 +571,16 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               params={{ accountId }}
             />
           ) : null,
-          (kind === 'fund' || kind === 'bond') && !stock.link?.brokerAccountId && profile.data && (typingPlace || profile.data.coretaxFields.inst?.trim()) ? (
+          (kind === 'fund' || kind === 'bond') && profile.data && heldAtValue === ANOTHER_PLACE ? (
             <TextRow
               key="held-name"
               label="Place name"
-              defaultValue={profile.data.coretaxFields.inst ?? ''}
-              placeholder="Bibit, Bank Mandiri…"
-              onBlur={(e) => void stock.placeName(profile.data!, e.target.value)}
+              defaultValue={institutions.includes(heldName) ? '' : heldName}
+              placeholder="Required"
+              onBlur={(e) => {
+                setTypingPlace(false);
+                if (e.target.value.trim()) void stock.placeName(profile.data!, e.target.value);
+              }}
             />
           ) : null,
           kind === 'fund' && otherFunds.length > 0 ? (

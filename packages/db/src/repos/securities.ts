@@ -447,3 +447,41 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
     return { accountId, securityId: security.id, brokerAccountId, created: existing === null, trade };
   });
 }
+
+/**
+ * A fund or a bond is held at an institution — a bank, a broker, a fund app — not inside one of its accounts. A holding
+ * still linked to an account from before is given that account's institution as its Nama institusi (the bank name the
+ * account keeps, else its own name; a broker's cash by the broker's name, since its own field names the custodian bank),
+ * and the link is let go. A name already typed on the holding stays. Run on open: once nothing is linked, it does
+ * nothing. A share keeps its broker's cash account, where its money is. Answers how many were moved.
+ */
+export async function moveHeldAtToInstitutions(database: Database, ws: WorkspaceContext): Promise<number> {
+  if (!(await securityTablesExist(database.db))) return 0;
+  return database.transaction(async (tx) => {
+    const linked = await tx.values<[string, string, string, string, string | null, string]>(sql`
+      SELECT l.account_id, p.coretax_fields_json, a.subtype, a.name, bp.coretax_fields_json, p.asset_kind
+      FROM holding_links l
+      JOIN asset_profiles p ON p.account_id = l.account_id
+      JOIN accounts a ON a.id = l.broker_account_id
+      LEFT JOIN asset_profiles bp ON bp.account_id = a.id
+      WHERE l.workspace_id = ${ws.workspaceId} AND l.broker_account_id IS NOT NULL AND p.asset_kind IN ('fund', 'bond')`);
+    const fieldsOf = (json: string | null): Record<string, string> => {
+      try {
+        const parsed = JSON.parse(json ?? '{}') as unknown;
+        return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+      } catch {
+        return {};
+      }
+    };
+    for (const [accountId, json, subtype, name, brokerJson] of linked) {
+      const fields = fieldsOf(json);
+      if (!fields.inst?.trim()) {
+        const place = subtype === 'fund' ? name : fieldsOf(brokerJson).inst?.trim() || name;
+        await tx.run(sql`UPDATE asset_profiles SET coretax_fields_json = ${JSON.stringify({ ...fields, inst: place })} WHERE account_id = ${accountId}`);
+      }
+      await tx.run(sql`UPDATE holding_links SET broker_account_id = NULL WHERE account_id = ${accountId}`);
+      markAccountDirtyTx(tx, accountId);
+    }
+    return linked.length;
+  });
+}

@@ -16,8 +16,9 @@ const stockTo = (row: StockRow): Destination =>
     ? { to: '/net-worth/investments/security/$securityId', params: { securityId: row.securityId } }
     : { to: '/net-worth/assets/$accountId', params: { accountId: row.accountId! } };
 
-const brokerTo = (row: BrokerRow): Destination =>
-  row.accountId ? { to: '/net-worth/investments/broker/$accountId', params: { accountId: row.accountId } } : { to: '/net-worth/investments/broker/none' };
+/** A broker opens its page; an institution a fund or bond is held at by name has none, and is a row to read. */
+const brokerTo = (row: BrokerRow): Destination | null =>
+  row.place ? null : row.accountId ? { to: '/net-worth/investments/broker/$accountId', params: { accountId: row.accountId } } : { to: '/net-worth/investments/broker/none' };
 
 /** The figure the page is for: the portfolio in base, ≈ when any of it is converted — or the missing rate named. */
 function PortfolioFigure({ view, base, left }: { view: PortfolioView; base: string; left: boolean }) {
