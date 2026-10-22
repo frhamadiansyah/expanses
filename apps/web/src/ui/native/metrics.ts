@@ -119,3 +119,8 @@ export function rowHeight(hasSubtitle: boolean): number {
   const text = hasSubtitle ? 20 + 2 + 16 : 20;
   return Math.max(TAP, ROW_PAD_Y * 2 + text);
 }
+
+/** The middle of the circle a row at this depth leads with: where a tree line runs down from it to its children. */
+export function iconCentre(depth: number): number {
+  return nestedPad(depth) + (depth > 0 ? NESTED_ICON : ROW_ICON) / 2;
+}

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
+import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers, type TreePlace } from '../../ui/native';
 import { assetKindTile, assetSectionTile } from '../ownables/catalogue-view';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
@@ -31,7 +31,7 @@ function KindIcon({ section, kind }: { section: string; kind: string }) {
  * `nested`: drawn inside its kind's open drawer, one step in and with no circle — the drawer above already wears it, and
  * the name then sits level with the kind's.
  */
-function Row({ row, baseCurrency, money, nested = false, branch }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean; branch?: 'mid' | 'last' }) {
+function Row({ row, baseCurrency, money, nested = false, tree }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean; tree?: TreePlace }) {
   const icon = nested ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
   const depth = nested ? 1 : 0;
   // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
@@ -43,9 +43,8 @@ function Row({ row, baseCurrency, money, nested = false, branch }: { row: AssetR
         params={{ accountId: row.accountId }}
         icon={icon}
         depth={depth}
-        branch={branch}
+        tree={tree}
         title={row.name}
-        subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
       />
     );
@@ -61,7 +60,7 @@ function Row({ row, baseCurrency, money, nested = false, branch }: { row: AssetR
         search={{ person: row.person }}
         icon={icon}
         depth={depth}
-        branch={branch}
+        tree={tree}
         title={row.name}
         subtitle={rowSubtitle(row)}
         value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -80,7 +79,7 @@ function Row({ row, baseCurrency, money, nested = false, branch }: { row: AssetR
       params={{ accountId: row.accountId }}
       icon={icon}
       depth={depth}
-      branch={branch}
+      tree={tree}
       title={row.name}
       subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -120,7 +119,6 @@ function Group({ group, baseCurrency, money, opened = false }: { group: AssetGro
             key={key}
             icon={<KindIcon section={group.group} kind={drawer.key} />}
             label={drawer.label}
-            under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'asset' : 'assets'}`}
             figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
             open={shown}
             stem={shown && drawer.rows.length > 0}
@@ -130,7 +128,7 @@ function Group({ group, baseCurrency, money, opened = false }: { group: AssetGro
           />,
           ...(shown
             ? drawer.rows.map((row, at) => (
-                <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested branch={at === drawer.rows.length - 1 ? 'last' : 'mid'} />
+                <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested tree={{ last: at === drawer.rows.length - 1 }} />
               ))
             : []),
         ];

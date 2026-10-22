@@ -36,3 +36,5 @@ export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type Switc
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { planPanel, type PanelPlan } from './surface';
 export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
+export { type TreePlace, TreeLines, TreeStem } from './TreeLines';
+export { iconCentre } from './metrics';

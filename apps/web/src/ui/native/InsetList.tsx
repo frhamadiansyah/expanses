@@ -6,6 +6,7 @@ import { SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
 import { GROUP_GAP, GROUP_RADIUS, NESTED_ICON, nestedPad, ROW_ICON, ROW_ICON_GAP, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
+import { type TreePlace, TreeLines } from './TreeLines';
 
 /**
  * Primitives 1 and 2: the grouped inset list, and the row.
@@ -145,11 +146,8 @@ export function InsetGroup({
 }
 
 export interface InsetRowProps extends GroupChild {
-  /**
-   * Drawn as a child of the open drawer above it: a hairline down from the drawer's icon, turning into this row — the
-   * outline view's tree line — so the indent reads as whose row it is. `last` ends the line at this row.
-   */
-  branch?: 'mid' | 'last';
+  /** Drawn as a child of the open drawer above it, on the tree line (`TreeLines`), so the indent reads as whose row it is. */
+  tree?: TreePlace;
   /** A tinted circular icon: a 12 % wash of `colour`, with the glyph in `colour` itself. */
   icon?: ReactNode;
   iconColour?: string;
@@ -254,7 +252,7 @@ export function InsetRow({
   testId,
   position,
   className,
-  branch,
+  tree,
 }: InsetRowProps) {
   const points = chevron ?? Boolean(onClick ?? to);
   const plan = planRow({ icon: Boolean(icon), title: String(title ?? ''), chevron: points });
@@ -270,24 +268,18 @@ export function InsetRow({
         </RowIcon>
       )}
       <span className="min-w-0 flex-1 text-left">
-        <span className={cx('block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-ink)]', depth > 0 ? 'font-normal' : 'font-medium')}>{title}</span>
+        {/* A row down a tree is a size smaller than a row at the top, as a drawer's kinds are: a long name still fits. */}
+        <span className={cx('block truncate text-[var(--ph-ink)]', depth > 0 ? 'text-[15px] leading-[20px] font-normal' : 'text-[17px] leading-[22px] font-medium md:text-[15px] md:leading-[20px]')}>{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}
       </span>
       {value !== undefined && value !== null && (
-        <span className={cx('tabular shrink-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] whitespace-nowrap', TONE[valueTone])}>{value}</span>
+        <span className={cx('tabular shrink-0 whitespace-nowrap', depth > 0 ? 'text-[15px] leading-[20px]' : 'text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', TONE[valueTone])}>{value}</span>
       )}
       {points && <Chevron />}
     </>
   );
 
-  // The tree line: down the middle of the drawer's icon above, and across into this row at its middle.
-  const stemX = ROW_PAD_X + ROW_ICON / 2;
-  const treeLine = branch ? (
-    <>
-      <span aria-hidden className="pointer-events-none absolute top-0 w-px bg-[var(--ph-chevron)]" style={{ left: stemX, bottom: branch === 'last' ? '50%' : 0 }} />
-      <span aria-hidden className="pointer-events-none absolute top-1/2 h-px bg-[var(--ph-chevron)]" style={{ left: stemX, width: nestedPad(depth) - stemX - 6 }} />
-    </>
-  ) : null;
+  const treeLine = tree && depth > 0 ? <TreeLines depth={depth} tree={tree} /> : null;
   const inner = (
     <span
       className="flex w-full items-center"
