@@ -216,7 +216,11 @@ export function LargeTitle({
   const head = useRef<HTMLElement>(null);
   // A section's own title (no way back) is pinned as it is; one with a way back folds into the small bar.
   const pinned = !back;
-  const folded = useScrolledPast(head, !field, pinned);
+  // A pinned title stays pinned while a field is open in it, so searching from far down the page searches there.
+  const folded = useScrolledPast(head, pinned || !field, pinned);
+  // The field is drawn once: in the pinned bar while the page is scrolled past the title, in the title row otherwise.
+  // Drawn in the title row while that row is off the screen, focusing it scrolled the whole page back to the top.
+  const fieldIn = (copy: boolean) => (field && (copy ? folded : !folded) ? field : null);
   /*
    * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
    * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
@@ -229,7 +233,7 @@ export function LargeTitle({
   const titleRow = (copy: boolean) => (
     <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
       <div className="min-w-0 flex-1">
-        {field ?? (
+        {fieldIn(copy) ?? (
           <>
             <h1
               title={oneLine ? title : undefined}
@@ -247,7 +251,7 @@ export function LargeTitle({
           </>
         )}
       </div>
-      {!field && (plan.inline.length > 0 || plan.overflow.length > 0) && (
+      {!fieldIn(copy) && (plan.inline.length > 0 || plan.overflow.length > 0) && (
         <div className="flex shrink-0 items-center gap-[8px]">
           {plan.inline.map((action) =>
             action.menu ? (
@@ -280,7 +284,7 @@ export function LargeTitle({
     <header ref={head} className="mb-[14px] md:max-w-4xl">
       {folded &&
         (pinned ? (
-          <PinnedTitleBar>{titleRow(true)}</PinnedTitleBar>
+          <PinnedTitleBar live={!!field}>{titleRow(true)}</PinnedTitleBar>
         ) : (
           <CompactBar
             title={title}
