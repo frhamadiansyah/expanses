@@ -1,5 +1,5 @@
 import { formatMinor, monthName } from '@expanses/core';
-import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, TransactionView, WithdrawalsUsed } from '@expanses/db';
+import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
 import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
@@ -110,7 +110,12 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
 
   const lines: ReceiptLine[] = [];
   const payer = input.payer ?? null;
-  if (payer) {
+  // One purchase split across workspaces: the whole charge, on the account it was charged to, is the line the bank
+  // prints; its parts follow on the receipt, each in its own workspace.
+  const across = !!tx.splitBooks && !payer && !!left[0];
+  if (across && paid) {
+    lines.push({ label: `Charged on ${accountText(paid.accountId)}`, value: formatMinor(Math.abs(paid.amountMinor), currency) });
+  } else if (payer) {
     if (payer.paidLabel) lines.push({ label: 'Paid with', value: payer.paidLabel });
     lines.push({ label: 'Paid by', value: payer.mine ? 'Me' : (payer.payerName ?? 'Someone else') });
   } else if (paid) lines.push({ label: left[0] ? 'Paid with' : 'Paid into', value: accountText(paid.accountId) });
@@ -121,7 +126,7 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const spent = tx.entries.filter((entry) => entry.accountKind === 'expense');
   const refund = spent.length > 0 && spent.reduce((sum, entry) => sum + entry.amountMinor, 0) < 0;
   if (refund) lines.push({ label: 'Refund', value: 'Money back' });
-  if (paid) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
+  if (paid && !across) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
   // Withdrawal rate §7: what the foreign money cost, and which withdrawals it came from.
   if (input.withdrawal) {
     const cost = receiptWithdrawalLine(input.withdrawal, input.withdrawal.currency, input.currency);
@@ -148,4 +153,33 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   }
   if (tx.billMonth) lines.push({ label: 'Bill month', value: `${monthName(tx.billMonth, 'long')} ${tx.billMonth.slice(0, 4)}` });
   return lines;
+}
+
+/** One part of a purchase split across workspaces, as the receipt lists it. */
+export interface SplitPart {
+  categoryId: string;
+  categoryName: string;
+  book: SplitBook;
+  amountMinor: number;
+  currency: string;
+}
+
+/**
+ * The parts of a purchase split across workspaces, in the order its workspaces are listed, largest first within one:
+ * each category line, the workspace it is filed in and what it came to. Empty for anything else.
+ */
+export function splitParts(tx: TransactionView, accounts: readonly AccountRow[]): SplitPart[] {
+  const books = tx.splitBooks ?? [];
+  return books.flatMap((book) =>
+    tx.entries
+      .filter((entry) => entry.bookId === book.id && (entry.accountKind === 'expense' || entry.accountKind === 'income'))
+      .sort((a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor))
+      .map((entry) => ({
+        categoryId: entry.accountId,
+        categoryName: accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountName,
+        book,
+        amountMinor: entry.accountKind === 'expense' ? entry.amountMinor : -entry.amountMinor,
+        currency: entry.currency,
+      })),
+  );
 }

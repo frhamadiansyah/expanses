@@ -223,6 +223,8 @@ export function StatementPanel({
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
   const notes = (line: StatementLine): ReactNode[] => {
     const out: ReactNode[] = [];
+    // One purchase split across workspaces is one charge here, as the bank prints it: its line names every part.
+    if (line.splitCategories) out.push(line.splitCategories.join(' · '));
     if (line.instalment) out.push(`instalment ${line.instalment.number} of ${line.instalment.of}`);
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
     // Which purchases you have settled yourself, kept apart from what the bank has billed.

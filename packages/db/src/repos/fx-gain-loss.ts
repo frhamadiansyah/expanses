@@ -5,6 +5,7 @@ import type { Db } from '../database';
 import { entries } from '../schema';
 import { captureRevaluingTx } from '../sync/capture';
 import { ensureSystemAccountTx } from './accounts';
+import { splitBooksOfTx } from './book-splits';
 import { hasBooks, personalBookIdTx } from './books';
 import { ensureCategoryByKeyTx } from './categories';
 import { eventPostingOfTx } from './event-only';
@@ -172,7 +173,9 @@ export async function writeGainLossTx(db: Db, ws: WorkspaceContext, transactionI
 
   if ((await hasBooks(db)) && !(await inNoWorkspaceTx(db, transactionId))) {
     const [filed] = await db.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${transactionId}`);
-    const personal = filed ? null : await personalBookIdTx(db, ws.workspaceId);
+    // A purchase split across workspaces (0084) is filed already, in each of its parts' workspaces.
+    const split = !filed && (await splitBooksOfTx(db, transactionId)).length > 0;
+    const personal = filed || split ? null : await personalBookIdTx(db, ws.workspaceId);
     if (personal) {
       await db.run(sql`INSERT INTO book_transactions (transaction_id, workspace_id, book_id) VALUES (${transactionId}, ${ws.workspaceId}, ${personal})`);
       await captureRevaluingTx(db, transactionId);

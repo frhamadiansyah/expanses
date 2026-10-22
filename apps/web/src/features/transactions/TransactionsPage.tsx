@@ -338,7 +338,8 @@ export function TransactionsPage() {
    * of it. The table is the exception it has always been: it is the editor, and a half-typed row waiting there is
    * the work in progress that editor exists for.
    */
-  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4);
+  // Narrowed to a workspace, a purchase split across workspaces reads as that workspace's part (`listWs.bookId`).
+  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId);
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
    * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
@@ -505,6 +506,11 @@ export function TransactionsPage() {
     for (const row of chosen) {
       const tx = row.tx!;
       const what = tx.description || 'A transaction';
+      // Split across workspaces, its parts stay where they are: one is moved by changing its category in the split.
+      if (tx.splitBooks) {
+        kept.push({ id: tx.id, why: `${what} is split across workspaces: change a part’s category in its split instead` });
+        continue;
+      }
       try {
         const draft = formFromTransaction(tx, accounts, ws.bookId ?? '');
         if (draft.mode !== 'expense' && draft.mode !== 'income') {
@@ -911,7 +917,7 @@ export function TransactionsPage() {
               : 'Opening balance'
             : row.type === 'correction'
               ? 'Balance correction'
-              : tx.entries
+              : (row.splitPart ?? tx.entries)
                   .filter((e) => e.accountKind === row.type)
                   // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
                   .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
@@ -987,6 +993,8 @@ export function TransactionsPage() {
               <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
+            {/* One purchase split across workspaces: narrowed to one, the row is its part; the receipt is the whole. */}
+            {tx.splitBooks && ' · ⑂ split'}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.

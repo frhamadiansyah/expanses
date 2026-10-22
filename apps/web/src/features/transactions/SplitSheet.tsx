@@ -1,8 +1,14 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
+import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { X } from 'lucide-react';
 import { CategoryOptions } from '../cards/options';
+import { categoryGroups, offeredCategories } from '../categories/offered';
+import { useCategorySetMembership } from '../categories/set-queries';
+import { useSharedBooks } from '../sharing/queries';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
+import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { type FormDraft, splitCentsRefusal, type SplitRow, splitTotalMinor } from './tx-form';
 
 /**
@@ -18,6 +24,39 @@ export function splitSummary(splits: readonly SplitRow[], currency: string): str
   // One row is reachable — **+ Split** makes two and ✕ takes one away — and "1 splits" is what it used to say,
   // where both of its siblings count in words a person would use.
   return `${splits.length} ${splits.length === 1 ? 'split' : 'splits'} · Total ${formatMinor(splitTotalMinor(splits, currency), currency)}`;
+}
+
+/** A workspace a split's line may take its category from, and that workspace's categories as one flat list. */
+export interface OtherWorkspace {
+  book: { id: string; name: string; kind: string };
+  /** "Office supplies", or "Food and beverage › Restaurants" for one under a parent. */
+  options: { id: string; label: string }[];
+}
+
+/**
+ * The other workspaces a split's line can be filed in (one purchase split across workspaces, 0084), each with its
+ * categories, roots first and each root's children after it. None while the open workspace is shared with a household,
+ * and never a shared one: a shared workspace keeps each purchase whole, and the ledger refuses the split otherwise.
+ */
+export function otherWorkspaces(
+  accounts: readonly AccountRow[],
+  books: readonly { id: string; name: string; kind: string }[],
+  openBookId: string | undefined,
+  categoryBooks: Readonly<Record<string, string>>,
+  membership: Record<string, unknown>,
+  shared: ReadonlySet<string>,
+): OtherWorkspace[] {
+  if (!openBookId || shared.has(openBookId)) return [];
+  return books
+    .filter((book) => book.id !== openBookId && !shared.has(book.id))
+    .map((book) => ({
+      book,
+      options: categoryGroups(offeredCategories(accounts, 'expense', membership, (a) => categoryBooks[a.id] === book.id)).flatMap(({ root, children }) => [
+        { id: root.id, label: root.name },
+        ...children.map((child) => ({ id: child.id, label: `${root.name} › ${child.name}` })),
+      ]),
+    }))
+    .filter((other) => other.options.length > 0);
 }
 
 /**
@@ -41,9 +80,20 @@ export function SplitSheet({
   currency: string;
   onClose: () => void;
 }) {
+  const { ws } = useApp();
   const splits = draft.splits;
   const refusal = splitCentsRefusal(splits, currency);
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
+  /*
+   * A line's category may come from another workspace: the purchase is then split across workspaces, each counting its
+   * own part, while the card keeps the one charge. Offered after the open workspace's own, under each workspace's name,
+   * and the line then wears that workspace's letter, as the receipt draws it.
+   */
+  const membership = useCategorySetMembership().data ?? {};
+  const categoryBooks = useCategoryBooks().data ?? {};
+  const shared = new Set((useSharedBooks().data ?? []).map((book) => book.bookId));
+  const others = otherWorkspaces(accounts, useBooks().data ?? [], ws.bookId, categoryBooks, membership, shared);
+  const workspaceOf = (categoryId: string) => others.find((other) => other.book.id === categoryBooks[categoryId])?.book ?? null;
   return (
     <Sheet grouped title="Split" onClose={onClose}>
       {/* B3a: one card, a row per split — category, figure, ✕ — and + Split with the running total as its last row. */}
@@ -57,7 +107,17 @@ export function SplitSheet({
               className="ph-focus-inset min-w-0 flex-1 appearance-none truncate bg-transparent py-2 text-base text-[var(--ph-ink)] md:text-[15px]"
             >
               <CategoryOptions accounts={accounts as AccountRow[]} kind="expense" parentSuffix="(general)" />
+              {others.map((other) => (
+                <optgroup key={other.book.id} label={other.book.name}>
+                  {other.options.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
+            <WorkspaceBadge book={row.categoryId ? workspaceOf(row.categoryId) : null} />
             <input
               aria-label={`Split ${i + 1} amount`}
               value={row.amount}

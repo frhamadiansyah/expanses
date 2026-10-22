@@ -456,8 +456,9 @@ function CardBody({
   // Until both are read, an edit does not know which way it saves: From, To and Save wait (review round 1).
   const transferUnknown = !!initial && (!savedTransferQuery.isFetched || netWorthGroup.isPending);
   const accountsLocked = !!savedTransfer || transferUnknown;
-  // An expense or income, saved, can move to another workspace from its Workspace row; a transfer belongs to none.
-  const canMove = !!initial && !finish && !accountsLocked && (draft.mode === 'expense' || draft.mode === 'income') && allBooks.length > 1;
+  // An expense or income, saved, can move to another workspace from its Workspace row; a transfer belongs to none, and
+  // a purchase split across workspaces keeps its parts where they are (its Split changes a part's category instead).
+  const canMove = !!initial && !finish && !accountsLocked && (draft.mode === 'expense' || draft.mode === 'income') && allBooks.length > 1 && !initial.splitBooks;
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -990,7 +991,8 @@ function CardBody({
                 }
                 label="Workspace"
                 name="Workspace for this transaction"
-                value={(moveTo ? allBooks.find((book) => book.id === moveTo)?.name : openBook?.name) ?? ''}
+                // A purchase split across workspaces is in each of its parts' workspaces: the row names them all.
+                value={(moveTo ? allBooks.find((book) => book.id === moveTo)?.name : initial?.splitBooks ? initial.splitBooks.map((book) => book.name).join(' · ') : openBook?.name) ?? ''}
                 caption={moveTo ? 'Moving to' : 'Workspace'}
                 chevron={!initial || canMove}
                 disabled={!!initial && !canMove}
