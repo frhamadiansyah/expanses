@@ -36,6 +36,7 @@ export function TransactionRow({
   subtitle,
   under,
   iconLabel,
+  iconMark,
   amountExtra,
   trailing,
   onOpen,
@@ -65,6 +66,8 @@ export function TransactionRow({
   under?: ReactNode;
   /** Written in the category circle instead of its glyph — a day number, under a category heading. */
   iconLabel?: string;
+  /** Laid on the category circle's corner: whose workspace the row is, on a list that holds several. */
+  iconMark?: ReactNode;
   /** Under the amount: points earned, or what it cost in the currency it was charged in. */
   amountExtra?: ReactNode;
   /** The end of the row: the pencil and the ⓘ on a desktop, an untag button on an event. */
@@ -99,7 +102,12 @@ export function TransactionRow({
   const { sign, plus, muted } = amountLook(row);
   const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
-  const circle = (
+  const circle = iconMark ? (
+    <span className="relative inline-flex">
+      <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
+      {iconMark}
+    </span>
+  ) : (
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
   );
 

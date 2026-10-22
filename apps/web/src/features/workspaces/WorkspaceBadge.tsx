@@ -13,11 +13,27 @@ const TINT: Record<string, string> = {
   shared: 'bg-emerald-100 text-emerald-800',
 };
 
-export function WorkspaceBadge({ book }: { book: { name: string; kind: string } | null }) {
+/**
+ * The workspace's round with its first letter, tinted by kind — not a pill of capitals after the name, which fought the
+ * name for the line and cut a long one short. `corner`: laid on the corner of the row's category icon (the caller's
+ * box is `relative`); otherwise drawn inline after the name, where a row has no icon. The full name is in it for a
+ * screen reader and a tooltip; the letter is drawn, not written, so the text a reader hears is the name alone.
+ */
+export function WorkspaceBadge({ book, corner = false }: { book: { name: string; kind: string } | null; corner?: boolean }) {
   if (!book) return null;
+  const letter = book.name.trim().charAt(0).toUpperCase() || '·';
   return (
-    <span data-testid="workspace-badge" className={cx('ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase', TINT[book.kind] ?? TINT.shared)}>
-      {book.name}
+    <span
+      data-testid="workspace-badge"
+      data-letter={letter}
+      title={book.name}
+      className={cx(
+        'inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] leading-none font-bold before:content-[attr(data-letter)]',
+        corner ? 'absolute -right-1 -bottom-1 ring-2 ring-[var(--ph-surface)]' : 'ml-1.5 align-[1px]',
+        TINT[book.kind] ?? TINT.shared,
+      )}
+    >
+      <span className="sr-only">{book.name}</span>
     </span>
   );
 }

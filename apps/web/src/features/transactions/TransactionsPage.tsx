@@ -910,13 +910,13 @@ export function TransactionsPage() {
         onRecategorise={clickable && recategorise.offers(row) && !paidByOther(tx) ? recategorise.start : undefined}
         // Under a category the group already shows the icon, so each row's circle carries its day instead.
         iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
+        // Whose spending this is, when the list holds more than one workspace: its letter on the icon's corner.
+        iconMark={badgeOf(tx.id) ? <WorkspaceBadge book={badgeOf(tx.id)} corner /> : undefined}
         label={
           <>
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
-            {/* Whose spending this is, when the list holds more than one workspace. */}
-            <WorkspaceBadge book={badgeOf(tx.id)} />
             {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
             {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
           </>
