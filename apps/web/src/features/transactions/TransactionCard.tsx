@@ -1275,7 +1275,16 @@ function CardBody({
           setId={eventSet}
           onPick={(categoryId) => {
             categorySource.current = 'hand';
-            set({ categoryId });
+            /*
+             * The picker has its own Expense / Income control. An income category picked while on Expense (Salary)
+             * moves the form to Income, and the other way round, as the tab itself would — keeping the category.
+             */
+            const kind = byId.get(categoryId)?.kind;
+            const to = kind === 'income' ? 'income' : kind === 'expense' ? 'expense' : null;
+            if (to && to !== draft.mode && (draft.mode === 'expense' || draft.mode === 'income')) {
+              const flag = currencyChoosable({ ...draft, mode: to }) ? {} : { currency: '', chargedAmount: '' };
+              set({ mode: to, categoryId, splits: [], ...flag });
+            } else set({ categoryId });
           }}
           onClose={() => setSheet(null)}
           {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}

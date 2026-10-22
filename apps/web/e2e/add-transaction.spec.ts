@@ -78,6 +78,29 @@ test('income lands in the account it was received into', async ({ page }) => {
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
 });
 
+test('an income category picked on Expense moves the form to Income, and keeps the category', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
+
+  await form.getByLabel('Category', { exact: true }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await picker.getByRole('radio', { name: 'Income', exact: true }).click();
+  await picker.getByRole('button', { name: 'Salary', exact: true }).click();
+
+  await expect(form.getByRole('radio', { name: 'Income', exact: true })).toBeChecked();
+  await expect(form.getByLabel('Category', { exact: true })).toContainText('Salary');
+
+  // And back: an expense category picked on Income goes to Expense.
+  await form.getByLabel('Category', { exact: true }).click();
+  await picker.getByRole('radio', { name: 'Expense', exact: true }).click();
+  await picker.getByRole('button', { name: 'Groceries', exact: true }).click();
+  await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
+  await expect(form.getByLabel('Category', { exact: true })).toContainText('Groceries');
+});
+
 test('Paid with names each card by its digits, and choosing one sets the account and the card together', async ({ page }) => {
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
     await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
