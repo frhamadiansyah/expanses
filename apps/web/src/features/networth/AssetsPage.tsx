@@ -9,7 +9,7 @@ import { assetKindTile, assetSectionTile } from '../ownables/catalogue-view';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
-import { assetSegments, heldShares } from './share-segments';
+import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
@@ -144,6 +144,12 @@ export function AssetsPage() {
   const [updatingPrices, setUpdatingPrices] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
   const [picked, setPicked] = useState<string | null>(null);
+  // Inside a picked section with more than one kind, the kind picked on its own boxes: the list narrows to that drawer.
+  const [kind, setKind] = useState<string | null>(null);
+  const pick = (key: string | null) => {
+    setPicked(key);
+    setKind(null);
+  };
 
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
@@ -164,6 +170,14 @@ export function AssetsPage() {
   const shares = heldShares(assetSegments(live));
   // The pick holds only while its box is drawn: a section gone or taken below nought lets go of it.
   const active = shares.shown.some((segment) => segment.key === picked) ? picked : null;
+  /*
+   * A picked section opens into its own kinds — Investments into listed shares, mutual funds, government bonds — when it
+   * has more than one, so the boxes go one level deeper rather than showing a single box filling the space.
+   */
+  const activeGroup = active === null ? null : (live.find((group) => group.group === active) ?? null);
+  const kindShares = activeGroup ? heldShares(kindSegments(activeGroup.drawers)) : null;
+  const deeper = activeGroup !== null && kindShares !== null && kindShares.shown.length > 1;
+  const activeKind = deeper && kindShares!.shown.some((segment) => segment.key === kind) ? kind : null;
   // Which of the rows drawn below are money: those open their own page, not the asset page.
   const money = new Set((accounts.data ?? []).filter((account) => CASH_SUBTYPES.has(account.subtype)).map((account) => account.id));
 
@@ -224,10 +238,26 @@ export function AssetsPage() {
         <Panel wide className="mb-[18px] space-y-2">
           <div data-testid="assets-total">
             {/* What the list below comes to, in the page's ink: a red total warned about rows that warn about nothing. */}
-            <Hero minor={total.totalMinor} currency={baseCurrency} plain align="center" />
+            <Hero minor={deeper && activeGroup!.totalMinor !== null ? activeGroup!.totalMinor : total.totalMinor} currency={baseCurrency} plain align="center" />
           </div>
           {shares.shown.length > 0 && (
-            <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={active} onPick={setPicked} />
+            deeper ? (
+              <>
+                <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="share-boxes-section">
+                  {activeGroup!.label}, by kind
+                </p>
+                <ShareBoxes
+                  segments={kindShares!.shown}
+                  totalMinor={kindShares!.heldMinor}
+                  currency={baseCurrency}
+                  iconOf={(key) => assetKindTile(active!, key)}
+                  picked={activeKind}
+                  onPick={setKind}
+                />
+              </>
+            ) : (
+              <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={active} onPick={pick} />
+            )
           )}
           {shares.below.length > 0 && (
             <p data-testid="assets-below-zero" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -257,12 +287,18 @@ export function AssetsPage() {
       )}
 
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
-      {active !== null && <ShowAll onClick={() => setPicked(null)} />}
+      {active !== null && <ShowAll onClick={() => pick(null)} />}
       {live
         .filter((group) => active === null || group.group === active)
         .map((group) => (
           // Keyed by the pick too, so a group picked opens afresh and goes back to its drawers when let go.
-          <Group key={`${group.group}:${active === group.group}`} group={group} baseCurrency={baseCurrency} money={money} opened={active === group.group} />
+          <Group
+            key={`${group.group}:${active === group.group}:${activeKind ?? ''}`}
+            group={activeKind && active === group.group ? { ...group, drawers: group.drawers.filter((drawer) => drawer.key === activeKind) } : group}
+            baseCurrency={baseCurrency}
+            money={money}
+            opened={active === group.group}
+          />
         ))}
 
       {sold.length > 0 && (
