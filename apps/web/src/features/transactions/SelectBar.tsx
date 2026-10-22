@@ -1,23 +1,23 @@
-import { Home, MinusCircle, Plane } from 'lucide-react';
+import { Ellipsis } from 'lucide-react';
 import { useState } from 'react';
-import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow } from '../../ui/native';
 
 /**
- * The list's select mode, at the foot of the screen: iOS's own toolbar — Done, how many are ticked, Actions — in place
- * of a floating card of buttons. Actions opens one grouped sheet with every thing that can be done to the ticked rows,
- * each a row; the event or workspace it needs is then chosen on the sheet that row opens.
+ * The list's select mode, as Notes and Mail draw it: across the top, Select All, how many are selected and Done; at
+ * the foot, a thin toolbar of words — Add to event, Move — and ⋯, whose menu holds every action, Remove from event
+ * among them. Each action still opens the sheet that asks which event or workspace.
  *
- * It sits where the Undo toast sits, above the phone's tab bar, so the toast that follows an action lands where the
- * bar just was. Its own error line, because a refusal said at the top of the page, while a thumb is down here, is a
- * refusal nobody sees.
+ * The foot sits where the Undo toast sits, above the phone's tab bar, so the toast that follows an action lands where
+ * the bar just was. Its own error line, because a refusal said at the top of the page, while a thumb is down here, is
+ * a refusal nobody sees.
  */
 export function SelectBar({
   count,
   canRemove,
   busy,
   error,
+  allSelected,
+  onSelectAll,
   onAdd,
   onRemove,
   onCancel,
@@ -28,42 +28,78 @@ export function SelectBar({
   canRemove: boolean;
   busy: boolean;
   error: unknown;
+  /** Every row that can be ticked is: Select All reads Deselect All. */
+  allSelected: boolean;
+  onSelectAll: () => void;
   onAdd: () => void;
   onRemove: () => void;
   onCancel: () => void;
   /** Move to workspace, offered while there is more than one workspace to move to. */
   onMove?: () => void;
 }) {
-  const [acting, setActing] = useState(false);
-  const act = (run: () => void) => () => {
-    setActing(false);
+  const [menu, setMenu] = useState(false);
+  const none = count === 0 || busy;
+  const pick = (run: () => void) => () => {
+    setMenu(false);
     run();
   };
+  const word = 'ph-focus min-h-11 shrink-0 text-[17px] text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]';
+  const glass = 'border-[var(--ph-hair)] bg-[color-mix(in_srgb,var(--ph-ground)_94%,transparent)] backdrop-blur-md';
   return (
     <>
-      {/* Stood down while its sheet is up: drawn above the page, it would sit over the sheet's rows. */}
-      {!acting && (
+      <div role="toolbar" aria-label="Selection" data-testid="select-top" className={`fixed inset-x-0 top-0 z-40 border-b-[0.5px] pt-[env(safe-area-inset-top)] ${glass}`}>
+        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4">
+          <button type="button" onClick={onSelectAll} className={word}>
+            {allSelected ? 'Deselect All' : 'Select All'}
+          </button>
+          <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
+            {count === 0 ? 'None selected' : `${count} Selected`}
+          </span>
+          <button type="button" onClick={onCancel} className={`${word} font-semibold`}>
+            Done
+          </button>
+        </div>
+      </div>
       <div
         role="toolbar"
         aria-label="Selected transactions"
         data-testid="select-bar"
-        className="fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-40 border-t-[0.5px] border-[var(--ph-hair)] bg-[color-mix(in_srgb,var(--ph-ground)_94%,transparent)] backdrop-blur-md md:bottom-0"
+        className={`fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-40 border-t-[0.5px] md:bottom-0 ${glass}`}
       >
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4">
-          <button type="button" onClick={onCancel} className="ph-focus min-h-11 shrink-0 text-[17px] text-[var(--ph-tint)]">
-            Done
+        <div className="relative mx-auto flex max-w-2xl items-center justify-between gap-3 px-5">
+          <button type="button" disabled={none} onClick={onAdd} className={word}>
+            Add to event
           </button>
-          <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-[var(--ph-ink)]">
-            {count === 0 ? 'None selected' : `${count} Selected`}
-          </span>
-          <button
-            type="button"
-            disabled={count === 0 || busy}
-            onClick={() => setActing(true)}
-            className="ph-focus min-h-11 shrink-0 text-[17px] font-semibold text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]"
-          >
-            Actions
+          {onMove && (
+            <button type="button" disabled={none} onClick={onMove} className={word}>
+              Move
+            </button>
+          )}
+          <button type="button" aria-label="More actions" aria-expanded={menu} disabled={none} onClick={() => setMenu((open) => !open)} className={`${word} flex items-center`}>
+            <Ellipsis size={22} aria-hidden />
           </button>
+          {menu && (
+            <div role="menu" aria-label="Actions" className="absolute right-3 bottom-full mb-2 w-60 overflow-hidden rounded-[13px] bg-[var(--ph-surface)] text-[16px] shadow-[0_10px_34px_rgb(0_0_0/0.22)]">
+              <button type="button" role="menuitem" onClick={pick(onAdd)} className="ph-focus-inset block w-full px-4 py-[11px] text-left text-[var(--ph-ink)]">
+                Add to event
+              </button>
+              {onMove && (
+                <button type="button" role="menuitem" onClick={pick(onMove)} className="ph-focus-inset block w-full border-t-[0.5px] border-[var(--ph-hair)] px-4 py-[11px] text-left text-[var(--ph-ink)]">
+                  Move to workspace
+                </button>
+              )}
+              <div aria-hidden className="h-[7px] bg-[var(--ph-ground)]" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!canRemove}
+                onClick={pick(onRemove)}
+                className="ph-focus-inset block w-full px-4 py-[11px] text-left text-[var(--ph-ink)] disabled:text-[var(--ph-ink-3)]"
+              >
+                Remove from event
+              </button>
+            </div>
+          )}
         </div>
         {error ? (
           <div className="mx-auto max-w-2xl px-4 pb-2">
@@ -71,18 +107,6 @@ export function SelectBar({
           </div>
         ) : null}
       </div>
-      )}
-      {acting && (
-        <Sheet grouped title={`${count} ${count === 1 ? 'transaction' : 'transactions'}`} onClose={() => setActing(false)}>
-          <InsetGroup>
-            <InsetRow icon={<Plane size={16} />} title="Add to event" onClick={act(onAdd)} />
-            {onMove && <InsetRow icon={<Home size={16} />} title="Move to workspace" onClick={act(onMove)} />}
-          </InsetGroup>
-          <InsetGroup>
-            <InsetRow icon={<MinusCircle size={16} />} title="Remove from event" disabled={!canRemove} chevron={false} onClick={act(onRemove)} />
-          </InsetGroup>
-        </Sheet>
-      )}
     </>
   );
 }

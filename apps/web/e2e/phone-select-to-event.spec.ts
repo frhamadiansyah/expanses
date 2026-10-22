@@ -9,17 +9,20 @@ const face = (page: Page, what: string, category: string) => row(page, what).get
 const tick = (page: Page, what: string) => page.getByRole('checkbox', { name: `Select ${what}` });
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 const bar = (page: Page) => page.getByRole('toolbar', { name: 'Selected transactions' });
-/** One of the ticked rows' actions: Actions on the toolbar, then its row on the sheet that opens. */
+/** The top of select mode: Select All, how many are selected, Done. */
+const top = (page: Page) => page.getByRole('toolbar', { name: 'Selection' });
+/** One of the ticked rows' actions: a word on the toolbar when it has one, else its item in the ⋯ menu. */
 async function act(page: Page, action: string) {
-  await bar(page).getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('dialog', { name: /transactions?$/ }).getByRole('button', { name: action }).click();
+  const word = bar(page).getByRole('button', { name: action, exact: true });
+  if ((await word.count()) > 0) return word.click();
+  await bar(page).getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: action }).click();
 }
-/** Whether an action is offered for what is ticked, read off the Actions sheet and the sheet put away again. */
+/** Whether an action is offered for what is ticked, read off the ⋯ menu and the menu put away again. */
 async function expectActionDisabled(page: Page, action: string) {
-  await bar(page).getByRole('button', { name: 'Actions' }).click();
-  const sheet = page.getByRole('dialog', { name: /transactions?$/ });
-  await expect(sheet.getByRole('button', { name: action })).toBeDisabled();
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await bar(page).getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: action })).toBeDisabled();
+  await bar(page).getByRole('button', { name: 'More actions' }).click();
 }
 
 /** Select mode, from the header's ⋯ — the list's own way to tick rows. */
@@ -52,9 +55,10 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   await addTransaction(page, { description: 'Kopi Tuku', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '24000' });
 
   await startSelecting(page);
-  await expect(bar(page)).toContainText('None selected');
+  await expect(top(page)).toContainText('None selected');
   // Nothing on the bar works until a row is ticked.
-  await expect(bar(page).getByRole('button', { name: 'Actions' })).toBeDisabled();
+  await expect(bar(page).getByRole('button', { name: 'Add to event', exact: true })).toBeDisabled();
+  await expect(bar(page).getByRole('button', { name: 'More actions' })).toBeDisabled();
   // An opening balance is not spending to put anywhere: hidden from the list by default, so there is nothing to tick.
   await expect(row(page, 'Opening balance')).toHaveCount(0);
 
@@ -68,7 +72,14 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   // The tick itself does the same.
   await tick(page, 'Pertashop').click();
   await expect(tick(page, 'Pertashop')).toBeChecked();
-  await expect(bar(page)).toContainText('2 Selected');
+  await expect(top(page)).toContainText('2 Selected');
+  // Select All ticks every row that can be ticked, and reads Deselect All once it has.
+  await top(page).getByRole('button', { name: 'Select All' }).click();
+  await expect(top(page)).toContainText('3 Selected');
+  await top(page).getByRole('button', { name: 'Deselect All' }).click();
+  await expect(top(page)).toContainText('None selected');
+  await tick(page, 'Sate Rembiga').click();
+  await tick(page, 'Pertashop').click();
 
   await act(page, 'Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Lombok trip' }).click();
