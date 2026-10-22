@@ -18,6 +18,7 @@ import { figureOf, jointSeries, ownerRing } from './joint-rows';
 import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
+import { foldPockets, type ShownSheetRow } from './overview-rows';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -256,7 +257,15 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
       subtitle={row.note ?? undefined}
       depth={depth}
       tree={tree}
-      value={<Money minor={shownMinor} currency={shownCurrency} />}
+      value={
+        (row as ShownSheetRow).approx ? (
+          <>
+            ≈ <Money minor={shownMinor} currency={shownCurrency} />
+          </>
+        ) : (
+          <Money minor={shownMinor} currency={shownCurrency} />
+        )
+      }
       valueTone="ink"
       chevron={shared || link ? undefined : false}
       label={shared ? `${owner.name}'s ${row.name}, ${formatMinor(shownMinor, shownCurrency)}` : undefined}
@@ -668,7 +677,7 @@ export function OverviewPage() {
         <div className="grid gap-x-[18px] md:grid-cols-2">
           <SheetColumn
             title="Assets"
-            groups={sheet.assetGroups}
+            groups={foldPockets(sheet.assetGroups, accounts.data ?? [], ws.baseCurrency)}
             currency={ws.baseCurrency}
             kindOf={assetKind}
             tileOf={(section, kind) => (kind === null ? assetSectionTile(section) : assetKindTile(section, kind))}
