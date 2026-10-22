@@ -197,10 +197,11 @@ export function CompactBar({
  * so nothing in the header shrinks or shifts as the page scrolls under it. The corner buttons it draws are the
  * caller's, so they open what they always open.
  */
-export function PinnedTitleBar({ children }: { children: ReactNode }) {
+export function PinnedTitleBar({ children, live = false }: { children: ReactNode; live?: boolean }) {
   return createPortal(
     <div
-      aria-hidden
+      // A copy of the title row, hidden from a screen reader — unless it is the one live row, holding a field being typed in.
+      aria-hidden={live ? undefined : true}
       className="ph-edge-glass pointer-events-none fixed inset-x-0 top-0 z-[29] md:hidden"
       style={{
         paddingTop: 'env(safe-area-inset-top)',

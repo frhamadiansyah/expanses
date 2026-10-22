@@ -1141,7 +1141,9 @@ export function TransactionsPage() {
         <>
           {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
           <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
-          <div role="menu" className="absolute top-16 right-4 z-30 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
+          {/* Fixed under the title row's ⋯, wherever the page is scrolled: from far down the list the ⋯ tapped is the pinned
+              bar's, and a menu hung from the header up the page opened out of sight. */}
+          <div role="menu" className="fixed top-[calc(env(safe-area-inset-top)+60px)] right-4 z-30 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
             {/* First, and always here: it is how a second workspace is made, and how you move between them. */}
             <button
               type="button"
