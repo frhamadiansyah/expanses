@@ -221,7 +221,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
   const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
   const otherFunds = (allValues.data ?? []).filter((row) => row.accountId !== accountId && fundIds.has(row.accountId));
-  const holding = { accountId, name: value.name, currency };
+  const holding = { accountId, name: value.name, currency, byMoney };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
   const line = heroLine({

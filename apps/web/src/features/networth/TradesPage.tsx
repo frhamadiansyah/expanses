@@ -1,5 +1,5 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, holdingPositionAfter, isoDate } from '@expanses/core';
-import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
+import { declareReinvestment, deleteTrade, resplitTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowDownLeft, CalendarClock, Minus, Plus, Shuffle } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -28,6 +28,8 @@ import { TradeSheet } from './AssetSheets';
 import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, useDueTemplates, usePositions, useTradeTemplates, useTrades } from './queries';
 import { draftFromTrade } from './trade-form';
+import { GoalParts } from './GoalParts';
+import { type PartDraft, partsFromTyped, partsToTyped, SPLIT } from './goal-parts-form';
 
 type Doing = 'buy' | 'sell' | 'income' | 'units';
 
@@ -60,6 +62,12 @@ export function TradesPage() {
   const [open, setOpen] = useState<TradeRow | null>(null);
   const [editing, setEditing] = useState<TradeRow | null>(null);
   const [filter, setFilter] = useState('all');
+  // The split being typed on an open trade's sheet, before Save goals; null while it is not being split.
+  const [splitting, setSplitting] = useState<PartDraft[] | null>(null);
+  const openTrade = (trade: TradeRow | null) => {
+    setOpen(trade);
+    setSplitting(trade?.goalParts?.length ? partsToTyped(trade.goalParts, currencyOf(trade.accountId)) : null);
+  };
 
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market' || row.mode === 'amount')
@@ -285,17 +293,23 @@ export function TradesPage() {
               <DayHeader date={date} net={0} currency={ws.baseCurrency} />
               <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
                 {list.map((trade) => {
-                  const goal = trade.kind === 'buy' ? goalName(trade.goalId) : null;
+                  const goal = trade.kind === 'buy' && !trade.goalParts?.length ? goalName(trade.goalId) : null;
+                  const parts = (trade.goalParts ?? []).map((part) => `${goalName(part.goalId) ?? 'A goal'} ${part.moneyMinor > 0 ? formatMinor(part.moneyMinor, currencyOf(trade.accountId)) : formatUnits(part.unitsMicro)}`);
                   const reinvested = trade.kind === 'income' && (trade.reinvestedMinor ?? 0) > 0;
                   const out = trade.kind === 'buy';
                   const sub = [unitsLine(trade), trade.cashAccountId === null && trade.kind === 'buy' ? 'opening position' : cashName(trade.cashAccountId)].filter(Boolean).join(' · ');
                   return (
                     <li key={trade.id} data-testid="trade-row">
-                      <button type="button" onClick={() => setOpen(trade)} className="ph-focus-inset flex min-h-11 w-full items-center gap-3 py-2 text-left">
+                      <button type="button" onClick={() => openTrade(trade)} className="ph-focus-inset flex min-h-11 w-full items-center gap-3 py-2 text-left">
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">
                             {titleOf(trade)}
                             {goal && <span className="ml-1.5 rounded bg-[var(--ph-fill)] px-1.5 text-[11px] font-normal text-[var(--ph-ink-2)]">{goal}</span>}
+                            {parts.map((label) => (
+                              <span key={label} className="ml-1.5 rounded bg-[var(--ph-fill)] px-1.5 text-[11px] font-normal text-[var(--ph-ink-2)]">
+                                {label}
+                              </span>
+                            ))}
                             {reinvested && <span className="ml-1.5 rounded bg-[var(--ph-tint-panel)] px-1.5 text-[11px] font-semibold text-[var(--ph-tint)]">Reinvested</span>}
                           </span>
                           {sub && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{sub}</span>}
@@ -336,7 +350,9 @@ export function TradesPage() {
       )}
 
       {open && (
-        <Sheet grouped title={titleOf(open)} onClose={() => setOpen(null)}>
+        <Sheet grouped title={titleOf(open)} onClose={() => openTrade(null)}>
+          {/* Said in the sheet, where the change was asked for: the page's own error box is behind it. */}
+          <ErrorBox error={error} />
           <InsetGroup>
             <ReadOnlyRow label={open.kind === 'income' ? 'Amount' : open.kind === 'sell' ? 'Proceeds' : 'Cost'} value={formatMinor(open.grossMinor, currencyOf(open.accountId))} />
             {open.kind !== 'income' && <ReadOnlyRow label="Units" value={unitsLine(open)} />}
@@ -350,18 +366,23 @@ export function TradesPage() {
             )}
             <ReadOnlyRow label="Date" value={open.occurredOn} />
           </InsetGroup>
-          {open.kind === 'buy' && goalOptions.length > 0 && (
-            <InsetGroup footer="Which goal the units of this buy belong to.">
+          {(open.kind === 'buy' || open.kind === 'sell') && goalOptions.length > 0 && (
+            <InsetGroup footer={open.kind === 'buy' ? 'Which goal the units of this buy belong to — or several, each with its share.' : 'Which goal this sell took from.'}>
               <SelectRow
-                label="For goal"
-                aria-label="Goal for this buy"
-                value={open.goalId ?? ''}
+                label={open.kind === 'buy' ? 'For goal' : 'Sell from goal'}
+                aria-label={open.kind === 'buy' ? 'Goal for this buy' : 'Goal for this sell'}
+                value={splitting !== null ? SPLIT : (open.goalId ?? '')}
                 onChange={(e) => {
                   const goalId = e.target.value;
-                  setOpen({ ...open, goalId: goalId || null });
+                  if (goalId === SPLIT) {
+                    setSplitting([{ goalId: open.goalId ?? goalOptions[0]!.id, amount: '' }]);
+                    return;
+                  }
+                  setSplitting(null);
+                  setOpen({ ...open, goalId: goalId || null, goalParts: null });
                   void run(
                     () => retagTrade(database, ws, open.id, goalId || null),
-                    goalId ? `This purchase now funds ${goalOptions.find((goal) => goal.id === goalId)?.name ?? 'that goal'}.` : 'This purchase no longer funds a goal.',
+                    goalId ? `This ${open.kind === 'buy' ? 'purchase' : 'sale'} is now ${goalOptions.find((goal) => goal.id === goalId)?.name ?? 'that goal'}'s.` : `This ${open.kind === 'buy' ? 'purchase' : 'sale'} no longer has a goal.`,
                   );
                 }}
               >
@@ -371,8 +392,44 @@ export function TradesPage() {
                     {goal.name}
                   </option>
                 ))}
+                {goalOptions.length > 1 && <option value={SPLIT}>Split between goals…</option>}
               </SelectRow>
             </InsetGroup>
+          )}
+          {splitting !== null && (
+            <div className="mb-[18px] space-y-2">
+              <GoalParts
+                parts={splitting}
+                onChange={setSplitting}
+                goals={goalOptions}
+                whole={(() => {
+                  const byMoney = !!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney;
+                  const currency = currencyOf(open.accountId);
+                  return byMoney ? draftFromTrade(open, currency).gross ?? '' : draftFromTrade(open, currency).units ?? '';
+                })()}
+                byMoney={!!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney}
+                currency={currencyOf(open.accountId)}
+                unitLabel={unitLabelOf(open.accountId)}
+              />
+              <InsetGroup>
+                <InsetRow
+                  title={<span className="text-[var(--ph-tint)]">Save goals</span>}
+                  label="Save goals"
+                  chevron={false}
+                  onClick={() => {
+                    const byMoney = !!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney;
+                    const currency = currencyOf(open.accountId);
+                    const typed = draftFromTrade(open, currency);
+                    try {
+                      const parts = partsFromTyped(splitting, (byMoney ? typed.gross : typed.units) ?? '', byMoney, currency);
+                      void run(() => resplitTrade(database, ws, open.id, parts), 'Split between goals.').then(() => openTrade(null));
+                    } catch (e) {
+                      setError(e);
+                    }
+                  }}
+                />
+              </InsetGroup>
+            </div>
           )}
           {open.kind === 'income' && (
             <InsetGroup header="Reinvested" footer="Put back into a holding, so it is not an object of tax.">
@@ -424,7 +481,12 @@ export function TradesPage() {
       {editing && (
         <TradeSheet
           title="Edit"
-          holding={{ accountId: editing.accountId, name: nameOf(editing.accountId), currency: currencyOf(editing.accountId) }}
+          holding={{
+            accountId: editing.accountId,
+            name: nameOf(editing.accountId),
+            currency: currencyOf(editing.accountId),
+            byMoney: holdings.find((holding) => holding.accountId === editing.accountId)?.byMoney,
+          }}
           initial={draftFromTrade(editing, currencyOf(editing.accountId))}
           editing={editing}
           onClose={() => setEditing(null)}

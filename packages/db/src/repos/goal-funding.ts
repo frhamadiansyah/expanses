@@ -18,13 +18,17 @@ import {
   monthOf,
   priceMicroFrom,
   retagFits,
+  resplitFits,
+  splitFits,
+  tradedByMoney,
+  type GoalPart,
   type RankFit,
   roundHalfAwayFromZero,
   unitsValueMinor,
   uuidv7,
   wholeSince,
 } from '@expanses/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, auditLog } from '../schema';
@@ -39,6 +43,7 @@ import { type EmergencyInputs, listGoalCalculators } from './goal-calculators';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { type DrawRow, listDraws, setAsideViews } from './set-aside';
 import { activeTrades, listTrades } from './trades';
+import { writeGoalPartsTx } from './goal-parts';
 import { listTradeTemplates } from './trade-templates';
 
 export interface GoalLinkRow extends GoalLink {
@@ -68,6 +73,47 @@ export interface GoalSummary {
   fits: RankFit[];
 }
 
+/**
+ * Splits a recorded buy (or sell) between goals in place, or — with no parts — clears its split. Goals are not ledger
+ * data, so no transaction is touched. Refused when the parts do not fit the trade, or a goal that later sold from it
+ * would be left short. One part that takes the whole trade is that one goal, as `retagTrade` saves it.
+ */
+export async function resplitTrade(database: Database, ws: WorkspaceContext, tradeId: string, parts: readonly GoalPart[]): Promise<void> {
+  await database.transaction(async (tx) => {
+    const trades = await activeTrades(tx, ws);
+    const trade = trades.find((row) => row.id === tradeId);
+    if (!trade) throw new GoalDbError('That trade was already changed or removed');
+    const holding = trades.filter((row) => row.accountId === trade.accountId);
+    const byMoney = tradedByMoney(holding);
+    const kept = parts.filter((part) => (byMoney ? part.moneyMinor : part.unitsMicro) > 0);
+    const ids = [...new Set(kept.map((part) => part.goalId))];
+    if (ids.length > 0) {
+      const found = await tx.select({ id: goals.id }).from(goals).where(and(inArray(goals.id, ids), eq(goals.workspaceId, ws.workspaceId)));
+      if (found.length !== ids.length) throw new GoalDbError('Goal not found in this workspace');
+    }
+    if (!resplitFits(holding, tradeId, kept)) {
+      throw new GoalDbError(
+        kept.length > 0 && !splitFits(trade, kept, byMoney)
+          ? 'The goals take more than this trade; enter up to its own amount'
+          : 'Units from this purchase were already sold from its goal, so it cannot move',
+      );
+    }
+    const whole = byMoney ? trade.grossMinor : trade.unitsMicro;
+    const one = kept.length === 1 && (byMoney ? kept[0]!.moneyMinor : kept[0]!.unitsMicro) === whole ? kept[0]!.goalId : null;
+    await tx.update(investmentTrades).set({ goalId: one }).where(eq(investmentTrades.id, tradeId));
+    await writeGoalPartsTx(tx, tradeId, one ? [] : kept);
+    await tx.insert(auditLog).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      action: 'retag_goal',
+      entity: 'investment_trade',
+      entityId: tradeId,
+      payloadJson: JSON.stringify({ from: trade.goalParts ?? trade.goalId, to: one ?? kept }),
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
 /** Moves a buy to another goal in place. Goals are not ledger data, so no transaction is touched. */
 export async function retagTrade(database: Database, ws: WorkspaceContext, tradeId: string, goalId: string | null): Promise<void> {
   await database.transaction(async (tx) => {
@@ -86,6 +132,8 @@ export async function retagTrade(database: Database, ws: WorkspaceContext, trade
       throw new GoalDbError('Units from this purchase were already sold from its goal, so it cannot move');
     }
     await tx.update(investmentTrades).set({ goalId }).where(eq(investmentTrades.id, tradeId));
+    // One goal now: a split it had is gone with the move.
+    await writeGoalPartsTx(tx, tradeId, []);
     await tx.insert(auditLog).values({
       id: uuidv7(),
       workspaceId: ws.workspaceId,

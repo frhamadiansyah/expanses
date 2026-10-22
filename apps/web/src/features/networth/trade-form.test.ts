@@ -1,6 +1,7 @@
 import { positionAfter, type TradeRecord } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { draftFromTrade, draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, typedAmount, waitingForPostedMoney } from './trade-form';
+import { SPLIT } from './goal-parts-form';
 
 const TODAY = '2026-09-12';
 const draft = (overrides: Partial<TradeDraft> = {}): TradeDraft => ({ ...emptyTradeDraft('gold', 'bca', TODAY), ...overrides });
@@ -95,7 +96,7 @@ describe('pre-filled amounts', () => {
   it('fill an edit from the trade in that format, never raw', () => {
     const trade = { kind: 'sell' as const, accountId: 'bbca', occurredOn: '2026-03-08', unitsMicro: 1_500_000_000, grossMinor: 14_662_500, feeMinor: 21_994, taxMinor: 14_663, cashAccountId: 'bca', goalId: null };
     expect(draftFromTrade(trade, 'IDR')).toEqual({
-      kind: 'sell', accountId: 'bbca', occurredOn: '2026-03-08', units: '1.500', gross: '14.662.500', fee: '21.994', tax: '14.663', cashAccountId: 'bca', goalId: '',
+      kind: 'sell', accountId: 'bbca', occurredOn: '2026-03-08', units: '1.500', gross: '14.662.500', fee: '21.994', tax: '14.663', cashAccountId: 'bca', goalId: '', parts: [],
     });
   });
 });
@@ -150,5 +151,52 @@ describe('a trade on a fund tracked by money', () => {
   it('keeps units when typed, and still asks a holding counted in units for them', () => {
     expect(draftToInput({ ...draft, units: '10' }, 'IDR', '2026-10-20', true).unitsMicro).toBe(10_000_000);
     expect(() => draftToInput(draft, 'IDR', '2026-10-20')).toThrow('Enter how many units, shares or grams');
+  });
+});
+
+describe('a trade split between goals', () => {
+  const draft = {
+    kind: 'buy' as const,
+    accountId: 'bbca',
+    occurredOn: '2026-10-20',
+    units: '800',
+    gross: '7.120.000',
+    fee: '10.680',
+    tax: '0',
+    cashAccountId: 'rdn',
+    goalId: SPLIT,
+    parts: [
+      { goalId: 'emergency', amount: '500' },
+      { goalId: 'education', amount: '300' },
+    ],
+  };
+
+  it('saves each goal’s units and no single goal', () => {
+    expect(draftToInput(draft, 'IDR', '2026-10-22')).toMatchObject({
+      goalId: null,
+      goalParts: [
+        { goalId: 'emergency', unitsMicro: 500_000_000, moneyMinor: 0 },
+        { goalId: 'education', unitsMicro: 300_000_000, moneyMinor: 0 },
+      ],
+    });
+  });
+
+  it('refuses parts taking more than the trade, a goal named twice, or no part at all', () => {
+    expect(() => draftToInput({ ...draft, parts: [{ goalId: 'a', amount: '900' }] }, 'IDR', '2026-10-22')).toThrow(/more than this trade/);
+    expect(() => draftToInput({ ...draft, parts: [{ goalId: 'a', amount: '1' }, { goalId: 'a', amount: '2' }] }, 'IDR', '2026-10-22')).toThrow(/named twice/);
+    expect(() => draftToInput({ ...draft, parts: [{ goalId: '', amount: '' }] }, 'IDR', '2026-10-22')).toThrow(/Give each goal/);
+  });
+
+  it('a fund tracked by money splits by amount', () => {
+    const fund = { ...draft, units: '', gross: '1.000.000', fee: '0', parts: [{ goalId: 'emergency', amount: '600.000' }, { goalId: 'hajj', amount: '400.000' }] };
+    expect(draftToInput(fund, 'IDR', '2026-10-22', true).goalParts).toEqual([
+      { goalId: 'emergency', unitsMicro: 0, moneyMinor: 600_000 },
+      { goalId: 'hajj', unitsMicro: 0, moneyMinor: 400_000 },
+    ]);
+  });
+
+  it('an edit of a split trade opens on its parts', () => {
+    const trade = { kind: 'buy' as const, accountId: 'bbca', occurredOn: '2026-10-20', unitsMicro: 800_000_000, grossMinor: 7_120_000, feeMinor: 10_680, taxMinor: 0, cashAccountId: 'rdn', goalId: null, goalParts: [{ goalId: 'emergency', unitsMicro: 500_000_000, moneyMinor: 0 }] };
+    expect(draftFromTrade(trade, 'IDR')).toMatchObject({ goalId: SPLIT, parts: [{ goalId: 'emergency', amount: '500' }] });
   });
 });

@@ -150,7 +150,7 @@ export function TradeSheet({
   onClose,
 }: {
   title: string;
-  holding: { accountId: string; name: string; currency: string };
+  holding: { accountId: string; name: string; currency: string; byMoney?: boolean };
   initial: Partial<TradeDraft>;
   editing: TradeRow | null;
   /** A monthly plan this buy answers, so the plan stops being due. */

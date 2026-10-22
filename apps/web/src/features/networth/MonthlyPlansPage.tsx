@@ -28,7 +28,7 @@ export function MonthlyPlansPage() {
 
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market' || row.mode === 'amount')
-    .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
+    .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, byMoney: row.mode === 'amount' }));
   const nameOf = (accountId: string) => holdings.find((row) => row.accountId === accountId)?.name ?? 'Holding';
   const currencyOf = (accountId: string) => holdings.find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
   const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));

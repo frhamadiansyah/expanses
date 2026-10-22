@@ -1,4 +1,4 @@
-import { monthRange, movedAmount, uuidv7 } from '@expanses/core';
+import { goalShares, monthRange, movedAmount, UNTAGGED, uuidv7 } from '@expanses/core';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -7,6 +7,7 @@ import { investmentTrades } from '../schema-assets';
 import { goalContributions } from '../schema-budget';
 import { goalDraws } from '../schema-goals';
 import { setAsideTablesExist } from './set-aside-tx';
+import { goalPartsByTradeTx } from './goal-parts';
 
 /* Where money that reaches a goal can sit without being fresh saving when it moves on. Narrower than the
    ledger's spendable list on purpose: a buy paid from a broker's cash was already counted when the money
@@ -112,12 +113,31 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
       .map((account) => account.id),
   );
   const buys = await database.db
-    .select({ goalId: investmentTrades.goalId, cashAccountId: investmentTrades.cashAccountId, occurredOn: investmentTrades.occurredOn, grossMinor: investmentTrades.grossMinor, feeMinor: investmentTrades.feeMinor, taxMinor: investmentTrades.taxMinor })
+    .select({
+      id: investmentTrades.id,
+      accountId: investmentTrades.accountId,
+      goalId: investmentTrades.goalId,
+      cashAccountId: investmentTrades.cashAccountId,
+      occurredOn: investmentTrades.occurredOn,
+      createdAt: investmentTrades.createdAt,
+      unitsMicro: investmentTrades.unitsMicro,
+      grossMinor: investmentTrades.grossMinor,
+      feeMinor: investmentTrades.feeMinor,
+      taxMinor: investmentTrades.taxMinor,
+    })
     .from(investmentTrades)
-    .where(and(eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.kind, 'buy'), eq(investmentTrades.status, 'active'), ...within(investmentTrades.occurredOn), sql`${investmentTrades.goalId} is not null`));
+    .where(and(eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.kind, 'buy'), eq(investmentTrades.status, 'active'), ...within(investmentTrades.occurredOn)));
+  // A buy split between goals (0083) reaches each of them by its part's share of what it cost.
+  const parts = await goalPartsByTradeTx(database.db, ws);
   for (const buy of buys) {
-    if (!buy.goalId || buy.cashAccountId === null || parked.has(buy.cashAccountId)) continue;
-    events.push({ goalId: buy.goalId, kind: 'buy', occurredOn: buy.occurredOn, amountMinor: buy.grossMinor + buy.feeMinor + buy.taxMinor, accountId: buy.cashAccountId });
+    if (buy.cashAccountId === null || parked.has(buy.cashAccountId)) continue;
+    const split = parts.get(buy.id);
+    if (!buy.goalId && !split) continue;
+    const cost = buy.grossMinor + buy.feeMinor + buy.taxMinor;
+    for (const [goalId, share] of goalShares({ ...buy, kind: 'buy', goalParts: split ?? null }, cost)) {
+      if (goalId === UNTAGGED || share <= 0) continue;
+      events.push({ goalId, kind: 'buy', occurredOn: buy.occurredOn, amountMinor: share, accountId: buy.cashAccountId });
+    }
   }
   return events;
 }
