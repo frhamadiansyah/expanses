@@ -145,6 +145,11 @@ export function InsetGroup({
 }
 
 export interface InsetRowProps extends GroupChild {
+  /**
+   * Drawn as a child of the open drawer above it: a hairline down from the drawer's icon, turning into this row — the
+   * outline view's tree line — so the indent reads as whose row it is. `last` ends the line at this row.
+   */
+  branch?: 'mid' | 'last';
   /** A tinted circular icon: a 12 % wash of `colour`, with the glyph in `colour` itself. */
   icon?: ReactNode;
   iconColour?: string;
@@ -249,6 +254,7 @@ export function InsetRow({
   testId,
   position,
   className,
+  branch,
 }: InsetRowProps) {
   const points = chevron ?? Boolean(onClick ?? to);
   const plan = planRow({ icon: Boolean(icon), title: String(title ?? ''), chevron: points });
@@ -264,7 +270,7 @@ export function InsetRow({
         </RowIcon>
       )}
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-medium text-[var(--ph-ink)]">{title}</span>
+        <span className={cx('block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-ink)]', depth > 0 ? 'font-normal' : 'font-medium')}>{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}
       </span>
       {value !== undefined && value !== null && (
@@ -274,6 +280,14 @@ export function InsetRow({
     </>
   );
 
+  // The tree line: down the middle of the drawer's icon above, and across into this row at its middle.
+  const stemX = ROW_PAD_X + ROW_ICON / 2;
+  const treeLine = branch ? (
+    <>
+      <span aria-hidden className="pointer-events-none absolute top-0 w-px bg-[var(--ph-chevron)]" style={{ left: stemX, bottom: branch === 'last' ? '50%' : 0 }} />
+      <span aria-hidden className="pointer-events-none absolute top-1/2 h-px bg-[var(--ph-chevron)]" style={{ left: stemX, width: nestedPad(depth) - stemX - 6 }} />
+    </>
+  ) : null;
   const inner = (
     <span
       className="flex w-full items-center"
@@ -283,6 +297,7 @@ export function InsetRow({
         padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px ${ROW_PAD_Y}px ${nestedPad(depth)}px`,
       }}
     >
+      {treeLine}
       {body}
     </span>
   );

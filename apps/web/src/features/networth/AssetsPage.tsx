@@ -31,7 +31,7 @@ function KindIcon({ section, kind }: { section: string; kind: string }) {
  * `nested`: drawn inside its kind's open drawer, one step in and with no circle — the drawer above already wears it, and
  * the name then sits level with the kind's.
  */
-function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean }) {
+function Row({ row, baseCurrency, money, nested = false, branch }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean; branch?: 'mid' | 'last' }) {
   const icon = nested ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
   const depth = nested ? 1 : 0;
   // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
@@ -43,6 +43,7 @@ function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; base
         params={{ accountId: row.accountId }}
         icon={icon}
         depth={depth}
+        branch={branch}
         title={row.name}
         subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
@@ -60,6 +61,7 @@ function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; base
         search={{ person: row.person }}
         icon={icon}
         depth={depth}
+        branch={branch}
         title={row.name}
         subtitle={rowSubtitle(row)}
         value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -77,7 +79,8 @@ function Row({ row, baseCurrency, money, nested = false }: { row: AssetRow; base
       to={to}
       params={{ accountId: row.accountId }}
       icon={icon}
-        depth={depth}
+      depth={depth}
+      branch={branch}
       title={row.name}
       subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -120,11 +123,16 @@ function Group({ group, baseCurrency, money, opened = false }: { group: AssetGro
             under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'asset' : 'assets'}`}
             figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
             open={shown}
+            stem={shown && drawer.rows.length > 0}
             separator={index > 0}
             testId={`type-drawer-${key}`}
             onToggle={() => drawers.toggle(key)}
           />,
-          ...(shown ? drawer.rows.map((row) => <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested />) : []),
+          ...(shown
+            ? drawer.rows.map((row, at) => (
+                <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested branch={at === drawer.rows.length - 1 ? 'last' : 'mid'} />
+              ))
+            : []),
         ];
       })}
       {/* The same holdings read by stock and by broker: its last row, under the group's own total. */}
