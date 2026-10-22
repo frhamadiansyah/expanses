@@ -709,3 +709,34 @@ test('Select category ends in Manage categories, which opens the Categories page
   await expect(sheet).toHaveCount(0);
   await expect(page).toHaveURL(/\/categories$/);
 });
+
+test('a receipt from the title bar camera fills what is empty, says so, and Undo puts it back', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions/new');
+  const lines = ['SUPERMARKET MAWAR', '20/10/2026 14:22', 'Roti tawar 18.500', 'TOTAL 41.300', 'TUNAI 50.000'].map((text, i) => ({
+    text,
+    box: [0.1, 0.05 + i * 0.05, 0.8, 0.03],
+    height: 0.03,
+  }));
+  await page.evaluate((read) => {
+    window.__statementLines = [read];
+  }, lines);
+  // Typed first, so the receipt must leave it alone.
+  await page.getByLabel('Note').fill('Groceries run');
+
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+  await expect(page.getByRole('button', { name: 'Scan a receipt' })).toBeVisible();
+  await page.getByTestId('receipt-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+
+  await expect(page.getByTestId('receipt-filled')).toHaveText(/Filled from the receipt: amount, date\. Check them\.\s*Undo/);
+  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('41.300');
+  await expect(page.getByLabel('Note')).toHaveValue('Groceries run');
+  await expect(page.getByLabel('Date')).toHaveValue('2026-10-20');
+
+  await page.getByTestId('receipt-filled').getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('receipt-filled')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('Amount');
+  // The photo stays with the purchase.
+  await page.getByRole('button', { name: 'Add more details' }).click();
+  await expect(page.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+});
