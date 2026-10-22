@@ -715,7 +715,7 @@ test('a receipt from the title bar camera fills what is empty, says so, and Undo
   await page.goto('/transactions/new');
   const lines = ['SUPERMARKET MAWAR', '20/10/2026 14:22', 'Roti tawar 18.500', 'TOTAL 41.300', 'TUNAI 50.000'].map((text, i) => ({
     text,
-    box: [0.1, 0.05 + i * 0.05, 0.8, 0.03],
+    box: [0.1, 0.05 + i * 0.05, 0.8, 0.03] as [number, number, number, number],
     height: 0.03,
   }));
   await page.evaluate((read) => {
