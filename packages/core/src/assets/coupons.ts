@@ -45,3 +45,27 @@ export function dueCouponDates(o: { nextOn: string; perYear: CouponsPerYear; pay
   }
   return out;
 }
+
+/** The payment before `on`: 12 ÷ per-year months back, on the bond's pay day — the month's last day when it is shorter. */
+export function previousCouponOn(on: string, perYear: CouponsPerYear, payDay: number): string {
+  const [y, m] = on.split('-').map(Number) as [number, number];
+  const months = y * 12 + (m - 1) - 12 / perYear;
+  const year = Math.floor(months / 12);
+  const month = (months % 12) + 1;
+  const day = Math.min(payDay, daysIn(year, month));
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * Every payment of a bond's schedule from `from` to `to`, both included, oldest first — walked back from its next
+ * payment for the ones before it — and never past `maturesOn`. What the Dividends page reads a bond's coupons from.
+ */
+export function couponDatesBetween(o: { nextOn: string; perYear: CouponsPerYear; payDay: number; maturesOn: string | null; from: string; to: string }): string[] {
+  let start = o.nextOn;
+  while (start >= o.from) start = previousCouponOn(start, o.perYear, o.payDay);
+  const out: string[] = [];
+  for (let on = nextCouponOn(start, o.perYear, o.payDay); on <= o.to && (o.maturesOn === null || on <= o.maturesOn); on = nextCouponOn(on, o.perYear, o.payDay)) {
+    if (on >= o.from) out.push(on);
+  }
+  return out;
+}
