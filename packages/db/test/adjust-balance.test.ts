@@ -123,8 +123,21 @@ describe('moveMoneyIn', () => {
     const totals = await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30');
     expect(totals).toEqual([{ accountId: fees.id, amountBaseMinor: 1_500, transactions: 1 }]);
     expect((await listTransactions(database, ws, { accountId: card.id })).map((t) => t.description)).toEqual(['Top up']);
-    // Points read the whole charge once, under the fee's category.
-    expect((await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30')).map((line) => [line.categoryId, line.amountMinor])).toEqual([[fees.id, 501_500]]);
+    // Points read the whole charge once, under Top-ups — never under the fee's category, which earns nothing.
+    const topUps = (await listAccounts(database, ws)).find((a) => a.systemKey === 'miscellaneous.top_ups')!;
+    const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
+    expect(lines.map((line) => [line.categoryId, line.amountMinor, line.cardFee])).toEqual([[topUps.id, 501_500, false]]);
+  });
+
+  it('tops a wallet up from a card with no fee: a transfer, and its points read on the top-up', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const wallet = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
+    const card = await createCardAccount(database, ws, { name: 'BCA Card', subtype: 'credit_card', currency: 'IDR', last4: '1234' });
+    await moveMoneyIn(database, ws, { toId: wallet.id, fromId: card.id, amountMinor: 1_000_000, feeMinor: 0, occurredOn: '2026-09-30', description: 'Top up', feeDescription: 'Top-up fee' });
+    expect(await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30')).toEqual([]);
+    const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
+    expect(lines.map((line) => [line.amountMinor, line.cardFee])).toEqual([[1_000_000, false]]);
   });
 
   it('withdraws cash from a bank with an ATM fee', async () => {

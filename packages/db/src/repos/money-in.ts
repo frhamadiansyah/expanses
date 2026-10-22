@@ -4,7 +4,7 @@ import type { Database } from '../database';
 import { accounts } from '../schema';
 import { cards } from '../schema-cards';
 import { SPENDABLE_SUBTYPES } from './accounts';
-import { categoryIdsByKeyTx } from './categories';
+import { categoryIdsByKeyTx, ensureCategoryByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
 
 export class MoneyInError extends Error {
@@ -19,6 +19,13 @@ export class MoneyInError extends Error {
 
 /** The category a withdrawal's or a top-up's fee is spent under: the one a bank's other charges use. */
 export const MONEY_IN_FEE_KEY = 'miscellaneous.fees_charges';
+
+/**
+ * What a card's top-up of a wallet is, to its points: not a fee (Fees & charges never earns) but a charge of its own,
+ * whose MCC is set once on that category — 5999 or 6540, whatever the issuer prints. Made under Miscellaneous on first
+ * need. Nothing is ever filed under it: it only names the card's line.
+ */
+export const TOP_UP_KEY = { key: 'miscellaneous.top_ups', name: 'Top-ups' };
 
 export interface MoneyInInput {
   /** Cash for a withdrawal, a digital wallet for a top-up. */
@@ -85,17 +92,22 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
      * transaction: the wallet gets the amount, the card owes both, the fee is spending. The card's line names the fee's
      * category, so its points are read once on the whole charge, as the bank reads it.
      */
-    if (card && input.feeMinor > 0) {
-      const feeCategory = (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY];
-      if (!feeCategory) throw new MoneyInError('NOT_FOUND', 'This workspace has no Fees & charges category');
+    if (card) {
+      /*
+       * The card's line names Top-ups, so its points are read once on the whole charge, as the bank reads it — never
+       * under the fee's category, which a card's rules treat as a bank charge that earns nothing.
+       */
+      const topUps = await ensureCategoryByKeyTx(tx, ws, { ...TOP_UP_KEY, kind: 'expense', parentKey: 'miscellaneous' });
+      const feeCategory = input.feeMinor > 0 ? (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY] : undefined;
+      if (input.feeMinor > 0 && !feeCategory) throw new MoneyInError('NOT_FOUND', 'This workspace has no Fees & charges category');
       const transferId = await postTransactionTx(tx, ws, {
         occurredOn: input.occurredOn,
         description: input.description,
         cardId,
         lines: [
           { accountId: to.id, amountMinor: input.amountMinor, currency },
-          { accountId: from.id, amountMinor: -(input.amountMinor + input.feeMinor), currency, spendCategoryId: feeCategory },
-          { accountId: feeCategory, amountMinor: input.feeMinor, currency },
+          { accountId: from.id, amountMinor: -(input.amountMinor + input.feeMinor), currency, spendCategoryId: topUps },
+          ...(feeCategory ? [{ accountId: feeCategory, amountMinor: input.feeMinor, currency }] : []),
         ],
         ratesToBase,
       });
