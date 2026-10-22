@@ -1,7 +1,7 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Check, Shapes } from 'lucide-react';
+import { Check, ChevronRight, Shapes, Split } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -158,6 +158,8 @@ export function CategoryPicker({
   eventCategories,
   onPick,
   onClose,
+  onSplit,
+  splitRefusal = null,
 }: {
   /** The tab the form is on, which is the kind the sheet opens showing. */
   kind: 'expense' | 'income';
@@ -179,6 +181,14 @@ export function CategoryPicker({
   eventCategories?: readonly EventCategoryChoice[];
   onPick: (categoryId: string) => void;
   onClose: () => void;
+  /**
+   * Splitting the amount between several categories, offered as the list's first row while spending is shown: the
+   * one place a purchase's category is chosen is also where it is chosen several times. Left out where the form
+   * cannot carry a split (income, a captured draft, an edit of a shared purchase).
+   */
+  onSplit?: () => void;
+  /** Why a split cannot be taken now — With already names people — shown under the row, which is then greyed. */
+  splitRefusal?: string | null;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -295,6 +305,26 @@ export function CategoryPicker({
           </div>
         )}
 
+
+        {onSplit && showing === 'expense' && !search.trim() && (
+          <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1">
+            <button
+              type="button"
+              disabled={!!splitRefusal}
+              onClick={onSplit}
+              className="ph-focus flex min-h-11 w-full items-center gap-[10px] px-[10px] text-left disabled:opacity-50"
+            >
+              <RowGlyph>
+                <Split size={15} />
+              </RowGlyph>
+              <span className="min-w-0 flex-1 py-[6px]">
+                <span className="block text-[17px] leading-[22px] font-medium text-[var(--ph-tint)] md:text-[15px] md:leading-5">Split between categories</span>
+                {splitRefusal && <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{splitRefusal}</span>}
+              </span>
+              <ChevronRight size={17} aria-hidden className="shrink-0 text-[var(--ph-chevron)]" />
+            </button>
+          </div>
+        )}
 
         {groups.map((group) => (
           <div

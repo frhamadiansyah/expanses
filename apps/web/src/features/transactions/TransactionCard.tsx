@@ -23,7 +23,7 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -64,6 +64,8 @@ import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
+import { extraRowRefusal, extraRows, postingCurrency } from './tx-form';
+import { SplitSheet, splitSummary } from './SplitSheet';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -96,6 +98,8 @@ const CATEGORY_LATER = '\u0000category-later';
 
 /** What a draft cannot carry to the ledger: `confirmDraft` posts one category, paid by one account. */
 const DRAFT_OMITS: readonly ExtraRow[] = ['split', 'with'];
+/** Extras drawn on the card rather than under Add more details: Split on the Category row, Channel on Note's glyph. */
+const ON_CARD: readonly ExtraRow[] = ['split', 'channel'];
 
 // The Note and Date rows, and how they read a day, are shared with a shared event's card (`CardRows`).
 export { dayLabel, stepDay } from './CardRows';
@@ -278,7 +282,7 @@ function CardBody({
   const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled));
   const latest = useRef(draft);
   latest.current = draft;
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
   const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
@@ -552,6 +556,14 @@ function CardBody({
   // Rates are resolved no later than today, so the row asks for the rate under the date the save will store it.
   const rateDate = rateDateFor(draft);
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
+  /*
+   * Two of §4's extras live on the card itself now: a split is chosen in the category picker and read on the Category
+   * row, and online or offline is the Note's own glyph. `extraRows` still says whether each is offered here.
+   */
+  const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
+  const offersSplit = offered.includes('split');
+  const offersChannel = offered.includes('channel');
+  const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
@@ -933,21 +945,37 @@ function CardBody({
                 onClick={() => setSheet('to')}
               />
               )
+            ) : draft.splits.length > 0 ? (
+              // Split, the row reads the split and opens it; taking every line out of it gives the Category row back.
+              <FormRow
+                icon={
+                  <RowGlyph>
+                    <Split size={15} />
+                  </RowGlyph>
+                }
+                label="Split"
+                value={splitSummary(draft.splits, splitCurrency)}
+                onClick={() => setSheet('split')}
+              />
             ) : (
-              draft.splits.length === 0 && (
-                <FormRow
-                  lead="value"
-                  label="Category"
-                  placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
-                  icon={categoryLead}
-                  value={categoryName}
-                  caption=""
-                  onClick={() => setSheet('category')}
-                />
-              )
+              <FormRow
+                lead="value"
+                label="Category"
+                placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
+                icon={categoryLead}
+                value={categoryName}
+                caption=""
+                onClick={() => setSheet('category')}
+              />
             )}
 
-            <NoteRow value={draft.description} onChange={(description) => set({ description })} onFocus={() => setNoteFocused(true)} onBlur={() => setNoteFocused(false)} />
+            <NoteRow
+              value={draft.description}
+              onChange={(description) => set({ description })}
+              onFocus={() => setNoteFocused(true)}
+              onBlur={() => setNoteFocused(false)}
+              {...(offersChannel ? { channel: draft.channel || null, onChannel: (channel: 'online' | 'offline' | null) => set({ channel: channel ?? '' }) } : {})}
+            />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
             {offersAlreadyPaid && <SwitchRow label="Already paid off" checked={draft.alreadyPaid !== false} onChange={(alreadyPaid) => set({ alreadyPaid })} />}
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
@@ -1057,7 +1085,7 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={finish ? DRAFT_OMITS : undefined} opensSharedEvent={!finish} />
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD]} opensSharedEvent={!finish} />
         </section>
       )}
       {/*
@@ -1250,8 +1278,10 @@ function CardBody({
             set({ categoryId });
           }}
           onClose={() => setSheet(null)}
+          {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}
         />
       )}
+      {sheet === 'split' && <SplitSheet draft={draft} onChange={setDraft} accounts={accounts} currency={splitCurrency} onClose={() => setSheet(null)} />}
     </>
   );
 }

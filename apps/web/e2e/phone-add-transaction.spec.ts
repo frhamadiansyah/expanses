@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { todayIn } from './today';
+import { setChannel } from './split-row';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -348,13 +349,12 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
 
   const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a thumbed receipt') });
   await sheet.getByRole('button', { name: 'Close' }).click();
-  await more.getByRole('button', { name: 'Channel' }).click();
-  await page.getByRole('dialog', { name: 'Channel' }).getByRole('button', { name: 'Offline' }).click();
+  await setChannel(page, 'Offline');
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
 
   // Every row under here is reachable by a thumb, including the switch, which is the smallest of them.
-  for (const name of ['Event', 'Channel', 'Photos']) {
+  for (const name of ['Event', 'Photos']) {
     const box = (await more.getByRole('button', { name, exact: true }).boundingBox())!;
     expect(box.height, `the ${name} row is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
   }

@@ -91,7 +91,8 @@ export function MoreDetails({
    * Refused *before* Save on purpose: both rows were drawn, both could be set, and the combination then threw
    * the split's categories away and filed their money under one of them without a word.
    */
-  const splitRefusal = extraRowRefusal('split', draft);
+  // Only said here while the Split row is: drawn on the card instead, its refusal stands in the category picker.
+  const splitRefusal = rows.includes('split') ? extraRowRefusal('split', draft) : null;
   const withRefusal = extraRowRefusal('with', draft);
 
   return (
