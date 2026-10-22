@@ -1,4 +1,4 @@
-import { CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, tradeRateNeeds } from '@expanses/core';
+import { CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, statementCycleFor, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
@@ -18,6 +18,7 @@ import {
   recordMemberTransfer,
   recordTaggedTransfer,
   replaceTransaction,
+  getCardTerms,
   settledBeforeAppOf,
   saveMerchantMcc,
   splitBill,
@@ -656,7 +657,19 @@ function CardBody({
   const payingAccount = accounts.find((account) => account.id === draft.moneyId);
   const cardOpening = useOpenings(payingAccount?.subtype === 'credit_card' ? [payingAccount.id] : []);
   const cardStart = payingAccount?.subtype === 'credit_card' ? (cardOpening.data?.[payingAccount.id]?.occurredOn ?? payingAccount.createdAt.slice(0, 10)) : null;
-  const offersAlreadyPaid = draft.mode === 'expense' && cardStart !== null && !accountsLocked;
+  /*
+   * A saved purchase offers the tick only while its bill is open: once the statement has closed, the card's statement
+   * is where it is marked or taken back, and the form leaves it as it was. A new purchase always offers it, as
+   * recording an old one is what it is for. A card without a statement day has no bill to close.
+   */
+  const cardTerms = useQuery({
+    queryKey: ['card-terms', ws.workspaceId, payingAccount?.id ?? ''],
+    enabled: !!initial && cardStart !== null,
+    queryFn: async () => (await getCardTerms(database, ws, payingAccount!.id)) ?? null,
+  });
+  const statementDay = cardTerms.data?.statementDay ?? null;
+  const billOpen = !initial || !statementDay || statementCycleFor(draft.occurredOn, statementDay).end >= isoDate();
+  const offersAlreadyPaid = draft.mode === 'expense' && cardStart !== null && !accountsLocked && billOpen;
   // A saved purchase reads its answer back from whether a settlement stands beside it; a new one goes by the date.
   const savedSettled = useQuery({
     queryKey: ['settled-before-app', ws.workspaceId, initial?.id ?? ''],

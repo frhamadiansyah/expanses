@@ -168,3 +168,22 @@ test('on a desktop the section control and the section it switches share one col
   expect(Math.round(control!.x)).toBe(Math.round(section!.x));
   expect(Math.round(control!.width)).toBe(Math.round(section!.width));
 });
+
+test('a purchase on a closed statement is marked paid off from the statement, and taken back with its ✓', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
+  await openCardPage(page);
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+
+  const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
+  await hotel.getByRole('button', { name: 'Mark Hotel Mulia already paid off' }).click();
+  // One line, no balancing settlement drawn, and the Pay box gives way to the ✓.
+  await expect(page.getByTestId('statement-line')).toHaveCount(1);
+  await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
+  await expect(page.getByLabel('Pay Hotel Mulia')).toHaveCount(0);
+
+  await hotel.getByTestId('statement-paid-off').click();
+  await page.getByTestId('statement-not-paid-off').click();
+  await expect(page.getByLabel('Pay Hotel Mulia')).toBeEnabled();
+  await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
+});
