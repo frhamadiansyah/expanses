@@ -1522,6 +1522,8 @@ export function TransactionsPage() {
         <>
           {/* Room under the last row, so the bar never sits over a row that still has to be ticked. */}
           <div aria-hidden className="h-36" />
+          {/* Stood down while a sheet it opened is up: drawn above the page, it would sit over that sheet's rows. */}
+          {!pickingBook && !pickingEvent && (
           <SelectBar
             count={chosen.length}
             canRemove={chosen.some((row) => row.tx?.eventId)}
@@ -1532,6 +1534,7 @@ export function TransactionsPage() {
             onCancel={stopSelecting}
             {...(allBooks.length > 1 ? { onMove: () => setPickingBook(true) } : {})}
           />
+          )}
         </>
       )}
       {pickingBook && (
