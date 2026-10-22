@@ -97,6 +97,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
     }
   }
 
+  // An asset holding anything is not archived: it would leave the list with money still in it. A money account's own
+  // page has its rules for that, so only an asset's are said here.
+  const archivable = money || !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
   const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
     <div className={SCREEN}>
@@ -161,10 +164,11 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
 
       {value && (
         <>
-          <InsetGroup>
+          <InsetGroup footer={archivable ? undefined : 'Archiving is available once nothing is left in this asset.'}>
             <InsetRow
               title="Archive"
               chevron={false}
+              disabled={!archivable}
               onClick={() => void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))}
             />
             <InsetRow
