@@ -24,7 +24,7 @@ import { Sheet } from '../../app/Sheet';
 import { native } from '../../capture/native';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SwitchRow, TextRow } from '../../ui/native';
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
@@ -190,7 +190,9 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       const result = await recordStatementCheck(database, ws, withRows(prepared, rows), decisions);
       const month = statementMonth(prepared.period);
       setCheckedNote(
-        result.status === 'reconciled'
+        decisions.paidOff && prepared.startsAfterPeriod
+          ? `${month} statement recorded — already paid off`
+          : result.status === 'reconciled'
           ? `${month} statement checked — ✓ Reconciled`
           : result.status === 'differs'
             ? `${month} statement checked — differs by ${formatMinor(Math.abs(result.differenceMinor), currency)}`
@@ -283,13 +285,23 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   const missing = rows.filter((r) => r.outcome.status === 'missing');
   const gaps = missing.filter((r) => needsCategory(r) && r.categoryId === null).length;
   const asksOpen = rows.some((r) => r.outcome.status === 'ask' && decisions.ask[r.index] === undefined);
-  const ready = canRecordAll(rows, decisions.ask) && !prepared.needsPreviousBalance;
+  const ready = canRecordAll(rows, decisions.ask) && (!prepared.needsPreviousBalance || decisions.paidOff === true);
   const footer = (
     <div className="mt-[6px] mb-[18px]">
+      {/* Older than the card's start: its purchases can be recorded as already paid off, with no summary needed. */}
+      {prepared.startsAfterPeriod && (
+        <InsetGroup footer="Each purchase is spending in its own month, already paid; the card owes today what it owes now. Its payments are not recorded again.">
+          <SwitchRow
+            label="Already paid off"
+            checked={decisions.paidOff === true}
+            onChange={(paidOff) => setDecisions((d) => ({ ...d, paidOff, ...(paidOff ? { moveStart: false } : {}) }))}
+          />
+        </InsetGroup>
+      )}
       <Button data-testid="record-all" className="min-h-12 w-full text-[17px]" disabled={busy || !ready} onClick={() => void record()}>
         {missing.length === 0 ? 'Finish the check' : recordLabel(missing.length, gaps)}
       </Button>
-      {prepared.needsPreviousBalance && (
+      {prepared.needsPreviousBalance && !decisions.paidOff && (
         <p data-testid="needs-previous" className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">
           {NO_PREVIOUS_BALANCE_MESSAGE}
         </p>
@@ -367,7 +379,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         />
       )}
 
-      {guard && prepared.previousMinor !== null && (
+      {guard && prepared.previousMinor !== null && !decisions.paidOff && (
         <Sheet title="Before this card's start" onClose={() => setGuard(false)}>
           <p className="mb-[14px] text-[15px] text-[var(--ph-ink)]">
             Start this card on {dayYear(prepared.period.start)} with {formatMinor(prepared.previousMinor, currency)} owed?

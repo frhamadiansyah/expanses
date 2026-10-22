@@ -338,7 +338,8 @@ const beforeAppRef = (purchaseId: string) => `before-app:${purchaseId}`;
 async function cardLineOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<PostingLine | null> {
   for (const line of lines) {
     const [account] = await tx.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, line.accountId), eq(accounts.workspaceId, ws.workspaceId)));
-    if (account?.kind === 'liability' && account.subtype === 'credit_card' && line.amountMinor < 0) return line;
+    // A purchase takes the card down, money back brings it up: either is settled by its mirror.
+    if (account?.kind === 'liability' && account.subtype === 'credit_card' && line.amountMinor !== 0) return line;
   }
   return null;
 }
