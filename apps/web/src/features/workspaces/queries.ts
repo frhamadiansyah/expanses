@@ -1,5 +1,5 @@
 import { isoDate, monthOf, monthRange } from '@expanses/core';
-import { bookMoneyFor, bookNamesByCategory, bookNamesOf, listBooks, spentThisMonthByBook } from '@expanses/db';
+import { bookMoneyFor, bookNamesByCategory, bookNamesOf, listArchivedBooks, listBooks, spentThisMonthByBook } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -7,6 +7,12 @@ import { useApp } from '../../app/context';
 export function useBooks() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['books', ws.workspaceId], queryFn: () => listBooks(database, ws) });
+}
+
+/** The workspaces that have been archived, most recent first: the ones Settings can bring back. */
+export function useArchivedBooks() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['books-archived', ws.workspaceId], queryFn: () => listArchivedBooks(database, ws) });
 }
 
 /** The open workspace's own row: its base currency, and whether events count in its budget. */

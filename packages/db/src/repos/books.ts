@@ -1,5 +1,5 @@
 import { convertMinor, isoDate, isSupportedCurrency, perMonthMinor, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, settings } from '../schema';
@@ -72,6 +72,19 @@ export async function listBooks(database: Database, ws: WorkspaceContext): Promi
     .from(books)
     .where(and(eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)))
     .orderBy(asc(books.sortOrder), asc(books.createdAt));
+  return rows.map(toRow);
+}
+
+/**
+ * The workspaces that have been put away, the most recently archived first: what Settings offers to bring back.
+ * Archiving hides a workspace from every other list, so without this one it would be gone for good.
+ */
+export async function listArchivedBooks(database: Database, ws: WorkspaceContext): Promise<BookRow[]> {
+  const rows = await database.db
+    .select()
+    .from(books)
+    .where(and(eq(books.workspaceId, ws.workspaceId), isNotNull(books.archivedAt)))
+    .orderBy(desc(books.archivedAt), asc(books.createdAt));
   return rows.map(toRow);
 }
 
@@ -270,6 +283,21 @@ export async function archiveBook(database: Database, ws: WorkspaceContext, book
   await database.transaction((tx) =>
     withCapture(tx, { entity: 'book', id: bookId }, () =>
       tx.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
+    ),
+  );
+}
+
+/**
+ * Brings an archived workspace back, exactly as it was: archiving only ever set the date, so clearing it returns
+ * every category, cap and transaction it held. One that is not archived refuses, so a second press of Restore
+ * says so rather than writing nothing and looking as though it did something.
+ */
+export async function restoreBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
+  const book = await bookOf(database, ws, bookId);
+  if (!book.archivedAt) throw new BookError('NOT_ARCHIVED', 'That workspace is not archived');
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.update(books).set({ archivedAt: null }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
     ),
   );
 }
