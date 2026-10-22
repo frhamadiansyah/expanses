@@ -90,3 +90,13 @@ export function useCategoryWorkspaces() {
   });
   return (categoryAccountId: string) => (many ? (query.data?.[categoryAccountId]?.name ?? null) : null);
 }
+
+/** Each category's workspace id, by category id: what a transaction moved to another workspace is re-filed against. */
+export function useCategoryBooks() {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['category-books', ws.workspaceId],
+    queryFn: () => bookNamesByCategory(database, ws),
+    select: (data): Record<string, string> => Object.fromEntries(Object.entries(data).map(([id, book]) => [id, book.id])),
+  });
+}

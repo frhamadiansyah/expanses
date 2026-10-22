@@ -102,6 +102,11 @@ export interface PostTransactionInput {
    */
   settledBeforeApp?: boolean;
   /**
+   * On `replaceTransaction`: the correction moves the transaction to the workspace its categories are in. Without it a
+   * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
+   */
+  moveToBook?: boolean;
+  /**
    * Its place within its day, when moved there by hand (0067). A new posting leaves it null, so it lands on top of its
    * day. On `replaceTransaction`, undefined carries the original's while the date stays the same and clears it when the
    * date changes; a value (sync's apply) is written as given.
@@ -369,6 +374,11 @@ async function settlementOfTx(tx: Db, ws: WorkspaceContext, purchaseId: string):
   return row?.id ?? null;
 }
 
+/** Whether a purchase was recorded as already paid off: it has a settlement beside it. */
+export async function settledBeforeAppOf(database: Database, ws: WorkspaceContext, purchaseId: string): Promise<boolean> {
+  return (await settlementOfTx(database.db, ws, purchaseId)) !== null;
+}
+
 export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
   return database.transaction((tx) => postTransactionTx(tx, ws, input));
 }
@@ -461,10 +471,12 @@ export function replaceTransaction(
  * transaction, and the mutex is not reentrant). The replacement always gets a fresh id: `input.id` is dropped.
  */
 export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: string, withId: PostTransactionInput, door: LedgerDoor = {}): Promise<string> {
-  // An edit never posts a second settlement: the one a purchase paid off before the app has follows it below.
-  const { id: _ignored, settledBeforeApp: _settled, ...input } = withId;
+  /*
+   * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
+   * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
+   */
+  const { id: _ignored, settledBeforeApp: settle, moveToBook, ...input } = withId;
   void _ignored;
-  void _settled;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [original] = await tx
@@ -504,7 +516,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
             .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, lineIds)))
         : [];
       const replacementBook = await bookOfCategories(tx, lineAccounts);
-      if (replacementBook && replacementBook !== filed.bookId) {
+      if (replacementBook && replacementBook !== filed.bookId && !moveToBook) {
         throw new LedgerError('OTHER_BOOK', 'That category belongs to another workspace. A transaction stays in the workspace it was filed in.');
       }
     }
@@ -589,11 +601,12 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // A purchase paid off before the app keeps its settlement level with it: the edited figure, day and card — or, no
   // longer on a credit card, none at all.
   const settlement = await settlementOfTx(tx, ws, id);
-  if (settlement) {
+  if (settlement && settle !== false) {
     const next = await settlementInputOf(tx, ws, replacement, input);
     if (next) await replaceTransactionTx(tx, ws, settlement, next);
     else await voidTransactionTx(tx, ws, settlement);
-  }
+  } else if (settlement) await voidTransactionTx(tx, ws, settlement);
+  else if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
   return replacement;
 }
 

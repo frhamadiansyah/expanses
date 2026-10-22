@@ -18,6 +18,7 @@ import {
   recordMemberTransfer,
   recordTaggedTransfer,
   replaceTransaction,
+  settledBeforeAppOf,
   saveMerchantMcc,
   splitBill,
   type TransactionView,
@@ -67,6 +68,8 @@ import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-r
 import { extraRowRefusal, extraRows, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { usePhotoAttach } from './PhotosSheet';
+import { draftIn } from './move-workspace';
+import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
@@ -317,7 +320,14 @@ function CardBody({
     setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...ids] }));
     void readReceiptFrom(files);
   });
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move'>(null);
+  /*
+   * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
+   * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.
+   */
+  const [moveTo, setMoveTo] = useState<string | null>(null);
+  const allBooks = useBooks().data ?? [];
+  const categoryBooks = useCategoryBooks().data ?? {};
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
   const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
@@ -448,6 +458,8 @@ function CardBody({
   // Until both are read, an edit does not know which way it saves: From, To and Save wait (review round 1).
   const transferUnknown = !!initial && (!savedTransferQuery.isFetched || netWorthGroup.isPending);
   const accountsLocked = !!savedTransfer || transferUnknown;
+  // An expense or income, saved, can move to another workspace from its Workspace row; a transfer belongs to none.
+  const canMove = !!initial && !finish && !accountsLocked && (draft.mode === 'expense' || draft.mode === 'income') && allBooks.length > 1;
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -545,7 +557,13 @@ function CardBody({
         if (post.kind === 'split') posted = (await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice })).transactionId;
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (initial) {
-          const replaced = await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
+          const replaced = await replaceTransaction(database, ws, initial.id, {
+            ...post.input,
+            ratesToBase,
+            setAside: setAside.choice,
+            ...(moveTo ? { moveToBook: true } : {}),
+            ...(offersAlreadyPaid && savedSettled.isSuccess ? { settledBeforeApp: paidOff } : {}),
+          });
           /*
            * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
            * workspace and becomes this person's own expense on the event, keeping its card, MCC, photos and points.
@@ -608,14 +626,20 @@ function CardBody({
   /*
    * A credit card purchase can be recorded as already paid off: the spending it was, with a settlement beside it so
    * what the card owes today stays as it is. The card's icon on Paid with says so with a tick and is what changes it.
-   * Off by default; on by itself for a purchase dated before the card started in the app, which it nearly always is —
-   * until the icon is tapped, after which the owner's answer stands whatever the date.
+   * Off by default for every date; only a tap on the icon ticks it. A saved one reads back what it was saved as.
    */
   const payingAccount = accounts.find((account) => account.id === draft.moneyId);
   const cardOpening = useOpenings(payingAccount?.subtype === 'credit_card' ? [payingAccount.id] : []);
   const cardStart = payingAccount?.subtype === 'credit_card' ? (cardOpening.data?.[payingAccount.id]?.occurredOn ?? payingAccount.createdAt.slice(0, 10)) : null;
-  const offersAlreadyPaid = !initial && draft.mode === 'expense' && cardStart !== null;
-  const paidOff = offersAlreadyPaid && (draft.alreadyPaid ?? draft.occurredOn < cardStart!);
+  const offersAlreadyPaid = draft.mode === 'expense' && cardStart !== null && !accountsLocked;
+  // A saved purchase reads its answer back from whether a settlement stands beside it; a new one goes by the date.
+  const savedSettled = useQuery({
+    queryKey: ['settled-before-app', ws.workspaceId, initial?.id ?? ''],
+    enabled: !!initial,
+    queryFn: () => settledBeforeAppOf(database, ws, initial!.id),
+  });
+  // Never ticked by itself, whatever the date: the owner says so (asked 22 Oct).
+  const paidOff = offersAlreadyPaid && (draft.alreadyPaid ?? (initial ? savedSettled.data === true : false));
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -928,10 +952,11 @@ function CardBody({
                 }
                 label="Workspace"
                 name="Workspace for this transaction"
-                value={openBook?.name ?? ''}
-                chevron={!initial}
-                disabled={!!initial}
-                onClick={() => setSheet('workspace')}
+                value={(moveTo ? allBooks.find((book) => book.id === moveTo)?.name : openBook?.name) ?? ''}
+                caption={moveTo ? 'Moving to' : 'Workspace'}
+                chevron={!initial || canMove}
+                disabled={!!initial && !canMove}
+                onClick={() => setSheet(initial ? 'move' : 'workspace')}
               />
             )}
             {asking === 'money' ? (
@@ -1391,6 +1416,21 @@ function CardBody({
           }}
           onClose={() => setSheet(null)}
           {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}
+          {...(moveTo ? { bookId: moveTo } : {})}
+        />
+      )}
+      {sheet === 'move' && (
+        <ChoiceSheet
+          title="Move to workspace"
+          value={moveTo ?? ws.bookId ?? ''}
+          groups={[{ choices: allBooks.map((book) => ({ value: book.id, label: book.name, glyph: <Home size={16} /> })) }]}
+          footer="Its category is matched in that workspace; the card or account, amount and date stay as they are."
+          onPick={(bookId) => {
+            const { draft: next } = draftIn(latest.current, bookId, accounts, categoryBooks);
+            setDraft(next);
+            setMoveTo(bookId === ws.bookId ? null : bookId);
+          }}
+          onClose={() => setSheet(null)}
         />
       )}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={setDraft} accounts={accounts} currency={splitCurrency} onClose={() => setSheet(null)} />}
