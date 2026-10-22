@@ -104,7 +104,8 @@ export async function addTransfer(
   await form.getByLabel('Note').fill(tx.note ?? 'Transfer');
   if (tx.goal) await chooseGoal(form, tx.goal);
   if (tx.receivedAmount) await form.getByLabel(/^Received amount/).fill(tx.receivedAmount);
-  if (tx.fee) await form.getByLabel('Fee', { exact: true }).fill(tx.fee);
+  // The fee is the Amount row's second figure on a transfer within one currency.
+  if (tx.fee) await form.getByLabel(/^Fee in /).fill(tx.fee);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }

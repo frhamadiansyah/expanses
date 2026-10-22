@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
 import { expectArchiveNote, goalMenu, openGoalForm } from './goals';
-import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
 
 /*
  * The combination walk end to end (Task 14, step 2). Each journey is run by `set-aside-combinations.spec.ts` on the
@@ -189,7 +189,7 @@ export const JOURNEYS: Journey[] = [
       await addMoneyAccount(page, 'Wise USD', 'bank', '10', 'USD', '16000');
       const form = await openTransfer(page, 'Jenius', 'Wise USD (USD)');
       await typeAmount(page, form, '20000000');
-      await form.getByLabel(/^Received amount/).pressSequentially('1234.65');
+      await typeSecondFigure(page, form, /^Received amount/, '1234.65');
       await expect(form.getByText(/15\.000\.000 more than is free/)).toBeVisible();
       await form.getByRole('button', { name: 'Take from Emergency fund' }).click();
       await form.getByRole('button', { name: 'Move the promise to Wise USD' }).click();

@@ -373,7 +373,7 @@ export function chargedInNeeded(draft: FormDraft, accounts: readonly AccountRow[
 
 /** One money field of the amount row: what it is called, what is in it, and the currency it is read in. */
 export interface MoneyFieldSpec {
-  which: 'amount' | 'charged' | 'received';
+  which: 'amount' | 'charged' | 'received' | 'fee';
   label: string;
   value: string;
   /** Never empty: the workspace's own currency stands in until an account is chosen. */

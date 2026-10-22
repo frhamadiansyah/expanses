@@ -376,8 +376,9 @@ test('a transfer into a USD account asks for the received amount, and will not s
   await expect(form.getByLabel(/^Received amount/)).toHaveCount(0);
   await chooseTo(form, 'Wise USD (USD)');
   const received = form.getByLabel('Received amount (USD)');
+  // Beside the amount on its row, as a purchase's "Charged in" is; Save refuses until it is typed.
   await expect(received).toBeVisible();
-  await expect(received).toHaveAttribute('required', '');
+  await expect(received).toHaveAttribute('placeholder', 'Received');
   await form.getByRole('button', { name: 'Cancel' }).click();
 
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Wise USD (USD)', amount: '1600000', receivedAmount: '100', note: 'To Wise' });
@@ -1638,7 +1639,9 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await expect(edit.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
-  await expect(edit.getByLabel('Fee', { exact: true })).toHaveValue('10000');
+  await expect(edit.getByLabel(/^Fee in /)).toHaveValue('10000');
+  // Its category is under Add more details.
+  await edit.getByRole('button', { name: 'Add more details' }).click();
   await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
   await edit.getByRole('button', { name: 'Cancel' }).click();
 

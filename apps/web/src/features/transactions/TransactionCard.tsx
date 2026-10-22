@@ -623,6 +623,23 @@ function CardBody({
   const offersFee = draft.mode === 'transfer' && !draft.goalId && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
+  /*
+   * A transfer's second figure, on the Amount row beside what left (option A): what arrived, between two currencies —
+   * required, in the To account's — or, within one, its fee. The fee's category is under Add more details.
+   */
+  const transferSecond =
+    draft.mode !== 'transfer'
+      ? null
+      : received
+        ? { field: received, code: received.currency, placeholder: 'Received', onChange: (toAmount: string) => set({ toAmount }) }
+        : offersFee
+          ? {
+              field: { which: 'fee' as const, label: `Fee in ${feeCurrency}`, value: draft.fee, currency: feeCurrency },
+              code: 'FEE',
+              placeholder: 'Fee',
+              onChange: (fee: string) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory }),
+            }
+          : null;
   // Photos live on the Amount row's camera for a purchase, new or saved: its receipt. Income, a transfer and a buy or
   // sell keep them under Add more details.
   const photosOnAmount = draft.mode === 'expense' && offered.includes('photos');
@@ -1017,51 +1034,8 @@ function CardBody({
             </div>
             )}
 
-            <AmountRow
-              draft={draft}
-              accounts={accounts}
-              set={set}
-              unsure={finish?.amountUnsure}
-              selectOnOpen={!!duplicateOf}
-              noRefund={!!finish}
-              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
-            />
-            {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
-            {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
-            {/*
-              A transfer's fee — a top-up paid by card, Rp 10.000 on Rp 1.000.000: charged with it in one line, filed as
-              spending under its own category. Within one currency, and not on a transfer for a goal.
-            */}
-            {offersFee && (
-              <>
-                <MoneyFieldRow
-                  currency={feeCurrency}
-                  flag={currencyFlag(feeCurrency)}
-                  label="Fee"
-                  caption="Fee"
-                  placeholder="Fee"
-                  value={draft.fee}
-                  onChange={(fee) => set({ fee, feeCategoryId: draft.feeCategoryId || defaultFeeCategory })}
-                />
-                {draft.fee.trim() !== '' && (
-                  <FormRow
-                    lead="value"
-                    icon={
-                      <RowGlyph>
-                        <Shapes size={15} />
-                      </RowGlyph>
-                    }
-                    label="Fee category"
-                    placeholder="Fee category"
-                    value={byId.get(draft.feeCategoryId)?.name ?? ''}
-                    caption="Fee category"
-                    onClick={() => setSheet('feeCategory')}
-                  />
-                )}
-              </>
-            )}
-
-            {draft.mode === 'transfer' ? (
+            {/* A transfer reads From, To, then how much: the two places first, as a statement line does. */}
+            {draft.mode === 'transfer' && (
               /*
                 The hint is the To row's own second line rather than the group's: it is about where this money may
                 land, and a fund bought by transfer is the one mistake this row exists to head off.
@@ -1084,7 +1058,21 @@ function CardBody({
                 onClick={() => setSheet('to')}
               />
               )
-            ) : draft.splits.length > 0 ? (
+            )}
+            <AmountRow
+              draft={draft}
+              accounts={accounts}
+              set={set}
+              unsure={finish?.amountUnsure}
+              selectOnOpen={!!duplicateOf}
+              noRefund={!!finish}
+              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
+              {...(transferSecond ? { second: transferSecond } : {})}
+            />
+            {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
+            {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
+
+            {draft.mode === 'transfer' ? null : draft.splits.length > 0 ? (
               // Split, the row reads the split and opens it; taking every line out of it gives the Category row back.
               <FormRow
                 icon={
@@ -1185,7 +1173,7 @@ function CardBody({
         settle in different currencies, because that is the only time the figure that lands is not the figure
         that left; `exchangeLines` reads it in the To account's own currency, which is what the label names.
       */}
-      {draft.mode === 'transfer' && (crossCurrency || (!initial && goals.length > 0)) && (
+      {draft.mode === 'transfer' && !initial && goals.length > 0 && (
         <FormRows>
           {!initial && goals.length > 0 && (
             <FormRow
@@ -1201,9 +1189,7 @@ function CardBody({
               onClick={() => setSheet('goal')}
             />
           )}
-          {received && (
-            <InputRow label={received.label} value={received.value} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
-          )}
+
         </FormRows>
       )}
 
@@ -1236,6 +1222,23 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
+          {offersFee && draft.fee.trim() !== '' && (
+            <FormRows>
+              <FormRow
+                lead="value"
+                icon={
+                  <RowGlyph>
+                    <Shapes size={15} />
+                  </RowGlyph>
+                }
+                label="Fee category"
+                placeholder="Fee category"
+                value={byId.get(draft.feeCategoryId)?.name ?? ''}
+                caption="Fee category"
+                onClick={() => setSheet('feeCategory')}
+              />
+            </FormRows>
+          )}
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
