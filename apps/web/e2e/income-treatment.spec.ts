@@ -3,6 +3,7 @@ import { openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
+import { openTradeForm, openTradeRow, recordTrade } from './trades';
 
 /** Trades recorded by these tests are dated this year, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -37,15 +38,14 @@ async function addBond(page: Page, name: string, cost: string) {
 
 /** A dividend of Rp 1.000.000 with Rp 100.000 withheld, paid into the bank. */
 async function recordDividend(page: Page) {
-  await page.goto('/net-worth/trades');
-  await page.getByLabel('What happened').selectOption('income');
-  await page.getByLabel('Holding').selectOption({ label: 'BBRI · Stockbit' });
-  await page.getByLabel('Date').fill(`${YEAR}-06-10`);
-  await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Amount before tax (IDR)').fill('1000000');
-  await page.getByLabel('Tax withheld (IDR)').fill('100000');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText('Recorded.')).toBeVisible();
+  // Buy & sell's Income asks which holding, then opens the full form on that holding's page.
+  const form = await openTradeForm(page, 'income', 'BBRI');
+  await expect(form.getByLabel('What happened')).toHaveValue('income');
+  await form.getByLabel('Date').fill(`${YEAR}-06-10`);
+  await form.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
+  await form.getByLabel('Amount before tax (IDR)').fill('1000000');
+  await form.getByLabel('Tax withheld (IDR)').fill('100000');
+  await recordTrade(page);
 }
 
 async function startReport(page: Page) {
@@ -81,10 +81,11 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
 
   await recordDividend(page);
 
-  // Rp 400.000 of the Rp 1.000.000 went back in, and the SBN is where it went.
-  await page.getByLabel(`Reinvested from ${YEAR}-06-10`).fill('400000');
-  await page.getByLabel(`Reinvested into for ${YEAR}-06-10`).selectOption({ label: 'SBN ORI025' });
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // Rp 400.000 of the Rp 1.000.000 went back in, and the SBN is where it went: said on the dividend's own line.
+  const dividend = await openTradeRow(page, /Dividend BBRI/);
+  await dividend.getByLabel(`Reinvested from ${YEAR}-06-10`).fill('400000');
+  await dividend.getByLabel(`Reinvested into for ${YEAR}-06-10`).selectOption({ label: 'SBN ORI025' });
+  await dividend.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText(/Recorded as reinvested/)).toBeVisible();
 
   await startReport(page);

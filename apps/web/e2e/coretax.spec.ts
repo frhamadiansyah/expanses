@@ -3,6 +3,7 @@ import { openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
+import { openTradeForm, recordTrade } from './trades';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -117,12 +118,11 @@ test('freezing keeps the figures when a trade is backdated into the year afterwa
   await expect(page.getByText('Frozen. The rows below are the copy; the ledger can move without touching them.')).toBeVisible();
 
   // A purchase dated back into the frozen year.
-  await page.goto('/net-worth/trades');
-  await page.getByLabel('Date').fill(`${YEAR}-08-02`);
-  await page.getByLabel('Units, shares or grams').fill('5');
-  await page.getByLabel('What it cost, before fees (IDR)').fill('9300000');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/Recorded\./)).toBeVisible();
+  const form = await openTradeForm(page, 'buy', 'Antam gold bars');
+  await form.getByLabel('Date').fill(`${YEAR}-08-02`);
+  await form.getByLabel('Units, shares or grams').fill('5');
+  await form.getByLabel('What it cost, before fees (IDR)').fill('9300000');
+  await recordTrade(page);
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));

@@ -5,6 +5,7 @@ import { editGoal, openGoalForm, openWorking, workingSettled } from './goals';
 import { openDrawers } from './drawers';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
+import { openTradeForm, openTradeRow, recordTrade } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -24,8 +25,9 @@ async function addGold(page: Page) {
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
-  // A price, so a goal funded with gold is worth something today.
-  await page.getByRole('button', { name: 'Update prices' }).click();
+  // A price, so a goal funded with gold is worth something today: Update prices is behind the corner's Prices menu.
+  await page.getByRole('button', { name: /^Prices/ }).click();
+  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
   await page.getByLabel(/Antam gold bars/).fill('1800000');
   await page.getByRole('button', { name: 'Save prices' }).click();
   await expect(page.getByText(/18\.000\.000/).first()).toBeVisible();
@@ -45,12 +47,11 @@ async function addGoal(page: Page, kind: string, name: string, amount: string, d
 }
 
 async function buyGold(page: Page, grams: string, cost: string, goalName: string) {
-  await page.goto('/net-worth/trades');
-  await page.getByLabel('Units, shares or grams').fill(grams);
-  await page.getByLabel('What it cost, before fees (IDR)').fill(cost);
-  await page.getByLabel('For goal').selectOption({ label: goalName });
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/Recorded\./)).toBeVisible();
+  const form = await openTradeForm(page, 'buy', 'Antam gold bars');
+  await form.getByLabel('Units, shares or grams').fill(grams);
+  await form.getByLabel('What it cost, before fees (IDR)').fill(cost);
+  await form.getByLabel('For goal').selectOption({ label: goalName });
+  await recordTrade(page);
 }
 
 test('a goal funded by a tagged gold buy shows progress and what it needs each month', async ({ page }) => {
@@ -94,9 +95,10 @@ test('retagging a buy moves it between goals without touching the ledger', async
   await page.goto('/net-worth/assets');
   const valueBefore = await page.getByText(/21\.600\.000/).first().textContent();
 
-  await page.goto('/net-worth/trades');
-  await page.locator('select[aria-label="Goal for this buy"]').first().selectOption({ label: 'University for Aisyah' });
-  await expect(page.getByText(/University for Aisyah/).first()).toBeVisible();
+  // The buy's line on Buy & sell opens it, and its goal is changed there.
+  const bought = await openTradeRow(page, 'Bought Antam gold bars', 'Hajj for two');
+  await bought.getByLabel('Goal for this buy').selectOption({ label: 'University for Aisyah' });
+  await expect(page.getByTestId('trade-notice')).toContainText('University for Aisyah');
 
   await page.goto('/goals');
   const education = goalRow(page, 'University for Aisyah');
@@ -112,12 +114,11 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
   await addGoal(page, 'hajj', 'Hajj for two', '50000000', '2028-06-30');
   await buyGold(page, '2', '3600000', 'Hajj for two');
 
-  await page.goto('/net-worth/trades');
-  await page.getByLabel('What happened').selectOption('sell');
-  await page.getByLabel('Units, shares or grams').fill('5');
-  await page.getByLabel('Proceeds, before fees (IDR)').fill('9500000');
-  await page.getByLabel('Sell from goal').selectOption({ label: 'Hajj for two' });
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  const form = await openTradeForm(page, 'sell', 'Antam gold bars');
+  await form.getByLabel('Units, shares or grams').fill('5');
+  await form.getByLabel('Proceeds, before fees (IDR)').fill('9500000');
+  await form.getByLabel('Sell from goal').selectOption({ label: 'Hajj for two' });
+  await form.getByRole('button', { name: 'Record', exact: true }).click();
 
   await expect(page.getByText(/Hajj for two holds/)).toBeVisible();
 });

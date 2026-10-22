@@ -5,6 +5,7 @@ import { addForm, choosePayment, saveButton } from './add-transaction';
 import { openNewAsset, fillDay } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
+import { openTradeForm, recordTrade, tradeForm } from './trades';
 
 /*
  * Every door that pays money out of an account with money set aside, on the laptop's figures: Jenius holds
@@ -329,7 +330,8 @@ async function addGold(page: Page) {
 }
 
 async function buyGold(page: Page, grams: string, cost: string, goal: string | null) {
-  await page.goto('/net-worth/trades');
+  // Buy & sell's Buy opens the gold's own sheet on its page; More options is the full form, with the goal in it.
+  await openTradeForm(page, 'buy', 'Antam gold bars');
   await page.getByLabel('Money account').selectOption({ label: 'Jenius' });
   await page.getByLabel('Units, shares or grams').pressSequentially(grams);
   await page.getByLabel(/What it cost, before fees/).pressSequentially(cost);
@@ -345,7 +347,8 @@ test('adding a holding owned before never asks; buying gold from Jenius does', a
   await expect(record).toBeDisabled();
   await borrowFromEmergencyFund(page.locator('body'));
   await record.click();
-  await expect(page.getByText(/^Recorded/)).toBeVisible();
+  // The sheet closes on a saved trade only.
+  await expect(tradeForm(page)).toHaveCount(0);
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
 });
@@ -360,8 +363,7 @@ test('gold bought for Umrah uses Umrah\'s own money first, and borrows only the 
   await expect(page.getByRole('button', { name: 'Take from Umrah 2027' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
   await expect(page.getByRole('button', { name: /this is what I saved for/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/^Recorded/)).toBeVisible();
+  await recordTrade(page);
 
   await expectShort(page, 'Emergency fund', /short by Rp.500\.000/i);
 });

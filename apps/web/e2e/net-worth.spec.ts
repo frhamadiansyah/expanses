@@ -48,10 +48,10 @@ test('the two pages are one, and what is left of them is all here', async ({ pag
   await expect(page.getByRole('heading', { name: 'This month' })).toHaveCount(0);
   await expect(page.getByText('Credit cards owed')).toHaveCount(0);
 
-  // What waits is a screen of its own behind a corner glyph, and the glyph is not this page's heading either: the
-  // page is about a figure, and the corner carries the count rather than the list.
+  // What waits is not this page's subject: no heading for it, and no corner glyph either since the bell left the
+  // corner (the attention screen keeps its own address).
   await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Needs attention' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Needs attention/ })).toHaveCount(0);
 
   // What the Overview had, with the ratios and Buy & sell one tap away in the corner, and Assets and Liabilities on
   // their total cards.
@@ -370,7 +370,9 @@ test('moves net worth by the price difference only', async ({ page }) => {
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
   await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Update prices' }).click();
+  // Update prices is behind the corner's Prices menu now.
+  await page.getByRole('button', { name: /^Prices/ }).click();
+  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
   await page.getByLabel(/Antam gold bars/).fill('1900000');
   await page.getByRole('button', { name: 'Save prices' }).click();
   // 10 g at Rp 1.900.000 on the assets list first, so a failure points at the right step.
