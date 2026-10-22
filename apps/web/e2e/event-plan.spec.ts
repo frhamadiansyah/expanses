@@ -433,7 +433,9 @@ test('the figures agree with each other', async ({ page }) => {
    * spending against one category's plan — "Against the plan" has no rows at all now, because a bar drawn over a
    * category nobody planned would be measuring spending against a figure nobody set.
    */
-  await expect(page.getByTestId('event-detail-sheet')).toContainText(/Rp\s?8\.100\.000\s*of\s*Rp\s?14\.700\.000/);
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
+  await expect(page.getByTestId('event-detail-sheet')).toContainText(/Rp\s?8\.100\.000/);
+  await expect(page.getByTestId('event-detail-sheet')).not.toContainText('14.700.000');
 
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
   await expect(page.getByTestId('event-detail-sheet')).toHaveCount(0);

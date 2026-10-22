@@ -189,6 +189,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [error, setError] = useState<unknown>(null);
   /* A category row tapped on Where it went: the history below shows only its payments, until it is tapped again. */
   const [picked, setPicked] = useState<string | null>(null);
+  /* The rows under the ring, folded away until the chart is tapped — Cashflow's ring does the same. */
+  const [showRows, setShowRows] = useState(false);
   const [editing, setEditing] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
   // Edit opens from the gear at the top, and its form sits at the foot of the page: taken there once, as it opens.
@@ -295,6 +297,35 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     </div>
   );
 
+  /*
+   * The chart is the switch for its own rows, as Cashflow's is: one tap shows the categories, another folds them and
+   * drops any category picked from them. A div rather than a button: the deck inside it scrolls sideways, which a
+   * button's content will not do on iOS. Against the plan there are no rows, so there the tap does nothing.
+   */
+  const fold = () => {
+    if (showRows) setPicked(null);
+    setShowRows(!showRows);
+  };
+  const chartFrame = (content: ReactNode) => (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onPlan ? undefined : fold}
+      onKeyDown={(event) => {
+        if (!onPlan && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          fold();
+        }
+      }}
+      aria-expanded={showRows}
+      aria-label={showRows ? 'Hide categories' : 'See all categories'}
+      data-testid={showRows ? 'hide-categories' : 'see-categories'}
+      className="block w-full cursor-pointer"
+    >
+      {content}
+    </div>
+  );
+
   // Oldest day last, like Cashflow; each day a card of its own.
   // The history as the list's own rows, so an event draws transactions the way every other screen does.
   const historyRows = new Map(buildRows(history.data ?? [], [], accounts, []).map((row) => [row.id, row]));
@@ -383,7 +414,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
             <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">Nothing spent on it yet. Plan what to buy below, or record the first payment.</p>
           ) : hasPlan ? (
-            <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']}>
+            <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']} frame={chartFrame}>
               {donut}
               <div>
                 <BudgetGauge
@@ -456,7 +487,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
               </div>
             </Deck>
           ) : (
-            donut
+            chartFrame(donut)
           )}
 
           {/*
@@ -464,7 +495,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
            * no rows: a category is planned or it is not, and a bar drawn against a category that planned nothing
            * would be measuring spending against a figure nobody set. The plan's own rows are on the plan screen.
            */}
-          {!onPlan && rows.length > 0 && (
+          {!onPlan && showRows && rows.length > 0 && (
             <div className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]" data-testid="event-detail-sheet">
               {rows.map((row) => (
                 <button
@@ -487,22 +518,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                     wholeMinor={whole}
                     currency={ws.baseCurrency}
                     chevron={false}
-                    // A planned row is read against its own plan; an unplanned one has nothing to be read against.
-                    figure={
-                      row.planned ? (
-                        <span className="shrink-0 text-[13px]">
-                          <Money minor={Math.max(0, row.actualMinor)} currency={ws.baseCurrency} className="font-semibold" />{' '}
-                          <span className="text-[var(--ph-ink-3)]">of</span>{' '}
-                          <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="text-[var(--ph-ink-3)]" />
-                        </span>
-                      ) : undefined
-                    }
                   />
-                  <span className="mt-1 ml-[22px] flex items-center gap-2 text-[12.5px] text-[var(--ph-ink-3)]">
-                    {/* Quiet, never amber: a category nobody planned is a fact about the plan, not a warning. */}
-                    {hasPlan && !row.planned && <span className="font-semibold text-[var(--ph-ink-3)]">no items</span>}
-                    {row.subline}
-                  </span>
                 </button>
               ))}
             </div>

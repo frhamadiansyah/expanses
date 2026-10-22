@@ -383,6 +383,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   // A segmented control: the tabs are one radio group now, so the three of them are radios and not buttons.
   await expect(tabs.getByRole('radio')).toHaveText(['All', 'Personal', 'Business']);
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
   // The history is owner-wide on purpose — one trip is paid for out of several workspaces — but the category
   // gesture is not: the sheet it opens offers the *open* workspace's categories, so Personal's dinner is not

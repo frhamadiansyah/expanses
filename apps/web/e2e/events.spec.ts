@@ -67,6 +67,7 @@ test('a category on Where it went filters the history to its own payments, and S
   const history = page.getByTestId('event-history');
   await expect(history).toHaveCount(2);
 
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
   await page.getByTestId('event-category-row').filter({ hasText: 'Groceries' }).click();
   await expect(history).toHaveCount(1);
   await expect(history).toContainText('Parkir Braga');

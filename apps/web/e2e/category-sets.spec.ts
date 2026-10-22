@@ -150,6 +150,7 @@ test('an event records its spending in its own categories, from its own page', a
 
   // Tagged to the event as it was written, so the total stands without any hunting afterwards.
   await expect(page.getByTestId('event-total')).toContainText('7.500.000');
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Flooring & Tiles');
 });
 

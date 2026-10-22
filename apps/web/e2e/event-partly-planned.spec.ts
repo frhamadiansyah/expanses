@@ -56,9 +56,14 @@ test('planning one category never calls the rest of the trip over plan', async (
    */
   await expectFigures(sheet, { 'Difference so far': '−Rp 100.000', 'Not planned': 'Rp 9.200.000', 'Total spent': 'Rp 12.600.000' });
 
-  // Where it went keeps every category, and says which ones were never planned.
+  // Where it went keeps every category, folded until the chart is tapped.
   await sheet.getByRole('button', { name: 'Where it went' }).click();
-  await expect(page.getByTestId('event-detail-sheet')).toContainText('no items');
+  // The deck slides back to the ring; the tap that opens its rows lands once it is there.
+  await expect(async () => {
+    const see = sheet.getByTestId('see-categories');
+    if ((await see.count()) > 0) await see.click();
+    await expect(page.getByTestId('event-detail-sheet')).toBeVisible({ timeout: 500 });
+  }).toPass();
   await expect(page.getByTestId('event-detail-sheet')).toContainText('9.200.000');
   // The Plan card holds only what was planned.
   await showPlanCard(page);
