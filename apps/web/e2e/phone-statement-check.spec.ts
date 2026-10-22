@@ -141,3 +141,34 @@ test('a foreign purchase missing from cicis shows the amount in its own currency
   await expect(missing.filter({ hasText: 'KAFE ORNEK CITY TR' }).getByTestId('missing-original')).toHaveText(/^TRY\s412,00$/);
   await expect(missing.filter({ hasText: 'TOKO ORNEK KOTA ORNEK ID' }).getByTestId('missing-original')).toHaveCount(0);
 });
+
+test('a statement older than the card’s start records as already paid off, with no summary screenshot', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  // The card starts in the app today, owing what it owes: August is before that.
+  await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25', owed: '2000000' });
+
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardSection(page, 'Activity');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await page.getByTestId('check-statement').click();
+  await setStatementImages(page, [statementLines([['20AUG', 'WARUNG SATE PAK DIN', '45,000']])]);
+  await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));
+  await page.getByRole('button', { name: 'Check 1 screenshot' }).click();
+
+  // Without the summary it cannot move the card's start; paid off, it needs nothing more.
+  await expect(page.getByTestId('needs-previous')).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Already paid off' }).click();
+  await expect(page.getByTestId('needs-previous')).toHaveCount(0);
+  await page.getByTestId('count-missing').click();
+  await page.getByTestId('missing-row').getByRole('button', { name: /Choose category/ }).click();
+  await page.getByRole('dialog', { name: 'WARUNG SATE PAK DIN' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await page.getByTestId('record-all').click();
+  await expect(page.getByRole('status').filter({ hasText: 'August statement recorded — already paid off' })).toBeVisible();
+
+  // Spending in August; the card still owes what it owed.
+  await page.goto('/transactions?month=2026-08');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE PAK DIN' })).toContainText('45.000');
+  await page.goto('/accounts');
+  await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
+});

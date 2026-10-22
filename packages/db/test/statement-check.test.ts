@@ -384,6 +384,25 @@ describe('recording a check', () => {
     expect((await h.balances())[h.card.id]).toBe(-2_000_000);
   });
 
+  it('records a statement older than the card’s start as already paid off, with no previous balance: spending in its month, today’s balance untouched', async () => {
+    const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
+    const prepared = await h.prepare(
+      [image([['12MAY', 'TOKO ALFA', '100,000'], ['20MAY', 'KOPI SATU', '50,000'], ['25MAY', 'PAYMENT THANK YOU', '150,000CR']])],
+      MAY,
+      '2026-09-01',
+    );
+    expect(prepared).toMatchObject({ startsAfterPeriod: true, needsPreviousBalance: true });
+    const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, paidOff: true });
+    expect(result.status).toBe('open');
+    // The card owes today exactly what it owed; the opening stays where it was.
+    expect((await h.balances())[h.card.id]).toBe(-2_000_000);
+    const txs = await listTransactions(h.database, h.ws, { accountId: h.card.id });
+    expect(txs.filter((t) => t.description.startsWith('Opening balance')).map((t) => t.occurredOn)).toEqual(['2026-08-01']);
+    // The two purchases are spending in May; the payment is not recorded again.
+    expect(txs.filter((t) => ['TOKO ALFA', 'KOPI SATU'].includes(t.description)).map((t) => t.occurredOn).sort()).toEqual(['2026-05-12', '2026-05-20']);
+    expect(txs.some((t) => t.description === 'Card payment' || t.description.startsWith('Payments not tracked'))).toBe(false);
+  });
+
   it('moving the start of a card owing nothing before the statement takes its opening away', async () => {
     const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
     const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '100,000' })], MAY, '2026-09-01');

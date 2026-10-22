@@ -59,7 +59,7 @@ const MISCELLANEOUS_KEY = 'miscellaneous';
 /** Days either side of the period whose transactions may still be a statement row (the matcher's widest window and some). */
 const CANDIDATE_MARGIN_DAYS = 7;
 /** Why a statement older than the card's start cannot be recorded yet (S10). */
-export const NO_PREVIOUS_BALANCE_MESSAGE = 'This statement is older than the card’s start: add the summary screenshot with the previous balance to record it.';
+export const NO_PREVIOUS_BALANCE_MESSAGE = 'This statement is older than the card’s start: turn on Already paid off, or add the summary screenshot with the previous balance, to record it.';
 /** The quiet adjustment's description begins with this; the main transaction list hides it by it. */
 export const PAYMENTS_NOT_TRACKED_PREFIX = 'Payments not tracked (';
 
@@ -119,6 +119,12 @@ export interface CheckDecisions {
   ask: Record<number, string>;
   /** Move the card's start to the day before this statement, owing its previous balance (S10). */
   moveStart: boolean;
+  /**
+   * A statement older than the card's start, recorded as already paid off: each purchase it is missing is spending in
+   * its own month with a settlement beside it, so the card owes today what it owed, and no previous balance is needed.
+   * Its payments are not recorded — the settlements stand for them — and the card's start stays where it is.
+   */
+  paidOff?: boolean;
 }
 
 export interface StatementCheckRow {
@@ -605,7 +611,7 @@ export async function recordStatementCheck(
   if (gap) throw new StatementCheckError('NEEDS_CATEGORY', `Choose a category for “${gap.description}”`);
   const unanswered = prepared.rows.find((r) => r.outcome.status === 'ask' && !r.outcome.candidateIds.includes(decisions.ask[r.index] ?? ''));
   if (unanswered) throw new StatementCheckError('ASK_UNANSWERED', `Say which recorded transaction “${unanswered.description}” is`);
-  if (prepared.needsPreviousBalance || (decisions.moveStart && prepared.previousMinor === null)) {
+  if ((prepared.needsPreviousBalance && !decisions.paidOff) || (decisions.moveStart && !decisions.paidOff && prepared.previousMinor === null)) {
     throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
   }
   const { cardAccountId, period } = prepared;
@@ -661,12 +667,14 @@ export async function recordStatementCheck(
       .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.externalRef, bridgeRefOf(cardAccountId)), eq(transactions.status, 'posted')));
     const opening = await openingOfCard(tx, ws, cardAccountId);
     const beforeStart = opening !== null && opening.occurredOn > period.start;
-    if (beforeStart && previousMinor === null) throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
-    const bridgeOn: string | null = bridge?.occurredOn ?? (beforeStart ? opening.occurredOn : null);
+    // Paid off: nothing before the start is owed through this check, so no previous balance is asked and no bridge made.
+    const paidOff = beforeStart && decisions.paidOff === true;
+    if (beforeStart && previousMinor === null && !paidOff) throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
+    const bridgeOn: string | null = bridge?.occurredOn ?? (beforeStart && !paidOff ? opening.occurredOn : null);
     const owedThen = bridgeOn ? await owedAt(tx, ws, cardAccountId, bridgeOn) : 0;
 
     // S10: the card starts the day before this statement, owing what the statement says was owed before it.
-    if (decisions.moveStart) {
+    if (decisions.moveStart && !paidOff) {
       if (opening && beforeStart) {
         if (previousMinor === 0) {
           await voidTransactionTx(tx, ws, opening.id);
@@ -706,6 +714,8 @@ export async function recordStatementCheck(
     for (const row of prepared.rows) {
       const outcome = row.outcome;
       if (outcome.status === 'payment-untracked') {
+        // Paid off, the purchases' settlements stand for the statement's payments: none is recorded again.
+        if (paidOff) continue;
         // A credit the owner recorded as money back stays that: it is not summed into the payments line again.
         const already = await recordedFor(row);
         if (already) await link(already, 'recorded');
@@ -750,6 +760,7 @@ export async function recordStatementCheck(
         }
         const amount = { amountMinor: row.amountMinor, currency: card.currency };
         const isPayment = outcome.as === 'payment';
+        if (isPayment && paidOff) continue;
         const lines = isPayment
           ? // The bank account it came from is asked for later; until then it is a correction, as an untracked one is.
             transferLines({ fromAccountId: correctionId, toAccountId: cardAccountId, ...amount })
@@ -767,6 +778,8 @@ export async function recordStatementCheck(
           externalRef,
           lines,
           ...original,
+          // Paid off before the card's start here: spending in its month, the card's balance today left as it is.
+          ...(paidOff ? { settledBeforeApp: true } : {}),
         });
         // The bank's posting date decides the statement it is billed on, as it did for this one.
         if (row.postedOn && row.postedOn > row.on) await tx.insert(cardPostings).values({ transactionId: id, workspaceId: ws.workspaceId, postedOn: row.postedOn });
