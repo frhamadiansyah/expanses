@@ -282,3 +282,28 @@ describe('attentionItems with loans', () => {
     expect(new Set(items.map((item) => item.key)).size).toBe(3);
   });
 });
+
+describe('pockets on the overview', () => {
+  it('folds an account’s pockets into one row at their total, marked ≈ when one is in another currency', async () => {
+    const { foldPockets } = await import('./overview-rows');
+    const accounts = [
+      { id: 'wise', name: 'Wise', kind: 'asset', parentId: null, currency: null },
+      { id: 'wise-usd', name: 'Wise · USD', kind: 'asset', parentId: 'wise', currency: 'USD' },
+      { id: 'wise-sgd', name: 'Wise · SGD', kind: 'asset', parentId: 'wise', currency: 'SGD' },
+      { id: 'bca', name: 'BCA', kind: 'asset', parentId: null, currency: 'IDR' },
+    ] as const;
+    const [cash] = foldPockets(
+      [{ key: 'cash', label: 'Cash', totalMinor: 0, rows: [
+        { accountId: 'bca', name: 'BCA', amountMinor: 1_000, note: null },
+        { accountId: 'wise-usd', name: 'Wise · USD', amountMinor: 1_600_000, note: null },
+        { accountId: 'wise-sgd', name: 'Wise · SGD', amountMinor: 1_200_000, note: null },
+      ] }] as never,
+      accounts as never,
+      'IDR',
+    );
+    expect(cash!.rows).toEqual([
+      { accountId: 'bca', name: 'BCA', amountMinor: 1_000, note: null },
+      { accountId: 'wise', name: 'Wise', amountMinor: 2_800_000, note: null, approx: true },
+    ]);
+  });
+});

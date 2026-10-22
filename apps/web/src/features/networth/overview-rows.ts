@@ -1,5 +1,5 @@
-import { formatMinor } from '@expanses/core';
-import type { AccountSetAsideRow, AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
+import { formatMinor, type SheetGroup, type SheetRow } from '@expanses/core';
+import type { AccountRow, AccountSetAsideRow, AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
 
 export interface LoanAttention {
   accountId: string;
@@ -123,4 +123,42 @@ export function attentionItems(
     }
   }
   return items;
+}
+
+/** A balance sheet row as the overview draws it: `approx` when it adds up pockets held in more than one currency. */
+export type ShownSheetRow = SheetRow & { approx?: boolean };
+
+/**
+ * An account with pockets is one row on the overview, as it is on the Assets page: Wise, at its pockets' total in the
+ * base currency, where its first pocket stood — not Wise USD and Wise SGD side by side. `approx` marks a total reached
+ * through a rate, for the ≈ in front of it. Every other row is as it was.
+ */
+export function foldPockets(
+  groups: readonly SheetGroup[],
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'kind' | 'parentId' | 'currency'>[],
+  baseCurrency: string,
+): SheetGroup[] {
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+  return groups.map((group) => {
+    const rows: ShownSheetRow[] = [];
+    const at = new Map<string, number>();
+    for (const row of group.rows) {
+      const account = byId.get(row.accountId);
+      const parent = account?.kind === 'asset' && account.parentId ? byId.get(account.parentId) : undefined;
+      if (!parent || !account) {
+        rows.push(row);
+        continue;
+      }
+      const foreign = (account.currency ?? baseCurrency) !== baseCurrency;
+      const seen = at.get(parent.id);
+      if (seen === undefined) {
+        at.set(parent.id, rows.length);
+        rows.push({ accountId: parent.id, name: parent.name, amountMinor: row.amountMinor, note: null, approx: foreign });
+      } else {
+        const was = rows[seen]!;
+        rows[seen] = { ...was, amountMinor: was.amountMinor + row.amountMinor, approx: was.approx || foreign };
+      }
+    }
+    return { ...group, rows };
+  });
 }
