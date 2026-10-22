@@ -105,7 +105,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       const brokerName = link?.brokerAccountId ? (nameOf.get(link.brokerAccountId) ?? null) : null;
       inputs.holdings.push({
         accountId: value.accountId,
-        name: taxHoldingName(security, brokerName, value.name),
+        name: taxHoldingName(security, brokerName ?? (fields.inst?.trim() || null), value.name),
         code: code ?? '0399',
         currency: value.currency,
         priceMicro,
@@ -143,7 +143,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       inputs.holdings.push({
         accountId: value.accountId,
         // One row per place: the fund and where it is held ("Sucor Money Market — Bibit").
-        name: taxHoldingName(security, brokerName, value.name),
+        name: taxHoldingName(security, brokerName ?? (fields.inst?.trim() || null), value.name),
         code: code ?? '0307',
         currency: value.currency,
         priceMicro: 0,

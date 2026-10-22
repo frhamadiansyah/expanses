@@ -2,6 +2,8 @@ import { type AssetKind, formatBps, formatMinor, formatLots, gainBps, percentSha
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
 
 export const NO_BROKER = 'none';
+/** The key of a place a fund or bond is held at by name: an institution, not an account (0082). */
+const PLACE = 'place:';
 /** Unlinked holdings that belong on Investments. Gold and bonds stay on the Assets page (spec §7.1). */
 const LISTED_KINDS: readonly AssetKind[] = ['stock', 'fund'];
 
@@ -14,6 +16,8 @@ export interface HoldingLine {
   unitsMicro: number;
   valueMinor: number;
   costMinor: number;
+  /** The institution a fund or bond is held at, by name, when it is kept at no broker's account. */
+  place: string | null;
   /** In base, each buy at its own day's rate; null for a foreign holding with no pinned base cost — never a zero. */
   costBaseMinor: number | null;
   /** The owner should type a fresh price — the Assets page's own flag. */
@@ -45,6 +49,8 @@ export interface StockRow {
 export interface BrokerRow {
   key: string;
   accountId: string | null;
+  /** An institution a fund or bond is held at by name: a group of its own, with no page behind it. */
+  place: boolean;
   name: string;
   holdings: HoldingLine[];
   /** The one currency every holding here is in, and their total in it — or both null when there are two. */
@@ -85,6 +91,11 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
   const securityOf = new Map(p.securities.map((s) => [s.id, s]));
   const kindOf = new Map(p.profiles.map((profile) => [profile.accountId, profile.assetKind]));
   const accountOf = new Map(p.accounts.map((a) => [a.id, a]));
+  const placeOf = new Map(
+    p.profiles
+      .filter((profile) => (profile.assetKind === 'fund' || profile.assetKind === 'bond') && profile.coretaxFields?.inst?.trim())
+      .map((profile) => [profile.accountId, profile.coretaxFields!.inst!.trim()]),
+  );
   const inBase = (amounts: readonly { minor: number; currency: string }[]) => sumToBase({ amounts, baseCurrency: p.baseCurrency, ratesToBase: p.ratesToBase });
 
   const lines: (HoldingLine & { securityId: string | null })[] = [];
@@ -100,7 +111,9 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       name: value.name,
       securityId: link?.securityId ?? null,
       brokerAccountId,
-      brokerName: brokerAccountId ? (accountOf.get(brokerAccountId)?.name ?? 'Broker') : 'No broker named',
+      // A fund or a bond is held at an institution by name (0082); a share at its broker's cash account.
+      brokerName: brokerAccountId ? (accountOf.get(brokerAccountId)?.name ?? 'Broker') : (placeOf.get(value.accountId) ?? 'No broker named'),
+      place: brokerAccountId ? null : (placeOf.get(value.accountId) ?? null),
       currency: value.currency,
       unitsMicro: value.unitsMicro ?? 0,
       valueMinor: value.valueMinor,
@@ -140,7 +153,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
 
   const brokersByKey = new Map<string, HoldingLine[]>();
   for (const line of lines) {
-    const key = line.brokerAccountId ?? NO_BROKER;
+    const key = line.brokerAccountId ?? (line.place ? `${PLACE}${line.place.toLowerCase()}` : NO_BROKER);
     brokersByKey.set(key, [...(brokersByKey.get(key) ?? []), line]);
   }
   const brokers: BrokerRow[] = [...brokersByKey].map(([key, holdings]) => {
@@ -148,7 +161,8 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
     const single = currencies.size === 1 ? [...currencies][0]! : null;
     return {
       key,
-      accountId: key === NO_BROKER ? null : key,
+      accountId: key === NO_BROKER || key.startsWith(PLACE) ? null : key,
+      place: key.startsWith(PLACE),
       name: holdings[0]!.brokerName,
       holdings,
       currency: single,

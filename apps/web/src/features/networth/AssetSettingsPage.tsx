@@ -146,7 +146,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       )}
 
       {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
-      {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAtId={link?.brokerAccountId ?? null} />}
+      {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAt={profile.data.coretaxFields.inst?.trim() || null} />}
 
       {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
       {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}

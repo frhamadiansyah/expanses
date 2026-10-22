@@ -5,7 +5,8 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { errorHint } from './AssetSettings';
-import { useBondCoupons } from './queries';
+import { institutionOf, sameInstitution } from './institutions';
+import { useAssetProfiles, useBondCoupons } from './queries';
 
 const PAID: { perYear: CouponsPerYear; label: string }[] = [
   { perYear: 12, label: 'Monthly' },
@@ -24,24 +25,27 @@ const percent = (bps: number) => new Intl.NumberFormat('id-ID', { maximumFractio
  * where it is paid into, and whether the app records it on the day. Kept as soon as the rate and the next payment are
  * there; each row saves when it is left or changed, as the page's other rows do.
  */
-export function CouponGroup({ accountId, heldAtId }: { accountId: string; heldAtId: string | null }) {
+export function CouponGroup({ accountId, heldAt }: { accountId: string; heldAt: string | null }) {
   const terms = useBondCoupons();
   if (!terms.data) return null;
   const saved = terms.data[accountId] ?? null;
-  return <CouponRows key={`${accountId}-${saved ? JSON.stringify(saved) : ''}`} accountId={accountId} saved={saved} heldAtId={heldAtId} />;
+  return <CouponRows key={`${accountId}-${saved ? JSON.stringify(saved) : ''}`} accountId={accountId} saved={saved} heldAt={heldAt} />;
 }
 
-function CouponRows({ accountId, saved, heldAtId }: { accountId: string; saved: BondCouponRow | null; heldAtId: string | null }) {
+function CouponRows({ accountId, saved, heldAt }: { accountId: string; saved: BondCouponRow | null; heldAt: string | null }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
+  const profiles = useAssetProfiles().data ?? [];
   const places = accounts.filter((a) => a.kind === 'asset' && PAID_INTO.has(a.subtype) && a.archivedAt === null && a.id !== accountId);
+  // Paid into an account at the institution the bond is held at, when there is one: a bond at Bank Mandiri pays there.
+  const atTheSamePlace = places.find((a) => sameInstitution(institutionOf(a, profiles.find((p) => p.accountId === a.id)), heldAt))?.id ?? '';
   const [rate, setRate] = useState(saved ? percent(saved.rateBps) : '');
   const [perYear, setPerYear] = useState<CouponsPerYear>(saved?.perYear ?? 12);
   const [nextOn, setNextOn] = useState(saved?.nextOn ?? '');
   const [maturesOn, setMaturesOn] = useState(saved?.maturesOn ?? '');
   const [tax, setTax] = useState(saved ? percent(saved.taxBps) : '10');
-  const [cashAccountId, setCashAccountId] = useState(saved?.cashAccountId ?? (heldAtId && places.some((p) => p.id === heldAtId) ? heldAtId : ''));
+  const [cashAccountId, setCashAccountId] = useState(saved?.cashAccountId ?? atTheSamePlace);
   const [auto, setAuto] = useState(saved?.auto ?? true);
   const [error, setError] = useState<unknown>(null);
 
