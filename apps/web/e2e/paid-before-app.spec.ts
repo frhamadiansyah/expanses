@@ -1,0 +1,36 @@
+import { expect, test } from '@playwright/test';
+import { openCard } from './accounts';
+import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
+import { todayIn } from './today';
+
+test('an old card purchase already paid off is spending, and the card still owes what it owed', async ({ page }) => {
+  await openCard(page, { name: 'BCA Visa', owed: '2000000' });
+  const cardPage = page.url();
+  await expect(page.getByRole('main')).toContainText('2.000.000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await openAmount(form);
+  await fillAmount(page, form, '850000');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Visa');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Anniversary dinner');
+  // Today, an ordinary purchase: nothing to say about it.
+  await expect(form.getByRole('switch', { name: 'Already paid off' })).toHaveCount(0);
+  // Before the card started in the app: offered, and on.
+  const day = await todayIn(page, 90);
+  await form.getByLabel('Date').fill(day);
+  await expect(form.getByRole('switch', { name: 'Already paid off' })).toHaveAttribute('aria-checked', 'true');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  await page.goto(cardPage);
+  await expect(page.getByRole('main')).toContainText('Rp 2.000.000');
+  // In its own month it is the spending it was; the settlement beside it is an opening entry, out of the list.
+  await page.goto(`/transactions?month=${day.slice(0, 7)}`);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Anniversary dinner' })).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+});
