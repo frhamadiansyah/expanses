@@ -67,7 +67,7 @@ import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { extraRowRefusal, extraRows, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
-import { usePhotoAttach } from './PhotosSheet';
+import { PhotosSheet } from './PhotosSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
@@ -295,7 +295,8 @@ function CardBody({
   const [readingReceipt, setReadingReceipt] = useState(false);
   async function readReceiptFrom(files: readonly File[]) {
     const file = files.find((one) => one.type.startsWith('image/'));
-    if (!file || latest.current.mode !== 'expense') return;
+    // Only a new expense is filled from its receipt; a saved one is a correction, and its photo is only kept.
+    if (!file || latest.current.mode !== 'expense' || latest.current.editing) return;
     setReadingReceipt(true);
     const fill = await readReceiptPhoto(file, postingCurrency(latest.current, accounts, ws.baseCurrency));
     setReadingReceipt(false);
@@ -307,20 +308,16 @@ function CardBody({
       foreignAllowed: currencyChoosable(now),
     });
     if (!filled) return;
-    setDraft(next);
+    // Only the fields a receipt fills: the photo it came on may have joined the draft since it was read.
+    setDraft((d) => ({ ...d, amount: next.amount, currency: next.currency, description: next.description, occurredOn: next.occurredOn }));
     setReceipt(filled);
   }
   const undoReceipt = () => {
     if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
     setReceipt(null);
   };
-  // The Amount row's camera: a receipt taken or picked is attached as Photos would, then read.
-  const receiptInput = useRef<HTMLInputElement>(null);
-  const scanned = usePhotoAttach((ids, files) => {
-    setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...ids] }));
-    void readReceiptFrom(files);
-  });
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move'>(null);
+
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos'>(null);
   /*
    * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
    * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.
@@ -616,8 +613,8 @@ function CardBody({
   const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
-  // The Amount row's camera: a new expense, which can carry a photo.
-  const offersReceipt = draft.mode === 'expense' && !draft.editing && !finish && offered.includes('photos');
+  // Photos live on the Amount row's camera wherever there is one — every tab but Buy / sell, new or saved.
+  const photosOnAmount = draft.mode !== 'trade' && offered.includes('photos');
   const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
@@ -1016,7 +1013,7 @@ function CardBody({
               unsure={finish?.amountUnsure}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
-              {...(offersReceipt ? { onScan: () => receiptInput.current?.click() } : {})}
+              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
             />
             {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
             {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
@@ -1196,7 +1193,7 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
       {/*
@@ -1269,21 +1266,6 @@ function CardBody({
           ]}
         />
       )}
-      {offersReceipt && (
-        // No `capture`: the phone then offers the camera and the library both, which is what a receipt needs.
-        <input
-          ref={receiptInput}
-          data-testid="receipt-input"
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            void scanned.attach([...(e.target.files ?? [])]);
-            e.target.value = '';
-          }}
-        />
-      )}
-      <ErrorBox error={scanned.error} />
       {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
@@ -1419,6 +1401,7 @@ function CardBody({
           {...(moveTo ? { bookId: moveTo } : {})}
         />
       )}
+      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} onAttached={(files) => void readReceiptFrom(files)} />}
       {sheet === 'move' && (
         <ChoiceSheet
           title="Move to workspace"

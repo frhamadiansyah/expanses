@@ -175,7 +175,7 @@ export function AmountRow({
   noRefund = false,
   anyCurrency = false,
   locked = false,
-  onScan,
+  photos,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
@@ -194,10 +194,10 @@ export function AmountRow({
   /** Every figure and the flag drawn, none of them a control: a shared expense another member paid (D8). */
   locked?: boolean;
   /**
-   * A receipt to read the amount off: a grey camera at the row's end while it is still empty, where the × stands once
-   * a figure is typed. The receipt is where the amount comes from, so its way in is on this row.
+   * The transaction's photos, on this row: a grey camera at its end — with how many there are, once there are any —
+   * that opens them. A receipt is where the amount comes from, so its way in is the amount's row.
    */
-  onScan?: () => void;
+  photos?: { count: number; open: () => void };
 }) {
   const phone = usePhone();
   const { ws } = useApp();
@@ -358,18 +358,20 @@ export function AmountRow({
             </>
           )}
           {unsure && <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-warn)]">check</span>}
-          {draft.amount === '' && !locked && onScan && (
+          {photos && !locked && (
             <button
               type="button"
-              aria-label="Scan a receipt"
+              aria-label={photos.count > 0 ? `Photos, ${photos.count}` : 'Photos'}
+              data-testid="amount-photos"
               onClick={() => {
                 setKeypad(null);
-                onScan();
+                photos.open();
               }}
-              className="ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
-              style={{ '--ph-tap-y': '8px', '--ph-tap-x': '8px' } as CSSProperties}
+              className="ph-focus ph-tap relative flex h-7 shrink-0 items-center justify-center gap-[3px] rounded-full px-[4px] text-[var(--ph-ink-3)]"
+              style={{ '--ph-tap-y': '8px', '--ph-tap-x': '6px' } as CSSProperties}
             >
               <Camera size={18} aria-hidden />
+              {photos.count > 0 && <span className="tabular text-[12.5px] leading-4 font-semibold">{photos.count}</span>}
             </button>
           )}
           {draft.amount !== '' && !locked && (

@@ -201,7 +201,9 @@ export async function closeDetails(more: Locator, sheet: Locator) {
 export async function attachPhoto(page: Page, form: Locator, file: { name: string; mimeType: string; buffer: Buffer }) {
   await form.getByRole('button', { name: 'Add more details' }).click();
   const more = page.getByRole('region', { name: 'More details' });
-  await more.getByRole('button', { name: 'Photos' }).click();
+  // Photos are the Amount row's camera now (Buy / sell keeps its row under Add more details).
+  const camera = form.getByTestId('amount-photos');
+  await ((await camera.count()) > 0 ? camera : more.getByRole('button', { name: 'Photos' })).click();
   const sheet = page.getByRole('dialog', { name: 'Photos' });
   await sheet.getByTestId('photo-library-input').setInputFiles(file);
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();

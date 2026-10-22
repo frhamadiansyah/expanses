@@ -354,7 +354,7 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
 
   // Every row under here is reachable by a thumb, including the switch, which is the smallest of them.
-  for (const name of ['Event', 'Photos']) {
+  for (const name of ['Event']) {
     const box = (await more.getByRole('button', { name, exact: true }).boundingBox())!;
     expect(box.height, `the ${name} row is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
   }
@@ -710,7 +710,7 @@ test('Select category ends in Manage categories, which opens the Categories page
   await expect(page).toHaveURL(/\/categories$/);
 });
 
-test('a receipt from the title bar camera fills what is empty, says so, and Undo puts it back', async ({ page }) => {
+test('a receipt from the Amount row’s camera fills what is empty, says so, and Undo puts it back', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions/new');
   const lines = ['SUPERMARKET MAWAR', '20/10/2026 14:22', 'Roti tawar 18.500', 'TOTAL 41.300', 'TUNAI 50.000'].map((text, i) => ({
@@ -725,8 +725,12 @@ test('a receipt from the title bar camera fills what is empty, says so, and Undo
   await page.getByLabel('Note').fill('Groceries run');
 
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-  await expect(page.getByRole('button', { name: 'Scan a receipt' })).toBeVisible();
-  await page.getByTestId('receipt-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+  // The Amount row's camera opens Photos; a picture added there is read.
+  await page.getByTestId('amount-photos').click();
+  const sheet = page.getByRole('dialog', { name: 'Photos' });
+  await sheet.getByTestId('photo-library-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+  await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close' }).click();
 
   await expect(page.getByTestId('receipt-filled')).toHaveText(/Filled from the receipt: amount, date\. Check them\.\s*Undo/);
   await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('41.300');
@@ -738,5 +742,5 @@ test('a receipt from the title bar camera fills what is empty, says so, and Undo
   await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('Amount');
   // The photo stays with the purchase.
   await page.getByRole('button', { name: 'Add more details' }).click();
-  await expect(page.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await expect(page.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
 });
