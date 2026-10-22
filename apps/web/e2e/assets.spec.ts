@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings as openSettingsMenu } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { addTransfer } from './add-transaction';
+import { addPriced } from './asset-page';
 import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
@@ -149,4 +150,47 @@ test('sends trade edits to Buy & sell instead of the transaction form', async ({
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
   await expect(row.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
   await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+});
+
+test('a section picked on the chart divides where it stands: the other boxes stay, and its kinds are boxes inside it', async ({ page }) => {
+  await addPriced(page, 'Government bonds', 'ORI026', [['2026-01-15', '10000000', '10000000']]);
+  await addPriced(page, 'Corporate bonds', 'Obligasi Berkelanjutan', [['2026-02-10', '5000000', '5000000']]);
+  await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20000000']]);
+
+  await page.goto('/net-worth/assets');
+  const boxes = page.getByTestId('share-boxes');
+  const investments = boxes.getByRole('button', { name: /^Investments, / });
+  await expect(investments).toBeVisible();
+  await expect(page.getByTestId('assets-total')).toContainText('35.000.000');
+  const total = await page.getByTestId('assets-total').textContent();
+  // Where a box sits inside the chart, so a scroll of the page does not read as the box moving.
+  const within = async (locator: typeof boxes) => {
+    const [box, chart] = [(await locator.boundingBox())!, (await boxes.boundingBox())!];
+    return { x: box.x - chart.x, y: box.y - chart.y, width: box.width };
+  };
+  await investments.scrollIntoViewIfNeeded();
+  const before = await within(investments);
+  await investments.click();
+
+  // The same chart: the box the gold is in is still drawn, stepped back, and the total above is still the whole.
+  await expect(boxes.getByRole('button', { name: /^Intangible and other, / })).toBeVisible();
+  await expect(boxes.getByRole('button', { name: /^Intangible and other, / }).locator('span').first()).toHaveClass(/opacity-35/);
+  await expect(page.getByTestId('assets-total')).toHaveText(total!);
+  // Investments keeps its place and is divided into its kinds, each still a share of the whole: 10 of 35 is 29%.
+  const open = boxes.getByRole('group', { name: /^Investments, .*by kind$/ });
+  const after = await within(open);
+  expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y) + Math.abs(after.width - before.width)).toBeLessThan(2);
+  await expect(open.getByRole('button')).toHaveCount(2);
+  await expect(open.getByRole('button', { name: /^Government bonds, Rp\s10\.000\.000, 29%$/ })).toBeVisible();
+
+  // A kind tapped narrows the list to it; tapped again, the whole section is back.
+  await open.getByRole('button', { name: /^Corporate bonds, / }).click();
+  await expect(open.getByRole('button', { name: /^Corporate bonds, / })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('link', { name: /^ORI026/ })).toHaveCount(0);
+  await open.getByRole('button', { name: /^Corporate bonds, / }).click();
+  await expect(page.getByRole('link', { name: /^ORI026/ })).toBeVisible();
+
+  // Show all puts the chart back as it was.
+  await page.getByTestId('show-all').click();
+  await expect(boxes.getByRole('button', { name: /^Investments, / })).toHaveAttribute('aria-pressed', 'false');
 });

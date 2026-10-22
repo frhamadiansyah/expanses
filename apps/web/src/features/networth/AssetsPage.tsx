@@ -172,7 +172,7 @@ export function AssetsPage() {
   const active = shares.shown.some((segment) => segment.key === picked) ? picked : null;
   /*
    * A picked section opens into its own kinds — Investments into listed shares, mutual funds, government bonds — when it
-   * has more than one, so the boxes go one level deeper rather than showing a single box filling the space.
+   * has more than one: its box divides where it stands, so the chart keeps its shape and only that box gains detail.
    */
   const activeGroup = active === null ? null : (live.find((group) => group.group === active) ?? null);
   const kindShares = activeGroup ? heldShares(kindSegments(activeGroup.drawers)) : null;
@@ -238,26 +238,18 @@ export function AssetsPage() {
         <Panel wide className="mb-[18px] space-y-2">
           <div data-testid="assets-total">
             {/* What the list below comes to, in the page's ink: a red total warned about rows that warn about nothing. */}
-            <Hero minor={deeper && activeGroup!.totalMinor !== null ? activeGroup!.totalMinor : total.totalMinor} currency={baseCurrency} plain align="center" />
+            <Hero minor={total.totalMinor} currency={baseCurrency} plain align="center" />
           </div>
           {shares.shown.length > 0 && (
-            deeper ? (
-              <>
-                <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="share-boxes-section">
-                  {activeGroup!.label}, by kind
-                </p>
-                <ShareBoxes
-                  segments={kindShares!.shown}
-                  totalMinor={kindShares!.heldMinor}
-                  currency={baseCurrency}
-                  iconOf={(key) => assetKindTile(active!, key)}
-                  picked={activeKind}
-                  onPick={setKind}
-                />
-              </>
-            ) : (
-              <ShareBoxes segments={shares.shown} totalMinor={shares.heldMinor} currency={baseCurrency} iconOf={assetSectionTile} picked={active} onPick={pick} />
-            )
+            <ShareBoxes
+              segments={shares.shown}
+              totalMinor={shares.heldMinor}
+              currency={baseCurrency}
+              iconOf={assetSectionTile}
+              picked={active}
+              onPick={pick}
+              inner={deeper ? { key: active!, segments: kindShares!.shown, iconOf: (key) => assetKindTile(active!, key), picked: activeKind, onPick: setKind } : null}
+            />
           )}
           {shares.below.length > 0 && (
             <p data-testid="assets-below-zero" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
