@@ -131,7 +131,8 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await expect(bar).toBeVisible();
   await rina.getByRole('checkbox', { name: 'Select Taxi' }).click();
-  await bar.getByRole('button', { name: 'Add to event', exact: true }).click();
+  await bar.getByRole('button', { name: 'Actions' }).click();
+  await rina.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: 'Add to event' }).click();
   await rina.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Coast week' }).click();
   await expect(bar).toHaveCount(0, { timeout: 30_000 });
   await expect(rina.getByTestId('transaction-row').filter({ hasText: 'Taxi' })).toHaveCount(0);
