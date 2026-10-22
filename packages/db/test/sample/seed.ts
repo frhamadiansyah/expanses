@@ -34,6 +34,8 @@ import {
   saveCardTerms,
   saveEvent,
   saveEventItem,
+  setEventItemDone,
+  linkEventItem,
   saveExpectedIncome,
   saveExpenseTemplate,
   saveGoal,
@@ -457,6 +459,56 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     cardPurchases.push({ id, account: krisflyer.id, on });
   }
   await saveEvent(database, ws, { name: 'Office end-of-year dinner', startsOn: addDays(today, 70), endsOn: addDays(today, 70) });
+
+  // ---- A baby on the way, planned as an event from the Newborn set: the first three months, some bought already ----
+  const newbornSet = (await listCategorySets(database, ws)).find((set) => set.name === 'Newborn')!;
+  const newborn = new Map((await listSetCategories(database, ws, newbornSet.id)).map((c) => [c.name, c.id]));
+  const dueOn = addDays(today, 75);
+  const baby = await saveEvent(database, ws, { name: 'Newborn', startsOn: dueOn, endsOn: addDays(dueOn, 90), setId: newbornSet.id });
+  const babyItems = new Map<string, string>();
+  for (const [category, name, quantity, priceEach] of [
+    ['Travelling', 'Stroller', 1, 8_500_000],
+    ['Travelling', 'Car seat', 1, 4_200_000],
+    ['Clothing', 'Bodysuit', 6, 55_000],
+    ['Clothing', 'Sleepsuit', 3, 150_000],
+    ['Clothing', 'Baby blanket', 2, 180_000],
+    ['Clothing', 'Mittens and booties', 4, 35_000],
+    ['Sleeping', 'Crib', 1, 3_500_000],
+    ['Sleeping', 'Crib mattress', 1, 1_200_000],
+    ['Sleeping', 'Swaddle', 4, 120_000],
+    ['Feeding', 'Breast pump', 1, 2_400_000],
+    ['Feeding', 'Bottles', 4, 150_000],
+    ['Feeding', 'Bottle steriliser', 1, 900_000],
+    ['Diapering', 'Newborn diapers (pack)', 6, 95_000],
+    ['Diapering', 'Wipes (pack)', 10, 25_000],
+    ['Diapering', 'Diaper bag', 1, 650_000],
+    ['Bathing', 'Baby bath tub', 1, 350_000],
+    ['Bathing', 'Hooded towel', 3, 120_000],
+    ['Medical', 'Delivery package', 1, 18_000_000],
+    ['Medical', 'Pregnancy check-ups', 6, 450_000],
+    ['Vaccination', 'First vaccines', 1, 3_200_000],
+    ['Playing', 'Play mat', 1, 750_000],
+  ] as const) {
+    babyItems.set(name, await saveEventItem(database, ws, baby, { name, quantity, unitPriceMinor: priceEach, categoryAccountId: newborn.get(category)! }));
+  }
+  // Bought so far: the stroller and the crib done, the bodysuits done, and two check-ups paid towards a plan of six.
+  const babySpend: [string, string, number, string, string, boolean][] = [
+    [addDays(today, -40), 'Baby store stroller', 8_200_000, 'Travelling', 'Stroller', true],
+    [addDays(today, -32), 'Furniture store crib', 3_350_000, 'Sleeping', 'Crib', true],
+    [addDays(today, -20), 'Kids clothing bodysuits', 300_000, 'Clothing', 'Bodysuit', true],
+    [addDays(today, -60), 'Clinic check-up', 450_000, 'Medical', 'Pregnancy check-ups', false],
+    [addDays(today, -30), 'Clinic check-up', 450_000, 'Medical', 'Pregnancy check-ups', false],
+  ];
+  for (const [on, description, amount, category, item, done] of babySpend) {
+    const id = await postTransaction(database, ws, {
+      occurredOn: on,
+      description,
+      lines: expenseLines({ categoryAccountId: newborn.get(category)!, paymentAccountId: bca.id, amountMinor: amount, currency: 'IDR' }),
+    });
+    await tagTransaction(database, ws, id, baby);
+    await linkEventItem(database, ws, babyItems.get(item)!, id);
+    if (done) await setEventItemDone(database, ws, babyItems.get(item)!, true);
+  }
 
   // ---- A phone on 12 months at 0% ----
   const phoneOn = withDay(monthStart(today, 2), 6);
