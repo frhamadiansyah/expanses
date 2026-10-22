@@ -185,7 +185,8 @@ test('the category gesture offers the open workspace’s categories and no other
   await page.reload();
   const row = page.getByTestId('transaction-row').filter({ hasText: 'Client lunch' });
   await expect(row).toContainText('Groceries');
-  await expect(row.getByTestId('workspace-badge')).toHaveText('Business');
+  // Cashflow lists the open workspace alone, so its rows carry no workspace letter: every one would be the same.
+  await expect(row.getByTestId('workspace-badge')).toHaveCount(0);
 
   // The account's history holds both workspaces, and Personal's row is not offered the gesture at all: the
   // sheet speaks for the open workspace, so re-filing a row from another one could only move it.

@@ -53,8 +53,17 @@ export function useWorkspaceBadges(transactionIds: readonly string[]) {
     enabled: many && ids.length > 0,
     queryFn: () => bookNamesOf(database, ws, ids),
   });
+  /*
+   * Whether the rows asked about are from more than one workspace, or from one other than the open one. Cashflow lists
+   * the open workspace alone, so every row there is the same letter and it says nothing; an account's history, a
+   * card's statement or an event can hold several, and only then is the letter drawn.
+   */
+  const filed = Object.values(query.data ?? {});
+  const mixed = new Set(filed.map((book) => book.id)).size > 1 || filed.some((book) => book.id !== ws.bookId);
   return {
     of: (transactionId: string) => (many ? (query.data?.[transactionId] ?? null) : null),
+    /** The workspace to draw on a row: as `of`, but only on a list that holds more than the open workspace. */
+    mark: (transactionId: string) => (many && mixed ? (query.data?.[transactionId] ?? null) : null),
     /**
      * Whether "no badge" means "filed here" yet.
      *

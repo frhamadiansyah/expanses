@@ -157,7 +157,7 @@ export function StatementPanel({
   const statementOf = (line: StatementLine) => statementCycleFor(line.statementOn, statementDay);
   // A card is yours, not a workspace's, so its statement holds every workspace and each row says which. The
   // searched rows are asked for alongside the statement's, so a hit found under a different workspace says so too.
-  const badgeOf = useWorkspaceBadges([...lines, ...found].map((line) => line.transactionId)).of;
+  const badgeOf = useWorkspaceBadges([...lines, ...found].map((line) => line.transactionId)).mark;
   function openStatementOf(line: StatementLine) {
     // Count back from the statement today is in to the one this line was billed on.
     let steps = 0;
