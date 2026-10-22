@@ -9,7 +9,6 @@ import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   InsetGroup,
   InsetRow,
-  LargeTitle,
   Panel,
   SCREEN,
   SegmentedControl,
@@ -17,6 +16,7 @@ import {
   type GroupChild,
   type InsetRowProps,
   type Segment,
+  PushedTitle,
 } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
 import { useCategorySets } from '../categories/set-queries';
@@ -79,7 +79,7 @@ export function EventDetailPage() {
 function SharedEventWaiting({ name, loading, error }: { name: string; loading: boolean; error: unknown }) {
   return (
     <div className={SCREEN} data-testid="shared-event-waiting">
-      <LargeTitle title={name} back="Events" backTo="/events" />
+      <PushedTitle title={name} back="Events" backTo="/events" />
       <ErrorBox error={error} />
       <p className="px-[4px] py-[8px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">
         {loading
@@ -360,7 +360,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
+      <PushedTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}

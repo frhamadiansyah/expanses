@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, toneClass, type CornerAction } from '../../ui/native';
+import { DestructiveRow, Hero, InsetGroup, InsetRow, ReadOnlyRow, toneClass, type CornerAction, PushedTitle } from '../../ui/native';
 import { buyTarget, coverTarget } from './buy-item';
 import { differenceWords } from './plan-view';
 import { useEventHistory, useEventPlan } from './queries';
@@ -57,7 +57,7 @@ export function ItemPage() {
     return (
       <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
         <div className="mx-auto max-w-2xl">
-          <LargeTitle title="Item" {...backToPlan} />
+          <PushedTitle title="Item" {...backToPlan} />
           <Empty>That item is no longer on this plan.</Empty>
         </div>
       </div>
@@ -78,7 +78,7 @@ export function ItemPage() {
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-        <LargeTitle title={item?.name ?? 'Item'} {...backToPlan} actions={[edit]} />
+        <PushedTitle title={item?.name ?? 'Item'} {...backToPlan} actions={[edit]} />
         <ErrorBox error={error ?? plan.error} />
 
         {item && (

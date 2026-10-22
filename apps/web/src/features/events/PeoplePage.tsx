@@ -5,7 +5,7 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, SCREEN, SubmitRow, TextRow, PushedTitle } from '../../ui/native';
 import { InviteCard } from '../sharing/InviteCard';
 import { sayError } from '../sharing/sharing-copy';
 import { useSharedEventView } from './shared-queries';
@@ -38,7 +38,7 @@ export function PeoplePage() {
   if (!view) {
     return (
       <div className={SCREEN}>
-        <LargeTitle title="People" back="Events" backTo="/events" />
+        <PushedTitle title="People" back="Events" backTo="/events" />
         <ErrorBox error={read.error} />
         {read.isPending || read.error ? null : <p className="px-[4px] py-[8px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">This event is not shared on this phone.</p>}
       </div>
@@ -83,7 +83,7 @@ export function PeoplePage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="People" back={view.name} backTo="/events/$eventId" backParams={{ eventId }} />
+      <PushedTitle title="People" back={view.name} backTo="/events/$eventId" backParams={{ eventId }} />
       <ErrorBox error={error} />
       <InsetGroup header="With the app">
         {live.filter((p) => p.hasApp).map((p) => (

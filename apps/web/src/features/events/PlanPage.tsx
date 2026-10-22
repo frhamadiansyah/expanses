@@ -6,7 +6,7 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, toneClass, type CornerAction, type Tone } from '../../ui/native';
+import { InsetGroup, InsetRow, toneClass, type CornerAction, type Tone, PushedTitle } from '../../ui/native';
 import { GROUP_RADIUS } from '../../ui/native/metrics';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { buyTarget } from './buy-item';
@@ -170,7 +170,7 @@ export function PlanPage() {
     // Not a bare sentence: a screen whose subject has gone still owes the user a way on from it.
     return screen(
       <>
-        <LargeTitle title="Plan" back="All events" backTo="/events" />
+        <PushedTitle title="Plan" back="All events" backTo="/events" />
         <Empty>That event is no longer here.</Empty>
       </>,
     );
@@ -194,7 +194,7 @@ export function PlanPage() {
 
   return screen(
     <>
-      <LargeTitle
+      <PushedTitle
         title={`Plan · ${event?.name ?? ''}`}
         // The tab the plan was opened in goes back with it, or the event would reset to "All" on the way home.
         back="Back to the event"
