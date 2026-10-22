@@ -31,10 +31,12 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   const sheet = page.getByTestId('event-sheet');
   await expect(sheet.getByRole('radiogroup', { name: 'Show' })).toHaveCount(0);
   await expect(page.getByTestId('event-total')).toContainText('8.180.000');
-  // Where it went keeps every category: its share of the trip, and — since both were planned — what each was planned at.
+  // Where it went keeps every category, folded until the chart is tapped: its share of the trip and what it came to.
   const rows = page.getByTestId('event-detail-sheet');
+  await expect(rows).toHaveCount(0);
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
   await expect(rows).toContainText('52%');
-  await expect(rows).toContainText(/3\.900\.000\s*of\s*Rp\s?3\.000\.000/);
+  await expect(rows).toContainText('3.900.000');
 
   // Turned to the plan, the whole of what was spent in the planned categories against the whole of what was planned.
   await sheet.getByRole('button', { name: 'Against the plan' }).click();

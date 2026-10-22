@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, LargeTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, SCREEN, type Segment, SegmentedControl, PushedTitle } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
 import { eventDates } from './EventsPage';
 import { FinishSharing } from './FinishSharing';
@@ -58,7 +58,8 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
 
   return (
     <div className={SCREEN} data-testid="shared-event">
-      <LargeTitle title={view.name} back="Events" backTo="/events" actions={actions} subtitle={`${eventDates(view)} · ${view.currency}`} />
+      <PushedTitle title={view.name} back="Events" backTo="/events" actions={actions} />
+      <p className="-mt-[8px] mb-[14px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{`${eventDates(view)} · ${view.currency}`}</p>
       <ErrorBox error={error} />
       <p className="px-[4px] pb-[12px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]" data-testid="shared-event-header">
         {headerLine(view)}

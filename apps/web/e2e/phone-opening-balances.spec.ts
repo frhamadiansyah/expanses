@@ -5,10 +5,10 @@ test('opening balances are out of the list until the menu shows them, and the ch
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await page.goto('/transactions');
   const opening = page.getByTestId('transaction-row').filter({ hasText: 'Opening balance' });
-  await expect(page.getByRole('button', { name: 'Filters' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
   await expect(opening).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('menuitemcheckbox', { name: 'Show opening balances' }).click();
   await expect(opening).toHaveCount(1);
 

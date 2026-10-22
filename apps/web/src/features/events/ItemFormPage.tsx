@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, LargeTitle, ReadOnlyRow, SelectRow, TextRow, type CornerAction } from '../../ui/native';
+import { InsetGroup, LargeTitle, ReadOnlyRow, SelectRow, TextRow, type CornerAction, PushedTitle } from '../../ui/native';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { afterSaving, itemFormGate } from './plan-view';
@@ -155,14 +155,14 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   if (events.isSuccess && !event)
     return screen(
       <>
-        <LargeTitle title={title} back="All events" backTo="/events" />
+        <PushedTitle title={title} back="All events" backTo="/events" />
         <Empty>That event is no longer here.</Empty>
       </>,
     );
   if (itemId && plan.isSuccess && !existing)
     return screen(
       <>
-        <LargeTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
+        <PushedTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
         <Empty>That item is no longer on this plan.</Empty>
       </>,
     );
@@ -172,7 +172,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   if (itemId && !loaded)
     return screen(
       <>
-        <LargeTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
+        <PushedTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
         <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
       </>,
     );

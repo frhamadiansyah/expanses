@@ -1,12 +1,14 @@
 import { formatMinor } from '@expanses/core';
-import { setEventItemDone } from '@expanses/db';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Check, Circle, Plus } from 'lucide-react';
+import { setEventItemDone, type AccountRow } from '@expanses/db';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Check, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, toneClass, type CornerAction, type GroupChild, type Tone } from '../../ui/native';
+import { InsetGroup, InsetRow, toneClass, type CornerAction, type Tone, PushedTitle } from '../../ui/native';
+import { GROUP_RADIUS } from '../../ui/native/metrics';
+import { CategoryIcon } from '../categories/CategoryIcon';
 import { buyTarget } from './buy-item';
 import { differenceWords, plannedLabel, planTotals, quantityWords } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
@@ -15,15 +17,14 @@ import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
 
 /**
- * One thing on the plan, as a checklist line: an empty circle while it is still to buy, a filled tick once done.
+ * One thing on the plan, as a checklist line in the Cashflow history's size: an empty circle while it is still to
+ * buy, a tick once done, then the name and the figure.
  *
- * The row is the way into the item. The circle is a control of its own laid over the row's lead, 44 wide, and what it
- * does follows the item: nothing paid yet, it is Buy it now; paid towards and still open, it marks the item done; done,
- * it puts it back on the list. That makes this the one row on these screens with two targets in it, which `InsetRow`
- * exists to forbid — kept because the tick is what a checklist is for.
+ * Two targets side by side, never one inside the other: the circle is a button, 44 wide, and what it does follows the
+ * item — nothing paid yet, it is Buy it now; paid towards and still open, it marks the item done; done, it puts it back
+ * on the list. The rest of the row is the link into the item.
  */
 function PlanItemRow({
-  position,
   eventId,
   itemId,
   name,
@@ -33,7 +34,7 @@ function PlanItemRow({
   search,
   onBuy,
   onDone,
-}: GroupChild & {
+}: {
   eventId: string;
   itemId: string;
   name: string;
@@ -47,30 +48,89 @@ function PlanItemRow({
 }) {
   const done = state === 'done';
   return (
-    <div className="relative" data-testid="plan-item">
-      <InsetRow
-        position={position}
-        icon={done ? <Check size={15} aria-hidden /> : <Circle size={13} aria-hidden />}
-        iconColour={done ? 'var(--ph-tint)' : 'var(--ph-ink-3)'}
-        title={<span className={cx(done && 'text-[var(--ph-ink-3)]')}>{name}</span>}
-        subtitle={subtitle}
-        value={<span className={cx(done ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink-2)]')}>{figure}</span>}
-        to="/events/$eventId/plan/$itemId"
-        params={{ eventId, itemId }}
-        search={search}
-      />
+    <div className="flex items-center" data-testid="plan-item">
       <button
         type="button"
         aria-label={done ? `Reopen ${name}` : state === 'paid' ? `Done buying ${name}` : `Buy ${name}`}
         onClick={() => (state === 'open' ? onBuy() : onDone(!done))}
-        className="ph-focus absolute top-1/2 left-[4px] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full"
-      />
+        className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+      >
+        <span
+          aria-hidden
+          className={cx(
+            'flex h-6 w-6 items-center justify-center rounded-full',
+            done ? 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+          )}
+        >
+          {done && <Check size={14} strokeWidth={3} />}
+        </span>
+      </button>
+      <Link
+        to="/events/$eventId/plan/$itemId"
+        params={{ eventId, itemId }}
+        search={search}
+        className="ph-focus-inset flex min-h-11 min-w-0 flex-1 items-center gap-3 py-2 pr-[14px] pl-1"
+      >
+        <span className="min-w-0 flex-1">
+          <span className={cx('block truncate text-sm font-medium', done ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{name}</span>
+          {subtitle && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{subtitle}</span>}
+        </span>
+        <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', done ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{figure}</span>
+      </Link>
     </div>
   );
 }
 
 /**
- * An event's plan, as a checklist: how many are bought and what is left to buy on top, then a group per category —
+ * A category of the plan as one card, laid out like a day in the Cashflow history: its mark, its name over how many of
+ * its items are bought, and on the right what was paid of what it plans; a hairline, then its items.
+ */
+function PlanCategoryCard({
+  categoryId,
+  name,
+  itemCount,
+  boughtCount,
+  paid,
+  planned,
+  accounts,
+  children,
+}: {
+  categoryId: string | null;
+  name: string;
+  itemCount: number;
+  boughtCount: number;
+  paid: string;
+  planned: string;
+  accounts: readonly AccountRow[];
+  children: ReactNode;
+}) {
+  return (
+    <section
+      data-testid="plan-category"
+      aria-label={name}
+      className="overflow-hidden bg-[var(--ph-surface)]"
+      style={{ borderRadius: GROUP_RADIUS, marginBottom: 12 }}
+    >
+      <div className="flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[14px] pt-3 pb-2.5">
+        <CategoryIcon categoryId={categoryId} accounts={accounts} />
+        <div className="flex min-w-0 flex-1 flex-col text-xs leading-tight text-[var(--ph-ink-3)]">
+          <h2 className="truncate text-xs font-semibold text-[var(--ph-ink-2)]">{name}</h2>
+          <span>
+            {itemCount} {itemCount === 1 ? 'item' : 'items'} · {boughtCount === 0 ? 'none' : boughtCount} bought
+          </span>
+        </div>
+        <span className="tabular shrink-0 text-right text-sm leading-tight font-semibold text-[var(--ph-ink)]">
+          {paid}
+          <span className="block text-xs font-normal text-[var(--ph-ink-3)]">of {planned}</span>
+        </span>
+      </div>
+      <div className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * An event's plan, as a checklist: how many are bought and what is left to buy on top, then a card per category —
  * its header what was paid of what it plans, its items still to buy first and bought after, greyed.
  *
  * Only the plan is here. Spending nobody planned, and money that came back, are on the event's own page, under the
@@ -87,6 +147,7 @@ export function PlanPage() {
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
   const plan = useEventPlan(eventId, tab ?? null);
   const ready = useEventItemsReady();
+  const accounts = useAccounts().data ?? [];
   const [error, setError] = useState<unknown>(null);
 
   async function run(work: () => Promise<unknown>) {
@@ -109,7 +170,7 @@ export function PlanPage() {
     // Not a bare sentence: a screen whose subject has gone still owes the user a way on from it.
     return screen(
       <>
-        <LargeTitle title="Plan" back="All events" backTo="/events" />
+        <PushedTitle title="Plan" back="All events" backTo="/events" />
         <Empty>That event is no longer here.</Empty>
       </>,
     );
@@ -133,7 +194,7 @@ export function PlanPage() {
 
   return screen(
     <>
-      <LargeTitle
+      <PushedTitle
         title={`Plan · ${event?.name ?? ''}`}
         // The tab the plan was opened in goes back with it, or the event would reset to "All" on the way home.
         back="Back to the event"
@@ -199,8 +260,9 @@ export function PlanPage() {
             </div>
 
             {/*
-              * The checklist, a group per category: its header says what was paid towards it of what it plans, and its
-              * items follow — still to buy first, bought after, greyed — each with how many and at what price.
+              * The checklist, a card per category, read like a day in the Cashflow history: its header says how many
+              * of its items are bought and what was paid of what it plans, and its items follow — still to buy first,
+              * bought after, greyed — each with how many and at what price.
               */}
             {(data.lines ?? [])
               .filter((line) => line.items.length > 0)
@@ -208,30 +270,37 @@ export function PlanPage() {
                 const paid = line.items.reduce((total, item) => total + (item.actualMinor ?? 0), 0);
                 const ordered = [...line.items.filter((item) => !item.bought), ...line.items.filter((item) => item.bought)];
                 return (
-                  <div key={line.categoryId ?? 'none'} data-testid="plan-category">
-                    <InsetGroup header={line.name} trailing={`${rp(paid)} of ${rp(line.plannedMinor)}`}>
-                      {ordered.map((item) => {
-                        const words = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
-                        const many = quantityWords(item, ws.baseCurrency);
-                        // Paid towards but still open: what was paid against what was planned, and how many payments made it.
-                        const partly = !item.bought && item.purchaseCount > 0 ? `of ${rp(item.estimateMinor)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}` : null;
-                        return (
-                          <PlanItemRow
-                            key={item.id}
-                            eventId={eventId}
-                            itemId={item.id}
-                            name={item.name}
-                            subtitle={[item.bought ? many : null, item.bought ? (words?.text ?? null) : (partly ?? many)].filter(Boolean).join(' · ')}
-                            figure={rp(item.actualMinor ?? item.estimateMinor)}
-                            state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
-                            search={search}
-                            onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}
-                            onDone={(done) => void run(() => setEventItemDone(database, ws, item.id, done))}
-                          />
-                        );
-                      })}
-                    </InsetGroup>
-                  </div>
+                  <PlanCategoryCard
+                    key={line.categoryId ?? 'none'}
+                    categoryId={line.categoryId}
+                    name={line.name}
+                    itemCount={line.items.length}
+                    boughtCount={line.items.filter((item) => item.bought).length}
+                    paid={rp(paid)}
+                    planned={rp(line.plannedMinor)}
+                    accounts={accounts}
+                  >
+                    {ordered.map((item) => {
+                      const words = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
+                      const many = quantityWords(item, ws.baseCurrency);
+                      // Paid towards but still open: what was paid against what was planned, and how many payments made it.
+                      const partly = !item.bought && item.purchaseCount > 0 ? `of ${rp(item.estimateMinor)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}` : null;
+                      return (
+                        <PlanItemRow
+                          key={item.id}
+                          eventId={eventId}
+                          itemId={item.id}
+                          name={item.name}
+                          subtitle={[item.bought ? many : null, item.bought ? (words?.text ?? null) : (partly ?? many)].filter(Boolean).join(' · ')}
+                          figure={rp(item.actualMinor ?? item.estimateMinor)}
+                          state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
+                          search={search}
+                          onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}
+                          onDone={(done) => void run(() => setEventItemDone(database, ws, item.id, done))}
+                        />
+                      );
+                    })}
+                  </PlanCategoryCard>
                 );
               })}
             <InsetGroup>

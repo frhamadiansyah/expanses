@@ -8,7 +8,7 @@ import { addForm, saveButton, chooseTo } from './add-transaction';
  */
 test('the workspace is the first thing under ⋯, and opens the switcher', async ({ page }) => {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const menu = page.getByTestId('filters-menu');
   await expect(menu.getByTestId('workspace-row')).toBeVisible();
   // It comes before the three filters, because it changes the app rather than narrowing the list.
@@ -26,7 +26,7 @@ test('the workspace is the first thing under ⋯, and opens the switcher', async
  */
 test('a workspace is made from ⋯ and starts with none of the other’s categories', async ({ page }) => {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
   await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
 
@@ -38,7 +38,7 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
   await page.keyboard.press('Escape');
 
@@ -94,14 +94,14 @@ test('a transfer is filed in no workspace, so every workspace shows it and none 
   await expect(page.getByText('Top up').first()).toBeVisible();
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
   await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
   await page.keyboard.press('Escape');
 

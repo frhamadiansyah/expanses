@@ -90,7 +90,8 @@ test('a set category can be renamed, and archiving it leaves the set', async ({ 
 test('an event can be called done, and put back', async ({ page }) => {
   await addEvent(page, 'Lebaran', 'Holiday');
 
-  await page.getByRole('button', { name: 'Finish Lebaran' }).click();
+  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('menuitem', { name: 'Mark as done', exact: true }).click();
   await expect(page.getByTestId('event-sheet')).toContainText('Done');
 
   // Done moves it under Past on the list, not out of the workspace.
@@ -101,7 +102,8 @@ test('an event can be called done, and put back', async ({ page }) => {
 
   // Reopening puts it back among what is still running.
   await past.getByTestId('event-row').click();
-  await page.getByRole('button', { name: 'Reopen Lebaran' }).click();
+  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('menuitem', { name: 'Reopen', exact: true }).click();
   await expect(page.getByTestId('event-sheet')).toContainText('Now');
   await page.goto('/events');
   const current = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Now and next' }) });
@@ -148,6 +150,7 @@ test('an event records its spending in its own categories, from its own page', a
 
   // Tagged to the event as it was written, so the total stands without any hunting afterwards.
   await expect(page.getByTestId('event-total')).toContainText('7.500.000');
+  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Flooring & Tiles');
 });
 

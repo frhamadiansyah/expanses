@@ -63,7 +63,32 @@ export async function listEvents(database: Database, ws: WorkspaceContext): Prom
     .from(events)
     .where(and(eq(events.workspaceId, ws.workspaceId), sql`${events.archivedAt} IS NULL`))
     .orderBy(asc(events.startsOn));
-  return rows.map(toRow);
+  const off = (await planOffColumnExists(database.db))
+    ? new Set((await database.db.values<[string]>(sql`SELECT id FROM events WHERE workspace_id = ${ws.workspaceId} AND plan_off = 1`)).map(([id]) => id))
+    : new Set<string>();
+  return rows.map((row) => ({ ...toRow(row), planOff: off.has(row.id) }));
+}
+
+/*
+ * `events.plan_off` (0082) is read and written by name, never through the table's schema: a database stopped before
+ * 0082 has no such column, and every insert the schema writes would name it. Asked once per handle; only a yes is kept.
+ */
+const planOffColumn = new WeakMap<object, boolean>();
+async function planOffColumnExists(db: Database['db']): Promise<boolean> {
+  if (planOffColumn.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('events') WHERE name = 'plan_off'`);
+  if (rows.length > 0) planOffColumn.set(db, true);
+  return rows.length > 0;
+}
+
+/**
+ * Keeps an event without a plan, or gives it one back. Nothing is deleted either way: its items wait, unseen, for the
+ * plan to be turned on again. On a database from before 0082 it does nothing.
+ */
+export async function setEventPlanOff(database: Database, ws: WorkspaceContext, id: string, off: boolean): Promise<void> {
+  await eventOf(database, ws, id);
+  if (!(await planOffColumnExists(database.db))) return;
+  await database.db.run(sql`UPDATE events SET plan_off = ${off ? 1 : 0} WHERE workspace_id = ${ws.workspaceId} AND id = ${id}`);
 }
 
 /**

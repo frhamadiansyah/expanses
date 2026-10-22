@@ -101,7 +101,7 @@ test('row 7 — a weekly line overridden for one month keeps its unit, and next 
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   // A phone reaches the workspaces from Cashflow's ⋯.
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
   await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });

@@ -32,6 +32,11 @@ export interface EventRow {
   setId: string | null;
   /** When the owner called it done. Null while it is still running. */
   finishedAt: string | null;
+  /**
+   * True when the event is kept without a plan (0082): its page is the ring alone. Read by `listEvents` only — the
+   * column is outside the schema, so a row read any other way says false.
+   */
+  planOff: boolean;
 }
 
 /**
@@ -54,6 +59,7 @@ const toRow = (row: typeof events.$inferSelect): EventRow => ({
   goalId: row.goalId,
   setId: row.setId,
   finishedAt: row.finishedAt,
+  planOff: false,
 });
 
 export async function eventOf(database: Database, ws: WorkspaceContext, id: string): Promise<EventRow> {

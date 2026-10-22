@@ -12,7 +12,7 @@ const bar = (page: Page) => page.getByRole('toolbar', { name: 'Selected transact
 
 /** Select mode, from the header's ⋯ — the list's own way to tick rows. */
 async function startSelecting(page: Page) {
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
   await expect(bar(page)).toBeVisible();
 }
@@ -44,9 +44,8 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   // Nothing on the bar works until a row is ticked.
   await expect(bar(page).getByRole('button', { name: 'Add to event…' })).toBeDisabled();
   await expect(bar(page).getByRole('button', { name: 'Remove from event' })).toBeDisabled();
-  // An opening balance is not spending to put anywhere: no tick on it.
-  await expect(row(page, 'Opening balance')).toHaveCount(1);
-  await expect(row(page, 'Opening balance').getByRole('checkbox')).toHaveCount(0);
+  // An opening balance is not spending to put anywhere: hidden from the list by default, so there is nothing to tick.
+  await expect(row(page, 'Opening balance')).toHaveCount(0);
 
   // A tap on the row ticks it — it does not open the receipt — and a second tap unticks it.
   await face(page, 'Sate Rembiga', 'Restaurants').click();

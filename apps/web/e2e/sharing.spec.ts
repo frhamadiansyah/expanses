@@ -59,7 +59,7 @@ async function openWorkspaceSettings(page: Page, name: string) {
 async function openSwitcher(page: Page, phone: boolean) {
   if (phone) {
     await page.goto('/transactions');
-    await page.getByRole('button', { name: 'Filters' }).click();
+    await page.getByRole('button', { name: 'Filters', exact: true }).click();
     await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
   } else {
     await page.getByRole('button', { name: 'Workspace', exact: true }).click();

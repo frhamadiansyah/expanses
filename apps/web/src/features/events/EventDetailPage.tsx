@@ -1,16 +1,14 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
+import { deleteEvent, finishEvent, setEventPlanOff, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus, UserPlus } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { Plus, Settings } from 'lucide-react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
-  DestructiveRow,
   InsetGroup,
   InsetRow,
-  LargeTitle,
   Panel,
   SCREEN,
   SegmentedControl,
@@ -18,6 +16,7 @@ import {
   type GroupChild,
   type InsetRowProps,
   type Segment,
+  PushedTitle,
 } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
 import { useCategorySets } from '../categories/set-queries';
@@ -80,7 +79,7 @@ export function EventDetailPage() {
 function SharedEventWaiting({ name, loading, error }: { name: string; loading: boolean; error: unknown }) {
   return (
     <div className={SCREEN} data-testid="shared-event-waiting">
-      <LargeTitle title={name} back="Events" backTo="/events" />
+      <PushedTitle title={name} back="Events" backTo="/events" />
       <ErrorBox error={error} />
       <p className="px-[4px] py-[8px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">
         {loading
@@ -190,8 +189,15 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [error, setError] = useState<unknown>(null);
   /* A category row tapped on Where it went: the history below shows only its payments, until it is tapped again. */
   const [picked, setPicked] = useState<string | null>(null);
+  /* The rows under the ring, folded away until the chart is tapped — Cashflow's ring does the same. */
+  const [showRows, setShowRows] = useState(false);
   const [editing, setEditing] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
+  // Edit opens from the gear at the top, and its form sits at the foot of the page: taken there once, as it opens.
+  const editRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editing) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editing]);
 
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
@@ -236,7 +242,10 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   // purchases has money in it, and "Nothing spent on it yet" would be the page hiding a refund rather than a total.
   const anyMoney = (data?.spentMinor ?? 0) !== 0;
   // An event has a plan when something is on the list, whatever it adds up to — not when a figure was set for it.
-  const hasPlan = data?.hasPlan === true;
+  // Kept without a plan (the gear's Mark as unplanned), the page is the ring alone: no gauge, no Plan card.
+  const planned = event?.planOff !== true;
+  const hasItems = data?.hasPlan === true;
+  const hasPlan = hasItems && planned;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
   // Worked out once rather than at each of the two places it is printed: the words and the tone are one reading.
@@ -291,6 +300,35 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     </div>
   );
 
+  /*
+   * The chart is the switch for its own rows, as Cashflow's is: one tap shows the categories, another folds them and
+   * drops any category picked from them. A div rather than a button: the deck inside it scrolls sideways, which a
+   * button's content will not do on iOS. Against the plan there are no rows, so there the tap does nothing.
+   */
+  const fold = () => {
+    if (showRows) setPicked(null);
+    setShowRows(!showRows);
+  };
+  const chartFrame = (content: ReactNode) => (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onPlan ? undefined : fold}
+      onKeyDown={(event) => {
+        if (!onPlan && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          fold();
+        }
+      }}
+      aria-expanded={showRows}
+      aria-label={showRows ? 'Hide categories' : 'See all categories'}
+      data-testid={showRows ? 'hide-categories' : 'see-categories'}
+      className="block w-full cursor-pointer"
+    >
+      {content}
+    </div>
+  );
+
   // Oldest day last, like Cashflow; each day a card of its own.
   // The history as the list's own rows, so an event draws transactions the way every other screen does.
   const historyRows = new Map(buildRows(history.data ?? [], [], accounts, []).map((row) => [row.id, row]));
@@ -319,14 +357,53 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     glyph: <Plus size={22} aria-hidden />,
     run: () => void navigate(addSpendingTarget(eventId)),
   };
-  // Only an event that is not shared reaches this page (a shared one is `SharedEventScreen`), so an event can be shared once.
-  // A corner button carries a glyph, never a word: without one this drew an empty circle beside + (I1).
-  const share: CornerAction = { key: 'share', label: 'Share this event', glyph: <UserPlus size={21} aria-hidden />, run: onShare };
+  /*
+   * Everything done to the event itself, behind the gear rather than in a list at the foot of the page: Edit, Share,
+   * done or not, and Remove last, in alarm. Only an event that is not shared reaches this page (a shared one is
+   * `SharedEventScreen`), so an event can be shared once.
+   */
+  const settings: CornerAction = {
+    key: 'settings',
+    label: 'Event settings',
+    glyph: <Settings size={19} aria-hidden />,
+    menu: event
+      ? [
+          { key: 'edit', label: 'Edit event', run: () => setEditing(true) },
+          { key: 'share', label: 'Share this event', run: onShare },
+          {
+            key: 'plan',
+            label: event.planOff ? 'Mark as planned' : 'Mark as unplanned',
+            run: () =>
+              void run(async () => {
+                setPage(0);
+                await setEventPlanOff(database, ws, event.id, !event.planOff);
+              }),
+          },
+          {
+            key: 'done',
+            label: event.finishedAt === null ? 'Mark as done' : 'Reopen',
+            run: () => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null)),
+          },
+          {
+            key: 'remove',
+            label: 'Remove event',
+            destructive: true,
+            run: () => {
+              if (!window.confirm(`Remove ${event.name}? Its transactions stay where they are.`)) return;
+              void run(async () => {
+                await deleteEvent(database, ws, event.id);
+                await navigate({ to: '/events' });
+              });
+            },
+          },
+        ]
+      : [],
+  };
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <LargeTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, share]} />
+      <PushedTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}
@@ -347,9 +424,11 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
           {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
-            <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">Nothing spent on it yet. Plan what to buy below, or record the first payment.</p>
+            <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+              {planned ? 'Nothing spent on it yet. Plan what to buy below, or record the first payment.' : 'Nothing spent on it yet.'}
+            </p>
           ) : hasPlan ? (
-            <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']}>
+            <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']} frame={chartFrame}>
               {donut}
               <div>
                 <BudgetGauge
@@ -422,7 +501,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
               </div>
             </Deck>
           ) : (
-            donut
+            chartFrame(donut)
           )}
 
           {/*
@@ -430,7 +509,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
            * no rows: a category is planned or it is not, and a bar drawn against a category that planned nothing
            * would be measuring spending against a figure nobody set. The plan's own rows are on the plan screen.
            */}
-          {!onPlan && rows.length > 0 && (
+          {!onPlan && showRows && rows.length > 0 && (
             <div className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]" data-testid="event-detail-sheet">
               {rows.map((row) => (
                 <button
@@ -453,22 +532,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                     wholeMinor={whole}
                     currency={ws.baseCurrency}
                     chevron={false}
-                    // A planned row is read against its own plan; an unplanned one has nothing to be read against.
-                    figure={
-                      row.planned ? (
-                        <span className="shrink-0 text-[13px]">
-                          <Money minor={Math.max(0, row.actualMinor)} currency={ws.baseCurrency} className="font-semibold" />{' '}
-                          <span className="text-[var(--ph-ink-3)]">of</span>{' '}
-                          <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="text-[var(--ph-ink-3)]" />
-                        </span>
-                      ) : undefined
-                    }
                   />
-                  <span className="mt-1 ml-[22px] flex items-center gap-2 text-[12.5px] text-[var(--ph-ink-3)]">
-                    {/* Quiet, never amber: a category nobody planned is a fact about the plan, not a warning. */}
-                    {hasPlan && !row.planned && <span className="font-semibold text-[var(--ph-ink-3)]">no items</span>}
-                    {row.subline}
-                  </span>
                 </button>
               ))}
             </div>
@@ -481,7 +545,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
       {/* Between the chart and the suggestions: the plan is a card here, and its own screen is one tap away. */}
       {/* With a plan, the card is inside the chart's card under Against the plan; without one it is the way to start one. */}
-      {data && !hasPlan && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
+      {data && !hasPlan && planned && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (
         <div data-testid="event-suggestions">
@@ -570,34 +634,10 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
       )}
 
       {event && editing && (
-        <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasPlan || transactions > 0} onDone={() => setEditing(false)} />
+        <div ref={editRef}>
+          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasItems || transactions > 0} onDone={() => setEditing(false)} />
+        </div>
       )}
-      {event && !editing && (
-        <>
-          <InsetGroup>
-            <InsetRow title="Edit event" label={`Edit ${event.name}`} onClick={() => setEditing(true)} />
-            <InsetRow
-              title={event.finishedAt === null ? 'Mark as done' : 'Reopen'}
-              label={event.finishedAt === null ? `Finish ${event.name}` : `Reopen ${event.name}`}
-              chevron={false}
-              onClick={() => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null))}
-            />
-          </InsetGroup>
-          {/* Its own group: the air around a destructive row is the only undo a finger gets. */}
-          <InsetGroup>
-            <DestructiveRow
-              label="Remove event"
-              onClick={() =>
-                void run(async () => {
-                  await deleteEvent(database, ws, event.id);
-                  await navigate({ to: '/events' });
-                })
-              }
-            />
-          </InsetGroup>
-        </>
-      )}
-
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
       </div>

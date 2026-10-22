@@ -2,7 +2,7 @@ import { dayMonth, formatMinor } from '@expanses/core';
 import { useParams, useSearch } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
+import { InsetGroup, InsetRow, PushedTitle } from '../../ui/native';
 import { useEventHistory, useEventPlan, useEvents } from './queries';
 
 /** One row of the list: a payment already tagged to this event, and how much of it no item claims yet. */
@@ -105,7 +105,7 @@ export function PickPurchasePage() {
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-        <LargeTitle
+        <PushedTitle
           title="Link a purchase"
           back={named ? 'Back to the item' : 'Back to the plan'}
           backTo={backTo.to}

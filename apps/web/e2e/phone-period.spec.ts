@@ -41,7 +41,7 @@ test('the list narrows by what paid, beside the sort, and a chip takes it off ag
   await page.getByRole('option', { name: /BCA Tahapan/ }).click();
 
   // And ⋯ is left with what only ⋯ can do: the workspace, and what the list reveals.
-  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const menu = page.getByTestId('filters-menu');
   await expect(menu).not.toContainText('Paid with');
   await expect(menu).not.toContainText('Not recorded');

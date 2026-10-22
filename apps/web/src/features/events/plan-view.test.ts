@@ -121,6 +121,8 @@ describe('the cards', () => {
       ofMinor: null,
       backLine: null,
     });
+    // Kept without a plan, its items still there: read as no plan, measured against nothing.
+    expect(eventListLine(plan, 'IDR', true)).toMatchObject({ subline: 'No plan · 1 purchase', ofMinor: null });
   });
 
   /*
