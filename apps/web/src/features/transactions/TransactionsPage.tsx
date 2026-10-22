@@ -1522,8 +1522,6 @@ export function TransactionsPage() {
 
       {selecting && (
         <>
-          {/* Room under the last row, so the bar never sits over a row that still has to be ticked. */}
-          <div aria-hidden className="h-36" />
           {/* Stood down while a sheet it opened is up: drawn above the page, it would sit over that sheet's rows. */}
           {!pickingBook && !pickingEvent && (
           <SelectBar
