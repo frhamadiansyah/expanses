@@ -14,13 +14,14 @@ export interface BoardRow {
   latest: SourcedPrice | null;
 }
 
-/** The kinds Update prices lists: a listed share and a fund. Gold keeps its own page and sheet. */
+/** The kinds Update prices lists as shares and funds; anything else priced by the unit — gold, a bond — is `held`. */
 const LISTED_KINDS = new Set(['stock', 'fund']);
 
 /**
- * Every listed share and fund held today, for Update prices: one line per security however many brokers hold it,
+ * Every holding priced by the unit today, for Update prices: one line per security however many brokers hold it,
  * then each fund or unlinked holding on its own. Shares IDX lists come first (the file fills them); the rest — a US
- * share, a mutual fund — are typed. Sold-out and estimated holdings are left out.
+ * share, a mutual fund — are typed; then everything else priced by the unit, gold by the gram, a bond by its price,
+ * as `held`. Sold-out and estimated holdings are left out.
  */
 export function priceBoard(o: {
   values: readonly AssetValueRow[];
@@ -29,11 +30,12 @@ export function priceBoard(o: {
   securities: readonly SecurityRow[];
   latestBySecurity: Readonly<Record<string, SourcedPrice>>;
   latestOwn: Readonly<Record<string, SourcedPrice>>;
-}): { stocks: BoardRow[]; others: BoardRow[] } {
+}): { stocks: BoardRow[]; others: BoardRow[]; held: BoardRow[] } {
   const linkOf = new Map(o.links.map((link) => [link.accountId, link.securityId]));
   const securityById = new Map(o.securities.map((security) => [security.id, security]));
   const stocks: BoardRow[] = [];
   const others: BoardRow[] = [];
+  const held: BoardRow[] = [];
   const seen = new Set<string>();
   for (const value of o.values) {
     if (value.mode !== 'market' || !(value.unitsMicro && value.unitsMicro > 0)) continue;
@@ -53,11 +55,10 @@ export function priceBoard(o: {
       });
       continue;
     }
-    if (!LISTED_KINDS.has(o.kinds[value.accountId] ?? '')) continue;
-    others.push({ key: value.accountId, securityId: null, accountId: value.accountId, title: value.name, currency: value.currency, idxTicker: null, latest: o.latestOwn[value.accountId] ?? null });
+    (LISTED_KINDS.has(o.kinds[value.accountId] ?? '') ? others : held).push({ key: value.accountId, securityId: null, accountId: value.accountId, title: value.name, currency: value.currency, idxTicker: null, latest: o.latestOwn[value.accountId] ?? null });
   }
   const byTitle = (a: BoardRow, b: BoardRow) => a.title.localeCompare(b.title);
-  return { stocks: stocks.sort(byTitle), others: others.sort(byTitle) };
+  return { stocks: stocks.sort(byTitle), others: others.sort(byTitle), held: held.sort(byTitle) };
 }
 
 /** How many lines' prices are older than `days` (or missing). */

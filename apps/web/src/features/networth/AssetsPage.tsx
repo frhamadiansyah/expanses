@@ -10,7 +10,6 @@ import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
-import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
 
@@ -141,7 +140,6 @@ export function AssetsPage() {
   const accounts = useAccounts();
   const held = useHeldRates((values.data ?? []).map((row) => row.currency));
   const [showSold, setShowSold] = useState(false);
-  const [updatingPrices, setUpdatingPrices] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
   const [picked, setPicked] = useState<string | null>(null);
   // Inside a picked section with more than one kind, the kind picked on its own boxes: the list narrows to that drawer.
@@ -190,33 +188,23 @@ export function AssetsPage() {
   const pricedStale = stale.filter((row) => row.method === 'Units × price');
   const estimatesStale = stale.filter((row) => row.method !== 'Units × price');
   /*
-   * Prices live in the corner beside +, not in the page: Update prices for whatever has gone stale, and the shares and
-   * funds' own page. A dot on the tag while any price is stale or more than a week old, so the corner still says so.
+   * Prices live in the corner beside +: one tag that opens Update prices, where every holding priced by the unit —
+   * shares, funds, gold — takes today's price. A dot on the tag while any price is stale or more than a week old.
    */
   const pricesOld = pricedStale.length > 0 || oldPrices > 0;
+  const priced = (values.data ?? []).some((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0);
   const prices: CornerAction = {
     key: 'prices',
-    label: pricesOld ? 'Prices, some are old' : 'Prices',
+    label: pricesOld ? 'Update prices, some are old' : 'Update prices',
     glyph: (
       <span className="relative flex items-center justify-center">
         <Tag size={18} aria-hidden />
         {pricesOld && <span aria-hidden className="absolute top-[-2px] right-[-2px] h-[7px] w-[7px] rounded-full bg-[var(--ph-warn)]" />}
       </span>
     ),
-    menu: [
-      {
-        key: 'update',
-        label: 'Update prices',
-        run: () => setUpdatingPrices(true),
-        disabled: pricedStale.length === 0,
-        ...(pricedStale.length === 0 ? { detail: 'Every price is up to date' } : { detail: `${pricedStale.length} need a fresh price` }),
-      },
-      ...(listed.length > 0
-        ? [{ key: 'listed', label: 'Stock and fund prices', to: '/net-worth/prices' as const, ...(oldPrices > 0 ? { detail: `${oldPrices} more than a week old` } : {}) }]
-        : []),
-    ],
+    to: '/net-worth/prices',
   };
-  const actions: CornerAction[] = [prices, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
+  const actions: CornerAction[] = [...(priced ? [prices] : []), { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>
@@ -265,12 +253,6 @@ export function AssetsPage() {
         </Panel>
       )}
 
-      {updatingPrices && (
-        <UpdatePricesSheet
-          holdings={pricedStale.map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, priceLabel: 'Price' }))}
-          onDone={() => setUpdatingPrices(false)}
-        />
-      )}
       {/* An estimate gone stale (a house, a car) has no price to fetch: it is named here, and its own page updates it. */}
       {estimatesStale.length > 0 && (
         <Panel header="Needs a fresh figure">

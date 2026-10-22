@@ -370,11 +370,13 @@ test('moves net worth by the price difference only', async ({ page }) => {
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
   await page.goto('/net-worth/assets');
-  // Update prices is behind the corner's Prices menu now.
-  await page.getByRole('button', { name: /^Prices/ }).click();
-  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
+  // Update prices is the corner's tag.
+  await page.getByRole('link', { name: /^Update prices/ }).click();
   await page.getByLabel(/Antam gold bars/).fill('1900000');
   await page.getByRole('button', { name: 'Save prices' }).click();
+  // Saved once the box says where its price came from; only then back to the list.
+  await expect(page.getByText(/· Typed/)).toBeVisible();
+  await page.goto('/net-worth/assets');
   // 10 g at Rp 1.900.000 on the assets list first, so a failure points at the right step.
   await expect(page.getByText(/19\.000\.000/).first()).toBeVisible();
 

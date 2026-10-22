@@ -25,11 +25,13 @@ async function addGold(page: Page) {
   // The row is inside its kind's drawer, which the list opens shut.
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
-  // A price, so a goal funded with gold is worth something today: Update prices is behind the corner's Prices menu.
-  await page.getByRole('button', { name: /^Prices/ }).click();
-  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
+  // A price, so a goal funded with gold is worth something today: Update prices is the corner's tag.
+  await page.getByRole('link', { name: /^Update prices/ }).click();
   await page.getByLabel(/Antam gold bars/).fill('1800000');
   await page.getByRole('button', { name: 'Save prices' }).click();
+  // Saved once the box says where its price came from; only then back to the list.
+  await expect(page.getByText(/· Typed/)).toBeVisible();
+  await page.goto('/net-worth/assets');
   await expect(page.getByText(/18\.000\.000/).first()).toBeVisible();
 }
 

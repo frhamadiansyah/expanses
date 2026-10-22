@@ -98,7 +98,7 @@ export function UpdatePricesPage() {
           latestOwn: latestOwn.data,
         })
       : null;
-  const rows = board ? [...board.stocks, ...board.others] : [];
+  const rows = board ? [...board.stocks, ...board.others, ...board.held] : [];
   const entries = rows.map((row) => ({ row, value: (typed[row.key] ?? '').trim() })).filter((entry) => entry.value !== '');
 
   async function save() {
@@ -188,11 +188,17 @@ export function UpdatePricesPage() {
         onChange={(e) => void read(e.target.files?.[0])}
       />
 
-      {board && rows.length === 0 && <Empty>No shares or funds held. Their prices are updated here once there are some.</Empty>}
+      {board && rows.length === 0 && <Empty>Nothing priced by the unit is held. Shares, funds and gold are updated here once there are some.</Empty>}
       {board && board.stocks.length > 0 && <InsetGroup header="Stocks">{board.stocks.map(priceBox)}</InsetGroup>}
       {board && board.others.length > 0 && (
-        <InsetGroup header={board.stocks.length > 0 ? 'Not in the IDX file' : 'Shares and funds'} footer="A price typed here is saved as today’s.">
+        <InsetGroup header={board.stocks.length > 0 ? 'Not in the IDX file' : 'Shares and funds'} footer={board.held.length > 0 ? undefined : 'A price typed here is saved as today’s.'}>
           {board.others.map(priceBox)}
+        </InsetGroup>
+      )}
+
+      {board && board.held.length > 0 && (
+        <InsetGroup header={board.stocks.length + board.others.length > 0 ? 'Other holdings' : 'Holdings'} footer="A price typed here is saved as today’s.">
+          {board.held.map(priceBox)}
         </InsetGroup>
       )}
 
