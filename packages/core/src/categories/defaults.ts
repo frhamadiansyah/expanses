@@ -49,8 +49,14 @@ export const DEFAULT_CATEGORY_KEYS: ReadonlySet<string> = new Set(
  * Typical merchant category code for purchases in each default category, used when a purchase has no typed or
  * remembered MCC. Users can override them per workspace.
  */
+/** Built-in categories made on first need rather than with a workspace: money back with nothing to go under, a top-up. */
+export const ON_DEMAND_CATEGORY_KEYS: ReadonlySet<string> = new Set(['miscellaneous.refunds', 'miscellaneous.top_ups']);
+
 export const DEFAULT_CATEGORY_MCCS: Readonly<Record<string, string>> = {
   'donation.charity': '8398',
+  // A card's top-up of a wallet (made under Miscellaneous on first need, never offered to file under): issuers print
+  // it as 5999. A workspace can still set its own on the category.
+  'miscellaneous.top_ups': '5999',
   education: '8299',
   'education.text_books_supplies': '5942',
   'education.tuition_fees': '8299',

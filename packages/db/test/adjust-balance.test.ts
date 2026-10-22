@@ -126,7 +126,8 @@ describe('moveMoneyIn', () => {
     // Points read the whole charge once, under Top-ups — never under the fee's category, which earns nothing.
     const topUps = (await listAccounts(database, ws)).find((a) => a.systemKey === 'miscellaneous.top_ups')!;
     const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
-    expect(lines.map((line) => [line.categoryId, line.amountMinor, line.cardFee])).toEqual([[topUps.id, 501_500, false]]);
+    expect(lines.map((line) => [line.categoryId, line.amountMinor, line.cardFee, line.mcc])).toEqual([[topUps.id, 501_500, false, '5999']]);
+    expect(topUps.parentId).toBe((await listAccounts(database, ws)).find((a) => a.systemKey === 'miscellaneous')!.id);
   });
 
   it('tops a wallet up from a card with no fee: a transfer, and its points read on the top-up', async () => {
