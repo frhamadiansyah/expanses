@@ -6,6 +6,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset, fillDay } from './add-asset';
 import { addTransaction, closeDetails, shareWith, choosePayment } from './add-transaction';
 import { openDrawers } from './drawers';
+import { openAsset } from './asset-page';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
@@ -198,8 +199,9 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
   // The sheet closes on success only, so waiting for it to go is waiting for the write to land.
   await expect(page.getByRole('dialog', { name: 'This was a purchase' })).toBeHidden();
 
-  await page.goto('/net-worth/trades');
-  await expect(page.getByText('12 g').first()).toBeVisible();
+  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  await openAsset(page, 'Antam gold bars');
+  await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });
 
 /**

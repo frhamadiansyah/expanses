@@ -148,15 +148,13 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
   await expect(aapl).not.toContainText('182.500');
 });
 
-test('every way in reaches Investments and Add a holding: Buy & sell, the Assets group, the picker and the inline form', async ({ page }) => {
+test('every way in reaches Investments and Add a holding: the Assets group, the picker and the inline form', async ({ page }) => {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
 
-  // §7.1: a row at the top of Buy & sell, and the last row of the Assets page's Investments group.
-  await page.goto('/net-worth/trades');
-  await page.getByRole('link', { name: /^Investments/ }).click();
-  await expect(page).toHaveURL(/\/net-worth\/investments$/);
+  // §7.1: the last row of the Assets page's Investments group. Buy & sell gave up its Investments row when it became
+  // four buttons and a history.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'By stock and broker' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments$/);

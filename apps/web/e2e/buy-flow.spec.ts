@@ -7,6 +7,7 @@ import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addHoldingFlow } from './securities';
 import { goalCard } from './set-aside';
+import { openAsset } from './asset-page';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -58,8 +59,9 @@ test('records a purchase from the transaction window, and it never counts as spe
   // Cash fell by what it cost, and the gold is held at cost: net worth is unchanged.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
-  await page.goto('/net-worth/trades');
-  await expect(page.getByText('12 g').first()).toBeVisible();
+  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  await openAsset(page, 'Antam gold bars');
+  await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });
 
 test('pays for a purchase with the credit card, so the card owes more and the points still count', async ({ page }) => {
@@ -117,8 +119,9 @@ test('turns an expense already recorded into the purchase it really was', async 
   await page.getByRole('button', { name: 'Save as a purchase' }).click();
 
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
-  await page.goto('/net-worth/trades');
-  await expect(page.getByText('12 g').first()).toBeVisible();
+  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  await openAsset(page, 'Antam gold bars');
+  await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });
 
 test('parks money at the broker for a goal, then buys one lot and the leftover stays promised, not idle', async ({ page }) => {
@@ -227,8 +230,9 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
 
   // Units first: 10 g were already held, so 2 more make 12.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
-  await page.goto('/net-worth/trades');
-  await expect(page.getByText('12 g').first()).toBeVisible();
+  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  await openAsset(page, 'Antam gold bars');
+  await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 
   // The goal has the two grams against it — the whole point of tagging the buy. The figure beside them is a
   // valuation and moves with the price; what the tag decides is which goal the units belong to.
@@ -269,8 +273,9 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
 
   await expect(page.getByText('Sold 2 Antam gold bars')).toBeVisible();
   // 10 g less the 2 sold, and the proceeds are in the bank.
-  await page.goto('/net-worth/trades');
-  await expect(page.getByText('8 g').first()).toBeVisible();
+  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  await openAsset(page, 'Antam gold bars');
+  await expect(page.getByTestId('asset-grid')).toContainText('8 g');
   await page.goto('/accounts');
   await openTypes(page);
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
