@@ -1,13 +1,12 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { ArrowLeftRight, BellRing, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
 import { assetKindTile, assetSectionTile, debtKindTile } from '../ownables/catalogue-view';
-import { useAttention } from './attention';
 import type { BarMonth } from './bar-chart';
 import { NetWorthBars } from './NetWorthBars';
 import { NetWorthChart } from './NetWorthChart';
@@ -332,7 +331,6 @@ export function OverviewPage() {
   const months = lastNMonths(monthOf(today), SPAN_MONTHS[span]);
   const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
-  const waiting = useAttention(today);
   /*
    * With one tax ID the page is the household's (§8.2, D12): the other's shared items join this phone's own rows in the
    * same drawers, the figure and its line are the household's, and each row's ring says whose it is. Separate, or no
@@ -374,29 +372,12 @@ export function OverviewPage() {
    */
   const sheetBlocked = joint ? joint.ownMissing.length > 0 : sheetMissing.length > 0;
 
-  const waitingCount = waiting.items.length + waiting.warnings.length;
   /*
-   * The corners, in the order the page is about them: what is waiting, then how the figure is doing, then the
-   * journeys. Three of them on a phone, which is one more than the kit's own two — and the two of them are the two
-   * questions the figure raises, so the third is a `…` rather than a fourth thing.
+   * The corners, in the order the page is about them: how the figure is doing, then Buy & sell. Needs attention is no
+   * longer one of them: what it gathered is said where it belongs — an old price on Assets' Prices corner, a due
+   * monthly buy on Buy & sell's Monthly plans.
    */
   const actions: CornerAction[] = [
-    /*
-     * It was the right-hand column of this page, which on a phone is under the balance sheet: a thing to do, below the
-     * answer to what you have. The dot is what the move keeps — a corner that opens a screen of warnings must not look
-     * like a corner that opens nothing — and the name carries the count for a screen reader.
-     */
-    {
-      key: 'attention',
-      label: waitingCount > 0 ? `Needs attention, ${waitingCount} waiting` : 'Needs attention',
-      glyph: (
-        <span className="relative flex items-center justify-center">
-          <BellRing size={18} aria-hidden />
-          {waitingCount > 0 && <span aria-hidden className="absolute top-[-2px] right-[-2px] h-[7px] w-[7px] rounded-full bg-[var(--ph-alarm)]" />}
-        </span>
-      ),
-      to: '/net-worth/attention',
-    },
     /*
      * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the
      * period they are read over belongs to that screen with them.
@@ -505,7 +486,7 @@ export function OverviewPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Net worth" actions={actions} max={3} />
-      <ErrorBox error={series.error ?? sheetInputs.error ?? waiting.error ?? household.error} />
+      <ErrorBox error={series.error ?? sheetInputs.error ?? household.error} />
 
       {nothingYet && (
         <Empty>

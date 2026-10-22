@@ -1,6 +1,5 @@
 import { CASH_ITEMS, isoDate, priceAgeDays } from '@expanses/core';
-import { Plus } from 'lucide-react';
-import { Link } from '@tanstack/react-router';
+import { Plus, Tag } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -174,7 +173,36 @@ export function AssetsPage() {
    * asks what you own and then draws the form that choice needs — rather than unfolding every field of every kind
    * over the list you came to read.
    */
-  const actions: CornerAction[] = [{ key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
+  const pricedStale = stale.filter((row) => row.method === 'Units × price');
+  const estimatesStale = stale.filter((row) => row.method !== 'Units × price');
+  /*
+   * Prices live in the corner beside +, not in the page: Update prices for whatever has gone stale, and the shares and
+   * funds' own page. A dot on the tag while any price is stale or more than a week old, so the corner still says so.
+   */
+  const pricesOld = pricedStale.length > 0 || oldPrices > 0;
+  const prices: CornerAction = {
+    key: 'prices',
+    label: pricesOld ? 'Prices, some are old' : 'Prices',
+    glyph: (
+      <span className="relative flex items-center justify-center">
+        <Tag size={18} aria-hidden />
+        {pricesOld && <span aria-hidden className="absolute top-[-2px] right-[-2px] h-[7px] w-[7px] rounded-full bg-[var(--ph-warn)]" />}
+      </span>
+    ),
+    menu: [
+      {
+        key: 'update',
+        label: 'Update prices',
+        run: () => setUpdatingPrices(true),
+        disabled: pricedStale.length === 0,
+        ...(pricedStale.length === 0 ? { detail: 'Every price is up to date' } : { detail: `${pricedStale.length} need a fresh price` }),
+      },
+      ...(listed.length > 0
+        ? [{ key: 'listed', label: 'Stock and fund prices', to: '/net-worth/prices' as const, ...(oldPrices > 0 ? { detail: `${oldPrices} more than a week old` } : {}) }]
+        : []),
+    ],
+  };
+  const actions: CornerAction[] = [prices, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>
@@ -217,33 +245,15 @@ export function AssetsPage() {
 
       {updatingPrices && (
         <UpdatePricesSheet
-          holdings={stale
-            .filter((row) => row.method === 'Units × price')
-            .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, priceLabel: 'Price' }))}
+          holdings={pricedStale.map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, priceLabel: 'Price' }))}
           onDone={() => setUpdatingPrices(false)}
         />
       )}
-      {stale.length > 0 &&
-        !updatingPrices &&
-        (stale.some((row) => row.method === 'Units × price') ? (
-          <InsetGroup header="Needs a fresh figure" footer={staleNote(stale)}>
-            <InsetRow title="Update prices" onClick={() => setUpdatingPrices(true)} chevron={false} />
-          </InsetGroup>
-        ) : (
-          <Panel header="Needs a fresh figure">
-            <p className="text-[13px] leading-[17px] text-[var(--ph-warn)]">{staleNote(stale)}</p>
-          </Panel>
-        ))}
-
-      {oldPrices > 0 && (
-        <div className="mb-[18px] flex items-center justify-between gap-3 rounded-[11px] bg-[var(--ph-surface)] px-3 py-[9px] md:max-w-2xl" data-testid="old-prices">
-          <p className="min-w-0 text-[13px] leading-[17px] text-[var(--ph-warn)]">
-            {oldPrices === 1 ? '1 price is' : `${oldPrices} prices are`} more than a week old
-          </p>
-          <Link to="/net-worth/prices" className="ph-focus shrink-0 rounded text-[13px] leading-[17px] font-semibold text-[var(--ph-tint)]">
-            Update ›
-          </Link>
-        </div>
+      {/* An estimate gone stale (a house, a car) has no price to fetch: it is named here, and its own page updates it. */}
+      {estimatesStale.length > 0 && (
+        <Panel header="Needs a fresh figure">
+          <p className="text-[13px] leading-[17px] text-[var(--ph-warn)]">{staleNote(estimatesStale)}</p>
+        </Panel>
       )}
 
       {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
@@ -254,12 +264,6 @@ export function AssetsPage() {
           // Keyed by the pick too, so a group picked opens afresh and goes back to its drawers when let go.
           <Group key={`${group.group}:${active === group.group}`} group={group} baseCurrency={baseCurrency} money={money} opened={active === group.group} />
         ))}
-
-      {listed.length > 0 && (
-        <InsetGroup>
-          <InsetRow title="Stock and fund prices" to="/net-worth/prices" />
-        </InsetGroup>
-      )}
 
       {sold.length > 0 && (
         <>

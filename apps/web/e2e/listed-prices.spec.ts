@@ -64,7 +64,8 @@ test('IDX’s daily file fills the shares held: a preview, one save, and the pag
   await routeYahoo(page, 'offline');
   await holdBbca(page);
   await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: 'Stock and fund prices' }).click();
+  await page.getByRole('button', { name: /^Prices/ }).click();
+  await page.getByRole('menuitem', { name: /^Stock and fund prices/ }).click();
   await expect(page.getByRole('heading', { name: 'Update prices' })).toBeVisible();
   await expect(page.getByLabel('BBCA', { exact: true })).toBeVisible();
 

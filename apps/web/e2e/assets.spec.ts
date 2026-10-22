@@ -8,6 +8,17 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/**
+ * Buy & sell's button for the one holding: it opens the holding's own page with the gold sheet up, and More options
+ * opens the full form there.
+ */
+async function openFullForm(page: Page, kind: 'Buy' | 'Sell') {
+  await page.goto('/net-worth/trades');
+  await page.getByRole('button', { name: kind, exact: true }).click();
+  await page.getByRole('button', { name: 'More options' }).click();
+  await expect(page.getByLabel('What happened')).toBeVisible();
+}
+
 async function addBank(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 }
@@ -46,21 +57,21 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
   await page.getByRole('link', { name: 'Buy & sell' }).click();
   await expect(page.getByRole('heading', { name: 'Buy & sell' })).toBeVisible();
 
-  await page.getByLabel('What happened').selectOption('buy');
+  await openFullForm(page, 'Buy');
   await page.getByLabel('Units, shares or grams').fill('2');
   await page.getByLabel('What it cost, before fees (IDR)').fill('3980000');
   await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/Recorded\./)).toBeVisible();
+  await expect(page.getByLabel('What happened')).toHaveCount(0);
 
   // 17 g cost Rp 26.380.000, so average cost is Rp 1.551.764 a gram.
   await expect(page.getByText(/26\.380\.000/).first()).toBeVisible();
 
-  await page.getByLabel('What happened').selectOption('sell');
+  await openFullForm(page, 'Sell');
   await page.getByLabel('Units, shares or grams').fill('5');
   await page.getByLabel('Proceeds, before fees (IDR)').fill('9000000');
   await expect(page.getByText(/Gives up/)).toBeVisible();
   await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/Recorded\./)).toBeVisible();
+  await expect(page.getByLabel('What happened')).toHaveCount(0);
 
   // 12 g left of the 17 g held.
   await expect(page.getByText('12 g').first()).toBeVisible();
@@ -70,7 +81,9 @@ test('updates a price from the assets list and shows the new value', async ({ pa
   await addBank(page);
   await addGold(page);
 
-  await page.getByRole('button', { name: 'Update prices' }).click();
+  // Prices sit in the corner beside +; the dot says one is old.
+  await page.getByRole('button', { name: 'Prices, some are old' }).click();
+  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
   await page.getByLabel(/Antam gold bars/).fill('1842000');
   await page.getByRole('button', { name: 'Save prices' }).click();
 
@@ -125,12 +138,11 @@ test('sends trade edits to Buy & sell instead of the transaction form', async ({
   await addGold(page);
 
   // A buy dated today, so it lands in the month the Transactions page opens on.
-  await page.goto('/net-worth');
-  await page.getByRole('link', { name: 'Buy & sell' }).click();
+  await openFullForm(page, 'Buy');
   await page.getByLabel('Units, shares or grams').fill('2');
   await page.getByLabel('What it cost, before fees (IDR)').fill('3980000');
   await page.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(page.getByText(/Recorded\./)).toBeVisible();
+  await expect(page.getByLabel('What happened')).toHaveCount(0);
 
   await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
