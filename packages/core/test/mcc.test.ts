@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { categoryDefaultMcc, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, isMcc, isMccSpec, type MccSources, mccInRange, mccName, resolveMcc, searchMccs } from '../src/index';
+import { categoryDefaultMcc, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, isMcc, isMccSpec, type MccSources, mccInRange, mccName, resolveMcc, searchMccs, ON_DEMAND_CATEGORY_KEYS } from '../src/index';
 
 const sources = (overrides: Partial<MccSources> = {}): MccSources => ({
   typed: null,
@@ -99,7 +99,7 @@ describe('category default MCC', () => {
 
   it('keys built-in defaults by default category keys with valid codes', () => {
     for (const [key, mcc] of Object.entries(DEFAULT_CATEGORY_MCCS)) {
-      expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
+      expect(DEFAULT_CATEGORY_KEYS.has(key) || ON_DEMAND_CATEGORY_KEYS.has(key), key).toBe(true);
       expect(isMcc(mcc), key).toBe(true);
     }
     expect(DEFAULT_CATEGORY_MCCS['food_beverage.cafe_dessert']).toBe('5814');

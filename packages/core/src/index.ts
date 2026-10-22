@@ -1,5 +1,5 @@
 export { uuidv7 } from './ids';
-export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
+export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild, ON_DEMAND_CATEGORY_KEYS } from './categories/defaults';
 export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
 export { isUncategorisedKey, UNCATEGORISED } from './categories/uncategorised';
 export { CATEGORY_COLOURS, CATEGORY_ICONS, CATEGORY_PALETTE, categoryVisual, isPaletteColour, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
