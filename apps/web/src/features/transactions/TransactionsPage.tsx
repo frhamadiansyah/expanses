@@ -396,6 +396,8 @@ export function TransactionsPage() {
     row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && !tradeByTransaction.has(row.tx.id) && !readOnly && filingKnown && !elsewhereOf(row.tx.id);
   // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved.
   const chosen = rows.filter((row) => selected.has(row.id) && taggable(row));
+  // Select All ticks what can be ticked on the list as it is shown, filters and all.
+  const selectable = rows.filter(taggable);
   const eventName = (eventId: string) => (events.data ?? []).find((event) => event.id === eventId)?.name;
   // The shared events among them: Add to event moves rows into one rather than tagging them (shared events §6).
   const sharedSummaries = useSharedEventSummaries().data ?? {};
@@ -1532,6 +1534,8 @@ export function TransactionsPage() {
             onAdd={() => setPickingEvent(true)}
             onRemove={() => void tagChosen(null)}
             onCancel={stopSelecting}
+            allSelected={selectable.length > 0 && chosen.length === selectable.length}
+            onSelectAll={() => setSelected(chosen.length === selectable.length ? new Set() : new Set(selectable.map((row) => row.id)))}
             {...(allBooks.length > 1 ? { onMove: () => setPickingBook(true) } : {})}
           />
           )}
