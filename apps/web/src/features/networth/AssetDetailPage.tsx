@@ -1,5 +1,5 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
-import { type AssetValueRow, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
+import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowDownLeft, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
@@ -37,7 +37,7 @@ import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
-import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
+import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
@@ -141,6 +141,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
   const profile = useAssetProfile(accountId);
   const positions = usePositions();
+  const couponTerms = useBondCoupons();
   const prices = usePrices(accountId);
   const valuations = useValuations(accountId);
   const trades = useTrades(accountId);
@@ -173,6 +174,13 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const byMoney = value.mode === 'amount';
   const position = positions.data?.[accountId];
   const unitsMicro = position?.unitsMicro ?? 0;
+  /*
+   * A bond's coupon terms (0081): the next payment on the bond's page, and the figures the Coupon button opens with —
+   * on the par held now, before and after the tax withheld.
+   */
+  const coupon = kind === 'bond' ? (couponTerms.data?.[accountId] ?? null) : null;
+  const matured = coupon !== null && coupon.maturesOn !== null && coupon.nextOn > coupon.maturesOn;
+  const nextCoupon = coupon && !matured ? couponOn(coupon, unitsMicro, currency) : null;
   // A linked holding counts in the security's lots; one of its own, in the lot its settings say.
   const lotSize = stock.security?.lotSize ?? profile.data?.lotSize ?? null;
   const latestPrice = prices.data?.[0] ?? null;
@@ -291,7 +299,26 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         // Gold pays nothing while it is held; a share, a fund and a bond each pay in their own word.
         ...(kind === 'gold'
           ? []
-          : [{ key: 'income', label: incomeWordOf(kind), glyph: <ArrowDownLeft size={20} aria-hidden />, run: trade(incomeWordOf(kind), { kind: 'income' }) }]),
+          : [
+              {
+                key: 'income',
+                label: incomeWordOf(kind),
+                glyph: <ArrowDownLeft size={20} aria-hidden />,
+                // A bond with coupon terms opens on its next coupon: the day it falls, before tax, the tax, and where it lands.
+                run: trade(
+                  incomeWordOf(kind),
+                  coupon && nextCoupon
+                    ? {
+                        kind: 'income',
+                        occurredOn: coupon.nextOn <= today ? coupon.nextOn : today,
+                        gross: minorToMajorString(nextCoupon.grossMinor, currency),
+                        tax: minorToMajorString(nextCoupon.taxMinor, currency),
+                        cashAccountId: coupon.cashAccountId ?? '',
+                      }
+                    : { kind: 'income' },
+                ),
+              },
+            ]),
         { key: 'price', label: 'Price', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'price' }) },
       ]
     : byMoney
@@ -524,6 +551,16 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               ))}
               <option value="typed">Somewhere not in the app</option>
             </SelectRow>
+          ) : null,
+          // The next coupon, from the bond's terms in its Settings: the day, and what lands after the tax withheld.
+          coupon ? (
+            <InsetRow
+              key="coupon"
+              title="Next coupon"
+              value={matured ? 'Matured' : nextCoupon ? `${dayLabel(coupon.nextOn)} · ${formatMinor(nextCoupon.grossMinor - nextCoupon.taxMinor, currency)}` : dayLabel(coupon.nextOn)}
+              to="/net-worth/assets/$accountId/settings"
+              params={{ accountId }}
+            />
           ) : null,
           (kind === 'fund' || kind === 'bond') && !stock.link?.brokerAccountId && profile.data && (typingPlace || profile.data.coretaxFields.inst?.trim()) ? (
             <TextRow

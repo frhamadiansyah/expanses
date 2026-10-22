@@ -1,3 +1,4 @@
+import { useCouponsAtStart } from '../features/networth/coupons-at-start';
 import { Link, Outlet, useNavigate } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -87,6 +88,8 @@ export function Layout() {
   }, [database]);
   // The day's closes for the shares that follow Yahoo Finance, once a day each, behind whatever is on screen.
   useYahooClosesAtStart();
+  // Bond coupons due since the app was last open, recorded on the bonds set to record their own.
+  useCouponsAtStart();
   // The day's iCloud copy, in the iOS app with the switch on: at open, and each time the app comes back to the front.
   useICloudBackupAtStart(database);
   // Withdrawal rate (R18): foreign accounts recalculated behind whatever is on screen, one at a time.

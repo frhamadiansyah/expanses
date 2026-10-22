@@ -221,3 +221,4 @@ export { type JointReport, reportInputsFor } from './repos/joint-tax';
 export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
 export type { EventInviteDetails } from './sync/invite';
 export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
+export * from './repos/bond-coupons';
