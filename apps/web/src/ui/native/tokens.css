@@ -274,3 +274,28 @@ html[data-compact-bar] .ph-status-glass {
   mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 28px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 28px), transparent 100%);
 }
+
+/*
+ * The text cursor a phone's money figure draws while the dock types into it: the figure is a button, not an input,
+ * so it has no caret of its own. It blinks as the system's does, and holds still for reduced motion.
+ */
+.ph-caret {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  border-radius: 1px;
+  background: var(--ph-ink);
+  animation: ph-caret-blink 1s steps(1) infinite;
+}
+@keyframes ph-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-caret {
+    animation: none;
+  }
+}
