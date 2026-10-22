@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { couponGrossMinor, couponTaxMinor, dueCouponDates, nextCouponOn } from '../src/index';
+import { couponDatesBetween, couponGrossMinor, couponTaxMinor, dueCouponDates, nextCouponOn, previousCouponOn } from '../src/index';
 
 describe('bond coupons', () => {
   it('is par × rate ÷ payments a year, with the tax at its own rate', () => {
@@ -24,5 +24,15 @@ describe('bond coupons', () => {
     expect(dueCouponDates({ nextOn: '2026-08-15', perYear: 12, payDay: 15, maturesOn: null, today: '2026-10-22' })).toEqual(['2026-08-15', '2026-09-15', '2026-10-15']);
     expect(dueCouponDates({ nextOn: '2026-08-15', perYear: 12, payDay: 15, maturesOn: '2026-09-15', today: '2026-10-22' })).toEqual(['2026-08-15', '2026-09-15']);
     expect(dueCouponDates({ nextOn: '2026-11-15', perYear: 12, payDay: 15, maturesOn: null, today: '2026-10-22' })).toEqual([]);
+  });
+});
+
+describe('a bond’s schedule over a stretch of time', () => {
+  it('walks back from the next payment and forward to the end, never past maturity', () => {
+    expect(previousCouponOn('2027-02-28', 2, 31)).toBe('2026-08-31');
+    expect(couponDatesBetween({ nextOn: '2026-11-15', perYear: 4, payDay: 15, maturesOn: null, from: '2026-01-01', to: '2027-03-31' })).toEqual([
+      '2026-02-15', '2026-05-15', '2026-08-15', '2026-11-15', '2027-02-15',
+    ]);
+    expect(couponDatesBetween({ nextOn: '2026-11-15', perYear: 2, payDay: 15, maturesOn: '2026-11-15', from: '2026-01-01', to: '2027-12-31' })).toEqual(['2026-05-15', '2026-11-15']);
   });
 });

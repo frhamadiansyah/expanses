@@ -567,4 +567,4 @@ export {
   shareOf,
 } from './fx/fifo';
 export { classifyInflow, type FxLine, type FxRole, type InflowCost, revalueTransaction, type Revalued, type RevalueInput, spreadBase } from './fx/revalue';
-export { COUPON_FREQUENCIES, type CouponsPerYear, couponGrossMinor, couponTaxMinor, dueCouponDates, nextCouponOn } from './assets/coupons';
+export { COUPON_FREQUENCIES, type CouponsPerYear, couponDatesBetween, couponGrossMinor, couponTaxMinor, dueCouponDates, nextCouponOn, previousCouponOn } from './assets/coupons';

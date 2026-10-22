@@ -1,4 +1,4 @@
-import { type DividendHolding, dividendView, type DividendView, formatMinor, holdingPositionAfter, isoDate, yahooSymbol } from '@expanses/core';
+import { couponDatesBetween, type DividendHolding, dividendView, type DividendView, formatMinor, holdingPositionAfter, isoDate, yahooSymbol } from '@expanses/core';
 import type { TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -6,7 +6,7 @@ import { useApp } from '../../app/context';
 import { Empty, ErrorBox } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { ShareBar } from '../networth/ShareBar';
-import { usePeriodFlows, useTrades } from '../networth/queries';
+import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
 import { usePortfolio } from './queries';
 
@@ -28,7 +28,7 @@ function Swatch({ className }: { className: string }) {
 }
 
 /**
- * What the shares held today pay: a year of dividends, this year so far and still to come, the two yields, the share of
+ * What the shares and bonds held today pay: a year of dividends and coupons, this year so far and still to come, the two yields, the share of
  * a year's spending it would cover, and who pays it. Each stock's history is Yahoo's, read once a day on this device.
  */
 export function DividendsPage() {
@@ -50,6 +50,18 @@ export function DividendsPage() {
     });
   }, [portfolio, securities]);
   const history = useDividendHistory(listed.map((l) => l.security));
+  // Bonds with coupon terms pay too: their schedule, from the terms on their Settings, on the par held each day.
+  const couponTerms = useBondCoupons();
+  const values = useAssetValues();
+  const bonds = useMemo(
+    () =>
+      Object.values(couponTerms.data ?? {}).flatMap((term) => {
+        const value = (values.data ?? []).find((row) => row.accountId === term.accountId);
+        return value ? [{ term, value }] : [];
+      }),
+    [couponTerms.data, values.data],
+  );
+  const bondIds = useMemo(() => new Set(bonds.map((b) => b.term.accountId)), [bonds]);
 
   const view = useMemo((): DividendView | null => {
     if (!portfolio || !trades.data || !history.data) return null;
@@ -65,8 +77,25 @@ export function DividendsPage() {
       valueBaseMinor: row.valueBaseMinor,
       payments: history.data[security.id] ?? null,
     }));
+    for (const { term, value } of bonds) {
+      // A coupon per unit of par: the rate a year over the payments a year. Two years back and the year ahead cover
+      // every reading the page makes — the last 12 months, this year and last.
+      const perUnit = term.rateBps / 10_000 / term.perYear;
+      const dates = couponDatesBetween({ nextOn: term.nextOn, perYear: term.perYear, payDay: term.payDay, maturesOn: term.maturesOn, from: shiftDays(today, -800), to: today });
+      const own = byAccount.get(term.accountId) ?? [];
+      holdings.push({
+        securityId: term.accountId,
+        title: value.name,
+        currency: value.currency,
+        unitsMicro: holdingPositionAfter(own, today).unitsMicro,
+        unitsOn: (date) => holdingPositionAfter(own, date).unitsMicro,
+        costBaseMinor: value.currency === base ? value.costMinor : null,
+        valueBaseMinor: value.currency === base ? value.valueMinor : null,
+        payments: dates.map((exDate) => ({ exDate, perShare: perUnit })),
+      });
+    }
     return dividendView({ holdings, today, baseCurrency: base, ratesToBase: rates });
-  }, [portfolio, trades.data, history.data, listed, today, base, rates]);
+  }, [portfolio, trades.data, history.data, listed, bonds, today, base, rates]);
 
   const spending = flows.data?.spendingMinor ?? null;
   const named = view ? (all ? view.payers : view.payers.slice(0, NAMED)) : [];
@@ -77,9 +106,11 @@ export function DividendsPage() {
     <div className={SCREEN}>
       <LargeTitle title="Dividends" {...BACK} />
       <ErrorBox error={error ?? trades.error} />
-      {portfolio && listed.length === 0 && <Empty>No listed shares yet. Dividends show here once a share with a ticker is held.</Empty>}
-      {listed.length > 0 && !view && <Empty>Reading dividend history…</Empty>}
-      {view && listed.length > 0 && (
+      {portfolio && couponTerms.data && listed.length === 0 && bonds.length === 0 && (
+        <Empty>No listed shares or bonds with a coupon yet. Dividends show here once a share with a ticker is held, and coupons once a bond's terms are set.</Empty>
+      )}
+      {listed.length + bonds.length > 0 && !view && <Empty>Reading dividend history…</Empty>}
+      {view && listed.length + bonds.length > 0 && (
         <>
           <div data-testid="dividends-year">
             <Hero
@@ -121,7 +152,7 @@ export function DividendsPage() {
               footer={
                 view.unknown.length > 0
                   ? `No dividend history for ${view.unknown.join(', ')} yet, so it is not counted.`
-                  : "Each stock's dividends over the last 12 months, at the shares held now."
+                  : "Each stock's dividends and each bond's coupons over the last 12 months, at what is held now."
               }
             >
               <div style={{ padding: '12px 16px 4px' }}>
@@ -142,8 +173,10 @@ export function DividendsPage() {
                   subtitle={`${p.percent}%`}
                   value={formatMinor(p.yearMinor, base)}
                   valueTone="ink"
-                  to="/net-worth/investments/security/$securityId"
-                  params={{ securityId: p.securityId }}
+                  // A bond's coupon opens the bond; a share's dividend, its stock.
+                  {...(bondIds.has(p.securityId)
+                    ? { to: '/net-worth/assets/$accountId' as const, params: { accountId: p.securityId } }
+                    : { to: '/net-worth/investments/security/$securityId' as const, params: { securityId: p.securityId } })}
                 />
               ))}
               {!all && rest.length > 0 && (
