@@ -1,7 +1,7 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
-import { archiveAccount, type AssetValueRow, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
+import { type AssetValueRow, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ArrowDownLeft, Info, Minus, MoreHorizontal, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
+import { ArrowDownLeft, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -204,7 +204,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // The other funds it can be the same fund as: every other fund holding, wherever it is held.
   const fundIds = new Set((profiles.data ?? []).filter((row) => row.assetKind === 'fund').map((row) => row.accountId));
   const otherFunds = (allValues.data ?? []).filter((row) => row.accountId !== accountId && fundIds.has(row.accountId));
-  const canArchive = value.valueMinor === 0 && unitsMicro === 0 && (!byMoney || value.costMinor === 0);
   const holding = { accountId, name: value.name, currency };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
@@ -317,36 +316,12 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     }
   }
 
+  // Settings is the one way on from here: its name, when it was acquired, its tax details, and Archive and Delete at
+  // the foot — so the corner is that gear alone rather than a menu holding Archive a second time.
   const menu: CornerAction[] = [
-    {
-      key: 'more',
-      label: 'More',
-      glyph: <MoreHorizontal size={20} aria-hidden />,
-      menu: [
-        // Its name, when it was acquired, what it counts as and everything the tax report asks of it, on one screen.
-        { key: 'settings', label: 'Settings', glyph: <Settings size={18} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
-        {
-          key: 'archive',
-          label: 'Archive',
-          glyph: <Archive size={18} aria-hidden />,
-          disabled: !canArchive,
-          detail: canArchive ? undefined : 'Archiving is available once nothing is left in this asset.',
-          run: () => {
-            if (!window.confirm(`Archive ${value.name}? It leaves the list; its history stays.`)) return;
-            void (async () => {
-              try {
-                await archiveAccount(database, ws, accountId);
-                await invalidate();
-                await navigate({ to: '/net-worth/assets' });
-              } catch (e) {
-                setError(e);
-              }
-            })();
-          },
-        },
-      ],
-    },
+    { key: 'settings', label: 'Settings', glyph: <Settings size={20} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
   ];
+
 
   const lines: { key: string; line: TradeLine; row: TradeRow | null }[] = priced
     ? [...(trades.data ?? [])].reverse().map((row) => ({
