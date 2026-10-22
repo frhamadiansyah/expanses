@@ -145,7 +145,8 @@ export function buildRows(
 
   const recorded = txs.filter((tx) => !quiet(tx)).map((tx): ListRow => {
     const c = classify(tx);
-    const categoryId = c.categoryIds[0] ?? null;
+    // A transfer reads as one even with a fee beside it: the fee's category is in its grey line, never its title.
+    const categoryId = c.type === 'transfer' ? null : (c.categoryIds[0] ?? null);
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
     const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
     const accountIds = [...new Set(money.map((e) => e.accountId))];
@@ -160,14 +161,15 @@ export function buildRows(
       amountMinor: c.amountMinor,
       currency: c.currency,
       baseMinor: type === 'expense' || type === 'income' ? baseOf(type) : 0,
-      spentMinor: type === 'expense' || type === 'debt' ? baseOf('expense') : 0,
+      // A transfer's fee is spending all the same: the day's total counts it, as Cashflow does.
+      spentMinor: type === 'expense' || type === 'debt' || c.feeMinor ? baseOf('expense') : 0,
       earnedMinor: type === 'income' || type === 'debt' ? baseOf('income') : 0,
       type,
       categoryId,
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,
       parentName: parentNameOf(categoryId, byId),
       accountIds,
-      accountLabel: c.moneyAccountNames.join(' → '),
+      accountLabel: c.moneyAccountNames.join(' → ') + (c.feeMinor ? ` · fee ${formatMinor(c.feeMinor, c.currency)}` : ''),
       cardId: tx.cardId,
       last4: digitsOf(tx.cardId, accountIds),
       holderName: card?.holderName ?? null,

@@ -1621,3 +1621,29 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await expect(page.locator('div', { hasText: /^Channel/ }).last()).toContainText('Online');
   await expect(page.getByTestId('excluded-note')).toContainText('Excluded from the chart and budgets');
 });
+
+test('a transfer with a fee is one transfer, the account paying both and the fee filed as spending', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank');
+  await addAccount(page, 'GoPay', 'ewallet');
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'GoPay', amount: '1000000', note: 'GoPay top-up', fee: '10000' });
+
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'GoPay top-up' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('BCA Tahapan → GoPay · fee Rp 10.000');
+  await expect(row).toContainText('1.000.000');
+
+  // Reopened, it is the transfer it was: the amount that landed, and its fee under Fees & charges.
+  await row.getByRole('link').first().click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  await expect(edit.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
+  await expect(edit.getByLabel('Fee', { exact: true })).toHaveValue('10000');
+  await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
+  await edit.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.goto('/accounts');
+  await openTypes(page);
+  await expect(page.getByRole('listitem').filter({ hasText: 'GoPay' }).first()).toContainText('1.000.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('1.010.000');
+});

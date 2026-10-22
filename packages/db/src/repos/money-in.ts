@@ -44,7 +44,8 @@ export interface MoneyInInput {
  *
  * The money itself is a transfer: not income, not spending. The fee is spending, under Fees & charges, paid from
  * the same place, and is its own transaction beside the transfer, as a deposit's penalty is: each row then says
- * one thing, and Cashflow counts the fee and nothing else.
+ * one thing, and Cashflow counts the fee and nothing else. Paid by card, the two are one transaction instead, as the
+ * card's statement prints them as one charge.
  *
  * A wallet may also be topped up from a credit card — GoPay and OVO take one — which is the only way a card's money
  * moves anywhere but to a purchase. The card's debt grows by the amount and the fee. It is allowed here and nowhere
@@ -79,6 +80,27 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
       cardId = row.id;
     }
     const ratesToBase = input.rateToBase ? { [currency]: input.rateToBase } : {};
+    /*
+     * Paid by card with a fee, it is one charge on the statement — Rp 1.010.000 for Rp 1.000.000 landing — so it is one
+     * transaction: the wallet gets the amount, the card owes both, the fee is spending. The card's line names the fee's
+     * category, so its points are read once on the whole charge, as the bank reads it.
+     */
+    if (card && input.feeMinor > 0) {
+      const feeCategory = (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY];
+      if (!feeCategory) throw new MoneyInError('NOT_FOUND', 'This workspace has no Fees & charges category');
+      const transferId = await postTransactionTx(tx, ws, {
+        occurredOn: input.occurredOn,
+        description: input.description,
+        cardId,
+        lines: [
+          { accountId: to.id, amountMinor: input.amountMinor, currency },
+          { accountId: from.id, amountMinor: -(input.amountMinor + input.feeMinor), currency, spendCategoryId: feeCategory },
+          { accountId: feeCategory, amountMinor: input.feeMinor, currency },
+        ],
+        ratesToBase,
+      });
+      return { transferId, feeId: null };
+    }
     const transferId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
       description: input.description,

@@ -61,6 +61,9 @@ export interface FormDraft {
   currency: string; // what the flag says
   chargedAmount: string; // "Charged in <account currency>", '' when the currencies match
   toAmount: string;
+  /** A transfer's fee, typed in the From account's currency, and the category it is spending in. */
+  fee: string;
+  feeCategoryId: string;
   splits: SplitRow[];
   mcc: string;
   rememberPattern: string;
@@ -195,6 +198,8 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
     currency: '',
     chargedAmount: '',
     toAmount: '',
+    fee: '',
+    feeCategoryId: '',
     splits: [],
     mcc: '',
     rememberPattern: '',
@@ -770,6 +775,22 @@ function toAccountOf(draft: FormDraft, accounts: readonly AccountRow[], from: Ac
 function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: readonly AccountRow[], amountMinor: number): PostingLine[] {
   const to = toAccountOf(draft, accounts, account);
   const currency = account.currency!;
+  const feeMinor = draft.fee.trim() ? positive(draft.fee, currency, 'Fee') : 0;
+  if (feeMinor > 0) {
+    if (to.currency !== currency) throw new Error('A fee goes on a transfer within one currency');
+    if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
+    /*
+     * What left is the transfer and its fee together — the one line a statement prints, Rp 1.010.000 — what landed is
+     * the transfer alone, and the fee is spending. Paid by card, the card's line names the fee's category, so its
+     * points are read once on the whole charge, as the bank reads it, and the fee line is not counted again.
+     */
+    const card = account.subtype === 'credit_card';
+    return [
+      { accountId: to.id, amountMinor, currency },
+      { accountId: account.id, amountMinor: -(amountMinor + feeMinor), currency, ...(card ? { spendCategoryId: draft.feeCategoryId } : {}) },
+      { accountId: draft.feeCategoryId, amountMinor: feeMinor, currency },
+    ];
+  }
   if (to.currency === currency) return transferLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, currency });
   const exchange = accounts.find((a) => a.systemKey === 'currency_exchange');
   if (!exchange) throw new Error('Currency exchange account missing');
@@ -883,6 +904,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     // posts, so the two can never come apart again the way they did when this branch read it alone.
     const { amountMinor } = amounts(draft, account, typed, null);
     if (draft.goalId && !draft.editing) {
+      if (draft.fee.trim()) throw new Error('A transfer for a goal takes no fee here: record the fee as its own expense');
       const to = toAccountOf(draft, accounts, account);
       return {
         kind: 'transfer-goal',
@@ -1153,13 +1175,16 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
 
   const from = money.find((e) => e.amountMinor < 0);
   const to = money.find((e) => e.amountMinor > 0);
+  // A transfer with a fee: the amount is what landed, the fee what was charged beside it.
+  const fee = c.feeMinor && from ? { fee: minorToMajorString(c.feeMinor, from.currency), feeCategoryId: c.categoryIds[0] ?? '' } : null;
   return withOpened({
     ...base,
     mode: 'transfer',
     moneyId: from?.accountId ?? '',
     toId: to?.accountId ?? '',
     currency: from ? settledOf(from) : '',
-    amount: from ? minorToMajorString(-from.amountMinor, from.currency) : '',
+    amount: fee && to ? minorToMajorString(to.amountMinor, to.currency) : from ? minorToMajorString(-from.amountMinor, from.currency) : '',
+    ...(fee ?? {}),
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
   }, tx, accounts);
 }
