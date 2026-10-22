@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { deleteEvent, finishEvent, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
+import { deleteEvent, finishEvent, setEventPlanOff, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus, Settings } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
@@ -242,7 +242,10 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   // purchases has money in it, and "Nothing spent on it yet" would be the page hiding a refund rather than a total.
   const anyMoney = (data?.spentMinor ?? 0) !== 0;
   // An event has a plan when something is on the list, whatever it adds up to — not when a figure was set for it.
-  const hasPlan = data?.hasPlan === true;
+  // Kept without a plan (the gear's Mark as unplanned), the page is the ring alone: no gauge, no Plan card.
+  const planned = event?.planOff !== true;
+  const hasItems = data?.hasPlan === true;
+  const hasPlan = hasItems && planned;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
   // Worked out once rather than at each of the two places it is printed: the words and the tone are one reading.
@@ -368,6 +371,15 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           { key: 'edit', label: 'Edit event', run: () => setEditing(true) },
           { key: 'share', label: 'Share this event', run: onShare },
           {
+            key: 'plan',
+            label: event.planOff ? 'Mark as planned' : 'Mark as unplanned',
+            run: () =>
+              void run(async () => {
+                setPage(0);
+                await setEventPlanOff(database, ws, event.id, !event.planOff);
+              }),
+          },
+          {
             key: 'done',
             label: event.finishedAt === null ? 'Mark as done' : 'Reopen',
             run: () => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null)),
@@ -412,7 +424,9 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
           {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
-            <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">Nothing spent on it yet. Plan what to buy below, or record the first payment.</p>
+            <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+              {planned ? 'Nothing spent on it yet. Plan what to buy below, or record the first payment.' : 'Nothing spent on it yet.'}
+            </p>
           ) : hasPlan ? (
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']} frame={chartFrame}>
               {donut}
@@ -531,7 +545,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
       {/* Between the chart and the suggestions: the plan is a card here, and its own screen is one tap away. */}
       {/* With a plan, the card is inside the chart's card under Against the plan; without one it is the way to start one. */}
-      {data && !hasPlan && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
+      {data && !hasPlan && planned && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (
         <div data-testid="event-suggestions">
@@ -621,7 +635,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
       {event && editing && (
         <div ref={editRef}>
-          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasPlan || transactions > 0} onDone={() => setEditing(false)} />
+          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasItems || transactions > 0} onDone={() => setEditing(false)} />
         </div>
       )}
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}

@@ -154,10 +154,11 @@ export function whereItWentRows(plan: EventPlan) {
  * Which figure was clamped follows which figure is shown: a planned event's card reads the planned categories, so
  * it is the ring's own shortfall that has to be explained, and an unplanned one's is the whole event's.
  */
-export function eventListLine(plan: EventPlan, currency = 'IDR') {
+export function eventListLine(plan: EventPlan, currency = 'IDR', planOff = false) {
   const totals = planTotals(plan);
   const said = (backMinor: number, words: string) => (backMinor > 0 ? `${formatMinor(backMinor, currency)} ${lower(words)}` : null);
-  if (!plan.hasPlan) {
+  // Kept without a plan (Mark as unplanned): read as an event with no items, whatever items it still holds.
+  if (!plan.hasPlan || planOff) {
     return {
       subline: `No plan · ${plural(plan.purchaseCount, 'purchase')}`,
       amountMinor: totals.spentMinor,

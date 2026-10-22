@@ -71,7 +71,7 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
   const { ws } = useApp();
   // Until the shared events are known, a shared one is not yet told apart: its local plan is not read meanwhile.
   const plan = useEventPlan(shared || !ready ? null : event.id).data;
-  const line = plan ? eventListLine(plan, ws.baseCurrency) : null;
+  const line = plan ? eventListLine(plan, ws.baseCurrency, event.planOff) : null;
   // A shared event's figure is what the trip spent, in its own currency (shared events §6), as its page's header says.
   const spent = useSharedEventView(shared ? event.id : null).data;
   const of = line?.ofMinor ?? null;

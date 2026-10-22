@@ -789,3 +789,26 @@ test('the plan reads by category: a group each on the whole plan, and each opens
   await page.getByTestId('plan-card-category').filter({ hasText: 'Food and beverage' }).click();
   await expect(page.getByTestId('plan-card-item')).toHaveCount(0);
 });
+
+test('an event kept without a plan draws the ring alone, and gets its plan back', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Stroller', price: '8000000', category: 'Food and beverage' });
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  const sheet = page.getByTestId('event-sheet');
+  await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('menuitem', { name: 'Mark as unplanned', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'See the whole plan' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Plan what to buy' })).toHaveCount(0);
+  await expect(sheet).toContainText('Nothing spent on it yet.');
+
+  // Its item waited: turned back on, the plan is as it was.
+  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('menuitem', { name: 'Mark as planned', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
+});

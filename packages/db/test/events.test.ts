@@ -48,7 +48,7 @@ describe('saveEvent', () => {
     await lebaran(context);
 
     expect(await listEvents(context.database, context.ws)).toEqual([
-      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, goalId: null, setId: null, finishedAt: null },
+      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, goalId: null, setId: null, finishedAt: null, planOff: false },
     ]);
     // A plan is a list of things to buy, and its total is those items' sum. `events.planned_minor` stays in the
     // table for the databases that already carry a figure in it; no writer here puts one there, and no row carries
