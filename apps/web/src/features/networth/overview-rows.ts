@@ -19,7 +19,7 @@ export interface AttentionItem {
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/lend-borrow' | '/net-worth/loans' | '/net-worth/assets/$accountId';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/trades/plans' | '/goals' | '/net-worth/lend-borrow' | '/net-worth/loans' | '/net-worth/assets/$accountId';
   params?: { accountId: string };
 }
 
@@ -46,7 +46,7 @@ export function attentionItems(
   }
   for (const template of dueTemplates) {
     const name = values.find((value) => value.accountId === template.accountId)?.name ?? 'a holding';
-    items.push({ key: `due-${template.id}`, tone: 'warn', text: `Monthly buy of ${name} is due`, action: 'Record', to: '/net-worth/trades' });
+    items.push({ key: `due-${template.id}`, tone: 'warn', text: `Monthly buy of ${name} is due`, action: 'Record', to: '/net-worth/trades/plans' });
   }
   for (const plan of goalPlans) {
     if (plan.status === 'behind') {

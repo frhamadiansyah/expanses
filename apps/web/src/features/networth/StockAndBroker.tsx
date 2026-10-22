@@ -14,9 +14,13 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 export function useStockAndBroker(accountId: string) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const links = useHoldingLinks().data ?? [];
+  const linksQuery = useHoldingLinks();
+  const securitiesQuery = useSecurities();
+  const links = linksQuery.data ?? [];
   const link = links.find((l) => l.accountId === accountId);
-  const security = (useSecurities().data ?? []).find((s) => s.id === link?.securityId);
+  const security = (securitiesQuery.data ?? []).find((s) => s.id === link?.securityId);
+  /** Whether the link and its security are known, so a listed share is not yet mistaken for a plain holding. */
+  const ready = linksQuery.isSuccess && securitiesQuery.isSuccess;
   const accounts = useAccounts().data ?? [];
   const brokers = brokerChoices(accounts);
   // Where a fund can be held: a broker's cash, a bank, a savings account or a fund app — never a pocket.
@@ -64,5 +68,5 @@ export function useStockAndBroker(accountId: string) {
       });
     });
 
-  return { link, security, brokers, places, samePlaces, keptAt, newBroker, sameFund, placeName, error };
+  return { link, security, ready, brokers, places, samePlaces, keptAt, newBroker, sameFund, placeName, error };
 }

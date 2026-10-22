@@ -146,12 +146,15 @@ export function TradeSheet({
   holding,
   initial,
   editing,
+  templateId = null,
   onClose,
 }: {
   title: string;
   holding: { accountId: string; name: string; currency: string };
   initial: Partial<TradeDraft>;
   editing: TradeRow | null;
+  /** A monthly plan this buy answers, so the plan stops being due. */
+  templateId?: string | null;
   onClose: () => void;
 }) {
   const accounts = useAccounts();
@@ -169,7 +172,7 @@ export function TradeSheet({
           positions={positions.data ?? {}}
           editing={editing}
           initial={{ accountId: holding.accountId, ...initial }}
-          templateId={null}
+          templateId={templateId}
           onSaved={onClose}
           onCancel={onClose}
         />

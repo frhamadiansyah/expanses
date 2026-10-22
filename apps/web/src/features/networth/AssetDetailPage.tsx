@@ -1,8 +1,8 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
 import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
@@ -339,6 +339,25 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     : estimated
       ? [{ key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]
       : [];
+
+  /*
+   * Arrived from Buy & sell with something to do (`?do=buy` and the rest): the same sheet the round button opens, once
+   * the holding is known well enough to choose it — a listed share's own sheet, a fund's, gold's, or the full form.
+   * The request is taken out of the address as it is answered, so Back and a reload do not open it again.
+   */
+  const { do: arriving } = useSearch({ strict: false }) as { do?: 'buy' | 'sell' | 'income' | 'units' };
+  const known = profile.isSuccess && stock.ready && couponTerms.isSuccess;
+  useEffect(() => {
+    if (!arriving || !known) return;
+    const action =
+      arriving === 'units'
+        ? trade('Units', { kind: 'unit_change' })
+        : actions.find((row) => row.key === arriving)?.run ?? (arriving === 'income' ? trade(incomeWordOf(kind), { kind: 'income' }) : buyOrSell(arriving, arriving === 'buy' ? 'Buy' : 'Sell'));
+    action?.();
+    void navigate({ to: '/net-worth/assets/$accountId', params: { accountId }, search: {}, replace: true });
+    // Once per arrival: what it opens depends on the holding, read at the moment it became known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arriving, known]);
 
   async function removeTrade(row: TradeRow) {
     setSheet(null);
