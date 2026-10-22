@@ -3,7 +3,8 @@ import { type BookKind, createBook } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { Button, cx, ErrorBox, Field, Input, Select } from '../../ui';
+import { cx, ErrorBox } from '../../ui';
+import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useBooks } from './queries';
 
 const KINDS: { value: BookKind; label: string }[] = [
@@ -38,8 +39,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit() {
     setBusy(true);
     setError(null);
     try {
@@ -54,18 +54,24 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // ✓ in the header saves, as every grouped sheet does; Enter in the name saves too.
+  const canSave = name.trim() !== '' && !busy;
   return (
-    <Sheet title="New workspace" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
+    <Sheet grouped title="New workspace" onClose={onClose} confirm={{ label: 'Create workspace', disabled: !canSave, run: () => void submit() }}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave) void submit();
+        }}
+      >
         {/* The repository's words are the product's words: a refusal is shown as it comes. */}
         <ErrorBox error={error} />
-        <Field label="Name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business" required autoFocus />
-        </Field>
+        <InsetGroup>
+          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Required" required autoFocus />
+        </InsetGroup>
 
-        <fieldset>
-          <legend className="mb-1 block text-xs font-medium text-slate-600">Kind</legend>
-          <div className="grid grid-cols-4 gap-2">
+        <InsetGroup header="Kind">
+          <div className="grid grid-cols-4 gap-1.5 p-1.5" role="group" aria-label="Kind">
             {KINDS.map((option) => {
               // There is only ever one Personal: it is where categories and expected income fall back to.
               const disabled = option.value === 'personal' && hasPersonal;
@@ -78,8 +84,8 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
                   aria-pressed={kind === option.value}
                   onClick={() => setChosenKind(option.value)}
                   className={cx(
-                    'min-h-11 rounded-lg px-2 py-2 text-sm font-medium ring-1 disabled:opacity-40',
-                    kind === option.value ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
+                    'ph-focus min-h-9 rounded-[8px] px-1 text-[13px] font-semibold disabled:opacity-35',
+                    kind === option.value ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
                   )}
                 >
                   {option.label}
@@ -87,52 +93,29 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
-        </fieldset>
+        </InsetGroup>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Starts with" hint="A copy is its own tree: renaming one afterwards leaves the other alone.">
-            <Select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
-              <option value="">Start empty</option>
-              {(books.data ?? []).map((book) => (
-                <option key={book.id} value={book.id}>
-                  Copy from {book.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Reads in" hint="Its Cashflow, budgets and bills are converted into this.">
-            <Select value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
-              {CURRENCIES.map((currency) => (
-                <option key={currency.code} value={currency.code}>
-                  {currency.code} — {currency.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+        <InsetGroup footer="A copy is its own tree: renaming one afterwards leaves the other alone. Cashflow, budgets and bills read in its currency.">
+          <SelectRow label="Starts with" value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
+            <option value="">Start empty</option>
+            {(books.data ?? []).map((book) => (
+              <option key={book.id} value={book.id}>
+                Copy from {book.name}
+              </option>
+            ))}
+          </SelectRow>
+          <SelectRow label="Reads in" value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
+            {CURRENCIES.map((currency) => (
+              <option key={currency.code} value={currency.code}>
+                {currency.code} — {currency.name}
+              </option>
+            ))}
+          </SelectRow>
+        </InsetGroup>
 
-        <fieldset>
-          <legend className="mb-1 block text-xs font-medium text-slate-600">Events</legend>
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              role="switch"
-              className="mt-0.5"
-              checked={countEventsInBudget}
-              onChange={(e) => setEvents(e.target.checked)}
-            />
-            Count event spending in this workspace&rsquo;s monthly budget
-          </label>
-        </fieldset>
-
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            Create workspace
-          </Button>
-        </div>
+        <InsetGroup>
+          <SwitchRow label="Count event spending in its monthly budget" checked={countEventsInBudget} onChange={setEvents} />
+        </InsetGroup>
       </form>
     </Sheet>
   );
