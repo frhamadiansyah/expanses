@@ -10,6 +10,7 @@ import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
 import { BankNumberGroup } from '../accounts/BankNumberGroup';
+import { CouponGroup } from './CouponGroup';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -143,6 +144,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           }
         />
       )}
+
+      {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
+      {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAtId={link?.brokerAccountId ?? null} />}
 
       {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
       {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}

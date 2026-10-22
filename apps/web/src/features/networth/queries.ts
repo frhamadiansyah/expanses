@@ -1,5 +1,6 @@
 import { isoDate } from '@expanses/core';
 import {
+  listBondCoupons,
   acquiredDates,
   householdPurchases,
   itemTransfers,
@@ -168,6 +169,12 @@ export function usePeriodFlows(range: { from: string; to: string }) {
 }
 
 /** One deposit's automation settings; a deposit with none reads as off. */
+/** Every bond's coupon terms (0081), by bond account id. */
+export function useBondCoupons() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bond-coupons', ws.workspaceId], queryFn: () => listBondCoupons(database, ws) });
+}
+
 export function useDepositAutomation(accountId: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['deposit-automation', ws.workspaceId, accountId], queryFn: () => getDepositAutomation(database, ws, accountId) });

@@ -78,6 +78,7 @@ import setCategoryIcons from '../migrations/0077_set_category_icons.sql?raw';
 import eventItemPurchases from '../migrations/0078_event_item_purchases.sql?raw';
 import sharedItemPurchases from '../migrations/0079_shared_item_purchases.sql?raw';
 import accountNumberLast4 from '../migrations/0080_account_number_last4.sql?raw';
+import bondCoupons from '../migrations/0081_bond_coupons.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -166,6 +167,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 78, name: 'event_item_purchases', sql: eventItemPurchases },
   { version: 79, name: 'shared_item_purchases', sql: sharedItemPurchases },
   { version: 80, name: 'account_number_last4', sql: accountNumberLast4 },
+  { version: 81, name: 'bond_coupons', sql: bondCoupons },
 ];
 
 /** The highest version this build of the app knows how to produce. */
