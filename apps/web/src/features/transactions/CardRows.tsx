@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, Globe, Store, X } from 'lucide-react';
 import { type CSSProperties, useId, useRef } from 'react';
 import { cx } from '../../ui';
 import { ROW_BODY, RowGlyph, RowLead } from './FormRow';
@@ -38,21 +38,46 @@ export function NoteRow({
   onFocus,
   onBlur,
   disabled = false,
+  channel,
+  onChannel,
 }: {
   value: string;
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
   disabled?: boolean;
+  /**
+   * Online or offline, carried by the note's own glyph when given: ≡ while not set, a globe once online, a shop once
+   * offline, each tap the next. It used to be a row of its own under Add more details, opening a sheet of two choices.
+   */
+  channel?: 'online' | 'offline' | null;
+  onChannel?: (channel: 'online' | 'offline' | null) => void;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
+  const glyph = channel === 'online' ? <Globe size={15} /> : channel === 'offline' ? <Store size={15} /> : <AlignLeft size={15} />;
   return (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
-        <RowGlyph>
-          <AlignLeft size={15} />
-        </RowGlyph>
+        {onChannel ? (
+          <button
+            type="button"
+            aria-label={`Channel: ${channel === 'online' ? 'Online' : channel === 'offline' ? 'Offline' : 'not set'}`}
+            title={channel === 'online' ? 'Online' : channel === 'offline' ? 'Offline' : 'Online or offline'}
+            disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onChannel(channel === null || channel === undefined ? 'online' : channel === 'online' ? 'offline' : null)}
+            className={cx(
+              'ph-focus ph-tap flex h-7 w-7 items-center justify-center rounded-full',
+              channel ? 'bg-[color-mix(in_srgb,var(--ph-tint)_16%,transparent)] text-[var(--ph-tint)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
+            )}
+            style={{ '--ph-tap-y': '8px', '--ph-tap-x': '8px' } as CSSProperties}
+          >
+            {glyph}
+          </button>
+        ) : (
+          <RowGlyph>{glyph}</RowGlyph>
+        )}
       </RowLead>
       <span className={ROW_BODY}>
         <input

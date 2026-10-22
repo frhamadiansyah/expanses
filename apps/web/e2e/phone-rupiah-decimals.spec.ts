@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
 import { cardSection } from './card-section';
+import { openSplit } from './split-row';
 
 /*
  * Decimals on a whole-unit currency (spec 2026-10-14). A card charges a purchase of Rp 12.500,30 as 12.501 and earns
@@ -179,7 +180,7 @@ test('a split with cents is refused in words, and its dock keeps 00', async ({ p
   await form.getByLabel('Note').fill('Superindo');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  await page.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Split' }).click();
+  await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
   await split.getByLabel('Split 1 amount').fill('50000,50');
@@ -198,7 +199,7 @@ test('a split with cents is refused in words, and its dock keeps 00', async ({ p
   await keypad.getByRole('button', { name: 'Close keypad' }).click();
 
   // The cents taken off, the split saves whole.
-  await page.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Split' }).click();
+  await openSplit(page);
   await split.getByLabel('Split 1 amount').fill('50001');
   await expect(split.getByRole('alert')).toHaveCount(0);
   await split.getByRole('button', { name: 'Close' }).click();
