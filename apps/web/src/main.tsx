@@ -119,7 +119,8 @@ async function start() {
      */
     if (!gate.mountable()) return;
     if (import.meta.env.DEV) {
-      const { loadSample, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
+      const { loadSample, loadSampleOnRoute, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
+      loadSampleOnRoute(app.database);
       if (wantsSample()) {
         root.render(<Message title="Loading sample data…" body="Replacing the data in this browser with the sample household." />);
         await loadSample(app.database);

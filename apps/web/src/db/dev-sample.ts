@@ -7,7 +7,17 @@ import { budgetSheetFor, type Database, setBudgetOverride, type WorkspaceContext
  *
  * The call site sits behind import.meta.env.DEV, so a production build contains neither this nor the file.
  */
-export const wantsSample = () => new URLSearchParams(window.location.search).has('load-sample');
+export const wantsSample = () => new URLSearchParams(window.location.search).has('load-sample') || window.location.pathname === '/load-sample';
+
+/**
+ * The iOS shell has no address bar: `xcrun simctl launch … --route /load-sample` pushes that path once the app is up, on
+ * a development build of the web layer, and this loads the sample then. Nothing listens in a production build.
+ */
+export function loadSampleOnRoute(database: Database): void {
+  window.addEventListener('popstate', () => {
+    if (window.location.pathname === '/load-sample') void loadSample(database);
+  });
+}
 
 export async function loadSample(database: Database): Promise<void> {
   const files = import.meta.glob<string>('/dev-data/sample.sqlite3', { query: '?url', import: 'default' });
@@ -16,7 +26,7 @@ export async function loadSample(database: Database): Promise<void> {
   const response = await fetch(await url());
   if (!response.ok) throw new Error(`Could not read the sample file (${response.status})`);
   await database.importBytes(new Uint8Array(await response.arrayBuffer()));
-  window.history.replaceState(null, '', window.location.pathname);
+  window.history.replaceState(null, '', window.location.pathname === '/load-sample' ? '/' : window.location.pathname);
   window.location.reload();
 }
 
