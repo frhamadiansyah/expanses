@@ -535,9 +535,9 @@ export function extraRows(
     if (!draft.editing && !sharedBook) rows.push('with');
     if (accountOf(draft, accounts)?.subtype === 'credit_card') rows.push('mcc');
   }
-  // Online or offline is how money left for the outside world; it says nothing about money moved between your
-  // own accounts, and a trade is recorded as units rather than as a purchase.
-  if (outward) rows.push('channel');
+  // Online or offline is read by one thing only — a card's points rules, which pay more on one or the other — so it
+  // belongs to spending alone: not to income, not to money moved between accounts, not to a trade.
+  if (draft.mode === 'expense') rows.push('channel');
   rows.push('photos', 'exclude');
   if (missingRate) rows.push('rate');
   return rows;

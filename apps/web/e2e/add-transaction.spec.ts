@@ -880,8 +880,8 @@ test('Split by category and With refuse each other in words, before Save', async
   await withSheet.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Category', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
-  await expect(picker.getByRole('button', { name: /^Split between categories/ })).toBeDisabled();
-  await expect(picker.getByRole('button', { name: /^Split between categories/ })).toContainText('Remove the splits, or remove the people');
+  await expect(picker.getByRole('button', { name: 'Split between categories' })).toBeDisabled();
+  await expect(picker.getByRole('button', { name: 'Split between categories' })).toHaveAttribute('title', /Remove the splits, or remove the people/);
   await picker.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
