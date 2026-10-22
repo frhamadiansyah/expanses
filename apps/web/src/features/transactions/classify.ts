@@ -15,7 +15,12 @@ export interface Classified {
    * into], and a buy [holding, cash], while the money only ever went one way.
    */
   moneyAccountNames: string[];
+  /** A transfer's fee, filed as spending beside it (a top-up paid by card); absent on anything else. */
+  feeMinor?: number;
 }
+
+/** Where money is held: what a transfer moves between, never a holding, a loan or a person. */
+const HOLDS_MONEY = new Set(['cash', 'bank', 'savings', 'ewallet', 'fund', 'other_cash', 'credit_card']);
 
 export function classify(tx: TransactionView): Classified {
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
@@ -27,6 +32,23 @@ export function classify(tx: TransactionView): Classified {
   // Sorted by sign: the credit (the account the money came out of) first, then the debit it reached.
   const names = [...new Set([...money].sort((a, b) => a.amountMinor - b.amountMinor).map((e) => e.accountName))];
 
+  /*
+   * A transfer with a fee beside it — GoPay topped up from a card, Rp 1.000.000 landing and Rp 10.000 charged on top —
+   * is a transfer: money moved from one place it is held to another, the fee its only spending. A purchase never
+   * lands money anywhere; a holding bought, a loan repaid or a bill shared lands it on something that is not money.
+   */
+  const landed = money.find((e) => e.amountMinor > 0 && HOLDS_MONEY.has(e.accountSubtype ?? ''));
+  const left = money.find((e) => e.amountMinor < 0 && e.accountId !== landed?.accountId);
+  if (expenses.length > 0 && incomes.length === 0 && equity.length === 0 && landed && left && money.length === 2) {
+    return {
+      type: 'transfer',
+      amountMinor: landed.amountMinor,
+      currency: landed.currency,
+      categoryIds: expenses.map((e) => e.accountId),
+      moneyAccountNames: names,
+      feeMinor: expenses.reduce((s, e) => s + e.amountMinor, 0),
+    };
+  }
   if (expenses.length > 0) {
     return { type: 'expense', amountMinor: expenses.reduce((s, e) => s + e.amountMinor, 0), currency: expenses[0]!.currency, categoryIds: expenses.map((e) => e.accountId), moneyAccountNames: names };
   }

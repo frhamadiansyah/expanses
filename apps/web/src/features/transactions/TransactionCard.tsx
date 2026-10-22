@@ -317,7 +317,7 @@ function CardBody({
     setReceipt(null);
   };
 
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory'>(null);
   /*
    * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
    * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.
@@ -613,6 +613,16 @@ function CardBody({
   const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
+  /*
+   * A transfer's fee: within one currency (the From account's), and not on a transfer for a goal. Its category starts
+   * on the workspace's built-in Fees & charges, the one a fee the app knows of is filed under.
+   */
+  const feeFrom = accounts.find((account) => account.id === draft.moneyId);
+  const feeTo = accounts.find((account) => account.id === draft.toId);
+  const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
+  const offersFee = draft.mode === 'transfer' && !draft.goalId && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
+  const defaultFeeCategory =
+    accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   // Photos live on the Amount row's camera wherever there is one — every tab but Buy / sell, new or saved.
   const photosOnAmount = draft.mode !== 'trade' && offered.includes('photos');
   const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
@@ -1017,6 +1027,38 @@ function CardBody({
             />
             {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
             {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
+            {/*
+              A transfer's fee — a top-up paid by card, Rp 10.000 on Rp 1.000.000: charged with it in one line, filed as
+              spending under its own category. Within one currency, and not on a transfer for a goal.
+            */}
+            {offersFee && (
+              <>
+                <MoneyFieldRow
+                  currency={feeCurrency}
+                  flag={currencyFlag(feeCurrency)}
+                  label="Fee"
+                  caption="Fee"
+                  placeholder="Fee"
+                  value={draft.fee}
+                  onChange={(fee) => set({ fee, feeCategoryId: draft.feeCategoryId || defaultFeeCategory })}
+                />
+                {draft.fee.trim() !== '' && (
+                  <FormRow
+                    lead="value"
+                    icon={
+                      <RowGlyph>
+                        <Shapes size={15} />
+                      </RowGlyph>
+                    }
+                    label="Fee category"
+                    placeholder="Fee category"
+                    value={byId.get(draft.feeCategoryId)?.name ?? ''}
+                    caption="Fee category"
+                    onClick={() => setSheet('feeCategory')}
+                  />
+                )}
+              </>
+            )}
 
             {draft.mode === 'transfer' ? (
               /*
@@ -1399,6 +1441,16 @@ function CardBody({
           onClose={() => setSheet(null)}
           {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}
           {...(moveTo ? { bookId: moveTo } : {})}
+        />
+      )}
+      {sheet === 'feeCategory' && (
+        <CategoryPicker
+          kind="expense"
+          lockKind
+          title="Fee category"
+          value={draft.feeCategoryId}
+          onPick={(feeCategoryId) => set({ feeCategoryId })}
+          onClose={() => setSheet(null)}
         />
       )}
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} onAttached={(files) => void readReceiptFrom(files)} />}

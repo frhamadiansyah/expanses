@@ -90,19 +90,21 @@ export async function addTransaction(
  */
 export async function addTransfer(
   page: Page,
-  tx: { from: string; to: string; amount: string; note?: string; goal?: string; receivedAmount?: string },
+  tx: { from: string; to: string; amount: string; note?: string; goal?: string; receivedAmount?: string; fee?: string },
 ) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
-  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: tx.from, exact: true }).click();
+  // Through the sheet's own tabs: a card is on Credit cards, the rest on Accounts.
+  await choosePayment(page, tx.from, 'From');
   await openAmount(form);
   await fillAmount(page, form, tx.amount);
   await chooseTo(form, tx.to);
   await form.getByLabel('Note').fill(tx.note ?? 'Transfer');
   if (tx.goal) await chooseGoal(form, tx.goal);
   if (tx.receivedAmount) await form.getByLabel(/^Received amount/).fill(tx.receivedAmount);
+  if (tx.fee) await form.getByLabel('Fee', { exact: true }).fill(tx.fee);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }

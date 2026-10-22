@@ -8,8 +8,7 @@ import {
   listTransactions,
   moveMoneyIn,
   nativeBalances,
-  postTransaction,
-} from '../src/index';
+  postTransaction, cardSpendLines } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -100,7 +99,7 @@ describe('adjustBalance', () => {
 });
 
 describe('moveMoneyIn', () => {
-  it('tops a wallet up from a card: the wallet takes the amount, the card owes it and the fee, the fee is spending', async () => {
+  it('tops a wallet up from a card: one charge — the wallet takes the amount, the card owes it and the fee, the fee is spending', async () => {
     current = await setupDb();
     const { database, ws } = current;
     const wallet = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR' });
@@ -114,7 +113,8 @@ describe('moveMoneyIn', () => {
       description: 'Top up',
       feeDescription: 'Top-up fee',
     });
-    expect(result.feeId).not.toBeNull();
+    // One transaction, as the card's statement prints one charge of 501.500.
+    expect(result.feeId).toBeNull();
     const balances = await nativeBalances(database, ws);
     expect(balances[wallet.id]).toBe(500_000);
     // A liability's raw balance is credit-negative: owing 501.500.
@@ -122,7 +122,9 @@ describe('moveMoneyIn', () => {
     const fees = (await listAccounts(database, ws)).find((a) => a.systemKey === 'miscellaneous.fees_charges')!;
     const totals = await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30');
     expect(totals).toEqual([{ accountId: fees.id, amountBaseMinor: 1_500, transactions: 1 }]);
-    expect((await listTransactions(database, ws, { accountId: card.id })).map((t) => t.description).sort()).toEqual(['Top up', 'Top-up fee']);
+    expect((await listTransactions(database, ws, { accountId: card.id })).map((t) => t.description)).toEqual(['Top up']);
+    // Points read the whole charge once, under the fee's category.
+    expect((await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30')).map((line) => [line.categoryId, line.amountMinor])).toEqual([[fees.id, 501_500]]);
   });
 
   it('withdraws cash from a bank with an ATM fee', async () => {
