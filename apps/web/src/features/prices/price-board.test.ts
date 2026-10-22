@@ -25,9 +25,10 @@ const board = priceBoard({
 });
 
 describe('Update prices', () => {
-  it('lists each security held once, IDX shares apart, then funds; never gold, a sold-out holding or an estimate', () => {
+  it('lists each security held once, IDX shares apart, then funds, then gold on its own; never a sold-out holding or an estimate', () => {
     expect(board.stocks.map((row) => row.title)).toEqual(['BBCA']);
     expect(board.others.map((row) => row.title)).toEqual(['AAPL', 'Reksadana Pasar Uang']);
+    expect(board.held.map((row) => row.title)).toEqual(['Antam gold bars']);
     expect(staleLines([...board.stocks, ...board.others], '2026-09-30', 7)).toBe(3);
   });
 

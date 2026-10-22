@@ -82,13 +82,15 @@ test('updates a price from the assets list and shows the new value', async ({ pa
   await addBank(page);
   await addGold(page);
 
-  // Prices sit in the corner beside +; the dot says one is old.
-  await page.getByRole('button', { name: 'Prices, some are old' }).click();
-  await page.getByRole('menuitem', { name: /^Update prices/ }).click();
+  // Prices sit in the corner beside +, one tag straight to Update prices; the dot says one is old. Gold is there too.
+  await page.getByRole('link', { name: 'Update prices, some are old' }).click();
+  await expect(page.getByRole('heading', { name: 'Update prices' })).toBeVisible();
   await page.getByLabel(/Antam gold bars/).fill('1842000');
   await page.getByRole('button', { name: 'Save prices' }).click();
+  await expect(page.getByText(/Last Rp\s?1\.842\.000 · .* · Typed/)).toBeVisible();
 
   // 15 g at Rp 1.842.000 a gram.
+  await page.goto('/net-worth/assets');
   await expect(page.getByText(/27\.630\.000/).first()).toBeVisible();
 });
 
