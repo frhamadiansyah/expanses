@@ -21,20 +21,45 @@ function percent(minor: number, totalMinor: number): string {
 }
 
 /** One box: its drawing and share at the top, its name and amount at the bottom, as much of that as its size has room for. */
-function BoxFace({ segment, currency, share, Glyph, w, h, faded }: { segment: ShareSegment; currency: string; share: string; Glyph: LucideIcon; w: number; h: number; faded: boolean }) {
+function BoxFace({
+  segment,
+  currency,
+  share,
+  Glyph,
+  w,
+  h,
+  faded,
+  within,
+}: {
+  segment: ShareSegment;
+  currency: string;
+  share: string;
+  Glyph: LucideIcon;
+  w: number;
+  h: number;
+  faded: boolean;
+  /**
+   * A part drawn inside its section's own box: no colour or corners of its own — the section's colour shows through,
+   * lightened by `shade` (0 the section's own colour, more is paler) — so it reads as a part of that section, not a
+   * section beside it. `parent` decides the words' colour, as the section's colour is what they sit on.
+   */
+  within?: { shade: number; parent: ShareSegment };
+}) {
   // Measured against the space, not the screen: a box under a quarter of the width has no room for a name.
   const words = w >= 24 && h >= 22;
   const marks = w >= 11 && h >= 14;
+  const pale = PALE.has((within?.parent ?? segment).className);
   return (
     <span
       className={cx(
         // White as a literal: the kit's `white` is the surface, which turns near-black at night, and these words sit on
         // a colour in both themes. The sheen over the colour is the same light either way.
-        'flex h-full w-full flex-col justify-between overflow-hidden rounded-[10px] bg-linear-to-b from-[#ffffff33] to-[#ffffff00] p-2 text-left transition-opacity',
-        PALE.has(segment.className) ? 'text-[#1c1c1e]' : 'text-[#ffffff]',
-        segment.className,
+        'flex h-full w-full flex-col justify-between overflow-hidden p-2 text-left transition-opacity',
+        within ? '' : cx('rounded-[10px] bg-linear-to-b from-[#ffffff33] to-[#ffffff00]', segment.className),
+        pale ? 'text-[#1c1c1e]' : 'text-[#ffffff]',
         faded && 'opacity-35',
       )}
+      style={within ? { backgroundColor: `rgb(255 255 255 / ${within.shade})`, boxShadow: 'inset 0 0 0 0.5px rgb(255 255 255 / 0.6)' } : undefined}
     >
       {marks && (
         <span className="flex items-start justify-between gap-1 text-[12px] leading-[14px] font-semibold">
@@ -112,6 +137,9 @@ export function ShareBoxes({
         const partBoxes = parts.length > 1 ? squarify(parts.map((part) => part.minor), box.w, box.h) : [];
         if (partBoxes.length > 1) {
           const partActive = parts.some((part) => part.key === inner!.picked) ? inner!.picked : null;
+          // The largest part in the section's own colour, each smaller one a step paler: shades of one colour.
+          const rank = new Map([...parts].sort((a, b) => b.minor - a.minor).map((part, at) => [part.key, at]));
+          const SHADES = [0, 0.18, 0.32, 0.44, 0.54, 0.62, 0.68, 0.74];
           return (
             <div
               key={segment.key}
@@ -119,9 +147,11 @@ export function ShareBoxes({
               aria-label={`${segment.label}, ${formatMinor(segment.minor, code)}, ${share}, by kind`}
               data-testid={`share-box-${segment.key}`}
               data-open="true"
-              className="absolute"
+              className="absolute p-[1.5px]"
               style={place(box, WIDE, TALL)}
             >
+              {/* The section's own box, whole: its colour and corners, the parts divided inside it. */}
+              <div className={cx('relative h-full w-full overflow-hidden rounded-[10px] bg-linear-to-b from-[#ffffff33] to-[#ffffff00]', segment.className)}>
               {parts.map((part, at) => {
                 const partBox = partBoxes[at]!;
                 const partOn = partActive === part.key;
@@ -135,13 +165,23 @@ export function ShareBoxes({
                     title={`${part.label}: ${formatMinor(part.minor, code)}`}
                     onClick={() => inner!.onPick(partOn ? null : part.key)}
                     data-testid={`share-box-${part.key}`}
-                    className="ph-focus absolute p-[1.5px]"
+                    className="ph-focus-inset absolute"
                     style={place(partBox, box.w, box.h)}
                   >
-                    <BoxFace segment={part} currency={code} share={partShare} Glyph={inner!.iconOf(part.key)} w={partBox.w} h={partBox.h} faded={partActive !== null && !partOn} />
+                    <BoxFace
+                      segment={part}
+                      currency={code}
+                      share={partShare}
+                      Glyph={inner!.iconOf(part.key)}
+                      w={partBox.w}
+                      h={partBox.h}
+                      faded={partActive !== null && !partOn}
+                      within={{ shade: SHADES[Math.min(rank.get(part.key) ?? 0, SHADES.length - 1)]!, parent: segment }}
+                    />
                   </button>
                 );
               })}
+              </div>
             </div>
           );
         }
