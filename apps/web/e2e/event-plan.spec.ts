@@ -768,12 +768,14 @@ test('the plan reads by category: a group each on the whole plan, and each opens
   await addItem(page, { name: 'Car seat', price: '4500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Bodysuit', quantity: '6', price: '50000', category: 'Groceries' });
 
-  // The whole plan: one group per category, its header what was paid of what it plans, its items under it.
+  // The whole plan: one card per category, its header how many are bought and what was paid of what it plans, its items under it.
   const groups = page.getByTestId('plan-category');
   await expect(groups).toHaveCount(2);
   await expect(groups.filter({ hasText: 'Stroller' })).toContainText('Car seat');
   await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('6 × Rp 50.000');
-  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText(/Rp\s?0 of Rp\s?300\.000/);
+  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText(/Rp\s?0\s*of Rp\s?300\.000/);
+  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('1 item · none bought');
+  await expect(groups.filter({ hasText: 'Stroller' })).toContainText('2 items · none bought');
 
   // The event page: a category opens to its items, and folds again.
   await page.getByRole('link', { name: 'Back to the event' }).click();
