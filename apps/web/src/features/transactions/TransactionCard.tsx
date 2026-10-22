@@ -23,9 +23,9 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Camera, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
@@ -66,6 +66,8 @@ import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { extraRowRefusal, extraRows, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
+import { usePhotoAttach } from './PhotosSheet';
+import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -282,6 +284,39 @@ function CardBody({
   const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled));
   const latest = useRef(draft);
   latest.current = draft;
+  /*
+   * A receipt photo fills what is still empty — amount, note, date — and says so under the card with an Undo that
+   * puts those fields back. Read on the phone; a picture that cannot be read fills nothing and is still attached.
+   */
+  const [receipt, setReceipt] = useState<ReceiptFilled | null>(null);
+  const [readingReceipt, setReadingReceipt] = useState(false);
+  async function readReceiptFrom(files: readonly File[]) {
+    const file = files.find((one) => one.type.startsWith('image/'));
+    if (!file || latest.current.mode !== 'expense') return;
+    setReadingReceipt(true);
+    const fill = await readReceiptPhoto(file, postingCurrency(latest.current, accounts, ws.baseCurrency));
+    setReadingReceipt(false);
+    if (!fill) return;
+    const now = latest.current;
+    const { next, filled } = applyReceipt(now, fill, {
+      postingCurrency: postingCurrency(now, accounts, ws.baseCurrency),
+      today: isoDate(),
+      foreignAllowed: currencyChoosable(now),
+    });
+    if (!filled) return;
+    setDraft(next);
+    setReceipt(filled);
+  }
+  const undoReceipt = () => {
+    if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
+    setReceipt(null);
+  };
+  // The camera in the title bar: a receipt taken or picked is attached as Photos would, then read.
+  const receiptInput = useRef<HTMLInputElement>(null);
+  const scanned = usePhotoAttach((ids, files) => {
+    setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...ids] }));
+    void readReceiptFrom(files);
+  });
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
@@ -563,6 +598,8 @@ function CardBody({
   const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
+  // The title bar's camera: a new expense on its own screen, which can carry a photo.
+  const offersReceipt = draft.mode === 'expense' && !draft.editing && !finish && offered.includes('photos');
   const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
@@ -1082,10 +1119,23 @@ function CardBody({
         every mode, and this row used to be drawn in the expense branch alone — so a trade computed two rows
         that nothing drew, and a contract note could not be kept with the purchase it belongs to.
       */}
+      {readingReceipt && (
+        <p data-testid="receipt-reading" className="px-[6px] text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
+          Reading the receipt…
+        </p>
+      )}
+      {receipt && (
+        <p data-testid="receipt-filled" className="flex items-center gap-2 px-[6px] text-[12.5px] leading-4 text-[var(--ph-ink-2)]">
+          <span className="min-w-0 flex-1">{filledLine(receipt.fields)}</span>
+          <button type="button" onClick={undoReceipt} className="ph-focus ph-tap shrink-0 font-semibold text-[var(--ph-tint)]" style={{ '--ph-tap-y': '14px', '--ph-tap-x': '8px' } as CSSProperties}>
+            Undo
+          </button>
+        </p>
+      )}
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD]} opensSharedEvent={!finish} />
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
       {/*
@@ -1153,9 +1203,29 @@ function CardBody({
           title={title}
           back="Back"
           onBack={onBack}
-          actions={[{ key: 'save', label: finish?.saveLabel ?? 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
+          actions={[
+            ...(offersReceipt
+              ? [{ key: 'receipt', label: 'Scan a receipt', glyph: <Camera size={19} aria-hidden />, disabled: scanned.busy || readingReceipt, run: () => receiptInput.current?.click() }]
+              : []),
+            { key: 'save', label: finish?.saveLabel ?? 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() },
+          ]}
         />
       )}
+      {offersReceipt && (
+        // No `capture`: the phone then offers the camera and the library both, which is what a receipt needs.
+        <input
+          ref={receiptInput}
+          data-testid="receipt-input"
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            void scanned.attach([...(e.target.files ?? [])]);
+            e.target.value = '';
+          }}
+        />
+      )}
+      <ErrorBox error={scanned.error} />
       {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}

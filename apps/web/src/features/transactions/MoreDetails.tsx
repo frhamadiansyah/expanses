@@ -49,6 +49,7 @@ export function MoreDetails({
   missingRate,
   omit = [],
   opensSharedEvent = true,
+  onPhotos,
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
@@ -61,6 +62,8 @@ export function MoreDetails({
    * being confirmed says no: leaving for another card would leave the draft behind unconfirmed.
    */
   opensSharedEvent?: boolean;
+  /** Pictures just attached under Photos, for the form to read a receipt off. */
+  onPhotos?: (files: readonly File[]) => void;
 }) {
   const { ws } = useApp();
   const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
@@ -160,7 +163,7 @@ export function MoreDetails({
       )}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
       {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
-      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} />}
+      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} onAttached={onPhotos} />}
       {sheet === 'mcc' && <McSheet draft={draft} onChange={onChange} accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet === 'channel' && <ChannelSheet value={draft.channel} onPick={(channel) => set({ channel })} onClose={() => setSheet(null)} />}
     </>

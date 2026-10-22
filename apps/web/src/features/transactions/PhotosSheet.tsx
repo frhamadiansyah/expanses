@@ -35,27 +35,15 @@ export const photosSummary = (draft: FormDraft): string =>
  * fetches, or hands a picture to a third party, and the bytes are read through the main thread's OPFS only,
  * never the worker's and never near the database's own `.expanses/` directory.
  */
-export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; onChange: (draft: FormDraft) => void; onClose: () => void }) {
+/**
+ * Attaching pictures to the transaction being written: each one's bytes, then its row, and the row ids handed to
+ * `onAdded` with the files they came from. Shared by the Photos sheet and the add screen's camera, so both keep a
+ * picture the same way.
+ */
+export function usePhotoAttach(onAdded: (ids: string[], files: readonly File[]) => void | Promise<void>) {
   const { database, ws } = useApp();
-  const client = useQueryClient();
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
-  const camera = useRef<HTMLInputElement>(null);
-  const library = useRef<HTMLInputElement>(null);
-
-  /*
-   * The rows are read back rather than kept in this component's state, because the sheet is closed and
-   * reopened while the form is still being filled in and `draft.photoIds` is all that survives it.
-   * `allPhotoRows` is the reader the backup screen already uses; filtering it to this draft's ids here is
-   * cheaper than a second repository function that asks the same question a narrower way.
-   */
-  const rows = useQuery({ queryKey: ['all-photo-rows', ws.workspaceId], queryFn: () => allPhotoRows(database, ws) });
-  const byId = new Map((rows.data ?? []).map((row) => [row.id, row]));
-  const mine = draft.photoIds.map((id) => byId.get(id)).filter((row): row is TransactionPhotoRow => !!row);
-  const urls = usePhotoUrls(mine);
-  const refresh = () => client.invalidateQueries({ queryKey: ['all-photo-rows', ws.workspaceId] });
 
   async function attach(files: readonly File[]) {
     if (files.length === 0) return;
@@ -84,13 +72,49 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
     } finally {
       // Whatever did go in is attached, even when a later file failed: a row nothing points at is an orphan
       // the next sweep deletes, taking a photograph the user watched arrive with it.
-      if (added.length > 0) {
-        onChange({ ...draft, photoIds: [...draft.photoIds, ...added] });
-        await refresh();
-      }
+      if (added.length > 0) await onAdded(added, files);
       setBusy(false);
     }
   }
+
+  return { attach, busy, setBusy, error, setError };
+}
+
+export function PhotosSheet({
+  draft,
+  onChange,
+  onClose,
+  onAttached,
+}: {
+  draft: FormDraft;
+  onChange: (draft: FormDraft) => void;
+  onClose: () => void;
+  /** The pictures just attached, for the form to read a receipt off. */
+  onAttached?: (files: readonly File[]) => void;
+}) {
+  const { database, ws } = useApp();
+  const client = useQueryClient();
+  const [dragging, setDragging] = useState(false);
+  const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
+  const camera = useRef<HTMLInputElement>(null);
+  const library = useRef<HTMLInputElement>(null);
+
+  /*
+   * The rows are read back rather than kept in this component's state, because the sheet is closed and
+   * reopened while the form is still being filled in and `draft.photoIds` is all that survives it.
+   * `allPhotoRows` is the reader the backup screen already uses; filtering it to this draft's ids here is
+   * cheaper than a second repository function that asks the same question a narrower way.
+   */
+  const rows = useQuery({ queryKey: ['all-photo-rows', ws.workspaceId], queryFn: () => allPhotoRows(database, ws) });
+  const byId = new Map((rows.data ?? []).map((row) => [row.id, row]));
+  const mine = draft.photoIds.map((id) => byId.get(id)).filter((row): row is TransactionPhotoRow => !!row);
+  const urls = usePhotoUrls(mine);
+  const refresh = () => client.invalidateQueries({ queryKey: ['all-photo-rows', ws.workspaceId] });
+  const { attach, busy, setBusy, error, setError } = usePhotoAttach(async (added, files) => {
+    onChange({ ...draft, photoIds: [...draft.photoIds, ...added] });
+    await refresh();
+    onAttached?.(files);
+  });
 
   async function drop(row: TransactionPhotoRow) {
     setError(null);

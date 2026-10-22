@@ -528,6 +528,7 @@ export { exponentOf, findAmounts, type FoundAmount } from './capture/amount';
 export { capturedDayOf, findDateTime } from './capture/date';
 export { appNameOfScreen, fingerprintOf, sameSource } from './capture/fingerprint';
 export { accountHintOf, namesCard, paymentMethodOf, readCapture } from './capture/read';
+export { readReceipt, type ReceiptFill } from './capture/receipt';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type ReadAmount, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
