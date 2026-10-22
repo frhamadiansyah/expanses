@@ -1060,12 +1060,12 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   // second one and only the second one. The bytes are the half a sweep cannot put back.
   await sheet.getByRole('button', { name: 'Remove photo 1' }).click();
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toHaveCount(0);
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('None');
+  await expect(form.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos');
   expect(await photoFiles(page)).toEqual(['abandoned-by-a-half-filled-form.jpg']);
 
   await sheet.getByTestId('photo-library-input').setInputFiles({ name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await expect(form.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
 
   await closeDetails(more, sheet);
   // One file left on the device: the picture on the open form, which `allPhotoFileNames` names even though its
@@ -1096,15 +1096,15 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('button', { name: 'Add more details' }).click();
   const reopened = page.getByRole('region', { name: 'More details' });
-  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
-  await reopened.getByRole('button', { name: 'Photos' }).click();
+  await expect(edit.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
+  await edit.getByTestId('amount-photos').click();
   const photos = page.getByRole('dialog', { name: 'Photos' });
   await expect(photos.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 
   // And it is the same picture, not a second one: removing it here really removes it, which is the whole
   // point of it being on screen. Saving the correction leaves the transaction with none.
   await photos.getByRole('button', { name: 'Remove photo 1' }).click();
-  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('None');
+  await expect(edit.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos');
   await closeDetails(reopened, photos);
   await edit.getByRole('button', { name: 'Save' }).click();
   await expect(edit).toHaveCount(0);
@@ -1537,7 +1537,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await expect(form.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

@@ -184,7 +184,7 @@ test('Edit — from the receipt or from the swipe — opens the Add screen on th
   await form.getByRole('button', { name: 'Add more details' }).click();
   const more = page.getByRole('region', { name: 'More details' });
   await expect(more.getByRole('button', { name: 'Event' })).toBeVisible();
-  await expect(more.getByRole('button', { name: 'Photos' })).toBeVisible();
+  await expect(form.getByTestId('amount-photos')).toBeVisible();
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await saveButton(form).click();
@@ -360,8 +360,8 @@ test('the edit screen shows the receipt the transaction already has', async ({ p
   const details = page.getByRole('region', { name: 'More details' });
 
   // "1 photo", not "None" — and the picture itself is behind the row, to be looked at or taken off.
-  await expect(details.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
-  await details.getByRole('button', { name: 'Photos' }).click();
+  await expect(edit.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
+  await edit.getByTestId('amount-photos').click();
   await expect(page.getByRole('dialog', { name: 'Photos' }).getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 });
 
