@@ -1,50 +1,25 @@
-import { formatMinor, matchesSearch, statementCycleFor } from "@expanses/core";
-import {
-  type AccountRow,
-  billOnNextStatement,
-  cardStatement,
-  cardStatementLines,
-  type CardRow,
-  listStatementChecks,
-  payCardPurchases,
-  setPostedOn,
-  type StatementLine,
-} from "@expanses/db";
-import { useQuery } from "@tanstack/react-query";
-import { CalendarArrowUp, Check, Undo2 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
-import { usePhone } from "../../app/use-phone";
-import { useApp } from "../../app/context";
-import { canPayWith } from "../../lib/account-types";
-import { moneyHolders, useInvalidateAll } from "../../lib/queries";
-import { cx, ErrorBox } from "../../ui";
-import {
-  InsetGroup,
-  InsetRow,
-  Panel,
-  SelectRow,
-  TextRow,
-} from "../../ui/native";
-import {
-  ColumnGroup,
-  EARLIER,
-  GlyphButton,
-  Line,
-  SearchField,
-  StepperRow,
-  SubmitRow,
-  SUBTITLE,
-  TITLE,
-} from "./rows";
-import { WorkspaceBadge } from "../workspaces/WorkspaceBadge";
-import { useWorkspaceBadges } from "../workspaces/queries";
-import { StatementBand } from "./StatementBand";
-import { cycleBack } from "./statement-dates";
-import { groupStatementLines } from "./statement-groups";
-import { spendingDoor } from "../goals/set-aside-question";
-import { useSetAside } from "../goals/SetAsideQuestion";
-import { formatPoints } from "./useCardPoints";
-import { takeCheckedNote } from "../statement-check/batch";
+import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, type StatementLine } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
+import { CalendarArrowUp, Check, CircleCheck, Undo2 } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Sheet } from '../../app/Sheet';
+import { usePhone } from '../../app/use-phone';
+import { useApp } from '../../app/context';
+import { canPayWith } from '../../lib/account-types';
+import { moneyHolders, useInvalidateAll } from '../../lib/queries';
+import { cx, ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
+import { ColumnGroup, EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
+import { useWorkspaceBadges } from '../workspaces/queries';
+import { StatementBand } from './StatementBand';
+import { cycleBack } from './statement-dates';
+import { groupStatementLines } from './statement-groups';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
+import { formatPoints } from './useCardPoints';
+import { takeCheckedNote } from '../statement-check/batch';
 
 /** Points worked out for one purchase, with its merchant category code, for the statement's points column. */
 export interface StatementPoints {
@@ -54,17 +29,8 @@ export interface StatementPoints {
   cardFee: boolean;
 }
 
-const day = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-const dayYear = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const dayYear = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /**
  * A card's statements: what each one charged and closed at, what is left to pay, purchases the bank billed
@@ -77,7 +43,7 @@ export function StatementPanel({
   plastic,
   today,
   points,
-  unit = "points",
+  unit = 'points',
 }: {
   card: AccountRow;
   statementDay: number;
@@ -93,37 +59,29 @@ export function StatementPanel({
   const invalidate = useInvalidateAll();
   const [back, setBack] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   // A bill is settled from money the owner can move — not from a deposit that is locked, nor from a holding.
-  const payers = moneyHolders(accounts).filter(
-    (a) => canPayWith(a) && a.kind === "asset" && a.currency === card.currency,
-  );
-  const [fromId, setFromId] = useState("");
+  const payers = moneyHolders(accounts).filter((a) => canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
+  const [fromId, setFromId] = useState('');
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // The paid-off purchase whose ✓ was tapped: the sheet that offers to take it back.
+  const [unmarking, setUnmarking] = useState<StatementLine | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
-    queryKey: ["card-statement", ws.workspaceId, card.id, cycle.start, today],
+    queryKey: ['card-statement', ws.workspaceId, card.id, cycle.start, today],
     queryFn: () => cardStatement(database, ws, card.id, cycle, today),
   });
 
   const currency = card.currency ?? ws.baseCurrency;
   const money = (minor: number) => formatMinor(minor, currency);
   // The statements checked from screenshots, so a closed cycle that was checked says how it came out.
-  const checks = useQuery({
-    queryKey: ["statement-checks", ws.workspaceId, card.id],
-    queryFn: () => listStatementChecks(database, ws, card.id),
-  });
-  const checked =
-    cycle.end < today
-      ? checks.data?.find(
-          (c) => c.periodStart === cycle.start && c.periodEnd === cycle.end,
-        )
-      : undefined;
+  const checks = useQuery({ queryKey: ['statement-checks', ws.workspaceId, card.id], queryFn: () => listStatementChecks(database, ws, card.id) });
+  const checked = cycle.end < today ? checks.data?.find((c) => c.periodStart === cycle.start && c.periodEnd === cycle.end) : undefined;
   const checkedText = checked
-    ? `Checked · ${checked.status === "reconciled" ? "✓ Reconciled" : checked.status === "differs" ? `Differs by ${money(Math.abs(checked.differenceMinor))}` : "no summary yet"}`
+    ? `Checked · ${checked.status === 'reconciled' ? '✓ Reconciled' : checked.status === 'differs' ? `Differs by ${money(Math.abs(checked.differenceMinor))}` : 'no summary yet'}`
     : "Compare screenshots of the bank's statement";
   // Back from a check: what it came to, said once.
   const [note] = useState(takeCheckedNote);
@@ -133,36 +91,26 @@ export function StatementPanel({
     const timer = window.setTimeout(() => setNoteShown(false), 4000);
     return () => window.clearTimeout(timer);
   }, [noteShown]);
-  const last4 = (cardId: string | null) =>
-    plastic.find((piece) => piece.id === cardId)?.last4;
+  const last4 = (cardId: string | null) => plastic.find((piece) => piece.id === cardId)?.last4;
   /** A card fee, or an MCC the owner set; nothing for a guessed MCC or a plan's rows. */
   // Short, the way statements print it: 126 PTS.
-  const unitShort = unit === "points" ? "PTS" : unit.toUpperCase();
+  const unitShort = unit === 'points' ? 'PTS' : unit.toUpperCase();
   const tagFor = (line: StatementLine) => {
-    const info =
-      line.instalment || line.convertedTo
-        ? undefined
-        : points?.[line.transactionId];
-    return info?.cardFee ? "Card fee" : info?.mcc ? `MCC ${info.mcc}` : null;
+    const info = line.instalment || line.convertedTo ? undefined : points?.[line.transactionId];
+    return info?.cardFee ? 'Card fee' : info?.mcc ? `MCC ${info.mcc}` : null;
   };
   // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here.
-  const payable = (line: StatementLine) =>
-    line.owedMinor > 0 &&
-    line.spending &&
-    !line.paidBy &&
-    !line.paidOff &&
-    !line.instalment &&
-    !line.convertedTo;
+  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo;
   const lines = statement.data?.lines ?? [];
-  const chosen = lines.filter(
-    (line) => selected.has(line.transactionId) && payable(line),
-  );
+  const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
   const groups = groupStatementLines(lines, plastic);
   const grouped = groups.length > 0 && groups[0]!.title !== null;
   const chosenMinor = chosen.reduce((sum, line) => sum + line.owedMinor, 0);
-  const payFrom = fromId || payers[0]?.id || "";
+  const payFrom = fromId || payers[0]?.id || '';
   const setAside = useSetAside(spendingDoor(payFrom, chosenMinor));
+
+  const markPaidOff = (line: StatementLine) => void run(() => setSettledBeforeApp(database, ws, line.transactionId, true));
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -188,9 +136,9 @@ export function StatementPanel({
   const s = statement.data;
 
   // Searching looks through every statement the card has had, not only the one on screen.
-  const searching = query.trim() !== "";
+  const searching = query.trim() !== '';
   const everything = useQuery({
-    queryKey: ["card-statement-lines", ws.workspaceId, card.id],
+    queryKey: ['card-statement-lines', ws.workspaceId, card.id],
     enabled: searching,
     queryFn: () => cardStatementLines(database, ws, card.id),
   });
@@ -202,14 +150,7 @@ export function StatementPanel({
         .filter((line) =>
           matchesSearch(
             {
-              text: [
-                line.description,
-                points?.[line.transactionId]?.mcc
-                  ? `MCC ${points[line.transactionId]!.mcc}`
-                  : null,
-                plastic.find((piece) => piece.id === line.cardId)?.holderName,
-                line.originalCurrency,
-              ],
+              text: [line.description, points?.[line.transactionId]?.mcc ? `MCC ${points[line.transactionId]!.mcc}` : null, plastic.find((piece) => piece.id === line.cardId)?.holderName, line.originalCurrency],
               amountMinor: Math.abs(line.owedMinor),
               last4: last4(line.cardId),
             },
@@ -218,13 +159,10 @@ export function StatementPanel({
         )
         .reverse()
     : [];
-  const statementOf = (line: StatementLine) =>
-    statementCycleFor(line.statementOn, statementDay);
+  const statementOf = (line: StatementLine) => statementCycleFor(line.statementOn, statementDay);
   // A card is yours, not a workspace's, so its statement holds every workspace and each row says which. The
   // searched rows are asked for alongside the statement's, so a hit found under a different workspace says so too.
-  const badgeOf = useWorkspaceBadges(
-    [...lines, ...found].map((line) => line.transactionId),
-  ).mark;
+  const badgeOf = useWorkspaceBadges([...lines, ...found].map((line) => line.transactionId)).mark;
   function openStatementOf(line: StatementLine) {
     // Count back from the statement today is in to the one this line was billed on.
     let steps = 0;
@@ -234,27 +172,16 @@ export function StatementPanel({
       cycle = cycleBack(today, statementDay, steps);
     }
     setBack(steps);
-    setQuery("");
+    setQuery('');
   }
   /** A line's amount, signed the way a statement prints it: money back is green and has a minus. */
   const amount = (line: StatementLine) => (
     <>
-      <span
-        className={cx(
-          "tabular block whitespace-nowrap",
-          line.owedMinor < 0 && "text-[var(--ph-tint)]",
-          line.convertedTo && "line-through",
-        )}
-      >
-        {line.owedMinor < 0
-          ? `−${money(-line.owedMinor)}`
-          : money(line.owedMinor)}
+      <span className={cx('tabular block whitespace-nowrap', line.owedMinor < 0 && 'text-[var(--ph-tint)]', line.convertedTo && 'line-through')}>
+        {line.owedMinor < 0 ? `−${money(-line.owedMinor)}` : money(line.owedMinor)}
       </span>
       {line.originalCurrency && line.originalAmountMinor !== null && (
-        <span
-          className="tabular block text-[11.5px] leading-[14px] whitespace-nowrap text-[var(--ph-ink-3)]"
-          data-testid="statement-original"
-        >
+        <span className="tabular block text-[11.5px] leading-[14px] whitespace-nowrap text-[var(--ph-ink-3)]" data-testid="statement-original">
           {formatMinor(line.originalAmountMinor, line.originalCurrency)}
         </span>
       )}
@@ -264,104 +191,72 @@ export function StatementPanel({
   /** A purchase already paid stays ticked and cannot be unticked; deleting its payment frees it again. */
   const tick = (line: StatementLine) =>
     line.paidOff ? (
-      // Paid off before the app: nothing to pay, so a plain mark in the box's place, the Add form's ✓.
-      <span className="flex h-[44px] w-[32px] shrink-0 items-center justify-center">
-        <span
-          role="img"
-          aria-label="Already paid off"
-          title="Already paid off"
-          data-testid="statement-paid-off"
-          className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]"
-        >
+      // Paid off before the app: nothing to pay, so the Add form's ✓ in the box's place. A tap offers to take it back.
+      <button
+        type="button"
+        aria-label={`${line.description}, already paid off`}
+        title="Already paid off"
+        data-testid="statement-paid-off"
+        disabled={busy}
+        onClick={() => setUnmarking(line)}
+        className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
+      >
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
           <Check size={11} strokeWidth={3.5} aria-hidden />
         </span>
-      </span>
+      </button>
     ) : (
-      // The label is the box's reach: a 20 px box inside a 44 pt target, as the kit's own switch row keeps it.
-      <label
-        className={cx(
-          "flex h-[44px] w-[32px] shrink-0 items-center justify-center",
-          !payable(line) && !line.paidBy && "invisible",
-        )}
-      >
-        <input
-          type="checkbox"
-          className="ph-focus h-[20px] w-[20px] accent-[var(--ph-tint)]"
-          disabled={!payable(line)}
-          checked={line.paidBy !== null || selected.has(line.transactionId)}
-          onChange={() => toggle(line.transactionId)}
-          title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
-          aria-label={
-            line.paidBy
-              ? `${line.description}, paid on ${day(line.paidBy.paidOn)}`
-              : `Pay ${line.description}`
-          }
-        />
-      </label>
+    // The label is the box's reach: a 20 px box inside a 44 pt target, as the kit's own switch row keeps it.
+    <label className={cx('flex h-[44px] w-[32px] shrink-0 items-center justify-center', !payable(line) && !line.paidBy && 'invisible')}>
+      <input
+        type="checkbox"
+        className="ph-focus h-[20px] w-[20px] accent-[var(--ph-tint)]"
+        disabled={!payable(line)}
+        checked={line.paidBy !== null || selected.has(line.transactionId)}
+        onChange={() => toggle(line.transactionId)}
+        title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
+        aria-label={line.paidBy ? `${line.description}, paid on ${day(line.paidBy.paidOn)}` : `Pay ${line.description}`}
+      />
+    </label>
     );
 
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
   const notes = (line: StatementLine): ReactNode[] => {
     const out: ReactNode[] = [];
-    if (line.instalment)
-      out.push(`instalment ${line.instalment.number} of ${line.instalment.of}`);
-    if (line.convertedTo)
-      out.push(
-        `converted to ${line.convertedTo.months} months, billed monthly`,
-      );
+    if (line.instalment) out.push(`instalment ${line.instalment.number} of ${line.instalment.of}`);
+    if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
     // Which purchases you have settled yourself, kept apart from what the bank has billed.
-    if (line.paidBy)
-      out.push(
-        `${s?.closed ? "paid" : "paid ahead"} ${day(line.paidBy.paidOn)}`,
-      );
+    if (line.paidBy) out.push(`${s?.closed ? 'paid' : 'paid ahead'} ${day(line.paidBy.paidOn)}`);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
-    if (line.settles > 0)
-      out.push(`for ${line.settles} purchase${line.settles === 1 ? "" : "s"}`);
-    if (!grouped && last4(line.cardId))
-      out.push(
-        <span className="tabular font-semibold">
-          ···· {last4(line.cardId)}
-        </span>,
-      );
+    if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
+    if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
     const tag = tagFor(line);
     if (tag) out.push(tag);
     return out;
   };
 
   const pointsOf = (line: StatementLine) =>
-    !line.instalment && points?.[line.transactionId]
-      ? `${points[line.transactionId]!.approximate ? "≈ " : ""}${formatPoints(points[line.transactionId]!.points)} ${unitShort}`
-      : "";
+    !line.instalment && points?.[line.transactionId] ? `${points[line.transactionId]!.approximate ? '≈ ' : ''}${formatPoints(points[line.transactionId]!.points)} ${unitShort}` : '';
 
   /** The two fixes a line can take: billed a statement late, or back to the day it was bought. */
   const fixes = (line: StatementLine, late: boolean) => (
     <span className="flex shrink-0 justify-end">
-      {line.spending &&
-        line.owedMinor > 0 &&
-        !late &&
-        !line.instalment &&
-        !line.convertedTo && (
-          <GlyphButton
-            label="Billed next statement"
-            hint="Billed next statement: the bank posted it after the statement date"
-            glyph={<CalendarArrowUp size={17} aria-hidden />}
-            disabled={busy}
-            onClick={() =>
-              void run(() =>
-                billOnNextStatement(database, ws, card.id, line.transactionId),
-              )
-            }
-          />
-        )}
+      {line.spending && line.owedMinor > 0 && !late && !line.instalment && !line.convertedTo && (
+        <GlyphButton
+          label="Billed next statement"
+          hint="Billed next statement: the bank posted it after the statement date"
+          glyph={<CalendarArrowUp size={17} aria-hidden />}
+          disabled={busy}
+          onClick={() => void run(() => billOnNextStatement(database, ws, card.id, line.transactionId))}
+        />
+      )}
       {line.postedOn && (
         <GlyphButton
           label="Use purchase date"
-          hint={`${late ? "Billed late" : "Posted"} on ${day(line.postedOn)}. Use purchase date instead`}
+          hint={`${late ? 'Billed late' : 'Posted'} on ${day(line.postedOn)}. Use purchase date instead`}
           glyph={<Undo2 size={17} aria-hidden />}
           disabled={busy}
-          onClick={() =>
-            void run(() => setPostedOn(database, ws, line.transactionId, null))
-          }
+          onClick={() => void run(() => setPostedOn(database, ws, line.transactionId, null))}
         />
       )}
     </span>
@@ -374,43 +269,49 @@ export function StatementPanel({
   const statementRow = (line: StatementLine) => {
     const late = line.postedOn !== null && line.occurredOn < cycle.start;
     const extra = notes(line);
-    const earned = points ? pointsOf(line) : "";
+    const earned = points ? pointsOf(line) : '';
     return (
       <Line
         key={line.key}
         tight
         testId="statement-line"
-        className={cx(
-          "flex items-center gap-[6px]",
-          line.convertedTo && "opacity-60",
-        )}
+        className={cx('flex items-center gap-[6px]', line.convertedTo && 'opacity-60')}
+        // A purchase there is still something to pay for can be marked paid off before the app with a left swipe.
+        leftAction={
+          payable(line) ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => markPaidOff(line)}
+              aria-label={`Mark ${line.description} already paid off`}
+              className="w-[88px] bg-[var(--ph-tint)] text-[14px] leading-[18px] font-semibold text-white"
+            >
+              Paid off
+            </button>
+          ) : undefined
+        }
       >
         {tick(line)}
         <span className="min-w-0 flex-1 py-[10px]">
-          <span className={cx("block truncate", TITLE)}>
+          <span className={cx('block truncate', TITLE)}>
             {line.description}
             {/* Whose spending this is, when the card has been used from more than one workspace. */}
             <WorkspaceBadge book={badgeOf(line.transactionId)} />
           </span>
-          <span className={cx("mt-[2px] block truncate", SUBTITLE)}>
+          <span className={cx('mt-[2px] block truncate', SUBTITLE)}>
             <span className="tabular">{day(line.occurredOn)}</span>
             {extra.map((note, index) => (
               <span key={index}> · {note}</span>
             ))}
             {points && earned && (
-              <span
-                className="tabular text-[var(--ph-tint)]"
-                data-testid="statement-points"
-              >
-                {" · "}
+              <span className="tabular text-[var(--ph-tint)]" data-testid="statement-points">
+                {' · '}
                 {earned}
               </span>
             )}
           </span>
         </span>
-        <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">
-          {amount(line)}
-        </span>
+        <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</span>
         {fixes(line, late)}
       </Line>
     );
@@ -424,42 +325,14 @@ export function StatementPanel({
     <table className="w-full border-collapse text-[14px]">
       <thead>
         <tr className="text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
-          <th
-            scope="col"
-            className="w-[44px] border-b-[0.5px] border-[var(--ph-hair)] py-[8px] pl-[6px]"
-          >
+          <th scope="col" className="w-[44px] border-b-[0.5px] border-[var(--ph-hair)] py-[8px] pl-[6px]">
             <span className="sr-only">Pay</span>
           </th>
-          <th
-            scope="col"
-            className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-left"
-          >
-            Date
-          </th>
-          <th
-            scope="col"
-            className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-left"
-          >
-            Description
-          </th>
-          {points && (
-            <th
-              scope="col"
-              className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-right"
-            >
-              {unit}
-            </th>
-          )}
-          <th
-            scope="col"
-            className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-right"
-          >
-            Amount
-          </th>
-          <th
-            scope="col"
-            className="w-[92px] border-b-[0.5px] border-[var(--ph-hair)] py-[8px] pr-[4px]"
-          >
+          <th scope="col" className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-left">Date</th>
+          <th scope="col" className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-left">Description</th>
+          {points && <th scope="col" className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-right">{unit}</th>}
+          <th scope="col" className="border-b-[0.5px] border-[var(--ph-hair)] px-[8px] py-[8px] text-right">Amount</th>
+          <th scope="col" className="w-[92px] border-b-[0.5px] border-[var(--ph-hair)] py-[8px] pr-[4px]">
             <span className="sr-only">Fix</span>
           </th>
         </tr>
@@ -469,28 +342,19 @@ export function StatementPanel({
           const late = line.postedOn !== null && line.occurredOn < cycle.start;
           const extra = notes(line);
           return (
-            <tr
-              key={line.key}
-              data-testid="statement-line"
-              className={cx(
-                "border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0",
-                line.convertedTo && "opacity-60",
-              )}
-            >
+            <tr key={line.key} data-testid="statement-line" className={cx('border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0', line.convertedTo && 'opacity-60')}>
               <td className="pl-[6px] align-middle">{tick(line)}</td>
-              <td className="tabular px-[8px] align-middle whitespace-nowrap text-[var(--ph-ink-3)]">
-                {day(line.occurredOn)}
-              </td>
+              <td className="tabular px-[8px] align-middle whitespace-nowrap text-[var(--ph-ink-3)]">{day(line.occurredOn)}</td>
               <td className="px-[8px] py-[8px] align-middle">
                 <span className="block text-[15px] leading-[20px] text-[var(--ph-ink)]">
                   {line.description}
                   <WorkspaceBadge book={badgeOf(line.transactionId)} />
                 </span>
                 {extra.length > 0 && (
-                  <span className={cx("block", SUBTITLE)}>
+                  <span className={cx('block', SUBTITLE)}>
                     {extra.map((note, index) => (
                       <span key={index}>
-                        {index > 0 && " · "}
+                        {index > 0 && ' · '}
                         {note}
                       </span>
                     ))}
@@ -498,17 +362,26 @@ export function StatementPanel({
                 )}
               </td>
               {points && (
-                <td
-                  className="tabular px-[8px] text-right align-middle text-[12.5px] whitespace-nowrap text-[var(--ph-tint)]"
-                  data-testid="statement-points"
-                >
+                <td className="tabular px-[8px] text-right align-middle text-[12.5px] whitespace-nowrap text-[var(--ph-tint)]" data-testid="statement-points">
                   {pointsOf(line)}
                 </td>
               )}
-              <td className="px-[8px] text-right align-middle text-[15px] leading-[20px] text-[var(--ph-ink)]">
-                {amount(line)}
+              <td className="px-[8px] text-right align-middle text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</td>
+              <td className="pr-[4px] align-middle">
+                <span className="flex justify-end">
+                  {/* A mouse has no swipe: the phone's left-swipe Paid off sits with the fixes. */}
+                  {payable(line) && (
+                    <GlyphButton
+                      label={`Mark ${line.description} already paid off`}
+                      hint="Already paid off before the app: nothing to pay"
+                      glyph={<CircleCheck size={17} aria-hidden />}
+                      disabled={busy}
+                      onClick={() => markPaidOff(line)}
+                    />
+                  )}
+                  {fixes(line, late)}
+                </span>
               </td>
-              <td className="pr-[4px] align-middle">{fixes(line, late)}</td>
             </tr>
           );
         })}
@@ -516,23 +389,15 @@ export function StatementPanel({
     </table>
   );
 
-  const subtotal = (minor: number) =>
-    minor < 0 ? `−${money(-minor)}` : money(minor);
+  const subtotal = (minor: number) => (minor < 0 ? `−${money(-minor)}` : money(minor));
 
   return (
     <div>
       <InsetGroup header="Statements">
         <StepperRow
           testId="statement-range"
-          earlier={{
-            label: "Earlier statement",
-            glyph: EARLIER,
-            onClick: () => setBack((b) => b + 1),
-          }}
-          later={{
-            label: "Later statement",
-            onClick: () => setBack((b) => Math.max(0, b - 1)),
-          }}
+          earlier={{ label: 'Earlier statement', glyph: EARLIER, onClick: () => setBack((b) => b + 1) }}
+          later={{ label: 'Later statement', onClick: () => setBack((b) => Math.max(0, b - 1)) }}
           laterDisabled={back === 0}
         >
           {day(cycle.start)} – {dayYear(cycle.end)}
@@ -547,21 +412,12 @@ export function StatementPanel({
         />
       </InsetGroup>
 
-      <SearchField
-        label="Search statements"
-        value={query}
-        onChange={setQuery}
-        placeholder="Search every statement: description, category, card digits or amount"
-      />
+      <SearchField label="Search statements" value={query} onChange={setQuery} placeholder="Search every statement: description, category, card digits or amount" />
 
       {searching && (
         <div data-testid="statement-search-results">
           {found.length === 0 ? (
-            <p className="py-4 text-center text-[15px] text-[var(--ph-ink-3)]">
-              {everything.isLoading
-                ? "Searching…"
-                : "No purchase or payment matches."}
-            </p>
+            <p className="py-4 text-center text-[15px] text-[var(--ph-ink-3)]">{everything.isLoading ? 'Searching…' : 'No purchase or payment matches.'}</p>
           ) : (
             <InsetGroup header="Found" trailing={`${found.length}`}>
               {found.map((line) => (
@@ -575,20 +431,14 @@ export function StatementPanel({
                     </>
                   }
                   subtitle={[
-                    line.occurredOn.slice(0, 4) === today.slice(0, 4)
-                      ? day(line.occurredOn)
-                      : dayYear(line.occurredOn),
-                    line.instalment
-                      ? `instalment ${line.instalment.number} of ${line.instalment.of}`
-                      : null,
+                    line.occurredOn.slice(0, 4) === today.slice(0, 4) ? day(line.occurredOn) : dayYear(line.occurredOn),
+                    line.instalment ? `instalment ${line.instalment.number} of ${line.instalment.of}` : null,
                     last4(line.cardId) ? `···· ${last4(line.cardId)}` : null,
                     `Statement ${day(statementOf(line).end)}`,
                   ]
                     .filter(Boolean)
-                    .join(" · ")}
-                  value={
-                    <span className="block text-right">{amount(line)}</span>
-                  }
+                    .join(' · ')}
+                  value={<span className="block text-right">{amount(line)}</span>}
                   valueTone="ink"
                 />
               ))}
@@ -600,44 +450,46 @@ export function StatementPanel({
       {!searching && s && <StatementBand statement={s} currency={currency} />}
 
       {searching ? null : lines.length === 0 ? (
-        <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">
-          Nothing on this statement.
-        </p>
+        <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">Nothing on this statement.</p>
       ) : (
         groups.map((group) => {
           // One statement, split by card when the account carries more than one, the way the bank prints it.
-          const header = group.title
-            ? `${group.title}${group.digits ? ` ${group.digits}` : ""}`
-            : undefined;
+          const header = group.title ? `${group.title}${group.digits ? ` ${group.digits}` : ''}` : undefined;
           return (
-            <section
-              key={group.key}
-              data-testid="statement-group"
-              aria-label={header}
-            >
+            <section key={group.key} data-testid="statement-group" aria-label={header}>
               {phone ? (
-                <InsetGroup
-                  header={header}
-                  trailing={
-                    group.title ? subtotal(group.totalMinor) : undefined
-                  }
-                >
+                <InsetGroup header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined}>
                   {group.lines.map(statementRow)}
                 </InsetGroup>
               ) : (
-                <Panel
-                  header={header}
-                  trailing={
-                    group.title ? subtotal(group.totalMinor) : undefined
-                  }
-                  pad={false}
-                >
+                <Panel header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined} pad={false}>
                   {table(group.lines)}
                 </Panel>
               )}
             </section>
           );
         })
+      )}
+
+      {unmarking && (
+        <Sheet grouped title="Already paid off" onClose={() => setUnmarking(null)}>
+          <p className="px-[14px] pb-[10px] text-center text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+            {unmarking.description} · {money(unmarking.owedMinor)} is recorded as paid off before the app.
+          </p>
+          <button
+            type="button"
+            data-testid="statement-not-paid-off"
+            disabled={busy}
+            onClick={() => {
+              const line = unmarking;
+              setUnmarking(null);
+              void run(() => setSettledBeforeApp(database, ws, line.transactionId, false));
+            }}
+            className="ph-focus w-full rounded-[11px] bg-[var(--ph-surface)] py-[13px] text-[17px] text-[var(--ph-alarm)]"
+          >
+            Not paid off
+          </button>
+        </Sheet>
       )}
 
       {!searching && chosen.length > 0 && (
@@ -651,9 +503,7 @@ export function StatementPanel({
                 cardAccountId: card.id,
                 fromAccountId: payFrom,
                 occurredOn: paidOn,
-                purchaseTransactionIds: chosen.map(
-                  (line) => line.transactionId,
-                ),
+                purchaseTransactionIds: chosen.map((line) => line.transactionId),
                 setAside: setAside.choice,
               });
               setSelected(new Set());
@@ -661,20 +511,12 @@ export function StatementPanel({
           }}
         >
           <ColumnGroup
-            header={`Pay ${chosen.length} purchase${chosen.length === 1 ? "" : "s"} now`}
+            header={`Pay ${chosen.length} purchase${chosen.length === 1 ? '' : 's'} now`}
             trailing={money(chosenMinor)}
-            footer={
-              payers.length === 0
-                ? `Add a ${currency} bank account to pay the card from.`
-                : undefined
-            }
+            footer={payers.length === 0 ? `Add a ${currency} bank account to pay the card from.` : undefined}
             columns={[
               [
-                <SelectRow
-                  label="Paid from"
-                  value={payFrom}
-                  onChange={(event) => setFromId(event.target.value)}
-                >
+                <SelectRow label="Paid from" value={payFrom} onChange={(event) => setFromId(event.target.value)}>
                   {payers.map((account) => (
                     <option key={account.id} value={account.id}>
                       {account.name}
@@ -682,21 +524,8 @@ export function StatementPanel({
                   ))}
                 </SelectRow>,
               ],
-              [
-                <TextRow
-                  label="Paid on"
-                  type="date"
-                  value={paidOn}
-                  onChange={(event) => setPaidOn(event.target.value)}
-                  required
-                />,
-              ],
-              [
-                <SubmitRow
-                  label={`Pay ${money(chosenMinor)}`}
-                  disabled={busy || payers.length === 0 || !setAside.ready}
-                />,
-              ],
+              [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
+              [<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />],
             ]}
           />
           {setAside.node}

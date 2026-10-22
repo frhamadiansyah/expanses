@@ -1,34 +1,21 @@
-import {
-  type Cycle,
-  installmentSchedule,
-  nextStatementStart,
-  transferLines,
-} from "@expanses/core";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import type { WorkspaceContext } from "../context";
-import type { Database, Db } from "../database";
-import { accounts, transactions } from "../schema";
-import { cardPostings, cardSettlements } from "../schema-cards";
-import { cardTerms } from "../schema-points";
-import { listInstallments } from "./installments";
-import { postTransactionTx } from "./ledger";
-import type { SetAsideChoice } from "./set-aside-tx";
+import { type Cycle, installmentSchedule, nextStatementStart, transferLines } from '@expanses/core';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import type { WorkspaceContext } from '../context';
+import type { Database, Db } from '../database';
+import { accounts, transactions } from '../schema';
+import { cardPostings, cardSettlements } from '../schema-cards';
+import { cardTerms } from '../schema-points';
+import { listInstallments } from './installments';
+import { postTransactionTx } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class StatementError extends Error {
   constructor(
-    readonly code:
-      | "NOT_FOUND"
-      | "POSTED_BEFORE_PURCHASE"
-      | "INVALID_DATE"
-      | "NO_STATEMENT_DAY"
-      | "NOTHING_TO_PAY"
-      | "NOT_A_CHARGE"
-      | "ALREADY_PAID"
-      | "CURRENCY",
+    readonly code: 'NOT_FOUND' | 'POSTED_BEFORE_PURCHASE' | 'INVALID_DATE' | 'NO_STATEMENT_DAY' | 'NOTHING_TO_PAY' | 'NOT_A_CHARGE' | 'ALREADY_PAID' | 'CURRENCY',
     message: string,
   ) {
     super(message);
-    this.name = "StatementError";
+    this.name = 'StatementError';
   }
 }
 
@@ -95,30 +82,10 @@ export interface CardStatement {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The ref a purchase's paid-off-before-the-app settlement carries (ledger's `beforeAppRef`). */
-const BEFORE_APP = "before-app:";
+const BEFORE_APP = 'before-app:';
 
-async function cardLines(
-  db: Db,
-  ws: WorkspaceContext,
-  cardAccountId: string,
-): Promise<StatementLine[]> {
-  const rows = await db.values<
-    [
-      string,
-      string,
-      string | null,
-      string,
-      string | null,
-      number,
-      number,
-      string | null,
-      string | null,
-      string | null,
-      number | null,
-      number,
-      string | null,
-    ]
-  >(sql`
+async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
+  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number, string | null]>(sql`
     SELECT t.id, t.occurred_on, p.posted_on, t.description, t.card_id,
       -SUM(e.amount_minor),
       EXISTS (SELECT 1 FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))
@@ -134,56 +101,29 @@ async function cardLines(
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
     GROUP BY t.id
   `);
-  const settled = new Set(
-    rows.flatMap((row) =>
-      row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [],
-    ),
-  );
+  const settled = new Set(rows.flatMap((row) => (row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [])));
   return rows
-    .map(
-      ([
-        transactionId,
-        occurredOn,
-        postedOn,
-        description,
-        cardId,
-        owed,
-        spending,
-        paymentId,
-        paidOn,
-        originalCurrency,
-        originalAmount,
-        settles,
-        ref,
-      ]) => ({
-        transactionId,
-        occurredOn,
-        postedOn,
-        statementOn: postedOn ?? occurredOn,
-        description,
-        cardId,
-        key: transactionId,
-        owedMinor: Number(owed),
-        countedMinor: Number(owed),
-        instalment: null,
-        convertedTo: null,
-        spending: Boolean(spending),
-        originalCurrency,
-        originalAmountMinor:
-          originalAmount === null ? null : Number(originalAmount),
-        paidBy:
-          paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
-        settles: Number(settles),
-        paidOff: settled.has(transactionId),
-        balancing: ref?.startsWith(BEFORE_APP) ?? false,
-      }),
-    )
-    .sort(
-      (a, b) =>
-        a.statementOn.localeCompare(b.statementOn) ||
-        a.occurredOn.localeCompare(b.occurredOn) ||
-        a.transactionId.localeCompare(b.transactionId),
-    );
+    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref]) => ({
+      transactionId,
+      occurredOn,
+      postedOn,
+      statementOn: postedOn ?? occurredOn,
+      description,
+      cardId,
+      key: transactionId,
+      owedMinor: Number(owed),
+      countedMinor: Number(owed),
+      instalment: null,
+      convertedTo: null,
+      spending: Boolean(spending),
+      originalCurrency,
+      originalAmountMinor: originalAmount === null ? null : Number(originalAmount),
+      paidBy: paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
+      settles: Number(settles),
+      paidOff: settled.has(transactionId),
+      balancing: ref?.startsWith(BEFORE_APP) ?? false,
+    }))
+    .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
 }
 
 /**
@@ -191,29 +131,16 @@ async function cardLines(
  * and each instalment is a row on the statement it is billed on. Plans not tied to a purchase on this card are
  * left out, since there is no purchase here for them to replace.
  */
-async function billedLines(
-  database: Database,
-  ws: WorkspaceContext,
-  cardAccountId: string,
-): Promise<StatementLine[]> {
+async function billedLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
   const lines = await cardLines(database.db, ws, cardAccountId);
   const [terms] = await database.db
     .select({ statementDay: cardTerms.statementDay })
     .from(cardTerms)
-    .where(
-      and(
-        eq(cardTerms.accountId, cardAccountId),
-        eq(cardTerms.workspaceId, ws.workspaceId),
-      ),
-    );
-  const byTransaction = new Map(
-    lines.map((line) => [line.transactionId, line]),
-  );
+    .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const byTransaction = new Map(lines.map((line) => [line.transactionId, line]));
   const instalments: StatementLine[] = [];
   for (const plan of await listInstallments(database, ws, cardAccountId)) {
-    const purchase = plan.transactionId
-      ? byTransaction.get(plan.transactionId)
-      : undefined;
+    const purchase = plan.transactionId ? byTransaction.get(plan.transactionId) : undefined;
     if (!purchase) continue;
     purchase.convertedTo = { planId: plan.id, months: plan.months };
     purchase.countedMinor = 0;
@@ -241,71 +168,36 @@ async function billedLines(
     }
   }
   return [...lines, ...instalments].sort(
-    (a, b) =>
-      a.statementOn.localeCompare(b.statementOn) ||
-      a.occurredOn.localeCompare(b.occurredOn) ||
-      a.key.localeCompare(b.key),
+    (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
   );
 }
 
 /** Every line the card has ever had, as statements bill them, for searching across statements. */
-export async function cardStatementLines(
-  database: Database,
-  ws: WorkspaceContext,
-  cardAccountId: string,
-): Promise<StatementLine[]> {
-  return (await billedLines(database, ws, cardAccountId)).filter(
-    (line) => !line.balancing,
-  );
+export async function cardStatementLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
+  return (await billedLines(database, ws, cardAccountId)).filter((line) => !line.balancing);
 }
 
 /**
  * One statement of a card: what was owed before it, what it charged and credited, what it closed at,
  * and — once the statement date has passed — what has been paid since and what is left.
  */
-export async function cardStatement(
-  database: Database,
-  ws: WorkspaceContext,
-  cardAccountId: string,
-  cycle: Cycle,
-  today: string,
-): Promise<CardStatement> {
+export async function cardStatement(database: Database, ws: WorkspaceContext, cardAccountId: string, cycle: Cycle, today: string): Promise<CardStatement> {
   const [card] = await database.db
     .select({ currency: accounts.currency })
     .from(accounts)
-    .where(
-      and(
-        eq(accounts.id, cardAccountId),
-        eq(accounts.workspaceId, ws.workspaceId),
-      ),
-    );
-  if (!card)
-    throw new StatementError("NOT_FOUND", "That card is not in this workspace");
+    .where(and(eq(accounts.id, cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
   const all = await billedLines(database, ws, cardAccountId);
   // Everything here is in billed terms: an instalment plan counts a month at a time, not its whole price at once.
-  const sum = (lines: StatementLine[]) =>
-    lines.reduce((total, line) => total + line.countedMinor, 0);
+  const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.countedMinor, 0);
 
-  const openingMinor = sum(
-    all.filter((line) => line.statementOn < cycle.start),
-  );
-  const lines = all.filter(
-    (line) => line.statementOn >= cycle.start && line.statementOn <= cycle.end,
-  );
+  const openingMinor = sum(all.filter((line) => line.statementOn < cycle.start));
+  const lines = all.filter((line) => line.statementOn >= cycle.start && line.statementOn <= cycle.end);
   const chargesMinor = sum(lines.filter((line) => line.countedMinor > 0));
   const creditsMinor = -sum(lines.filter((line) => line.countedMinor < 0));
   const closingMinor = openingMinor + chargesMinor - creditsMinor;
   const closed = cycle.end < today;
-  const paidSinceMinor = closed
-    ? -sum(
-        all.filter(
-          (line) =>
-            line.countedMinor < 0 &&
-            line.statementOn > cycle.end &&
-            line.statementOn <= today,
-        ),
-      )
-    : 0;
+  const paidSinceMinor = closed ? -sum(all.filter((line) => line.countedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today)) : 0;
   return {
     cycle,
     currency: card.currency ?? ws.baseCurrency,
@@ -322,110 +214,45 @@ export async function cardStatement(
 }
 
 /** Sets or clears the date the bank posted a card transaction. A purchase cannot be posted before it was made. */
-export async function setPostedOn(
-  database: Database,
-  ws: WorkspaceContext,
-  transactionId: string,
-  postedOn: string | null,
-): Promise<void> {
+export async function setPostedOn(database: Database, ws: WorkspaceContext, transactionId: string, postedOn: string | null): Promise<void> {
   const [tx] = await database.db
     .select({ occurredOn: transactions.occurredOn })
     .from(transactions)
-    .where(
-      and(
-        eq(transactions.id, transactionId),
-        eq(transactions.workspaceId, ws.workspaceId),
-        eq(transactions.status, "posted"),
-      ),
-    );
-  if (!tx)
-    throw new StatementError(
-      "NOT_FOUND",
-      "That transaction is not in this workspace",
-    );
+    .where(and(eq(transactions.id, transactionId), eq(transactions.workspaceId, ws.workspaceId), eq(transactions.status, 'posted')));
+  if (!tx) throw new StatementError('NOT_FOUND', 'That transaction is not in this workspace');
   if (postedOn === null || postedOn === tx.occurredOn) {
-    await database.db
-      .delete(cardPostings)
-      .where(
-        and(
-          eq(cardPostings.transactionId, transactionId),
-          eq(cardPostings.workspaceId, ws.workspaceId),
-        ),
-      );
+    await database.db.delete(cardPostings).where(and(eq(cardPostings.transactionId, transactionId), eq(cardPostings.workspaceId, ws.workspaceId)));
     return;
   }
-  if (!ISO.test(postedOn))
-    throw new StatementError(
-      "INVALID_DATE",
-      `A posting date is YYYY-MM-DD, got "${postedOn}"`,
-    );
-  if (postedOn < tx.occurredOn)
-    throw new StatementError(
-      "POSTED_BEFORE_PURCHASE",
-      "The bank cannot post a purchase before it was made",
-    );
+  if (!ISO.test(postedOn)) throw new StatementError('INVALID_DATE', `A posting date is YYYY-MM-DD, got "${postedOn}"`);
+  if (postedOn < tx.occurredOn) throw new StatementError('POSTED_BEFORE_PURCHASE', 'The bank cannot post a purchase before it was made');
   await database.db
     .insert(cardPostings)
     .values({ transactionId, workspaceId: ws.workspaceId, postedOn })
-    .onConflictDoUpdate({
-      target: cardPostings.transactionId,
-      set: { postedOn },
-    });
+    .onConflictDoUpdate({ target: cardPostings.transactionId, set: { postedOn } });
 }
 
 /** Moves a card purchase onto the statement after the one its date puts it in, the way a late-posted purchase is billed. */
-export async function billOnNextStatement(
-  database: Database,
-  ws: WorkspaceContext,
-  cardAccountId: string,
-  transactionId: string,
-): Promise<string> {
+export async function billOnNextStatement(database: Database, ws: WorkspaceContext, cardAccountId: string, transactionId: string): Promise<string> {
   const [terms] = await database.db
     .select({ statementDay: cardTerms.statementDay })
     .from(cardTerms)
-    .where(
-      and(
-        eq(cardTerms.accountId, cardAccountId),
-        eq(cardTerms.workspaceId, ws.workspaceId),
-      ),
-    );
-  if (!terms)
-    throw new StatementError(
-      "NO_STATEMENT_DAY",
-      "Add the card’s statement day first",
-    );
-  const line = (await cardLines(database.db, ws, cardAccountId)).find(
-    (l) => l.transactionId === transactionId,
-  );
-  if (!line)
-    throw new StatementError(
-      "NOT_FOUND",
-      "That transaction is not on this card",
-    );
+    .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  if (!terms) throw new StatementError('NO_STATEMENT_DAY', 'Add the card’s statement day first');
+  const line = (await cardLines(database.db, ws, cardAccountId)).find((l) => l.transactionId === transactionId);
+  if (!line) throw new StatementError('NOT_FOUND', 'That transaction is not on this card');
   const postedOn = nextStatementStart(line.statementOn, terms.statementDay);
   await setPostedOn(database, ws, transactionId, postedOn);
   return postedOn;
 }
 
 /** Posting dates for the given transactions, for surfaces that place purchases in cycles. */
-export async function postingDates(
-  database: Database,
-  ws: WorkspaceContext,
-  transactionIds: readonly string[],
-): Promise<Map<string, string>> {
+export async function postingDates(database: Database, ws: WorkspaceContext, transactionIds: readonly string[]): Promise<Map<string, string>> {
   if (transactionIds.length === 0) return new Map();
   const rows = await database.db
-    .select({
-      transactionId: cardPostings.transactionId,
-      postedOn: cardPostings.postedOn,
-    })
+    .select({ transactionId: cardPostings.transactionId, postedOn: cardPostings.postedOn })
     .from(cardPostings)
-    .where(
-      and(
-        eq(cardPostings.workspaceId, ws.workspaceId),
-        inArray(cardPostings.transactionId, [...transactionIds]),
-      ),
-    );
+    .where(and(eq(cardPostings.workspaceId, ws.workspaceId), inArray(cardPostings.transactionId, [...transactionIds])));
   return new Map(rows.map((row) => [row.transactionId, row.postedOn]));
 }
 
@@ -447,54 +274,23 @@ export async function payCardPurchases(
   },
 ): Promise<string> {
   const ids = [...new Set(input.purchaseTransactionIds)];
-  if (ids.length === 0)
-    throw new StatementError("NOTHING_TO_PAY", "Choose the purchases to pay");
+  if (ids.length === 0) throw new StatementError('NOTHING_TO_PAY', 'Choose the purchases to pay');
   return database.transaction(async (tx) => {
     const found = await tx
-      .select({
-        id: accounts.id,
-        currency: accounts.currency,
-        name: accounts.name,
-      })
+      .select({ id: accounts.id, currency: accounts.currency, name: accounts.name })
       .from(accounts)
-      .where(
-        and(
-          eq(accounts.workspaceId, ws.workspaceId),
-          inArray(accounts.id, [input.cardAccountId, input.fromAccountId]),
-        ),
-      );
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, [input.cardAccountId, input.fromAccountId])));
     const card = found.find((a) => a.id === input.cardAccountId);
     const from = found.find((a) => a.id === input.fromAccountId);
-    if (!card?.currency || !from?.currency)
-      throw new StatementError(
-        "NOT_FOUND",
-        "Choose the card and the account paying it",
-      );
-    if (card.currency !== from.currency)
-      throw new StatementError(
-        "CURRENCY",
-        `Pay a ${card.currency} card from a ${card.currency} account, or record the payment as a transfer`,
-      );
+    if (!card?.currency || !from?.currency) throw new StatementError('NOT_FOUND', 'Choose the card and the account paying it');
+    if (card.currency !== from.currency) throw new StatementError('CURRENCY', `Pay a ${card.currency} card from a ${card.currency} account, or record the payment as a transfer`);
 
-    const lines = new Map(
-      (await cardLines(tx, ws, input.cardAccountId)).map((line) => [
-        line.transactionId,
-        line,
-      ]),
-    );
+    const lines = new Map((await cardLines(tx, ws, input.cardAccountId)).map((line) => [line.transactionId, line]));
     let totalMinor = 0;
     for (const id of ids) {
       const line = lines.get(id);
-      if (!line || line.owedMinor <= 0)
-        throw new StatementError(
-          "NOT_A_CHARGE",
-          "Only purchases on this card can be paid this way",
-        );
-      if (line.paidBy)
-        throw new StatementError(
-          "ALREADY_PAID",
-          `“${line.description}” was already paid on ${line.paidBy.paidOn}`,
-        );
+      if (!line || line.owedMinor <= 0) throw new StatementError('NOT_A_CHARGE', 'Only purchases on this card can be paid this way');
+      if (line.paidBy) throw new StatementError('ALREADY_PAID', `“${line.description}” was already paid on ${line.paidBy.paidOn}`);
       totalMinor += line.owedMinor;
     }
 
@@ -502,27 +298,15 @@ export async function payCardPurchases(
       occurredOn: input.occurredOn,
       // How many purchases it settled is kept in the settlements themselves, so the description stays plain.
       description: input.description?.trim() || `${card.name} payment`,
-      lines: transferLines({
-        fromAccountId: from.id,
-        toAccountId: card.id,
-        amountMinor: totalMinor,
-        currency: card.currency,
-      }),
+      lines: transferLines({ fromAccountId: from.id, toAccountId: card.id, amountMinor: totalMinor, currency: card.currency }),
       setAside: input.setAside,
     });
     for (const id of ids) {
       // A settlement left behind by a payment since deleted is replaced, not kept beside this one.
       await tx
         .insert(cardSettlements)
-        .values({
-          purchaseTransactionId: id,
-          paymentTransactionId: paymentId,
-          workspaceId: ws.workspaceId,
-        })
-        .onConflictDoUpdate({
-          target: cardSettlements.purchaseTransactionId,
-          set: { paymentTransactionId: paymentId },
-        });
+        .values({ purchaseTransactionId: id, paymentTransactionId: paymentId, workspaceId: ws.workspaceId })
+        .onConflictDoUpdate({ target: cardSettlements.purchaseTransactionId, set: { paymentTransactionId: paymentId } });
     }
     return paymentId;
   });

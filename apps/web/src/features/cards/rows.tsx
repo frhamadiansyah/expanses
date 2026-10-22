@@ -1,6 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { Children, cloneElement, type CSSProperties, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../../ui';
+import { SwipeRow } from '../../ui/SwipeRow';
 import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetRow, type InsetRowProps, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, rowPositions, TAP, toneClass, type Tone } from '../../ui/native';
 
 /**
@@ -38,6 +39,7 @@ export function Line({
   label,
   tight = false,
   pad,
+  leftAction,
 }: GroupChild & {
   children: ReactNode;
   testId?: string;
@@ -47,13 +49,24 @@ export function Line({
   tight?: boolean;
   /** The row's padding, when its content is not text — a card's face carries its own edge. */
   pad?: string;
+  /** The action a left swipe reveals behind the row, as the bills list offers Skip. */
+  leftAction?: ReactNode;
 }) {
+  const face = (
+    <div className={cx('min-w-0', className)} style={tight ? { minHeight: TAP, padding: '0 2px 0 6px' } : pad ? { minHeight: TAP, padding: pad } : ROW_BOX(false)}>
+      {children}
+    </div>
+  );
   return (
     <div className="relative" data-testid={testId} aria-label={label}>
       <Separator show={position?.separator} />
-      <div className={cx('min-w-0', className)} style={tight ? { minHeight: TAP, padding: '0 2px 0 6px' } : pad ? { minHeight: TAP, padding: pad } : ROW_BOX(false)}>
-        {children}
-      </div>
+      {leftAction ? (
+        <SwipeRow enabled leftAction={leftAction} reveal={88}>
+          {() => face}
+        </SwipeRow>
+      ) : (
+        face
+      )}
     </div>
   );
 }

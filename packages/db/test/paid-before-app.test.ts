@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createAccount, listTransactions, nativeBalances, postTransaction, replaceTransaction, voidTransaction } from '../src/index';
+import { createAccount, listTransactions, nativeBalances, postTransaction, replaceTransaction, setSettledBeforeApp, settledBeforeAppOf, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 async function card() {
@@ -40,5 +40,35 @@ describe('a card purchase already paid off before the app', () => {
     const t = await card();
     await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000) });
     expect(await t.owed()).toBe(-850_000);
+  });
+
+  it('is marked or taken back on its own from the statement, leaving the purchase as it was', async () => {
+    const t = await card();
+    const id = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000) });
+    expect(await t.owed()).toBe(-850_000);
+    await setSettledBeforeApp(t.database, t.ws, id, true);
+    await setSettledBeforeApp(t.database, t.ws, id, true);
+    expect(await t.owed()).toBe(0);
+    expect(await settledBeforeAppOf(t.database, t.ws, id)).toBe(true);
+    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Settled before the app')!;
+    expect(settlement.occurredOn).toBe('2026-03-12');
+    await setSettledBeforeApp(t.database, t.ws, id, false);
+    expect(await t.owed()).toBe(-850_000);
+    expect(await settledBeforeAppOf(t.database, t.ws, id)).toBe(false);
+    expect((await listTransactions(t.database, t.ws, {})).map((tx) => tx.id)).toEqual([id]);
+  });
+
+  it('refuses a purchase not on a credit card', async () => {
+    const t = await card();
+    const cash = await createAccount(t.database, t.ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const id = await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-03-12',
+      description: 'Snack',
+      lines: [
+        { accountId: t.dining.id, amountMinor: 20_000, currency: 'IDR' },
+        { accountId: cash.id, amountMinor: -20_000, currency: 'IDR' },
+      ],
+    });
+    await expect(setSettledBeforeApp(t.database, t.ws, id, true)).rejects.toThrow(/credit card/);
   });
 });

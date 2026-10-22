@@ -58,7 +58,7 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT' | 'EVENT_POSTING';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT' | 'EVENT_POSTING' | 'NOT_A_CARD_PURCHASE';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -378,6 +378,38 @@ async function settlementOfTx(tx: Db, ws: WorkspaceContext, purchaseId: string):
 /** Whether a purchase was recorded as already paid off: it has a settlement beside it. */
 export async function settledBeforeAppOf(database: Database, ws: WorkspaceContext, purchaseId: string): Promise<boolean> {
   return (await settlementOfTx(database.db, ws, purchaseId)) !== null;
+}
+
+/**
+ * Marks a saved card purchase paid off before the app, or takes that back, without touching the purchase itself:
+ * the card's statement does this once the purchase's bill has closed. Asking for what already stands does nothing.
+ */
+export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, purchaseId: string, settled: boolean): Promise<void> {
+  return database.transaction(async (tx) => {
+    const [purchase] = await tx
+      .select({ occurredOn: transactions.occurredOn, status: transactions.status })
+      .from(transactions)
+      .where(and(eq(transactions.id, purchaseId), eq(transactions.workspaceId, ws.workspaceId)));
+    if (!purchase || purchase.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${purchaseId} not found`);
+    const settlement = await settlementOfTx(tx, ws, purchaseId);
+    if (!settled) {
+      if (settlement) await voidTransactionTx(tx, ws, settlement);
+      return;
+    }
+    if (settlement) return;
+    const rows = await tx
+      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, rate: entries.fxRateToBase })
+      .from(entries)
+      .where(and(eq(entries.transactionId, purchaseId), eq(entries.workspaceId, ws.workspaceId)));
+    const input: PostTransactionInput = {
+      occurredOn: purchase.occurredOn,
+      description: '',
+      lines: rows.map(({ accountId, amountMinor, currency }) => ({ accountId, amountMinor, currency })),
+      ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
+    };
+    if (!(await cardLineOf(tx, ws, input.lines))) throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be paid off before the app');
+    await settleBeforeAppTx(tx, ws, purchaseId, input);
+  });
 }
 
 export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
