@@ -20,12 +20,13 @@ import { useEvents } from '../events/queries';
 import { useGoals } from '../goals/queries';
 import { useAssetValues } from '../networth/queries';
 import { usePurchasePayers } from '../sharing/queries';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
 import { ConvertForm } from './ConvertForm';
 import { useChangeable } from './queries';
-import { heroCaption, receiptLines } from './receipt-view';
+import { heroCaption, receiptLines, splitParts } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 import { TwoTapDelete } from './TwoTapDelete';
@@ -143,6 +144,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   });
 
   const caption = heroCaption(tx, kind.amountMinor);
+  // One purchase split across workspaces: each part, with the workspace it is counted in.
+  const parts = splitParts(tx, accounts);
 
   /*
    * A phone's Edit is the Add screen, opened on this transaction: one full card for every kind of transaction,
@@ -247,6 +250,30 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           </div>
         ))}
       </Card>
+
+      {parts.length > 0 && (
+        <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5">
+          <h2 id="split-parts-title" className="px-1 text-[13px] text-[var(--ph-ink-3)]">
+            Split across workspaces
+          </h2>
+          <Card className="divide-y divide-slate-100">
+            {parts.map((part) => (
+              <div key={`${part.book.id}:${part.categoryId}`} data-testid="split-part" className="flex items-center gap-3 py-2 text-sm">
+                {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. */}
+                <span className="relative shrink-0">
+                  <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
+                  <WorkspaceBadge book={part.book} corner />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{part.categoryName}</span>
+                  <span className="truncate text-xs text-slate-500">{part.book.name}</span>
+                </span>
+                <span className="tabular text-right">{formatMinor(part.amountMinor, part.currency)}</span>
+              </div>
+            ))}
+          </Card>
+        </section>
+      )}
 
       {(photoRows.data ?? []).length > 0 && (
         <div data-testid="photo-strip" className="flex gap-2 overflow-x-auto">

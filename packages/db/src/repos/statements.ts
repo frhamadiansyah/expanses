@@ -10,6 +10,7 @@ import type { Database, Db } from "../database";
 import { accounts, transactions } from "../schema";
 import { cardPostings, cardSettlements } from "../schema-cards";
 import { cardTerms } from "../schema-points";
+import { splitBooksOfMany } from "./book-splits";
 import { listInstallments } from "./installments";
 import { postTransactionTx } from "./ledger";
 import type { SetAsideChoice } from "./set-aside-tx";
@@ -72,6 +73,11 @@ export interface StatementLine {
    * does not draw it: the purchase carries the mark instead.
    */
   balancing: boolean;
+  /**
+   * A purchase split across workspaces (0084) is one line, the whole charge as the bank prints it; these are its parts'
+   * categories, largest first, for the line to name ("Groceries · Office supplies"). Absent on any other line.
+   */
+  splitCategories?: string[];
 }
 
 export interface CardStatement {
@@ -134,6 +140,16 @@ async function cardLines(
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
     GROUP BY t.id
   `);
+  // A purchase split across workspaces names its parts' categories (0084): one query for every split on the card.
+  const splits = await splitBooksOfMany(db, rows.map((row) => row[0]));
+  const partNames = new Map<string, string[]>();
+  if (splits.size > 0) {
+    const parts = await db.values<[string, string]>(sql`
+      SELECT e.transaction_id, a.name FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id IN ${[...splits.keys()]} AND a.kind IN ('expense', 'income')
+      ORDER BY ABS(e.amount_minor) DESC, e.rowid`);
+    for (const [transactionId, name] of parts) partNames.set(transactionId, [...(partNames.get(transactionId) ?? []), name]);
+  }
   const settled = new Set(
     rows.flatMap((row) =>
       row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [],
@@ -176,6 +192,7 @@ async function cardLines(
         settles: Number(settles),
         paidOff: settled.has(transactionId),
         balancing: ref?.startsWith(BEFORE_APP) ?? false,
+        ...(partNames.has(transactionId) ? { splitCategories: partNames.get(transactionId)! } : {}),
       }),
     )
     .sort(

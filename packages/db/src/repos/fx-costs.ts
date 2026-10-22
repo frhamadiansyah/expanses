@@ -21,6 +21,7 @@ import type { Db } from '../database';
 import { auditLog } from '../schema';
 import { captureRevaluingTx } from '../sync/capture';
 import { sharingTablesExist } from '../sync/placeholder';
+import { splitBooksOfTx } from './book-splits';
 import { hasBooks } from './books';
 import { dayOrderExists } from './day-order-column';
 import { clampEventItemsTx } from './event-items';
@@ -293,7 +294,8 @@ async function filedInWorkspaceTx(db: Db, transactionId: string, lines: readonly
   if (!(await hasBooks(db))) return false;
   if (await inNoWorkspaceTx(db, transactionId)) return false;
   const [row] = await db.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${transactionId} LIMIT 1`);
-  return row !== undefined;
+  // A purchase split across workspaces (0084) is filed in each of its parts' workspaces instead.
+  return row !== undefined || (await splitBooksOfTx(db, transactionId)).length > 0;
 }
 
 /**

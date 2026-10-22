@@ -1,5 +1,5 @@
 import { compareWithinDay, dayNet, formatMinor, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
-import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
 import { classify } from './classify';
@@ -58,6 +58,12 @@ export interface ListRow {
   moneyIn?: boolean;
   /** Saved with its category left for later, so it is filed under Uncategorised until one is chosen. */
   needsCategory?: boolean;
+  /**
+   * A purchase split across workspaces, read in one of them: the lines that are this workspace's part — its category
+   * lines, and the money lines that paid for the whole. The row's figure, category and totals are this part alone;
+   * `tx` stays the whole purchase, which is what the receipt shows and an edit changes. Absent on anything else.
+   */
+  splitPart?: TransactionEntryView[];
   tx?: TransactionView;
   draft?: DraftRow;
 }
@@ -114,6 +120,11 @@ export function buildRows(
   cards: readonly CardRow[],
   /** The last four digits of each digital wallet's phone number, by account (`listWalletLast4`). */
   walletLast4: Readonly<Record<string, string>> = {},
+  /**
+   * The workspace the list is read in, when it is narrowed to one: a purchase split across workspaces counts only its
+   * part there. Left out (an account's history, an event's), every row is read whole.
+   */
+  openBookId?: string,
 ): ListRow[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
   // Archived cards included (`listCards`'s `withArchived`): a row that named a card since put away still reads its digits.
@@ -143,7 +154,10 @@ export function buildRows(
     tx.description.startsWith('Payments not tracked (') &&
     tx.entries.some((e) => (e.accountSystemKey ?? byId.get(e.accountId)?.systemKey) === 'balance_correction');
 
-  const recorded = txs.filter((tx) => !quiet(tx)).map((tx): ListRow => {
+  const recorded = txs.filter((tx) => !quiet(tx)).map((whole): ListRow => {
+    // Split across workspaces: read here as this workspace's part, its other workspaces' category lines left out.
+    const splitPart = openBookId && whole.splitBooks ? whole.entries.filter((e) => e.bookId === undefined || e.bookId === openBookId) : undefined;
+    const tx = splitPart ? { ...whole, entries: splitPart } : whole;
     const c = classify(tx);
     // A transfer reads as one even with a fee beside it: the fee's category is in its grey line, never its title.
     const categoryId = c.type === 'transfer' ? null : (c.categoryIds[0] ?? null);
@@ -179,7 +193,8 @@ export function buildRows(
       refund: c.type === 'expense' && c.amountMinor < 0,
       moneyIn: type === 'debt' && money.filter((e) => !isPerson(e.accountId)).reduce((sum, e) => sum + e.amountBaseMinor, 0) > 0,
       needsCategory: c.categoryIds.some((id) => isUncategorisedKey(byId.get(id)?.systemKey)),
-      tx,
+      ...(splitPart ? { splitPart } : {}),
+      tx: whole,
     };
   });
 

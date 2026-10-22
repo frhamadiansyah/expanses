@@ -473,3 +473,31 @@ describe('opening balances and past purchases', () => {
     expect(filterRows(built, { ...EMPTY_FILTERS, showOpening: true }, withOpening).map((row) => row.id).sort()).toEqual([start.id, superindo.id].sort());
   });
 });
+
+describe('a purchase split across workspaces', () => {
+  const withOffice = [...accounts, account('office', 'expense', 'category', { name: 'Office supplies' })];
+  const books = [
+    { id: 'family', name: 'Family', kind: 'family' as const },
+    { id: 'business', name: 'Business', kind: 'business' as const },
+  ];
+  // Invented: Rp 1.350.000 on the card, Rp 900.000 groceries for Family and Rp 450.000 office supplies for Business.
+  const market = tx('2026-09-14', 'Pasar Sentosa', [['groceries', 900_000], ['groceries', 450_000], ['octo', -1_350_000]], { splitBooks: books });
+  market.entries[0] = { ...market.entries[0]!, bookId: 'family' };
+  market.entries[1] = { ...market.entries[1]!, accountId: 'office', accountName: 'Office supplies', bookId: 'business' };
+
+  it('reads as its own part in each workspace, and keeps the whole purchase for the receipt and the edit', () => {
+    const [family] = buildRows([market], [], withOffice, cards, {}, 'family');
+    expect(family).toMatchObject({ type: 'expense', amountMinor: 900_000, baseMinor: 900_000, spentMinor: 900_000, categoryName: 'Groceries', accountLabel: 'CIMB Octo' });
+    expect(family!.splitPart!.map((e) => e.accountId)).toEqual(['groceries', 'octo']);
+    expect(family!.tx).toBe(market);
+    expect(totals([family!]).spentMinor).toBe(900_000);
+    const [business] = buildRows([market], [], withOffice, cards, {}, 'business');
+    expect(business).toMatchObject({ amountMinor: 450_000, spentMinor: 450_000, categoryName: 'Office supplies' });
+  });
+
+  it('reads whole where no workspace is open: an account’s history, an event', () => {
+    const [whole] = buildRows([market], [], withOffice, cards);
+    expect(whole).toMatchObject({ amountMinor: 1_350_000, spentMinor: 1_350_000 });
+    expect(whole!.splitPart).toBeUndefined();
+  });
+});

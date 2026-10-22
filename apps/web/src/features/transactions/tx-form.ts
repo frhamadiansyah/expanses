@@ -1027,6 +1027,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
       ...paidFromHint(draft),
       ...exactField(draft, accounts, exactHundredths),
+      // A split's lines may come from several workspaces: one purchase, each workspace counting its own part (0084).
+      ...(splits ? { acrossBooks: true } : {}),
     },
   };
 }

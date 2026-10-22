@@ -1,6 +1,6 @@
 import type { AccountRow, CardRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { heroCaption, receiptLines } from './receipt-view';
+import { heroCaption, receiptLines, splitParts } from './receipt-view';
 
 /**
  * `formatMinor` puts a no-break space between a currency symbol and its digits — "Rp 400.000" — and every
@@ -363,5 +363,39 @@ describe('a spend from foreign cash (withdrawal rate §7)', () => {
     expect(valueOf(two, 'Withdrawn')).toBe('From 2 withdrawals');
     const none = receiptLines({ tx: meal, accounts: lira, cards: [], currency: 'IDR', points: null, owed: [], withdrawal: null });
     expect(none.map((line) => line.label)).not.toContain('Cost');
+  });
+});
+
+describe('a purchase split across workspaces', () => {
+  const family = { id: 'family', name: 'Family', kind: 'family' as const };
+  const business = { id: 'business', name: 'Business', kind: 'business' as const };
+  const withParts = [
+    ...accounts,
+    { id: 'cat-groceries', name: 'Groceries', kind: 'expense', subtype: 'category', currency: null },
+    { id: 'cat-office', name: 'Office supplies', kind: 'expense', subtype: 'category', currency: null },
+  ] as AccountRow[];
+  // Invented: Rp 1.350.000 on the card, Rp 900.000 groceries for Family and Rp 450.000 office supplies for Business.
+  const market = dinner({
+    description: 'Pasar Sentosa',
+    splitBooks: [family, business],
+    entries: [
+      { accountId: 'acct-card', accountKind: 'liability', amountMinor: -1_350_000, amountBaseMinor: -1_350_000, currency: 'IDR' },
+      { accountId: 'cat-office', accountName: 'Office supplies', accountKind: 'expense', amountMinor: 450_000, amountBaseMinor: 450_000, currency: 'IDR', bookId: 'business' },
+      { accountId: 'cat-groceries', accountName: 'Groceries', accountKind: 'expense', amountMinor: 900_000, amountBaseMinor: 900_000, currency: 'IDR', bookId: 'family' },
+    ] as TransactionView['entries'],
+  });
+
+  it('says the whole charge, on the card it was charged to, in one line', () => {
+    const lines = receiptLines({ tx: market, accounts: withParts, cards: [card], currency: 'IDR', points: null, owed: [] });
+    expect(said(lines)).toEqual([['Charged on BCA KrisFlyer ···· 1467', 'Rp 1.350.000']]);
+    expect(heroCaption(market, 1_350_000)).toBeNull();
+  });
+
+  it('lists each part with the workspace it is counted in, in the workspaces’ order', () => {
+    expect(splitParts(market, withParts).map((part) => [part.categoryName, part.book.name, part.amountMinor])).toEqual([
+      ['Groceries', 'Family', 900_000],
+      ['Office supplies', 'Business', 450_000],
+    ]);
+    expect(splitParts(dinner(), withParts)).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ import { replanCatalogProgramsTx } from './catalog';
 import { ensureBookCategoryKeysTx } from './categories';
 import { categoryTotalsIn } from './reports';
 import { withCapture } from '../sync/capture';
+import { bookSplitsExist } from './book-splits';
 import { isBookShared } from '../sync/placeholder';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
@@ -480,7 +481,11 @@ export async function booksInEvent(database: Database, ws: WorkspaceContext, eve
         isNull(books.archivedAt),
         // Spending, not planning: a workspace that only has a figure against the event is not one you can read
         // the trip in yet, so it gets no tab until money is actually filed there.
-        sql`${books.id} IN (SELECT bt.book_id FROM book_transactions bt JOIN transactions t ON t.id = bt.transaction_id WHERE t.event_id = ${eventId} AND t.status = 'posted')`,
+        // …or a part of a purchase split across workspaces (0084).
+        (await bookSplitsExist(database.db))
+          ? sql`(${books.id} IN (SELECT bt.book_id FROM book_transactions bt JOIN transactions t ON t.id = bt.transaction_id WHERE t.event_id = ${eventId} AND t.status = 'posted')
+              OR ${books.id} IN (SELECT s.book_id FROM book_transaction_splits s JOIN transactions t ON t.id = s.transaction_id WHERE t.event_id = ${eventId} AND t.status = 'posted'))`
+          : sql`${books.id} IN (SELECT bt.book_id FROM book_transactions bt JOIN transactions t ON t.id = bt.transaction_id WHERE t.event_id = ${eventId} AND t.status = 'posted')`,
       ),
     )
     .orderBy(asc(books.sortOrder), asc(books.createdAt));

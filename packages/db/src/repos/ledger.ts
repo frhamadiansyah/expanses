@@ -13,7 +13,8 @@ import { BILL_MONTH, billTablesExist } from './bill-months';
 import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
-import { bookOfCategory, hasBooks } from './books';
+import { bookOfCategory, type BookKind, hasBooks } from './books';
+import { bookEverSharedTx, bookSplitsExist, splitBooksOfMany, splitBooksOfTx, splitHasPartIn, writeSplitBooksTx } from './book-splits';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
@@ -58,7 +59,21 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT' | 'OTHER_DAY' | 'INVALID_EXACT' | 'EVENT_POSTING';
+export type LedgerErrorCode =
+  | 'INVALID_DATE'
+  | 'NOT_FOUND'
+  | 'ALREADY_VOID'
+  | 'INVALID_ORIGINAL'
+  | 'INVALID_MCC'
+  | 'TWO_BOOKS'
+  | 'OTHER_BOOK'
+  | 'SPLIT_SHARED'
+  | 'SPLIT_MOVE'
+  | 'INVALID_BILL_MONTH'
+  | 'POCKET_PARENT'
+  | 'OTHER_DAY'
+  | 'INVALID_EXACT'
+  | 'EVENT_POSTING';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -106,6 +121,13 @@ export interface PostTransactionInput {
    * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
    */
   moveToBook?: boolean;
+  /**
+   * Its category lines may come from several workspaces: one purchase split across workspaces (0084), each workspace
+   * counting its own part. Without it, categories from two workspaces are refused (TWO_BOOKS), which is what a form
+   * that mixed them by accident needs. The Split sheet asks for it. On `replaceTransaction`, undefined carries the
+   * original's: an edit of a split across workspaces may stay one.
+   */
+  acrossBooks?: boolean;
   /**
    * Its place within its day, when moved there by hand (0067). A new posting leaves it null, so it lands on top of its
    * day. On `replaceTransaction`, undefined carries the original's while the date stays the same and clears it when the
@@ -160,10 +182,11 @@ async function audit(tx: Db, ws: WorkspaceContext, action: string, entityId: str
 }
 
 /**
- * The book a posting belongs to: the one its income and expense lines are filed in, or none when it has no
- * category lines at all. Refuses a posting whose categories come from two books.
+ * The books a posting belongs to: the one its income and expense lines are filed in, or none when it has no
+ * category lines at all. Refuses a posting whose categories come from two books, unless it is split across them
+ * (`acrossBooks`): then every book a line is filed in, in the order the lines name them.
  */
-async function bookOfCategories(tx: Db, lineAccounts: readonly { id: string; kind: string }[]): Promise<string | undefined> {
+async function booksOfCategories(tx: Db, lineAccounts: readonly { id: string; kind: string }[], acrossBooks = false): Promise<string[]> {
   const bookIds = new Set<string>();
   for (const account of lineAccounts) {
     if (account.kind !== 'income' && account.kind !== 'expense') continue;
@@ -172,9 +195,30 @@ async function bookOfCategories(tx: Db, lineAccounts: readonly { id: string; kin
   }
   // "Spend" would be wrong for the income and refund sides this also guards, and for a form that mixed the
   // two by accident the fix is the same: pick the categories from one workspace.
-  if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
-  const [bookId] = bookIds;
-  return bookId;
+  if (bookIds.size > 1 && !acrossBooks) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
+  return [...bookIds];
+}
+
+/**
+ * A purchase split across workspaces may be filed: the table is there (0084), and none of its workspaces is shared with
+ * a household, whose purchases travel whole with the one workspace they are in.
+ */
+async function refuseSplitTx(tx: Db, bookIds: readonly string[]): Promise<void> {
+  if (!(await bookSplitsExist(tx))) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
+  for (const bookId of bookIds) {
+    if (await bookEverSharedTx(tx, bookId)) {
+      throw new LedgerError('SPLIT_SHARED', 'A shared workspace keeps each purchase whole. Record its part as a purchase of its own there.');
+    }
+  }
+}
+
+/** The workspaces a saved transaction is filed in: its one book, each book of a split, or none (a transfer). */
+async function filedBooksTx(tx: Db, ws: WorkspaceContext, id: string): Promise<string[]> {
+  const [filed] = await tx
+    .select({ bookId: bookTransactions.bookId })
+    .from(bookTransactions)
+    .where(and(eq(bookTransactions.transactionId, id), eq(bookTransactions.workspaceId, ws.workspaceId)));
+  return filed ? [filed.bookId] : splitBooksOfTx(tx, id);
 }
 
 /**
@@ -257,7 +301,10 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // A transaction that spends or earns belongs to the book of its categories; one that only moves money between
   // your own accounts (a transfer, a card payment) belongs to none. It may not straddle two books. Computed and
   // checked before any insert below, so a refused posting leaves nothing behind.
-  const bookId = (await hasBooks(tx)) ? await bookOfCategories(tx, found) : undefined;
+  // Split across workspaces, it belongs to each book it has a part in instead (0084).
+  const bookIds = (await hasBooks(tx)) ? await booksOfCategories(tx, found, input.acrossBooks) : [];
+  if (bookIds.length > 1) await refuseSplitTx(tx, bookIds);
+  const bookId = bookIds.length === 1 ? bookIds[0] : undefined;
 
   const id = input.id ?? uuidv7();
   await tx.insert(transactions).values({
@@ -300,6 +347,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     })),
   );
   if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
+  else if (bookIds.length > 1) await writeSplitBooksTx(tx, ws.workspaceId, id, bookIds);
   // A payment against a bill says which month's bill it settles, which is not always the month it was paid in.
   if (input.templateId && (await billTablesExist(tx))) {
     const [bill] = await tx
@@ -476,7 +524,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
    * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
    * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
    */
-  const { id: _ignored, settledBeforeApp: settle, moveToBook, ...input } = withId;
+  const { id: _ignored, settledBeforeApp: settle, moveToBook, acrossBooks, ...input } = withId;
   void _ignored;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
@@ -503,12 +551,13 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
   // spending, so it stays where it was filed: a category from another workspace is refused here, before
   // anything is voided, whatever form or import offered it.
+  // A purchase split across workspaces stays one unless the edit says otherwise, and stays filed where it was so long as
+  // a part is still there: splitting a purchase, or taking a split back to one of its workspaces, is an ordinary edit.
+  let splitAcross = acrossBooks;
   if (await hasBooks(tx)) {
-    const [filed] = await tx
-      .select({ bookId: bookTransactions.bookId })
-      .from(bookTransactions)
-      .where(and(eq(bookTransactions.transactionId, id), eq(bookTransactions.workspaceId, ws.workspaceId)));
-    if (filed) {
+    const filed = await filedBooksTx(tx, ws, id);
+    splitAcross = acrossBooks ?? filed.length > 1;
+    if (filed.length > 0) {
       const lineIds = [...new Set(input.lines.map((line) => line.accountId))];
       const lineAccounts = lineIds.length
         ? await tx
@@ -516,8 +565,12 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
             .from(accounts)
             .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, lineIds)))
         : [];
-      const replacementBook = await bookOfCategories(tx, lineAccounts);
-      if (replacementBook && replacementBook !== filed.bookId && !moveToBook) {
+      const replacementBooks = await booksOfCategories(tx, lineAccounts, splitAcross);
+      // Moving re-files the whole purchase in one workspace, which a split's parts in two cannot be by one choice.
+      if (moveToBook && (filed.length > 1 || replacementBooks.length > 1)) {
+        throw new LedgerError('SPLIT_MOVE', 'A purchase split across workspaces keeps its parts where they are. Change a part’s category in its split instead.');
+      }
+      if (replacementBooks.length > 0 && !replacementBooks.some((book) => filed.includes(book)) && !moveToBook) {
         throw new LedgerError('OTHER_BOOK', 'That category belongs to another workspace. A transaction stays in the workspace it was filed in.');
       }
     }
@@ -555,6 +608,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // Keep import identity so re-importing the same statement still recognises the row.
   const replacement = await postTransactionTx(tx, ws, {
     ...input,
+    acrossBooks: splitAcross,
     source: input.source ?? original?.source,
     externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
     replacesTransactionId: id,
@@ -704,6 +758,18 @@ export interface TransactionEntryView {
   memo: string | null;
   /** Category of a card purchase whose other side is an asset. */
   spendCategoryId: string | null;
+  /**
+   * On a purchase split across workspaces (0084), the workspace this category line is filed in: what tells one
+   * workspace's part from another's. Absent on every other line, and on every other transaction.
+   */
+  bookId?: string;
+}
+
+/** A workspace a purchase split across workspaces has a part in. */
+export interface SplitBook {
+  id: string;
+  name: string;
+  kind: BookKind;
 }
 
 export interface TransactionView {
@@ -749,6 +815,12 @@ export interface TransactionView {
    * passes back. Optional so a view built by hand need not name it; every view read from the ledger carries it.
    */
   exactHundredths?: number | null;
+  /**
+   * A purchase split across workspaces (0084): each workspace it has a part in, in the order the switcher shows them.
+   * Its category lines say which part is whose (`TransactionEntryView.bookId`); its lines stay the whole purchase, as
+   * the card was charged. Absent on anything else, so a view built by hand need not name it.
+   */
+  splitBooks?: SplitBook[];
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -803,6 +875,8 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   const bookId = opts.bookId ?? ws.bookId;
   if (bookId) {
     conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${bookId})`);
+    // A purchase split across workspaces is filed in none of them by that table: it shows where it has a part (0084).
+    if (await bookSplitsExist(database.db)) conds.push(splitHasPartIn(transactions.id, bookId));
     if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
@@ -856,10 +930,15 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   // The channel, the exclusion and how many pictures were kept: one pair of queries per page, as bill months are.
   const extras = (await extrasTablesExist(database.db)) ? await extrasFor(database.db, ws, txs.map((t) => t.id)) : undefined;
 
+  // A purchase split across workspaces: which workspace each of its category lines is in, and the workspaces' names.
+  const splits = await splitBooksOfMany(database.db, txs.map((t) => t.id));
+  const splitBooks = splits.size > 0 ? await splitBooksNamed(database, ws, rows.filter((row) => splits.has(row.transactionId)).map((row) => row.accountId)) : null;
+
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {
+    const filedIn = splits.has(transactionId) ? splitBooks?.byCategory.get(entry.accountId) : undefined;
     const list = byTx.get(transactionId) ?? [];
-    list.push(entry);
+    list.push(filedIn ? { ...entry, bookId: filedIn } : entry);
     byTx.set(transactionId, list);
   }
   const views = txs.map((t) => ({
@@ -881,6 +960,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     photoCount: extras?.get(t.id)?.photoCount ?? 0,
     dayOrder: t.dayOrder === null ? null : Number(t.dayOrder),
     exactHundredths: t.exactHundredths === null ? null : Number(t.exactHundredths),
+    ...(splits.has(t.id) && splitBooks ? { splitBooks: splitBooks.books.filter((book) => splits.get(t.id)!.includes(book.id)) } : {}),
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));
@@ -893,6 +973,18 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     }
   }
   return views;
+}
+
+/** The workspace each of these categories is filed in, and every workspace of the owner's in the switcher's order. */
+async function splitBooksNamed(database: Database, ws: WorkspaceContext, categoryIds: readonly string[]): Promise<{ byCategory: Map<string, string>; books: SplitBook[] }> {
+  const ids = [...new Set(categoryIds)];
+  const filed = ids.length
+    ? await database.db.values<[string, string]>(sql`SELECT category_account_id, book_id FROM book_categories WHERE category_account_id IN ${ids}`)
+    : [];
+  const books = await database.db.values<[string, string, BookKind]>(
+    sql`SELECT id, name, kind FROM books WHERE workspace_id = ${ws.workspaceId} ORDER BY sort_order, created_at`,
+  );
+  return { byCategory: new Map(filed), books: books.map(([id, name, kind]) => ({ id, name, kind })) };
 }
 
 export async function listTransactions(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions = {}): Promise<TransactionView[]> {
