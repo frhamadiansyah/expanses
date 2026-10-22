@@ -1,6 +1,7 @@
 import { formatUnits, type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
 import type { RecordTradeInput, TradeRow } from '@expanses/db';
 import { bareFigure } from './debt-rows';
+import { type PartDraft, partsFromTyped, partsToTyped, SPLIT } from './goal-parts-form';
 
 export interface TradeDraft {
   kind: TradeKind;
@@ -13,8 +14,10 @@ export interface TradeDraft {
   tax: string;
   /** Empty means Opening Balances: something owned before the app. */
   cashAccountId: string;
-  /** Goal this buy funds, or the goal a sell takes its units from. Empty means no goal. */
+  /** Goal this buy funds, or the goal a sell takes its units from. Empty means no goal; `SPLIT` means `parts`. */
   goalId: string;
+  /** The trade split between goals, while `goalId` is `SPLIT`: each goal's units, or its amount for a fund by money. */
+  parts: PartDraft[];
 }
 
 export const emptyTradeDraft = (accountId: string, cashAccountId: string, today: string): TradeDraft => ({
@@ -27,6 +30,7 @@ export const emptyTradeDraft = (accountId: string, cashAccountId: string, today:
   tax: '0',
   cashAccountId,
   goalId: '',
+  parts: [],
 });
 
 /**
@@ -37,7 +41,7 @@ export const typedAmount = (minor: number, currency: string): string => bareFigu
 
 /** An edit opens with the trade's own figures, each in the app's number format. */
 export function draftFromTrade(
-  trade: Pick<TradeRow, 'kind' | 'accountId' | 'occurredOn' | 'unitsMicro' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'cashAccountId' | 'goalId'>,
+  trade: Pick<TradeRow, 'kind' | 'accountId' | 'occurredOn' | 'unitsMicro' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'cashAccountId' | 'goalId' | 'goalParts'>,
   currency: string,
 ): Partial<TradeDraft> {
   return {
@@ -49,7 +53,8 @@ export function draftFromTrade(
     fee: typedAmount(trade.feeMinor, currency),
     tax: typedAmount(trade.taxMinor, currency),
     cashAccountId: trade.cashAccountId ?? '',
-    goalId: trade.goalId ?? '',
+    goalId: (trade.goalParts?.length ?? 0) > 0 ? SPLIT : (trade.goalId ?? ''),
+    parts: trade.goalParts ? partsToTyped(trade.goalParts, currency) : [],
   };
 }
 
@@ -107,7 +112,9 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string,
     feeMinor: fee,
     taxMinor: tax,
     cashAccountId: draft.cashAccountId || null,
-    goalId: draft.goalId || null,
+    ...(draft.goalId === SPLIT
+      ? { goalId: null, goalParts: partsFromTyped(draft.parts, byMoney ? draft.gross : draft.units, byMoney, currency) }
+      : { goalId: draft.goalId || null }),
   };
 }
 

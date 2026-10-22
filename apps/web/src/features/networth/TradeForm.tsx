@@ -9,6 +9,8 @@ import { useSetAsideChoiceOf } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { FormRows, MoneyFieldRow } from '../transactions/FormRow';
+import { GoalParts } from './GoalParts';
+import { SPLIT } from './goal-parts-form';
 import { currencyFlag } from '../transactions/tx-form';
 import { usePostedTradeMoney } from './queries';
 import { draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, waitingForPostedMoney } from './trade-form';
@@ -240,7 +242,13 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
               label={draft.kind === 'sell' ? 'Sell from goal' : 'For goal'}
               hint={draft.kind === 'sell' ? 'Units come out of this goal only.' : 'Each purchase can fund a different goal.'}
               value={draft.goalId}
-              onChange={(e) => change({ goalId: e.target.value })}
+              onChange={(e) =>
+                change(
+                  e.target.value === SPLIT && draft.parts.length === 0
+                    ? { goalId: SPLIT, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
+                    : { goalId: e.target.value },
+                )
+              }
             >
               <option value="">No goal</option>
               {goals.map((goal) => (
@@ -248,6 +256,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
                   {goal.name}
                 </option>
               ))}
+              {goals.length > 1 && <option value={SPLIT}>Split between goals…</option>}
             </SelectRow>
           )}
           {needsRate && (
@@ -260,6 +269,17 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
             />
           )}
         </FormRows>
+      )}
+      {(draft.kind === 'buy' || draft.kind === 'sell') && draft.goalId === SPLIT && (
+        <GoalParts
+          parts={draft.parts}
+          onChange={(parts) => change({ parts })}
+          goals={goals}
+          whole={holding?.byMoney ? draft.gross : draft.units}
+          byMoney={!!holding?.byMoney}
+          currency={currency}
+          unitLabel="units"
+        />
       )}
 
       {setAside.node}

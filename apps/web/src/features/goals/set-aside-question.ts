@@ -8,7 +8,8 @@ export interface Door {
   /** In the account's own currency. */
   outflowMinor: number;
   /** The goal the movement is for, whose own money on the account is its to use (spec §6.3). */
-  ownGoalId: string | null;
+  /** The goal (or, a buy split between goals, the goals) the movement is for. */
+  ownGoalId: string | readonly string[] | null;
   intents: readonly SetAsideIntent[];
   /** A move's destination. */
   toAccountId: string | null;
@@ -36,13 +37,15 @@ export function spendingDoor(accountId: string, outflowMinor: number): Door | nu
  * lowers the goal's cash promise by (spec §4.6). No currency comparison: a cross-currency buy without `cashMinor`
  * still pays the cost out of the cash account, and reading it as 0 would let it through unasked.
  */
-export function tradeDoor(input: Pick<RecordTradeInput, 'kind' | 'cashAccountId' | 'cashMinor' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'goalId'>): Door | null {
+export function tradeDoor(input: Pick<RecordTradeInput, 'kind' | 'cashAccountId' | 'cashMinor' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'goalId' | 'goalParts'>): Door | null {
   if (input.kind !== 'buy' || !input.cashAccountId) return null;
+  const split = (input.goalParts ?? []).map((part) => part.goalId);
+  const tagged = split.length > 0 || !!input.goalId;
   return open({
     accountId: input.cashAccountId,
     outflowMinor: input.cashMinor ?? input.grossMinor + input.feeMinor + input.taxMinor,
-    ownGoalId: input.goalId ?? null,
-    intents: input.goalId ? BORROW_ONLY : SPENDING,
+    ownGoalId: split.length > 0 ? split : (input.goalId ?? null),
+    intents: tagged ? BORROW_ONLY : SPENDING,
     toAccountId: null,
   });
 }

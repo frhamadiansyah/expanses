@@ -3,6 +3,11 @@ import {
   holdingPositionAfter,
   byMoneyInputs,
   goalUnitsOf,
+  type GoalPart,
+  goalShares,
+  splitFits,
+  unitsByGoal,
+  UNTAGGED,
   moneyPositionAfter,
   moneySellBasis,
   moneySells,
@@ -33,6 +38,7 @@ import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import { byMoneyHistoryTx, isByMoneyTx, setTradeBasisTx, tradeBasesTx } from './by-money';
+import { goalPartsByTradeTx, writeGoalPartsTx } from './goal-parts';
 
 export interface TradeRow extends TradeRecord {
   workspaceId: string;
@@ -55,6 +61,11 @@ export interface RecordTradeInput {
   cashAccountId: string | null;
   /** Goal this buy funds, or the goal a sell takes its units from. */
   goalId?: string | null;
+  /**
+   * The trade split between goals instead (0083): each goal's units, or — a fund tracked by money — its amount of the
+   * gross. Given, it wins over `goalId`; one part that takes the whole trade is saved as that one goal.
+   */
+  goalParts?: readonly GoalPart[] | null;
   /** Category of the purchase when a credit card pays for it, so the points engine sees card spend. */
   spendCategoryId?: string | null;
   /** Merchant category code of that card purchase: gold and jewellery shops are 5944. */
@@ -117,7 +128,11 @@ export async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: str
     .where(and(...where))
     .orderBy(asc(investmentTrades.occurredOn), asc(investmentTrades.createdAt));
   const bases = rows.length > 0 ? await tradeBasesTx(tx, ws) : new Map<string, number>();
-  return rows.map((row) => (bases.has(row.id) ? { ...toRow(row), basisMinor: bases.get(row.id)! } : toRow(row)));
+  const parts = rows.length > 0 ? await goalPartsByTradeTx(tx, ws) : new Map<string, GoalPart[]>();
+  return rows.map((row) => {
+    const trade = bases.has(row.id) ? { ...toRow(row), basisMinor: bases.get(row.id)! } : toRow(row);
+    return parts.has(row.id) ? { ...trade, goalParts: parts.get(row.id)! } : trade;
+  });
 }
 
 /** The accounts a trade posts to: the holding, the cash side, and the income and tax categories. */
@@ -275,13 +290,15 @@ export async function writeTradeTx(
   input: RecordTradeInput,
   replacesTradeId: string | null,
   saved: SetAsideChoice | null = null,
-  savedLowering: SavedLowering | null = null,
+  savedLowerings: readonly SavedLowering[] = [],
 ): Promise<TradeResult> {
   await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
   if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
   const trades = await activeTrades(tx, ws, input.accountId);
   const byMoney = await isByMoneyTx(tx, ws, input.accountId);
+  const split = await splitOfTx(tx, ws, input, byMoney);
+  input = { ...input, goalId: split.goalId, goalParts: split.parts.length > 0 ? split.parts : null };
   const position = byMoney ? moneyPositionAfter(trades, input.occurredOn) : positionAt(trades, input.occurredOn);
   /* Tracked by money: a sell takes out the same share of the money still in as it takes of the value just before it —
      the last typed value moved by every buy and sell up to that day — and keeps that cost from then on. */
@@ -345,64 +362,55 @@ export async function writeTradeTx(
     createdAt: new Date().toISOString(),
   });
   if (basisMinor !== null) await setTradeBasisTx(tx, id, basisMinor);
-  // Money parked for this goal in the account that paid is now units: lowered by what left that account, in its currency.
-  if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
+  if (split.parts.length > 0) await writeGoalPartsTx(tx, id, split.parts);
+  /*
+   * Money parked for a goal in the account that paid is now units: each goal of the buy is lowered by its share of
+   * what left that account, in its currency — the whole of it for a buy with one goal, its part's share for a split.
+   */
+  if (input.kind === 'buy' && input.cashAccountId && (input.goalId || split.parts.length > 0)) {
     const outflow = outflowFrom(lines, input.cashAccountId);
-    if (transactionId && (await setAsideTablesExist(tx))) {
-      // Recorded as a move with no destination, so a void gives it back through the sink every door uses (ruling I3). An
-      // edit of the same buy keeps what it took and takes only what the buy grew by, never more because the promise grew.
-      const same = savedLowering && savedLowering.goalId === input.goalId && savedLowering.accountId === input.cashAccountId;
-      const wanted = same ? Math.min(outflow, savedLowering.amountMinor + Math.max(0, outflow - savedLowering.outflowMinor)) : outflow;
-      const taken = await lowerSetAsideTx(tx, ws, input.goalId, input.cashAccountId, wanted);
-      if (taken > 0) {
-        await tx.insert(goalDraws).values({
-          id: uuidv7(),
-          workspaceId: ws.workspaceId,
-          transactionId,
-          goalId: input.goalId,
-          accountId: input.cashAccountId,
-          intent: 'move',
-          amountMinor: taken,
-          toAccountId: null,
-          toAmountMinor: null,
-          stageId: null,
-          wasWhole: 0,
-          wholeSince: null,
-          occurredOn: input.occurredOn,
-          createdAt: new Date().toISOString(),
-        });
+    const shares = goalShares(recordOf(input, id), outflow).filter(([goalId, share]) => goalId !== UNTAGGED && share > 0);
+    for (const [goalId, share] of shares) {
+      if (transactionId && (await setAsideTablesExist(tx))) {
+        // Recorded as a move with no destination, so a void gives it back through the sink every door uses (ruling I3). An
+        // edit of the same buy keeps what it took and takes only what its share grew by, never more because the promise grew.
+        const before = savedLowerings.find((lowering) => lowering.goalId === goalId && lowering.accountId === input.cashAccountId);
+        const wanted = before ? Math.min(share, before.amountMinor + Math.max(0, share - before.outflowMinor)) : share;
+        const taken = await lowerSetAsideTx(tx, ws, goalId, input.cashAccountId, wanted);
+        if (taken > 0) {
+          await tx.insert(goalDraws).values({
+            id: uuidv7(),
+            workspaceId: ws.workspaceId,
+            transactionId,
+            goalId,
+            accountId: input.cashAccountId,
+            intent: 'move',
+            amountMinor: taken,
+            toAccountId: null,
+            toAmountMinor: null,
+            stageId: null,
+            wasWhole: 0,
+            wholeSince: null,
+            occurredOn: input.occurredOn,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        // A database stopped at 49 lowers it as it always did, with nothing to give it back.
+        await adjustSetAsideTx(tx, ws, goalId, input.cashAccountId, -share);
       }
-    } else {
-      // A database stopped at 49 lowers it as it always did, with nothing to give it back.
-      await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -outflow);
     }
   }
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };
 }
 
-/** A sell can only take units the named goal holds, so goals never borrow from each other. */
-async function checkGoalUnits(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput): Promise<void> {
-  const key = input.goalId ?? '';
-  const held = goalUnitsOf(trades, input.occurredOn).byGoal[key] ?? 0;
-  if (input.unitsMicro <= held) return;
-  let whose = 'Units with no goal';
-  if (key) {
-    const [goal] = await tx.select({ name: goals.name }).from(goals).where(and(eq(goals.id, key), eq(goals.workspaceId, ws.workspaceId)));
-    whose = goal ? goal.name : 'That goal';
-  }
-  throw new AssetError(`${whose} holds ${held / 1_000_000}; enter up to that`);
-}
-
-/**
- * A sell from a fund tracked by money can only take out money the named goal put in, so goals never borrow from each
- * other: walked with the sell in place, its cost has to fit the goal's money.
- */
-async function checkGoalMoney(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput & { basisMinor: number | null }): Promise<void> {
-  const probe: TradeRecord = {
-    id: '\u0000probe',
+/** The trade as the goal walks read it, before it has a row of its own. */
+function recordOf(input: RecordTradeInput, id: string, basisMinor: number | null = null): TradeRecord {
+  return {
+    id,
     accountId: input.accountId,
-    kind: 'sell',
+    kind: input.kind,
     occurredOn: input.occurredOn,
     createdAt: '\uffff',
     unitsMicro: input.unitsMicro,
@@ -410,13 +418,55 @@ async function checkGoalMoney(tx: Db, ws: WorkspaceContext, trades: TradeRow[], 
     feeMinor: input.feeMinor,
     taxMinor: input.taxMinor,
     goalId: input.goalId ?? null,
-    basisMinor: input.basisMinor,
+    goalParts: input.goalParts ?? null,
+    basisMinor,
   };
+}
+
+/**
+ * The goals a trade is saved with: its one goal, or its parts. Parts that take nothing are dropped; parts that name a goal
+ * outside the workspace, name one twice, or take more than the trade are refused; one part taking the whole trade is
+ * that one goal.
+ */
+async function splitOfTx(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, byMoney: boolean): Promise<{ goalId: string | null; parts: GoalPart[] }> {
+  const parts = (input.goalParts ?? []).filter((part) => (byMoney ? part.moneyMinor : part.unitsMicro) > 0);
+  if (parts.length === 0) return { goalId: input.goalId ?? null, parts: [] };
+  if (input.kind !== 'buy' && input.kind !== 'sell') throw new AssetError('Only a buy or a sell is split between goals');
+  if (!splitFits(input, parts, byMoney)) throw new AssetError('The goals take more than this trade; enter up to its own amount');
+  const ids = [...new Set(parts.map((part) => part.goalId))];
+  const found = await tx.select({ id: goals.id }).from(goals).where(and(inArray(goals.id, ids), eq(goals.workspaceId, ws.workspaceId)));
+  if (found.length !== ids.length) throw new AssetError('Goal not found in this workspace');
+  const whole = byMoney ? input.grossMinor : input.unitsMicro;
+  if (parts.length === 1 && (byMoney ? parts[0]!.moneyMinor : parts[0]!.unitsMicro) === whole) return { goalId: parts[0]!.goalId, parts: [] };
+  return { goalId: null, parts };
+}
+
+/** A sell can only take units each goal it names holds, so goals never borrow from each other. */
+async function checkGoalUnits(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput): Promise<void> {
+  const held = goalUnitsOf(trades, input.occurredOn).byGoal;
+  for (const [key, units] of unitsByGoal(recordOf(input, '\u0000probe'))) {
+    const has = held[key] ?? 0;
+    if (units <= has) continue;
+    let whose = 'Units with no goal';
+    if (key) {
+      const [goal] = await tx.select({ name: goals.name }).from(goals).where(and(eq(goals.id, key), eq(goals.workspaceId, ws.workspaceId)));
+      whose = goal ? goal.name : 'That goal';
+    }
+    throw new AssetError(`${whose} holds ${has / 1_000_000}; enter up to that`);
+  }
+}
+
+/**
+ * A sell from a fund tracked by money can only take out money the named goal put in, so goals never borrow from each
+ * other: walked with the sell in place, its cost has to fit the goal's money.
+ */
+async function checkGoalMoney(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput & { basisMinor: number | null }): Promise<void> {
+  const probe = recordOf({ ...input, kind: 'sell' }, '\u0000probe', input.basisMinor);
   try {
     goalMoneyOf([...trades, probe]);
   } catch (e) {
     if (!(e instanceof GoalError)) throw e;
-    let whose = 'Money with no goal';
+    let whose = (input.goalParts?.length ?? 0) > 0 ? 'One of these goals' : 'Money with no goal';
     if (input.goalId) {
       const [goal] = await tx.select({ name: goals.name }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
       whose = goal ? goal.name : 'That goal';
@@ -434,7 +484,7 @@ export interface SavedLowering {
 }
 
 /** What the buy took off its goal's promise on the cash account — nought when the goal had nothing there then. */
-async function loweringOfTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, accountId: string): Promise<SavedLowering> {
+async function loweringOfTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, accountId: string, shareOf: (outflow: number) => number): Promise<SavedLowering> {
   const [draw] = await tx
     .select({ amountMinor: goalDraws.amountMinor })
     .from(goalDraws)
@@ -452,7 +502,7 @@ async function loweringOfTx(tx: Db, ws: WorkspaceContext, transactionId: string,
     .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
     .from(entries)
     .where(and(eq(entries.transactionId, transactionId), eq(entries.workspaceId, ws.workspaceId)));
-  return { goalId, accountId, amountMinor: draw?.amountMinor ?? 0, outflowMinor: outflowFrom(lines, accountId) };
+  return { goalId, accountId, amountMinor: draw?.amountMinor ?? 0, outflowMinor: shareOf(outflowFrom(lines, accountId)) };
 }
 
 async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 'replaced' | 'deleted'): Promise<TradeRow> {
@@ -475,20 +525,23 @@ export function recordTrade(database: Database, ws: WorkspaceContext, input: Rec
 export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
   return database.transaction(async (tx) => {
     // The answer the old trade was saved with, read before the void reverses it, carried as an edit carries one.
-    const [prior] = await tx
-      .select({ transactionId: investmentTrades.transactionId, kind: investmentTrades.kind, goalId: investmentTrades.goalId, cashAccountId: investmentTrades.cashAccountId })
-      .from(investmentTrades)
-      .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId)));
+    const prior = (await activeTrades(tx, ws)).find((trade) => trade.id === tradeId);
     const saved = prior?.transactionId && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, prior.transactionId) : null;
-    const savedLowering =
-      prior?.transactionId && prior.kind === 'buy' && prior.goalId && prior.cashAccountId && (await setAsideTablesExist(tx))
-        ? await loweringOfTx(tx, ws, prior.transactionId, prior.goalId, prior.cashAccountId)
-        : null;
+    // What the old buy took off each of its goals' promises, each read against that goal's share of what left the account.
+    const savedLowerings: SavedLowering[] = [];
+    if (prior?.transactionId && prior.kind === 'buy' && prior.cashAccountId && (await setAsideTablesExist(tx))) {
+      for (const [goalId] of goalShares(prior, 0)) {
+        if (goalId === UNTAGGED) continue;
+        const shareOf = (outflow: number) => goalShares(prior, outflow).find(([key]) => key === goalId)?.[1] ?? 0;
+        savedLowerings.push(await loweringOfTx(tx, ws, prior.transactionId, goalId, prior.cashAccountId, shareOf));
+      }
+    }
     const old = await retire(tx, ws, tradeId, 'replaced');
-    // A borrow from the goal the buy is now for is its own money, and a goal archived or no longer set aside there
+    // A borrow from a goal the buy is now for is its own money, and a goal archived or no longer set aside there
     // is dropped rather than refused — the rules convertToPurchase and replaceTransaction follow.
-    const kept = saved && saved.goalId !== (input.goalId ?? null) && (await stillPromisedTx(tx, ws, saved)) ? saved : null;
-    const result = await writeTradeTx(tx, ws, input, tradeId, input.setAside === undefined ? kept : saved, savedLowering);
+    const goalsNow = new Set([...(input.goalParts ?? []).map((part) => part.goalId), ...(input.goalId ? [input.goalId] : [])]);
+    const kept = saved && !goalsNow.has(saved.goalId) && (await stillPromisedTx(tx, ws, saved)) ? saved : null;
+    const result = await writeTradeTx(tx, ws, input, tradeId, input.setAside === undefined ? kept : saved, savedLowerings);
     const from = old.occurredOn < input.occurredOn ? old.occurredOn : input.occurredOn;
     const alreadyDone = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
     const more = (await recalculateSells(tx, ws, input.accountId, from, input.ratesToBase)).filter((sell) => !alreadyDone.has(sell.tradeId));

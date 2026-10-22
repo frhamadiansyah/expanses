@@ -17,11 +17,23 @@ export interface TradeRecord {
   taxMinor: number;
   /** Goal this buy funds, or the goal a sell takes units from. Null or missing means no goal. */
   goalId?: string | null;
+  /**
+   * A trade split between two or more goals (0083): each goal's lots, or — a fund tracked by money — its amount of the
+   * gross. What no part takes is the trade's own, with no goal. Present only on a split, and then `goalId` is null.
+   */
+  goalParts?: readonly GoalPart[] | null;
   /** Declared reinvestment of this payment, and the holding it was declared into. */
   reinvestedMinor?: number | null;
   reinvestedIntoAccountId?: string | null;
   /** A sell from a holding tracked by money: the money still in it took out, fixed when the sell was saved. */
   basisMinor?: number | null;
+}
+
+/** One goal's part of a split trade: its units, and — for a fund tracked by money — its amount of the gross. */
+export interface GoalPart {
+  goalId: string;
+  unitsMicro: number;
+  moneyMinor: number;
 }
 
 export interface YearBucket {

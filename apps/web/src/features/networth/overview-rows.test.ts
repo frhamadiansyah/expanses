@@ -74,7 +74,7 @@ describe('attentionItems', () => {
   it('lists a monthly buy that is due, by name', () => {
     const items = attentionItems([value({ accountId: 'fund', name: 'Equity fund', mode: 'market', unitsMicro: 1_000_000 })], [template('t1', 'fund')]);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Record', to: '/net-worth/trades' });
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Record', to: '/net-worth/trades/plans' });
     expect(items[0]!.text).toContain('Equity fund');
   });
 

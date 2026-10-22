@@ -162,6 +162,7 @@ export {
   type TradeErrorCode,
   TradeError,
   type TradeKind,
+  type GoalPart,
   type TradeRecord,
   type YearBucket,
 } from './assets/position';
@@ -263,7 +264,7 @@ export {
   type SheetTotals,
   WATCH_BAND,
 } from './assets/health';
-export { GoalError, type GoalMoney, goalMoneyOf, type GoalUnits, goalUnitsFor, goalUnitsOf, retagFits, tradedByMoney, UNTAGGED } from './goals/units';
+export { GoalError, type GoalMoney, goalMoneyOf, goalShares, type GoalUnits, goalUnitsFor, goalUnitsOf, isSplit, resplitFits, retagFits, splitFits, tradedByMoney, unitsByGoal, UNTAGGED } from './goals/units';
 export {
   fitByRank,
   futureValueMinor,

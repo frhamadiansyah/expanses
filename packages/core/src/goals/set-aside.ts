@@ -117,13 +117,15 @@ export type SetAsideCheck =
  * money on this account is its to use, so it counts as room, and it is not offered as a goal to take from.
  * An account that already holds less than it promises is its own state and is not asked about again.
  */
-export function checkOutflow(view: AccountSetAside, outflowMinor: number, ownGoalId: string | null = null): SetAsideCheck {
+export function checkOutflow(view: AccountSetAside, outflowMinor: number, ownGoalId: string | readonly string[] | null = null): SetAsideCheck {
   if (view.state === 'none' || outflowMinor <= 0) return { kind: 'silent' };
   if (view.state === 'short') return { kind: 'already-short', shortMinor: view.shortMinor };
-  const own = ownGoalId ? (view.goals.find((goal) => goal.goalId === ownGoalId)?.coveredMinor ?? 0) : 0;
+  // A buy split between goals (0083) is for every goal in it: each one's own covered money pays its part.
+  const owns = new Set(ownGoalId === null ? [] : typeof ownGoalId === 'string' ? [ownGoalId] : ownGoalId);
+  const own = view.goals.filter((goal) => owns.has(goal.goalId)).reduce((sum, goal) => sum + goal.coveredMinor, 0);
   const free = Math.max(0, view.freeMinor);
   if (outflowMinor <= free + own) return { kind: 'silent' };
-  const goals = view.goals.filter((goal) => goal.goalId !== ownGoalId);
+  const goals = view.goals.filter((goal) => !owns.has(goal.goalId));
   if (goals.length === 0) return { kind: 'silent' };
   return { kind: 'ask', overMinor: outflowMinor - free - own, freeMinor: free, goals };
 }

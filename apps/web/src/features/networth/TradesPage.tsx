@@ -1,23 +1,52 @@
-import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, holdingPositionAfter, presetFor } from '@expanses/core';
-import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
+import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, holdingPositionAfter, isoDate } from '@expanses/core';
+import { declareReinvestment, deleteTrade, resplitTrade, retagTrade, type TradeRow } from '@expanses/db';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowDownLeft, CalendarClock, Minus, Plus, Shuffle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Empty, ErrorBox, Money } from '../../ui';
-import { Figure, GROUP_GAP, InsetGroup, InsetRow, Panel, PanelHeader, PushedTitle, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
-import { ReinvestCell } from './ReinvestCell';
-import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
+import { Sheet } from '../../app/Sheet';
+import { useAccounts } from '../../lib/queries';
+import { useInvalidateAll } from '../../lib/queries';
+import { cx, Empty, ErrorBox, Money } from '../../ui';
+import {
+  ActionButtons,
+  Figure,
+  InsetGroup,
+  InsetRow,
+  Panel,
+  PushedTitle,
+  ReadOnlyRow,
+  type RecordColumn,
+  RecordTable,
+  type RoundAction,
+  SCREEN,
+  SelectRow,
+} from '../../ui/native';
+import { DayHeader } from '../transactions/DayHeader';
 import { useGoals } from '../goals/queries';
-import { TemplateList } from './TemplateList';
-import { TradeForm } from './TradeForm';
-import { draftFromTrade, type TradeDraft, typedAmount } from './trade-form';
+import { TradeSheet } from './AssetSheets';
+import { ReinvestCell } from './ReinvestCell';
+import { useAssetProfiles, useAssetValues, useDueTemplates, usePositions, useTradeTemplates, useTrades } from './queries';
+import { draftFromTrade } from './trade-form';
+import { GoalParts } from './GoalParts';
+import { type PartDraft, partsFromTyped, partsToTyped, SPLIT } from './goal-parts-form';
 
-const KIND_LABELS: Record<string, string> = { buy: 'Buy', sell: 'Sell', income: 'Income', unit_change: 'Unit change' };
+type Doing = 'buy' | 'sell' | 'income' | 'units';
 
+const ASKS: Record<Doing, string> = { buy: 'Buy which?', sell: 'Sell which?', income: 'Income from which?', units: 'Units of which?' };
+
+/**
+ * Buy & sell: four buttons, the year's figures, the monthly plans, and every holding's history by day.
+ *
+ * A trade is recorded on the holding's own page — Buy, Sell, Income or Units here asks which holding, then opens that
+ * holding with the sheet already up, so there is one buy form to keep right rather than one here and one there. A
+ * line of the history opens what it was, with the two things only this page sets on a recorded trade: the goal a buy
+ * funds, and how much of a payment was put back in. A wide screen keeps the holdings table with every column.
+ */
 export function TradesPage() {
   const { ws, database } = useApp();
   const invalidate = useInvalidateAll();
+  const navigate = useNavigate();
   const values = useAssetValues();
   const profiles = useAssetProfiles();
   const positions = usePositions();
@@ -29,101 +58,113 @@ export function TradesPage() {
   const goalOptions = (goals.data ?? []).map((goal) => ({ id: goal.id, name: goal.name }));
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<unknown>(null);
+  const [asking, setAsking] = useState<Doing | null>(null);
+  const [open, setOpen] = useState<TradeRow | null>(null);
   const [editing, setEditing] = useState<TradeRow | null>(null);
-  const [initial, setInitial] = useState<Partial<TradeDraft> | undefined>(undefined);
-  const [templateId, setTemplateId] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
+  // The split being typed on an open trade's sheet, before Save goals; null while it is not being split.
+  const [splitting, setSplitting] = useState<PartDraft[] | null>(null);
+  const openTrade = (trade: TradeRow | null) => {
+    setOpen(trade);
+    setSplitting(trade?.goalParts?.length ? partsToTyped(trade.goalParts, currencyOf(trade.accountId)) : null);
+  };
 
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market' || row.mode === 'amount')
     .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, byMoney: row.mode === 'amount' }));
-  /*
-   * The cash side of a trade, and the reason this set is not the payable one: a buy is paid out of the broker's own
-   * cash, and a coupon or a dividend lands back in it. That money cannot be spent from directly — it is moved to a
-   * bank first — so it is offered here, where a trade asks, and never behind "Paid with".
-   */
-  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
   const nameOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.name ?? 'Holding';
   const currencyOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
+  const profileOf = (accountId: string) => (profiles.data ?? []).find((row) => row.accountId === accountId);
   const unitLabelOf = (accountId: string) => {
-    const profile = (profiles.data ?? []).find((row) => row.accountId === accountId);
-    return profile?.unitKind === 'grams' ? 'g' : profile?.unitKind === 'shares' ? 'shares' : 'units';
+    const unitKind = profileOf(accountId)?.unitKind;
+    return unitKind === 'grams' ? 'g' : unitKind === 'shares' ? 'shares' : 'units';
   };
+  const incomeWordOf = (accountId: string) => {
+    const kind = profileOf(accountId)?.assetKind;
+    return kind === 'stock' ? 'Dividend' : kind === 'bond' ? 'Coupon' : 'Income';
+  };
+  const cashName = (accountId: string | null) => (accountId ? ((accounts.data ?? []).find((row) => row.id === accountId)?.name ?? null) : null);
   const EMPTY_VALUE = { costMinor: 0, valueMinor: 0 };
   const valueOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId) ?? EMPTY_VALUE;
-  const heldText = (accountId: string) => {
-    const position = positions.data?.[accountId];
-    return position && position.unitsMicro > 0 ? `${formatUnits(position.unitsMicro)} ${unitLabelOf(accountId)}` : 'Sold';
-  };
+  const unitsHeld = (accountId: string) => positions.data?.[accountId]?.unitsMicro ?? 0;
+  const heldText = (accountId: string) => (unitsHeld(accountId) > 0 ? `${formatUnits(unitsHeld(accountId))} ${unitLabelOf(accountId)}` : 'Sold');
 
-  /** Realized gains and income for the calendar year, from the difference between two walks. */
+  // What each holding realized and earned since 1 January: the position now, less the position on 31 December.
   const thisYear = useMemo(() => {
-    const startOfYear = `${isoDate().slice(0, 4)}-01-01`;
+    const lastYearEnd = `${Number(isoDate().slice(0, 4)) - 1}-12-31`;
     const out: Record<string, { realizedMinor: number; incomeMinor: number }> = {};
     for (const holding of holdings) {
       const list = (trades.data ?? []).filter((trade) => trade.accountId === holding.accountId);
       const all = holdingPositionAfter(list);
-      const before = holdingPositionAfter(list, startOfYear === isoDate() ? startOfYear : `${Number(startOfYear.slice(0, 4)) - 1}-12-31`);
+      const before = holdingPositionAfter(list, lastYearEnd);
       out[holding.accountId] = { realizedMinor: all.realizedMinor - before.realizedMinor, incomeMinor: all.incomeMinor - before.incomeMinor };
     }
     return out;
   }, [holdings, trades.data]);
+  // The year's two figures, added up per currency: a holding in dollars is never summed into rupiah unconverted.
+  const yearBy = (pick: 'realizedMinor' | 'incomeMinor') => {
+    const sums = new Map<string, number>();
+    for (const holding of holdings) sums.set(holding.currency, (sums.get(holding.currency) ?? 0) + (thisYear[holding.accountId]?.[pick] ?? 0));
+    const base = sums.get(ws.baseCurrency) ?? 0;
+    const others = [...sums].filter(([currency, minor]) => currency !== ws.baseCurrency && minor !== 0);
+    return { base, others: others.map(([currency, minor]) => formatMinor(minor, currency)).join(' · ') };
+  };
+  const realized = yearBy('realizedMinor');
+  const income = yearBy('incomeMinor');
 
-  const shown = (trades.data ?? []).filter((trade) => filter === 'all' || trade.accountId === filter);
-
-  async function remove(trade: TradeRow) {
-    setError(null);
-    try {
-      const result = await deleteTrade(database, ws, trade.id);
-      await invalidate();
-      setNotice(result.recalculatedSells.length ? `Removed. ${result.recalculatedSells.length} later sells were worked out again.` : 'Removed.');
-    } catch (e) {
-      setError(e);
-    }
-  }
-
-  /** Only a payment can be reinvested; the repo refuses proceeds from a sale. */
-  async function declare(trade: TradeRow, amountMinor: number, intoAccountId: string | null) {
-    setError(null);
-    try {
-      await declareReinvestment(database, ws, trade.id, { amountMinor, intoAccountId });
-      await invalidate();
-      setNotice(amountMinor > 0 ? 'Recorded as reinvested, so it is not an object of tax.' : 'No longer marked as reinvested.');
-    } catch (e) {
-      setError(e);
-    }
-  }
-
-  async function retag(trade: TradeRow, goalId: string) {
-    setError(null);
-    try {
-      await retagTrade(database, ws, trade.id, goalId || null);
-      await invalidate();
-      setNotice(goalId ? `This purchase now funds ${goalOptions.find((goal) => goal.id === goalId)?.name ?? 'that goal'}.` : 'This purchase no longer funds a goal.');
-    } catch (e) {
-      setError(e);
-    }
-  }
-
-  function recordFromTemplate(accountId: string, amountMinor: number | null, cashAccountId: string, id: string, goalId: string | null) {
-    setEditing(null);
-    setTemplateId(id);
-    setInitial({
-      kind: 'buy',
-      accountId,
-      cashAccountId,
-      gross: amountMinor === null ? '' : typedAmount(amountMinor, currencyOf(accountId)),
-      goalId: goalId ?? '',
-      occurredOn: isoDate(),
+  // Which holdings each button can act on: a sell, an income or a unit change needs something there to act on.
+  const eligible = (doing: Doing) =>
+    holdings.filter((holding) => {
+      const kind = profileOf(holding.accountId)?.assetKind;
+      if (doing === 'buy') return true;
+      if (doing === 'sell') return holding.byMoney ? valueOf(holding.accountId).valueMinor > 0 : unitsHeld(holding.accountId) > 0;
+      if (doing === 'income') return kind !== 'gold';
+      return !holding.byMoney && unitsHeld(holding.accountId) > 0;
     });
+  const go = (doing: Doing, accountId: string) => {
+    setAsking(null);
+    void navigate({ to: '/net-worth/assets/$accountId', params: { accountId }, search: { do: doing } });
+  };
+  const ask = (doing: Doing) => () => {
+    const choices = eligible(doing);
+    if (choices.length === 1) go(doing, choices[0]!.accountId);
+    else setAsking(doing);
+  };
+  const round: RoundAction[] = [
+    { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: ask('buy') },
+    { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: ask('sell') },
+    { key: 'income', label: 'Income', glyph: <ArrowDownLeft size={20} aria-hidden />, run: ask('income') },
+    { key: 'units', label: 'Units', glyph: <Shuffle size={19} aria-hidden />, run: ask('units') },
+  ];
+
+  async function run(work: () => Promise<unknown>, said: string) {
+    setError(null);
+    try {
+      await work();
+      await invalidate();
+      setNotice(said);
+    } catch (e) {
+      setError(e);
+    }
   }
 
-  /*
-   * The holdings table, column for column, handed to the kit.
-   *
-   * At 390 px this was eight columns in a `w-full` table: they collided and the figures ran into each other.
-   * `RecordTable` keeps every one of them on a wide screen and draws a row per holding on a phone.
-   */
+  const titleOf = (trade: TradeRow) => {
+    const name = nameOf(trade.accountId);
+    if (trade.kind === 'buy') return `Bought ${name}`;
+    if (trade.kind === 'sell') return `Sold ${name}`;
+    if (trade.kind === 'income') return `${incomeWordOf(trade.accountId)} ${name}`;
+    return `Units of ${name}`;
+  };
+  const unitsLine = (trade: TradeRow) =>
+    trade.kind === 'income' ? null : `${trade.kind === 'unit_change' && trade.unitsMicro > 0 ? '+' : ''}${formatUnits(trade.unitsMicro)} ${unitLabelOf(trade.accountId)}`;
+  const goalName = (goalId: string | null | undefined) => (goalId ? (goalOptions.find((goal) => goal.id === goalId)?.name ?? null) : null);
+
+  // Holdings that have a history, for the chips over it: All, then one each.
+  const traded = holdings.filter((holding) => (trades.data ?? []).some((trade) => trade.accountId === holding.accountId));
+  const shown = [...(trades.data ?? [])].filter((trade) => filter === 'all' || trade.accountId === filter).reverse();
+  const days = new Map<string, TradeRow[]>();
+  for (const trade of shown) days.set(trade.occurredOn, [...(days.get(trade.occurredOn) ?? []), trade]);
+
   const holdingColumns: RecordColumn<(typeof holdings)[number]>[] = [
     { key: 'name', heading: 'Holding', cell: (holding) => holding.name },
     { key: 'held', heading: 'Held', numeric: true, cell: (holding) => heldText(holding.accountId) },
@@ -168,12 +209,18 @@ export function TradesPage() {
     },
   ];
 
+  const dueCount = due.data?.length ?? 0;
+  const planCount = templates.data?.length ?? 0;
+  const plansLine =
+    dueCount > 0
+      ? `${dueCount} due · ${(due.data ?? []).map((template) => nameOf(template.accountId)).join(', ')}`
+      : planCount > 0
+        ? `${planCount} ${planCount === 1 ? 'plan' : 'plans'}`
+        : 'A buy or a move that comes every month';
+
   return (
     <div className={SCREEN}>
       <PushedTitle title="Buy & sell" back="Net worth" backTo="/net-worth" />
-      <InsetGroup>
-        <InsetRow title="Investments" subtitle="By stock and by broker" to="/net-worth/investments" />
-      </InsetGroup>
       <ErrorBox error={values.error ?? trades.error ?? error} />
       {notice && (
         <Panel className="text-[13px] leading-[17px] text-[var(--ph-tint)]" testId="trade-notice">
@@ -184,138 +231,288 @@ export function TradesPage() {
       {holdings.length === 0 && !values.isPending && <Empty>Add a fund, stock, bond or gold on the Assets tab first.</Empty>}
 
       {holdings.length > 0 && (
-        <RecordTable
-          header="Holdings"
-          records={holdings}
-          columns={holdingColumns}
-          /*
-           * There is no holding detail screen anywhere in the app, so there is no behind-the-chevron for average
-           * cost, unrealized, realized this year and income this year to wait in. The table stays a table at
-           * phone width and scrolls sideways in its own container instead of losing four figures.
-           */
-          detail={{ kind: 'none' }}
-          shape={{
-            key: (holding) => holding.accountId,
-            title: (holding) => holding.name,
-            subtitle: (holding) => `${heldText(holding.accountId)} · cost ${formatMinor(valueOf(holding.accountId).costMinor, holding.currency)}`,
-            value: (holding) => <Money minor={valueOf(holding.accountId).valueMinor} currency={holding.currency} />,
-            valueTone: () => 'ink',
-          }}
-        />
-      )}
+        <>
+          <ActionButtons actions={round} />
 
-      {(due.data?.length ?? 0) > 0 && (
-        <InsetGroup header="Monthly buys due" footer="Confirm the units and amount from the fund or broker confirmation before saving.">
-          {(due.data ?? []).map((template) => (
+          <div data-testid="trades-year" className="mb-3 flex overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
+            <YearFigure label="Realized this year" minor={realized.base} currency={ws.baseCurrency} others={realized.others} signed />
+            <YearFigure label="Income this year" minor={income.base} currency={ws.baseCurrency} others={income.others} />
+          </div>
+
+          <InsetGroup>
             <InsetRow
-              key={template.id}
-              title={nameOf(template.accountId)}
-              subtitle={`${template.amountMinor === null ? '' : `${formatMinor(template.amountMinor, currencyOf(template.accountId))} · `}due on the ${template.dayOfMonth}`}
-              // The row is the "Record it" it used to hold: a row never carries a button, it *is* the button.
-              label={`Record it · ${nameOf(template.accountId)}`}
-              onClick={() => recordFromTemplate(template.accountId, template.amountMinor, template.cashAccountId, template.id, template.goalId)}
+              icon={<CalendarClock size={16} aria-hidden />}
+              title="Monthly plans"
+              subtitle={plansLine}
+              to="/net-worth/trades/plans"
+              testId="monthly-plans"
             />
-          ))}
-        </InsetGroup>
-      )}
+          </InsetGroup>
 
-      {holdings.length > 0 && (
-        /* The form draws its own Option B cards, so it sits under the panel's header rather than inside a panel. */
-        <section className="w-full md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
-          <PanelHeader title={editing ? 'Edit this trade' : 'Record a buy, sell or income'} />
-          <TradeForm
-            key={`${editing?.id ?? 'new'}-${initial?.accountId ?? ''}-${templateId ?? ''}`}
-            holdings={holdings}
-            goals={goalOptions}
-            cashAccounts={cashAccounts}
-            positions={positions.data ?? {}}
-            editing={editing}
-            initial={initial}
-            templateId={templateId}
-            onSaved={(message) => {
-              setNotice(message);
-              setEditing(null);
-              setInitial(undefined);
-              setTemplateId(null);
-            }}
-            onCancel={editing || initial ? () => { setEditing(null); setInitial(undefined); setTemplateId(null); } : undefined}
-          />
-        </section>
+          {/* A wide screen has room for the table the phone gave up: every holding with all eight columns. */}
+          <div className="hidden md:block">
+            <RecordTable
+              header="Holdings"
+              records={holdings}
+              columns={holdingColumns}
+              detail={{ kind: 'none' }}
+              shape={{
+                key: (holding) => holding.accountId,
+                title: (holding) => holding.name,
+                subtitle: (holding) => `${heldText(holding.accountId)} · cost ${formatMinor(valueOf(holding.accountId).costMinor, holding.currency)}`,
+                value: (holding) => <Money minor={valueOf(holding.accountId).valueMinor} currency={holding.currency} />,
+                valueTone: () => 'ink',
+              }}
+            />
+          </div>
+        </>
       )}
 
       {(trades.data?.length ?? 0) > 0 && (
-        <Panel header="History" pad={false}>
-          <div className="border-b-[0.5px] border-[var(--ph-hair)]">
-            <SelectRow label="Show" value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="all">All holdings</option>
-              {holdings.map((holding) => (
-                <option key={holding.accountId} value={holding.accountId}>
+        <section aria-label="History" data-testid="trade-history">
+          {traded.length > 1 && (
+            <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Show">
+              {[{ accountId: 'all', name: 'All' }, ...traded].map((holding) => (
+                <button
+                  key={holding.accountId}
+                  type="button"
+                  aria-pressed={filter === holding.accountId}
+                  onClick={() => setFilter(holding.accountId)}
+                  className={cx(
+                    'ph-focus shrink-0 rounded-full px-3 py-1.5 text-xs whitespace-nowrap',
+                    filter === holding.accountId ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-surface)] text-[var(--ph-ink-2)]',
+                  )}
+                >
                   {holding.name}
-                </option>
+                </button>
               ))}
-            </SelectRow>
-          </div>
-          <div className="text-[13px]">
-            {[...shown].reverse().map((trade) => (
-              <div
-                key={trade.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-[13px] py-[11px] first:border-t-0"
-              >
-                <span className="min-w-0">
-                  <span className="text-[var(--ph-ink-3)]">{trade.occurredOn}</span>{' '}
-                  <span className="font-medium text-[var(--ph-ink)]">{KIND_LABELS[trade.kind]}</span> {nameOf(trade.accountId)}
-                  {trade.kind !== 'income' && ` · ${formatUnits(trade.unitsMicro)} ${unitLabelOf(trade.accountId)}`}
-                  {trade.cashAccountId === null && trade.kind === 'buy' && ' · opening position'}
-                </span>
-                <span className="flex items-center gap-2">
-                  {trade.kind === 'buy' && goalOptions.length > 0 && (
-                    <select
-                      aria-label="Goal for this buy"
-                      className="ph-focus rounded bg-transparent px-1 py-1 text-xs text-[var(--ph-tint)]"
-                      value={trade.goalId ?? ''}
-                      onChange={(e) => retag(trade, e.target.value)}
-                    >
-                      <option value="">No goal</option>
-                      {goalOptions.map((goal) => (
-                        <option key={goal.id} value={goal.id}>
-                          {goal.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {trade.kind === 'income' && (
-                    <ReinvestCell
-                      trade={trade}
-                      holdings={holdings}
-                      currency={currencyOf(trade.accountId)}
-                      onSave={(amountMinor, intoAccountId) => void declare(trade, amountMinor, intoAccountId)}
-                    />
-                  )}
-                  <Money minor={trade.grossMinor} currency={currencyOf(trade.accountId)} />
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setTemplateId(null);
-                      setEditing(trade);
-                      setInitial(draftFromTrade(trade, currencyOf(trade.accountId)));
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <Button variant="danger" onClick={() => remove(trade)}>
-                    Delete
-                  </Button>
-                </span>
-              </div>
-            ))}
-          </div>
-        </Panel>
+            </div>
+          )}
+          {[...days].map(([date, list]) => (
+            <div key={date} className="mb-3 rounded-[11px] bg-[var(--ph-surface)] px-[14px] pt-3 pb-1">
+              <DayHeader date={date} net={0} currency={ws.baseCurrency} />
+              <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+                {list.map((trade) => {
+                  const goal = trade.kind === 'buy' && !trade.goalParts?.length ? goalName(trade.goalId) : null;
+                  const parts = (trade.goalParts ?? []).map((part) => `${goalName(part.goalId) ?? 'A goal'} ${part.moneyMinor > 0 ? formatMinor(part.moneyMinor, currencyOf(trade.accountId)) : formatUnits(part.unitsMicro)}`);
+                  const reinvested = trade.kind === 'income' && (trade.reinvestedMinor ?? 0) > 0;
+                  const out = trade.kind === 'buy';
+                  const sub = [unitsLine(trade), trade.cashAccountId === null && trade.kind === 'buy' ? 'opening position' : cashName(trade.cashAccountId)].filter(Boolean).join(' · ');
+                  return (
+                    <li key={trade.id} data-testid="trade-row">
+                      <button type="button" onClick={() => openTrade(trade)} className="ph-focus-inset flex min-h-11 w-full items-center gap-3 py-2 text-left">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">
+                            {titleOf(trade)}
+                            {goal && <span className="ml-1.5 rounded bg-[var(--ph-fill)] px-1.5 text-[11px] font-normal text-[var(--ph-ink-2)]">{goal}</span>}
+                            {parts.map((label) => (
+                              <span key={label} className="ml-1.5 rounded bg-[var(--ph-fill)] px-1.5 text-[11px] font-normal text-[var(--ph-ink-2)]">
+                                {label}
+                              </span>
+                            ))}
+                            {reinvested && <span className="ml-1.5 rounded bg-[var(--ph-tint-panel)] px-1.5 text-[11px] font-semibold text-[var(--ph-tint)]">Reinvested</span>}
+                          </span>
+                          {sub && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{sub}</span>}
+                        </span>
+                        {trade.kind === 'unit_change' ? null : (
+                          <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                            {out ? '−' : '+'}
+                            {formatMinor(trade.grossMinor, currencyOf(trade.accountId))}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </section>
       )}
 
-      {holdings.length > 0 && <TemplateList templates={templates.data ?? []} holdings={holdings} cashAccounts={cashAccounts} goals={goalOptions} />}
-      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        Presets in use: {(profiles.data ?? []).filter((profile) => presetFor(profile.assetKind).valuationMode === 'market').length} holdings measured in units.
-      </p>
+      {asking && (
+        <Sheet grouped title={ASKS[asking]} onClose={() => setAsking(null)}>
+          {eligible(asking).length === 0 ? (
+            <Empty>Nothing held to do that with.</Empty>
+          ) : (
+            <InsetGroup>
+              {eligible(asking).map((holding) => (
+                <InsetRow
+                  key={holding.accountId}
+                  title={holding.name}
+                  subtitle={holding.byMoney ? formatMinor(valueOf(holding.accountId).valueMinor, holding.currency) : heldText(holding.accountId)}
+                  onClick={() => go(asking, holding.accountId)}
+                />
+              ))}
+            </InsetGroup>
+          )}
+        </Sheet>
+      )}
+
+      {open && (
+        <Sheet grouped title={titleOf(open)} onClose={() => openTrade(null)}>
+          {/* Said in the sheet, where the change was asked for: the page's own error box is behind it. */}
+          <ErrorBox error={error} />
+          <InsetGroup>
+            <ReadOnlyRow label={open.kind === 'income' ? 'Amount' : open.kind === 'sell' ? 'Proceeds' : 'Cost'} value={formatMinor(open.grossMinor, currencyOf(open.accountId))} />
+            {open.kind !== 'income' && <ReadOnlyRow label="Units" value={unitsLine(open)} />}
+            {open.feeMinor > 0 && <ReadOnlyRow label="Fee" value={formatMinor(open.feeMinor, currencyOf(open.accountId))} />}
+            {open.taxMinor > 0 && <ReadOnlyRow label="Tax" value={formatMinor(open.taxMinor, currencyOf(open.accountId))} />}
+            {open.kind !== 'unit_change' && (
+              <ReadOnlyRow
+                label={open.kind === 'buy' ? 'Paid from' : 'Paid into'}
+                value={open.cashAccountId === null ? 'Opening position' : (cashName(open.cashAccountId) ?? '—')}
+              />
+            )}
+            <ReadOnlyRow label="Date" value={open.occurredOn} />
+          </InsetGroup>
+          {(open.kind === 'buy' || open.kind === 'sell') && goalOptions.length > 0 && (
+            <InsetGroup footer={open.kind === 'buy' ? 'Which goal the units of this buy belong to — or several, each with its share.' : 'Which goal this sell took from.'}>
+              <SelectRow
+                label={open.kind === 'buy' ? 'For goal' : 'Sell from goal'}
+                aria-label={open.kind === 'buy' ? 'Goal for this buy' : 'Goal for this sell'}
+                value={splitting !== null ? SPLIT : (open.goalId ?? '')}
+                onChange={(e) => {
+                  const goalId = e.target.value;
+                  if (goalId === SPLIT) {
+                    setSplitting([{ goalId: open.goalId ?? goalOptions[0]!.id, amount: '' }]);
+                    return;
+                  }
+                  setSplitting(null);
+                  setOpen({ ...open, goalId: goalId || null, goalParts: null });
+                  void run(
+                    () => retagTrade(database, ws, open.id, goalId || null),
+                    goalId ? `This ${open.kind === 'buy' ? 'purchase' : 'sale'} is now ${goalOptions.find((goal) => goal.id === goalId)?.name ?? 'that goal'}'s.` : `This ${open.kind === 'buy' ? 'purchase' : 'sale'} no longer has a goal.`,
+                  );
+                }}
+              >
+                <option value="">No goal</option>
+                {goalOptions.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.name}
+                  </option>
+                ))}
+                {goalOptions.length > 1 && <option value={SPLIT}>Split between goals…</option>}
+              </SelectRow>
+            </InsetGroup>
+          )}
+          {splitting !== null && (
+            <div className="mb-[18px] space-y-2">
+              <GoalParts
+                parts={splitting}
+                onChange={setSplitting}
+                goals={goalOptions}
+                whole={(() => {
+                  const byMoney = !!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney;
+                  const currency = currencyOf(open.accountId);
+                  return byMoney ? draftFromTrade(open, currency).gross ?? '' : draftFromTrade(open, currency).units ?? '';
+                })()}
+                byMoney={!!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney}
+                currency={currencyOf(open.accountId)}
+                unitLabel={unitLabelOf(open.accountId)}
+              />
+              <InsetGroup>
+                <InsetRow
+                  title={<span className="text-[var(--ph-tint)]">Save goals</span>}
+                  label="Save goals"
+                  chevron={false}
+                  onClick={() => {
+                    const byMoney = !!holdings.find((holding) => holding.accountId === open.accountId)?.byMoney;
+                    const currency = currencyOf(open.accountId);
+                    const typed = draftFromTrade(open, currency);
+                    try {
+                      const parts = partsFromTyped(splitting, (byMoney ? typed.gross : typed.units) ?? '', byMoney, currency);
+                      void run(() => resplitTrade(database, ws, open.id, parts), 'Split between goals.').then(() => openTrade(null));
+                    } catch (e) {
+                      setError(e);
+                    }
+                  }}
+                />
+              </InsetGroup>
+            </div>
+          )}
+          {open.kind === 'income' && (
+            <InsetGroup header="Reinvested" footer="Put back into a holding, so it is not an object of tax.">
+              <div className="px-4 py-3">
+                <ReinvestCell
+                  trade={open}
+                  holdings={holdings}
+                  currency={currencyOf(open.accountId)}
+                  onSave={(amountMinor, intoAccountId) =>
+                    void run(
+                      () => declareReinvestment(database, ws, open.id, { amountMinor, intoAccountId }),
+                      amountMinor > 0 ? 'Recorded as reinvested, so it is not an object of tax.' : 'No longer marked as reinvested.',
+                    ).then(() => setOpen(null))
+                  }
+                />
+              </div>
+            </InsetGroup>
+          )}
+          <InsetGroup>
+            <InsetRow
+              title="Edit"
+              chevron={false}
+              onClick={() => {
+                setEditing(open);
+                setOpen(null);
+              }}
+            />
+            <InsetRow
+              title={<span className="text-[var(--ph-alarm)]">Delete</span>}
+              label="Delete"
+              chevron={false}
+              onClick={() => {
+                const trade = open;
+                if (!window.confirm('Delete this trade? Later sells are worked out again at the new average cost.')) return;
+                setOpen(null);
+                setError(null);
+                void deleteTrade(database, ws, trade.id)
+                  .then(async (result) => {
+                    await invalidate();
+                    setNotice(result.recalculatedSells.length ? `Removed. ${result.recalculatedSells.length} later sells were worked out again.` : 'Removed.');
+                  })
+                  .catch(setError);
+              }}
+            />
+          </InsetGroup>
+        </Sheet>
+      )}
+
+      {editing && (
+        <TradeSheet
+          title="Edit"
+          holding={{
+            accountId: editing.accountId,
+            name: nameOf(editing.accountId),
+            currency: currencyOf(editing.accountId),
+            byMoney: holdings.find((holding) => holding.accountId === editing.accountId)?.byMoney,
+          }}
+          initial={draftFromTrade(editing, currencyOf(editing.accountId))}
+          editing={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One of the year's two figures: the base currency's sum, and any other currency's under it. */
+function YearFigure({ label, minor, currency, others, signed = false }: { label: string; minor: number; currency: string; others: string; signed?: boolean }) {
+  return (
+    <div className="min-w-0 flex-1 px-[14px] py-2.5 [&+&]:border-l-[0.5px] [&+&]:border-[var(--ph-hair)]">
+      <span className="block text-[11.5px] leading-[14px] text-[var(--ph-ink-3)]">{label}</span>
+      <span
+        className={cx(
+          'tabular block text-base leading-6 font-bold',
+          signed && minor > 0 && 'text-[var(--ph-tint)]',
+          signed && minor < 0 && 'text-[var(--ph-alarm)]',
+          !signed && 'text-[var(--ph-ink)]',
+        )}
+      >
+        {signed && minor > 0 ? '+' : ''}
+        {formatMinor(minor, currency)}
+      </span>
+      {others && <span className="block truncate text-[11.5px] leading-[14px] text-[var(--ph-ink-3)]">{others}</span>}
     </div>
   );
 }

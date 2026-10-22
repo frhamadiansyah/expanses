@@ -34,6 +34,19 @@ export function assetSegments(groups: readonly { group: SheetSectionKey; label: 
   );
 }
 
+/** Kinds inside one section, each its own colour: enough of them for any section's drawers. */
+const KIND_PALETTE = ['bg-emerald-600', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-teal-700', 'bg-rose-400', 'bg-lime-600', 'bg-slate-500'];
+
+/**
+ * One segment per kind inside a section — listed shares, mutual funds, government bonds — the drawers its list folds by,
+ * so the boxes a section opens into are the drawers under them.
+ */
+export function kindSegments(drawers: readonly { key: string; label: string; totalMinor: number | null }[]): ShareSegment[] {
+  return drawers.flatMap((drawer, index) =>
+    drawer.totalMinor === null ? [] : [{ key: drawer.key, label: drawer.label, minor: drawer.totalMinor, className: KIND_PALETTE[index % KIND_PALETTE.length]! }],
+  );
+}
+
 /**
  * What a bar can honestly divide: the segments above nought, as shares of what they come to together.
  *

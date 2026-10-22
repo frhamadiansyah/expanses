@@ -42,6 +42,7 @@ import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
+import { MonthlyPlansPage } from '../features/networth/MonthlyPlansPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
@@ -121,6 +122,12 @@ const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: tex
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 /** The Categories list's tab, in the address so the way back from an income category lands on Income. */
+/** What the holding's page opens on arrival — Buy & sell's four buttons hand the chosen holding over this way. */
+export type AssetSearch = { do?: 'buy' | 'sell' | 'income' | 'units' };
+const ASSET_DOS = ['buy', 'sell', 'income', 'units'] as const;
+const assetSearch = (search: Record<string, unknown>): AssetSearch =>
+  ASSET_DOS.includes(search.do as AssetSearch['do'] & string) ? { do: search.do as AssetSearch['do'] } : {};
+
 const categoriesSearch = (search: Record<string, unknown>): { kind?: 'income' } => (search.kind === 'income' ? { kind: 'income' } : {});
 
 const rootRoute = createRootRoute({ component: Layout });
@@ -247,11 +254,12 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage, validateSearch: addAssetSearch }),
   // Every share and fund held, one price box each, and IDX's daily file to fill the shares.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/prices', component: UpdatePricesPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage, validateSearch: assetSearch }),
   // An asset's settings, behind its gear: they used to sit at the bottom of the asset's own page.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/edit', component: EditAssetRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades/plans', component: MonthlyPlansPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
   // One goal on its own page: the list reads them as a set, and a goal that was a card among cards is a page now.
   createRoute({ getParentRoute: () => rootRoute, path: '/goals/$goalId', component: GoalRoute }),
