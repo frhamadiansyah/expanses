@@ -18,7 +18,7 @@ test('card purchase counts once as spending; the statement is paid from the card
   await openDrawers(page);
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   const tile = page.getByTestId('tile-left-to-pay');
-  await tile.getByRole('button', { name: 'Pay', exact: true }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   await tile.getByLabel('Amount (IDR)').fill('500000');
   await tile.getByRole('button', { name: 'Record payment' }).click();
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');
