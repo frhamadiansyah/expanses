@@ -14,6 +14,7 @@ import {
   expenseLines,
   looksLikeRefund,
   matchStatement,
+  categoryKeyOf,
   merchantKeyOf,
   openingBalanceLines,
   type PostingLine,
@@ -399,7 +400,8 @@ export async function prepareStatementCheck(
         categoryId = await ensure(FEES);
         categorySource = 'fee';
       } else {
-        categoryId = await guessCategoryFromHistory(database, ws, row.description);
+        // This card's own history first: one card may carry a platform's food and another its rides, both "GRAB*".
+        categoryId = (await guessFromCard(database, ws, cardAccountId, row.description)) ?? (await guessCategoryFromHistory(database, ws, row.description));
         // A refund with no merchant history goes back under the most recent earlier purchase of the same amount.
         if (!categoryId && outcome.status === 'missing' && outcome.as === 'refund') {
           const same = purchases
@@ -456,16 +458,51 @@ export async function prepareStatementCheck(
 }
 
 /**
+ * The category this card's own purchases of the same merchant were last filed under: the newest one, read by the
+ * merchant a category is chosen for (`categoryKeyOf`), so "GRAB* A-6XYZ" finds the card's earlier "GRAB* B-2KQ".
+ * Narrowed to the open workspace's categories, as any guess is. Null when the card has none.
+ */
+async function guessFromCard(database: Database, ws: WorkspaceContext, cardAccountId: string, description: string): Promise<string | null> {
+  const key = categoryKeyOf(description);
+  if (!key) return null;
+  const inBook = ws.bookId ? sql`AND e.account_id IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})` : sql``;
+  const rows = await database.db.values<[string, string, string]>(sql`
+    SELECT t.id, t.description, e.account_id
+    FROM entries e
+    JOIN transactions t ON t.id = e.transaction_id
+    JOIN accounts a ON a.id = e.account_id
+    WHERE e.workspace_id = ${ws.workspaceId}
+      AND t.status = 'posted'
+      AND a.kind = 'expense'
+      AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
+      ${inBook}
+    ORDER BY t.occurred_on DESC, t.created_at DESC
+    LIMIT 400
+  `);
+  const categories = new Map<string, { description: string; ids: Set<string> }>();
+  for (const [id, seen, category] of rows) {
+    const one = categories.get(id) ?? { description: seen, ids: new Set<string>() };
+    one.ids.add(category);
+    categories.set(id, one);
+  }
+  for (const { description: seen, ids } of categories.values()) {
+    if (ids.size === 1 && categoryKeyOf(seen) === key) return [...ids][0]!;
+  }
+  return null;
+}
+
+/**
  * The owner chose a category for one row: it is theirs, and every unanswered row of the same merchant in this check
  * takes it too. Pure; the rows given are not changed.
  */
 export function fillSameMerchant(rows: CheckDraftRow[], index: number, categoryId: string): CheckDraftRow[] {
   const chosen = rows.find((r) => r.index === index);
   if (!chosen) return rows;
-  const key = merchantKeyOf(chosen.description);
+  // By the merchant a category is chosen for: every "GRAB* …" line is Grab, whatever code follows the `*`.
+  const key = categoryKeyOf(chosen.description);
   return rows.map((r) => {
     if (r.index === index) return { ...r, categoryId, categorySource: 'owner' };
-    if (r.categoryId === null && needsCategory(r.outcome) && key !== '' && merchantKeyOf(r.description) === key) {
+    if (r.categoryId === null && needsCategory(r.outcome) && key !== '' && categoryKeyOf(r.description) === key) {
       return { ...r, categoryId, categorySource: 'same-merchant' };
     }
     return r;

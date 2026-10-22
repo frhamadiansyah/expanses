@@ -532,7 +532,7 @@ export { readReceipt, type ReceiptFill } from './capture/receipt';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type ReadAmount, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
-export { merchantKeyOf, readStatement } from './statement/read';
+export { categoryKeyOf, merchantKeyOf, readStatement } from './statement/read';
 export { STATEMENT_WORDS, type StatementWords } from './statement/words';
 export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';
 export {

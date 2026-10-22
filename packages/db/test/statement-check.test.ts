@@ -97,6 +97,26 @@ describe('preparing a check', () => {
   });
 });
 
+describe('a payment platform’s lines, "GRAB* …"', () => {
+  it('reads each card’s own history: Grab on this card was food, on the other card rides', async () => {
+    const h = await household();
+    // On this card, Grab was books (standing in for Takeaways); on the other card, more recently, groceries.
+    await h.buy('2026-04-02', 'GRAB* A-6XYZ123 JAKARTA', 75_000, h.books);
+    await h.buy('2026-04-20', 'GRAB* B-2KQ88 JAKARTA', 60_000, h.groceries, h.other.id);
+    const prepared = await h.prepare([image([['14MAY', 'GRAB* C-9ZZ01 JAKARTA', '82,000']], { previous: '0', closing: '82,000' })]);
+    const row = prepared.rows.find((r) => r.description.startsWith('GRAB*'))!;
+    expect(row.categoryId).toBe(h.books);
+  });
+
+  it('one category chosen for a Grab line fills every other Grab line, whatever code follows the *', async () => {
+    const h = await household();
+    const prepared = await h.prepare([image([['14MAY', 'GRAB* C-9ZZ01 JAKARTA', '82,000'], ['18MAY', 'GRAB* D-1AB22 JAKARTA', '41,000']], { previous: '0', closing: '123,000' })]);
+    const first = prepared.rows.find((r) => r.description.startsWith('GRAB* C'))!;
+    const filled = fillSameMerchant(prepared.rows, first.index, h.books);
+    expect(filled.find((r) => r.description.startsWith('GRAB* D'))).toMatchObject({ categoryId: h.books, categorySource: 'same-merchant' });
+  });
+});
+
 describe('fillSameMerchant', () => {
   it('fills every unanswered row of the same merchant and leaves another merchant alone', async () => {
     const h = await household();

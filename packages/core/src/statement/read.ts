@@ -331,3 +331,17 @@ export function merchantKeyOf(description: string): string {
     key = next;
   }
 }
+
+/**
+ * The merchant a statement line names, for choosing its category: for a payment platform's line — "GRAB* A-6XYZ123
+ * JAKARTA", "SHOPEEPAY*TOKO ABC" — the platform before the `*`, since the code after it changes from line to line;
+ * otherwise the merchant key. Matching a line to what was recorded still reads the whole description (`merchantKeyOf`).
+ */
+export function categoryKeyOf(description: string): string {
+  const star = description.indexOf('*');
+  if (star > 0) {
+    const platform = description.slice(0, star).toLowerCase().replace(/[^\p{L}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (platform) return platform;
+  }
+  return merchantKeyOf(description);
+}
