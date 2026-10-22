@@ -280,7 +280,7 @@ test('the switcher’s “Manage workspaces” lands on Settings, and the sheet 
  * Settings holds what a workspace is, rather than which one is open: its name, and whether it is still in use.
  * Personal is neither — it is where categories and expected income fall back to — so it refuses to go away.
  */
-test('Settings renames a workspace, archives it, and keeps Personal', async ({ page }) => {
+test('Settings renames a workspace, archives it, keeps Personal, and restores the archived one', async ({ page }) => {
   await addBank(page);
   await newWorkspace(page, 'Business', 'Copy from Personal');
 
@@ -290,8 +290,14 @@ test('Settings renames a workspace, archives it, and keeps Personal', async ({ p
   const business = page.getByTestId('workspace-entry').nth(1);
   await business.getByTestId('settings-workspace-row').click();
   await business.getByLabel('Name', { exact: true }).fill('Consulting');
-  await business.getByRole('button', { name: 'Save' }).click();
+  // The ✓ in the title bar saves the name: dim until there is a new name to save, and dim again once it is saved.
+  const save = page.getByRole('button', { name: 'Save name' });
+  await business.getByLabel('Name', { exact: true }).fill('Business');
+  await expect(save).toBeDisabled();
+  await business.getByLabel('Name', { exact: true }).fill('Consulting');
+  await save.click();
   await expect(business.getByTestId('settings-workspace-row')).toContainText('Consulting');
+  await expect(save).toBeDisabled();
   // The switcher follows: it is the same workspace, under the name it is now called.
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Consulting');
 
@@ -311,6 +317,23 @@ test('Settings renames a workspace, archives it, and keeps Personal', async ({ p
   await personal.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(personal.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
   await expect(page.getByTestId('workspace-entry')).toHaveCount(1);
+
+  // Pressing Enter in the name saves it too, as the ✓ does.
+  await personal.getByLabel('Name', { exact: true }).fill('Home');
+  await personal.getByLabel('Name', { exact: true }).press('Enter');
+  await expect(personal.getByTestId('settings-workspace-row')).toContainText('Home');
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Home');
+
+  // The archived workspace is listed under Archived, and comes back from there.
+  await expect(page.getByTestId('archived-workspace')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Restore Consulting' }).click();
+  await expect(page.getByTestId('archived-workspace')).toHaveCount(0);
+  await expect(page.getByText('Archived', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('workspace-entry')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  const switcher = page.getByRole('dialog', { name: 'Workspaces' });
+  await expect(switcher.getByTestId('workspace-choice')).toHaveCount(2);
+  await expect(switcher.getByTestId('workspace-choice').filter({ hasText: 'Consulting' })).toHaveCount(1);
 });
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00 in Jakarta

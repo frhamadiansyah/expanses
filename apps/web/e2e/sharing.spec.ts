@@ -137,7 +137,8 @@ test('two people share a workspace: join, record on both, correct each other, re
   // Named Home, so the joiner's own Personal and the shared one never read alike.
   await openWorkspaceSettings(page, 'Personal');
   await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // The ✓ in the title bar: the sheet's on a phone, the Settings title's on a wide screen.
+  await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByText('Now called Home.')).toBeVisible();
 
   // Share this workspace: the explainer, a name, then the invite once the history has gone up.
@@ -275,7 +276,8 @@ test('a workspace in another currency than yours cannot be shared, and says why'
 async function shareAndJoin(page: Page, dewi: Page) {
   await openWorkspaceSettings(page, 'Personal');
   await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // The ✓ in the title bar: the sheet's on a phone, the Settings title's on a wide screen.
+  await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByText('Now called Home.')).toBeVisible();
   await page.getByRole('button', { name: /Share this workspace/ }).click();
   const form = page.getByRole('form', { name: 'Share this workspace' });

@@ -60,6 +60,28 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   await expect(picker.getByRole('button', { name: 'Realized Gains', exact: true })).toHaveCount(1);
 });
 
+/**
+ * On a phone a workspace's settings rise in a sheet, and its name is saved by the sheet's own ✓ — the bar every
+ * sheet that saves carries — rather than by a row under the field.
+ */
+test('a workspace is renamed from its sheet’s ✓ in Settings', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByTestId('settings-workspace-row').filter({ hasText: 'Personal' }).click();
+  await expect(page.getByRole('dialog', { name: 'Personal' })).toBeVisible();
+  // Not found by its name: the sheet is titled with the workspace's name, which is what is about to change.
+  const sheet = page.getByRole('dialog');
+  const save = sheet.getByRole('button', { name: 'Save name' });
+  await expect(save).toBeDisabled();
+  await sheet.getByLabel('Name', { exact: true }).fill('');
+  await expect(save).toBeDisabled();
+  await sheet.getByLabel('Name', { exact: true }).fill('Home');
+  await save.click();
+  await expect(sheet.getByText('Now called Home.')).toBeVisible();
+  await expect(save).toBeDisabled();
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('settings-workspace-row')).toContainText('Home');
+});
+
 /** One account of each kind, so there is somewhere to move money from and somewhere for it to land. */
 async function addAccount(page: Page, name: string, type: string, balance: string) {
   await openAccount(page, { subtype: type, name, balance });
