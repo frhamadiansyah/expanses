@@ -17,6 +17,7 @@ import { bookOfCategory, hasBooks } from './books';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
+import { systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -94,6 +95,12 @@ export interface PostTransactionInput {
   excludedFromReport?: boolean;
   /** The event this belongs to. The column exists already; only the form is new. */
   eventId?: string | null;
+  /**
+   * A credit card purchase from before the card started in the app, already paid off: it is posted, and beside it a
+   * settlement against Opening Balances on the same day, so what the card owes today does not change and no bank
+   * account moves. The settlement follows the purchase when it is edited, and goes with it when it is deleted.
+   */
+  settledBeforeApp?: boolean;
   /**
    * Its place within its day, when moved there by hand (0067). A new posting leaves it null, so it lands on top of its
    * day. On `replaceTransaction`, undefined carries the original's while the date stays the same and clears it when the
@@ -315,7 +322,51 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
   await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
+  if (input.settledBeforeApp) await settleBeforeAppTx(tx, ws, id, input);
   return id;
+}
+
+/** The settlement that keeps a card even beside a purchase paid off before the app: found by the purchase's id. */
+const beforeAppRef = (purchaseId: string) => `before-app:${purchaseId}`;
+
+/** The credit card line of a purchase's postings: what the card took on, and in which currency. Null when none. */
+async function cardLineOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<PostingLine | null> {
+  for (const line of lines) {
+    const [account] = await tx.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, line.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (account?.kind === 'liability' && account.subtype === 'credit_card' && line.amountMinor < 0) return line;
+  }
+  return null;
+}
+
+/** The settlement's postings: the card paid back what it took on, against Opening Balances. */
+async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<PostTransactionInput | null> {
+  const card = await cardLineOf(tx, ws, input.lines);
+  if (!card) return null;
+  const opening = await systemAccountId(tx, ws, 'opening_balance');
+  return {
+    occurredOn: input.occurredOn,
+    description: 'Settled before the app',
+    lines: [
+      { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
+      { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
+    ],
+    ratesToBase: input.ratesToBase,
+    externalRef: beforeAppRef(purchaseId),
+  };
+}
+
+async function settleBeforeAppTx(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<void> {
+  const settlement = await settlementInputOf(tx, ws, purchaseId, input);
+  if (settlement) await postTransactionTx(tx, ws, settlement);
+}
+
+/** The posted settlement of a purchase paid off before the app, when it has one. */
+async function settlementOfTx(tx: Db, ws: WorkspaceContext, purchaseId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.externalRef, beforeAppRef(purchaseId)), eq(transactions.status, 'posted')));
+  return row?.id ?? null;
 }
 
 export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
@@ -356,6 +407,9 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
  */
 export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string, door: LedgerDoor = {}): Promise<void> {
   await markVoidTx(tx, ws, id, keep, author, door);
+  // A purchase paid off before the app takes its settlement with it: left behind, it would lower what the card owes.
+  const settlement = await settlementOfTx(tx, ws, id);
+  if (settlement) await voidTransactionTx(tx, ws, settlement, {}, author);
   // A deposit event this posted is reopened, and the rest of what that event posted is voided with it (whole: `{}`).
   for (const other of await reopenDepositEventTx(tx, ws, id)) {
     const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));
@@ -407,8 +461,10 @@ export function replaceTransaction(
  * transaction, and the mutex is not reentrant). The replacement always gets a fresh id: `input.id` is dropped.
  */
 export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: string, withId: PostTransactionInput, door: LedgerDoor = {}): Promise<string> {
-  const { id: _ignored, ...input } = withId;
+  // An edit never posts a second settlement: the one a purchase paid off before the app has follows it below.
+  const { id: _ignored, settledBeforeApp: _settled, ...input } = withId;
   void _ignored;
+  void _settled;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [original] = await tx
@@ -530,6 +586,14 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   await carryEventItemTx(tx, ws, id, replacement);
   // A deposit event it posted stays done, and its log takes the edited figures.
   await followDepositEventTx(tx, ws, id, replacement);
+  // A purchase paid off before the app keeps its settlement level with it: the edited figure, day and card — or, no
+  // longer on a credit card, none at all.
+  const settlement = await settlementOfTx(tx, ws, id);
+  if (settlement) {
+    const next = await settlementInputOf(tx, ws, replacement, input);
+    if (next) await replaceTransactionTx(tx, ws, settlement, next);
+    else await voidTransactionTx(tx, ws, settlement);
+  }
   return replacement;
 }
 

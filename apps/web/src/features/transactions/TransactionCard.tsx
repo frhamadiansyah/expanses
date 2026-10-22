@@ -54,7 +54,8 @@ import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, ho
 import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
-import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { useOpenings } from '../accounts/queries';
+import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow, SwitchRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
@@ -521,7 +522,7 @@ function CardBody({
             if (kept.length > 0) throw new Error(kept[0]!.why);
           }
         }
-        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: offersAlreadyPaid && draft.alreadyPaid !== false });
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -555,6 +556,14 @@ function CardBody({
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
   // anything else as its name with what the row is for: "BCA Tahapan · Received into".
   const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
+  /*
+   * A credit card purchase dated before the card started in the app is offered as already paid off: recorded as the
+   * spending it was, with a settlement beside it so what the card owes today stays as it is. On unless turned off.
+   */
+  const payingAccount = accounts.find((account) => account.id === draft.moneyId);
+  const cardOpening = useOpenings(payingAccount?.subtype === 'credit_card' ? [payingAccount.id] : []);
+  const cardStart = payingAccount?.subtype === 'credit_card' ? (cardOpening.data?.[payingAccount.id]?.occurredOn ?? payingAccount.createdAt.slice(0, 10)) : null;
+  const offersAlreadyPaid = !initial && draft.mode === 'expense' && cardStart !== null && draft.occurredOn < cardStart;
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -940,6 +949,7 @@ function CardBody({
 
             <NoteRow value={draft.description} onChange={(description) => set({ description })} onFocus={() => setNoteFocused(true)} onBlur={() => setNoteFocused(false)} />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
+            {offersAlreadyPaid && <SwitchRow label="Already paid off" checked={draft.alreadyPaid !== false} onChange={(alreadyPaid) => set({ alreadyPaid })} />}
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}

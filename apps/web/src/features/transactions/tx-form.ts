@@ -47,6 +47,8 @@ export interface WithRow {
  * every screen that spreads a draft.
  */
 export interface FormDraft {
+  /** A credit card purchase dated before the card started in the app: already paid off, so the card owes no more. */
+  alreadyPaid?: boolean;
   mode: FormMode;
   bookId: string; // the workspace row
   occurredOn: string;
