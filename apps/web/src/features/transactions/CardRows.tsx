@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, Globe, Store, X } from 'lucide-react';
+import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, Store, Wifi, X } from 'lucide-react';
 import { type CSSProperties, useId, useRef } from 'react';
 import { cx } from '../../ui';
 import { ROW_BODY, RowGlyph, RowLead } from './FormRow';
@@ -47,7 +47,7 @@ export function NoteRow({
   onBlur?: () => void;
   disabled?: boolean;
   /**
-   * Online or offline, carried by the note's own glyph when given: ≡ while not set, a globe once online, a shop once
+   * Online or offline, carried by the note's own glyph when given: ≡ while not set, a wifi sign once online (the globe is the amount's currency), a shop once
    * offline, each tap the next. It used to be a row of its own under Add more details, opening a sheet of two choices.
    */
   channel?: 'online' | 'offline' | null;
@@ -55,7 +55,7 @@ export function NoteRow({
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
-  const glyph = channel === 'online' ? <Globe size={15} /> : channel === 'offline' ? <Store size={15} /> : <AlignLeft size={15} />;
+  const glyph = channel === 'online' ? <Wifi size={15} /> : channel === 'offline' ? <Store size={15} /> : <AlignLeft size={15} />;
   return (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
