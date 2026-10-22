@@ -67,10 +67,8 @@ export function NoteRow({
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onChannel(channel === null || channel === undefined ? 'online' : channel === 'online' ? 'offline' : null)}
-            className={cx(
-              'ph-focus ph-tap flex h-7 w-7 items-center justify-center rounded-full',
-              channel ? 'bg-[color-mix(in_srgb,var(--ph-tint)_16%,transparent)] text-[var(--ph-tint)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
-            )}
+            // The same grey circle whatever it holds: the glyph alone says online, offline or not set.
+            className="ph-focus ph-tap flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
             style={{ '--ph-tap-y': '8px', '--ph-tap-x': '8px' } as CSSProperties}
           >
             {glyph}
