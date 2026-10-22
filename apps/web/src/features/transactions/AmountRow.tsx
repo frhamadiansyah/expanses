@@ -89,8 +89,11 @@ function MoneyField({
   selectOnOpen = false,
   refund = false,
   disabled = false,
+  typing = false,
 }: {
   field: MoneyFieldSpec;
+  /** The dock is typing into this figure: a phone draws a text cursor after it, as any field being typed in has. */
+  typing?: boolean;
   /** Drawn, not typed into: a figure that is someone else's to change (shared events D8). */
   disabled?: boolean;
   /** A desktop field takes focus with its text selected on first draw, so typing replaces the figure. */
@@ -121,7 +124,8 @@ function MoneyField({
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
       <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch text-left')}>
-        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
+        <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
+        {typing && <span aria-hidden data-testid="typing-mark" className="ph-caret" />}
       </button>
     );
   }
@@ -246,9 +250,11 @@ export function AmountRow({
     setKeypad((was) => (was === which ? null : which));
   };
   /* Which figure the open keypad types into, marked under it, so a tap from one figure to the other shows it landed. */
-  const typingMark = (which: 'amount' | 'charged') =>
-    keypad === which ? <span aria-hidden data-testid="typing-mark" className="pointer-events-none absolute inset-x-0 bottom-[7px] h-[2px] rounded-full bg-[var(--ph-tint)]" /> : null;
-  const codeTone = (which: 'amount' | 'charged') => (keypad === which ? 'text-[var(--ph-tint)]' : '');
+  /*
+   * Which figure the dock is typing into: a cursor after that one (`MoneyField`'s `typing`), and the other of the two
+   * stepping back while the dock is up. No colour of its own — the tint is spent on actions and on money in.
+   */
+  const fadeUnlessTyping = (which: 'amount' | 'charged') => (fields.charged && keypad !== null && keypad !== which ? 'opacity-45' : '');
   /** The field the dock is typing into, or null when it is shut. */
   const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
   // The same 28 px circle every other row of the card leads with; the flag is its glyph.
@@ -302,10 +308,9 @@ export function AmountRow({
           {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
-          <span className={cx(codeGroup, 'relative', fields.charged ? 'shrink' : 'flex-1', unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
-            {fields.charged && typingMark('amount')}
+          <span className={cx(codeGroup, 'relative transition-opacity', fields.charged ? 'shrink' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
             {named && (
-              <span aria-hidden className={cx(codeClass, codeTone('amount'))}>
+              <span aria-hidden className={codeClass}>
                 {fields.amount.currency}
               </span>
             )}
@@ -314,6 +319,7 @@ export function AmountRow({
               phone={phone}
               onChange={(amount) => set({ amount })}
               onKeypad={() => toggle('amount')}
+              typing={keypad === 'amount'}
               className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
               selectOnOpen={selectOnOpen}
               refund={refundable}
@@ -325,11 +331,10 @@ export function AmountRow({
               {/* What parts the two figures. A rule rather than a printed bar: the app spends "·" as a joiner in
                   running text, and a second kind of punctuation between two money figures reads as arithmetic. */}
               <span aria-hidden className="h-[18px] w-px shrink-0 bg-[var(--ph-hair)]" />
-              <span className={cx(codeGroup, 'relative flex-1')}>
-                {typingMark('charged')}
+              <span className={cx(codeGroup, 'relative flex-1 transition-opacity', fadeUnlessTyping('charged'))}>
                 {/* The ≈ is the whole of what the line under this row used to say: this figure is the day's
                     estimate, not what the bank took. It goes on the first keystroke of the user's own. */}
-                <span aria-hidden className={cx(codeClass, codeTone('charged'))}>
+                <span aria-hidden className={codeClass}>
                   {guessed ? `≈ ${fields.charged.currency}` : fields.charged.currency}
                 </span>
                 <MoneyField
@@ -337,6 +342,7 @@ export function AmountRow({
                   phone={phone}
                   onChange={setCharged}
                   onKeypad={() => toggle('charged')}
+                  typing={keypad === 'charged'}
                   className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
                   placeholder="Amount"
                   refund={refund}
