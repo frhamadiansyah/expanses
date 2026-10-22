@@ -206,8 +206,8 @@ describe('what the form adds up to', () => {
     expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
     expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).not.toContain('goal');
     expect(extraRows({ ...draft, mode: 'trade' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
-    // Income keeps the event and the channel, and never offers a split or the people to share with.
-    expect(extraRows({ ...draft, mode: 'income' }, accounts, { missingRate: null })).toEqual(['event', 'channel', 'photos', 'exclude']);
+    // Income keeps the event, and never offers a split, the people to share with, or a channel only points rules read.
+    expect(extraRows({ ...draft, mode: 'income' }, accounts, { missingRate: null })).toEqual(['event', 'photos', 'exclude']);
   });
 
   it('sends a split with several people to splitBill, not to postTransaction', () => {

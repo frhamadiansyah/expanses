@@ -9,7 +9,7 @@ export async function openSplit(page: Page) {
   if ((await row.count()) > 0) return row.click();
   // By its label: the list behind a desktop's form has a Category filter of its own.
   await page.getByLabel('Category', { exact: true }).click();
-  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: /^Split between categories/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Split between categories' }).click();
   await expect(page.getByRole('dialog', { name: 'Split' })).toBeVisible();
 }
 
