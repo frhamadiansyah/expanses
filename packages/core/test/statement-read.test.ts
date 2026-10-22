@@ -281,3 +281,12 @@ describe('merchantKeyOf', () => {
     expect(merchantKeyOf('TOKO SENTR')).toBe('toko sentr');
   });
 });
+
+describe('categoryKeyOf', () => {
+  it('reads a payment platform’s line by the platform before the *', async () => {
+    const { categoryKeyOf } = await import('../src/statement/read');
+    expect(categoryKeyOf('GRAB* A-6XYZ123 JAKARTA ID')).toBe('grab');
+    expect(categoryKeyOf('SHOPEEPAY*TOKO ABC')).toBe('shopeepay');
+    expect(categoryKeyOf('KOPI SATU JAKARTA ID')).toBe('kopi satu');
+  });
+});
