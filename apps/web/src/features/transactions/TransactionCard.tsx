@@ -23,7 +23,7 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Camera, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -311,7 +311,7 @@ function CardBody({
     if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
     setReceipt(null);
   };
-  // The camera in the title bar: a receipt taken or picked is attached as Photos would, then read.
+  // The Amount row's camera: a receipt taken or picked is attached as Photos would, then read.
   const receiptInput = useRef<HTMLInputElement>(null);
   const scanned = usePhotoAttach((ids, files) => {
     setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...ids] }));
@@ -598,7 +598,7 @@ function CardBody({
   const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
-  // The title bar's camera: a new expense on its own screen, which can carry a photo.
+  // The Amount row's camera: a new expense, which can carry a photo.
   const offersReceipt = draft.mode === 'expense' && !draft.editing && !finish && offered.includes('photos');
   const splitCurrency = postingCurrency(draft, accounts, ws.baseCurrency);
 
@@ -955,7 +955,15 @@ function CardBody({
             />
             )}
 
-            <AmountRow draft={draft} accounts={accounts} set={set} unsure={finish?.amountUnsure} selectOnOpen={!!duplicateOf} noRefund={!!finish} />
+            <AmountRow
+              draft={draft}
+              accounts={accounts}
+              set={set}
+              unsure={finish?.amountUnsure}
+              selectOnOpen={!!duplicateOf}
+              noRefund={!!finish}
+              {...(offersReceipt ? { onScan: () => receiptInput.current?.click() } : {})}
+            />
             {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
             {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
@@ -1204,9 +1212,6 @@ function CardBody({
           back="Back"
           onBack={onBack}
           actions={[
-            ...(offersReceipt
-              ? [{ key: 'receipt', label: 'Scan a receipt', glyph: <Camera size={19} aria-hidden />, disabled: scanned.busy || readingReceipt, run: () => receiptInput.current?.click() }]
-              : []),
             { key: 'save', label: finish?.saveLabel ?? 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() },
           ]}
         />

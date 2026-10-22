@@ -1,4 +1,4 @@
-import { Globe, X } from 'lucide-react';
+import { Camera, Globe, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
@@ -175,6 +175,7 @@ export function AmountRow({
   noRefund = false,
   anyCurrency = false,
   locked = false,
+  onScan,
 }: {
   draft: FormDraft;
   accounts: readonly AccountRow[];
@@ -192,6 +193,11 @@ export function AmountRow({
   anyCurrency?: boolean;
   /** Every figure and the flag drawn, none of them a control: a shared expense another member paid (D8). */
   locked?: boolean;
+  /**
+   * A receipt to read the amount off: a grey camera at the row's end while it is still empty, where the × stands once
+   * a figure is typed. The receipt is where the amount comes from, so its way in is on this row.
+   */
+  onScan?: () => void;
 }) {
   const phone = usePhone();
   const { ws } = useApp();
@@ -352,6 +358,20 @@ export function AmountRow({
             </>
           )}
           {unsure && <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-warn)]">check</span>}
+          {draft.amount === '' && !locked && onScan && (
+            <button
+              type="button"
+              aria-label="Scan a receipt"
+              onClick={() => {
+                setKeypad(null);
+                onScan();
+              }}
+              className="ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+              style={{ '--ph-tap-y': '8px', '--ph-tap-x': '8px' } as CSSProperties}
+            >
+              <Camera size={18} aria-hidden />
+            </button>
+          )}
           {draft.amount !== '' && !locked && (
             <button
               type="button"
