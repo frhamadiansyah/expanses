@@ -4,7 +4,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, openTypes } from './accounts';
 import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
 
 /*
@@ -487,6 +487,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await openCard(page, { name: 'Fandri Card' });
   await page.goto('/cards');
   await page.getByRole('link', { name: 'Fandri Card' }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -557,7 +558,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await expect(form).toHaveCount(0);
   await page.goto('/cards');
   await page.getByRole('link', { name: 'Fandri Card' }).click();
-  await cardSection(page, 'Activity');
+  await cardPage(page, 'Statement');
   await eventually(page, () => expect(page.getByTestId('statement-line').filter({ hasText: 'Dewi dinner' })).toContainText('200.000', { timeout: 1_000 }));
   await shot(page, info, '17-card-statement');
 

@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
+import { cardPage } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -41,6 +42,7 @@ export async function oneOfEach(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await type(page, 'Billing date', '31');
   await type(page, 'Due date', '15');

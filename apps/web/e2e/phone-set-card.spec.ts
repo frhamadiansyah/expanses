@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage } from './card-section';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
 const tick = (page: Page, what: string) => page.getByRole('checkbox', { name: `Select ${what}` });
@@ -28,7 +28,7 @@ test('ticked purchases on one card account are set to one of its cards at once',
   // Two cards on the account, recorded after the purchases.
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Visa(,|$)/ }).click();
-  await cardSection(page, 'Card');
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('1467');
   await page.getByRole('button', { name: 'Add card' }).click();
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);

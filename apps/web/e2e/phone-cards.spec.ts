@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
+import { cardPage } from './card-section';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
   const crashes: string[] = [];
@@ -18,11 +19,15 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
   await expect(title).toBeVisible();
   // A name someone typed is read whole or not at all: one line, never broken over two at a phone's width.
   expect((await title.boundingBox())!.height).toBeLessThanOrEqual(36);
-  await expect(page.getByRole('radiogroup', { name: 'Card sections' }).getByRole('radio')).toHaveCount(4);
-  // "Rules" is what fits at 390; "Rewards rules" is still what a screen reader hears.
-  await expect(page.getByRole('radio', { name: 'Rewards rules', exact: true })).toHaveText('Rules');
+  // No tabs inside a card: its statement, its points and its settings are pages of their own.
+  await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
   const wideCard = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(wideCard).toBe(false);
+  for (const which of ['Statement', 'Settings'] as const) {
+    await cardPage(page, which);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+    await page.goBack();
+  }
 
   await page.goto('/cards/merchants');
   await expect(page.getByRole('heading', { name: 'Merchants & MCCs' })).toBeVisible();
@@ -38,6 +43,7 @@ async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -128,11 +134,12 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   const raised = wall.locator('[data-place="raised"]');
   await expect(raised).toHaveCount(1);
   await expect(raised.getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
-  // No title drawn and no back link: the card is the header, with ✕ on the left and ⋯ on the right.
+  // No title drawn and no back link: the card is the header, with ✕ on the left and ⚙ on the right.
   await expect(page.getByRole('link', { name: 'Cards', exact: true }).filter({ hasText: '‹' })).toHaveCount(0);
   const bar = page.locator('header').filter({ has: page.getByRole('heading', { name: 'Alpha Card', exact: true }) });
-  const [closeBox, moreBox] = [(await bar.getByRole('button', { name: 'Close', exact: true }).boundingBox())!, (await bar.getByRole('button', { name: 'More' }).boundingBox())!];
-  expect(closeBox.x).toBeLessThan(moreBox.x);
+  const [closeBox, gearBox] = [(await bar.getByRole('button', { name: 'Close', exact: true }).boundingBox())!, (await bar.getByRole('link', { name: 'Settings' }).boundingBox())!];
+  expect(closeBox.x).toBeLessThan(gearBox.x);
+  await expect(bar.getByRole('button', { name: 'More' })).toHaveCount(0);
   expect(closeBox.width).toBeGreaterThanOrEqual(44);
   // The same element, at the same width and the same edges, as in the stack.
   await expect.poll(async () => (await raised.boundingBox())!.y).toBeLessThanOrEqual(inStack.y + 1);
@@ -146,36 +153,33 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(wall.getByRole('link')).toHaveCount(0);
   await expect(page.getByText('Beta Card, 0 points')).toHaveCount(0);
 
-  // The summary under the card: what is owed now, the round actions, the points in a row, the latest transactions.
+  // The summary under the card: what is owed now, the round actions, this statement's points, the instalments and
+  // the latest transactions.
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
   const actions = page.getByRole('group', { name: 'Actions' });
-  await expect(actions.getByRole('button')).toHaveText(['Pay', 'Points', 'Statement']);
+  await expect(actions.getByRole('button')).toHaveText(['Pay']);
+  await expect(actions.getByRole('link')).toHaveText(['Spend', 'Points', 'Statement']);
   await expect(actions.getByRole('link', { name: 'Spend' })).toHaveAttribute('href', /\/transactions\/new\?.*mode=expense/);
-  await expect(page.getByTestId('tile-points-balance')).toHaveText('0 points');
-  await expect(page.getByRole('heading', { name: 'Latest transactions' })).toBeVisible();
-  await expect(page.getByTestId('latest-transactions').getByRole('button', { name: 'See all' })).toBeVisible();
+  await expect(page.getByTestId('this-statement-points')).toContainText("This statement's points");
+  await expect(page.getByTestId('tile-points-balance')).toContainText('0 points');
+  await expect(page.getByTestId('card-instalments').getByRole('button', { name: 'Add a plan' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
+  await expect(page.getByTestId('latest-transactions').getByRole('link', { name: 'See all' })).toBeVisible();
 
-  // ⋯ holds only the settings now: Rewards rules and Card details.
-  await bar.getByRole('button', { name: 'More' }).click();
-  await expect(page.getByRole('menuitem')).toHaveText(['Rewards rules', 'Card details']);
-  await page.keyboard.press('Escape');
-
-  // Statement and Points are round buttons, the settings are behind ⋯: each opens as its own screen under the card,
-  // and ‹ comes back.
-  for (const [item, radio] of [
-    ['Statement', 'Activity'],
-    ['Points', 'Points'],
-    ['Rewards rules', 'Rewards rules'],
-    ['Card details', 'Card'],
+  // Statement, this statement's points, the programme's balance and the settings each open as a page of their own,
+  // and ‹ comes back to the raised card.
+  for (const [open, title] of [
+    [() => actions.getByRole('link', { name: 'Statement', exact: true }).click(), 'Statement'],
+    [() => page.getByTestId('latest-transactions').getByRole('link', { name: 'See all' }).click(), 'Statement'],
+    [() => page.getByTestId('this-statement-points').click(), "This statement's points"],
+    [() => actions.getByRole('link', { name: 'Points', exact: true }).click(), 'Alpha Card rewards'],
+    [() => bar.getByRole('link', { name: 'Settings' }).click(), 'Settings'],
   ] as const) {
-    if (item === 'Statement' || item === 'Points') await actions.getByRole('button', { name: item, exact: true }).click();
-    else {
-      await bar.getByRole('button', { name: 'More' }).click();
-      await page.getByRole('menuitem', { name: item }).click();
-    }
-    await expect(page.getByRole('radio', { name: radio, exact: true })).toBeChecked();
+    await open();
+    await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
+    await page.goBack();
     await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
-    await page.getByRole('button', { name: 'Back to Alpha Card' }).click();
     await expect(page.getByTestId('tile-points')).toBeVisible();
   }
 

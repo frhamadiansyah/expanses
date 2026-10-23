@@ -1,10 +1,10 @@
 import { explainTransaction, formatMinor, monthOf, type Suggestion } from '@expanses/core';
-import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setTransactionMcc } from '@expanses/db';
+import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setTransactionMcc } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx } from '../../ui';
-import { InsetGroup, SegmentedControl, SelectRow } from '../../ui/native';
+import { InsetGroup, SegmentedControl } from '../../ui/native';
 import { Capsule, Line, SUBTITLE, TITLE } from './rows';
 import { suggestPattern } from '../merchants/mcc-search';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
@@ -84,7 +84,6 @@ function ActualCell({ programId, transactionId, description, actual, unit, run }
 
 /** Card purchases in this or the last cycle with estimated points, MCC and source, and per-purchase checking. */
 export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; currency: string }) {
-  const { database, ws } = useApp();
   const [lastCycle, setLastCycle] = useState(false);
   const result = lastCycle ? cp.previous : cp.current;
   const program = cp.program;
@@ -176,17 +175,6 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
 
   return (
     <>
-      {/*
-       * How this card's points behave: settings, so form rows, in a group of their own above the purchases. When they
-       * expire is the programme's, set on its page, since every card earning into it shares the one policy.
-       */}
-      <InsetGroup header="How this card's points work">
-        <SelectRow label="Bank credits points" value={cp.crediting} onChange={(e) => void run(() => setProgramCrediting(database, ws, program.id, e.target.value as 'per_transaction' | 'per_statement'))}>
-          <option value="per_statement">Per statement</option>
-          <option value="per_transaction">Per purchase</option>
-        </SelectRow>
-      </InsetGroup>
-
       <SegmentedControl
         segments={[
           { key: 'this', label: 'This cycle' },

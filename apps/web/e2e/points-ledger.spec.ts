@@ -1,18 +1,19 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardSection, walletCard } from './card-section';
+import { cardPage, cardPointsPage, walletCard } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-/** A card earning 1 point per Rp 2.500, with one purchase on it. */
+/** A card earning 1 point per Rp 2.500, with one purchase on it. Ends on the card's Settings, by its points. */
 async function cardWithAPurchase(page: Page, on?: string) {
   await openCard(page, { name: 'CIMB Octo' });
 
   await page.goto('/cards');
   await walletCard(page, 'CIMB Octo').click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -30,10 +31,16 @@ async function cardWithAPurchase(page: Page, on?: string) {
 
   await page.goto('/cards');
   await walletCard(page, 'CIMB Octo').click();
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Settings');
 }
 
-/** From the card's Points section to the programme it earns into, where its balance is worked with. */
+/** From the card's Settings back to its summary, and on to this statement's points. */
+async function toPoints(page: Page) {
+  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await cardPage(page, 'Points');
+}
+
+/** From the card's Settings to the programme it earns into, where its balance is worked with. */
 async function openProgramme(page: Page) {
   await page.getByTestId('points-balance').click();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
@@ -54,10 +61,18 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
   await expect(page.getByTestId('points-balance')).toBeVisible();
   await page.getByLabel('Bank credits points').selectOption('per_transaction');
+  await expect(page.getByLabel('Bank credits points')).toHaveValue('per_transaction');
+  await toPoints(page);
+  await cardPointsPage(page, 'Purchases');
   const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await row.getByLabel('Actual points for Superindo').fill('120');
   await row.getByRole('button', { name: 'Save actual for Superindo' }).click();
+  await expect(row).toContainText('Bank credited 120 points');
 
+  // Back to the summary and into Settings, where the balance the card earns into is read.
+  await page.getByRole('button', { name: 'Points' }).click();
+  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await cardPage(page, 'Settings');
   await expect(page.getByTestId('points-provenance')).toContainText('120 posted');
   await expect(page.getByTestId('points-provenance')).toContainText('0 estimated');
   await expect(page.getByTestId('points-balance')).toContainText('120');
@@ -72,7 +87,7 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await page.getByRole('button', { name: 'Set balance' }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
-  // The card's Points section reads the same balance: the programme's it earns into.
+  // The card's Settings read the same balance: the programme's it earns into.
   await page.goBack();
   await expect(page.getByTestId('points-balance')).toContainText('500');
 });
@@ -116,7 +131,7 @@ test('warns on the dashboard about points that are about to die', async ({ page 
 /** Redeems points on the programme's page. */
 async function redeem(page: Page, points: string, fetched: string) {
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Redeem' }).click();
-  await page.getByLabel('Points redeemed').fill(points);
+  await page.getByRole('dialog').getByLabel('Points redeemed').fill(points);
   await page.getByLabel('What for').fill('Statement credit');
   await page.getByLabel('What it fetched (IDR)').fill(fetched);
   await page.getByRole('button', { name: 'Save redemption' }).click();
@@ -135,6 +150,7 @@ test('spending points takes them off the balance, oldest first', async ({ page }
 
 test('says what the annual fee bought, and admits when it is guessing', async ({ page }) => {
   await cardWithAPurchase(page);
+  await toPoints(page);
 
   const roi = page.getByTestId('card-year-roi');
   await expect(roi).toBeVisible();
@@ -153,14 +169,17 @@ test('says what the points really fetched, beside what the best option claims', 
   await expect(page.getByTestId('points-balance')).toContainText('60');
 
   // Rp 200 for 40 points is Rp 5 a point, whatever the best redemption option says.
+  await toPoints(page);
   await expect(page.getByTestId('card-year-realised')).toContainText('net');
 });
 
 test('catches a card up without complaint', async ({ page }) => {
   await cardWithAPurchase(page);
+  await toPoints(page);
 
   await page.getByRole('button', { name: 'Catch up this card' }).click();
 
   // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
-  await expect(page.getByTestId('points-balance')).toContainText('100');
+  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await expect(page.getByTestId('tile-points-balance')).toContainText('100 points');
 });

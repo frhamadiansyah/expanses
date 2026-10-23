@@ -27,6 +27,10 @@ import { SourcePage } from '../features/capture/SourcePage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
+import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
+import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
+import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
+import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { CardsPage } from '../features/cards/CardsPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
 import { RecommendPage } from '../features/cards/RecommendPage';
@@ -77,9 +81,18 @@ import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { Layout } from './Layout';
 
+/** The card page's old tabs, still read from a link made before they became pages of their own. */
 export interface CardSearch {
   tab?: 'statement' | 'points' | 'rules' | 'card';
 }
+
+/** Where each old tab's content lives now: the statement, this statement's points, and the card's settings. */
+const TAB_PAGES = {
+  statement: '/cards/$cardId/statement',
+  points: '/cards/$cardId/points',
+  rules: '/cards/$cardId/settings',
+  card: '/cards/$cardId/settings',
+} as const;
 
 export interface TransactionsSearch {
   account?: string;
@@ -220,8 +233,23 @@ const routeTree = rootRoute.addChildren([
       validateSearch: (search: Record<string, unknown>): CardSearch => ({
         tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
       }),
+      // The card's four tabs became pages of their own (owner, 23 Oct): a link to a tab lands on its page.
+      beforeLoad: ({ search, params }) => {
+        if (search.tab) throw redirect({ to: TAB_PAGES[search.tab], params: { cardId: params.cardId }, replace: true });
+      },
     }),
   ]),
+  // A card's pages, each pushed from its summary with ‹ back to it: the statement, this statement's points with the
+  // purchases and the statement's own figure under them, and the settings with the card product, the earning rules
+  // and the spend bonuses under them. Static last segments, so none is read as the wallet's `$cardId`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/statement', component: CardStatementPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points', component: CardPointsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/purchases', component: CardPurchasesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/check', component: CardPointsCheckPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings', component: CardSettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product', component: CardProductPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),
   // A static segment, so it outranks the wallet's `$cardId` however the two are nested.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   // A points programme — a bank's, an airline's, a hotel's — is a balance of its own that cards earn into, so it has a

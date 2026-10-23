@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage, cardSettingsPage } from './card-section';
 
 test.beforeEach(({ page }) => {
   // A linked catalogue card asks before an edit makes it customised.
@@ -18,9 +18,13 @@ async function openCardPage(page: Page, name: string) {
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 
-/** Saves statement and due days, then applies the catalogue entry found by `search`. */
+/**
+ * Saves statement and due days, then applies the catalogue entry found by `search` — setup's steps, in the card's
+ * Settings — and sees the card product linked. Ends on the Settings page.
+ */
 async function applyCatalogue(page: Page, card: string, search: string, entryName: string) {
   await openCardPage(page, card);
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -28,7 +32,10 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
   await page.getByLabel('Search catalogue').fill(search);
   await page.getByRole('button', { name: entryName, exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();
+  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await cardSettingsPage(page, 'Card product');
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();
+  await page.getByRole('button', { name: 'Settings' }).click();
 }
 
 async function buy(page: Page, p: { card: string; description: string; category: string; amount: string; original?: [currency: string, amount: string] }) {
@@ -63,7 +70,9 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
   await buy(page, { card: 'KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
   await openCardPage(page, 'KF Signature');
-  await cardSection(page, 'Points');
+  // On the summary, the bonus this statement is working toward has been reached: no tier left to show.
+  await expect(page.getByTestId('this-statement-points')).toContainText('+2.555 miles');
+  await cardPage(page, 'Points');
   const cycle = thisCycle(page);
   // Rp 21.000.000 / 13.500 = 1.555,5 → 1.555 miles, plus 1.000 for reaching Rp 20.000.000.
   await expect(cycle).toContainText(/21\.000\.000 → 1\.555 miles/);
@@ -80,7 +89,7 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
   await expect(page.getByText(/SGD\s45,20/)).toBeVisible();
 
   await openCardPage(page, 'UnionPay');
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Points');
   const cycle = thisCycle(page);
   // 54 base points plus 54 for spending in SGD; 100 of them transfer in steps of 20 to 50 KrisFlyer miles.
   await expect(cycle.getByText(/540\.000 → 54 points/)).toHaveCount(2);
@@ -91,9 +100,13 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
 test('editing a catalogue rule makes the card customised', async ({ page }) => {
   await addCard(page, 'KF Infinite');
   await applyCatalogue(page, 'KF Infinite', 'infinite', 'BCA Singapore Airlines KrisFlyer Visa Infinite');
+  await cardSettingsPage(page, 'Earning rules');
   const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
   await rules.getByRole('button', { name: 'Edit' }).first().click();
   await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page.getByRole('heading', { name: /^Edit rule/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await cardSettingsPage(page, 'Card product');
   await expect(page.getByText('From catalogue · Customised')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reset to catalogue' })).toBeVisible();
 });
@@ -126,7 +139,7 @@ test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns
   await buy(page, { card: 'Mandiri Prioritas', description: 'Didi Shanghai', category: 'Ride hailing', amount: '250000', original: ['CNY', '55,00'] });
 
   await openCardPage(page, 'Mandiri Prioritas');
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Points');
   const cycle = thisCycle(page);
   // Rp 25.000 counts as one Rp 20.000 multiple: 3 points. The taxi earns 1 per Rp 100.000, not the overseas 4 per Rp 20.000.
   await expect(cycle).toContainText(/Domestic transactions\s*Rp\s25\.000 → 3 points/);
@@ -137,23 +150,26 @@ test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns
 test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points on Rp 60.000', async ({ page }) => {
   await addCard(page, 'CIMB Accor');
   await openCardPage(page, 'CIMB Accor');
+  await cardPage(page, 'Settings');
   await page.getByLabel('Search catalogue').fill('accor');
   await page.getByRole('button', { name: 'CIMB Niaga World ALL Accor Live Limitless', exact: true }).click();
   await expect(page.getByLabel('Billing date')).toHaveValue('22');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();
+  await cardSettingsPage(page, 'Card product');
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();
 
   await buy(page, { card: 'CIMB Accor', description: 'Superindo', category: 'Groceries', amount: '60000' });
   await openCardPage(page, 'CIMB Accor');
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Points');
   await expect(thisCycle(page)).toContainText(/Other domestic transactions\s*Rp\s60\.000 → 2,5 points/);
 });
 
 test('a spend bonus can be added by hand, and a catalogue one keeps what the form never shows', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
   await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await cardSettingsPage(page, 'Spend bonuses');
 
   // The catalogue's own bonus is listed, which the owner could never see before. The entry carries one
   // per dated period, so the live one is the row not marked as past terms.
@@ -169,13 +185,16 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
   // Electricity is excluded by the catalogue, and that exclusion is not on the form: it must survive.
   await buy(page, { card: 'BCA KrisFlyer', description: 'PLN token', category: 'Electricity', amount: '21000000' });
   await openCardPage(page, 'BCA KrisFlyer');
-  await cardSection(page, 'Points');
+  // The summary's row shows the same bonus, nothing toward it yet.
+  await expect(page.getByTestId('bonus-progress')).toContainText(/Rp\s0 of Rp\s20\.000\.000/);
+  await cardPage(page, 'Points');
   await expect(thisCycle(page).getByRole('progressbar', { name: 'Monthly spend bonus progress' })).toHaveAttribute('aria-valuenow', '0');
 });
 
 test('adds a second tier to a card that pays more for spending more', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
   await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await cardSettingsPage(page, 'Spend bonuses');
 
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
   await bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first().getByRole('button', { name: 'Edit' }).click();
@@ -192,32 +211,39 @@ test('adds a second tier to a card that pays more for spending more', async ({ p
 test('editing a rule or a bonus opens its form where its row stood, not below the list', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
   await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await cardSettingsPage(page, 'Earning rules');
 
-  // Every rule and bonus row on the tab, in reading order: the rules come first.
+  // Every rule row on the page, in reading order.
   const rows = page.getByRole('button', { name: /^Edit / });
   const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
   const ruleCount = await rules.getByRole('button', { name: /^Edit / }).count();
   expect(ruleCount).toBeGreaterThanOrEqual(2);
   const total = await rows.count();
-  // The second rule, so a row stands above it and another below it.
-  const label = (await rows.nth(1).getAttribute('aria-label'))!;
-  await rows.nth(1).click();
+  // The second rule when there are three, so a row stands above it and another below it; else the first.
+  const at = total >= 3 ? 1 : 0;
+  const label = (await rows.nth(at).getAttribute('aria-label'))!;
+  await rows.nth(at).click();
 
-  // Its row is gone — replaced, not shown twice — and the form stands between its neighbours.
+  // Its row is gone — replaced, not shown twice — and the form stands where it stood, before the rows after it.
   await expect(rows).toHaveCount(total - 1);
   const form = page.getByRole('heading', { name: `Edit rule · ${label.replace(/^Edit /, '')}`, exact: true });
   await expect(form).toHaveCount(1);
   const opened = (await form.boundingBox())!;
-  expect((await rows.nth(0).boundingBox())!.y).toBeLessThan(opened.y);
-  expect(opened.y).toBeLessThan((await rows.nth(1).boundingBox())!.y);
+  if (at === 1) expect((await rows.nth(0).boundingBox())!.y).toBeLessThan(opened.y);
+  expect(opened.y).toBeLessThan((await rows.nth(at).boundingBox())!.y);
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(rows).toHaveCount(total);
 
+  // The spend bonuses, on their own page under Settings, open the same way.
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await cardSettingsPage(page, 'Spend bonuses');
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
+  const bonusRows = page.getByRole('button', { name: /^Edit / });
+  const bonusTotal = await bonusRows.count();
   const live = bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first();
   const id = (await live.getAttribute('data-testid'))!;
   await live.getByRole('button', { name: /^Edit / }).click();
   await expect(page.getByTestId(id)).toHaveCount(0);
-  await expect(rows).toHaveCount(total - 1);
+  await expect(bonusRows).toHaveCount(bonusTotal - 1);
   await expect(page.getByRole('heading', { name: /^Edit bonus · / })).toHaveCount(1);
 });

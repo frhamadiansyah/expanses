@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage } from './card-section';
 import { screenshotFiles, setStatementImages, statementLines, summaryLines, twoDateLines } from './statement';
 
 /*
@@ -21,7 +21,7 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
-  await cardSection(page, 'Activity');
+  await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
   await expect(page.getByTestId('statement-range')).toContainText('11 Aug');
   await page.getByTestId('check-statement').click();
@@ -123,7 +123,7 @@ test('a foreign purchase missing from cicis shows the amount in its own currency
   await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25' });
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
-  await cardSection(page, 'Activity');
+  await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
   await page.getByTestId('check-statement').click();
 
@@ -149,7 +149,7 @@ test('a statement older than the card’s start records as already paid off, wit
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
-  await cardSection(page, 'Activity');
+  await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
   await page.getByTestId('check-statement').click();
   await setStatementImages(page, [statementLines([['20AUG', 'WARUNG SATE PAK DIN', '45,000']])]);

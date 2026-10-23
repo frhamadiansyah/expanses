@@ -1,13 +1,13 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { listProgrammes, listProgrammeSummaries, refreshProgramme } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Link, Outlet, useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, Plus, Sparkles, Store, X } from 'lucide-react';
+import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
+import { Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { moneyHolders, useAccounts } from '../../lib/queries';
 import { Empty } from '../../ui';
-import { CardStack, CornerButton, type CornerAction, InsetGroup, InsetRow, LargeTitle, OverflowMenu, type WalletCard } from '../../ui/native';
+import { CardStack, CornerButton, type CornerAction, InsetGroup, InsetRow, LargeTitle, type WalletCard } from '../../ui/native';
 import { useCardIdentities, useCards, useProgramAccounts } from './card-queries';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 import { balanceText, earnersLine, expiryNote } from './programme-text';
@@ -34,9 +34,10 @@ const figureLabelOf = (cp: CardPoints) => {
  * Cards overlap back to front, every card's top band shows its figure, and tapping a card opens it: this route
  * stays mounted while `/cards/$cardId` is its child, so the card's own element rises to the top of the screen, the
  * others slide away, and the card's page fades in below it. ✕, Back, Escape or a tap on the raised card put it back
- * in its slot. The open card is laid out as Wallet lays out a pass (the user's Suica reference): ✕ on the left, ⋯
- * on the right, the card, its tiles and its latest transactions; the card's sections are behind ⋯. The art is `CardFace`, unchanged — this screen only decides which cards
- * are on the shelf and what each one's figure says.
+ * in its slot. The open card is laid out as Wallet lays out a pass (the user's Suica reference): ✕ on the left, ⚙
+ * on the right, the card, its tiles and its latest transactions; its statement, its points and its settings are
+ * pages of their own. The art is `CardFace`, unchanged — this screen only decides which cards are on the shelf and
+ * what each one's figure says.
  *
  * An account that is not in the stack — a debit account not earning yet — still opens its page on its own.
  */
@@ -45,7 +46,6 @@ export function CardsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const { cardId } = useParams({ strict: false }) as { cardId?: string };
-  const { tab } = useSearch({ strict: false }) as { tab?: string };
   const accounts = useAccounts();
   const all = accounts.data ?? [];
   // A debit card is a bank account that earns, so it joins the credit cards once its terms are applied.
@@ -97,15 +97,13 @@ export function CardsPage() {
   const raised = cardId !== undefined ? wallet.find((card) => card.key === cardId) : undefined;
   /*
    * Opened from the stack, the way back is the history's own steps, so ✕ and Back are one gesture and the stack is
-   * where they land; reached by a link from elsewhere, ✕ goes to the stack instead of out of the app. The same for
-   * ‹ from one of the card's sections back to the card. Where each was is the history's own index.
+   * where they land; reached by a link from elsewhere, ✕ goes to the stack instead of out of the app. Where the
+   * stack was is the history's own index.
    */
   const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
   const stackAt = useRef<number | null>(null);
-  const summaryAt = useRef<number | null>(null);
   useEffect(() => {
     if (cardId === undefined) stackAt.current = at();
-    else if (!tab) summaryAt.current = at();
   });
   const back = (to: number | null, otherwise: () => void) => {
     const now = at();
@@ -126,16 +124,6 @@ export function CardsPage() {
     { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];
-  /*
-   * An open card's settings sections are behind ⋯, each its own screen under the raised card. Its statement and its
-   * points are round buttons on the summary itself, so they are not repeated here.
-   */
-  const sections: CornerAction[] = cardId
-    ? [
-        { key: 'rules', label: 'Rewards rules', search: { tab: 'rules' } },
-        { key: 'card', label: 'Card details', search: { tab: 'card' } },
-      ].map((item) => ({ ...item, to: '/cards/$cardId' as const, params: { cardId } }))
-    : [];
 
   // A card's page for an account the stack does not hold stands on its own, as it always has. Until the stack has
   // loaded it cannot be told which, so nothing is drawn rather than the wrong one.
@@ -146,27 +134,20 @@ export function CardsPage() {
       <div ref={header}>
         {raised ? (
           /*
-           * Wallet's bar over an open pass: ✕ on the left, ⋯ on the right, and no title — the raised card is the
-           * header. The card's name is still the heading a reader hears. In one of its sections the left button is
-           * the way back to the card instead.
+           * Wallet's bar over an open pass: ✕ on the left, ⚙ on the right, and no title — the raised card is the
+           * header. The card's name is still the heading a reader hears. ⚙ opens the card's settings, a page of its
+           * own, as an asset's gear does.
            */
           <header className="mb-[14px] flex items-center justify-between gap-3" style={{ paddingTop: 8 }}>
-            {tab ? (
-              <CornerButton
-                label={`Back to ${raised.name}`}
-                onClick={() => back(summaryAt.current, () => void navigate({ to: '/cards/$cardId', params: { cardId: raised.key }, replace: true }))}
-              >
-                <ChevronLeft size={22} aria-hidden />
-              </CornerButton>
-            ) : (
-              <CornerButton label="Close" onClick={close}>
-                <X size={20} aria-hidden />
-              </CornerButton>
-            )}
+            <CornerButton label="Close" onClick={close}>
+              <X size={20} aria-hidden />
+            </CornerButton>
             <h1 tabIndex={-1} className="sr-only">
               {raised.name}
             </h1>
-            <OverflowMenu actions={sections} />
+            <CornerButton label="Settings" to="/cards/$cardId/settings" params={{ cardId: raised.key }}>
+              <Settings size={20} aria-hidden />
+            </CornerButton>
           </header>
         ) : (
           <LargeTitle title="Cards & points" actions={actions} />
