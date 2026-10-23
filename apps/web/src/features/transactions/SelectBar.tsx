@@ -5,7 +5,7 @@ import { ErrorBox } from '../../ui';
 /**
  * The list's select mode, in the title row and nothing else: ✕ on the left to finish, how many are selected in the
  * middle, and a green ⋯ on the right whose menu holds every action — Select All, Add to event, Move to workspace,
- * Remove from event. Nothing is laid over the foot of the screen: the tab bar stays as it was. Each action still opens
+ * Set card, Remove from event. Nothing is laid over the foot of the screen: the tab bar stays as it was. Each action still opens
  * the sheet that asks which event or workspace.
  */
 export function SelectBar({
@@ -19,6 +19,7 @@ export function SelectBar({
   onRemove,
   onCancel,
   onMove,
+  onSetCard,
 }: {
   count: number;
   /** Whether any ticked row is in an event at all; nothing else could be taken out of one. */
@@ -33,6 +34,8 @@ export function SelectBar({
   onCancel: () => void;
   /** Move to workspace, offered while there is more than one workspace to move to. */
   onMove?: () => void;
+  /** Set card, offered while every ticked row is on one credit card account that carries more than one card. */
+  onSetCard?: () => void;
 }) {
   const [menu, setMenu] = useState(false);
   const none = count === 0 || busy;
@@ -78,6 +81,11 @@ export function SelectBar({
             {onMove && (
               <button type="button" role="menuitem" disabled={none} onClick={pick(onMove)} className={item}>
                 Move to workspace
+              </button>
+            )}
+            {onSetCard && (
+              <button type="button" role="menuitem" disabled={none} onClick={pick(onSetCard)} className={item}>
+                Set card
               </button>
             )}
             <button type="button" role="menuitem" disabled={none || !canRemove} onClick={pick(onRemove)} className={item}>

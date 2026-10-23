@@ -13,6 +13,7 @@ import {
   replaceTransaction,
   type AccountRow,
   type SetAsideChoice,
+  setTransactionsCard,
   sharedEventOf,
   tagTransactions,
   type TransactionView,
@@ -72,6 +73,8 @@ import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
+import { CardSheet } from '../cards/CardSheet';
+import { setCardAccount, sharedCard } from './set-card';
 import { draftIn } from './move-workspace';
 import { formFromTransaction, formToPost } from './tx-form';
 import { ratesForSave } from './tx-save';
@@ -238,6 +241,8 @@ export function TransactionsPage() {
   const [tagToast, setTagToast] = useState<{ text: string; back: () => Promise<void> } | null>(null);
   // Move to workspace…: the ticked purchases re-filed in another workspace, each category swapped for its copy there.
   const [pickingBook, setPickingBook] = useState(false);
+  // Set card…: which of a credit card account's cards the ticked purchases were made on.
+  const [pickingCard, setPickingCard] = useState(false);
   const allBooks = useBooks().data ?? [];
   const categoryBooks = useCategoryBooks().data ?? {};
   const events = useEvents();
@@ -417,6 +422,7 @@ export function TransactionsPage() {
     setSelecting(false);
     setSelected(new Set());
     setPickingEvent(false);
+    setPickingCard(false);
     setTagging({ busy: false, error: null });
   }
 
@@ -545,10 +551,31 @@ export function TransactionsPage() {
     setTagging({ busy: false, error: new Error(kept.map((row) => row.why).join('. ') + '.') });
   }
 
+  /**
+   * Says which card every ticked purchase was made on, in place — one write, whole or not at all. Nothing else about
+   * them changes, so nothing is reposted and there is nothing for a toast to take back but the card itself.
+   */
+  async function setCardChosen(cardId: string) {
+    setPickingCard(false);
+    setTagging({ busy: true, error: null });
+    try {
+      await setTransactionsCard(database, ws, chosen.map((row) => row.id), cardId);
+      await invalidate();
+    } catch (e) {
+      setTagging({ busy: false, error: e });
+      return;
+    }
+    stopSelecting();
+  }
+
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
   const money = moneyHolders(accounts).filter((account) => canPayWith(account));
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
+  // Set card is offered while every ticked row is on one credit card account carrying two cards or more.
+  const creditCards = new Set(accounts.filter((account) => account.subtype === 'credit_card').map((account) => account.id));
+  const chosenTxs = chosen.map((row) => row.tx!);
+  const cardAccount = setCardAccount(chosenTxs, (id) => creditCards.has(id), cards);
   const paidOptions: ChipOption[] = [
     { value: '', label: 'Any account' },
     ...money.flatMap((account) => {
@@ -1533,7 +1560,7 @@ export function TransactionsPage() {
       {selecting && (
         <>
           {/* Stood down while a sheet it opened is up: drawn above the page, it would sit over that sheet's rows. */}
-          {!pickingBook && !pickingEvent && (
+          {!pickingBook && !pickingEvent && !pickingCard && (
           <SelectBar
             count={chosen.length}
             canRemove={chosen.some((row) => row.tx?.eventId)}
@@ -1545,6 +1572,7 @@ export function TransactionsPage() {
             allSelected={selectable.length > 0 && chosen.length === selectable.length}
             onSelectAll={() => setSelected(chosen.length === selectable.length ? new Set() : new Set(selectable.map((row) => row.id)))}
             {...(allBooks.length > 1 ? { onMove: () => setPickingBook(true) } : {})}
+            {...(cardAccount ? { onSetCard: () => setPickingCard(true) } : {})}
           />
           )}
         </>
@@ -1557,6 +1585,16 @@ export function TransactionsPage() {
           footer="Each category is matched in that workspace; the card or account, amount and date stay as they are."
           onPick={(bookId) => (bookId === ws.bookId ? setPickingBook(false) : void moveChosen(bookId))}
           onClose={() => setPickingBook(false)}
+        />
+      )}
+      {pickingCard && cardAccount && (
+        <CardSheet
+          title="Set card"
+          cards={cardsOf(cardAccount)}
+          value={sharedCard(chosenTxs)}
+          footer="Only the card changes; the amount, date and category stay as they are."
+          onPick={(cardId) => void setCardChosen(cardId)}
+          onClose={() => setPickingCard(false)}
         />
       )}
       {pickingEvent && <EventSheet title="Add to event" withNone={false} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}

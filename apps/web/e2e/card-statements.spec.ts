@@ -187,3 +187,34 @@ test('a purchase on a closed statement is marked paid off from the statement, an
   await expect(page.getByLabel('Pay Hotel Mulia')).toBeEnabled();
   await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
 });
+
+test('purchases under Card not recorded are set to one card at once with Assign card', async ({ page }) => {
+  await setUp(page);
+  // Bought before any card was recorded on the account: no purchase knows which card it was.
+  await buy(page, 'Superindo', '450000', TODAY);
+  await buy(page, 'Ranch Market', '80000', TODAY);
+  await openCardPage(page);
+  await cardSection(page, 'Card');
+  await page.getByLabel('Last 4 digits').fill('1467');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(1);
+  await page.getByLabel('Last 4 digits').fill('8820');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(2);
+  await cardSection(page, 'Activity');
+
+  // Two cards: the statement is split by card, and both purchases sit under Card not recorded.
+  const unrecorded = page.getByRole('region', { name: 'Card not recorded' });
+  await expect(unrecorded.getByTestId('statement-line')).toHaveCount(2);
+  await unrecorded.getByRole('button', { name: 'Assign card' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Assign card' });
+  await expect(sheet.getByRole('button', { name: 'Primary ···· 1467' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Supplementary ···· 8820' }).click();
+
+  await expect(sheet).toHaveCount(0);
+  await expect(unrecorded).toHaveCount(0);
+  const supplementary = page.getByRole('region', { name: 'Supplementary ···· 8820' });
+  await expect(supplementary.getByTestId('statement-line')).toHaveCount(2);
+  await expect(supplementary).toContainText('Superindo');
+  await expect(supplementary).toContainText('Ranch Market');
+});

@@ -1,7 +1,7 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarArrowUp, Check, CircleCheck, Undo2 } from 'lucide-react';
+import { CalendarArrowUp, Check, CircleCheck, CreditCard, Undo2 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -10,12 +10,13 @@ import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
-import { ColumnGroup, EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
+import { ActionRow, ColumnGroup, EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
+import { CardSheet } from './CardSheet';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { formatPoints } from './useCardPoints';
@@ -31,6 +32,10 @@ export interface StatementPoints {
 
 const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const dayYear = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** What Assign card does, said under its list of cards. */
+const assignFooter = (count: number) =>
+  count === 1 ? 'The purchase under Card not recorded is set to the card picked.' : `The ${count} purchases under Card not recorded are set to the card picked.`;
 
 /**
  * A card's statements: what each one charged and closed at, what is left to pay, purchases the bank billed
@@ -68,6 +73,8 @@ export function StatementPanel({
   const [busy, setBusy] = useState(false);
   // The paid-off purchase whose ✓ was tapped: the sheet that offers to take it back.
   const [unmarking, setUnmarking] = useState<StatementLine | null>(null);
+  // The purchases under Card not recorded, while the sheet that sets their card is up.
+  const [assigning, setAssigning] = useState<readonly StatementLine[] | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
@@ -457,20 +464,42 @@ export function StatementPanel({
         groups.map((group) => {
           // One statement, split by card when the account carries more than one, the way the bank prints it.
           const header = group.title ? `${group.title}${group.digits ? ` ${group.digits}` : ''}` : undefined;
+          // Purchases whose card was never said are put right all at once, from the top of their own section.
+          const assign =
+            group.kind === 'unassigned' && plastic.length > 1 ? (
+              <ActionRow label="Assign card" icon={<CreditCard size={16} aria-hidden />} disabled={busy} onClick={() => setAssigning(group.lines)} />
+            ) : null;
           return (
             <section key={group.key} data-testid="statement-group" aria-label={header}>
               {phone ? (
                 <InsetGroup header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined}>
+                  {assign}
                   {group.lines.map(statementRow)}
                 </InsetGroup>
               ) : (
                 <Panel header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined} pad={false}>
+                  {assign && <div className="border-b-[0.5px] border-[var(--ph-hair)]">{assign}</div>}
                   {table(group.lines)}
                 </Panel>
               )}
             </section>
           );
         })
+      )}
+
+      {assigning && (
+        <CardSheet
+          title="Assign card"
+          cards={plastic}
+          footer={assignFooter(new Set(assigning.map((line) => line.transactionId)).size)}
+          onPick={(cardId) => {
+            // An instalment row names the purchase it came from: each purchase is set once.
+            const ids = [...new Set(assigning.map((line) => line.transactionId))];
+            setAssigning(null);
+            void run(() => setTransactionsCard(database, ws, ids, cardId));
+          }}
+          onClose={() => setAssigning(null)}
+        />
       )}
 
       {unmarking && (
