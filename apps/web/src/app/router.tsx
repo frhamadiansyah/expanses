@@ -69,7 +69,6 @@ import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { AddHoldingPage } from '../features/investments/AddHoldingPage';
 import { BrokerPage } from '../features/investments/BrokerPage';
-import { InvestmentsPage } from '../features/investments/InvestmentsPage';
 import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
@@ -236,8 +235,17 @@ const routeTree = rootRoute.addChildren([
   // And what is waiting, behind the corner that counts it.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/attention', component: AttentionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
-  // The Assets page's Investments group, read by stock and by broker.
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),
+  /*
+   * The Investments page that read the Assets page's shares by stock and by broker is gone: Assets lists one row per
+   * stock itself, and each broker's account lists what it keeps. An old link lands on Assets.
+   */
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/investments',
+    beforeLoad: () => {
+      throw redirect({ to: '/net-worth/assets', replace: true });
+    },
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/net-worth/investments/new',

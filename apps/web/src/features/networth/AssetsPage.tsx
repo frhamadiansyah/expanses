@@ -8,10 +8,12 @@ import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, Ins
 import { assetKindTile, assetSectionTile } from '../ownables/catalogue-view';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
+import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
+import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
 
 /** The kinds of account whose whole story lives on their own page: money, not things. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -88,6 +90,27 @@ function Row({ row, baseCurrency, money, nested = false, tree }: { row: AssetRow
   );
 }
 
+/**
+ * A listed share held at two or more brokers: one row for the stock, at what its holdings come to together, opening
+ * the stock across them — where each broker's holding is a row of its own. Drawn as a holding's row is, inside the
+ * drawer, so the list reads one row per stock rather than one per stock per broker.
+ */
+function StockRowAcross({ stock, tree }: { stock: StockLine; tree?: TreePlace }) {
+  return (
+    <InsetRow
+      to="/net-worth/investments/security/$securityId"
+      params={{ securityId: stock.securityId }}
+      testId="assets-stock-row"
+      depth={1}
+      tree={tree}
+      title={stock.title}
+      subtitle={stock.subtitle}
+      value={<Money minor={stock.valueMinor} currency={stock.currency} />}
+      valueTone={stock.stale ? 'warn' : 'ink'}
+    />
+  );
+}
+
 /** What a drawer's rows come to, or — when one of them is waiting on a rate — the rate named instead. */
 function DrawerFigure({ drawer, baseCurrency }: { drawer: AssetDrawer; baseCurrency: string }) {
   return (
@@ -105,7 +128,7 @@ function DrawerFigure({ drawer, baseCurrency }: { drawer: AssetDrawer; baseCurre
  * balance sheet on the page above folds the same money by. A kind of one still folds: "Intangible and other" holding
  * nothing but gold must still say that what is in it is gold.
  */
-function Group({ group, baseCurrency, money, opened = false }: { group: AssetGroup; baseCurrency: string; money: Set<string>; opened?: boolean }) {
+function Group({ group, baseCurrency, money, stocks, opened = false }: { group: AssetGroup; baseCurrency: string; money: Set<string>; stocks: ByStockInputs; opened?: boolean }) {
   // A group picked on the chart above is shown with everything in it, not as drawers still to open.
   const drawers = useDrawers(opened ? group.drawers.map((drawer) => `${group.group}:${drawer.key}`) : []);
   const trailing = group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />;
@@ -114,6 +137,8 @@ function Group({ group, baseCurrency, money, opened = false }: { group: AssetGro
       {group.drawers.flatMap((drawer, index) => {
         const key = `${group.group}:${drawer.key}`;
         const shown = drawers.open.has(key);
+        // Listed shares read one row per stock: a stock at two brokers is one row, opening it across them.
+        const lines = shown ? linesByStock(drawer.key, drawer.rows, stocks) : [];
         return [
           <Drawer
             key={key}
@@ -126,15 +151,16 @@ function Group({ group, baseCurrency, money, opened = false }: { group: AssetGro
             testId={`type-drawer-${key}`}
             onToggle={() => drawers.toggle(key)}
           />,
-          ...(shown
-            ? drawer.rows.map((row, at) => (
-                <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} nested tree={{ last: at === drawer.rows.length - 1 }} />
-              ))
-            : []),
+          ...lines.map((line, at) => {
+            const tree = { last: at === lines.length - 1 };
+            return line.stock ? (
+              <StockRowAcross key={`security:${line.stock.securityId}`} stock={line.stock} tree={tree} />
+            ) : (
+              <Row key={line.row.accountId} row={line.row} baseCurrency={baseCurrency} money={money} nested tree={tree} />
+            );
+          }),
         ];
       })}
-      {/* The same holdings read by stock and by broker: its last row, under the group's own total. */}
-      {group.group === 'invest' && <InsetRow title="By stock and broker" to="/net-worth/investments" />}
     </InsetGroup>
   );
 }
@@ -145,6 +171,9 @@ export function AssetsPage() {
   const profiles = useAssetProfiles();
   const accounts = useAccounts();
   const held = useHeldRates((values.data ?? []).map((row) => row.currency));
+  // What each holding is a share of, so a stock kept at two brokers is listed once.
+  const links = useHoldingLinks();
+  const securities = useSecurities();
   const [showSold, setShowSold] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
   const [picked, setPicked] = useState<string | null>(null);
@@ -158,7 +187,7 @@ export function AssetsPage() {
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
   const baseCurrency = ws.baseCurrency;
-  const ready = values.data && profiles.data && accounts.data && held.data;
+  const ready = values.data && profiles.data && accounts.data && held.data && links.data && securities.data;
   const groups = ready
     ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds })
     : [];
@@ -180,6 +209,11 @@ export function AssetsPage() {
   const activeKind = deeper && kindShares!.shown.some((segment) => segment.key === kind) ? kind : null;
   // Which of the rows drawn below are money: those open their own page, not the asset page.
   const money = new Set((accounts.data ?? []).filter((account) => CASH_SUBTYPES.has(account.subtype)).map((account) => account.id));
+  const stocks: ByStockInputs = {
+    links: links.data ?? [],
+    securities: securities.data ?? [],
+    units: new Map((values.data ?? []).map((row) => [row.accountId, row.unitsMicro ?? 0])),
+  };
 
   /*
    * The title row used to carry the running total, a text link and a dark rectangle at once, which at 390 px was
@@ -200,7 +234,7 @@ export function AssetsPage() {
       <PushedTitle title="Assets" back="Net worth" backTo="/net-worth" actions={actions} />
       {/* A rate that is missing is named where the figure would be, because there is no box to put a figure in. */}
       {total.totalMinor === null && <Empty>No {total.missing.join(', ')} rate yet, so these assets cannot be added up. Each figure below is exact.</Empty>}
-      <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error} />
+      <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error ?? links.error ?? securities.error} />
 
       {/*
        * The page's figure, inside the box it is made of: the boxes under it are that total divided, so the number and
@@ -260,6 +294,7 @@ export function AssetsPage() {
             group={activeKind && active === group.group ? { ...group, drawers: group.drawers.filter((drawer) => drawer.key === activeKind) } : group}
             baseCurrency={baseCurrency}
             money={money}
+            stocks={stocks}
             opened={active === group.group}
           />
         ))}

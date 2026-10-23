@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { typePrice } from './asset-page';
+import { openAssets } from './drawers';
 import { addHoldingFlow } from './securities';
 
 const noSideScroll = async (page: Page) => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -10,15 +11,16 @@ test.beforeEach(({ page }) => {
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-test('a stock at one broker opens its holding; at two, one page across them with a row per broker', async ({ page }) => {
-  // One broker: the stock is that holding, so By stock opens the holding's own page, with its Buy.
+test('Assets lists a stock once: at one broker its holding, at two one row opening the page across them', async ({ page }) => {
+  // One broker: the stock is that holding, so Assets lists the holding's own row, opening its page with its Buy.
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '12', price: '8.850' });
   await page.getByRole('button', { name: 'Add holding' }).tap();
   await expect(page).toHaveURL(HOLDING);
-  await page.goto('/net-worth/investments');
-  const bbca = page.getByTestId('stock-row').filter({ hasText: 'BBCA' });
-  await expect(bbca).toContainText('one broker');
-  await bbca.tap();
+  await openAssets(page);
+  await expect(page.getByTestId('assets-stock-row')).toHaveCount(0);
+  const holding = page.getByRole('link', { name: /^BBCA · Stockbit/ });
+  await expect(holding).toContainText('10.620.000'); // 1.200 × 8.850
+  await holding.tap();
   await expect(page).toHaveURL(HOLDING);
   await expect(page.getByRole('button', { name: 'Buy', exact: true })).toBeVisible();
 
@@ -35,8 +37,19 @@ test('a stock at one broker opens its holding; at two, one page across them with
   await page.getByTestId('held-at-row').filter({ hasText: 'Ajaib' }).tap();
   await expect(page).toHaveURL(HOLDING);
   await typePrice(page, '9.120');
-  await page.goto('/net-worth/investments');
-  await expect(bbca).toContainText('2 brokers');
+  // Two brokers: one row for the stock, at both holdings together, where the holdings' rows were.
+  await openAssets(page);
+  const bbca = page.getByTestId('assets-stock-row');
+  await expect(bbca).toHaveCount(1);
+  await expect(bbca).toContainText('BBCA');
+  await expect(bbca).toContainText('15 lots · 2 brokers');
+  await expect(bbca).toContainText('13.680.000'); // 1.500 × 9.120
+  await expect(page.getByRole('link', { name: /^BBCA · / })).toHaveCount(0);
+  // The totals are the same holdings added up: the kind, the group and the page all read 13.680.000.
+  await expect(page.getByTestId('assets-kind-total-stock')).toContainText('13.680.000');
+  await expect(page.getByTestId('assets-total')).toContainText('13.680.000');
+  await noSideScroll(page);
+  if (process.env.ASSETS_STOCK_SHOT) await page.screenshot({ path: process.env.ASSETS_STOCK_SHOT, fullPage: true });
   await bbca.tap();
   await expect(page).toHaveURL(ACROSS);
 

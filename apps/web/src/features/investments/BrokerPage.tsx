@@ -12,7 +12,7 @@ import { brokerPageModel, type BrokerHoldingRow } from './security-view';
 
 type Rates = Readonly<Record<string, number>>;
 
-const BACK = { back: 'Investments', backTo: '/net-worth/investments' } as const;
+const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 
 /** The broker's total: in its own currency when every holding shares it, else ≈ in base, else the missing rate named. */
 function Total({ broker, base, rates, left }: { broker: BrokerRow; base: string; rates: Rates; left: boolean }) {

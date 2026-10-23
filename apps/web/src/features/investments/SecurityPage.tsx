@@ -28,7 +28,7 @@ import {
 
 type Rates = Readonly<Record<string, number>>;
 
-const BACK = { back: 'Investments', backTo: '/net-worth/investments' } as const;
+const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 
 /** "Stockbit", or — for a holding kept with no broker, of which there may be several — its own name beside it. */
 const holdingTitle = (h: HoldingLine) => (h.brokerAccountId ? h.brokerName : `${h.brokerName} · ${h.name}`);

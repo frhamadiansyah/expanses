@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAssets } from './drawers';
 import { addHoldingFlow, tokenColour } from './securities';
 import { addMoneyAccount } from './set-aside';
 
@@ -20,13 +21,13 @@ test('every securities screen fits a 390 px phone and is reached by thumb', asyn
   await page.getByRole('button', { name: 'Price', exact: true }).tap();
   await expect(page.getByRole('dialog').getByRole('textbox')).toBeVisible();
   await noSideScroll(page);
-  await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('8.750.000');
+  // One broker: Assets lists the holding itself.
+  await openAssets(page);
+  await expect(page.getByRole('link', { name: /^BBCA/ })).toContainText('8.750.000');
   await noSideScroll(page);
-  // Add a holding is the corner glyph here too.
-  await expect(page.getByRole('link', { name: 'Add a holding' })).toBeVisible();
-  await page.getByTestId('broker-row').filter({ hasText: 'Stockbit' }).tap();
-  await expect(page.getByText('8.750.000').first()).toBeVisible();
+  // The broker's own account lists what it keeps.
+  await page.getByRole('link', { name: /^Stockbit/ }).first().tap();
+  await expect(page.getByTestId('broker-holding').filter({ hasText: 'BBCA' })).toContainText('8.750.000');
   await noSideScroll(page);
 });
 
@@ -40,14 +41,14 @@ test('a dollar stock named by hand and owned before asks the day\u2019s rate on 
   await page.getByRole('button', { name: 'Add holding' }).tap();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
   await noSideScroll(page);
-  await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('stock-row').filter({ hasText: 'AAPL' })).toContainText('1.825,00');
+  await openAssets(page);
+  await expect(page.getByRole('link', { name: /^AAPL/ })).toContainText('1.825,00');
   await noSideScroll(page);
 });
 
 test('the investments screens follow dark mode through the kit’s tokens', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  for (const path of ['/net-worth/investments', '/net-worth/investments/new', '/settings/developer']) {
+  for (const path of ['/net-worth/assets', '/net-worth/investments/new', '/settings/developer']) {
     await page.goto(path);
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
     // The same comparison phone-dark-shell.spec.ts makes: the page ground is the dark token's colour, resolved.
