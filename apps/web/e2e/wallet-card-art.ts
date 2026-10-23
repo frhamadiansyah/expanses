@@ -53,6 +53,10 @@ export async function drawnFaces(page: Page) {
   const tier = page.getByLabel('Card tier');
   await expect(tier).toHaveValue('standard');
   await tier.selectOption('gold');
+  // Back inside the app, as a person would: a navigation straight after the choice could cut the save short. The
+  // raised card wears the new face once the save has landed, and only then is the stack opened afresh.
+  await page.goBack();
+  await expect(faceOf(page, 'Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
   await page.goto('/wallet');
   await expect(faceOf(page, 'Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
   await page.reload();
