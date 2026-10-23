@@ -564,6 +564,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             <SelectRow
               key="held"
               label="Held at"
+              hint="A name only, for the tax report: not linked to any account."
               value={heldAtValue}
               onChange={(e) => {
                 const picked = e.target.value;
