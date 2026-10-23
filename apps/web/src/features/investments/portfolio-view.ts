@@ -222,11 +222,22 @@ export function keptAt(row: StockRow): string {
   return row.holdings.length > 1 ? `${one} · ${row.holdings.length} holdings` : one;
 }
 
-/** "15 lot (1.500 shares) · 2 brokers · +9,0% · Update price" — the stock row's subtitle, phone and desktop alike. */
+/**
+ * Where a stock is held, short, for its row on the phone: "one broker" (the row opens that holding's page) or
+ * "2 brokers" (it opens the stock across them). A holding at no broker keeps its own words — "No broker named", or the
+ * place a fund is held at — since "one broker" would not be true of it.
+ */
+export function heldWhere(row: StockRow): string {
+  if (row.holdings.length > 1) return keptAt(row);
+  const only = row.holdings[0]!;
+  return only.brokerAccountId ? 'one broker' : only.brokerName;
+}
+
+/** "15 lot (1.500 shares) · 2 brokers · +9,0% · Update price" — the stock row's subtitle on the phone. */
 export function stockSubtitle(row: StockRow): string {
   const gain = row.gainBps === null ? null : formatBps(row.gainBps);
   // The Assets page's own words for a price that needs typing again.
-  return [formatLots(row.unitsMicro, row.lotSize ?? 1), keptAt(row), gain, row.stale ? 'Update price' : null].filter(Boolean).join(' · ');
+  return [formatLots(row.unitsMicro, row.lotSize ?? 1), heldWhere(row), gain, row.stale ? 'Update price' : null].filter(Boolean).join(' · ');
 }
 
 /** "2 holdings · USD · 71%" — the currency only when there is one, the share only when there is a whole. */

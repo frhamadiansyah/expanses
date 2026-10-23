@@ -2,7 +2,7 @@ import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, Securi
 import { formatMinor } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { groupAssets } from '../networth/asset-rows';
-import { brokerSubtitle, dayLabel, NO_BROKER, portfolioView, priceChangeLines, putInLine, stockSubtitle } from './portfolio-view';
+import { brokerSubtitle, dayLabel, heldWhere, NO_BROKER, portfolioView, priceChangeLines, putInLine, stockSubtitle } from './portfolio-view';
 
 const value = (accountId: string, currency: string, units: number, valueMinor: number, costMinor: number, stale = false): AssetValueRow =>
   ({ accountId, name: accountId, currency, planGroup: 'invest', subtype: 'investment', mode: 'market', unitsMicro: units * 1_000_000, stale, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
@@ -144,14 +144,19 @@ describe('two holdings of one security with no broker', () => {
     const bbca = portfolioView(twoUnkept).stocks.find((s) => s.title === 'BBCA')!;
     expect(stockSubtitle(bbca)).toBe('15 lot (1.500 shares) · No broker named · 2 holdings · +9,0%');
   });
+  it('say where one of them is not kept, rather than "one broker"', () => {
+    const bbca = portfolioView(twoUnkept).stocks.find((s) => s.title === 'BBCA')!;
+    expect(heldWhere({ ...bbca, holdings: [bbca.holdings[0]!] })).toBe('No broker named');
+  });
 });
 
 describe('the row subtitles', () => {
   const view = portfolioView(withoutFund);
   it('name the shares, lots where the market has them, where they are kept, the gain and a stale price', () => {
     expect(stockSubtitle(view.stocks.find((s) => s.title === 'BBCA')!)).toBe('15 lot (1.500 shares) · 2 brokers · +9,0%');
-    expect(stockSubtitle(view.stocks.find((s) => s.title === 'AAPL')!)).toBe('10 shares · Interactive Brokers · +17,4%');
-    expect(stockSubtitle(view.stocks.find((s) => s.title === 'TLKM')!)).toBe('20 lot (2.000 shares) · Stockbit · −7,4% · Update price');
+    // One broker is counted, not named: the row opens that holding, whose page names it.
+    expect(stockSubtitle(view.stocks.find((s) => s.title === 'AAPL')!)).toBe('10 shares · one broker · +17,4%');
+    expect(stockSubtitle(view.stocks.find((s) => s.title === 'TLKM')!)).toBe('20 lot (2.000 shares) · one broker · −7,4% · Update price');
   });
   it('count a broker’s holdings, its one currency and its share', () => {
     expect(view.brokers.map(brokerSubtitle)).toEqual(['2 holdings · USD · 71%', '2 holdings · IDR · 18%', '2 holdings · IDR · 11%']);

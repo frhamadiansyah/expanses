@@ -16,8 +16,9 @@ test('every securities screen fits a 390 px phone and is reached by thumb', asyn
   await page.getByRole('button', { name: 'Add holding' }).tap();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await noSideScroll(page);
-  await page.getByRole('link', { name: /Price today/ }).tap();
-  await expect(page.getByLabel('Price (IDR)')).toBeVisible();
+  // Held at one broker, the stock is that holding's page: its price is typed from there.
+  await page.getByRole('button', { name: 'Price', exact: true }).tap();
+  await expect(page.getByRole('dialog').getByRole('textbox')).toBeVisible();
   await noSideScroll(page);
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('8.750.000');

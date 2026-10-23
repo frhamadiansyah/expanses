@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { openAsset } from './asset-page';
 import { openSettings } from './accounts';
 import { openDrawers } from './drawers';
-import { routeYahoo } from './listed-prices';
+import { routeYahoo, yahooAnswered } from './listed-prices';
 import { addHoldingFlow } from './securities';
 
 /** A broker's cash account through Add account, with money in it. */
@@ -22,6 +22,7 @@ export async function bbcaAt(page: Page, broker: string) {
   await addHoldingFlow(page, { search: 'BBCA', broker, quantity: '10', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
+  await yahooAnswered(page);
   await openAsset(page, 'BBCA');
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
 }
