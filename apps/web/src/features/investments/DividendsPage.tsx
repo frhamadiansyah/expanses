@@ -4,13 +4,13 @@ import { useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { Hero, InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { ShareBar } from '../networth/ShareBar';
 import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
 import { usePortfolio } from './queries';
 
-const BACK = { back: 'Investments', backTo: '/net-worth/investments' } as const;
+const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 /** How many payers get a row of their own before the rest fold into "others". */
 const NAMED = 4;
 /** The strip's colours, one per named payer, then the rest. Tailwind's scale is the kit's palette. */
@@ -104,7 +104,7 @@ export function DividendsPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Dividends" {...BACK} />
+      <PushedTitle title="Dividends" {...BACK} />
       <ErrorBox error={error ?? trades.error} />
       {portfolio && couponTerms.data && listed.length === 0 && bonds.length === 0 && (
         <Empty>No listed shares or bonds with a coupon yet. Dividends show here once a share with a ticker is held, and coupons once a bond's terms are set.</Empty>
