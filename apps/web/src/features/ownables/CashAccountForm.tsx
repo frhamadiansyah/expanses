@@ -5,7 +5,7 @@ import { openOnce } from './open-once';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { canPayWith } from '../../lib/account-types';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
@@ -320,9 +320,11 @@ export function CashAccountForm({
   // A broker's RDN is one currency at one broker: an account in another currency there is an RDN of its own.
   const canPocket = takesPockets(item) && !locked && !fund;
   const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
-  // Where a typed balance could move from: accounts the owner can spend from, in the same currency, newest name order.
+  // Where a typed balance could move from: money of a kind that can be spent from, in the same currency, by name. The
+  // "For spending" switch is not asked — this is a transfer, and savings kept aside is exactly where a new account's
+  // money may come from.
   const sources = (useAccounts().data ?? [])
-    .filter((a) => !a.archivedAt && a.currency === currency && canPayWith(a))
+    .filter((a) => !a.archivedAt && a.currency === currency && a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype))
     .sort((a, b) => a.name.localeCompare(b.name));
   const source = sources.find((a) => a.id === sourceId);
   // Read once, so the row that asks only when there is something to ask about never throws on half-typed money.

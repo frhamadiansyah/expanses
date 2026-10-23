@@ -145,8 +145,8 @@ export function takeOverBatches(rows: readonly TakeOverRow[], picks: Readonly<Re
   return [...batches].map(([accountId, recordIds]) => ({ accountId, recordIds }));
 }
 
-/** The accounts money can be paid from or into on this event: everyday money and cards, still open. */
+/** The accounts money can be paid from or into on this event: everyday money kept for spending, and cards, still open. */
 export function moneyAccounts(accounts: readonly AccountRow[]): AccountRow[] {
   const spendable = SPENDABLE_SUBTYPES as readonly string[];
-  return accounts.filter((a) => a.archivedAt === null && ((a.kind === 'asset' && spendable.includes(a.subtype)) || (a.kind === 'liability' && a.subtype === 'credit_card')));
+  return accounts.filter((a) => a.archivedAt === null && ((a.kind === 'asset' && spendable.includes(a.subtype) && a.forSpending !== 0) || (a.kind === 'liability' && a.subtype === 'credit_card')));
 }

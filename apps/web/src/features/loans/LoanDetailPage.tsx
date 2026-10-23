@@ -5,7 +5,7 @@ import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Pe
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useSuggestedDraft } from '../../lib/suggested-draft';
@@ -106,10 +106,10 @@ function useRateForPayment(currency: string, onDate: string) {
   };
 }
 
-/** The accounts a loan is paid from: the ones money is spent from. */
+/** The accounts a loan is paid from: the ones money is spent from, and kept for spending. */
 function usePayingAccounts() {
   const accounts = useAccounts().data ?? [];
-  return { accounts, money: moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype)) };
+  return { accounts, money: moneyHolders(accounts).filter(keptForSpending) };
 }
 
 /** A sheet's save: the error it ended in, whether it is under way, and the run itself. */

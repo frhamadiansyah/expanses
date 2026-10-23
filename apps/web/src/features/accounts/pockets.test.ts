@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, keptForSpending, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -259,5 +259,39 @@ describe('the Money tile', () => {
   it('says nothing was converted when every account is in the base currency', () => {
     const rupiahBook = [{ id: 'bca', name: 'BCA', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 }] as AccountRow[];
     expect(moneySummary(rupiahBook, { bca: 5_000_000 }, 'IDR', {})).toEqual({ totalMinor: 5_000_000, missing: [], accounts: 1, currencies: 1, converted: false });
+  });
+});
+
+/**
+ * "For spending" (0086): Wallet's balance counts only the money kept for spending. An account switched off leaves the
+ * figure — with every pocket under it — and nothing else does, so the balance reads exactly what Wallet's cards show.
+ */
+describe('the money kept for spending', () => {
+  const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
+    ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
+  const book = [
+    row('everyday', 'bank'),
+    row('rainy', 'savings', { forSpending: 0 }),
+    row('wise', 'bank', { forSpending: 0 }),
+    // The switch was written onto the pockets; one that somehow still says on is left out all the same — the account decides.
+    row('wise-usd', 'bank', { parentId: 'wise', currency: 'USD', forSpending: 0 }),
+    row('wise-idr', 'bank', { parentId: 'wise', forSpending: 1 }),
+    row('card', 'credit_card', { kind: 'liability', forSpending: 1 }),
+  ];
+  const balances = { everyday: 3_000_000, rainy: 50_000_000, 'wise-usd': 100_00, 'wise-idr': 2_000_000, card: -400_000 };
+
+  it('leaves out an account switched off and every pocket under one, and nothing else', () => {
+    expect(keptForSpending(book).map((a) => a.id)).toEqual(['everyday', 'card']);
+  });
+
+  it('is what the spending balance adds up: the money switched off is not counted', () => {
+    expect(moneySummary(keptForSpending(book), balances, 'IDR', { USD: 16_250 }, SPENDABLE_KINDS)).toEqual({ totalMinor: 3_000_000, missing: [], accounts: 1, currencies: 1, converted: false });
+    // Whereas the whole book — what Net worth reads — still counts every account and pocket.
+    expect(moneySummary(book, balances, 'IDR', { USD: 16_250 }, SPENDABLE_KINDS).totalMinor).toBe(3_000_000 + 50_000_000 + 100 * 16_250 + 2_000_000);
+  });
+
+  it('reads a row with no switch at all as on, as every account was before the switch existed', () => {
+    const old = [{ id: 'bca', name: 'BCA', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 }] as AccountRow[];
+    expect(keptForSpending(old)).toHaveLength(1);
   });
 });

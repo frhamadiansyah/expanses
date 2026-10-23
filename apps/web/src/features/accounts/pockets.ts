@@ -107,6 +107,18 @@ const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
  */
 export const SPENDABLE_KINDS = new Set<string>(SPENDABLE_SUBTYPES);
 
+/**
+ * The accounts Wallet reads: `accounts` less every account switched off "For spending" (0086), and the pockets under
+ * one that is. The account decides for its pockets — the switch is written onto them, but a pocket is left out here
+ * by its parent's answer rather than its own, so a stack that draws one card per account never counts a pocket whose
+ * card it does not draw. Everything that is not a money account passes through untouched: a card, a loan, a category
+ * are not what the switch is about, and the callers that want them still find them.
+ */
+export function keptForSpending(accounts: readonly AccountRow[]): AccountRow[] {
+  const off = new Set(accounts.filter((a) => a.kind === 'asset' && a.parentId === null && a.forSpending === 0).map((a) => a.id));
+  return accounts.filter((a) => !off.has(a.id) && (a.parentId === null || !off.has(a.parentId)));
+}
+
 /** One side of the arithmetic below: a figure in the base currency, or the rate it is missing. */
 interface BaseTotal {
   totalMinor: number | null;

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
@@ -145,8 +145,8 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const currency = card.currency ?? ws.baseCurrency;
-  // Only money that can pay a bill: bank, savings and cash, not holdings such as gold or shares.
-  const payers = moneyHolders(accounts).filter((a) => SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency);
+  // Only money that can pay a bill and is kept for spending: not holdings such as gold or shares, not savings put aside.
+  const payers = moneyHolders(accounts).filter((a) => keptForSpending(a) && a.currency === currency);
   const [fromId, setFromId] = useState(payers[0]?.id ?? '');
   const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
   const [paidOn, setPaidOn] = useState(today);

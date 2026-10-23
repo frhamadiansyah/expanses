@@ -87,7 +87,7 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
     if (!first) throw new AccountError(`${parent.name} has no pockets. Open a new account with pockets instead.`);
     const inst = (await getAssetProfileTx(tx, ws, first.id))?.coretaxFields.inst;
     const bank = inst?.trim() ? inst : undefined;
-    return openCashAccountTx(tx, ws, {
+    const pocket = await openCashAccountTx(tx, ws, {
       item: parent.subtype as MoneyAccountSubtype,
       name: pocketName(parent.name, input.currency),
       currency: input.currency,
@@ -99,6 +99,9 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       // After every pocket it has, archived ones included, so a re-added currency does not jump the queue.
       sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
+    // A pocket follows its account's "For spending": one kept as savings takes no pocket that is spent from.
+    if (parent.forSpending === 0) await tx.update(accounts).set({ forSpending: 0 }).where(eq(accounts.id, pocket.id));
+    return { ...pocket, forSpending: parent.forSpending };
   });
 }
 
@@ -147,6 +150,8 @@ export async function makeMultiCurrency(
       icon: account.icon,
       sortOrder: account.sortOrder,
     });
+    // The account's "For spending" is the parent's now, as it is the parent that Wallet and the switch read.
+    if (account.forSpending === 0) await tx.update(accounts).set({ forSpending: 0 }).where(eq(accounts.id, parent.id));
     // Its shared purchases name it by its old name; they go out again as the pocket's.
     await captureMoneyAccountRenamingTx(tx, account.id);
     await withCapture(tx, { entity: 'category', id: account.id }, () =>

@@ -3,7 +3,7 @@ import { editLoanEntry, type LoanEntry } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { WALLET_SUBTYPES } from '../../lib/account-types';
+import { canPayWith, WALLET_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratesForSave } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
@@ -37,7 +37,8 @@ export function LentEntrySheet({
   const today = isoDate();
   // The loan is kept in its own currency, so only accounts in that currency can carry it.
   const money = loanMoneyAccounts(
-    moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.currency === currency),
+    // Lent out of what is kept for spending; borrowed into anywhere money can be held.
+    moneyHolders(accounts).filter((account) => (direction === 'lent' ? canPayWith(account) : WALLET_SUBTYPES.includes(account.subtype)) && account.currency === currency),
     direction,
   );
   const [amount, setAmount] = useState(() => minorToMajorString(entry.amountMinor, currency));

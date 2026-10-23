@@ -3,7 +3,7 @@ import { type MonthlyBill, recordBillPayments, skipBill } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { WALLET_SUBTYPES } from '../../lib/account-types';
+import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, Money, RowGroup, SelectRow } from '../../ui';
 import { spendingDoor } from '../goals/set-aside-question';
@@ -39,7 +39,7 @@ export function PaySheet({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const wallets = moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
+  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account));
   const currencyOf = (id: string) => accounts.find((account) => account.id === id)?.currency ?? ws.baseCurrency;
 
   const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, currencyOf(bill.moneyAccountId))));

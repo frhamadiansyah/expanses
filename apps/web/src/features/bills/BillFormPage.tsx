@@ -4,7 +4,7 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { WALLET_SUBTYPES } from '../../lib/account-types';
+import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
@@ -45,7 +45,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
 
   // A bill is recorded into the open book, so it picks from that book's categories.
   const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category' && inOpenBook(account));
-  const wallets = moneyHolders(accounts.data ?? []).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
+  // What a bill is paid with: money kept for spending, or a card — the same answer every "Paid with" gives.
+  const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account));
 
   // Filled once the bill being edited has arrived; not kept in sync after, so typing is never clobbered.
   useEffect(() => {

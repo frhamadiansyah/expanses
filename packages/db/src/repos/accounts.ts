@@ -243,6 +243,29 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
   }
 }
 
+/**
+ * Whether a money account is for spending (0086): on, it is offered under "Paid with" and every other pay-from list,
+ * counted in Wallet's balance and a card in Wallet; off, it is kept as savings — still on Assets, still a transfer's
+ * From or To, but asked for nowhere money is paid out of. Only a spendable kind of money has the switch: a deposit, a
+ * broker's cash, a card or a thing owned cannot be paid from whatever it says.
+ *
+ * Set on the account and written onto every pocket under it, archived ones too: a "Paid with" list offers the pockets
+ * rather than the parent, so the answer has to be on the row it offers. A pocket of its own is refused — its account
+ * decides for all of them, or the parent's card in Wallet would count a pocket its own list leaves out.
+ */
+export async function setAccountForSpending(database: Database, ws: WorkspaceContext, id: string, on: boolean): Promise<void> {
+  await database.transaction(async (tx) => {
+    const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new AccountError('Account not found');
+    if (account.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(account.subtype)) throw new AccountError(`${account.name} is not money that can be spent from`);
+    if (account.parentId !== null) throw new AccountError(`${account.name} is a pocket: set this on its account`);
+    const flag = on ? 1 : 0;
+    await tx.update(accounts).set({ forSpending: flag }).where(eq(accounts.id, id));
+    await tx.update(accounts).set({ forSpending: flag }).where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+    await writeAudit(tx, ws, 'for_spending', id, { forSpending: on });
+  });
+}
+
 export async function renameAccount(database: Database, ws: WorkspaceContext, id: string, name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new AccountError('Name is required');
