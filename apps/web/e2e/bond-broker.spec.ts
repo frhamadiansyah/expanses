@@ -18,7 +18,7 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
 
   // Held at, not Broker: banks sell bonds too.
   await expect(page.getByLabel('Broker', { exact: true })).toHaveCount(0);
-  const held = page.getByLabel('Held at', { exact: true });
+  const held = page.getByLabel('Institution', { exact: true });
   // A bank account that names no bank is not offered by its own name: Held at is a name, never the account.
   await expect(held.locator('option', { hasText: 'BCA Tahapan' })).toHaveCount(0);
   await held.selectOption({ label: 'Another…' });

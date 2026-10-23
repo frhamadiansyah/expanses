@@ -555,7 +555,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           kind === 'fund' || kind === 'bond' ? (
             <SelectRow
               key="held"
-              label="Held at"
+              label="Institution"
               value={heldAtValue}
               onChange={(e) => {
                 const picked = e.target.value;
@@ -595,7 +595,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             />
           ) : null,
           // The day the value was last set: the value itself is the hero's figure.
-          byMoney && lastValued ? <ReadOnlyRow key="valued" label="Value updated" value={dayLabel(lastValued)} /> : null,
+          byMoney && lastValued ? <ReadOnlyRow key="valued" label="Last updated" value={dayLabel(lastValued)} /> : null,
           kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
             // share is always kept at a broker: it is offered only to a share recorded before one was named.

@@ -85,7 +85,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   // Where it is held, when that is an account: the tax report's Nama institusi unless another name is typed.
   const link = (links.data ?? []).find((row) => row.accountId === accountId);
   const heldAt = link?.brokerAccountId ? (accounts.data ?? []).find((row) => row.id === link.brokerAccountId) : undefined;
-  const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'Held at';
+  const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'the Institution on its page';
   const list = () => navigate(money ? { to: '/accounts' } : { to: '/net-worth/assets' });
 
   async function leaveBy(ask: string, act: () => Promise<void>) {
