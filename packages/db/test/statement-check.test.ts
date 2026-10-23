@@ -1,6 +1,7 @@
 import { type CaptureLine, expenseLines, type StatementPeriod, transferLines } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  addCard,
   type CheckDecisions,
   type CheckDraftRow,
   cardStatement,
@@ -167,6 +168,23 @@ describe('recording a check', () => {
     expect(links.filter((l) => l.kind === 'recorded')).toHaveLength(3);
     expect(links.find((l) => l.kind === 'payments-untracked')?.transactionId).toBe(adjustment[0]!.id);
     expect(await listStatementChecks(h.database, h.ws, h.card.id)).toMatchObject([{ id: result.checkId, periodStart: MAY.start, periodEnd: MAY.end, closingMinor: 200_000, previousMinor: 0, status: 'reconciled' }]);
+  });
+
+  it('names the card chosen on each purchase and refund it records, never on a payment, and refuses a card of another account', async () => {
+    const h = await household();
+    const primary = await addCard(h.database, h.ws, { accountId: h.card.id, last4: '4012', isPrimary: true });
+    const supplementary = await addCard(h.database, h.ws, { accountId: h.card.id, last4: '7720' });
+    const elsewhere = await addCard(h.database, h.ws, { accountId: h.other.id, last4: '3391' });
+    const prepared = await h.prepare([statement('200,000')]);
+    const rows = categorised(fillSameMerchant(prepared.rows, 0, h.groceries), h.books);
+    await expect(recordStatementCheck(h.database, h.ws, { ...prepared, rows }, { ...NO_DECISIONS, cardId: elsewhere })).rejects.toMatchObject({ code: 'NO_SUCH_CARD' });
+    expect(await h.posted()).toBe(0);
+
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows }, { ...NO_DECISIONS, cardId: supplementary });
+    const lines = (await cardStatement(h.database, h.ws, h.card.id, { start: MAY.start, end: MAY.end }, TODAY)).lines;
+    expect(lines.filter((l) => l.spending).map((l) => l.cardId)).toEqual([supplementary, supplementary, supplementary]);
+    expect(lines.filter((l) => !l.spending).every((l) => l.cardId === null)).toBe(true);
+    expect(primary).not.toBe(supplementary);
   });
 
   it('records a missing foreign purchase and its foreign refund with the original currency and amount the detail line gives', async () => {
