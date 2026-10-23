@@ -3,7 +3,7 @@ import { goldPriceChoiceOf, recordWorldPrice } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { worldGoldPerOunce } from '../../lib/fx-client';
+import { worldGoldPerOunce, worldGoldSeries } from '../../lib/fx-client';
 import { useInvalidateAll } from '../../lib/queries';
 
 /** Where a gold holding takes its price from; null for anything that is not gold counted in grams. */
@@ -13,6 +13,22 @@ export function useGoldPriceChoice(accountId: string, gold: boolean) {
     queryKey: ['gold-price-choice', ws.workspaceId, accountId],
     queryFn: () => goldPriceChoiceOf(database, ws, accountId),
     enabled: gold,
+  });
+}
+
+/** How long a fetched stretch of the world price is held before it is asked for again: it moves once a day. */
+const SERIES_FRESH_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * The world gold price per gram from `from` to `to`, for gold's Chart sheet. Kept in the query cache per currency
+ * and range, so switching between 1M and 5Y and back asks the service once each; offline it fails and the sheet says so.
+ */
+export function useWorldGoldSeries(currency: string, from: string, to: string) {
+  return useQuery({
+    queryKey: ['world-gold-series', currency, from, to],
+    queryFn: () => worldGoldSeries(currency, from, to),
+    staleTime: SERIES_FRESH_MS,
+    gcTime: SERIES_FRESH_MS,
   });
 }
 

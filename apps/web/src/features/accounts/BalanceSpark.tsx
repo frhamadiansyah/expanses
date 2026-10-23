@@ -114,7 +114,7 @@ export function BalanceSpark({
 }
 
 /** The width an element is laid out at, kept current as it changes; null until it has been measured. */
-function useShownWidth(element: HTMLElement | null): number | null {
+export function useShownWidth(element: HTMLElement | null): number | null {
   const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
     if (!element) return;
