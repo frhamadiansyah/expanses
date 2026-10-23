@@ -35,7 +35,7 @@ describe('points programmes in a shared workspace', () => {
     const krisflyer = await createProgramme(database, ws, { name: 'KrisFlyer', unit: 'miles' });
     await setProgramExpiry(database, ws, krisflyer.id, 'months_from_earn', 36);
     await updateProgramme(database, ws, krisflyer.id, { name: 'Singapore KrisFlyer', unit: 'miles' });
-    const conversionId = await recordConversion(database, ws, { fromProgrammeId: program.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: '2026-09-13' });
+    const { conversionId } = await recordConversion(database, ws, { fromProgrammeId: program.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: '2026-09-13' });
     await deleteConversion(database, ws, conversionId);
     const joined = await createProgramme(database, ws, { name: 'Mandiri Rewards', unit: 'points' });
     await setEarnsInto(database, ws, program.id, joined.id);

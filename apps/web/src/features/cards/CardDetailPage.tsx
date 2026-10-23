@@ -1,4 +1,4 @@
-import { CURRENCIES, type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
+import { type Balance, CURRENCIES, type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   type AccountRow,
@@ -14,9 +14,9 @@ import {
   type RewardProgramRow,
   recordCycleActual,
   backfillCycles,
-  recordPointSnapshot,
-  recordRedemption,
+  listProgrammes,
   saveCardTerms,
+  setEarnsInto,
   saveRedemptionOption,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -44,6 +44,7 @@ import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardHero, type CardTab, CardTabs } from './CardHero';
 import { purchasesOf } from './hint-text';
 import { TransferEstimates } from './TransferEstimates';
+import { balanceText } from './programme-text';
 import { refreshLedger, useCardLedger } from './useCardLedger';
 import { BookOpen, Plus, Trash2 } from 'lucide-react';
 import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
@@ -287,6 +288,56 @@ function ActualForm({
   );
 }
 
+/**
+ * Which programme the card's points go into, and that programme's balance, opening its page. Two cards of one bank are
+ * joined by choosing the bank's one programme for both; a co-brand card earns straight into the airline's or hotel's.
+ */
+function EarnsInto({ cp, balance, run }: { cp: CardPoints; balance: Balance; run: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const { database, ws } = useApp();
+  const programmes = useQuery({ queryKey: ['programmes-list', ws.workspaceId], queryFn: () => listProgrammes(database, ws) });
+  const programme = cp.programme!;
+  const choices = [programme, ...(programmes.data ?? []).filter((other) => other.id !== programme.id)];
+  return (
+    <InsetGroup
+      header="Earns into"
+      footer="Posted points come from figures typed in. Estimated points are worked out from this card's rules, and become posted once what the bank actually gave is recorded."
+    >
+      <SelectRow
+        label="Programme"
+        value={programme.id}
+        onChange={(event) => {
+          const target = choices.find((choice) => choice.id === event.target.value);
+          if (!target || target.id === programme.id) return;
+          if (!window.confirm(`${cp.card.name} will earn into ${target.name}, and the points it has earned move there too.`)) return;
+          void run(() => setEarnsInto(database, ws, cp.program!.id, target.id));
+        }}
+      >
+        {choices.map((choice) => (
+          <option key={choice.id} value={choice.id}>
+            {choice.name}
+          </option>
+        ))}
+      </SelectRow>
+      <InsetRow
+        title={programme.name}
+        subtitle={
+          <span data-testid="points-provenance">
+            {formatPoints(balance.postedTotal)} posted · {formatPoints(balance.projectedTotal)} estimated
+          </span>
+        }
+        value={
+          <span className="tabular" data-testid="points-balance">
+            {balanceText(balance.total, programme.unit)}
+          </span>
+        }
+        valueTone="ink"
+        to="/cards/points/$programmeId"
+        params={{ programmeId: programme.id }}
+      />
+    </InsetGroup>
+  );
+}
+
 export function CardDetailPage() {
   const { database, ws } = useApp();
   const { cardId } = route.useParams();
@@ -307,13 +358,6 @@ export function CardDetailPage() {
   // Before the early returns: the ledger fills the cycles this page shows, then reports the balance.
   const ledger = useCardLedger(data.data?.program?.id, [data.data?.current?.cycle ?? null, data.data?.previous?.cycle ?? null], today);
   const { error, run } = useAction();
-  const [observedBalance, setObservedBalance] = useState('');
-  const [anchorEarnedOn, setAnchorEarnedOn] = useState('');
-  const [spendPoints, setSpendPoints] = useState('');
-  const [spendNote, setSpendNote] = useState('');
-  const [spendValue, setSpendValue] = useState('');
-  const [spendKind, setSpendKind] = useState<'redeem' | 'transfer'>('redeem');
-  const [spendChoice, setSpendChoice] = useState('');
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
   const [editingBonus, setEditingBonus] = useState<CycleBonus | 'new' | null>(null);
   const [catalogId, setCatalogId] = useState<string | null>(null);
@@ -380,11 +424,6 @@ export function CardDetailPage() {
   const hasTerms = !!cp.terms;
   const step = !isDebit && !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
   const canUseCatalog = !cp.program || cp.catalog.status === null;
-  // What points can go to on this card: its transfer partners and its redemption options, catalogue or typed.
-  const spendChoices: { key: string; label: string; kind: 'redeem' | 'transfer' }[] = [
-    ...cp.transferPartners.map((partner) => ({ key: `partner:${partner.id}`, label: partner.program, kind: 'transfer' as const })),
-    ...cp.redemptions.map((option) => ({ key: `option:${option.id}`, label: option.name, kind: option.type === 'miles_transfer' ? ('transfer' as const) : ('redeem' as const) })),
-  ].filter((choice, index, all) => all.findIndex((other) => other.label === choice.label) === index);
   // A card with no statement day opens on its terms; any other card opens on its statement, since rewards are optional.
   const active: CardTab = chosenTab ?? (step === 1 ? 'card' : isDebit ? 'points' : 'statement');
   const on = (tab: CardTab) => active === tab;
@@ -613,136 +652,17 @@ export function CardDetailPage() {
           )}
           {on('points') && cp.current && cp.rules.length > 0 && <PurchaseList cp={cp} run={run} currency={currency} />}
           {on('points') && cp.previous && cp.rules.length > 0 && <StatementCheck cp={cp} accounts={all} unit={cp.program.unit} currency={currency} today={today} />}
-          {on('points') && ledger.data && (
+          {/*
+           * The balance is the programme's the card earns into, not the card's: it is redeemed, converted and set to
+           * the issuer's figure on the programme's own page. What stays here is which programme that is.
+           */}
+          {on('points') && ledger.data && cp.programme && (
             <>
-              <InsetGroup
-                header="Points balance"
-                footer="Posted points come from figures typed in. Estimated points are worked out from these rules, and become posted once what the bank actually gave is recorded."
-              >
-                <InsetRow
-                  title={
-                    <span className="tabular text-[22px] leading-[28px] font-extrabold tracking-[-0.02em]" data-testid="points-balance">
-                      {formatPoints(ledger.data.balance.total)} {cp.program.unit}
-                    </span>
-                  }
-                  subtitle={
-                    <span data-testid="points-provenance">
-                      {formatPoints(ledger.data.balance.postedTotal)} posted · {formatPoints(ledger.data.balance.projectedTotal)} estimated
-                    </span>
-                  }
-                />
-              </InsetGroup>
-              <InsetGroup footer="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — type the balance the issuer shows instead.">
+              <EarnsInto cp={cp} balance={ledger.data.balance} run={run} />
+              <InsetGroup footer="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — set the programme's balance to the one the issuer shows instead.">
                 <ActionRow label="Catch up this card" onClick={() => void run(() => backfillCycles(database, ws, cp.program!.id, 24, today))} />
               </InsetGroup>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void run(async () => {
-                    await recordPointSnapshot(database, ws, {
-                      programId: cp.program!.id,
-                      balance: Number(observedBalance.trim().replace(',', '.')),
-                      observedOn: today,
-                      ...(anchorEarnedOn.trim() === '' ? {} : { earnedOn: anchorEarnedOn }),
-                    });
-                    setObservedBalance('');
-                    setAnchorEarnedOn('');
-                  });
-                }}
-              >
-                <InsetGroup header="The issuer's balance">
-                  <TextRow label="Balance in the app" value={observedBalance} onChange={(event) => setObservedBalance(event.target.value)} inputMode="decimal" required />
-                  <TextRow
-                    label="Earned around"
-                    hint="Roughly when those points were earned, which decides when they expire. Empty counts them as earned today."
-                    type="date"
-                    value={anchorEarnedOn}
-                    onChange={(event) => setAnchorEarnedOn(event.target.value)}
-                  />
-                  <SubmitRow label="Anchor balance" />
-                </InsetGroup>
-              </form>
             </>
-          )}
-          {on('points') && ledger.data && cp.rules.length > 0 && (
-            <div id="spend-points" className="scroll-mt-4">
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void run(async () => {
-                    await recordRedemption(database, ws, {
-                      programId: cp.program!.id,
-                      kind: spendKind,
-                      points: Number(spendPoints.trim().replace(',', '.')),
-                      occurredOn: today,
-                      note: spendNote.trim() || null,
-                      valueMinor: spendValue.trim() === '' ? null : parseMajor(spendValue, currency),
-                    });
-                    setSpendPoints('');
-                    setSpendNote('');
-                    setSpendValue('');
-                    setSpendChoice('');
-                  });
-                }}
-              >
-                <ColumnGroup
-                  header="Spend points"
-                  footer="Taken from the points that expire soonest, so none are lost that could have been used."
-                  columns={[
-                    [
-                      <TextRow label={`${cp.program.unit === 'miles' ? 'Miles' : 'Points'} spent`} value={spendPoints} onChange={(event) => setSpendPoints(event.target.value)} inputMode="decimal" required />,
-                      spendChoices.length > 0 && (
-                        <SelectRow
-                          label="What for"
-                          value={spendChoice}
-                          onChange={(event) => {
-                            const choice = spendChoices.find((option) => option.key === event.target.value);
-                            setSpendChoice(event.target.value);
-                            // A partner means the points moved to an airline or hotel; anything else was spent here.
-                            if (choice) setSpendKind(choice.kind);
-                            setSpendNote(choice ? choice.label : '');
-                          }}
-                        >
-                          <option value="">Choose…</option>
-                          {spendChoices.some((option) => option.kind === 'transfer') && (
-                            <optgroup label="Move to a partner">
-                              {spendChoices.filter((option) => option.kind === 'transfer').map((option) => (
-                                <option key={option.key} value={option.key}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {spendChoices.some((option) => option.kind === 'redeem') && (
-                            <optgroup label="Redeem">
-                              {spendChoices.filter((option) => option.kind === 'redeem').map((option) => (
-                                <option key={option.key} value={option.key}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          <option value="other">Something else…</option>
-                        </SelectRow>
-                      ),
-                      (spendChoices.length === 0 || spendChoice === 'other') && (
-                        <TextRow label={spendChoices.length === 0 ? 'What for' : 'Describe it'} value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
-                      ),
-                    ],
-                    [
-                      <TextRow label={`What it fetched (${currency})`} hint="Leave empty if it had no cash value." value={spendValue} onChange={(event) => setSpendValue(event.target.value)} inputMode="decimal" />,
-                      (spendChoices.length === 0 || spendChoice === 'other') && (
-                        <SelectRow label="Kind" value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
-                          <option value="redeem">Redeemed</option>
-                          <option value="transfer">Moved to a partner</option>
-                        </SelectRow>
-                      ),
-                      <SubmitRow label="Spend points" />,
-                    ],
-                  ]}
-                />
-              </form>
-            </div>
           )}
 
           {on('points') && ledger.data && (

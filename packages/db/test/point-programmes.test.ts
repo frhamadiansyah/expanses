@@ -323,7 +323,7 @@ describe('converting points into another programme', () => {
     expect(estimate).toMatchObject({ units: 6_660, fullRatePoints: 9_990, unconvertedPoints: 10 });
     expect(convertDetail(2_970, partner!).units).toBe(0);
 
-    const conversionId = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: estimate.units, occurredOn: TODAY });
+    const { conversionId } = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: estimate.units, occurredOn: TODAY });
 
     expect(await total(database, ws, livin.id)).toBe(15_000);
     expect(await total(database, ws, krisflyer.id)).toBe(6_660);
@@ -340,6 +340,21 @@ describe('converting points into another programme', () => {
 
     expect(await total(database, ws, livin.id)).toBe(25_000);
     expect(await listPointEntries(database, ws, krisflyer.id)).toEqual([]);
+  });
+
+  it('makes a partner programme converted into for the first time, in the same step', async () => {
+    const { database, ws, livin } = await livinPoin();
+
+    const { toProgrammeId } = await recordConversion(database, ws, {
+      fromProgrammeId: livin.id, newProgramme: { name: 'Asia Miles', unit: 'miles' }, points: 3_000, received: 1_000, occurredOn: TODAY,
+    });
+
+    expect(await getProgramme(database, ws, toProgrammeId)).toMatchObject({ name: 'Asia Miles', unit: 'miles' });
+    expect(await total(database, ws, toProgrammeId)).toBe(1_000);
+    expect(await total(database, ws, livin.id)).toBe(22_000);
+    // One that cannot be covered leaves no empty programme behind.
+    await expect(recordConversion(database, ws, { fromProgrammeId: livin.id, newProgramme: { name: 'Bonvoy', unit: 'points' }, points: 90_000, received: 1, occurredOn: TODAY })).rejects.toThrow(PointsError);
+    expect((await listProgrammes(database, ws)).map((p) => p.name)).not.toContain('Bonvoy');
   });
 
   it('refuses to convert into the same programme, or for nothing in return', async () => {
@@ -370,7 +385,7 @@ describe('converting points into another programme', () => {
 
   it('is removed on both sides at once', async () => {
     const { database, ws, livin, krisflyer } = await livinPoin();
-    const conversionId = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: TODAY });
+    const { conversionId } = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: TODAY });
 
     await deleteConversion(database, ws, conversionId);
 
@@ -381,7 +396,7 @@ describe('converting points into another programme', () => {
 
   it('cannot be removed once what arrived has been spent', async () => {
     const { database, ws, livin, krisflyer } = await livinPoin();
-    const conversionId = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: TODAY });
+    const { conversionId } = await recordConversion(database, ws, { fromProgrammeId: livin.id, toProgrammeId: krisflyer.id, points: 10_000, received: 6_660, occurredOn: TODAY });
     await recordRedemption(database, ws, { programId: krisflyer.id, kind: 'redeem', points: 5_000, occurredOn: TODAY, note: 'Award seat', valueMinor: null });
 
     await expect(deleteConversion(database, ws, conversionId)).rejects.toThrow(PointsError);

@@ -1,12 +1,12 @@
-import { type Balance, balanceOf, consumeFifo, cycleFor, type ExpiryPolicy, expiresOn as expiryDateFor, LedgerError, uuidv7 } from '@expanses/core';
+import { type Balance, balanceOf, consumeFifo, cycleFor, type ExpiryPolicy, expiresOn as expiryDateFor, LedgerError, type TransferPartner, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardTerms, earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
 import { backfillCycles, expireDueEntries, listPointEntries } from './point-ledger';
-import { findProgramme, type ProgrammeRow } from './programme-link';
-import { PointsError } from './points';
+import { findProgramme, programmeIdOf, type ProgrammeRow } from './programme-link';
+import { listTransferPartners, PointsError } from './points';
 
 /*
  * Points programmes (0085): a balance of its own — a bank's programme, an airline's, a hotel's — that cards earn into
@@ -84,6 +84,25 @@ export async function programmeEarners(database: Database | { db: Db }, ws: Work
   const out = new Map<string, ProgrammeEarner[]>();
   for (const row of rows) {
     out.set(row.programmeId, [...(out.get(row.programmeId) ?? []), { programId: row.programId, cardAccountId: row.cardAccountId, cardName: row.cardName }]);
+  }
+  return out;
+}
+
+/** The programme a card's reward program earns into. */
+export async function programmeOfCard(database: Database, ws: WorkspaceContext, programId: string): Promise<ProgrammeRow | undefined> {
+  return findProgramme(database.db, ws, await programmeIdOf(database.db, ws, programId));
+}
+
+/**
+ * Where a programme's points can be converted to, and at what ratio: the transfer partners of the cards earning into
+ * it, each partner once (the first card's terms, when two cards list the same one).
+ */
+export async function programmePartners(database: Database, ws: WorkspaceContext, programmeId: string): Promise<TransferPartner[]> {
+  const out: TransferPartner[] = [];
+  for (const earner of (await programmeEarners(database, ws)).get(programmeId) ?? []) {
+    for (const partner of await listTransferPartners(database, ws, earner.programId)) {
+      if (!out.some((seen) => seen.program.trim().toLowerCase() === partner.program.trim().toLowerCase())) out.push(partner);
+    }
   }
   return out;
 }
@@ -203,7 +222,10 @@ export async function setEarnsInto(database: Database, ws: WorkspaceContext, pro
 
 export interface ConversionInput {
   fromProgrammeId: string;
-  toProgrammeId: string;
+  /** The programme converted into. Give this or `newProgramme`. */
+  toProgrammeId?: string;
+  /** A programme that does not exist yet — a partner converted into for the first time — made in the same step. */
+  newProgramme?: ProgrammeInput;
   /** Points that left the programme converted from. */
   points: number;
   /** What actually arrived in the other programme, in its own unit. */
@@ -211,22 +233,29 @@ export interface ConversionInput {
   occurredOn: string;
 }
 
+export interface ConversionResult {
+  conversionId: string;
+  toProgrammeId: string;
+}
+
 /**
  * Converts points from one programme into another, in one step: the points come off the source the way any spending
  * does — from the batches that die soonest, one entry per batch — and what arrived lands in the target as a batch of
  * its own, dying under the target's policy. Both sides carry one conversion id, so removing the conversion removes
- * both and neither balance is left half-moved.
+ * both and neither balance is left half-moved. A target that does not exist yet is made in the same transaction, so a
+ * conversion that fails leaves no empty programme behind.
  *
  * What arrived is taken as typed rather than worked out from the ratio here: the ratio is only the estimate the sheet
  * starts from, and the figure that counts is the one the airline's or hotel's app shows.
  */
-export async function recordConversion(database: Database, ws: WorkspaceContext, input: ConversionInput): Promise<string> {
+export async function recordConversion(database: Database, ws: WorkspaceContext, input: ConversionInput): Promise<ConversionResult> {
+  if ((input.toProgrammeId === undefined) === (input.newProgramme === undefined)) throw new PointsError('Choose the programme the points went to');
   if (input.fromProgrammeId === input.toProgrammeId) throw new PointsError('Points convert into another programme, not the same one');
   if (!Number.isFinite(input.points) || input.points <= 0) throw new PointsError('Convert an amount above zero');
   if (!Number.isFinite(input.received) || input.received <= 0) throw new PointsError('Say what arrived in the other programme');
 
   const from = await requireProgramme(database.db, ws, input.fromProgrammeId);
-  const to = await requireProgramme(database.db, ws, input.toProgrammeId);
+  const existing = input.toProgrammeId === undefined ? null : await requireProgramme(database.db, ws, input.toProgrammeId);
   let taken: { batchId: string; quantity: number }[];
   try {
     taken = consumeFifo(await listPointEntries(database, ws, from.id), input.points, input.occurredOn);
@@ -237,7 +266,8 @@ export async function recordConversion(database: Database, ws: WorkspaceContext,
   const conversionId = uuidv7();
   const now = new Date().toISOString();
   const common = { workspaceId: ws.workspaceId, transactionId: null, kind: 'transfer' as const, occurredOn: input.occurredOn, status: 'posted' as const, source: 'manual' as const, valueMinor: null, earnedById: null, conversionId, createdAt: now };
-  await database.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
+    const to = existing ?? (await createProgrammeTx(tx, ws, input.newProgramme!));
     await tx.insert(pointEntries).values([
       ...taken.map((batch) => ({ ...common, id: uuidv7(), programId: from.id, quantity: -batch.quantity, batchId: batch.batchId, expiresOn: null, note: `To ${to.name}` })),
       {
@@ -251,8 +281,8 @@ export async function recordConversion(database: Database, ws: WorkspaceContext,
         note: `From ${from.name}`,
       },
     ]);
+    return { conversionId, toProgrammeId: to.id };
   });
-  return conversionId;
 }
 
 /**
@@ -326,6 +356,8 @@ export interface ProgrammeHistoryRow {
   estimated: boolean;
   /** The card that earned it, the programme on the other side of a conversion, or the note typed with it. */
   label: string | null;
+  /** The card's reward program, on a card's earning. */
+  earnedById: string | null;
   conversionId: string | null;
   /** The other side of a conversion: what left the source, or what arrived in the target. */
   counterpart: { programmeName: string; quantity: number; unit: ProgrammeUnit } | null;
@@ -381,16 +413,16 @@ export async function programmeHistory(database: Database, ws: WorkspaceContext,
       const counterpart = other.length
         ? { programmeName: other[0]!.programmeName, unit: other[0]!.unit, quantity: other.reduce((total, side) => total + side.quantity, 0) }
         : null;
-      add(`c:${entry.conversionId}`, { kind: entry.quantity < 0 ? 'convert_out' : 'convert_in', on: entry.occurredOn, label: counterpart?.programmeName ?? null, conversionId: entry.conversionId, counterpart }, entry);
+      add(`c:${entry.conversionId}`, { kind: entry.quantity < 0 ? 'convert_out' : 'convert_in', on: entry.occurredOn, label: counterpart?.programmeName ?? null, earnedById: null, conversionId: entry.conversionId, counterpart }, entry);
     } else if (entry.kind === 'earn') {
       const card = entry.earnedById ? cardOf.get(entry.earnedById) : undefined;
       const cycle = card ? cycleFor(entry.occurredOn, card.cycleAnchor, card.statementDay ?? 1) : { start: entry.occurredOn, end: entry.occurredOn };
-      add(`e:${entry.earnedById ?? '-'}:${cycle.start}`, { kind: 'earn', on: cycle.end, label: card?.cardName ?? null, conversionId: null, counterpart: null }, entry);
+      add(`e:${entry.earnedById ?? '-'}:${cycle.start}`, { kind: 'earn', on: cycle.end, label: card?.cardName ?? null, earnedById: entry.earnedById, conversionId: null, counterpart: null }, entry);
     } else if (entry.kind === 'expire') {
-      add(`x:${entry.occurredOn}`, { kind: 'expire', on: entry.occurredOn, label: null, conversionId: null, counterpart: null }, entry);
+      add(`x:${entry.occurredOn}`, { kind: 'expire', on: entry.occurredOn, label: null, earnedById: null, conversionId: null, counterpart: null }, entry);
     } else {
       // A redemption or a balance read is written as one entry per batch it touched, all in the same moment.
-      add(`${entry.kind}:${entry.createdAt}:${entry.occurredOn}:${entry.note ?? ''}`, { kind: entry.kind, on: entry.occurredOn, label: entry.note, conversionId: null, counterpart: null }, entry);
+      add(`${entry.kind}:${entry.createdAt}:${entry.occurredOn}:${entry.note ?? ''}`, { kind: entry.kind, on: entry.occurredOn, label: entry.note, earnedById: null, conversionId: null, counterpart: null }, entry);
     }
   }
   return [...groups.values()].sort((a, b) => b.on.localeCompare(a.on) || a.key.localeCompare(b.key));

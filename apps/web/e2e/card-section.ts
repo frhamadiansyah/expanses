@@ -8,6 +8,12 @@ const MENU = { Activity: 'Statement', Points: 'Points', 'Rewards rules': 'Reward
 const ROUND = new Set<keyof typeof MENU>(['Activity', 'Points']);
 
 /**
+ * A card on the wallet, by name. The Cards page also lists the points programmes, and a programme's row carries the
+ * name of the card earning into it, so a card is looked for on the wallet itself.
+ */
+export const walletCard = (page: Page, name: string) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
+
+/**
  * Open one section of the card on screen.
  *
  * A card opened from the Wallet stack shows Wallet's summary first, with its sections behind ⋯; a card still being

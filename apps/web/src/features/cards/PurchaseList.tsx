@@ -1,10 +1,10 @@
 import { explainTransaction, formatMinor, monthOf, type Suggestion } from '@expanses/core';
-import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setProgramExpiry, setTransactionMcc } from '@expanses/db';
+import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setTransactionMcc } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx } from '../../ui';
-import { InsetGroup, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, SegmentedControl, SelectRow } from '../../ui/native';
 import { Capsule, Line, SUBTITLE, TITLE } from './rows';
 import { suggestPattern } from '../merchants/mcc-search';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
@@ -176,33 +176,11 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
 
   return (
     <>
-      {/* How this card's points behave: settings, so form rows, in a group of their own above the purchases. */}
+      {/*
+       * How this card's points behave: settings, so form rows, in a group of their own above the purchases. When they
+       * expire is the programme's, set on its page, since every card earning into it shares the one policy.
+       */}
       <InsetGroup header="How this card's points work">
-        <SelectRow
-          label="Points expire"
-          value={program.expiryPolicy}
-          onChange={(e) => {
-            const policy = e.target.value as 'none' | 'months_from_earn' | 'fixed_annual';
-            void run(() => setProgramExpiry(database, ws, program.id, policy, policy === 'months_from_earn' ? (program.expiryMonths ?? 24) : null));
-          }}
-        >
-          <option value="none">Never</option>
-          <option value="months_from_earn">After a number of months</option>
-          <option value="fixed_annual">At the end of the year earned</option>
-        </SelectRow>
-        {program.expiryPolicy === 'months_from_earn' && (
-          <TextRow
-            label="Months they last"
-            defaultValue={String(program.expiryMonths ?? 24)}
-            inputMode="numeric"
-            onBlur={(e) => {
-              const months = Number(e.target.value.trim());
-              if (Number.isInteger(months) && months > 0 && months !== program.expiryMonths) {
-                void run(() => setProgramExpiry(database, ws, program.id, 'months_from_earn', months));
-              }
-            }}
-          />
-        )}
         <SelectRow label="Bank credits points" value={cp.crediting} onChange={(e) => void run(() => setProgramCrediting(database, ws, program.id, e.target.value as 'per_transaction' | 'per_statement'))}>
           <option value="per_statement">Per statement</option>
           <option value="per_transaction">Per purchase</option>

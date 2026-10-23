@@ -1,6 +1,6 @@
 import type { Balance, Cycle } from '@expanses/core';
 import type { CardYearRoi } from '@expanses/db';
-import { cardYearRoi, type Database, deriveCycleEntries, expireDueEntries, programBalance, type WorkspaceContext } from '@expanses/db';
+import { cardYearRoi, type Database, deriveCycleEntries, expireDueEntries, programBalance, programmeOfCard, type WorkspaceContext } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -17,6 +17,9 @@ export interface CardLedger {
  *
  * Both figures are read in this one query, after the writes. Asking for them separately let the ROI
  * read an empty ledger and report a year worth nothing until the page was opened a second time.
+ *
+ * `programId` is the card's reward program. The balance is the programme's it earns into (0085) — shared with any
+ * other card earning there — while the year's worth is this card's own earning.
  */
 export async function refreshLedger(
   database: Database,
@@ -28,11 +31,12 @@ export async function refreshLedger(
   for (const cycle of cycles) {
     if (cycle) await deriveCycleEntries(database, ws, programId, cycle);
   }
+  const programmeId = (await programmeOfCard(database, ws, programId))?.id ?? programId;
   // Points the issuer has already taken back are written off here, rather than left on a balance that
   // would then be wrong. The entry stays visible, so nothing disappears without a record.
-  await expireDueEntries(database, ws, programId, today);
+  await expireDueEntries(database, ws, programmeId, today);
   return {
-    balance: await programBalance(database, ws, programId, today),
+    balance: await programBalance(database, ws, programmeId, today),
     roi: await cardYearRoi(database, ws, programId, today),
   };
 }
