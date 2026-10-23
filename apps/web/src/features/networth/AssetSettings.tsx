@@ -137,7 +137,7 @@ export function AssetSettings({
         />
         {afterName}
         <SelectRow
-          label="Counts as"
+          label="Group"
           value={current}
           onChange={(e) => void save('group', () => setAssetGroup(database, ws, accountId, e.target.value as PlanGroup))}
           info={
@@ -167,7 +167,7 @@ export function AssetSettings({
           />
         )}
         <SelectRow
-          label="How its income is taxed"
+          label="Income tax"
           // "Not set" is an answer the row prints, so it has a value of its own rather than the empty one a prompt has.
           value={taxTreatment ?? 'unset'}
           onChange={(e) =>

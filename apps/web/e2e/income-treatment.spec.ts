@@ -72,12 +72,12 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   await addStock(page);
   await addBond(page, 'SBN ORI025', '5000000');
 
-  // How its income is taxed belongs to the holding: this one is final. It is set on the holding's own settings page.
+  // Income tax belongs to the holding: this one is final. It is set on the holding's own settings page.
   await openAssets(page);
   await page.getByRole('link', { name: /BBRI/ }).click();
   await openSettings(page);
-  await page.getByLabel('How its income is taxed', { exact: true }).selectOption('final');
-  await expect(page.getByLabel('How its income is taxed', { exact: true })).toHaveValue('final');
+  await page.getByLabel('Income tax', { exact: true }).selectOption('final');
+  await expect(page.getByLabel('Income tax', { exact: true })).toHaveValue('final');
 
   await recordDividend(page);
 
