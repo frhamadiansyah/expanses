@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { openAssets } from './drawers';
 import { typePrice } from './asset-page';
 import { expectBalance, startReport } from './deposit-maturity';
 import { addHoldingFlow, setForeignList } from './securities';
@@ -31,11 +32,11 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and adding
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await expectBalance(page, 'BCA Tahapan', '50.000.000');
 
-  await page.goto('/net-worth/investments');
-  const bbca = page.getByTestId('stock-row').filter({ hasText: 'BBCA' });
+  // Assets lists the stock once, across both brokers.
+  await openAssets(page);
+  const bbca = page.getByTestId('assets-stock-row').filter({ hasText: 'BBCA' });
   await expect(bbca).toHaveCount(1);
-  await expect(bbca).toContainText('2.000 shares');
-  await expect(bbca).toContainText('2 brokers');
+  await expect(bbca).toContainText('20 lots · 2 brokers');
 
   // At two brokers the stock opens its page across them; a price typed on either holding values both.
   await bbca.click();
@@ -45,9 +46,9 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and adding
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
   await typePrice(page, '9.775');
   await expect(page.getByTestId('card-figure')).toContainText('14.662.500'); // Stockbit 1.500 × 9.775
-  await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('19.550.000'); // 2.000 × 9.775
-  await page.getByTestId('stock-row').filter({ hasText: 'BBCA' }).click();
+  await openAssets(page);
+  await expect(bbca).toContainText('19.550.000'); // 2.000 × 9.775
+  await bbca.click();
   await expect(page.getByTestId('security-card')).toContainText('19.550.000');
   await expect(page.getByTestId('held-at-row').filter({ hasText: 'Mandiri Sekuritas' })).toContainText('4.887.500'); // 500 × 9.775
 });
@@ -65,9 +66,11 @@ test('5: a free user names AAPL owned before, and its rupiah cost is filed at th
 });
 
 test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it myself', async ({ page }) => {
-  // Reached from the Investments corner, as the owner would.
-  await page.goto('/net-worth/investments');
-  await page.getByRole('link', { name: 'Add a holding' }).click();
+  // Reached from the Assets corner, as the owner would: Add asset, then Listed shares.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: 'Add asset' }).click();
+  await page.getByPlaceholder('Search everything that can be owned').pressSequentially('Listed shares');
+  await page.getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('AAPL');
@@ -97,8 +100,8 @@ test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked fo
   await expect(page.getByText(/29\.656\.250/).first()).toBeVisible();
 
   await setForeignList(page, false); // a lapse
-  await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('stock-row').filter({ hasText: 'AAPL' })).toContainText('10 shares');
+  await openAssets(page);
+  await expect(page.getByRole('link', { name: /^AAPL/ })).toContainText('1.825,00');
   await page.goto('/net-worth/investments/new');
   await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('AAP');
@@ -131,8 +134,11 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
   await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Stockbit' });
   await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
   await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
-  await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('broker-row').filter({ hasText: 'Stockbit' })).toContainText('875.000');
+  // Stockbit's own account lists what it keeps now.
+  await openAssets(page);
+  await page.getByRole('link', { name: /^Stockbit/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Stockbit' })).toBeVisible();
+  await expect(page.getByTestId('broker-holding').filter({ hasText: 'BBCA' })).toContainText('875.000');
 });
 
 test('12: the tax report names the broker and files AAPL at the rupiah it cost', async ({ page }) => {
@@ -154,16 +160,15 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
   await expect(aapl).not.toContainText('182.500');
 });
 
-test('every way in reaches Investments and Add a holding: the Assets group, the picker and the inline form', async ({ page }) => {
+test('every way in reaches Add a holding: the picker and its Investments family; an old Investments link lands on Assets', async ({ page }) => {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
 
-  // §7.1: the last row of the Assets page's Investments group. Buy & sell gave up its Investments row when it became
-  // four buttons and a history.
-  await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: 'By stock and broker' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/investments$/);
+  // The Investments page is gone — Assets lists one row per stock — so its old address opens Assets.
+  await page.goto('/net-worth/investments');
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await expect(page.getByRole('link', { name: 'By stock and broker' })).toHaveCount(0);
 
   // §7.5: the corner on the Assets page opens the picker itself — no form unrolled over the list — and Listed
   // shares starts from a ticker.
@@ -188,11 +193,10 @@ test('every way in reaches Investments and Add a holding: the Assets group, the 
   await expect(page.getByRole('button', { name: 'Listed shares' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mutual fund' })).toBeVisible();
 
-  // From Investments, Back returns to Investments.
-  await page.goto('/net-worth/investments');
-  await page.getByRole('link', { name: 'Add a holding' }).click();
+  // Opened cold, Back returns to Assets.
+  await page.goto('/net-worth/investments/new');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page).toHaveURL(/\/net-worth\/investments$/);
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
 });
 
 test.describe('with the list unreadable', () => {

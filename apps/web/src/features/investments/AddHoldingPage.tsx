@@ -64,8 +64,8 @@ export function AddHoldingPage() {
     }
   }
 
-  // Opened from New asset or from Investments, Back returns to whichever it was; opened cold, to Investments.
-  const goBack = useBack('/net-worth/investments');
+  // Opened from New asset or a stock's page, Back returns to whichever it was; opened cold, to Assets.
+  const goBack = useBack('/net-worth/assets');
   const leave = () => (link ? void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: link } }) : goBack());
   const back = () => (link && step === 'name' ? setStep('search') : leave());
   const backLabel = link ? (step === 'name' ? 'Search' : 'Asset') : 'Back';
