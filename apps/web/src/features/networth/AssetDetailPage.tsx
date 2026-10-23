@@ -1,6 +1,6 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
-import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
+import { type AssetValueRow, couponOn, deleteTrade, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -39,7 +39,7 @@ import { SwitchSheet } from './SwitchSheet';
 import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
-import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
+import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
@@ -96,7 +96,6 @@ function NewBrokerSheet({ onSave, onClose }: { onSave: (name: string) => void; o
 type Sheet =
   | { kind: 'price' }
   | { kind: 'value' }
-  | { kind: 'source' }
   | { kind: 'listed-source' }
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
   | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
@@ -212,8 +211,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         ? { label: 'Fetch the latest close', state: yahoo.state, run: yahoo.retry }
         : null;
   // A share or a fund whose price has gone a few days without an update says so, with the way to Update prices.
-  const listedLike = priced && (kind === 'stock' || kind === 'fund' || Boolean(stock.security));
-  const priceAge = latestPrice ? priceAgeDays(latestPrice.onDate, isoDate()) : 0;
   const latestValuation = (valuations.data ?? []).find((row) => row.basis !== 'njop' && row.asOf === value.asOf) ?? null;
   const kindLabel = assetItemOfCode(value.coretaxCode)?.label ?? (kind ? presetFor(kind).label : 'Asset');
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
@@ -516,17 +513,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
       <ActionButtons actions={actions} />
 
-      {listedLike && latestPrice && priceAge > STALE_PRICE_DAYS && (
-        <div className="-mt-[6px] mb-[18px] flex items-center justify-between gap-3 rounded-[11px] bg-[var(--ph-surface)] px-3 py-[9px] md:max-w-2xl" data-testid="price-age">
-          <p className="min-w-0 text-[13px] leading-[17px] text-[var(--ph-warn)]">
-            {SOURCE_LABELS[latestPrice.source]} · {dayLabel(latestPrice.onDate)} · {priceAge} days old
-          </p>
-          <Link to="/net-worth/prices" className="ph-focus shrink-0 rounded text-[13px] leading-[17px] font-semibold text-[var(--ph-tint)]">
-            Update ›
-          </Link>
-        </div>
-      )}
-
       {/* With a price, its source and day are behind the price figure's ⓘ; with none yet there is no figure to hang it on. */}
       {priced && !latestPrice && (
         <div className="-mt-[6px] mb-[18px] flex items-center justify-between gap-2 px-[6px] md:max-w-2xl">
@@ -646,9 +632,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               <option value={NEW_BROKER}>Another broker…</option>
             </SelectRow>
           ) : null,
-          choice ? (
-            <InsetRow key="source" title="Price source" value={choice === 'world' ? 'World price' : "I'll type it"} onClick={() => setSheet({ kind: 'source' })} />
-          ) : null,
           // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
           rdnBank ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
@@ -688,24 +671,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         />
       )}
       {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet(null))} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'source' && choice && (
-        <PriceSourceSheet
-          choice={choice}
-          options={GOLD_SOURCES}
-          onPick={(next) => {
-            setSheet(null);
-            void (async () => {
-              try {
-                await setGoldPriceChoice(database, ws, accountId, next);
-                await invalidate();
-              } catch (e) {
-                setError(e);
-              }
-            })();
-          }}
-          onClose={() => setSheet(null)}
-        />
-      )}
       {sheet?.kind === 'listed-source' && listedSecurity && listedChoice && (
         <PriceSourceSheet
           choice={listedChoice}

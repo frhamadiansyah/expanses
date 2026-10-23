@@ -370,8 +370,7 @@ test('moves net worth by the price difference only', async ({ page }) => {
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
   await page.goto('/net-worth/assets');
-  // Update prices is the corner's tag.
-  await page.getByRole('link', { name: /^Update prices/ }).click();
+  await page.goto('/net-worth/prices');
   await page.getByLabel(/Antam gold bars/).fill('1900000');
   await page.getByRole('button', { name: 'Save prices' }).click();
   // Saved once the box says where its price came from; only then back to the list.

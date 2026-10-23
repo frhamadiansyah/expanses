@@ -68,8 +68,7 @@ test('offline, the last close stays with its day and ↻ offers to try again', a
 test('IDX’s daily file fills the shares held: a preview, one save, and the page says where the price came from', async ({ page }) => {
   await routeYahoo(page, 'offline');
   await holdBbca(page);
-  await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: /^Update prices/ }).click();
+  await page.goto('/net-worth/prices');
   await expect(page.getByRole('heading', { name: 'Update prices' })).toBeVisible();
   await expect(page.getByLabel('BBCA', { exact: true })).toBeVisible();
 
