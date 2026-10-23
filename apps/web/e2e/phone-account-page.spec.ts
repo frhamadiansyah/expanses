@@ -6,7 +6,7 @@ import { mockRates, openWithPockets } from './pockets';
 test('by thumb: an account page spends from itself, and a pocket goes back to its account', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
-  await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
+  await walletCard(page, 'Everyday').tap();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   // The corner holds the ⚙ alone: no ⋯, and nothing named Tax report code outside Settings.
   await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();

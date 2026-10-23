@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, walletCard } from './accounts';
 import { cardPage } from './card-section';
 
 test('card setup guides billing date, then rewards, then a suggested base rule', async ({ page }) => {
@@ -10,9 +10,9 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   await expect(page.getByTestId('card-setup')).toContainText('Step 1 of 3');
 
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
-  const cardRow = page.locator('section', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
+  const cardRow = page.locator('section', { has: walletCard(page, 'Step Card') });
   await expect(cardRow).toContainText('Add billing date to see points');
-  await cardRow.getByRole('link', { name: 'Step Card', exact: true }).click();
+  await walletCard(page, 'Step Card').click();
   await cardPage(page, 'Settings');
 
   // Step 1: only card terms until the billing date exists.

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openSettings } from './accounts';
 import { openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
@@ -18,8 +18,7 @@ test('a broker opened from Add holding names its RDN bank in its Settings, and i
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^Stockbit/ }).first().click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await openSettings(page);
   const bank = page.getByLabel('Bank or institution');
   await bank.fill('CIMB Niaga');
   await bank.blur();

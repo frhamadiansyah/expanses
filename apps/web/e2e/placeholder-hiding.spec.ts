@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { openAccount } from './accounts';
+import { openAccount, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
 
@@ -96,7 +96,7 @@ test('the Accounts page never lists a placeholder account', async ({ page }, tes
   await page.goto('/wallet');
   // One type of money account is on this device (Current account), so the list draws flat with no drawer to
   // open — the placeholder, filtered out at the reader, never becomes a second type asking for one.
-  await expect(page.getByRole('link', { name: ORDINARY_NAME, exact: true })).toBeVisible();
+  await expect(walletCard(page, ORDINARY_NAME)).toBeVisible();
   await expect(page.getByText(PLACEHOLDER_NAME)).toHaveCount(0);
 });
 

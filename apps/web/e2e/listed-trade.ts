@@ -13,7 +13,7 @@ export async function openBroker(page: Page, broker: string, balance: string) {
   await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially(balance);
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
 }
 
 /** Ten lots of BBCA owned before the app at `broker`, its last close 6.150 (from Yahoo, answered here), and its page open. */

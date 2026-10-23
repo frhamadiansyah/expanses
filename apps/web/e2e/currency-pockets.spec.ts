@@ -25,13 +25,13 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
 
-  // P1: one row, the converted total, no pocket rows of their own.
-  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Valas Plus', exact: true }) });
-  await expect(row).toContainText('3 pockets');
-  await expect(row).toContainText('58.982.000');
+  // P1: one card, the converted total, no pocket cards of their own; the line beside it counts the pockets.
+  const card = walletCard(page, 'Valas Plus');
+  await expect(card).toHaveAccessibleName(/58\.982\.000/);
+  await expect(page.getByTestId('wallet-facts')).toContainText('3 pockets');
   await expect(page.getByRole('link', { name: 'Valas Plus · USD' })).toHaveCount(0);
 
-  await row.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await card.click();
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
   await expect(page.getByTestId('pocket-SGD')).toContainText('14.582.000');
@@ -70,7 +70,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
 test('a pocket can be added, in a currency with no decimals, at a typed rate', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   // Currencies it already has are not offered.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="USD"]')).toHaveCount(0);
@@ -86,7 +86,7 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
 test('moving between pockets moves what the screen shows and says what the bank’s rate cost', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
 
   // Options are valued by currency code (one open pocket per currency); `selectOption({ label })` takes no RegExp.
@@ -115,7 +115,7 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await mockRates(page, { USD: 16_400, SGD: 12_800 });
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');
   await page.getByLabel('To').selectOption('SGD');
@@ -206,7 +206,7 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
 test('an account without pockets opened at the pockets routes says it has none (M3, M7)', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pockets', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '100' }] });
-  await page.getByRole('link', { name: 'Two Pockets', exact: true }).click();
+  await walletCard(page, 'Two Pockets').click();
   await expect(page.getByText('2 currencies')).toBeVisible();
   // A pocket is an account with no pockets of its own: its id on the accounts route is its own page — the figure
   // it holds and the rows behind it — rather than a Rp 0 parent with nothing under it.
@@ -228,7 +228,7 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await ageRates(page, testInfo.outputPath('aged.sqlite3'));
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByTestId('pocket-USD').click();
   // The account page marks it too; this is the pocket's own page.
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
@@ -316,7 +316,7 @@ test('the parent is offered nowhere money is chosen; its pockets are, and a pock
 test('USD → IDR between pockets reads each side at its own exponent, keystroke by keystroke', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('To').selectOption('IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100.50');
@@ -330,7 +330,7 @@ test('USD → IDR between pockets reads each side at its own exponent, keystroke
 test('changing a pocket clears both figures, and choosing the same pocket swaps', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
@@ -358,7 +358,7 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
@@ -367,7 +367,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   // Both are in the account's Settings, behind the ⚙ in its corner: its Name, and Archive at the foot.
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await walletCard(page, 'Valas Plus').click();
   await openSettings(page);
   await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page.getByText(/Valas Plus still has pockets: USD, SGD, IDR/)).toBeVisible();
@@ -400,16 +400,15 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
   await expect(page.getByText('Spending money')).toHaveCount(0);
-  await expect(page.getByText('Debt owed')).toHaveCount(0);
-  // The account's own row names it too, in place of a total.
-  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
-  await expect(row).toContainText('No USD rate yet');
+  await expect(page.getByText('Owed on cards')).toHaveCount(0);
+  // The account's own card names it too, in place of a total.
+  await expect(walletCard(page, 'Unpriced Valas')).toHaveAccessibleName(/No USD rate yet/);
 });
 
 test('a USD pocket added to an account reads its opening balance in dollars, not rupiah (P2-I2)', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
-  await page.getByRole('link', { name: 'Two Pocket', exact: true }).click();
+  await walletCard(page, 'Two Pocket').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');

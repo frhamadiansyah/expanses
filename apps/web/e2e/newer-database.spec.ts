@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
+import { walletCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { addBank, EXPORT_BUTTON, replaceTheDatabase } from './recovery-fixture';
 
@@ -77,7 +78,7 @@ test('a restore of data from a newer app is refused before it is adopted, and th
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();
 
   await page.goto('/wallet');
-  await expect(page.getByRole('link', { name: 'Still here', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'Still here')).toBeVisible();
 });
 
 test('a database already at a newer version refuses to open, and offers export but never deletion', async ({ page }, testInfo) => {

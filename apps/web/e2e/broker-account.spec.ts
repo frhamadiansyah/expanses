@@ -17,7 +17,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
 
   // One account per broker: the same broker again is refused, and says why.
   await page.goto('/accounts/new');

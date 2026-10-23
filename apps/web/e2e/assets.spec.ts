@@ -133,8 +133,8 @@ test('an account opened by mistake deletes once asked; one with entries refuses 
   // The one that was only opened goes, opening entry and all.
   await openSettings(page, 'Hana');
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  // Money goes back to the list it lives on.
-  await expect(page).toHaveURL(/\/accounts$/);
+  // Money to spend from goes back to Wallet, where its card was.
+  await expect(page).toHaveURL(/\/wallet$/);
   await expect(page.getByRole('link', { name: /Hana/ })).toHaveCount(0);
 });
 

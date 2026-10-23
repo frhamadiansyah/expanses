@@ -64,7 +64,7 @@ test('a purchase is recorded from the add button without leaving the screen', as
   await page.goto('/wallet');
   await settle(page);
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   await page.goto('/transactions');
   await expect(page.getByText('Superindo').first()).toBeVisible();
 });

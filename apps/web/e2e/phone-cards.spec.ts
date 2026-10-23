@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, walletCard } from './accounts';
 import { cardPage } from './card-section';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
@@ -9,7 +9,7 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
   await openCard(page, { name: 'BCA KrisFlyer Visa Signature' });
 
   await page.goto('/wallet');
-  const card = page.getByRole('link', { name: 'BCA KrisFlyer Visa Signature', exact: true });
+  const card = walletCard(page, 'BCA KrisFlyer Visa Signature');
   await expect(card).toBeVisible();
   const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(wide).toBe(false);
@@ -187,7 +187,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   // ✕ returns to the stack, in the order it had.
   const url = page.url();
   await closeCard(page).click();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.locator('[data-place="raised"]')).toHaveCount(0);
   expect(await order()).toEqual(before);
 
@@ -195,7 +195,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await wall.getByRole('link', { name: /^Beta Card, / }).click();
   await expect(page.getByRole('heading', { name: 'Beta Card', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   expect(await order()).toEqual(before);
 
   // A deep link opens straight into the raised card, and ✕ still lands on the stack.
@@ -203,7 +203,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(wall.locator('[data-place="raised"]').getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
   await expect(wall.locator('[data-place="hidden"]')).toHaveCount(2);
   await closeCard(page).click();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   expect(await order()).toEqual(before);
 
   expect(crashes).toEqual([]);

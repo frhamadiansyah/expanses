@@ -63,7 +63,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
 
   // Back behaves like ✕: the stack again, in its order.
   await page.goBack();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.getByRole('link')).toHaveCount(2);
   await expect(cards.nth(1)).toHaveAttribute('data-front', '');
   await expect(cards.nth(1).getByRole('link')).toHaveAccessibleName(/^Beta Card, /);
