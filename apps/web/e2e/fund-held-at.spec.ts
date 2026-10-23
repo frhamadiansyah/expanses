@@ -10,15 +10,10 @@ test('a fund is held at an institution by name, never an account: a bank account
   await fundByMoney(page);
   const held = page.getByLabel('Institution', { exact: true });
   await expect(held).toHaveValue('');
-  // The bank account here names no bank, so its own name is not a choice: it would read as the account itself.
-  await expect(held.locator('option', { hasText: /^BCA/ })).toHaveCount(0);
-
-  // An institution typed: its name is the fund's Nama institusi, and from then on one of the choices.
-  await held.selectOption({ label: 'Another…' });
-  const name = page.getByLabel('Place name');
-  await name.fill('Bibit');
-  await name.blur();
-  // Saved once the typed name is one of the choices.
+  // A typed name is the fund's Nama institusi, saved when the field is left (the offers above the keyboard are a
+  // phone's: phone-fund-institution).
+  await held.fill('Bibit');
+  await held.blur();
   await expect(held).toHaveValue('Bibit');
   await page.reload();
   await expect(page.getByLabel('Institution', { exact: true })).toHaveValue('Bibit');

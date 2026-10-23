@@ -29,10 +29,8 @@ async function fundAt(page: Page, o: { name: string; amount: string; value: stri
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText(o.value.replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
   const held = page.getByLabel('Institution', { exact: true });
-  await held.selectOption({ label: 'Another…' });
-  const name = page.getByLabel('Place name');
-  await name.fill(o.place);
-  await name.blur();
+  await held.fill(o.place);
+  await held.blur();
   await expect(held).toHaveValue(o.place);
   return HOLDING.exec(new URL(page.url()).pathname)![1]!;
 }

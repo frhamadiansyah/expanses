@@ -222,7 +222,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
             <InsetGroup
               key={index}
               header={index === 0 ? 'Past purchase' : `Purchase ${index + 1}`}
-              footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so bank balances do not move.' : undefined}
+              footer={index === draft.purchases.length - 1 ? "Bought earlier, so no account's balance moves." : undefined}
             >
               <AcquiredRow label="Bought" value={purchase.on} onChange={(on) => setPurchase(index, { on })} />
               {/* A fund tracked by money is bought by amount: its units only if the fund app shows them. */}

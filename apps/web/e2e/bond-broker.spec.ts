@@ -19,20 +19,16 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
   // Held at, not Broker: banks sell bonds too.
   await expect(page.getByLabel('Broker', { exact: true })).toHaveCount(0);
   const held = page.getByLabel('Institution', { exact: true });
-  // A bank account that names no bank is not offered by its own name: Held at is a name, never the account.
-  await expect(held.locator('option', { hasText: 'BCA Tahapan' })).toHaveCount(0);
-  await held.selectOption({ label: 'Another…' });
-  await page.getByLabel('Place name', { exact: true }).fill('Bank BCA');
-  await page.getByLabel('Place name', { exact: true }).blur();
+  await held.fill('Bank BCA');
+  await held.blur();
   await expect(held).toHaveValue('Bank BCA');
   // Held at a bank, that bank is the tax report's Nama institusi: one name, kept once.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Institution', exact: true })).toHaveValue('Bank BCA');
   await page.goBack();
 
-  await held.selectOption({ label: 'Another…' });
-  await page.getByLabel('Place name', { exact: true }).fill('Bank Mandiri');
-  await page.getByLabel('Place name', { exact: true }).blur();
+  await held.fill('Bank Mandiri');
+  await held.blur();
   await expect(held).toHaveValue('Bank Mandiri');
   await page.reload();
   await expect(held).toHaveValue('Bank Mandiri');
