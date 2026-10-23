@@ -1,10 +1,10 @@
 import type { AccountRow, AssetProfileRow } from '@expanses/db';
 
-/** The money accounts an institution is named by: a bank, savings, a deposit, a wallet, a broker's cash. */
-const AT_AN_INSTITUTION = new Set(['bank', 'savings', 'time_deposit', 'ewallet', 'fund']);
+/** The money accounts an institution is named by: a bank, savings, a deposit, a broker's cash. */
+const AT_AN_INSTITUTION = new Set(['bank', 'savings', 'time_deposit', 'fund']);
 
-/** The money accounts that are their institution: a wallet, a fund app. */
-const NAMED_BY_ITSELF = new Set(['ewallet', 'fund']);
+/** The money accounts that are their institution: a broker. */
+const NAMED_BY_ITSELF = new Set(['fund']);
 
 /**
  * The institution a money account is at: its bank's name as the account keeps it (the kas row's Nama institusi), else
@@ -19,7 +19,7 @@ export function institutionOf(account: Pick<AccountRow, 'name' | 'subtype'>, pro
  * Every institution a bond or fund may be held at, by name: those the money accounts are at, and those already named
  * on a holding. One of each, whatever its case, in alphabetical order. A bank, savings or deposit account offers its
  * bank only once its Nama institusi names one — never its own name, which read as the account itself (owner, 23 Oct):
- * Held at is a name, not a link to an account. A wallet or a fund app is its own institution, so its name stands.
+ * Held at is a name, not a link to an account. A broker is its own institution, so its name stands; a digital wallet is never offered (owner, 23 Oct).
  */
 export function institutionChoices(accounts: readonly AccountRow[], profiles: readonly AssetProfileRow[]): string[] {
   const profileOf = new Map(profiles.map((profile) => [profile.accountId, profile]));
