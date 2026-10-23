@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { personRow } from './people';
-import { openAccount, openSettings, walletCard } from './accounts';
+import { expectWalletFigure, openAccount, openSettings, walletCard } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
@@ -29,7 +29,7 @@ test('an account with pockets is one row that adds them up, and opens to each po
   const card = walletCard(page, 'Valas Plus');
   await expect(card).toHaveAccessibleName(/58\.982\.000/);
   await expect(page.getByTestId('wallet-facts')).toContainText('3 pockets');
-  await expect(page.getByRole('link', { name: 'Valas Plus · USD' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /Valas Plus · USD/ })).toHaveCount(0);
 
   await card.click();
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
@@ -62,9 +62,8 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await expect(page.getByLabel('Currency', { exact: true })).toHaveValue('USD');
   await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('15720');
   await page.getByRole('button', { name: 'Add account' }).click();
-  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Dollar Saver', exact: true }) });
-  await expect(row).toContainText('1.800,00');
-  await expect(row).not.toContainText('pockets');
+  await expectWalletFigure(page, 'Dollar Saver', '1.800,00');
+  await expect(page.getByTestId('wallet-facts')).not.toContainText('pockets');
 });
 
 test('a pocket can be added, in a currency with no decimals, at a typed rate', async ({ page }) => {
@@ -184,10 +183,10 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.getByLabel('Opening USD', { exact: true }).pressSequentially('100');
   await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Old Valas', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'Old Valas')).toBeVisible();
 
   // Every dollar moved to rupiah today, at the last-known rate: today the account holds no USD at all.
-  await page.getByRole('link', { name: 'Old Valas', exact: true }).click();
+  await walletCard(page, 'Old Valas').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');
   await page.getByLabel('To').selectOption('IDR');
@@ -289,7 +288,7 @@ test('one currency twice cannot be chosen: the two pockets swap, each keeping it
   await expect(page.getByLabel('Opening IDR')).toHaveCount(1);
   await expect(page.getByLabel('Opening IDR')).toHaveValue('5400000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await page.getByRole('link', { name: 'Twice', exact: true }).click();
+  await walletCard(page, 'Twice').click();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
@@ -430,7 +429,7 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
   for (let i = 2; i < all; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
   await expect(page.getByLabel(`Pocket ${all}`, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
-  await page.getByRole('link', { name: 'Every Currency', exact: true }).click();
+  await walletCard(page, 'Every Currency').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await expect(page.getByText('This account already holds every currency.')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true })).toBeDisabled();

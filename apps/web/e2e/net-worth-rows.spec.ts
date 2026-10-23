@@ -10,8 +10,8 @@ test('each account in Net worth’s drawers opens its own page', async ({ page }
   await page.getByRole('link', { name: /^Everyday/ }).first().click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Everyday' })).toBeVisible();
-  // ‹ goes back to Net worth, where it was opened from — not to the Accounts list.
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  // Money kept for spending opens as its Wallet card, raised; ✕ goes back to Net worth, where it was opened from.
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth$/);
 
   await page.goto('/');

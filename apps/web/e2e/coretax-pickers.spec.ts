@@ -137,7 +137,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.getByLabel('Balance now', { exact: true }).fill('500000');
   await page.getByLabel('Balance as of').fill('2026-01-05');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'GoPay', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'GoPay')).toBeVisible();
 
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Home mortgage' }).click();
@@ -207,7 +207,7 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Berjangka');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan Berjangka', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'BCA Tahapan Berjangka')).toBeVisible();
 
   // 0102 is both a current account and a saving account. The account itself says which, and its settings open on it.
   await page.goto('/net-worth/assets');
