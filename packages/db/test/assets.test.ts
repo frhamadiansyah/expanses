@@ -197,3 +197,35 @@ describe('asset settings', () => {
     await expect(setAssetGroup(database, other, goldId, 'invest')).rejects.toThrow();
   });
 });
+
+describe('an institution’s NPWP, typed once', () => {
+  const fund = async (name: string) => (await createAccount(database, ws, { name, kind: 'asset', subtype: 'investment', currency: 'IDR' })).id;
+  const save = (accountId: string, coretaxFields: Record<string, string>) =>
+    saveAssetProfile(database, ws, { accountId, assetKind: 'fund', coretaxSection: 'investasi', coretaxFields });
+  const npwpOf = async (accountId: string) => (await getAssetProfile(database, ws, accountId))?.coretaxFields.npwp;
+  // Invented: not any real institution's number.
+  const NPWP = '0099887766554433';
+
+  it('fills every holding at the same institution that has none, whatever the name’s case', async () => {
+    const a = await fund('Money market A');
+    const b = await fund('Bond fund B');
+    const elsewhere = await fund('Equity fund C');
+    await save(b, { inst: 'sekuritas contoh' });
+    await save(elsewhere, { inst: 'Another Bank' });
+    await save(a, { inst: 'Sekuritas Contoh', npwp: NPWP });
+    expect(await npwpOf(b)).toBe(NPWP);
+    expect(await npwpOf(elsewhere)).toBeUndefined();
+  });
+
+  it('gives a holding newly placed at that institution its NPWP, and never overwrites one typed', async () => {
+    const a = await fund('Money market A');
+    const b = await fund('Bond fund B');
+    const c = await fund('Equity fund C');
+    await save(a, { inst: 'Sekuritas Contoh', npwp: NPWP });
+    await save(b, { inst: 'Sekuritas Contoh' });
+    expect(await npwpOf(b)).toBe(NPWP);
+    await save(c, { inst: 'Sekuritas Contoh', npwp: '0011223344556677' });
+    expect(await npwpOf(c)).toBe('0011223344556677');
+    expect(await npwpOf(a)).toBe(NPWP);
+  });
+});

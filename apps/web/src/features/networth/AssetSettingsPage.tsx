@@ -11,6 +11,7 @@ import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
 import { BankNumberGroup } from '../accounts/BankNumberGroup';
 import { CouponGroup } from './CouponGroup';
+import { SameFundGroup } from './SameFundGroup';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -133,7 +134,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           afterName={acquired ? <AcquiredRow value={acquired} onChange={saveAcquired} /> : undefined}
           // The tax report's own questions, here rather than on an Edit screen of their own (a money account's stay below).
           taxFields={
-            !money && profile.data?.coretaxSection ? (
+            // Only while it is reported: off, the report asks nothing of it.
+            !money && profile.data?.coretaxSection && profile.data.reportable ? (
               <CoretaxFieldsGroup
                 key={`fields-${accountId}`}
                 profile={profile.data}
@@ -146,6 +148,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       )}
 
       {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
+      {/* The same fund at another place, tied into one fund on Investments: seldom set, so here rather than on its page. */}
+      {profile.data?.assetKind === 'fund' && <SameFundGroup accountId={accountId} />}
+
       {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAt={profile.data.coretaxFields.inst?.trim() || null} />}
 
       {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
@@ -158,7 +163,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {/* A money account's tax fields stay here; an asset's are on its Edit screen, with its name and when it was got. */}
       {/* A money account opened before it had a profile (a broker made from Add holding) still shows its kas row: saving a
           field gives it the profile Add account would have. */}
-      {money && profile.isSuccess && (
+      {money && profile.isSuccess && (profile.data?.reportable ?? true) && (
         <CoretaxFieldsGroup
           key={`fields-${accountId}`}
           profile={profile.data ?? { ...profileDefaults('cash'), coretaxSection: 'kas', coretaxCode: cashCodeFor(account?.subtype), accountId, workspaceId: ws.workspaceId, updatedAt: '' }}

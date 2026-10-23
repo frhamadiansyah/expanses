@@ -8,6 +8,24 @@ import { errorHint } from './AssetSettings';
 import { fieldsToSave } from './settings-model';
 
 /**
+ * The tax report's questions as Settings asks them, in English like the rest of the screen; the report itself keeps
+ * the form's own Indonesian words. Keyed by section and field.
+ */
+const ENGLISH: Record<CoretaxSection, Record<string, string>> = {
+  kas: { acct: 'Account number', owner: 'Account holder', inst: 'Bank or institution', loc: 'Country' },
+  piutang: { loc: 'Country', idno: 'Borrower’s ID number', name: 'Borrower’s name' },
+  investasi: { loc: 'Country', npwp: 'Institution’s tax ID (NPWP)', inst: 'Institution', sid: 'Proof of ownership or account number' },
+  bergerak: { model: 'Make and model', plate: 'Registration number', own: 'Ownership', ownerNpwp: 'Owner’s tax ID (NPWP)', ownerName: 'Owner’s name' },
+  tidak_bergerak: { loc: 'Location', land: 'Land area (m²)', bldg: 'Building area (m²)', source: 'How it was acquired', cert: 'Certificate number' },
+  lainnya: { cert: 'Proof of ownership or account number', info: 'More information' },
+};
+
+/** What a field says about itself beyond its fallback: an institution's NPWP is shared by every holding there. */
+const NOTES: Partial<Record<CoretaxSection, Record<string, string>>> = {
+  investasi: { npwp: 'Typed once per institution: every holding at the same institution takes it.' },
+};
+
+/**
  * What the tax report's table for this thing asks of it, one row per question, each saved when it is left. A field
  * that does not read well (an NPWP with a digit short) says so under itself and is not saved; the rest still are.
  * Nothing here is required to save: the report is what says what is still missing.
@@ -62,20 +80,24 @@ export function CoretaxFieldsGroup({
   }
 
   return (
-    <InsetGroup header={CORETAX_SECTIONS[section].label} trailing={missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}>
+    <InsetGroup header="Tax report details" trailing={missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}>
       {CORETAX_SECTIONS[section].fields.map((field, i, all) => {
         const problem = problems.find((item) => item.key === field.key);
         return (
           <TextRow
             key={field.key}
-            label={field.label}
+            label={ENGLISH[section][field.key] ?? field.label}
             value={fields[field.key] ?? ''}
             onChange={(e) => setFields({ ...fields, [field.key]: e.target.value })}
             onBlur={() => void save()}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             inputMode={field.kind === 'number' || field.kind === 'npwp' ? 'numeric' : undefined}
             placeholder={fallbacks[field.key]?.value ?? (field.kind === 'country' ? 'Country code' : 'Not set')}
-            info={fallbacks[field.key] && !(fields[field.key] ?? '').trim() ? `Left empty, the report uses ${fallbacks[field.key]!.from}: ${fallbacks[field.key]!.value}.` : undefined}
+            info={
+              fallbacks[field.key] && !(fields[field.key] ?? '').trim()
+                ? `Left empty, the report uses ${fallbacks[field.key]!.from}: ${fallbacks[field.key]!.value}.`
+                : NOTES[section]?.[field.key]
+            }
             hint={problem ? errorHint(problem.message) : i === all.length - 1 ? errorHint(error) : undefined}
           />
         );

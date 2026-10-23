@@ -76,7 +76,7 @@ function CouponRows({ accountId, saved, heldAt }: { accountId: string; saved: Bo
     : auto && !cashAccountId
       ? 'Choose an account to pay into, and the app records each coupon on its day.'
       : auto
-        ? 'Recorded on its day into that account, after the tax withheld — editable like any coupon.'
+        ? 'Recorded on its day into that account, after the tax withheld. It can be edited like any coupon.'
         : 'Not recorded by the app: record each coupon with Coupon on the bond’s page.';
 
   return (
