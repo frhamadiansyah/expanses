@@ -91,11 +91,14 @@ export function TextRow({
   hint,
   info,
   middle,
+  suffix,
   position,
   className,
   ...props
 }: GroupChild & {
   label: string;
+  /** The unit after the figure, quiet, once one is typed: "g" for grams. */
+  suffix?: string;
   /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
   middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
@@ -147,6 +150,11 @@ export function TextRow({
             className,
           )}
         />
+        {suffix && String(props.value ?? '').trim() !== '' && (
+          <span aria-hidden className="-ml-[8px] shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]">
+            {suffix}
+          </span>
+        )}
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
       {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
