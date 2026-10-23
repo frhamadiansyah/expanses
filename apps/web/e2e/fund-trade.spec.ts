@@ -21,7 +21,7 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   await expect(page.getByTestId('asset-card')).toContainText('1.552.000');
   await expect(page.getByTestId('asset-grid')).toContainText('Rp 1.500.000');
   // History lists money moved only; the value typed is the hero's, its day under Held at.
-  await expect(page.getByText('Value updated', { exact: true })).toBeVisible();
+  await expect(page.getByText('Last updated', { exact: true })).toBeVisible();
   await expect(page.getByText('Bought', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Value', { exact: true })).toHaveCount(0);
 });
