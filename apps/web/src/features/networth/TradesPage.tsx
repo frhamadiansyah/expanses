@@ -1,7 +1,7 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, holdingPositionAfter, isoDate } from '@expanses/core';
 import { declareReinvestment, deleteTrade, resplitTrade, retagTrade, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowDownLeft, CalendarClock, Minus, Plus, Shuffle } from 'lucide-react';
+import { ArrowDownLeft, Minus, Plus, Shuffle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -26,7 +26,7 @@ import { DayHeader } from '../transactions/DayHeader';
 import { useGoals } from '../goals/queries';
 import { TradeSheet } from './AssetSheets';
 import { ReinvestCell } from './ReinvestCell';
-import { useAssetProfiles, useAssetValues, useDueTemplates, usePositions, useTradeTemplates, useTrades } from './queries';
+import { useAssetProfiles, useAssetValues, usePositions, useTrades } from './queries';
 import { draftFromTrade } from './trade-form';
 import { SwitchSheet } from './SwitchSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
@@ -38,7 +38,7 @@ type Doing = 'buy' | 'sell' | 'income' | 'units';
 const ASKS: Record<Doing, string> = { buy: 'Buy which?', sell: 'Sell which?', income: 'Income from which?', units: 'Units of which?' };
 
 /**
- * Buy & sell: four buttons, the year's figures, the monthly plans, and every holding's history by day.
+ * Buy & sell: four buttons, the year's figures, and every holding's history by day.
  *
  * A trade is recorded on the holding's own page — Buy, Sell, Income or Units here asks which holding, then opens that
  * holding with the sheet already up, so there is one buy form to keep right rather than one here and one there. A
@@ -53,8 +53,6 @@ export function TradesPage() {
   const profiles = useAssetProfiles();
   const positions = usePositions();
   const trades = useTrades();
-  const templates = useTradeTemplates();
-  const due = useDueTemplates();
   const accounts = useAccounts();
   const goals = useGoals();
   const goalOptions = (goals.data ?? []).map((goal) => ({ id: goal.id, name: goal.name }));
@@ -214,15 +212,6 @@ export function TradesPage() {
     },
   ];
 
-  const dueCount = due.data?.length ?? 0;
-  const planCount = templates.data?.length ?? 0;
-  const plansLine =
-    dueCount > 0
-      ? `${dueCount} due · ${(due.data ?? []).map((template) => nameOf(template.accountId)).join(', ')}`
-      : planCount > 0
-        ? `${planCount} ${planCount === 1 ? 'plan' : 'plans'}`
-        : 'A buy or a move that comes every month';
-
   return (
     <div className={SCREEN}>
       <PushedTitle title="Buy & sell" back="Net worth" backTo="/net-worth" />
@@ -243,16 +232,6 @@ export function TradesPage() {
             <YearFigure label="Realized this year" minor={realized.base} currency={ws.baseCurrency} others={realized.others} signed />
             <YearFigure label="Income this year" minor={income.base} currency={ws.baseCurrency} others={income.others} />
           </div>
-
-          <InsetGroup>
-            <InsetRow
-              icon={<CalendarClock size={16} aria-hidden />}
-              title="Monthly plans"
-              subtitle={plansLine}
-              to="/net-worth/trades/plans"
-              testId="monthly-plans"
-            />
-          </InsetGroup>
 
           {/* A wide screen has room for the table the phone gave up: every holding with all eight columns. */}
           <div className="hidden md:block">

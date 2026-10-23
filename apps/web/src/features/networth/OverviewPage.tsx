@@ -401,7 +401,7 @@ export function OverviewPage() {
   /*
    * The corners, in the order the page is about them: how the figure is doing, then Buy & sell. Needs attention is no
    * longer one of them: what it gathered is said where it belongs — an old price on Assets' Prices corner, a due
-   * monthly buy on Buy & sell's Monthly plans.
+   * monthly buy on Recurring, under the bills.
    */
   const actions: CornerAction[] = [
     /*

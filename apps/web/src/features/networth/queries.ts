@@ -20,6 +20,7 @@ import {
   listDueDeposits,
   listPrices,
   listTradeTemplates,
+  templateBuysIn,
   listTrades,
   listUndoableByHand,
   listValuations,
@@ -118,6 +119,12 @@ export function useDueTemplates(date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({ queryKey: ['due-templates', ws.workspaceId, onDate], queryFn: () => dueTemplates(database, ws, onDate) });
+}
+
+/** What each monthly buy recorded in a month (`YYYY-MM`): the day it was bought and the money. */
+export function useTemplateBuys(month: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['template-buys', ws.workspaceId, month], queryFn: () => templateBuysIn(database, ws, month) });
 }
 
 /** Rates for every currency the workspace holds money in, fetched or manual, as the dashboard does. */

@@ -9,6 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
+import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
@@ -80,7 +81,8 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
 
 /**
  * The month's bills, most urgent first: what is still to pay, what is late, and what is done. A row pays or skips with a
- * swipe on a phone, or through its ⋯ menu with a mouse; either way an Undo follows for a few seconds.
+ * swipe on a phone, or through its ⋯ menu with a mouse; either way an Undo follows for a few seconds. Under them, the
+ * month's monthly buys.
  */
 export function RecurringPage() {
   const { database, ws } = useApp();
@@ -246,6 +248,9 @@ export function RecurringPage() {
           />
         </InsetGroup>
       )}
+
+      {/* The month's regular buys, set on each holding's own page: due ones with Record, bought ones with the day. */}
+      <MonthlyBuys />
 
       {showSettled && settled && (
         <Sheet grouped tall title={settled.title} onClose={closeSettled}>
