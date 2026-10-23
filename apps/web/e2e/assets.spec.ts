@@ -82,8 +82,9 @@ test('updates a price from the assets list and shows the new value', async ({ pa
   await addBank(page);
   await addGold(page);
 
-  // Prices sit in the corner beside +, one tag straight to Update prices; the dot says one is old. Gold is there too.
-  await page.getByRole('link', { name: 'Update prices, some are old' }).click();
+  // The corner beside + opens Dividends; Update prices is reached from a holding's Settings. Gold is there too.
+  await expect(page.getByRole('link', { name: 'Dividends' })).toBeVisible();
+  await page.goto('/net-worth/prices');
   await expect(page.getByRole('heading', { name: 'Update prices' })).toBeVisible();
   await page.getByLabel(/Antam gold bars/).fill('1842000');
   await page.getByRole('button', { name: 'Save prices' }).click();

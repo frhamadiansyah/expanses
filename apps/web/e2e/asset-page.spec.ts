@@ -198,7 +198,10 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   // "Not buyback" is said behind the ⓘ, not as a tag under the figure.
   await expect(grid).not.toContainText('not buyback');
   await expect(page.getByText(/buys gold back a few percent below it/)).toBeVisible();
+  // Its price source is in Settings, under Prices.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText('World price');
+  await page.goBack();
 
   // A price typed for today is the day's price, and ↻ does not take it back.
   await typePrice(page, '2485000');
@@ -221,11 +224,13 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   await openAsset(page, 'Antam gold bars');
   await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\)/);
 
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /^Price source/ }).click();
   await expect(page.getByRole('button', { name: /World price \(XAU\)/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('Updated daily · spot price, not buyback')).toBeVisible();
   await page.getByRole('button', { name: /I'll type it/ }).click();
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText("I'll type it");
+  await page.goBack();
   // No ↻, and the price it has stays.
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toHaveCount(0);
   await expect(page.getByText('Rp 47.994.340').first()).toBeVisible();
@@ -237,8 +242,10 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   expect(asked).toBe(before);
   await expect(page.getByTestId('asset-grid')).toContainText('World price');
 
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /^Price source/ }).click();
   await page.getByRole('button', { name: /World price \(XAU\)/ }).click();
+  await page.goBack();
   await priceSaid(page, 'World price');
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toBeVisible();
 });

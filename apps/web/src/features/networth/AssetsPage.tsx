@@ -1,5 +1,5 @@
-import { CASH_ITEMS, isoDate, priceAgeDays } from '@expanses/core';
-import { Plus, Tag } from 'lucide-react';
+import { CASH_ITEMS } from '@expanses/core';
+import { Coins, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -166,10 +166,6 @@ export function AssetsPage() {
   const live = liveGroups(groups);
   const sold = soldRows(groups);
   const stale = staleRows(groups);
-  // Shares and funds, whose prices Update prices brings up to date; and how many of them are more than a week old.
-  const kinds = new Map((profiles.data ?? []).map((profile) => [profile.accountId, profile.assetKind]));
-  const listed = (values.data ?? []).filter((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0 && ['stock', 'fund'].includes(kinds.get(row.accountId) ?? ''));
-  const oldPrices = listed.filter((row) => row.source !== 'price' || !row.asOf || priceAgeDays(row.asOf, isoDate()) > 7).length;
   // The chart divides what is held: a section taken below nought by an overdraft is named under it instead.
   const shares = heldShares(assetSegments(live));
   // The pick holds only while its box is drawn: a section gone or taken below nought lets go of it.
@@ -191,26 +187,13 @@ export function AssetsPage() {
    * asks what you own and then draws the form that choice needs — rather than unfolding every field of every kind
    * over the list you came to read.
    */
-  const pricedStale = stale.filter((row) => row.method === 'Units × price');
   const estimatesStale = stale.filter((row) => row.method !== 'Units × price');
   /*
-   * Prices live in the corner beside +: one tag that opens Update prices, where every holding priced by the unit —
-   * shares, funds, gold — takes today's price. A dot on the tag while any price is stale or more than a week old.
+   * The corner beside + opens Dividends: what the shares and bonds held pay, dividends and coupons (owner, 23 Oct). It
+   * used to hold the price tag; Update prices is now in each priced holding's Settings, under Prices.
    */
-  const pricesOld = pricedStale.length > 0 || oldPrices > 0;
-  const priced = (values.data ?? []).some((row) => row.mode === 'market' && (row.unitsMicro ?? 0) > 0);
-  const prices: CornerAction = {
-    key: 'prices',
-    label: pricesOld ? 'Update prices, some are old' : 'Update prices',
-    glyph: (
-      <span className="relative flex items-center justify-center">
-        <Tag size={18} aria-hidden />
-        {pricesOld && <span aria-hidden className="absolute top-[-2px] right-[-2px] h-[7px] w-[7px] rounded-full bg-[var(--ph-warn)]" />}
-      </span>
-    ),
-    to: '/net-worth/prices',
-  };
-  const actions: CornerAction[] = [...(priced ? [prices] : []), { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
+  const dividends: CornerAction = { key: 'dividends', label: 'Dividends', glyph: <Coins size={19} aria-hidden />, to: '/net-worth/investments/dividends' };
+  const actions: CornerAction[] = [dividends, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>
