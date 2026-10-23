@@ -30,7 +30,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { cardPostings } from '../schema-cards';
+import { cardPostings, cards } from '../schema-cards';
 import { draftTransactions } from '../schema-drafts';
 import { cardStatementSettings, type StatementLinkKind, statementChecks, statementLinks } from '../schema-statements';
 import { ensureSystemAccountTx, systemAccountId } from './accounts';
@@ -44,7 +44,7 @@ import { postEventRecordTx, setPaidFromTx } from './shared-event-postings';
 
 export class StatementCheckError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY' | 'EVENT_POSTING',
+    readonly code: 'NOT_FOUND' | 'NO_SUCH_CARD' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY' | 'EVENT_POSTING',
     message: string,
   ) {
     super(message);
@@ -126,6 +126,11 @@ export interface CheckDecisions {
    * Its payments are not recorded — the settlements stand for them — and the card's start stays where it is.
    */
   paidOff?: boolean;
+  /**
+   * Which of the account's cards the statement's purchases and refunds were made on, for an account carrying more than
+   * one: each one recorded from the statement names it, so the card's statement puts it under that card's digits.
+   */
+  cardId?: string | null;
 }
 
 export interface StatementCheckRow {
@@ -706,6 +711,15 @@ export async function recordStatementCheck(
     const beforeStart = opening !== null && opening.occurredOn > period.start;
     // Paid off: nothing before the start is owed through this check, so no previous balance is asked and no bridge made.
     const paidOff = beforeStart && decisions.paidOff === true;
+    // The card the purchases were made on must be one of this account's: asked before anything is written.
+    const chosenCard = decisions.cardId ?? null;
+    if (chosenCard) {
+      const [own] = await tx
+        .select({ id: cards.id })
+        .from(cards)
+        .where(and(eq(cards.id, chosenCard), eq(cards.accountId, cardAccountId), eq(cards.workspaceId, ws.workspaceId)));
+      if (!own) throw new StatementCheckError('NO_SUCH_CARD', 'That card is not on this account');
+    }
     if (beforeStart && previousMinor === null && !paidOff) throw new StatementCheckError('NO_PREVIOUS_BALANCE', NO_PREVIOUS_BALANCE_MESSAGE);
     const bridgeOn: string | null = bridge?.occurredOn ?? (beforeStart && !paidOff ? opening.occurredOn : null);
     const owedThen = bridgeOn ? await owedAt(tx, ws, cardAccountId, bridgeOn) : 0;
@@ -815,6 +829,8 @@ export async function recordStatementCheck(
           externalRef,
           lines,
           ...original,
+          // A payment is the account's, never one card's.
+          ...(chosenCard && !isPayment ? { cardId: chosenCard } : {}),
           // Paid off before the card's start here: spending in its month, the card's balance today left as it is.
           ...(paidOff ? { settledBeforeApp: true } : {}),
         });
