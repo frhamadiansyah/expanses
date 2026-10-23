@@ -66,8 +66,10 @@ export function ListedTradeSheet({
   // With no broker named, the cash side is asked for, from the accounts the full form offers.
   const cashChoices = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
   const [picked, setPicked] = useState('');
-  const cashAccountId = brokerAccountId ?? (picked || cashChoices[0]?.id || '');
-  const cashAccount = (accounts.data ?? []).find((account) => account.id === cashAccountId);
+  // Owned before the app: recorded against Opening Balances, so neither the broker's cash nor any account moves.
+  const [past, setPast] = useState(false);
+  const cashAccountId = past ? '' : (brokerAccountId ?? (picked || cashChoices[0]?.id || ''));
+  const cashAccount = past ? undefined : (accounts.data ?? []).find((account) => account.id === cashAccountId);
 
   const fees = useBrokerFees(brokerAccountId);
   const chargedToday = useQuery({
@@ -91,7 +93,7 @@ export function ListedTradeSheet({
   const tooMany = kind === 'sell' && lots > heldLots;
   // The broker's worked-out fee and tax go on the trade; a fee or tax typed in the details takes their place.
   const typedInput: RecordTradeInput | null =
-    charge && !tooMany && lots >= 1 && occurredOn <= today && cashAccountId
+    charge && !tooMany && lots >= 1 && occurredOn <= today && (past || cashAccountId)
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor, feeMinor: charge.feeMinor, taxMinor: charge.taxMinor, cashAccountId, goalId: null }
       : null;
   const cashCurrency = cashAccount?.currency ?? undefined;
@@ -172,7 +174,7 @@ export function ListedTradeSheet({
           canUp={kind === 'buy' || lots < heldLots}
         />
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
-        {!brokerAccountId ? (
+        {!brokerAccountId && !past ? (
           <SelectRow label={kind === 'buy' ? 'Paid from' : 'Paid into'} value={cashAccountId} onChange={(e) => setPicked(e.target.value)}>
             {cashChoices.map((account) => (
               <option key={account.id} value={account.id}>
@@ -183,7 +185,7 @@ export function ListedTradeSheet({
         ) : null}
       </InsetGroup>
 
-      <TradeDetails kind={kind} details={details} currency={holding.currency} emptyWord="Worked out" whole={formatUnits(unitsMicro)} unitLabel="shares" problem={problem} />
+      <TradeDetails past={{ on: past, set: setPast }} kind={kind} details={details} currency={holding.currency} emptyWord="Worked out" whole={formatUnits(unitsMicro)} unitLabel="shares" problem={problem} />
 
       {charge && (
         <div className="mb-[18px] rounded-[11px] bg-[var(--ph-surface)] px-4 py-3" data-testid="trade-total">
