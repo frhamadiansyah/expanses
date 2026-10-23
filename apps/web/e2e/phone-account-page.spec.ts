@@ -8,10 +8,9 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
-  await page.getByRole('button', { name: 'More', exact: true }).tap();
-  await expect(page.getByRole('menuitem', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // The corner holds the ⚙ alone: no ⋯, and nothing named Tax report code outside Settings.
+  await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Spend', exact: true }).tap();
   await expect(page.getByRole('dialog', { name: 'New expense' }).getByRole('button', { name: 'Paid with' })).toContainText('Everyday');
   await page.getByRole('dialog', { name: 'New expense' }).getByRole('button', { name: 'Close' }).tap();
@@ -64,8 +63,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await openTypes(page);
   await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
-  await page.getByRole('button', { name: 'More', exact: true }).tap();
-  await page.getByRole('menuitem', { name: 'Add a currency', exact: true }).tap();
+  await page.getByTestId('add-currency').tap();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

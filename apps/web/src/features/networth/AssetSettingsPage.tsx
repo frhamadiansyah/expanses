@@ -102,9 +102,11 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
     }
   }
 
-  // An asset holding anything is not archived: it would leave the list with money still in it. A money account's own
-  // page has its rules for that, so only an asset's are said here.
-  const archivable = money || !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
+  // An asset holding anything is not archived: it would leave the list with money still in it. A money account goes
+  // whatever it holds (a parent with pockets is refused by the database, which says which are left), but a pocket only
+  // once it is empty.
+  const pocket = Boolean(account?.parentId);
+  const archivable = money ? !pocket || !value || value.valueMinor === 0 : !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
   const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
     <div className={SCREEN}>
@@ -215,7 +217,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
               onClick={() =>
                 archivable
                   ? void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))
-                  : window.alert('Archiving is available once nothing is left in this asset.')
+                  : window.alert(`Archiving is available once nothing is left in this ${money ? 'pocket' : 'asset'}.`)
               }
             />
             <DestructiveRow
