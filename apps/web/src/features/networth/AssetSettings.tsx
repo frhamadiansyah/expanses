@@ -1,6 +1,6 @@
 import type { AssetKind, PlanGroup } from '@expanses/core';
 import { renameAccount, setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
-import { type KeyboardEvent, type ReactNode, useState } from 'react';
+import { type KeyboardEvent, type ReactElement, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { errorMessage } from '../../ui';
@@ -62,7 +62,8 @@ export function AssetSettings({
   /** A row under Name: an asset's Acquired, which used to wait on an Edit screen of its own. */
   afterName?: ReactNode;
   /** The tax report's own questions for it, under the Tax report group. */
-  taxFields?: ReactNode;
+  /** The report's questions for this asset, given the Tax report rows to open their box with; left out, the rows stand alone. */
+  taxFields?: (lead: ReactElement[]) => ReactNode;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -108,6 +109,19 @@ export function AssetSettings({
   const groups = planGroupChoices(assetKind, subtype, current);
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
 
+  // The report's own rows, opening one Tax report box with the questions the report asks of this asset under them.
+  const taxRows = [
+    <SwitchRow
+      key="reportable"
+      label="Include in tax report"
+      checked={reportable}
+      onChange={(on) => void save('reportable', () => setAssetReporting(database, ws, accountId, { reportable: on }))}
+      info="Turn it off for money that is held but not reported yet, such as a pension balance that counts only once it is paid out. It still counts toward net worth."
+      hint={errorHint(errors.reportable)}
+    />,
+    <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />,
+    <PickerRow key="code" label="Code" value={codeLine(code)} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
+  ];
   return (
     <>
       <InsetGroup>
@@ -170,18 +184,11 @@ export function AssetSettings({
         </SelectRow>
       </InsetGroup>
 
-      <InsetGroup header="Tax report">
-        <SwitchRow
-          label="Report as harta"
-          checked={reportable}
-          onChange={(on) => void save('reportable', () => setAssetReporting(database, ws, accountId, { reportable: on }))}
-          info="Turn it off for money that is held but not reported yet, such as a pension balance that counts only once it is paid out. It still counts toward net worth."
-          hint={errorHint(errors.reportable)}
-        />
-        <PickerRow label="What it is" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />
-        <PickerRow label="Tax report code" value={codeLine(code)} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />
-      </InsetGroup>
-      {taxFields}
+      {taxFields && reportable ? (
+        taxFields(taxRows)
+      ) : (
+        <InsetGroup header="Tax report">{taxRows}</InsetGroup>
+      )}
 
       {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
       {sheet === 'code' && <CodeSheet code={code} onSave={saveCode} onClose={() => setSheet(null)} />}

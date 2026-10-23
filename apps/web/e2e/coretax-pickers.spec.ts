@@ -90,7 +90,7 @@ async function expectCode(page: Page, name: RegExp, code: string) {
   await openAssets(page);
   await page.getByRole('link', { name }).click();
   await openSettings(page);
-  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText(code);
+  await expect(page.getByRole('button', { name: /^Code/ })).toContainText(code);
 }
 
 test('a family, then the thing: an apartment and gold jewellery file under their own codes', async ({ page }) => {
@@ -193,9 +193,9 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
   await openSettings(page);
   // Saved as it is tapped, in the words it was chosen with.
-  await page.getByRole('button', { name: /^What it is/ }).click();
+  await page.getByRole('button', { name: /^Description/ }).click();
   await page.getByRole('button', { name: 'Saving account', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
 
   // 0102 is a current *or* a saving account, and the code itself is what changed. A code is read on the report,
   // so that is where the change is checked — the same fact the Accounts list used to carry in a second line.
@@ -219,8 +219,8 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await openDrawers(page);
   await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
   await openSettings(page);
-  await expect(page.getByRole('button', { name: /^What it is/ })).toContainText('Saving account');
-  await page.getByRole('button', { name: /^What it is/ }).click();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
+  await page.getByRole('button', { name: /^Description/ }).click();
   await expect(page.getByRole('button', { name: 'Saving account', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.
