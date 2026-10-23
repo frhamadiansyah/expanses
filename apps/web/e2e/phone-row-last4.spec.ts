@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openSettings, openTypes } from './accounts';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
+import { cardPage } from './card-section';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
 
@@ -62,6 +63,7 @@ test('a foreign purchase that earns cashback shows the foreign amount alone unde
   await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Voyager Travel(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();

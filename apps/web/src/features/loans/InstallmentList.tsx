@@ -1,17 +1,18 @@
-import { installmentSplit, isoDate } from '@expanses/core';
+import { formatMinor, installmentSplit, isoDate } from '@expanses/core';
 import { deleteInstallment, saveInstallment } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Trash2 } from 'lucide-react';
-import { ErrorBox, Money } from '../../ui';
-import { InsetGroup, SwitchRow, TextRow } from '../../ui/native';
-import { ActionRow, ColumnGroup, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, ProgressBar, SwitchRow, TextRow } from '../../ui/native';
+import { ActionRow, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { useInstallments } from './queries';
 
 /**
- * Instalment plans on one card. The purchase was spending on the day it happened; these rows only
- * say how much of it the card has billed so far, and how much is still to come.
+ * Instalment plans on one card, on its page under this statement's points. The purchase was spending on the day it
+ * happened; these rows only say how much of it the card has billed so far, how much it still holds of the limit, and
+ * how far through its months it is — with the way to add a plan the issuer made and to remove one.
  */
 export function InstallmentList({ cardAccountId, currency }: { cardAccountId: string; currency: string }) {
   const { database, ws } = useApp();
@@ -62,27 +63,33 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
     }
   }
 
-  const plansNow = plans.data ?? [];
+  const plansNow = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) }));
+  const held = plansNow.reduce((sum, { split }) => sum + split.unbilledMinor, 0);
   return (
-    <>
-      <InsetGroup header="Instalment plans">
+    <div data-testid="card-instalments">
+      <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
         {plansNow.length === 0 && !adding && (
           <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
         )}
-        {plansNow.map((plan) => {
-          const split = installmentSplit(plan, today);
+        {plansNow.map(({ plan, split }) => {
+          const paid = plan.months - split.monthsLeft;
           return (
             // Every figure of a plan is worth reading whole, so its lines wrap rather than truncate beside a figure.
-            <Line key={plan.id} testId="instalment-plan" pad="11px 4px 11px 13px" className="flex items-center gap-[8px]">
+            <Line key={plan.id} testId="card-instalment" pad="11px 4px 11px 13px" className="flex items-center gap-[8px]">
               <span className="min-w-0 flex-1">
                 <span className={`block ${TITLE}`}>{plan.description}</span>
-                <span className={`mt-[2px] block ${SUBTITLE}`}>
-                  {plan.months} months · <Money minor={plan.monthlyMinor} currency={currency} /> a month · ends {split.lastMonth}
-                  {!plan.earnsPoints && ' · earns no points'}
+                <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
+                <span className={`block ${SUBTITLE}`}>
+                  {paid} of {plan.months} paid · {formatMinor(plan.monthlyMinor, currency)} a month
                 </span>
                 <span className={`block ${SUBTITLE}`}>
-                  Billed <Money minor={split.billedMinor} currency={currency} /> · Still to come <Money minor={split.unbilledMinor} currency={currency} />
+                  Billed {formatMinor(split.billedMinor, currency)} · ends {split.lastMonth}
+                  {!plan.earnsPoints && ' · earns no points'}
                 </span>
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="tabular block text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(split.unbilledMinor, currency)}</span>
+                <span className="block text-[12px] leading-[16px] text-[var(--ph-ink-3)]">still held</span>
               </span>
               <GlyphButton label={`Remove ${plan.description}`} glyph={<Trash2 size={17} aria-hidden />} destructive onClick={() => void remove(plan.id)} />
             </Line>
@@ -93,21 +100,14 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
 
       {adding && (
         <form onSubmit={add}>
-          {/* The plan's figures across a desktop, as they stood in a row of four before; down a phone. */}
-          <ColumnGroup
-            header="New instalment plan"
-            columns={[
-              [
-                <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />,
-                <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="Amount" required />,
-              ],
-              [
-                <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />,
-                <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />,
-              ],
-              [<SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />],
-            ]}
-          />
+          {/* Down the summary's column at every width: on a desktop it sits beside the card, not across the page. */}
+          <InsetGroup header="New instalment plan">
+            <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />
+            <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="Amount" required />
+            <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />
+            <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />
+            <SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />
+          </InsetGroup>
           <ErrorBox error={error} />
           <InsetGroup>
             <SubmitRow label="Save plan" disabled={busy} />
@@ -116,6 +116,6 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
         </form>
       )}
       {!adding && <ErrorBox error={error} />}
-    </>
+    </div>
   );
 }

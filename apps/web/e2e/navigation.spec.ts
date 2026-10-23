@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
+import { cardPage } from './card-section';
 
 async function addCard(page: Page, name: string) {
   await openCard(page, { name });
@@ -21,12 +22,14 @@ test('menu navigation between a card page and the cards list keeps working', asy
 
   await menu(page, 'Cards');
   await page.getByRole('link', { name: 'Only Card' }).first().click();
-  await expect(page.getByText('Card terms')).toBeVisible();
+  await expect(page.getByTestId('card-setup')).toContainText('Step 1 of 3');
   await menu(page, 'Cards');
   await expect(page.getByRole('heading', { name: 'Cards & points' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Only Card' }).first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Only Card' }).first().click();
+  await cardPage(page, 'Settings');
+  await expect(page.getByText('Card terms')).toBeVisible();
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();

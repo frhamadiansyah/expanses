@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -16,13 +16,15 @@ async function setUp(page: Page) {
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await page.getByRole('button', { name: 'Save terms' }).click();
-  // Saving terms moves the page on to setting up rewards; the statement is one tab away.
+  // Saving terms moves setup on to rewards; the statement is a page of its own, from the card.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  await cardSection(page, 'Activity');
+  await page.getByRole('button', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Statement');
   await expect(page.getByText('Statements')).toBeVisible();
 }
 
@@ -36,28 +38,37 @@ async function openCardPage(page: Page) {
   await page.getByRole('link', { name: 'BCA Visa' }).click();
 }
 
+/** The card's statement, a page of its own opened from its round Statement button. */
+async function openStatement(page: Page) {
+  await openCardPage(page);
+  await cardPage(page, 'Statement');
+}
+
 test('a purchase the bank billed a statement late moves to the next one', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCardPage(page);
 
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('2.000.000');
+  await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await hotel.getByRole('button', { name: 'Billed next statement' }).click();
   await expect(page.getByTestId('statement-line')).toHaveCount(0);
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Nothing billed');
 
   await page.getByRole('button', { name: 'Later statement' }).click();
   // It sits on the later statement now, with the way back beside it.
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' }).getByRole('button', { name: 'Use purchase date' })).toBeVisible();
+  // And the card's summary has nothing billed on the statement it left.
+  await page.getByRole('button', { name: 'BCA Visa' }).click();
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Nothing billed');
 });
 
 test('chosen purchases are paid before the statement, and show as paid', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Superindo', '450000', TODAY);
   await buy(page, 'Ranch Market', '80000', TODAY);
-  await openCardPage(page);
+  await openStatement(page);
 
   await page.getByLabel('Pay Superindo').check();
   await page.getByLabel('Pay Ranch Market').check();
@@ -79,7 +90,7 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   // Wait for the delete to land: the open form hides the row's text before anything is saved.
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
   await expect(page.locator('li', { hasText: /BCA Visa payment/ })).toHaveCount(0);
-  await openCardPage(page);
+  await openStatement(page);
   await expect(page.getByLabel('Pay Superindo')).toBeEnabled();
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
 });
@@ -88,7 +99,7 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
-  await openCardPage(page);
+  await openStatement(page);
 
   // Nothing paid yet: the previous bill stands whole beside what this cycle has gathered.
   const band = page.getByTestId('statement-band');
@@ -132,21 +143,34 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   await expect(tile.getByTestId('due-date')).toHaveCount(0);
 });
 
-test('the tab you chose survives a reload', async ({ page }) => {
+test('a card page survives a reload, and a link to an old tab lands on its page', async ({ page }) => {
   await setUp(page);
   await openCardPage(page);
-  await cardSection(page, 'Card');
+  const cardUrl = page.url();
+  await cardPage(page, 'Settings');
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('radio', { name: 'Card', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
+
+  // The tabs became pages: each old `?tab=` link is sent to the page holding what the tab did.
+  for (const [tab, path, title] of [
+    ['statement', '/statement', 'Statement'],
+    ['points', '/points', "This statement's points"],
+    ['rules', '/settings', 'Settings'],
+    ['card', '/settings', 'Settings'],
+  ] as const) {
+    await page.goto(`${cardUrl}?tab=${tab}`);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
+  }
 });
 
 test('searching finds a purchase on an earlier statement and opens that statement', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
-  await openCardPage(page);
+  await openStatement(page);
 
   await page.getByLabel('Search statements').fill('mulia');
   const results = page.getByTestId('statement-search-results');
@@ -158,21 +182,23 @@ test('searching finds a purchase on an earlier statement and opens that statemen
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toHaveCount(0);
 });
 
-test('on a desktop the section control and the section it switches share one column', async ({ page }) => {
+test('on a desktop the settings lay their groups out in one column across the page', async ({ page }) => {
   await setUp(page);
   await openCardPage(page);
-  await cardSection(page, 'Card');
-  const control = await page.getByRole('radiogroup', { name: 'Card sections' }).boundingBox();
-  const section = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();
-  expect(control && section).toBeTruthy();
-  expect(Math.round(control!.x)).toBe(Math.round(section!.x));
-  expect(Math.round(control!.width)).toBe(Math.round(section!.width));
+  await cardPage(page, 'Settings');
+  const terms = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();
+  const cards = await page.locator('section', { has: page.getByRole('heading', { name: 'Cards on this account' }) }).first().boundingBox();
+  expect(terms && cards).toBeTruthy();
+  expect(Math.round(terms!.x)).toBe(Math.round(cards!.x));
+  expect(Math.round(terms!.width)).toBe(Math.round(cards!.width));
+  // A desktop is not a phone held sideways: the terms' fields sit side by side across that width.
+  expect(terms!.width).toBeGreaterThan(600);
 });
 
 test('a purchase on a closed statement is marked paid off from the statement, and taken back with its ✓', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
-  await openCardPage(page);
+  await openStatement(page);
   await page.getByRole('button', { name: 'Earlier statement' }).click();
 
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
@@ -194,14 +220,15 @@ test('purchases under Card not recorded are set to one card at once with Assign 
   await buy(page, 'Superindo', '450000', TODAY);
   await buy(page, 'Ranch Market', '80000', TODAY);
   await openCardPage(page);
-  await cardSection(page, 'Card');
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('1467');
   await page.getByRole('button', { name: 'Add card' }).click();
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
   await page.getByLabel('Last 4 digits').fill('8820');
   await page.getByRole('button', { name: 'Add card' }).click();
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
-  await cardSection(page, 'Activity');
+  await page.getByRole('button', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Statement');
 
   // Two cards: the statement is split by card, and both purchases sit under Card not recorded.
   const unrecorded = page.getByRole('region', { name: 'Card not recorded' });

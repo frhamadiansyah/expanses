@@ -203,7 +203,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
             : `${month} statement checked — add the summary to reconcile`,
       );
       await invalidate();
-      await navigate({ to: '/cards/$cardId', params: { cardId: card.id }, search: { tab: 'statement' } });
+      await navigate({ to: '/cards/$cardId/statement', params: { cardId: card.id } });
     } catch (e) {
       setError(e);
     } finally {
@@ -211,7 +211,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
     }
   }
 
-  const back = { back: card.name, backTo: '/cards/$cardId' as const, backParams: { cardId: card.id }, backSearch: { tab: 'statement' as const } };
+  const back = { back: 'Statement', backTo: '/cards/$cardId/statement' as const, backParams: { cardId: card.id } };
 
   if (!prepared) {
     return (

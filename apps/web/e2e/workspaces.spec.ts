@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openTypes } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
+import { cardPage } from './card-section';
 
 /**
  * An account's history, reached the way a reader reaches it: its row on Accounts, which opens the account's own
@@ -225,6 +226,7 @@ async function addCard(page: Page) {
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
@@ -254,6 +256,7 @@ test('a card’s statement holds every workspace, and each row says which', asyn
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Statement');
   const lines = page.getByTestId('statement-line');
   await expect(lines).toHaveCount(2);
   await expect(lines.filter({ hasText: 'Superindo' }).getByTestId('workspace-badge')).toHaveText('Personal');

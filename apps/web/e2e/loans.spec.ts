@@ -210,18 +210,20 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await page.getByLabel('Over how many months').fill('12');
   await page.getByRole('button', { name: 'Save plan' }).click();
 
-  const saved = page.getByTestId('instalment-plan');
-  await expect(saved).toContainText('iBox Grand Indonesia');
-  await expect(saved).toContainText('earns no points');
-  await expect(saved).toContainText(/1\.000\.000 a month/);
-
-  // The unbilled part is shown as held inside what the card owes: on the summary, a row per plan with its months.
+  // The plan is managed where it is read: on the card's summary, a row per plan with its months and what it holds.
   const held = page.getByTestId('card-instalments');
   await expect(held).toContainText(/Rp\s[\d.]+ held/);
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
+  await expect(plan).toContainText('earns no points');
   await expect(plan).toContainText(/\d+ of 12 paid · Rp\s1\.000\.000 a month/);
+  await expect(plan).toContainText(/Billed Rp\s[\d.]+ · ends \d{4}-\d{2}/);
   await expect(plan).toContainText('still held');
+
+  // And removed from there, leaving the purchase it came from alone.
+  await plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' }).click();
+  await expect(held.getByTestId('card-instalment')).toHaveCount(0);
+  await expect(held.getByRole('button', { name: 'Add a plan' })).toBeVisible();
 });
 
 test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {

@@ -1,11 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
+import { cardPage } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -48,15 +50,14 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   // Wallet's summary, beside the card on a desktop: the tiles sit to its right.
   const unpaid = (await page.getByTestId('tile-left-to-pay').boundingBox())!;
   expect(unpaid.x).toBeGreaterThanOrEqual((await raised.boundingBox())!.x + 380);
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Points', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Latest transactions' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Points', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
 
-  // ⋯ → Card details keeps every section of the old page, the segmented control and its desktop forms included.
-  await page.getByRole('button', { name: 'More' }).click();
-  await page.getByRole('menuitem', { name: 'Card details' }).click();
-  await expect(page.getByRole('radiogroup', { name: 'Card sections' }).getByRole('radio')).toHaveCount(4);
+  // ⚙ opens the card's settings, a page of its own with its desktop forms; ‹ comes back to the raised card.
+  await cardPage(page, 'Settings');
+  await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
-  await page.getByRole('button', { name: 'Back to Alpha Card' }).click();
+  await page.getByRole('button', { name: 'Alpha Card' }).click();
   await expect(page.getByTestId('tile-points')).toBeVisible();
 
   // Back behaves like ✕: the stack again, in its order.

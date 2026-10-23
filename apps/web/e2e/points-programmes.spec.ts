@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardSection, walletCard } from './card-section';
+import { cardPage, walletCard } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -16,6 +16,7 @@ async function cardEarningInto(page: Page, card: string, programme: string) {
   await openCard(page, { name: card });
   await page.goto('/cards');
   await walletCard(page, card).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -82,8 +83,8 @@ test('a second card of the bank joins its programme', async ({ page }) => {
 
   await page.goto('/cards');
   await walletCard(page, 'Mandiri Platinum').click();
-  await cardSection(page, 'Points');
-  await page.getByLabel('Programme', { exact: true }).selectOption({ label: "Livin' Poin" });
+  await cardPage(page, 'Settings');
+  await page.getByLabel('Earns into', { exact: true }).selectOption({ label: "Livin' Poin" });
   await expect(page.getByTestId('points-balance')).toBeVisible();
   await expect(page.getByRole('link', { name: /Livin' Poin/ })).toBeVisible();
 
@@ -94,4 +95,16 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await programmeRow(page, "Livin' Poin").click();
   await expect(page.getByRole('link', { name: /Mandiri Prioritas/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Mandiri Platinum/ })).toBeVisible();
+
+  // What a point fetches is set here too, for the card whose terms list it.
+  const values = page.getByTestId('point-values');
+  await values.getByLabel('Card').selectOption({ label: 'Mandiri Platinum' });
+  await values.getByLabel('Redemption').fill('Statement credit');
+  await values.getByLabel('Points redeemed').fill('1');
+  await values.getByLabel('Worth').fill('25');
+  await values.getByRole('button', { name: 'Add value' }).click();
+  await expect(values).toContainText(/Statement credit: 1 points = Rp\s25/);
+  await expect(values).toContainText('Mandiri Platinum');
+  await values.getByRole('button', { name: 'Remove Statement credit' }).click();
+  await expect(values).toContainText('No values yet');
 });

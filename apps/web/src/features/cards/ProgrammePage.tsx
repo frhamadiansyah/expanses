@@ -1,14 +1,19 @@
-import { isoDate } from '@expanses/core';
+import { CURRENCIES, formatMinor, isoDate, parseMajor } from '@expanses/core';
 import {
   deleteConversion,
+  deleteRedemptionOption,
   getProgramme,
+  listPrograms,
   listProgrammes,
   listRedemptionOptions,
+  type ProgrammeRow,
+  type RedemptionOptionRow,
   programBalance,
   programmeEarners,
   programmeHistory,
   programmePartners,
   refreshProgramme,
+  saveRedemptionOption,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
@@ -17,11 +22,11 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
+import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { formatPoints } from './format-points';
 import { balanceText, expiryNote, historyLine } from './programme-text';
 import { BalanceSheet, ConvertSheet, ProgrammeSettingsSheet, RedeemSheet } from './ProgrammeSheets';
-import { RowWithActions } from './rows';
+import { ColumnGroup, RowWithActions, SubmitRow, TextLine } from './rows';
 
 type SheetName = 'redeem' | 'convert' | 'balance' | 'settings';
 
@@ -58,13 +63,15 @@ export function ProgrammePage() {
         history: await programmeHistory(database, ws, programmeId),
         partners: await programmePartners(database, ws, programmeId),
         others: (await listProgrammes(database, ws)).filter((other) => other.id !== programmeId),
+        // Which earning cards follow the catalogue: changing a value of theirs makes them customised, so it asks first.
+        linked: new Set((await listPrograms(database, ws)).filter((program) => program.catalogStatus === 'linked').map((program) => program.id)),
       };
     },
   });
 
   if (data.isSuccess && data.data === null) return <Empty>Programme not found.</Empty>;
   if (!data.data) return <p className="text-sm text-slate-500">Loading…</p>;
-  const { programme, earners, options, balance, history, partners, others } = data.data;
+  const { programme, earners, options, balance, history, partners, others, linked } = data.data;
   const unit = programme.unit;
   const note = expiryNote(balance);
 
@@ -130,14 +137,15 @@ export function ProgrammePage() {
                 title={earner.cardName}
                 subtitle={current ? `This statement${current.estimated ? ', estimated' : ''}` : 'Nothing this statement yet'}
                 value={current ? `+${formatPoints(current.quantity)}` : undefined}
-                to="/cards/$cardId"
+                to="/cards/$cardId/points"
                 params={{ cardId: earner.cardAccountId }}
-                search={{ tab: 'points' }}
               />
             );
           })}
         </InsetGroup>
       )}
+
+      <PointValues programme={programme} earners={earners} options={options} linked={linked} />
 
       <div data-testid="programme-history">
         <InsetGroup header="History" footer={earners.length === 0 ? `No card earns into ${programme.name}: its ${unit} arrive by conversion, or by setting the balance to the one its own app shows.` : undefined}>
@@ -175,6 +183,119 @@ export function ProgrammePage() {
           onArchived={() => void navigate({ to: '/cards' })}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * What the programme's points fetch, one value per redemption: what the cards' points are worth on their pages, and
+ * what Redeem offers. A value belongs to the card whose terms list it, so with two cards earning here each value says
+ * whose it is, and a new one is added to the card chosen.
+ */
+function PointValues({
+  programme,
+  earners,
+  options,
+  linked,
+}: {
+  programme: ProgrammeRow;
+  earners: { programId: string; cardName: string }[];
+  options: RedemptionOptionRow[];
+  linked: ReadonlySet<string>;
+}) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const [error, setError] = useState<unknown>(null);
+  const [programId, setProgramId] = useState(earners[0]?.programId ?? '');
+  const [name, setName] = useState('');
+  const [points, setPoints] = useState('');
+  const [value, setValue] = useState('');
+  const [currency, setCurrency] = useState(ws.baseCurrency);
+  const cardOf = (id: string) => earners.find((earner) => earner.programId === id)?.cardName ?? programme.name;
+  const confirmCustomise = (id: string) =>
+    !linked.has(id) || window.confirm(`${cardOf(id)} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for review. Continue?`);
+  const act = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await fn();
+      await invalidate();
+      return true;
+    } catch (e) {
+      setError(e);
+      return false;
+    }
+  };
+  const target = earners.some((earner) => earner.programId === programId) ? programId : (earners[0]?.programId ?? '');
+  return (
+    <div data-testid="point-values">
+      <InsetGroup
+        header="What points are worth"
+        footer={earners.length === 0 ? `Values come with the cards earning into ${programme.name}.` : undefined}
+      >
+        {options.length === 0 && <TextLine tone="ink-3">No values yet. Add what a redemption fetches, so points can be worth something here.</TextLine>}
+        {options.map((option) => (
+          <RowWithActions
+            key={option.id}
+            title={`${option.name}: ${formatPoints(option.perPoints)} ${programme.unit} = ${formatMinor(option.valueMinor, option.currency)}`}
+            subtitle={earners.length > 1 ? cardOf(option.programId) : undefined}
+            actions={[
+              {
+                label: `Remove ${option.name}`,
+                glyph: <Trash2 size={17} aria-hidden />,
+                destructive: true,
+                onClick: () => confirmCustomise(option.programId) && void act(() => deleteRedemptionOption(database, ws, option.id)),
+              },
+            ]}
+          />
+        ))}
+      </InsetGroup>
+      {earners.length > 0 && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!confirmCustomise(target)) return;
+            void act(async () => {
+              await saveRedemptionOption(database, ws, { programId: target, name, type: 'cashback', perPoints: Number(points), valueMinor: parseMajor(value, currency), currency });
+              setName('');
+              setPoints('');
+              setValue('');
+            });
+          }}
+        >
+          <ColumnGroup
+            header="Add a value"
+            columns={[
+              [
+                ...(earners.length > 1
+                  ? [
+                      <SelectRow label="Card" value={target} onChange={(e) => setProgramId(e.target.value)}>
+                        {earners.map((earner) => (
+                          <option key={earner.programId} value={earner.programId}>
+                            {earner.cardName}
+                          </option>
+                        ))}
+                      </SelectRow>,
+                    ]
+                  : []),
+                <TextRow label="Redemption" value={name} onChange={(e) => setName(e.target.value)} placeholder="Statement credit" />,
+                <TextRow label={programme.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={points} onChange={(e) => setPoints(e.target.value)} inputMode="numeric" placeholder="Points" required />,
+              ],
+              [
+                <TextRow label="Worth" value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="Amount" required />,
+                <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {CURRENCIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code}
+                    </option>
+                  ))}
+                </SelectRow>,
+              ],
+              [<SubmitRow label="Add value" />],
+            ]}
+          />
+        </form>
+      )}
+      <ErrorBox error={error} />
     </div>
   );
 }

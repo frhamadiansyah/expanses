@@ -5,7 +5,7 @@ import { addCap } from './budget';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
-import { cardSection } from './card-section';
+import { cardPage, cardPurchases } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
 import { openSplit, setChannel, splitRow } from './split-row';
@@ -109,6 +109,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
   // A second card on the same account: one statement, two sets of digits.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -151,6 +152,7 @@ test('a card whose primary was removed and a primary and a supplementary added a
   });
   await page.goto('/cards');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   // The primary goes, and the account carries no card for a moment.
   await page.getByRole('button', { name: 'Remove card ending 1467' }).click();
   await expect(page.getByTestId('card-on-account')).toHaveCount(0);
@@ -187,6 +189,7 @@ test('a purchase on the account’s only card keeps that card once it is removed
   // A supplementary added, and the old primary removed.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -530,6 +533,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   // A second card on the same account, so "which card" has a wrong answer available to be caught at.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -632,13 +636,14 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
 async function catalogueCard(page: Page, name: string, search: string, entryName: string, billingDay = '25') {
   await page.goto('/cards');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill(billingDay);
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByLabel('Search catalogue').fill(search);
   await page.getByRole('button', { name: entryName, exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('From catalogue · Linked')).toBeVisible();
+  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
 }
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
@@ -738,7 +743,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPurchases(page);
   const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(row).toContainText('MCC 5411 · typed');
 });
@@ -1228,6 +1233,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // A second card on the same account, so "which card" is a real question with a wrong answer available.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -1316,7 +1322,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // promised. The points engine reads it back through `resolveMcc`, and says where it came from.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPurchases(page);
   const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(purchase).toContainText('MCC 5411 · remembered');
 });
@@ -1441,7 +1447,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('85.000');
   await expect(page.getByTestId('purchase').filter({ hasText: 'Ranch Market' })).toContainText('50.000');
 });
@@ -1593,7 +1599,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   // It really is a card purchase with an MCC first, or the drop below proves nothing.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
 
   // The refund, made from the receipt the purchase already has.
@@ -1611,7 +1617,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   // The card's own facts are gone with the purchase: no MCC, and no card on the row.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
 
   // Everything that was never a card's fact came across to the new id, all four at once.

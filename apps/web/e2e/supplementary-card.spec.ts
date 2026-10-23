@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
+import { cardPage } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -10,10 +11,12 @@ async function addCardAccount(page: Page) {
   await openCard(page, { name: 'Mandiri Bonvoy', bank: 'Mandiri', last4: '1467' });
 }
 
+/** The card's Settings, where the cards on its account are listed and added. */
 async function openTheCard(page: Page) {
   await page.goto('/cards');
   await page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }).click();
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
+  await cardPage(page, 'Settings');
 }
 
 test('a second card joins the same statement, and a purchase records which one', async ({ page }) => {
@@ -51,5 +54,6 @@ test('removing a card leaves the account and its statement alone', async ({ page
   await page.getByRole('button', { name: 'Remove card ending 8802' }).click();
 
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Mandiri Bonvoy' }).click();
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
 });
