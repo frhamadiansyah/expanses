@@ -8,7 +8,7 @@ import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/n
 import { CodeSheet, WhatItIsSheet } from './CodeSheets';
 import { PLAN_GROUP_LABELS } from './labels';
 import { choiceForCode, codeChoices } from '../ownables/catalogue-view';
-import { codeLine, planGroupChoices, TAX_TREATMENT_LABELS } from './settings-model';
+import { planGroupChoices, TAX_TREATMENT_LABELS } from './settings-model';
 
 type Treatment = 'final' | 'not_object' | 'ordinary';
 
@@ -120,7 +120,8 @@ export function AssetSettings({
       hint={errorHint(errors.reportable)}
     />,
     <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />,
-    <PickerRow key="code" label="Code" value={codeLine(code)} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
+    // The number alone; what it stands for is in the sheet it opens.
+    <PickerRow key="code" label="Code" value={code === '' ? 'Not chosen' : code} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
   ];
   return (
     <>

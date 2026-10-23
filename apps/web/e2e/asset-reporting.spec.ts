@@ -54,7 +54,7 @@ test('the tax report uses the code you chose, not the one the preset guessed', a
   await page.getByRole('textbox', { name: 'Code', exact: true }).fill('0109');
   await expect(page.getByText('Setara kas lainnya')).toBeVisible();
   await page.getByRole('button', { name: 'Save code' }).click();
-  await expect(page.getByRole('button', { name: /^Code/ })).toContainText('0109 · Setara kas lainnya');
+  await expect(page.getByRole('button', { name: /^Code/ })).toContainText('0109');
 
   await startReport(page);
   await expect(page.getByText('0109').first()).toBeVisible();
