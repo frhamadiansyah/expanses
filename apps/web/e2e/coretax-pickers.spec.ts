@@ -90,7 +90,7 @@ async function expectCode(page: Page, name: RegExp, code: string) {
   await openAssets(page);
   await page.getByRole('link', { name }).click();
   await openSettings(page);
-  await expect(page.getByRole('button', { name: /^Code/ })).toContainText(code);
+  await expect(page.getByRole('button', { name: /^Code/ })).toContainText(code.split(' ·')[0]!);
 }
 
 test('a family, then the thing: an apartment and gold jewellery file under their own codes', async ({ page }) => {

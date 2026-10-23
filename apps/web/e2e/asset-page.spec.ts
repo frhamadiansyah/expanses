@@ -127,6 +127,8 @@ test('a car added with a year and month shows just that, and its Settings take t
   await page.getByLabel('Make and model').blur();
   await page.getByLabel('Registration number').fill('X 1234 YZ');
   await page.getByLabel('Registration number').blur();
+  // Kept once the count reads both: what is saved, not what is typed.
+  await expect(page.getByText('3 still missing')).toBeVisible();
 
   await page.reload();
   await expect(page.getByLabel('Make and model')).toHaveValue('Hatchback 1.5');
@@ -154,12 +156,14 @@ test('a laptop worth less than it cost wears its loss in red', async ({ page }) 
   const gain = page.getByTestId('asset-gain');
   await expect(gain).toHaveText('−Rp 8.000.000 · −36,4%');
   await expect(gain).toHaveAttribute('data-tone', 'loss');
-  // Archive is in Settings, at the foot — greyed while it holds anything.
+  // Archive is in Settings, at the foot, grey while it holds anything.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeDisabled();
-  // Why Archive is not available yet sits behind its ⓘ.
-  await page.getByRole('button', { name: 'About Archive' }).click();
-  await expect(page.getByText('Archiving is available once nothing is left in this asset.')).toBeVisible();
+  // Not available yet: a press says why, in a popup, and archives nothing.
+  const said = page.waitForEvent('dialog');
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
+  const dialog = await said;
+  expect(dialog.message()).toBe('Archiving is available once nothing is left in this asset.');
+  await expect(page).toHaveURL(/\/settings$/);
 });
 
 test('Buy opens the Buy & sell form over the page with this holding already chosen', async ({ page }) => {

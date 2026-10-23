@@ -1,6 +1,7 @@
 import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
 import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
@@ -108,6 +109,18 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       <PushedTitle
         title="Settings"
         back={name}
+        // Every row is kept when it is left; the ✓ finishes the one being typed in and goes back, so saving is seen.
+        actions={[
+          {
+            key: 'save',
+            label: 'Save',
+            glyph: <Check size={20} aria-hidden />,
+            run: () => {
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+              window.setTimeout(goBack, 0);
+            },
+          },
+        ]}
         // Back to the page these settings were opened from (its ⋯); a page opened with nothing behind it falls back
         // to the account's or the asset's own page.
         onBack={goBack}
@@ -179,10 +192,13 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           <InsetGroup>
             <DestructiveRow
               label="Archive"
-              disabled={!archivable}
-              // Why it cannot be archived yet, behind its ⓘ rather than in a footer always under it.
-              info={archivable ? undefined : 'Archiving is available once nothing is left in this asset.'}
-              onClick={() => void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))}
+              // Not yet: grey, and a press says why, as Delete's press asks first.
+              muted={!archivable}
+              onClick={() =>
+                archivable
+                  ? void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))
+                  : window.alert('Archiving is available once nothing is left in this asset.')
+              }
             />
             <DestructiveRow
               label="Delete"

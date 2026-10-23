@@ -285,41 +285,24 @@ export function DestructiveRow({
   label,
   onClick,
   position,
-  disabled = false,
-  info,
+  muted = false,
 }: GroupChild & {
   label: string;
   onClick: () => void;
-  disabled?: boolean;
-  /** Why it is as it is, behind an ⓘ beside the label: a row that cannot be used yet says why there, not in a footer. */
-  info?: ReactNode;
+  /** Not available yet: drawn grey, and still pressed, so the press can say why rather than a line always under it. */
+  muted?: boolean;
 }) {
-  const [explained, setExplained] = useState(false);
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      <div className="flex items-center justify-center gap-[6px]" style={shell(false)}>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={disabled}
-          className={cx('ph-focus-inset text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', disabled ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-alarm)]', !info && 'w-full')}
-        >
-          {label}
-        </button>
-        {info && (
-          <button
-            type="button"
-            aria-label={`About ${label}`}
-            aria-expanded={explained}
-            onClick={() => setExplained((was) => !was)}
-            className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
-          >
-            <Info size={16} aria-hidden />
-          </button>
-        )}
-      </div>
-      {info && explained && <p className="px-[13px] pb-[8px] text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
+      <button
+        type="button"
+        onClick={onClick}
+        className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-alarm)]')}
+        style={shell(false)}
+      >
+        {label}
+      </button>
     </div>
   );
 }
