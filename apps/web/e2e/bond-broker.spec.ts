@@ -27,7 +27,7 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
   await expect(held).toHaveValue('Bank BCA');
   // Held at a bank, that bank is the tax report's Nama institusi: one name, kept once.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Nama institusi' })).toHaveValue('Bank BCA');
+  await expect(page.getByRole('textbox', { name: 'Institution', exact: true })).toHaveValue('Bank BCA');
   await page.goBack();
 
   await held.selectOption({ label: 'Another…' });

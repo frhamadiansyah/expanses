@@ -169,7 +169,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const [error, setError] = useState<unknown>(null);
   const [all, setAll] = useState(false);
   const [typingPlace, setTypingPlace] = useState(false);
-  const allValues = useAssetValues();
 
   const kind = profile.data?.assetKind ?? null;
   const unitKind = profile.data?.unitKind ?? null;
@@ -215,12 +214,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const owedMinor = boughtWith ? Math.abs(balances.data?.[boughtWith.accountId] ?? 0) : 0;
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
   // The other funds it can be the same fund as: every other fund holding, wherever it is held.
-  const fundIds = new Set((profiles.data ?? []).filter((row) => row.assetKind === 'fund').map((row) => row.accountId));
   // Where a fund or bond is held: an institution's name, kept as its Nama institusi (0082).
   const institutions = institutionChoices(everyAccount, profiles.data ?? []);
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
   const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
-  const otherFunds = (allValues.data ?? []).filter((row) => row.accountId !== accountId && fundIds.has(row.accountId));
   const holding = { accountId, name: value.name, currency, byMoney };
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
@@ -602,16 +599,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                 if (e.target.value.trim()) void stock.placeName(profile.data!, e.target.value);
               }}
             />
-          ) : null,
-          kind === 'fund' && otherFunds.length > 0 ? (
-            <SelectRow key="same-fund" label="Same fund as" value={stock.samePlaces[0] ?? 'none'} onChange={(e) => void stock.sameFund(e.target.value === 'none' ? '' : e.target.value)}>
-              <option value="none">No other place</option>
-              {otherFunds.map((other) => (
-                <option key={other.accountId} value={other.accountId}>
-                  {other.name}
-                </option>
-              ))}
-            </SelectRow>
           ) : null,
           kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed

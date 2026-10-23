@@ -20,7 +20,7 @@ test('a broker opened from Add holding names its RDN bank in its Settings, and i
   await page.getByRole('link', { name: /^Stockbit/ }).first().click();
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
-  const bank = page.getByLabel('Nama bank/institusi');
+  const bank = page.getByLabel('Bank or institution');
   await expect(page.getByText('4 still missing')).toBeVisible();
   await bank.fill('CIMB Niaga');
   await bank.blur();

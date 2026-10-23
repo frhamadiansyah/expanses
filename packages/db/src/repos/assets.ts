@@ -201,7 +201,7 @@ export async function saveAssetProfileTx(tx: Db, ws: WorkspaceContext, input: Sa
     risk: input.risk === undefined ? defaults.risk : input.risk,
     coretaxSection: input.coretaxSection === undefined ? defaults.coretaxSection : input.coretaxSection,
     coretaxCode,
-    coretaxFieldsJson: JSON.stringify(input.coretaxFields ?? {}),
+    coretaxFieldsJson: JSON.stringify(await withInstitutionNpwpTx(tx, ws, input, input.coretaxSection === undefined ? defaults.coretaxSection : input.coretaxSection)),
     acquiredYear,
     reportable: (input.reportable ?? defaults.reportable) ? 1 : 0,
     taxTreatment: input.taxTreatment === undefined ? defaults.taxTreatment : input.taxTreatment,
@@ -209,6 +209,47 @@ export async function saveAssetProfileTx(tx: Db, ws: WorkspaceContext, input: Sa
   };
   await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
   await tx.insert(assetProfiles).values(row).onConflictDoUpdate({ target: assetProfiles.accountId, set: row });
+  if (row.coretaxSection === 'investasi') await shareInstitutionNpwpTx(tx, ws, input.accountId, JSON.parse(row.coretaxFieldsJson) as Record<string, string>);
+}
+
+/** An investment's institution and that institution's NPWP, as its tax fields hold them: trimmed, the name compared by case. */
+const institutionKey = (fields: Record<string, string> | undefined) => fields?.inst?.trim().toLowerCase() || null;
+const npwpOf = (fields: Record<string, string> | undefined) => fields?.npwp?.trim() || null;
+
+/** Every other investment's tax fields, by account. */
+async function otherInvestmentsTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<{ accountId: string; fields: Record<string, string> }[]> {
+  const rows = await tx
+    .select({ accountId: assetProfiles.accountId, json: assetProfiles.coretaxFieldsJson })
+    .from(assetProfiles)
+    .where(and(eq(assetProfiles.workspaceId, ws.workspaceId), eq(assetProfiles.coretaxSection, 'investasi')));
+  return rows.filter((row) => row.accountId !== accountId).map((row) => ({ accountId: row.accountId, fields: JSON.parse(row.json) as Record<string, string> }));
+}
+
+/**
+ * An institution's NPWP is the same for every holding there, so it is typed once (owner, 23 Oct): an investment at an
+ * institution with no NPWP of its own takes the one another holding there already has.
+ */
+async function withInstitutionNpwpTx(tx: Db, ws: WorkspaceContext, input: SaveAssetProfileInput, section: CoretaxSection | null): Promise<Record<string, string>> {
+  const fields = input.coretaxFields ?? {};
+  const inst = institutionKey(fields);
+  if (section !== 'investasi' || !inst || npwpOf(fields)) return fields;
+  const known = (await otherInvestmentsTx(tx, ws, input.accountId)).find((other) => institutionKey(other.fields) === inst && npwpOf(other.fields));
+  return known ? { ...fields, npwp: npwpOf(known.fields)! } : fields;
+}
+
+/** …and an NPWP typed on one holding fills every other holding at the same institution that has none yet. */
+async function shareInstitutionNpwpTx(tx: Db, ws: WorkspaceContext, accountId: string, fields: Record<string, string>): Promise<void> {
+  const inst = institutionKey(fields);
+  const npwp = npwpOf(fields);
+  if (!inst || !npwp) return;
+  for (const other of await otherInvestmentsTx(tx, ws, accountId)) {
+    if (institutionKey(other.fields) !== inst || npwpOf(other.fields)) continue;
+    markAccountDirtyTx(tx, other.accountId);
+    await tx
+      .update(assetProfiles)
+      .set({ coretaxFieldsJson: JSON.stringify({ ...other.fields, npwp }), updatedAt: new Date().toISOString() })
+      .where(and(eq(assetProfiles.accountId, other.accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+  }
 }
 
 export interface AssetReportingInput {

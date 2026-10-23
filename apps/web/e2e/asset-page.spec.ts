@@ -106,7 +106,7 @@ test('a car added with a year and month shows just that, and its Settings take t
   await openNewAsset(page, 'Passenger car');
   // The prompt says it is required, as Current value's says optional; the tax report's questions wait for Settings.
   await expect(page.getByLabel('Name', { exact: true })).toHaveAttribute('placeholder', 'Required');
-  await expect(page.getByLabel('Merk/model')).toHaveCount(0);
+  await expect(page.getByLabel('Make and model')).toHaveCount(0);
   await page.getByLabel('Name', { exact: true }).fill('Family car');
   await fillDay(page, 'Acquired', '2021-03');
   await page.getByLabel('Original cost', { exact: true }).fill('215000000');
@@ -123,13 +123,13 @@ test('a car added with a year and month shows just that, and its Settings take t
   // The row reads back only what was picked; month set back to — leaves the year alone.
   await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('Mar 2021');
   await fillDay(page, 'Acquired', '2020');
-  await page.getByLabel('Merk/model').fill('Hatchback 1.5');
-  await page.getByLabel('Merk/model').blur();
-  await page.getByLabel('Nomor polisi/registrasi').fill('X 1234 YZ');
-  await page.getByLabel('Nomor polisi/registrasi').blur();
+  await page.getByLabel('Make and model').fill('Hatchback 1.5');
+  await page.getByLabel('Make and model').blur();
+  await page.getByLabel('Registration number').fill('X 1234 YZ');
+  await page.getByLabel('Registration number').blur();
 
   await page.reload();
-  await expect(page.getByLabel('Merk/model')).toHaveValue('Hatchback 1.5');
+  await expect(page.getByLabel('Make and model')).toHaveValue('Hatchback 1.5');
   await expect(page.getByRole('button', { name: /^Acquired/ })).toContainText('2020');
   await expect(page.getByRole('button', { name: /^Acquired/ })).not.toContainText('Mar');
   await page.goBack();
