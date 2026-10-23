@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setSystemTime(new Date('2026-10-12T12:00:00+07:00'));
 });
 
-/** A monthly plan set on the fund's own page: its Details row opens the sheet, which saves with ✓. */
+/** A monthly plan set in the fund's Settings: its row opens the sheet, which saves with ✓. */
 async function setPlan(page: Page, amount: string, day: string) {
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
@@ -22,6 +22,9 @@ async function setPlan(page: Page, amount: string, day: string) {
 
 test('a monthly plan set on the holding comes due on Recurring, and Record there buys it and marks it bought', async ({ page }) => {
   await fundByMoney(page);
+  // Set once and left, it sits in the holding's Settings rather than on its page.
+  await expect(page.getByTestId('monthly-plan')).toHaveCount(0);
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByTestId('monthly-plan')).toContainText('None');
   await setPlan(page, '500000', '5');
   await expect(page.getByTestId('monthly-plan')).toContainText('Rp 500.000 · 5th');
@@ -54,6 +57,7 @@ test('a monthly plan set on the holding comes due on Recurring, and Record there
 
 test('a plan whose day is ahead waits quietly; changed and removed from the holding, Recurring follows', async ({ page }) => {
   await fundByMoney(page);
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await setPlan(page, '750000', '20');
   await expect(page.getByTestId('monthly-plan')).toContainText('Rp 750.000 · 20th');
 
@@ -63,8 +67,9 @@ test('a plan whose day is ahead waits quietly; changed and removed from the hold
   await expect(row.getByTestId('plan-status')).toHaveText('On the 20th · from BCA');
   await expect(page.getByRole('button', { name: `Record ${FUND}` })).toHaveCount(0);
 
-  // Moved to the 3rd on the holding's page, it is due.
+  // Moved to the 3rd in the holding's Settings, it is due.
   await row.click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue(/750\.000/);
@@ -76,6 +81,7 @@ test('a plan whose day is ahead waits quietly; changed and removed from the hold
 
   // Removed, it is gone from Recurring.
   await page.getByTestId('plan-row').click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByTestId('monthly-plan').click();
   await page.getByRole('dialog').getByRole('button', { name: 'Remove plan' }).click();
   await expect(page.getByTestId('monthly-plan')).toContainText('None');

@@ -9,6 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 test('phone: a plan set on the holding is due on Recurring, recorded there, and reads bought', async ({ page }) => {
   await fundByMoney(page);
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Amount (IDR)').fill('500000');
