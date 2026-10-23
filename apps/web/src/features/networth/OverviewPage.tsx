@@ -496,11 +496,11 @@ export function OverviewPage() {
         </section>
         <Panel wide>
           <Empty>
-            Start by adding bank accounts and credit cards on the{' '}
-            <Link to="/accounts" className="font-medium underline">
-              Accounts
-            </Link>{' '}
-            page, or open Assets above to add a house, a car or gold.
+            Start by adding bank accounts and credit cards on{' '}
+            <Link to="/wallet" className="font-medium underline">
+              Wallet
+            </Link>
+            , or open Assets above to add savings, a house, a car or gold.
           </Empty>
         </Panel>
       </div>
@@ -514,9 +514,9 @@ export function OverviewPage() {
 
       {nothingYet && (
         <Empty>
-          Nothing to show yet. Add accounts on{' '}
-          <Link to="/accounts" className="font-medium underline">
-            Accounts
+          Nothing to show yet. Add accounts and cards on{' '}
+          <Link to="/wallet" className="font-medium underline">
+            Wallet
           </Link>{' '}
           or an asset from the Assets card below.
         </Empty>

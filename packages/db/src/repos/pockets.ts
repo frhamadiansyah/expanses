@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
-import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId, writeAccountAuditTx } from './accounts';
+import { AccountError, type AccountRow, createAccountTx, isSpendingOffTx, pocketName, systemAccountId, writeAccountAuditTx, writeForSpendingTx } from './accounts';
 import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
 import { carryShareSettingTx } from './net-worth-sharing';
@@ -100,8 +100,11 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
     // A pocket follows its account's "For spending": one kept as savings takes no pocket that is spent from.
-    if (parent.forSpending === 0) await tx.update(accounts).set({ forSpending: 0 }).where(eq(accounts.id, pocket.id));
-    return { ...pocket, forSpending: parent.forSpending };
+    if (await isSpendingOffTx(tx, parent.id)) {
+      await writeForSpendingTx(tx, pocket.id, false);
+      return { ...pocket, forSpending: 0 };
+    }
+    return pocket;
   });
 }
 
@@ -151,7 +154,7 @@ export async function makeMultiCurrency(
       sortOrder: account.sortOrder,
     });
     // The account's "For spending" is the parent's now, as it is the parent that Wallet and the switch read.
-    if (account.forSpending === 0) await tx.update(accounts).set({ forSpending: 0 }).where(eq(accounts.id, parent.id));
+    if (await isSpendingOffTx(tx, account.id)) await writeForSpendingTx(tx, parent.id, false);
     // Its shared purchases name it by its old name; they go out again as the pocket's.
     await captureMoneyAccountRenamingTx(tx, account.id);
     await withCapture(tx, { entity: 'category', id: account.id }, () =>

@@ -114,7 +114,7 @@ export const SPENDABLE_KINDS = new Set<string>(SPENDABLE_SUBTYPES);
  * card it does not draw. Everything that is not a money account passes through untouched: a card, a loan, a category
  * are not what the switch is about, and the callers that want them still find them.
  */
-export function keptForSpending(accounts: readonly AccountRow[]): AccountRow[] {
+export function spendingBook(accounts: readonly AccountRow[]): AccountRow[] {
   const off = new Set(accounts.filter((a) => a.kind === 'asset' && a.parentId === null && a.forSpending === 0).map((a) => a.id));
   return accounts.filter((a) => !off.has(a.id) && (a.parentId === null || !off.has(a.parentId)));
 }

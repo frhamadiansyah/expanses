@@ -33,6 +33,7 @@ import {
   rateLine,
   type RoundAction,
   SCREEN,
+  useWalletSlot,
 } from '../../ui/native';
 import { DepositMoneyOut } from '../networth/DepositMoneyOut';
 import { DepositProposalCard } from '../networth/DepositProposalCard';
@@ -57,6 +58,7 @@ import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series'
 import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
+import { useProgramAccounts } from '../cards/card-queries';
 
 /**
  * `/accounts/$accountId` — one page for every money account.
@@ -66,6 +68,11 @@ import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
  * aside, what only this kind has, the last few rows behind the balance, and the plain facts. Only the actions and
  * the one slot in the middle change with the kind. Pockets used to open the older asset page, which said the same
  * things in another order; a pocket is an account, so it has an account's page, with its parent as the way back.
+ *
+ * Opened from Wallet, money kept for spending is a card in the stack, and this page is drawn under it the way a credit
+ * card's page is: the raised card is the header (Wallet's bar carries ✕ and ⚙), and the page leaves the card a slot
+ * of its size, then everything below exactly as it is on its own — the balance, the round actions, what is set aside
+ * and free, Recent and the facts. Opened from anywhere else, or kept as savings, it stands alone with its own bar.
  */
 export function AccountPage() {
   const { accountId = '' } = useParams({ strict: false }) as { accountId?: string };
@@ -75,7 +82,7 @@ export function AccountPage() {
   if (accounts.isSuccess && !account) {
     return (
       <div className={SCREEN}>
-        <PushedTitle title="Account" back="Accounts" backTo="/accounts" />
+        <PushedTitle title="Account" back="Wallet" backTo="/wallet" />
         <Empty>That account is not in this workspace.</Empty>
       </div>
     );
@@ -91,7 +98,11 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const navigate = useNavigate();
   const balances = useBalances();
   const profiles = useAssetProfiles();
-  const goBack = useBack(parent ? `/accounts/${parent.id}` : '/accounts');
+  const goBack = useBack(parent ? `/accounts/${parent.id}` : '/wallet');
+  // Opened from Wallet's stack: the raised card is the page's header, so the page leaves it a slot.
+  const slot = useWalletSlot();
+  // A current or saving account earning as a debit card has that card's page too: its rewards, its rules.
+  const earning = useProgramAccounts().data?.has(account.id) ?? false;
   const [actionError, setActionError] = useState<unknown>(null);
   const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
   const [txReady, setTxReady] = useState(false);
@@ -128,19 +139,24 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
-    <div className={SCREEN}>
+    <div className={slot ? undefined : SCREEN}>
       {/*
        * A pushed screen's bar, as Add transaction draws its own: the way back in a circle, the name centred, and the
-       * ⚙ on the right. An account is something you came into from a list, not a section of the app.
+       * ⚙ on the right. An account is something come into from a list, not a section of the app. Under Wallet's
+       * raised card there is no bar of its own — the card is the header — only the slot the card sits in.
        */}
-      <PushedTitle
-        title={title}
-        back={parent?.name ?? 'Back'}
-        // Back goes where the page was opened from — Net worth, Assets, Accounts, a search — and only a page opened
-        // with nothing behind it (a fresh launch, a link) falls back to its account or the Accounts list.
-        onBack={goBack}
-        actions={menu}
-      />
+      {slot ? (
+        <div data-testid="wallet-slot" aria-hidden className="mb-5" style={{ width: slot.width, height: slot.height, maxWidth: '100%' }} />
+      ) : (
+        <PushedTitle
+          title={title}
+          back={parent?.name ?? 'Back'}
+          // Back goes where the page was opened from — Net worth, Assets, Wallet, a search — and only a page opened
+          // with nothing behind it (a fresh launch, a link) falls back to its account or Wallet.
+          onBack={goBack}
+          actions={menu}
+        />
+      )}
       <ErrorBox error={actionError ?? balances.error ?? profiles.error ?? rates.error} />
 
       {deposit ? (
@@ -215,6 +231,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
+          // The debit card that spends from it, where its points and earning rules are kept.
+          earning ? <InsetRow key="rewards" testId="debit-card-rewards" title="Debit card rewards" to="/cards/$cardId" params={{ cardId: account.id }} /> : null,
           // Once it has pockets this is the last row of their list; before then, the last of the facts.
           takesCurrency ? <InsetRow key="currency" testId="add-currency" icon={<Plus size={16} aria-hidden />} title="Add a currency" onClick={() => setAddingCurrency(true)} /> : null,
         ]}

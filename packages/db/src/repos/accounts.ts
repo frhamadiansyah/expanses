@@ -10,7 +10,15 @@ import { hasBooks, personalBookIdTx } from './books';
 import { postTransactionTx } from './ledger';
 import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
 
-export type AccountRow = typeof accounts.$inferSelect;
+export type AccountRow = typeof accounts.$inferSelect & {
+  /**
+   * Whether this money is for spending (0086): 1 — offered under "Paid with", counted in Wallet's balance, a card in
+   * Wallet — or 0, kept as savings: still on Assets, still a transfer's From or To. Filled by `listAccounts` (every
+   * list a screen reads); absent on a row read any other way, and on a database stopped before 0086, which reads as
+   * on — what every account was until the switch existed. Means nothing on anything but a spendable money account.
+   */
+  forSpending?: number;
+};
 export type AccountSubtype = AccountRow['subtype'];
 
 export class AccountError extends Error {
@@ -123,7 +131,42 @@ export async function listAccounts(
         hidePlaceholders ? notPlaceholder(accounts.id) : undefined,
       ),
     )
-    .orderBy(asc(accounts.kind), asc(accounts.sortOrder), asc(accounts.name));
+    .orderBy(asc(accounts.kind), asc(accounts.sortOrder), asc(accounts.name))
+    .then(async (rows) => {
+      const off = await spendingOffIdsTx(database.db, ws);
+      return rows.map((row) => ({ ...row, forSpending: off.has(row.id) ? 0 : 1 }));
+    });
+}
+
+/*
+ * The column is read and written by name (see the schema): a database stopped before 0086 has no for_spending, and
+ * there every account is for spending. Asked once per handle, and only a yes is kept, as `numberColumnExists` does.
+ */
+const spendingColumn = new WeakMap<object, boolean>();
+async function spendingColumnExists(tx: Db): Promise<boolean> {
+  if (spendingColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'for_spending'`);
+  if (rows.length > 0) spendingColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/** The accounts of this workspace switched off "For spending": usually none, so it is the short list that is read. */
+async function spendingOffIdsTx(tx: Db, ws: WorkspaceContext): Promise<Set<string>> {
+  if (!(await spendingColumnExists(tx))) return new Set();
+  const rows = await tx.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND for_spending = 0`);
+  return new Set(rows.map(([id]) => id));
+}
+
+/** Whether one account is switched off "For spending" — false on a database that cannot say. */
+export async function isSpendingOffTx(tx: Db, accountId: string): Promise<boolean> {
+  if (!(await spendingColumnExists(tx))) return false;
+  return (await tx.values(sql`SELECT 1 FROM accounts WHERE id = ${accountId} AND for_spending = 0`)).length > 0;
+}
+
+/** Writes the switch onto one account, where the column exists. */
+export async function writeForSpendingTx(tx: Db, accountId: string, on: boolean): Promise<void> {
+  if (!(await spendingColumnExists(tx))) return;
+  await tx.run(sql`UPDATE accounts SET for_spending = ${on ? 1 : 0} WHERE id = ${accountId}`);
 }
 
 export async function systemAccountId(tx: Db, ws: WorkspaceContext, key: SystemAccountKey): Promise<string> {
@@ -259,9 +302,9 @@ export async function setAccountForSpending(database: Database, ws: WorkspaceCon
     if (!account) throw new AccountError('Account not found');
     if (account.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(account.subtype)) throw new AccountError(`${account.name} is not money that can be spent from`);
     if (account.parentId !== null) throw new AccountError(`${account.name} is a pocket: set this on its account`);
-    const flag = on ? 1 : 0;
-    await tx.update(accounts).set({ forSpending: flag }).where(eq(accounts.id, id));
-    await tx.update(accounts).set({ forSpending: flag }).where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+    if (!(await spendingColumnExists(tx))) throw new AccountError('This database cannot keep that yet');
+    await writeForSpendingTx(tx, id, on);
+    await tx.run(sql`UPDATE accounts SET for_spending = ${on ? 1 : 0} WHERE workspace_id = ${ws.workspaceId} AND parent_id = ${id} AND kind = 'asset'`);
     await writeAudit(tx, ws, 'for_spending', id, { forSpending: on });
   });
 }

@@ -38,12 +38,8 @@ export const accounts = sqliteTable('accounts', {
   sortOrder: integer('sort_order').notNull(),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
-  /**
-   * Whether this money is for spending (0086): offered under "Paid with", counted in Wallet's balance, a card in
-   * Wallet. Off keeps the account as savings — still on Assets, still a transfer's From or To. Means nothing on
-   * anything but a spendable money account.
-   */
-  forSpending: integer('for_spending').notNull().default(1),
+  // number_last4 (0080) and for_spending (0086) are read and written by name, never through this table: a database
+  // stopped before either has no such column, and every select and insert this schema writes would name it.
 });
 
 export const transactions = sqliteTable('transactions', {

@@ -45,7 +45,7 @@ export function PickCardPage() {
   const terms = useQuery({ queryKey: ['card-terms-all', ws.workspaceId], queryFn: () => listCardTerms(database, ws) });
   const images = useQuery({ queryKey: ['statement-batch', batch], enabled: batch !== '', staleTime: Infinity, queryFn: () => takeBatch(batch) });
 
-  const title = <LargeTitle title="Which card is this statement?" back="Cards" backTo="/cards" />;
+  const title = <LargeTitle title="Which card is this statement?" back="Wallet" backTo="/wallet" />;
   if (!batch || (images.isSuccess && images.data.length === 0))
     return (
       <div className={SCREEN}>

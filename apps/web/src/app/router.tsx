@@ -1,6 +1,5 @@
 import { parsePeriod } from '@expanses/core';
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
-import { AccountsPage } from '../features/accounts/AccountsPage';
 import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { MovePage } from '../features/accounts/MovePage';
 import { AccountPage } from '../features/accounts/AccountPage';
@@ -31,7 +30,7 @@ import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../featu
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
-import { CardsPage } from '../features/cards/CardsPage';
+import { WalletPage } from '../features/wallet/WalletPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CheckStatementPage, checkSearch } from '../features/statement-check/CheckStatementPage';
@@ -144,7 +143,12 @@ const categoriesSearch = (search: Record<string, unknown>): { kind?: 'income' } 
 
 const rootRoute = createRootRoute({ component: Layout });
 
-const cardsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage });
+/*
+ * Wallet, and a card or an account opened from it, are one screen: the card's page and the account's page are children
+ * of a layout with no path of its own, so the stack stays mounted at `/wallet` and the card itself can rise out of it
+ * to the top, as in Apple Wallet — while each page keeps the address it always had. A deep link opens straight into it.
+ */
+const walletRoute = createRoute({ getParentRoute: () => rootRoute, id: '_wallet', component: WalletPage });
 
 const routeTree = rootRoute.addChildren([
   /*
@@ -214,21 +218,34 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: AccountPage }),
+  // The Accounts page and the Cards tab are Wallet now (owner, 23 Oct): an old link or bookmark lands there.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/accounts',
+    beforeLoad: () => {
+      throw redirect({ to: '/wallet', replace: true });
+    },
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/cards',
+    beforeLoad: () => {
+      throw redirect({ to: '/wallet', replace: true });
+    },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage, validateSearch: categoriesSearch }),
   // "sets" is a static segment, which outranks `$categoryId` however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/categories/sets', component: SetsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories/$categoryId', component: CategoryPage }),
-  // The wallet and an open card are one screen: a card's page is a child of the wallet, so the stack stays mounted
-  // and the card itself can rise out of it to the top, as in Apple Wallet. A deep link opens straight into it.
-  cardsRoute.addChildren([
-    createRoute({ getParentRoute: () => cardsRoute, path: '/', component: () => null }),
+  walletRoute.addChildren([
+    createRoute({ getParentRoute: () => walletRoute, path: '/wallet', component: () => null }),
+    // Money opened from Wallet: its account page, under its raised card. Opened from anywhere else it stands alone.
+    createRoute({ getParentRoute: () => walletRoute, path: '/accounts/$accountId', component: AccountPage }),
     createRoute({
-      getParentRoute: () => cardsRoute,
-      path: '$cardId',
+      getParentRoute: () => walletRoute,
+      path: '/cards/$cardId',
       component: CardDetailPage,
       validateSearch: (search: Record<string, unknown>): CardSearch => ({
         tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
@@ -374,7 +391,7 @@ const routeTree = rootRoute.addChildren([
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),
-  // Joint net worth (§8.3): an item of the other's, read-only — from the household's Net worth or Accounts' "…, shared".
+  // Joint net worth (§8.3): an item of the other's, read-only — from the household's Net worth or Wallet's "…, shared".
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/shared/$itemId', component: SharedItemPage }),
 ]);
 

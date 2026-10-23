@@ -740,6 +740,11 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
  *
  * A catalogue card is redrawn from its official picture (colours, finish, texture or illustration) without
  * shipping the bank's artwork. Any other card gets a plain face in its bank's colour.
+ *
+ * Money that is not a credit card — a bank account, cash, a digital wallet — is drawn by the app outright (`kind`):
+ * never a brand's logo, only the account's name in type, a colour worked out from that name the way a bank's is, and
+ * a chip of words saying what it is ("Debit ···· 1102", "Cash"). No network mark, no plastic chip, no digits line: it
+ * is a card in Wallet, not a picture of a piece of plastic the bank never issued.
  */
 export function CardFace({
   issuer,
@@ -751,6 +756,7 @@ export function CardFace({
   size = 'md',
   behind = false,
   band,
+  kind,
   className,
 }: {
   issuer: string | null;
@@ -768,13 +774,17 @@ export function CardFace({
    * print, and nothing further down. Implies `behind` for everything below the band.
    */
   band?: string;
+  /** What a money card is, as the words on its chip: drawn by the app from its name rather than a card product. */
+  kind?: string;
   className?: string;
 }) {
   // SVG ids must be unique on the page and plain enough for url(#…).
   const id = `face${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const md = size === 'md';
   const portrait = look?.orientation === 'portrait';
-  const hue = issuerHue(issuer);
+  // A drawn money card takes its colour from its own name, as a bank card takes its bank's.
+  const drawn = kind !== undefined;
+  const hue = issuerHue(drawn ? name : issuer);
   const background = look
     ? look.colours.length === 1
       ? look.colours[0]
@@ -785,8 +795,8 @@ export function CardFace({
   const dark = look?.ink === 'dark';
   // The bank is printed on its own, so "BCA KrisFlyer" names the card as "KrisFlyer".
   const product = issuer && name.toLowerCase().startsWith(`${issuer.toLowerCase()} `) ? name.slice(issuer.length + 1) : name;
-  const bank = look?.bankMark === undefined ? issuer : look.bankMark;
-  const cardName = look?.wordmark ?? product;
+  const bank = drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
+  const cardName = drawn ? name : (look?.wordmark ?? product);
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
   const hidden = behind || band !== undefined;
@@ -795,7 +805,7 @@ export function CardFace({
     <div
       role={hidden ? undefined : 'img'}
       aria-hidden={hidden || undefined}
-      aria-label={hidden ? undefined : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
+      aria-label={hidden ? undefined : drawn ? `${name}, ${kind}` : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
       data-testid="card-face"
       className={cx(
         // A face is art, not a surface lifted off the page: it casts nothing. The seams between the cards in a
@@ -820,7 +830,23 @@ export function CardFace({
           <div className="tabular shrink-0 text-[11px] font-bold whitespace-nowrap">{band}</div>
         </div>
       )}
-      {!hidden && (
+      {!hidden && drawn && (
+        <>
+          {/* The name, large, where a bank's mark would be; what it is, on a chip of words at the foot. */}
+          <div
+            className={cx('absolute truncate leading-tight font-bold tracking-tight', md ? (name.length > 18 ? 'text-[15px]' : 'text-[18px]') : 'text-[10px]')}
+            style={{ top: inset - 2, left: inset, right: inset }}
+          >
+            {name}
+          </div>
+          <div className="absolute" style={{ bottom: inset - 2, left: inset }}>
+            <span data-testid="card-kind" className={cx('tabular inline-block rounded-full bg-black/20 font-semibold whitespace-nowrap', md ? 'px-[9px] py-[2px] text-[11px]' : 'px-[5px] text-[7px]')}>
+              {kind}
+            </span>
+          </div>
+        </>
+      )}
+      {!hidden && !drawn && (
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
             <div className="min-w-0 truncate font-bold tracking-wide">{bank}</div>

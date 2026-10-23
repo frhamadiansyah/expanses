@@ -364,7 +364,7 @@ export function CashAccountForm({
         await household.save([parent.id, ...opened.map((pocket) => pocket.id)]);
         await invalidate();
         if (onCreated) onCreated(parent.id);
-        else await navigate({ to: '/accounts' });
+        else await navigate({ to: '/wallet' });
         return;
       }
       // Opened once: if the digits or the sharing fail after it is open, Save again finishes this account, never a second.
@@ -396,7 +396,7 @@ export function CashAccountForm({
       );
       await invalidate();
       if (onCreated) onCreated(openedId);
-      else await navigate({ to: '/accounts' });
+      else await navigate({ to: '/wallet' });
     } catch (e) {
       setError(e);
       // An account opened before the failure is real: the lists show it while the form says what is left to do.

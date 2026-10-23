@@ -34,6 +34,11 @@ export interface WalletCard {
   holderName?: string | null;
   network?: string | null;
   look?: CatalogCardLook | null;
+  /**
+   * What a money card is — "Debit ···· 1102", "Cash", "E-wallet" — for a face the app draws from the account's name
+   * rather than a card product. Absent for a credit card, which keeps its catalogue art.
+   */
+  kind?: string;
   /** The figure on this card's band — points, miles, or what is owed. Already a whole number of its unit. */
   figure: string;
   figureLabel: string;
@@ -292,6 +297,7 @@ function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: n
         holderName={card.holderName}
         network={card.network}
         look={card.look}
+        kind={card.kind}
         size="md"
         band={band ? card.figure : undefined}
       />
