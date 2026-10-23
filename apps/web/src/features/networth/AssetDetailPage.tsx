@@ -148,6 +148,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const couponTerms = useBondCoupons();
   const prices = usePrices(accountId);
   const valuations = useValuations(accountId);
+  const lastValued = (valuations.data ?? []).filter((row) => row.basis !== 'njop').reduce<string | null>((last, row) => (last === null || row.asOf > last ? row.asOf : last), null);
   const trades = useTrades(accountId);
   const history = useMonthEndValues(accountId, months);
   const goalLinks = useGoalLinks();
@@ -383,7 +384,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       }))
     : byMoney
       ? [
-          // Buys, sells and the values typed, newest first: money moved and what the fund app said, one list.
+          // Buys and sells only, newest first: money moved. The values typed draw the chart and the hero; a value updated
+          // every day would bury them here (owner, 23 Oct), so the day it was last set sits under Held at instead.
           ...[
             ...(trades.data ?? [])
               .filter((row) => row.kind === 'buy' || row.kind === 'sell')
@@ -398,14 +400,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                   note: null,
                   tone: 'quiet' as const,
                 },
-              })),
-            ...(valuations.data ?? [])
-              .filter((row) => row.basis !== 'njop')
-              .map((row) => ({
-                on: row.asOf,
-                key: row.id,
-                row: null,
-                line: { title: 'Value', subtitle: [dayLabel(row.asOf), row.note].filter(Boolean).join(' · '), value: formatMinor(row.valueMinor, currency), note: null, tone: 'quiet' as const },
               })),
           ]
             .sort((a, b) => b.on.localeCompare(a.on))
@@ -600,6 +594,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               }}
             />
           ) : null,
+          // The day the value was last set: the value itself is the hero's figure.
+          byMoney && lastValued ? <InsetRow key="valued" title="Value updated" value={dayLabel(lastValued)} valueTone="ink" /> : null,
           kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
             // share is always kept at a broker: it is offered only to a share recorded before one was named.
