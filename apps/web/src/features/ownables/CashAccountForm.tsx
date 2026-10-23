@@ -125,10 +125,13 @@ export function SuggestRow({
   offers,
   stripLabel,
   info,
+  onCommit,
   position,
 }: GroupChild & {
   /** What the row is, behind an ⓘ beside its label. */
   info?: string;
+  /** Called with the finished name: when the field is left, or an offered name is picked. */
+  onCommit?: (value: string) => void;
   label: string;
   /** What the strip of offered names is called, for a screen reader: "Brokers", "Banks". */
   stripLabel: string;
@@ -152,6 +155,7 @@ export function SuggestRow({
         onBlur={() => {
           window.setTimeout(() => setTyping(false), STRIP_GRACE_MS);
           onChange(value.trim());
+          onCommit?.(value.trim());
         }}
         autoComplete="off"
         autoCapitalize="words"
@@ -164,7 +168,10 @@ export function SuggestRow({
           label: choice.name,
           title: choice.also[0] ?? choice.name,
           detail: choice.also.length > 0 ? choice.name : undefined,
-          onPick: () => onChange(choice.name),
+          onPick: () => {
+            onChange(choice.name);
+            onCommit?.(choice.name);
+          },
         }))}
       />
     </div>

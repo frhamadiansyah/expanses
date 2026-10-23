@@ -1,4 +1,4 @@
-import { CURRENCIES } from '@expanses/core';
+import { CURRENCIES, groupTypedAmount } from '@expanses/core';
 import { type UIEvent, useEffect, useId, useRef, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { cx } from '../../ui';
@@ -144,8 +144,9 @@ export function AcquiredRow({ label = 'Acquired', value, onChange, position }: G
 }
 
 /**
- * An amount with its currency on one row, the currency as its quiet symbol before the figure — "Rp 215.000.000" —
- * rather than a code with a chevron, and only once a figure is typed. With `onCurrency` the symbol is the way to change it: a tap opens the same
+ * An amount with its currency on one row, the symbol a space before the figure, in the same ink — "Rp 215.000.000" —
+ * rather than a code with a chevron, and only once a figure is typed. The thousands are grouped as they are typed, as
+ * the Buy and Sell sheets group theirs; a leading minus is kept. With `onCurrency` the symbol is the way to change it: a tap opens the same
  * currency list the transaction form uses. Without it, it only says which currency.
  */
 export function MoneyRow({
@@ -171,7 +172,7 @@ export function MoneyRow({
   const [picking, setPicking] = useState(false);
   const prompt = placeholder ?? 'Amount';
   const symbol = CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency;
-  const quiet = 'shrink-0 text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink-3)] md:text-[15px]';
+  const symbolText = 'shrink-0 text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]';
   return (
     <div className="relative">
       <Separator position={position} />
@@ -179,21 +180,21 @@ export function MoneyRow({
         <label htmlFor={id} className={LABEL}>
           {label}
         </label>
-        {/* Symbol and figure as one, "Rp1.000.000": no gap between them (owner, 23 Oct). */}
-        <span className="flex min-w-0 flex-1 items-center justify-end">
+        {/* Symbol, a space, then the figure: "Rp 1.000.000" (owner, 23 Oct). */}
+        <span className="flex min-w-0 flex-1 items-center justify-end gap-[0.25em]">
           {/* Only once there is a figure: an empty row reads as its prompt alone. */}
           {value.trim() === '' ? null : onCurrency ? (
-            <button type="button" aria-label={`${label} currency: ${currency}`} onClick={() => setPicking(true)} className={cx('ph-focus rounded', quiet)}>
+            <button type="button" aria-label={`${label} currency: ${currency}`} onClick={() => setPicking(true)} className={cx('ph-focus rounded', symbolText)}>
               {symbol}
             </button>
           ) : (
-            <span aria-label={`${label} currency: ${currency}`} className={quiet}>
+            <span aria-label={`${label} currency: ${currency}`} className={symbolText}>
               {symbol}
             </span>
           )}
           {/*
-           * As wide as what it shows, an unseen copy of the text setting the width, so the symbol sits right against
-           * the figure.
+           * As wide as what it shows, an unseen copy of the text setting the width, so the symbol sits a space from
+           * the figure however long it is.
            */}
           <span className="inline-grid min-w-0 text-[17px] tabular md:text-[15px]">
             <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[17px] leading-[22px] md:leading-[20px] tabular md:text-[15px]">
@@ -202,7 +203,11 @@ export function MoneyRow({
             <input
               id={id}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => {
+                const typed = e.target.value;
+                const grouped = groupTypedAmount(typed, currency);
+                onChange(typed.trim().startsWith('-') ? `-${grouped}` : grouped);
+              }}
               inputMode="decimal"
               placeholder={prompt}
               // One character wide on its own, so the unseen copy alone decides the width (an input is 20 by default).

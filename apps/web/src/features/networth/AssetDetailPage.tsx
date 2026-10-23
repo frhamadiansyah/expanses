@@ -1,4 +1,4 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, fundPlaceMatches, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
 import { type AssetValueRow, couponOn, deleteTrade, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
@@ -40,6 +40,7 @@ import { SwitchSheet } from './SwitchSheet';
 import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
+import { SuggestRow } from '../ownables/CashAccountForm';
 import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
@@ -66,9 +67,6 @@ const PRICE_TILE: Record<UnitKind, string> = { grams: 'Buyback today', shares: '
 
 /** The word for a payment a holding makes: a share's dividend, a bond's coupon. */
 const incomeWordOf = (kind: AssetKind | null) => (kind === 'stock' ? 'Dividend' : kind === 'bond' ? 'Coupon' : 'Income');
-
-/** The Held at row's choice that types an institution not in the list. */
-const ANOTHER_PLACE = 'another-place';
 
 /** The Broker row's choice that opens a broker by name rather than picking one. */
 const NEW_BROKER = 'new-broker';
@@ -179,7 +177,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // What the last change to a recorded trade did, said over the page: a goal kept, a payment marked, a trade deleted.
   const [notice, setNotice] = useState('');
   const [all, setAll] = useState(false);
-  const [typingPlace, setTypingPlace] = useState(false);
+  // An Institution being typed; null once it is saved, when the row reads the saved name again.
+  const [placeDraft, setPlaceDraft] = useState<string | null>(null);
 
   const kind = profile.data?.assetKind ?? null;
   const unitKind = profile.data?.unitKind ?? null;
@@ -226,7 +225,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // Where a fund or bond is held: an institution's name, kept as its Nama institusi (0082).
   const institutions = institutionChoices(everyAccount, profiles.data ?? []);
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
-  const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
   const holding = { accountId, name: value.name, currency, byMoney };
   const nameOf = (id: string) => everyAccount.find((row) => row.id === id)?.name ?? 'another fund';
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
@@ -589,26 +587,24 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             />
           ) : null,
           // A fund or a bond is held at an institution — a bank, a broker, a fund app — never inside one of its accounts:
-          // the institution's name, picked from those the accounts are at or typed, is its Nama institusi.
+          // the institution's name, typed with the names already used and (in rupiah) the places that sell funds and
+          // bonds offered above the keyboard, is its Nama institusi.
           kind === 'fund' || kind === 'bond' ? (
-            <SelectRow
-              key="held"
-              label="Institution"
-              value={heldAtValue}
-              onChange={(e) => {
-                const picked = e.target.value;
-                setTypingPlace(picked === ANOTHER_PLACE);
-                if (picked !== ANOTHER_PLACE && profile.data) void stock.placeName(profile.data, picked);
-              }}
-            >
-              <option value="">Not set</option>
-              {institutions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-              <option value={ANOTHER_PLACE}>Another…</option>
-            </SelectRow>
+            profile.data ? (
+              <SuggestRow
+                key={`held-${heldName}`}
+                label="Institution"
+                stripLabel="Institutions"
+                value={placeDraft ?? heldName}
+                onChange={setPlaceDraft}
+                onCommit={(name) => {
+                  setPlaceDraft(null);
+                  void stock.placeName(profile.data!, name);
+                }}
+                placeholder="Not set"
+                offers={(typed) => fundPlaceMatches(typed, institutions, ws.baseCurrency === 'IDR')}
+              />
+            ) : null
           ) : null,
           // The coupon's day and what lands after the tax withheld, from the bond's terms in its Settings.
           coupon ? (
@@ -618,18 +614,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               value={matured ? 'Matured' : nextCoupon ? `${dayLabel(coupon.nextOn)} · ${formatMinor(nextCoupon.grossMinor - nextCoupon.taxMinor, currency)}` : dayLabel(coupon.nextOn)}
               to="/net-worth/assets/$accountId/settings"
               params={{ accountId }}
-            />
-          ) : null,
-          (kind === 'fund' || kind === 'bond') && profile.data && heldAtValue === ANOTHER_PLACE ? (
-            <TextRow
-              key="held-name"
-              label="Place name"
-              defaultValue={institutions.includes(heldName) ? '' : heldName}
-              placeholder="Required"
-              onBlur={(e) => {
-                setTypingPlace(false);
-                if (e.target.value.trim()) void stock.placeName(profile.data!, e.target.value);
-              }}
             />
           ) : null,
           // The day the value was last set: the value itself is the hero's figure.

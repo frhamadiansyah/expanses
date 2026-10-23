@@ -235,9 +235,9 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
-  // Deep in a tree the circle is left off: the kind above already wears it, and three circles a line crowded the
-  // row. Its name then sits level with the kind's. A household's row keeps it, because its ring says whose it is.
-  const drawn = depth < 2 || owner?.ring ? icon : undefined;
+  // On a tree the circle is left off: the kind above already wears it, and a circle on every line crowded the row.
+  // Its name then sits level with the kind's. A household's row keeps it, because its ring says whose it is.
+  const drawn = !tree || owner?.ring ? icon : undefined;
   return (
     <InsetRow
       key={row.accountId}
@@ -311,8 +311,10 @@ function fold(
         depth={depth}
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
-        // Inside a section's drawer, the kinds hang from the section on the tree line, and their accounts from them.
-        {...(depth > 0 ? { tree: { last: index === drawers.length - 1 }, stem: shown && drawer.rows.length > 0 } : {})}
+        // Inside a section's drawer, the kinds hang from the section on the tree line, and their accounts from them. A
+        // kind with no section above it (what is owed) starts the line itself.
+        {...(depth > 0 ? { tree: { last: index === drawers.length - 1 } } : {})}
+        stem={shown && drawer.rows.length > 0}
       />,
       ...(shown
         ? drawer.rows.map((row, at) =>
@@ -322,9 +324,11 @@ function fold(
               icon,
               ownerOf?.(row.accountId) ?? null,
               linkOf?.(row.accountId),
-              depth > 0 ? depth + 1 : 0,
-              // The section's own line carries on past these to its next kind, unless this kind is its last.
-              depth > 0 ? { last: at === drawer.rows.length - 1, rails: index === drawers.length - 1 ? [] : [iconCentre(depth - 1)] } : undefined,
+              depth + 1,
+              // The section's own line carries on past these to its next kind, unless this kind is its last; a kind
+              // with no section above it has no line to carry on (the liabilities' cards hang from Credit cards alone,
+              // drawn and sized as the assets' accounts are — owner, 23 Oct).
+              { last: at === drawer.rows.length - 1, rails: depth > 0 && index !== drawers.length - 1 ? [iconCentre(depth - 1)] : [] },
             ),
           )
         : []),

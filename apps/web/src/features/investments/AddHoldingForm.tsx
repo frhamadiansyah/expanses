@@ -136,7 +136,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
         ) : null}
       </InsetGroup>
 
-      <InsetGroup header="Past purchase" footer="Past purchases are recorded against Opening Balances, so bank balances do not move.">
+      <InsetGroup header="Past purchase" footer="Bought earlier, so no account's balance moves.">
         <AcquiredRow
           label="Bought"
           value={bought}

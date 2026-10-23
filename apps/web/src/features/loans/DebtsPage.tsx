@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { ApproxFigure, approxLine, type CornerAction, Drawer, Figure, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
+import { ApproxFigure, approxLine, type CornerAction, Drawer, Figure, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, type TreePlace, useDrawers } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { debtKindTile } from '../ownables/catalogue-view';
@@ -74,7 +74,7 @@ function subtitleOf(row: DebtRow): string {
 }
 
 /** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
-function DebtItem({ row, kind, baseCurrency, rates, nested = false }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean }) {
+function DebtItem({ row, kind, baseCurrency, rates, nested = false, tree }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean; tree?: TreePlace }) {
   return (
     <InsetRow
       {...destination(row)}
@@ -82,6 +82,8 @@ function DebtItem({ row, kind, baseCurrency, rates, nested = false }: { row: Deb
       // Inside its kind's open drawer: one step in, no circle, the name level with the kind's.
       icon={nested ? undefined : <KindIcon kind={kind} />}
       depth={nested ? 1 : 0}
+      // On the tree line from its kind's drawer, as Assets draws a kind's accounts.
+      tree={tree}
       title={row.name}
       subtitle={subtitleOf(row) || undefined}
       value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
@@ -279,11 +281,16 @@ export function DebtsPage() {
                     under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'debt' : 'debts'}`}
                     figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
                     open={shown}
+                    stem={shown && drawer.rows.length > 0}
                     separator={separator}
                     testId={`type-drawer-${key}`}
                     onToggle={() => drawersState.toggle(key)}
                   />,
-                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested />) : []),
+                  ...(shown
+                    ? drawer.rows.map((row, at) => (
+                        <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested tree={{ last: at === drawer.rows.length - 1 }} />
+                      ))
+                    : []),
                 ];
               })}
               {debts.cleared.length > 0 && (
