@@ -60,4 +60,15 @@ export async function holdBbca(page: Page) {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
+  await yahooAnswered(page);
+}
+
+/**
+ * A stock held at one broker lands on its holding's page, which asks Yahoo once as it opens (and marks the day asked
+ * before the answer comes). Waits for that ask to end — a close saved, or the failure said — so leaving the page does
+ * not cut it off halfway and leave the day asked with no close.
+ */
+export async function yahooAnswered(page: Page) {
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
+  await expect(page.getByTestId('asset-grid').getByText('Last close').or(page.getByText(/↻ to try again/))).toBeVisible();
 }

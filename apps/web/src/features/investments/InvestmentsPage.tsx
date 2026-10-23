@@ -7,14 +7,20 @@ import { ApproxFigure, approxLine, Figure, groupedFigure, GroupedRow, Hero, Inse
 import { type Destination, DesktopBand, InBase, InvestTable } from './InvestTable';
 import { type BrokerRow, brokerSubtitle, keptAt, type PortfolioView, putInLine, type StockRow, stockSubtitle } from './portfolio-view';
 import { usePortfolio } from './queries';
+import { soleHolding } from './security-view';
 
 type Rates = Readonly<Record<string, number>>;
 
-/** A stock opens its own page; a holding not linked to a security opens the asset page it has always had. */
-const stockTo = (row: StockRow): Destination =>
-  row.securityId
+/**
+ * A stock held at two or more places opens its page across them; one held at a single place opens that holding's own
+ * page — Buy, Sell and its history — and a holding not linked to a security the asset page it has always had.
+ */
+const stockTo = (row: StockRow): Destination => {
+  const sole = soleHolding(row);
+  return row.securityId && sole === null
     ? { to: '/net-worth/investments/security/$securityId', params: { securityId: row.securityId } }
-    : { to: '/net-worth/assets/$accountId', params: { accountId: row.accountId! } };
+    : { to: '/net-worth/assets/$accountId', params: { accountId: sole ?? row.accountId! } };
+};
 
 /** A broker opens its page; an institution a fund or bond is held at by name has none, and is a row to read. */
 const brokerTo = (row: BrokerRow): Destination | null =>

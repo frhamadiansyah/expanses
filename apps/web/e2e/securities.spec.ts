@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { typePrice } from './asset-page';
 import { expectBalance, startReport } from './deposit-maturity';
 import { addHoldingFlow, setForeignList } from './securities';
 import { addMoneyAccount } from './set-aside';
@@ -36,15 +37,19 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and adding
   await expect(bbca).toContainText('2.000 shares');
   await expect(bbca).toContainText('2 brokers');
 
+  // At two brokers the stock opens its page across them; a price typed on either holding values both.
   await bbca.click();
-  await page.getByRole('link', { name: /Price today/ }).click();
-  await page.getByLabel('Price (IDR)').pressSequentially('9.775');
-  await expect(page.getByText('14.662.500')).toBeVisible(); // Stockbit 1.500 × 9.775
-  await expect(page.getByText('4.887.500')).toBeVisible(); // Mandiri 500 × 9.775
-  await page.getByRole('button', { name: 'Save price' }).click();
-  await expect(page).toHaveURL(/\/security\/[^/]+$/); // saved: back on the stock's page
+  await expect(page).toHaveURL(/\/security\/[^/]+$/);
+  await expect(page.getByTestId('held-at-row')).toHaveCount(2);
+  await page.getByTestId('held-at-row').filter({ hasText: 'Stockbit' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
+  await typePrice(page, '9.775');
+  await expect(page.getByTestId('card-figure')).toContainText('14.662.500'); // Stockbit 1.500 × 9.775
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('19.550.000'); // 2.000 × 9.775
+  await page.getByTestId('stock-row').filter({ hasText: 'BBCA' }).click();
+  await expect(page.getByTestId('security-card')).toContainText('19.550.000');
+  await expect(page.getByTestId('held-at-row').filter({ hasText: 'Mandiri Sekuritas' })).toContainText('4.887.500'); // 500 × 9.775
 });
 
 test('5: a free user names AAPL owned before, and its rupiah cost is filed at the day\u2019s rate it asks for', async ({ page }) => {
@@ -116,7 +121,8 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
     date: await todayIn(page, 200),
   });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.getByRole('link', { name: 'Ajaib', exact: true }).click();
+  // Held at one broker, it opens that holding's own page straight away.
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   // The list leads with what is held — which is this asset's own unlisted name — so the ticker to link to is the

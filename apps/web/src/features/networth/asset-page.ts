@@ -150,7 +150,7 @@ export function pricedTiles(o: {
 }
 
 /** Lots and shares both, when shares come in lots: "5 lots · 500". */
-function heldLabel(unitsMicro: number, unitKind: UnitKind | null, lotSize: number | null): string {
+export function heldLabel(unitsMicro: number, unitKind: UnitKind | null, lotSize: number | null): string {
   const quantity = quantityLabel(unitsMicro, unitKind, lotSize);
   return quantity.endsWith('lots') || quantity.endsWith('lot') ? `${quantity} · ${formatUnits(unitsMicro)}` : quantity;
 }

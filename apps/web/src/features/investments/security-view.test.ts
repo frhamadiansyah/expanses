@@ -1,8 +1,21 @@
-import { formatMinor } from '@expanses/core';
+import { formatMinor, formatPriceMicro } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow, TradeRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { type HoldingLine, NO_BROKER, portfolioView } from './portfolio-view';
-import { baseGainLine, baseGainOf, boughtAtRate, brokerPageModel, idleCash, recentTrades, securityPageModel } from './security-view';
+import {
+  baseGainLine,
+  baseGainOf,
+  boughtAtRate,
+  brokerPageModel,
+  combinedSeries,
+  dividendsInYear,
+  idleCash,
+  institutionLine,
+  overallTiles,
+  recentTrades,
+  securityPageModel,
+  soleHolding,
+} from './security-view';
 
 const line = (accountId: string, brokerName: string, currency = 'USD'): HoldingLine => ({
   accountId, name: accountId, brokerAccountId: brokerName === 'No broker named' ? null : `b-${accountId}`, brokerName, currency,
@@ -141,7 +154,8 @@ describe('the stock and broker pages', () => {
   it('a broker page shows its idle cash, each pocket in its own currency', () => {
     const model = brokerPageModel({ view, key: 'ib', accounts: [account('ib', 'USD'), account('ib-usd', 'USD', 'ib'), account('ib-idr', 'IDR', 'ib')], balances: { 'ib-usd': 45_010, 'ib-idr': 1_250_000 }, base: 'IDR' })!;
     expect(model.cash.map((c) => [c.label, c.minor])).toEqual([['Cash idle · USD', 45_010], ['Cash idle · IDR', 1_250_000]]);
-    expect(model.rows).toMatchObject([{ title: 'AAPL', opens: { securityId: 'aapl' } }]);
+    // AAPL is held at this broker alone, so its row opens the holding, not the stock across brokers.
+    expect(model.rows).toMatchObject([{ title: 'AAPL', opens: { accountId: 'aapl-ib' } }]);
     // Before the balances load there is no cash line to show, rather than a zero.
     expect(brokerPageModel({ view, key: 'ib', accounts: [], balances: undefined, base: 'IDR' })!.cash).toEqual([]);
   });
@@ -151,9 +165,62 @@ describe('the stock and broker pages', () => {
     expect(model.rows.map((r) => [r.title, r.opens])).toEqual([
       ['No broker named · BBCA 2019', { securityId: 'bbca' }],
       ['No broker named · BBCA 2024', { securityId: 'bbca' }],
-      ['TLKM', { securityId: 'tlkm' }],
+      ['TLKM', { accountId: 'tlkm-1' }],
       ['Private fund', { accountId: 'fund' }],
     ]);
     expect(model.cash).toEqual([]);
+  });
+});
+
+// The stock across its brokers (mockup C): what its card and its Institutions rows say.
+describe('the stock across brokers', () => {
+  it('opens the one holding straight away when there is only one, and the page across them when there are two', () => {
+    expect(soleHolding({ holdings: [line('a', 'Stockbit')] })).toBe('a');
+    expect(soleHolding({ holdings: [line('a', 'Stockbit'), line('b', 'Ajaib')] })).toBeNull();
+  });
+
+  it('adds each holding’s line day by day, and draws none from lines that do not share their days', () => {
+    const a = [{ on: '2026-10-01', minor: 100 }, { on: '2026-10-02', minor: 130 }];
+    const b = [{ on: '2026-10-01', minor: 40 }, { on: '2026-10-02', minor: 45 }];
+    expect(combinedSeries([a, b])).toEqual([{ on: '2026-10-01', minor: 140 }, { on: '2026-10-02', minor: 175 }]);
+    expect(combinedSeries([a, b.slice(1)])).toBeNull();
+    expect(combinedSeries([a, [{ on: '2026-09-30', minor: 1 }, { on: '2026-10-01', minor: 2 }]])).toBeNull();
+    expect(combinedSeries([])).toBeNull();
+  });
+
+  it('counts this year’s dividends from its own holdings only, before tax', () => {
+    const trades = [
+      trade('d1', 'a', 'income', '2026-03-14', 41_000),
+      trade('d2', 'b', 'income', '2026-08-02', 12_500, 0, undefined, 1_250),
+      trade('d3', 'a', 'income', '2025-11-20', 99_000), // last year
+      trade('d4', 'c', 'income', '2026-05-05', 77_000), // another stock
+      trade('b1', 'a', 'buy', '2026-02-01', 5_000_000),
+    ];
+    expect(dividendsInYear(trades, ['a', 'b'], '2026')).toBe(53_500);
+    expect(dividendsInYear(trades, ['a', 'b'], '2024')).toBe(0);
+  });
+
+  it('fills the card with the shares, the average over every broker, the price and this year’s dividends', () => {
+    // 12 lots at one broker and 3 at another: 1.500 shares that cost Rp 13.335.000 in all — Rp 8.890 a share.
+    const stock = { unitsMicro: 1_500_000_000, costMinor: 13_335_000, currency: 'IDR', lotSize: 100 };
+    const tiles = overallTiles({ stock, price: { priceMicro: 9_120_000_000, label: 'Last close', info: 'Yahoo Finance · 22 Oct 2026' }, dividendsMinor: 53_500 });
+    expect(tiles.map((t) => [t.label, t.value])).toEqual([
+      ['Shares', '15 lots · 1.500'],
+      ['Average price', formatPriceMicro(8_890_000_000, 'IDR')],
+      ['Last close', formatPriceMicro(9_120_000_000, 'IDR')],
+      ['Dividends this year', formatMinor(53_500, 'IDR')],
+    ]);
+    // No price yet and nothing read of the dividends: those tiles are left off rather than drawn with a dash.
+    expect(overallTiles({ stock, price: null, dividendsMinor: null }).map((t) => t.label)).toEqual(['Shares', 'Average price']);
+  });
+
+  it('gives each broker’s row its lots, its own average and its own gain in the tone it is read in', () => {
+    expect(institutionLine({ unitsMicro: 1_200_000_000, costMinor: 10_620_000, valueMinor: 10_944_000, currency: 'IDR' }, 100)).toEqual({
+      subtitle: `12 lots · avg ${formatPriceMicro(8_850_000_000, 'IDR')}`,
+      gain: { text: '+3,1%', tone: 'gain' },
+    });
+    expect(institutionLine({ unitsMicro: 300_000_000, costMinor: 2_850_000, valueMinor: 2_736_000, currency: 'IDR' }, 100).gain).toEqual({ text: '−4,0%', tone: 'loss' });
+    // Nothing paid for it: no gain to read, never one against a zero.
+    expect(institutionLine({ unitsMicro: 300_000_000, costMinor: 0, valueMinor: 2_736_000, currency: 'IDR' }, 100).gain).toBeNull();
   });
 });

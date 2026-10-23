@@ -41,7 +41,8 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
 test('a share’s Broker row opens a broker not yet in the app, by name, and keeps the share there', async ({ page }) => {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750' });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.getByRole('link', { name: 'Stockbit', exact: true }).click();
+  // Held at one broker, the stock opens that holding's own page straight away.
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
 
   const broker = page.getByLabel('Broker', { exact: true });
   await broker.selectOption({ label: 'Another broker…' });

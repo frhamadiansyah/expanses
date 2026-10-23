@@ -764,7 +764,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
  * The labelled figures inside the card, two to a row: a small grey label, the figure under it. The one a word
  * qualifies carries it under the figure, and its ⓘ opens what it means (a world gold price: "Not buyback") under the grid.
  */
-function NumberGrid({ tiles, refresh }: { tiles: Tile[]; refresh?: { label: string; busy: boolean; run: () => void } }) {
+export function NumberGrid({ tiles, refresh }: { tiles: Tile[]; refresh?: { label: string; busy: boolean; run: () => void } }) {
   const [explained, setExplained] = useState<string | null>(null);
   const said = tiles.find((tile) => tile.label === explained)?.info;
   return (
