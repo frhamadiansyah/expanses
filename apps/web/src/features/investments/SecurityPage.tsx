@@ -129,7 +129,7 @@ export function SecurityPage() {
           <StockFigure stock={stock} base={base} rates={rates} left={false} />
           <InBaseGroup stock={stock} base={base} />
           <PriceRows stock={stock} securityId={securityId} latest={latest} />
-          <InsetGroup header="Held at" footer={HELD_FOOTER}>
+          <InsetGroup header="Institutions" footer={HELD_FOOTER}>
             {stock.holdings.map((h) => (
               <InsetRow
                 key={h.accountId}
@@ -165,7 +165,7 @@ export function SecurityPage() {
           />
           <div>
             <InvestTable<HoldingLine>
-              header="Held at"
+              header="Institutions"
               footer={HELD_FOOTER}
               testId="held-at-table"
               rowTestId="held-at-row"
