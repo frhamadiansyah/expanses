@@ -37,7 +37,7 @@ export function WhatItIsSheet({
   const groups = codeChoices('asset', code);
   const chosen = choiceForCode(groups, code, itemId);
   return (
-    <Sheet grouped tall title="What it is" onClose={onClose}>
+    <Sheet grouped tall title="Description" onClose={onClose}>
       <div className="flex flex-col gap-4">
         {groups.map((group) => (
           <section key={group.label} aria-label={group.label}>

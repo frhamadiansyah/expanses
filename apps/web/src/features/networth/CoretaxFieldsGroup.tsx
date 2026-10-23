@@ -1,6 +1,6 @@
 import { CORETAX_SECTIONS, type CoretaxSection, missingCoretaxFields, validateCoretaxFields } from '@expanses/core';
-import { type AssetProfileRow, saveAssetProfile } from '@expanses/db';
-import { useState } from 'react';
+import { type AssetProfileRow, getAssetProfile, saveAssetProfile } from '@expanses/db';
+import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, TextRow } from '../../ui/native';
@@ -14,10 +14,10 @@ import { fieldsToSave } from './settings-model';
 const ENGLISH: Record<CoretaxSection, Record<string, string>> = {
   kas: { acct: 'Account number', owner: 'Account holder', inst: 'Bank or institution', loc: 'Country' },
   piutang: { loc: 'Country', idno: 'Borrower’s ID number', name: 'Borrower’s name' },
-  investasi: { loc: 'Country', npwp: 'Institution’s tax ID (NPWP)', inst: 'Institution', sid: 'Proof of ownership or account number' },
-  bergerak: { model: 'Make and model', plate: 'Registration number', own: 'Ownership', ownerNpwp: 'Owner’s tax ID (NPWP)', ownerName: 'Owner’s name' },
+  investasi: { loc: 'Country', npwp: 'Institution’s tax ID', inst: 'Institution', sid: 'Account number' },
+  bergerak: { model: 'Make and model', plate: 'Registration number', own: 'Ownership', ownerNpwp: 'Owner’s tax ID', ownerName: 'Owner’s name' },
   tidak_bergerak: { loc: 'Location', land: 'Land area (m²)', bldg: 'Building area (m²)', source: 'How it was acquired', cert: 'Certificate number' },
-  lainnya: { cert: 'Proof of ownership or account number', info: 'More information' },
+  lainnya: { cert: 'Account number', info: 'More information' },
 };
 
 /** What a field says about itself beyond its fallback: an institution's NPWP is shared by every holding there. */
@@ -34,6 +34,7 @@ export function CoretaxFieldsGroup({
   profile,
   section,
   fallbacks = {},
+  lead = [],
 }: {
   profile: AssetProfileRow;
   section: CoretaxSection;
@@ -42,6 +43,8 @@ export function CoretaxFieldsGroup({
    * Shown in the empty field, so nobody types it twice; what is typed still stands.
    */
   fallbacks?: Record<string, { value: string; from: string }>;
+  /** Rows that open the box before the fields: the asset's own Tax report rows, so the whole report is one box. */
+  lead?: ReactElement[];
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -54,23 +57,26 @@ export function CoretaxFieldsGroup({
 
   async function save() {
     const wrong = new Set(problems.map((problem) => problem.key));
-    const next = fieldsToSave(profile.coretaxFields, fields, wrong);
-    if (JSON.stringify(next) === JSON.stringify(profile.coretaxFields)) return;
     setError(null);
     try {
+      // Written over what is saved now, not what this screen was drawn from: another row saved a moment ago (when it
+      // was acquired, a field just left) would otherwise be put back.
+      const saved = (await getAssetProfile(database, ws, profile.accountId)) ?? profile;
+      const next = fieldsToSave(saved.coretaxFields, fields, wrong);
+      if (JSON.stringify(next) === JSON.stringify(saved.coretaxFields)) return;
       await saveAssetProfile(database, ws, {
-        accountId: profile.accountId,
-        assetKind: profile.assetKind,
-        planGroup: profile.planGroup,
-        unitKind: profile.unitKind,
-        lotSize: profile.lotSize,
-        risk: profile.risk,
-        coretaxSection: profile.coretaxSection,
-        coretaxCode: profile.coretaxCode,
-        acquiredYear: profile.acquiredYear,
+        accountId: saved.accountId,
+        assetKind: saved.assetKind,
+        planGroup: saved.planGroup,
+        unitKind: saved.unitKind,
+        lotSize: saved.lotSize,
+        risk: saved.risk,
+        coretaxSection: saved.coretaxSection,
+        coretaxCode: saved.coretaxCode,
+        acquiredYear: saved.acquiredYear,
         // Written whole, so what was set elsewhere is carried rather than put back to the kind's defaults.
-        reportable: profile.reportable,
-        taxTreatment: profile.taxTreatment,
+        reportable: saved.reportable,
+        taxTreatment: saved.taxTreatment,
         coretaxFields: next,
       });
       await invalidate();
@@ -80,7 +86,8 @@ export function CoretaxFieldsGroup({
   }
 
   return (
-    <InsetGroup header="Tax report details" trailing={missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}>
+    <InsetGroup header={lead.length > 0 ? 'Tax report' : 'Tax report details'} trailing={missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}>
+      {lead}
       {CORETAX_SECTIONS[section].fields.map((field, i, all) => {
         const problem = problems.find((item) => item.key === field.key);
         return (

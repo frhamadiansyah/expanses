@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
@@ -135,14 +135,17 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           // The tax report's own questions, here rather than on an Edit screen of their own (a money account's stay below).
           taxFields={
             // Only while it is reported: off, the report asks nothing of it.
-            !money && profile.data?.coretaxSection && profile.data.reportable ? (
-              <CoretaxFieldsGroup
-                key={`fields-${accountId}`}
-                profile={profile.data}
-                section={profile.data.coretaxSection}
-                fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
-              />
-            ) : undefined
+            !money && profile.data?.coretaxSection
+              ? (lead) => (
+                  <CoretaxFieldsGroup
+                    key={`fields-${accountId}`}
+                    profile={profile.data!}
+                    section={profile.data!.coretaxSection!}
+                    fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
+                    lead={lead}
+                  />
+                )
+              : undefined
           }
         />
       )}
@@ -173,16 +176,16 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
 
       {value && (
         <>
-          <InsetGroup footer={archivable ? undefined : 'Archiving is available once nothing is left in this asset.'}>
-            <InsetRow
-              title="Archive"
-              chevron={false}
+          <InsetGroup>
+            <DestructiveRow
+              label="Archive"
               disabled={!archivable}
+              // Why it cannot be archived yet, behind its ⓘ rather than in a footer always under it.
+              info={archivable ? undefined : 'Archiving is available once nothing is left in this asset.'}
               onClick={() => void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))}
             />
-            <InsetRow
-              title="Delete"
-              chevron={false}
+            <DestructiveRow
+              label="Delete"
               onClick={() =>
                 void leaveBy(
                   `Delete ${name}? Only for something opened by mistake: it must hold nothing but its opening entry, with no goal promising its money. Otherwise move the money out and archive it.`,

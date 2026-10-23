@@ -157,6 +157,8 @@ test('a laptop worth less than it cost wears its loss in red', async ({ page }) 
   // Archive is in Settings, at the foot — greyed while it holds anything.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeDisabled();
+  // Why Archive is not available yet sits behind its ⓘ.
+  await page.getByRole('button', { name: 'About Archive' }).click();
   await expect(page.getByText('Archiving is available once nothing is left in this asset.')).toBeVisible();
 });
 
