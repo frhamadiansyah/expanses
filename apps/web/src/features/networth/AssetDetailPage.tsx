@@ -14,6 +14,7 @@ import {
   InsetGroup,
   InsetRow,
   PushedTitle,
+  ReadOnlyRow,
   ROW_PAD_X,
   ROW_PAD_Y,
   type RoundAction,
@@ -555,7 +556,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             <SelectRow
               key="held"
               label="Held at"
-              hint="A name only, for the tax report: not linked to any account."
               value={heldAtValue}
               onChange={(e) => {
                 const picked = e.target.value;
@@ -595,7 +595,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             />
           ) : null,
           // The day the value was last set: the value itself is the hero's figure.
-          byMoney && lastValued ? <InsetRow key="valued" title="Value updated" value={dayLabel(lastValued)} valueTone="ink" /> : null,
+          byMoney && lastValued ? <ReadOnlyRow key="valued" label="Value updated" value={dayLabel(lastValued)} /> : null,
           kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
             // share is always kept at a broker: it is offered only to a share recorded before one was named.
