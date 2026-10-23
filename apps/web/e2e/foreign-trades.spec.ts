@@ -26,7 +26,7 @@ async function addUsdStock(page: Page) {
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
 }
 
-test('Buy & sell sells a USD holding into a rupiah account at exactly the rupiah that arrived', async ({ page }) => {
+test('a USD holding’s Sell sells into a rupiah account at exactly the rupiah that arrived', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);
   await openTradeForm(page, 'sell', 'AAPL');
@@ -100,8 +100,8 @@ test('editing a sell into a rupiah account opens with what arrived, and saves wi
   await page.getByLabel('Charged in IDR').pressSequentially('10.447.125');
   await recordTrade(page);
 
-  // The sell's line on Buy & sell opens it, and Edit opens the full form on it.
-  const sold = await openTradeRow(page, /Sold AAPL/);
+  // The sell's line on Income opens its holding, and Edit under the line's ⋮ opens the full form on it.
+  const sold = await openTradeRow(page, /Sold AAPL/, /Sold/);
   await sold.getByRole('button', { name: 'Edit', exact: true }).click();
   // Read back from the sell's own transaction: the edit never starts from an empty figure.
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('10.447.125');
@@ -136,7 +136,7 @@ test('a USD sell whose fee took all of it records with nothing reaching the rupi
   await expect(form).toHaveCount(0);
   await expectBalance(page, 'BCA Tahapan', '1.000.000'); // nothing reached it
 
-  const sold = await openTradeRow(page, /Sold AAPL/);
+  const sold = await openTradeRow(page, /Sold AAPL/, /Sold/);
   await sold.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page.getByLabel(/Proceeds, before fees/)).toHaveValue('1.500,00');
   await expect(page.getByLabel('Fee (USD)')).toHaveValue('1.500,00');

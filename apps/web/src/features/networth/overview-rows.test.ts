@@ -170,7 +170,7 @@ describe('attentionItems with idle cash', () => {
   it('lists cash waiting at the broker, with the date it arrived', () => {
     const items = attentionItems([], [], [], [idle()]);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ tone: 'info', action: 'Buy', to: '/net-worth/trades' });
+    expect(items[0]).toMatchObject({ tone: 'info', action: 'Buy', to: '/net-worth/assets' });
     expect(items[0]!.text).toBe(`${formatMinor(1_011_019, 'IDR')} has been waiting in RDN Stockbit since 5 Oct 2026`);
   });
 

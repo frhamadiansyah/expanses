@@ -61,8 +61,8 @@ function fundTradeTitle(trade: Pick<TradeRow, 'kind' | 'unitsMicro' | 'switchedW
 }
 
 /**
- * Up to ten trades across a stock's holdings, newest first — read-only: a trade is changed only on Buy & sell,
- * which works later sells out again (spec §9). A fund's (`fund`) are its buys and sells only, each at its place.
+ * Up to ten trades across a stock's holdings, newest first — read-only: a trade is changed only on its holding's
+ * page, which works later sells out again (spec §9). A fund's (`fund`) are its buys and sells only, each at its place.
  */
 export function recentTrades(
   trades: readonly TradeRow[],

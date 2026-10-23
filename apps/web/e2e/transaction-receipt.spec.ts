@@ -65,7 +65,8 @@ test('the ⓘ on a row opens the receipt, and the row itself still edits in plac
  * The refusals the receipt has to inherit, because it is a new way into a transaction and not a new set of
  * rules about one.
  *
- * `TransactionsPage` and `TransactionsTable` both replace a trade row's whole trailing slot with **Buy & sell**:
+ * `TransactionsPage` and `TransactionsTable` both replace a trade row's whole trailing slot with **Holding**, the link
+ * to the holding's own page:
  * a trade's units live in `trades`, and the transaction is only its money half. Void it and the cash comes back
  * while the units stay held — Rp 3.980.000 of net worth out of nothing. Edit it and `replaceTransaction` posts a
  * new id, leaving the trade pointing at a transaction that is no longer there. An opening balance is refused for
@@ -107,7 +108,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
   await openReceipt(page, 'Bought 2 Antam gold bars');
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Holding', exact: true })).toHaveAttribute('href', /\/net-worth\/assets\/[^/]+$/);
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
@@ -199,7 +200,7 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
   // The sheet closes on success only, so waiting for it to go is waiting for the write to land.
   await expect(page.getByRole('dialog', { name: 'This was a purchase' })).toBeHidden();
 
-  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });

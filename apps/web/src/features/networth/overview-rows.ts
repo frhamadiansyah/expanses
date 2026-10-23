@@ -19,7 +19,7 @@ export interface AttentionItem {
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/bills' | '/goals' | '/net-worth/lend-borrow' | '/net-worth/loans' | '/net-worth/assets/$accountId';
+  to: '/net-worth/assets' | '/bills' | '/goals' | '/net-worth/lend-borrow' | '/net-worth/loans' | '/net-worth/assets/$accountId';
   params?: { accountId: string };
 }
 
@@ -69,14 +69,15 @@ export function attentionItems(
     });
   }
   for (const row of idleCash) {
-    // Money put at a broker was meant to be invested; while it sits as cash it earns nothing.
+    // Money put at a broker was meant to be invested; while it sits as cash it earns nothing. Buy opens Assets, where
+    // the holding to buy is picked and bought on its own page.
     if (row.planGroup !== 'invest' || row.amountMinor <= 0) continue;
     items.push({
       key: `idle-${row.accountId}`,
       tone: 'info',
       text: `${formatMinor(row.amountMinor, row.currency)} has been waiting in ${row.name} since ${shortDate(row.since)}`,
       action: 'Buy',
-      to: '/net-worth/trades',
+      to: '/net-worth/assets',
     });
   }
   for (const person of people) {

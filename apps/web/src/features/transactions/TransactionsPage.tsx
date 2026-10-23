@@ -951,7 +951,7 @@ export function TransactionsPage() {
                   .join(', ');
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
-    const trade = tradeByTransaction.has(tx.id);
+    const trade = tradeByTransaction.get(tx.id) ?? null;
     const billTag = billTagOf(tx);
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
     // A share that ended here is kept read-only (§8.6): nothing on it is edited, deleted or re-filed.
@@ -1032,8 +1032,13 @@ export function TransactionsPage() {
         trailing={
           selecting ? undefined : <>
             {trade ? (
-              <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
-                Buy &amp; sell
+              <Link
+                to="/net-worth/assets/$accountId"
+                params={{ accountId: trade.accountId }}
+                className="text-sm font-medium text-slate-600 underline"
+                title="Edit this on its holding's page so units stay in step"
+              >
+                Holding
               </Link>
             ) : (
               clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
@@ -1062,7 +1067,7 @@ export function TransactionsPage() {
     canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),
     duplicate: (id) => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: id } }),
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
-    tradeIds: new Set(tradeByTransaction.keys()),
+    tradeHoldings: new Map([...tradeByTransaction].map(([transactionId, trade]) => [transactionId, trade.accountId])),
     elsewhereOf,
     // Read-only: no row of an ended share is edited in cells (a typed new row is refused by capture, in words).
     filingKnown: filingKnown && !readOnly,

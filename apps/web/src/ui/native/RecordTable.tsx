@@ -9,7 +9,7 @@ import type { Tone } from './row';
  * The rule that fixes the seven screens that break at 390 px: **a table becomes rows on a phone and stays a
  * table on desktop.**
  *
- * This is not a seventh primitive, it is primitives 1 and 2 with a desktop form. `/review`, `/net-worth/trades`,
+ * This is not a seventh primitive, it is primitives 1 and 2 with a desktop form. `/review`, Income's holdings,
  * `/net-worth/loans/$accountId` and `/accounts` are all the same defect — a desktop grid put on a phone, where
  * its columns collide or run off the right edge. And the fix is not to shrink the grid: a phone shows each
  * record as a row with the two figures that matter, and everything else waits on the detail screen behind the

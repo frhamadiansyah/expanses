@@ -38,7 +38,7 @@ async function addBond(page: Page, name: string, cost: string) {
 
 /** A dividend of Rp 1.000.000 with Rp 100.000 withheld, paid into the bank. */
 async function recordDividend(page: Page) {
-  // Buy & sell's Income asks which holding, then opens the full form on that holding's page.
+  // The holding's own Dividend button opens the full form on its page.
   const form = await openTradeForm(page, 'income', 'BBRI');
   await expect(form.getByLabel('What happened')).toHaveValue('income');
   await form.getByLabel('Date').fill(`${YEAR}-06-10`);
@@ -81,12 +81,17 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
 
   await recordDividend(page);
 
-  // Rp 400.000 of the Rp 1.000.000 went back in, and the SBN is where it went: said on the dividend's own line.
-  const dividend = await openTradeRow(page, /Dividend BBRI/);
-  await dividend.getByLabel(`Reinvested from ${YEAR}-06-10`).fill('400000');
-  await dividend.getByLabel(`Reinvested into for ${YEAR}-06-10`).selectOption({ label: 'SBN ORI025' });
-  await dividend.getByRole('button', { name: 'Save', exact: true }).click();
+  // Rp 400.000 of the Rp 1.000.000 went back in, and the SBN is where it went: said from the dividend's ⋮, Reinvested….
+  const dividend = await openTradeRow(page, /Dividend BBRI/, /Dividend/);
+  await dividend.getByRole('button', { name: /^Reinvested…/ }).click();
+  const reinvested = page.getByRole('dialog', { name: 'Reinvested' });
+  await reinvested.getByLabel(`Reinvested from ${YEAR}-06-10`).fill('400000');
+  await reinvested.getByLabel(`Reinvested into for ${YEAR}-06-10`).selectOption({ label: 'SBN ORI025' });
+  await reinvested.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText(/Recorded as reinvested/)).toBeVisible();
+  // Income's line for it carries the marker.
+  await page.goto('/net-worth/investments/dividends');
+  await expect(page.getByTestId('trade-row').filter({ hasText: /Dividend BBRI/ })).toContainText('Reinvested');
 
   await startReport(page);
 

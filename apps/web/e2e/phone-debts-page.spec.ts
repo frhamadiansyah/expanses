@@ -80,10 +80,8 @@ test('by thumb: ＋ opens the chooser, and each row opens its own place', async 
 
 test('by thumb: the sections are behind the corner, and Lend & borrow is not one of them', async ({ page }) => {
   await page.goto('/net-worth');
-  // Assets and Liabilities are their total cards; the corner's `…` keeps only Buy & sell.
-  // No `…` any more: Buy & sell is a corner link of its own.
+  // Assets and Liabilities are their total cards, and the corner has no `…` to hold a section.
   await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
   await page.getByRole('link', { name: 'Liabilities', exact: true }).tap();
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 

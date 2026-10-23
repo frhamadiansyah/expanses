@@ -48,8 +48,10 @@ export interface Changeable {
   changeable: boolean;
   /** The workspace that has to be open first; null when this one already is it. */
   elsewhere: RowBook | null;
-  /** A trade's money half. Its units live in `trades`, so it is corrected on Buy & sell or not at all. */
+  /** A trade's money half. Its units live in `trades`, so it is corrected on its holding's page or not at all. */
   isTrade: boolean;
+  /** The holding a trade's money half belongs to, whose page corrects it; null for anything else. */
+  holdingId: string | null;
 }
 
 /**
@@ -102,11 +104,12 @@ export function useChangeable(tx: TransactionView | null): Changeable {
   const trades = useTrades();
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
   const readOnly = useOpenBookReadOnly();
-  if (!tx) return { changeable: false, elsewhere: null, isTrade: false };
+  if (!tx) return { changeable: false, elsewhere: null, isTrade: false, holdingId: null };
   const elsewhere = editInsteadIn(badges.of(tx.id), ws.bookId);
   // A share that ended here is read-only (§8.6): its own rows are read, never corrected or deleted.
-  if (readOnly && !elsewhere) return { changeable: false, elsewhere, isTrade: false };
-  const isTrade = (trades.data ?? []).some((trade) => trade.transactionId === tx.id);
+  if (readOnly && !elsewhere) return { changeable: false, elsewhere, isTrade: false, holdingId: null };
+  const holdingId = (trades.data ?? []).find((trade) => trade.transactionId === tx.id)?.accountId ?? null;
+  const isTrade = holdingId !== null;
   return {
     changeable: changeableWhen({
       editable: isEditable(tx),
@@ -118,6 +121,7 @@ export function useChangeable(tx: TransactionView | null): Changeable {
     }),
     elsewhere,
     isTrade,
+    holdingId,
   };
 }
 

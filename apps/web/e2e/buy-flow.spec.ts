@@ -54,12 +54,12 @@ test('records a purchase from the transaction window, and it never counts as spe
   // The purchase shows as a purchase, not as spending.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
-  await expect(row.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
+  await expect(row.getByRole('link', { name: 'Holding', exact: true })).toHaveAttribute('href', /\/net-worth\/assets\/[^/]+$/);
 
   // Cash fell by what it cost, and the gold is held at cost: net worth is unchanged.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
-  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });
@@ -119,7 +119,7 @@ test('turns an expense already recorded into the purchase it really was', async 
   await page.getByRole('button', { name: 'Save as a purchase' }).click();
 
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
-  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 });
@@ -230,7 +230,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
 
   // Units first: 10 g were already held, so 2 more make 12.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
-  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('12 g');
 
@@ -247,7 +247,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
 
-  // And the refusals come with it: a trade's money half is corrected on Buy & sell or not at all. The receipt is
+  // And the refusals come with it: a trade's money half is corrected on its holding's page or not at all. The receipt is
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
   // nothing here, which would make every assertion below it pass without ever loading the page they are about.
   await page.goto('/transactions');
@@ -256,7 +256,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // The two assertions above are the anchor the three below need: a `toHaveCount(0)` run the instant after a
   // navigation passes on a page that has not drawn yet, whatever the page would eventually have shown.
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Holding', exact: true })).toBeVisible();
   // Both ways in: the round button in the header and the one in the footer are gated separately, and a trade
   // that lost only one of the two guards would still be editable from the other.
   await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
@@ -273,7 +273,7 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
 
   await expect(page.getByText('Sold 2 Antam gold bars')).toBeVisible();
   // 10 g less the 2 sold, and the proceeds are in the bank.
-  // Held is read on the holding's own page: Buy & sell keeps its holdings table for a wide screen only.
+  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('8 g');
   await page.goto('/accounts');

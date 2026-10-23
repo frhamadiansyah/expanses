@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { planRecordTable, reachableColumns } from './record-table';
 
-/** `/net-worth/trades`: eight columns, and no screen anywhere in the app that opens a holding. */
+/** Income's holdings table: eight columns, and no detail screen behind a row of it. */
 const HOLDINGS = [
   { key: 'name' },
   { key: 'held' },

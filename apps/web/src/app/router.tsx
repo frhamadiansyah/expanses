@@ -37,7 +37,7 @@ import { SetsPage } from '../features/categories/SetsPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
-import { DividendsPage } from '../features/investments/DividendsPage';
+import { IncomePage } from '../features/investments/IncomePage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
@@ -57,7 +57,6 @@ import { LoanDetailPage } from '../features/loans/LoanDetailPage';
 import { DebtsPage } from '../features/loans/DebtsPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
 import { OverviewPage } from '../features/networth/OverviewPage';
-import { TradesPage } from '../features/networth/TradesPage';
 import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
@@ -120,7 +119,7 @@ const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: tex
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 /** The Categories list's tab, in the address so the way back from an income category lands on Income. */
-/** What the holding's page opens on arrival — Buy & sell's four buttons hand the chosen holding over this way. */
+/** What the holding's page opens on arrival (`?do=buy` and the rest): the sheet its own round button would open. */
 export type AssetSearch = { do?: 'buy' | 'sell' | 'income' | 'units' };
 const ASSET_DOS = ['buy', 'sell', 'income', 'units'] as const;
 const assetSearch = (search: Record<string, unknown>): AssetSearch =>
@@ -251,7 +250,7 @@ const routeTree = rootRoute.addChildren([
     component: AddHoldingPage,
     validateSearch: (search: Record<string, unknown>): { link?: string } => ({ link: typeof search.link === 'string' ? search.link : undefined }),
   }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/dividends', component: DividendsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/dividends', component: IncomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId', component: SecurityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId/price', component: SecurityPricePage }),
   // The static `none` outranks `$accountId`: holdings kept with no broker named.
@@ -265,7 +264,17 @@ const routeTree = rootRoute.addChildren([
   // An asset's settings, behind its gear: they used to sit at the bottom of the asset's own page.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/edit', component: EditAssetRoute }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
+  /*
+   * Buy & sell was folded away (owner, 23 Oct): a trade is recorded and changed on its holding's page, a split in its
+   * Settings, and the year's figures and every trade are read on Income. An old link lands there.
+   */
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/trades',
+    beforeLoad: () => {
+      throw redirect({ to: '/net-worth/investments/dividends', replace: true });
+    },
+  }),
   // Monthly plans are set on each holding's own page and come due on Recurring, under the bills: an old link lands there.
   createRoute({
     getParentRoute: () => rootRoute,

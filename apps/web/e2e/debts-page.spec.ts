@@ -128,10 +128,8 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
 
 test('the renames are in place: Debts for everything owed, Lend & borrow for people', async ({ page }) => {
   await page.goto('/net-worth');
-  // Liabilities opens from its total card; the corner's `…` keeps only Buy & sell.
-  // No `…` any more: Buy & sell is a corner link of its own.
+  // Liabilities opens from its total card, and the corner has no `…` to hold a section.
   await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
   await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();

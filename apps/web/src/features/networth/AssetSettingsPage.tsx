@@ -165,9 +165,17 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       )}
 
       {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
-      {/* A holding priced by the unit: its price source and the way to Update prices, set once, so here rather than on its page. */}
+      {/*
+       * A holding priced by the unit: its price source, the way to Update prices, and a change of units with no money
+       * (a split, bonus shares), each set seldom, so here rather than on its page.
+       */}
       {value && (
-        <PricesGroup accountId={accountId} priced={value.mode === 'market'} gold={profile.data?.assetKind === 'gold' && profile.data.unitKind === 'grams'} />
+        <PricesGroup
+          accountId={accountId}
+          priced={value.mode === 'market'}
+          gold={profile.data?.assetKind === 'gold' && profile.data.unitKind === 'grams'}
+          holding={{ name: value.name, currency: value.currency, unitKind: profile.data?.unitKind ?? null }}
+        />
       )}
 
       {/* The same fund at another place, tied into one row on Assets: seldom set, so here rather than on its page. */}

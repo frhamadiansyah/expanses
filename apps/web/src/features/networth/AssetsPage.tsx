@@ -225,11 +225,12 @@ export function AssetsPage() {
    */
   const estimatesStale = stale.filter((row) => row.method !== 'Units × price');
   /*
-   * The corner beside + opens Dividends: what the shares and bonds held pay, dividends and coupons (owner, 23 Oct). It
-   * used to hold the price tag; Update prices is now in each priced holding's Settings, under Prices.
+   * The corner beside + opens Income: the year's realized gains and income, what the shares and bonds held pay in
+   * dividends and coupons, and every trade (owner, 23 Oct). It used to hold the price tag; Update prices is now in each
+   * priced holding's Settings, under Prices.
    */
-  const dividends: CornerAction = { key: 'dividends', label: 'Dividends', glyph: <Coins size={19} aria-hidden />, to: '/net-worth/investments/dividends' };
-  const actions: CornerAction[] = [dividends, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
+  const income: CornerAction = { key: 'income', label: 'Income', glyph: <Coins size={19} aria-hidden />, to: '/net-worth/investments/dividends' };
+  const actions: CornerAction[] = [income, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>

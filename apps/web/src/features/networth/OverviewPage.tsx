@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { ArrowLeftRight, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -399,9 +399,10 @@ export function OverviewPage() {
   const sheetBlocked = joint ? joint.ownMissing.length > 0 : sheetMissing.length > 0;
 
   /*
-   * The corners, in the order the page is about them: how the figure is doing, then Buy & sell. Needs attention is no
-   * longer one of them: what it gathered is said where it belongs — an old price on Assets' Prices corner, a due
-   * monthly buy on Recurring, under the bills.
+   * The corner: how the figure is doing. Needs attention is no longer one of them: what it gathered is said where it
+   * belongs — an old price on a holding's Settings, a due monthly buy on Recurring, under the bills. Buy & sell was the second until
+   * it was folded away (owner, 23 Oct): a trade is recorded on its holding's page, and read with the year's figures on
+   * Income, behind Assets' corner.
    */
   const actions: CornerAction[] = [
     /*
@@ -409,14 +410,7 @@ export function OverviewPage() {
      * period they are read over belongs to that screen with them.
      */
     { key: 'health', label: 'Financial health', glyph: <Gauge size={18} aria-hidden />, to: '/net-worth/health' },
-    /*
-     * The three sections this page used to tab between are sub-pages now, and the rows in the `…` are their door:
-     * the screens worth a corner of their own have one, and the rest are one tap further. A section row at the top of
-     * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
-     */
-    // Assets and Liabilities are opened from their total cards, which are always drawn; Buy & sell is the corner's last
-    // door, a glyph of its own now that there is no `…` to hold it.
-    { key: 'trades', label: 'Buy & sell', glyph: <ArrowLeftRight size={18} aria-hidden />, to: '/net-worth/trades' },
+    // The sections this page used to tab between are sub-pages now: Assets and Liabilities open from their total cards.
   ];
 
   const nothingYet = !holding && series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;

@@ -13,6 +13,7 @@ import {
   type GroupChild,
   InsetGroup,
   InsetRow,
+  Panel,
   PushedTitle,
   ReadOnlyRow,
   ROW_PAD_X,
@@ -40,6 +41,7 @@ import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
+import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTradeTemplates, useTrades, useValuations } from './queries';
 import { planRowValue } from './monthly-plans';
@@ -105,6 +107,8 @@ type Sheet =
   | { kind: 'gold-chart' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string }
+  | { kind: 'goals'; trade: TradeRow }
+  | { kind: 'reinvested'; trade: TradeRow }
   | { kind: 'switch'; editing: { out: TradeRow; into: TradeRow } | null }
   | { kind: 'new-broker' }
   | { kind: 'plan' };
@@ -176,6 +180,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const rdnBank = brokerId ? (profiles.data ?? []).find((row) => row.accountId === brokerId)?.coretaxFields.inst?.trim() || null : null;
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [error, setError] = useState<unknown>(null);
+  // What the last change to a recorded trade did, said over the page: a goal kept, a payment marked, a trade deleted.
+  const [notice, setNotice] = useState('');
   const [all, setAll] = useState(false);
   const [typingPlace, setTypingPlace] = useState(false);
 
@@ -356,9 +362,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       : [];
 
   /*
-   * Arrived from Buy & sell with something to do (`?do=buy` and the rest): the same sheet the round button opens, once
-   * the holding is known well enough to choose it — a listed share's own sheet, a fund's, gold's, or the full form.
-   * The request is taken out of the address as it is answered, so Back and a reload do not open it again.
+   * Arrived with something to do (`?do=buy` and the rest): the same sheet the round button opens, once the holding is
+   * known well enough to choose it — a listed share's own sheet, a fund's, gold's, or the full form. Buy & sell's four
+   * buttons handed a holding over this way; the address still answers a link that asks. The request is taken out of
+   * the address as it is answered, so Back and a reload do not open it again.
    */
   const { do: arriving } = useSearch({ strict: false }) as { do?: 'buy' | 'sell' | 'income' | 'units' };
   const known = profile.isSuccess && stock.ready && couponTerms.isSuccess;
@@ -383,8 +390,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     if (!window.confirm(question)) return;
     setError(null);
     try {
-      await deleteTrade(database, ws, row.id);
+      const result = await deleteTrade(database, ws, row.id);
       await invalidate();
+      setNotice(result.recalculatedSells.length ? `Removed. ${result.recalculatedSells.length} later sells were worked out again.` : 'Removed.');
     } catch (e) {
       setError(e);
     }
@@ -400,6 +408,14 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       setError(e);
     }
   }
+
+  // The goal a recorded buy or sell counts toward, as its ⋮ says it: one goal by name, a split by how many.
+  const goalSaid = (row: TradeRow) =>
+    row.goalParts?.length
+      ? `${row.goalParts.length} goals`
+      : row.goalId
+        ? ((goals.data ?? []).find((goal) => goal.id === row.goalId)?.name ?? 'A goal')
+        : 'No goal';
 
   // Settings is the one way on from here: its name, when it was acquired, its tax details, and Archive and Delete at
   // the foot — so the corner is that gear alone rather than a menu holding Archive a second time.
@@ -479,6 +495,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     <div className={SCREEN}>
       <PushedTitle title={value.name} back="Assets" backTo="/net-worth/assets" actions={menu} />
       <ErrorBox error={profile.error ?? error ?? stock.error} />
+      {notice && (
+        <Panel className="text-[13px] leading-[17px] text-[var(--ph-tint)]" testId="trade-notice">
+          {notice}
+        </Panel>
+      )}
 
       {/*
        * The account page's card, as the Accounts tab draws its Balance: what it is worth now, one grey line with the
@@ -654,7 +675,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       <ShareWithHouseholdRow accountId={accountId} />
 
       {forGoals.length > 0 && (
-        <InsetGroup header="For goals">
+        <InsetGroup header="For goals" footer="Each buy's or sell's goal is changed from its ⋮ in the list above.">
           {forGoals.map((link) => (
             <InsetRow
               key={link.goalId}
@@ -665,7 +686,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               chevron={false}
             />
           ))}
-          <InsetRow title="Change on Buy & sell" to="/net-worth/trades" />
         </InsetGroup>
       )}
 
@@ -764,6 +784,42 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               : setSheet({ kind: 'trade', title: 'Edit trade', initial: draftFromTrade(sheet.trade, currency), editing: sheet.trade })
           }
           onDelete={() => void removeTrade(sheet.trade)}
+          // A buy's or a sell's goal, when there is a goal to give it; a switch moved money between funds, not toward one.
+          goals={
+            (sheet.trade.kind === 'buy' || sheet.trade.kind === 'sell') && !sheet.trade.switchedWith && (goals.data?.length ?? 0) > 0
+              ? { value: goalSaid(sheet.trade), open: () => setSheet({ kind: 'goals', trade: sheet.trade }) }
+              : undefined
+          }
+          reinvested={
+            sheet.trade.kind === 'income'
+              ? {
+                  value: (sheet.trade.reinvestedMinor ?? 0) > 0 ? formatMinor(sheet.trade.reinvestedMinor!, currency) : 'None',
+                  open: () => setSheet({ kind: 'reinvested', trade: sheet.trade }),
+                }
+              : undefined
+          }
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'goals' && (
+        <TradeGoalsSheet
+          trade={sheet.trade}
+          holding={{ currency, byMoney, unitLabel }}
+          onDone={(said) => {
+            setSheet(null);
+            setNotice(said);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'reinvested' && (
+        <ReinvestedSheet
+          trade={sheet.trade}
+          currency={currency}
+          onDone={(said) => {
+            setSheet(null);
+            setNotice(said);
+          }}
           onClose={() => setSheet(null)}
         />
       )}

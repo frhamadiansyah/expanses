@@ -9,6 +9,7 @@ import { ShareBar } from '../networth/ShareBar';
 import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
 import { usePortfolio } from './queries';
+import { HoldingsTable, TradesSection, useTradeBook, YearFigures } from './IncomeTrades';
 
 const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 /** How many payers get a row of their own before the rest fold into "others". */
@@ -28,15 +29,21 @@ function Swatch({ className }: { className: string }) {
 }
 
 /**
- * What the shares and bonds held today pay: a year of dividends and coupons, this year so far and still to come, the two yields, the share of
- * a year's spending it would cover, and who pays it. Each stock's history is Yahoo's, read once a day on this device.
+ * Income: what the holdings brought in. At the top the year's two figures, what the sells realized and what the
+ * dividends and coupons paid since 1 January. Then what the shares and bonds held today pay: a year of dividends and
+ * coupons, this year so far and still to come, the two yields, the share of a year's spending it would cover, and who
+ * pays it. Each stock's history is Yahoo's, read once a day on this device. Last, every holding's trades by day.
+ *
+ * The figures and the trades were Buy & sell's, a page of their own off Net worth until it was folded in here (owner,
+ * 23 Oct): a trade is recorded and changed on its holding's page, so what was left of that page was reading.
  */
-export function DividendsPage() {
+export function IncomePage() {
   const { ws } = useApp();
   const base = ws.baseCurrency;
   const today = isoDate();
   const { view: portfolio, rates, securities, isPending, error } = usePortfolio();
   const trades = useTrades();
+  const book = useTradeBook();
   const flows = usePeriodFlows({ from: shiftDays(today, -364), to: today });
   const [all, setAll] = useState(false);
   const [months, setMonths] = useState(false);
@@ -104,8 +111,9 @@ export function DividendsPage() {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Dividends" {...BACK} />
-      <ErrorBox error={error ?? trades.error} />
+      <PushedTitle title="Income" {...BACK} />
+      <ErrorBox error={error ?? trades.error ?? book.values.error} />
+      {book.holdings.length > 0 && <YearFigures book={book} />}
       {portfolio && couponTerms.data && listed.length === 0 && bonds.length === 0 && (
         <Empty>No listed shares or bonds with a coupon yet. Dividends show here once a share with a ticker is held, and coupons once a bond's terms are set.</Empty>
       )}
@@ -214,6 +222,9 @@ export function DividendsPage() {
         </>
       )}
       {isPending && !error && <Empty>Loading…</Empty>}
+
+      <HoldingsTable book={book} />
+      <TradesSection book={book} />
     </div>
   );
 }

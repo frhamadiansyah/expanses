@@ -184,11 +184,12 @@ export function GoalPage({ goalId }: { goalId: string }) {
   ];
   const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
 
-  // Set aside opens the form's set-aside part; tagging happens on a buy, which Buy & sell records and retags. Use is
-  // there only while something is set aside to use.
+  // Set aside opens the form's set-aside part; tagging happens on a buy, retagged from its ⋮ on the holding's page,
+  // so Tag a purchase opens Income, where every buy is listed and opens its holding. Use is there only while
+  // something is set aside to use.
   const round: RoundAction[] = [
     { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
-    { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, to: '/net-worth/trades' },
+    { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, to: '/net-worth/investments/dividends' },
     ...(held ? [{ key: 'use', label: 'Use', glyph: <ShoppingBag size={20} aria-hidden />, run: () => setOpen('use') }] : []),
     { key: 'monthly', label: 'Monthly', glyph: <CalendarClock size={20} aria-hidden />, run: () => setOpen('monthly') },
   ];

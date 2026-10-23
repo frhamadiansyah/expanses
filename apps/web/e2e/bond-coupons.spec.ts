@@ -38,7 +38,7 @@ test('a bond’s coupon terms record each coupon due when the app opens, and Cou
   await expect(page.getByLabel('Amount before tax (IDR)')).toHaveValue(/52\.?500/);
   await expect(page.getByLabel('Tax withheld (IDR)')).toHaveValue(/5\.?250/);
 
-  // And the coupons count on the Dividends page: Rp10.000.000 at 6,3% is Rp630.000 a year, paid by the bond.
+  // And the coupons count on the Income page: Rp10.000.000 at 6,3% is Rp630.000 a year, paid by the bond.
   await page.keyboard.press('Escape');
   await page.goto('/net-worth/investments/dividends');
   await expect(page.getByTestId('dividends-year')).toContainText('630.000');

@@ -138,8 +138,8 @@ export function ValueSheet({ accountId, currency, onClose }: { accountId: string
 }
 
 /**
- * The Buy & sell form, in a sheet over the holding's own page, with the holding already chosen: a buy, a sale or a
- * payment, or an edit of one already recorded. The same form, the same checks, the same save as Buy & sell.
+ * The full trade form, in a sheet over the holding's own page (or its Settings), with the holding already chosen: a
+ * buy, a sale, a payment or a change of units, or an edit of one already recorded.
  */
 export function TradeSheet({
   title,
@@ -160,7 +160,7 @@ export function TradeSheet({
   const accounts = useAccounts();
   const positions = usePositions();
   const goals = useGoals();
-  // The cash side of a trade, as Buy & sell offers it: a buy is paid from money, a broker's cash included.
+  // The cash side of a trade: a buy is paid from money, a broker's cash included.
   const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
   return (
     <Sheet grouped tall expanded title={title} onClose={onClose}>
@@ -181,10 +181,34 @@ export function TradeSheet({
   );
 }
 
-/** What can be done with one recorded trade: open it in the form, or take it back. */
-export function TradeActionsSheet({ title, onEdit, onDelete, onClose }: { title: string; onEdit: () => void; onDelete: () => void; onClose: () => void }) {
+/**
+ * What can be done with one recorded trade: open it in the form, or take it back — and, beside them, what only a
+ * recorded trade has: the goal a buy or a sell counts toward (Goals…, with the goal it has now), and how much of a
+ * payment was put back in (Reinvested…). Each of those two is offered only where the trade can carry it.
+ */
+export function TradeActionsSheet({
+  title,
+  onEdit,
+  onDelete,
+  goals,
+  reinvested,
+  onClose,
+}: {
+  title: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  goals?: { value: string; open: () => void };
+  reinvested?: { value: string; open: () => void };
+  onClose: () => void;
+}) {
   return (
     <Sheet grouped title={title} onClose={onClose}>
+      {(goals || reinvested) && (
+        <InsetGroup>
+          {goals ? <InsetRow title="Goals…" value={goals.value} onClick={goals.open} /> : null}
+          {reinvested ? <InsetRow title="Reinvested…" value={reinvested.value} onClick={reinvested.open} /> : null}
+        </InsetGroup>
+      )}
       <InsetGroup>
         <InsetRow title="Edit" chevron={false} onClick={onEdit} />
         <InsetRow title="Delete" chevron={false} onClick={onDelete} />

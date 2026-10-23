@@ -53,9 +53,10 @@ test('the two pages are one, and what is left of them is all here', async ({ pag
   await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /^Needs attention/ })).toHaveCount(0);
 
-  // What the Overview had, with the ratios and Buy & sell one tap away in the corner, and Assets and Liabilities on
-  // their total cards.
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
+  // What the Overview had, with the ratios one tap away in the corner, and Assets and Liabilities on their total
+  // cards. Buy & sell is no longer a corner: a trade is recorded on its holding's page and read on Income.
+  await expect(page.getByRole('link', { name: 'Financial health' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Liabilities', exact: true })).toBeVisible();
   // The sheet is headed by its two sides and nothing else: "Balance sheet" and the line under it saying how it was
   // valued both said what "Assets" and "Liabilities" say with a figure beside them.
@@ -391,10 +392,11 @@ test('moves net worth by the price difference only', async ({ page }) => {
  */
 test('every net-worth section is a real link, so it can be opened in a new tab', async ({ page }) => {
   await page.goto('/net-worth');
-  // Assets and Liabilities are their total cards; Buy & sell is the corner's one row.
+  // Assets and Liabilities are their total cards; the corner is Financial health alone.
   expect(await page.getByRole('link', { name: 'Assets', exact: true }).getAttribute('href')).toBe('/net-worth/assets');
   expect(await page.getByRole('link', { name: 'Liabilities', exact: true }).getAttribute('href')).toBe('/net-worth/loans');
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveAttribute('href', '/net-worth/trades');
+  await expect(page.getByRole('link', { name: 'Financial health' })).toHaveAttribute('href', '/net-worth/health');
+  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
 
   // And each one goes there: the section opens as its own screen, with Net worth as the way back.
   await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
