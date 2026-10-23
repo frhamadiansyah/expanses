@@ -16,7 +16,7 @@ import { CapLine, ShareLine } from './CategoryLines';
 import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
-import { IncomeFlow } from './IncomeFlow';
+import { MoneyFlowBox } from './MoneyFlow';
 import { TrendBars, TrendUnder, useSpendingTrend } from './SpendingTrend';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
 import { useOpenBook } from '../workspaces/queries';
@@ -448,10 +448,8 @@ export function SpendingReport({
               </div>
             </Card>
           ))}
-          {/* Where the month's income went, and what it did not cover. It needs width, so the phone leaves it out. */}
-          <div className="hidden md:block">
-            <IncomeFlow month={month} />
-          </div>
+          {/* Where the period's money came from, what it passed through and where it went — and what was kept. */}
+          <MoneyFlowBox month={month} onPick={onPick} />
         </>
       )}
     </div>
