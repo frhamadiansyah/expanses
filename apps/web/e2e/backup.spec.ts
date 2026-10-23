@@ -27,7 +27,7 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByRole('link', { name: 'Before backup', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'After backup', exact: true })).toHaveCount(0);
 });

@@ -9,7 +9,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   // The summary says which step the card is at; the step itself is done in the card's Settings.
   await expect(page.getByTestId('card-setup')).toContainText('Step 1 of 3');
 
-  await page.getByRole('navigation').getByRole('link', { name: 'Cards', exact: true }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   const cardRow = page.locator('section', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
   await expect(cardRow).toContainText('Add billing date to see points');
   await cardRow.getByRole('link', { name: 'Step Card', exact: true }).click();

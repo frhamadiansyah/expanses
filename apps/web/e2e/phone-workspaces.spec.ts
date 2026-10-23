@@ -93,7 +93,7 @@ async function addAccount(page: Page, name: string, type: string, balance: strin
  * inside a workspace. It counts in nobody's figure, which is why the chart reads the same on both sides.
  */
 test('a transfer is filed in no workspace, so every workspace shows it and none counts it', async ({ page }) => {
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await addAccount(page, 'BCA Tahapan', 'bank', '20000000');
   await addAccount(page, 'Jenius', 'savings', '0');
 

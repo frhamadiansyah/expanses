@@ -395,8 +395,10 @@ export function CashAccountForm({
         },
       );
       await invalidate();
+      // Money to spend from lands on Wallet, where it is a card now; a deposit or a broker's cash is never one, and
+      // lands where it is listed — Assets.
       if (onCreated) onCreated(openedId);
-      else await navigate({ to: '/wallet' });
+      else await navigate({ to: SPENDABLE_SUBTYPES.includes(item) ? '/wallet' : '/net-worth/assets' });
     } catch (e) {
       setError(e);
       // An account opened before the failure is real: the lists show it while the form says what is left to do.

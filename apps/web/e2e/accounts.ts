@@ -68,7 +68,21 @@ export interface NewAccount {
   extra?: (page: Page) => Promise<void>;
 }
 
-/** Opens a money account through the picker and leaves the Accounts page showing it. */
+/**
+ * A money account's or a credit card's card on Wallet, by name. A card's accessible name is its name and the figure
+ * on its band ("Everyday, Rp 3.000.000"), so the name is anchored rather than exact.
+ */
+export const walletCard = (page: Page, name: string) =>
+  page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(,|$)`) });
+
+/** An account's own page, opened from its card on Wallet — under the raised card, as a person opens it. */
+export async function openWalletAccount(page: Page, name: string) {
+  await page.goto('/wallet');
+  await walletCard(page, name).click();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+}
+
+/** Opens a money account through the picker and leaves Wallet showing its card (or Assets, for money never spent from). */
 export async function openAccount(page: Page, o: NewAccount) {
   // A card and a loan used to be two more values in the old form's Type column. Each has its own door now, and a
   // loan's door asks who lent the money — a loan's terms are what keep that name, and a loan opened without
@@ -103,18 +117,16 @@ export async function openAccount(page: Page, o: NewAccount) {
    * row on that list does, so the name is a prefix rather than the whole accessible name.
    */
   if (o.subtype === 'time_deposit' || o.subtype === 'fund') {
-    /* The form navigates to the money list once the write is done, so that is what the save is waited for first:
-     * leaving for the asset list any earlier abandons the write, and no account is ever made. */
-    await expect(page).toHaveURL(/\/accounts$/);
-    await page.goto('/net-worth/assets');
+    /* The form navigates to the asset list once the write is done, so that is what the save is waited for first. */
+    await expect(page).toHaveURL(/\/net-worth\/assets$/);
     /* The asset list folds its rows into a drawer per kind, and opens with them closed. */
     await openDrawers(page);
     await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
     return;
   }
-  /* The row it just made sits inside its type's drawer, and the list opens with those closed. */
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
+  /* Money kept for spending is a card on Wallet, where the form lands once the write is done. */
+  await expect(page).toHaveURL(/\/wallet$/);
+  await expect(walletCard(page, o.name)).toBeVisible();
 }
 
 export interface NewCard {

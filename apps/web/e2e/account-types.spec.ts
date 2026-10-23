@@ -12,7 +12,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   // It is priced on the asset list, which is where the helper above left us, and read beside its holdings.
   const broker = page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ });
   await expect(broker).toContainText('8.000.000');
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
   await expect(page.getByText('Parked at brokers')).toHaveCount(0);
 
@@ -20,7 +20,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   await addTransaction(page, { description: 'Warung Tegal', paidWith: 'GoPay', category: 'Groceries', amount: '45000' });
   await expect(page.getByText('Warung Tegal')).toBeVisible();
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   const wallet = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'GoPay', exact: true }) });
   await expect(wallet).toContainText('455.000');

@@ -19,7 +19,7 @@ test('a fund is held at an institution by name, never an account: a bank account
   await expect(page.getByLabel('Institution', { exact: true })).toHaveValue('Bibit');
 
   // The bank account lists nothing held at the bank: the fund is not linked to it.
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA/ }).first().click();
   await expect(page.getByTestId('institution-holding')).toHaveCount(0);
 });

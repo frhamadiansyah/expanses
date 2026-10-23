@@ -114,7 +114,7 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await page.unroute('https://api.frankfurter.dev/**');
   await mockRates(page, { USD: 16_400, SGD: 12_800 });
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');
@@ -227,7 +227,7 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
   await openWithPockets(page, VALAS);
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await ageRates(page, testInfo.outputPath('aged.sqlite3'));
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByTestId('pocket-USD').click();
   // The account page marks it too; this is the pocket's own page.
@@ -270,7 +270,7 @@ test('a blank rate that cannot be resolved stops the save, names the currency, a
   await page.getByLabel('Opening SGD').pressSequentially('10.00');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('alert')).toContainText('No SGD→IDR rate available. Enter it manually.');
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByRole('link', { name: 'Nowhere Valas' })).toHaveCount(0);
 });
 
@@ -357,7 +357,7 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await form.getByLabel('Received amount (SGD)').pressSequentially('638');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
@@ -375,7 +375,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await name.fill('Multi Plus');
   await name.blur();
   await expect(name).toHaveValue('Multi Plus');
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await page.getByRole('link', { name: 'Multi Plus', exact: true }).click();
   await page.getByTestId('pocket-USD').click();
@@ -397,7 +397,7 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '2400', rate: '16250' }] });
   // $2.400 held, and then no USD rate anywhere on the device.
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
   await expect(page.getByText('Spending money')).toHaveCount(0);

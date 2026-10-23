@@ -4,7 +4,7 @@ import { addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
 
 test('card purchase counts once as spending; the statement is paid from the card', async ({ page }) => {
-  await page.goto('/accounts');
+  await page.goto('/wallet');
 
   await openAccount(page, { subtype: 'bank', name: 'BCA Checking', balance: '20000000' });
   await openCard(page, { name: 'BCA Visa' });

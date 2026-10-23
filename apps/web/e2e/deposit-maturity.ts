@@ -165,7 +165,7 @@ export async function startReport(page: Page, year: number) {
 }
 
 export async function expectBalance(page: Page, name: string, figure: string) {
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   // The accounts page is the kit's list now, not a table: each account is a line, and the name is its link.
   const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name, exact: true }) });

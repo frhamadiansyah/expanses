@@ -59,7 +59,7 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with the copy from/ }).click()]);
 
   // What the copy held is back, and what was entered after it was taken is not.
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await expect(page.getByRole('link', { name: 'In the copy', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Added afterwards', exact: true })).toHaveCount(0);

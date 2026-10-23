@@ -202,7 +202,7 @@ test('a loan falls due this year and later, and the balance sheet names it once'
 test('a card purchase turned into instalments splits into billed and unbilled', async ({ page }) => {
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '12000000');
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA KrisFlyer' }).click();
   await page.getByRole('button', { name: 'Add a plan' }).click();
   await page.getByLabel('What it was').fill('iBox Grand Indonesia');
@@ -304,7 +304,7 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // The principal falls by the extra alone — a penalty is a fee, never part of the principal — and the fee, with the
   // extra, is exactly what left the dollar account: 2.400 − 500 − 12,50.
   await expect(page.getByText(/19\.500,00/).first()).toBeVisible();
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
 });

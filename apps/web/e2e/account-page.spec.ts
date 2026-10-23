@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openTypes } from './accounts';
+import { openAccount, openWalletAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
@@ -9,12 +9,8 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-/** An account's own page, from the Accounts list. */
-async function openMoney(page: Page, name: string) {
-  await page.goto('/accounts');
-  await openTypes(page);
-  await page.getByRole('link', { name, exact: true }).first().click();
-}
+/** An account's own page, from its card on Wallet. */
+const openMoney = (page: Page, name: string) => openWalletAccount(page, name);
 
 /** A deposit or an RDN, which live on the asset list rather than the money one. */
 async function openHeld(page: Page, name: string) {

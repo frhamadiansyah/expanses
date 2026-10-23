@@ -61,7 +61,7 @@ test('a foreign card purchase is two lines on each side, the card named "4417"',
 test('a foreign purchase that earns cashback shows the foreign amount alone under it at a phone’s width', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openCard(page, { name: 'Nusa Voyager Travel', owed: '0', last4: '4417' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Voyager Travel(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -146,12 +146,12 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
   const sheet = page.getByRole('dialog', { name: /^(Paid with|Received into|From)$/ });
   await expect(sheet.getByRole('button', { name: 'Kantong Biru', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /5521/ })).toHaveCount(0);
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await expect(page.getByRole('main')).toBeVisible();
   await expect(page.getByText('Kantong Biru')).toHaveCount(0);
 
   // Changed on the wallet's settings, the rows follow.
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await page.getByRole('link', { name: 'Kantong Biru', exact: true }).click();
   await openSettings(page);

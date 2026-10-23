@@ -13,7 +13,7 @@ async function addCardAccount(page: Page) {
 
 /** The card's Settings, where the cards on its account are listed and added. */
 async function openTheCard(page: Page) {
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }).click();
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
   await cardPage(page, 'Settings');

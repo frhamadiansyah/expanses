@@ -61,7 +61,7 @@ test('the account sheet opens a screen that had no phone route before, and closi
 test('a purchase is recorded from the add button without leaving the screen', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await settle(page);
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
   await expect(page).toHaveURL(/\/cards$/);

@@ -15,7 +15,7 @@ test('a bank account named by the end of its number shows it on its transactions
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '85000' });
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('4321');
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Tahapan', exact: true }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Last 4 digits of account number')).toHaveValue('4321');

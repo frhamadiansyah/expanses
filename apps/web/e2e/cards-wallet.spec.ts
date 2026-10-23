@@ -5,7 +5,7 @@ import { cardPage } from './card-section';
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -26,7 +26,7 @@ async function addEarningCard(page: Page, name: string) {
 test('a desktop stacks cards of one fixed width and raises the one tapped, with its page beside and below', async ({ page }) => {
   for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(2);

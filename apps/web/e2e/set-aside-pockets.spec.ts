@@ -23,7 +23,7 @@ test('moving between pockets asks only when it takes promised money, and the pro
   // US$2.000,00 of the US$2.400,00 promised: US$400,00 free.
   await setAside(page, 'Umrah 2027', 'Valas Plus · USD (USD)', '2000.00');
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');

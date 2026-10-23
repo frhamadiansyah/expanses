@@ -93,7 +93,7 @@ test('the Accounts page never lists a placeholder account', async ({ page }, tes
   await openAccount(page, { subtype: 'bank', name: ORDINARY_NAME, balance: '20000000' });
   await plantPlaceholder(page, testInfo.outputDir);
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   // One type of money account is on this device (Current account), so the list draws flat with no drawer to
   // open — the placeholder, filtered out at the reader, never becomes a second type asking for one.
   await expect(page.getByRole('link', { name: ORDINARY_NAME, exact: true })).toBeVisible();

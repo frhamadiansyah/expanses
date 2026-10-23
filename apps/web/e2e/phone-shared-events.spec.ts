@@ -140,7 +140,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(spendingRow(rina, 'Taxi')).toContainText('Rina paid');
 
   // The derived transaction stays in its account's history; its receipt opens the trip's expense to change it.
-  await rina.goto('/accounts');
+  await rina.goto('/wallet');
   await openTypes(rina);
   await rina.getByRole('link', { name: 'Rina Bank', exact: true }).first().click();
   await rina.getByTestId('account-recent').getByText('Taxi').click();

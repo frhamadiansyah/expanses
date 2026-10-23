@@ -78,7 +78,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(sheet.getByTestId('money-out-lands')).toContainText('Lands in BCA Tahapan');
   await sheet.getByRole('button', { name: 'Break early' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await expect(
     page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),

@@ -76,7 +76,7 @@ test('a restore of data from a newer app is refused before it is adopted, and th
   // Export is never taken away from someone whose only problem is an out-of-date app.
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByRole('link', { name: 'Still here', exact: true })).toBeVisible();
 });
 

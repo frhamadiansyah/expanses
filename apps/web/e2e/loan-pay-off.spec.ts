@@ -45,7 +45,7 @@ test('a loan paid off with a fee is cleared, books the fee, and takes the total 
   await expect(page.getByRole('heading', { name: 'Paid off' })).toBeVisible();
 
   // The account paid both: 900.000.000 − 616.000.000 − 2.500.000.
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) })).toContainText('281.500.000');
 });

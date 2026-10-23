@@ -47,7 +47,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(withdrawal.getByLabel('From').locator('option:checked')).toHaveText('Everyday');
   await withdrawal.getByRole('button', { name: 'Close' }).tap();
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await page.getByRole('link', { name: 'GoPay', exact: true }).tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Top up', 'Receive', 'Adjust']);
@@ -59,7 +59,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(topUp).toHaveCount(0);
   await expect(page.getByTestId('balance-card')).toContainText('150.000');
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openTypes(page);
   await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);

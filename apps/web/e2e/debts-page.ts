@@ -40,7 +40,7 @@ export async function oneOfEach(page: Page) {
   await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '1000.00', rate: '16250' });
 
   await openCard(page, { name: 'BCA Visa' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.

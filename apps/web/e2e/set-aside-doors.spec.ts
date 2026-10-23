@@ -41,7 +41,7 @@ async function borrowFromEmergencyFund(scope: ReturnType<Page['locator']>) {
 
 async function addCard(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
@@ -66,7 +66,7 @@ async function buyOnCard(page: Page, note: string, amount: string, on: string) {
 }
 
 async function openCardPage(page: Page) {
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
 }
 
