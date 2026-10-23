@@ -20,11 +20,11 @@ test('menu navigation between a card page and the cards list keeps working', asy
 
   await addCard(page, 'Only Card');
 
-  await menu(page, 'Cards');
+  await menu(page, 'Wallet');
   await page.getByRole('link', { name: 'Only Card' }).first().click();
   await expect(page.getByTestId('card-setup')).toContainText('Step 1 of 3');
-  await menu(page, 'Cards');
-  await expect(page.getByRole('heading', { name: 'Cards & points' })).toBeVisible();
+  await menu(page, 'Wallet');
+  await expect(page.getByRole('heading', { name: 'Wallet', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Only Card' }).first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Only Card' }).first().click();
@@ -35,8 +35,8 @@ test('menu navigation between a card page and the cards list keeps working', asy
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await expect(page.getByRole('button', { name: 'Add rule' })).toBeVisible();
-  await menu(page, 'Cards');
-  await expect(page.getByRole('heading', { name: 'Cards & points' })).toBeVisible();
+  await menu(page, 'Wallet');
+  await expect(page.getByRole('heading', { name: 'Wallet', exact: true })).toBeVisible();
   // Scope to the wallet: the page heading "Cards & points" would also match a bare /points$/, and the Points section
   // below names the card on its programme's row.
   const row = page.getByRole('region', { name: 'Cards' });

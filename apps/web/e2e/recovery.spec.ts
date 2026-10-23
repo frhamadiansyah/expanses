@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
+import { walletCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import {
   addBank,
@@ -58,8 +59,8 @@ test('restore the last good copy brings the data back after corruption', async (
   await expect(restore).toContainText(/From .+ · [\d.]+ (KB|MB)/);
   await Promise.all([page.waitForEvent('load'), restore.click()]);
 
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Rescue me')).toBeVisible();
 });
 
 /**
@@ -80,8 +81,8 @@ test('the last good copy skips the copy taken of the corruption', async ({ page 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Restore the last good copy/ }).click()]);
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Rescue me')).toBeVisible();
   // Two copies now: the day's, and the undo taken of the corrupt file a moment ago. Both have to be copies
   // that could actually be put back — a name with nothing behind it would satisfy a count and no user.
   await expect.poll(async () => (await restorableCopies(page)).length).toBeGreaterThanOrEqual(2);
@@ -99,8 +100,8 @@ test('the last good copy skips the copy taken of the corruption', async ({ page 
 
   // And the big button hands back the data, not the copy of the corruption taken since.
   await Promise.all([page.waitForEvent('load'), restore.click()]);
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Rescue me')).toBeVisible();
 });
 
 /**
@@ -128,8 +129,8 @@ test('a second tab says so plainly, and offers nothing that cannot work', async 
   expect((await download).suggestedFilename()).toMatch(/^expanses-recovery-\d{4}-\d{2}-\d{2}\.sqlite3$/);
 
   // And the first tab was never disturbed by any of it.
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Open in the first tab', exact: true })).toBeVisible();
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Open in the first tab')).toBeVisible();
   await second.close();
 });
 
@@ -170,10 +171,10 @@ test('start fresh still empties the device when the engine will not do the wipe'
   // Everything went, the copies included, even though the engine never took part. (The empty database this
   // opened on may have had a copy of its own taken since; that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
-  await page.goto('/accounts');
-  // The corner action is a link to the picker: the inline form that used to make it a button is gone.
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
+  await page.goto('/wallet');
+  // Wallet drew: its ＋ corner, which offers a money account or a credit card.
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'About to go')).toHaveCount(0);
 });
 
 /**
@@ -201,9 +202,9 @@ test('start fresh needs two presses, says what it deletes, and empties the devic
   await expect(confirm).toBeEnabled();
   await Promise.all([page.waitForEvent('load'), confirm.click()]);
 
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
+  await page.goto('/wallet');
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'About to go')).toHaveCount(0);
 });
 
 test('start fresh from the recovery tools empties a device whose file will not open', async ({ page }) => {
@@ -220,10 +221,10 @@ test('start fresh from the recovery tools empties a device whose file will not o
   await sheet.getByLabel('I already have a backup').check();
   await Promise.all([page.waitForEvent('load'), confirm.click()]);
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   // The app opens rather than falling back into recovery: a device that has never run Expanses.
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'About to go')).toHaveCount(0);
   // A clean slate is clean: the copy of the old data went with the pool, not just the database the VFS
   // owns. (A fresh copy of the new, empty database may already have been taken — that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
@@ -352,10 +353,11 @@ test('a long update says which step it is on, then offers a backup of the update
    * a phone left in a pocket for a fortnight never reloads, and that is exactly the user the thirty-day
    * promise is for.
    */
-  await page.getByRole('navigation').getByRole('link', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   // Deliberately not the shared walk: that one is a `goto`, and a reload is the very thing this test is about.
   // The link is walked in-app, so the open that entered the money is still the open the card belongs to.
-  await page.getByRole('link', { name: 'Add account' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Money account' }).click();
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('1000000');
@@ -381,8 +383,8 @@ test('an open with nothing to update shows no progress screen', async ({ page })
   await watchTheOpening(page);
   await addBank(page, 'Nothing to do', '1000000');
 
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Nothing to do', exact: true })).toBeVisible();
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Nothing to do')).toBeVisible();
   const seen = await whatWasOnScreen(page);
   // The watcher was awake for this load — otherwise the three assertions below would pass on an empty list.
   // The list's own row is the proof: the corner's `+` is a glyph with a label, so "Add account" is not on screen
@@ -556,7 +558,7 @@ test('a screen that crashes lets go of the engine, so the copy it offers can rea
 
   // The copy really went back: the app reopens on it, with the row that predates the copy and without
   // the one entered after it. No OPFS exception, and nothing left on the screen to say there was one.
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Entered before the copy', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Entered after the copy', exact: true })).toHaveCount(0);
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Entered before the copy')).toBeVisible();
+  await expect(walletCard(page, 'Entered after the copy')).toHaveCount(0);
 });

@@ -2,7 +2,7 @@ import { CASH_ITEMS } from '@expanses/core';
 import type { AccountRow, AccountSubtype } from '@expanses/db';
 import { BALANCE_SUBTYPES, MONEY_SUBTYPES as LEDGER_MONEY, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_TYPES, canMoveMoneyIn, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
+import { ACCOUNT_TYPES, canMoveMoneyIn, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, keptForSpending, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
 
 describe('the account types someone can open', () => {
   /**
@@ -125,6 +125,48 @@ describe('what a picker may offer as a way to pay', () => {
     expect(canPayWith(account('time_deposit'), 'property')).toBe(false);
     expect(canPayWith(account('property'), '')).toBe(false);
     expect(canPayWith(account('property'), null)).toBe(false);
+  });
+});
+
+/**
+ * "For spending" (0086): an account switched off is kept as savings. It leaves every pay-from list, but a transfer
+ * still names it on either side and income still lands in it — money can still be moved in and out.
+ */
+describe('an account switched off "For spending"', () => {
+  const account = (subtype: AccountSubtype, kind: 'asset' | 'liability' = 'asset') => ({ id: subtype, kind, subtype }) as AccountRow;
+  const off = (subtype: AccountSubtype, kind: 'asset' | 'liability' = 'asset'): AccountRow => ({ ...account(subtype, kind), forSpending: 0 });
+  const on = (subtype: AccountSubtype): AccountRow => ({ ...account(subtype), forSpending: 1 });
+
+  it('is not kept for spending, whatever kind of money it is', () => {
+    for (const subtype of SPENDABLE_SUBTYPES) {
+      expect(keptForSpending(on(subtype)), subtype).toBe(true);
+      expect(keptForSpending(off(subtype)), subtype).toBe(false);
+    }
+    // The switch means nothing on money that could never be paid from, and nothing on a card.
+    expect(keptForSpending(on('fund'))).toBe(false);
+    expect(keptForSpending(on('time_deposit'))).toBe(false);
+    expect(keptForSpending({ ...account('credit_card', 'liability'), forSpending: 1 })).toBe(false);
+  });
+
+  it('reads as on when the row carries no switch at all', () => {
+    expect(keptForSpending(account('savings'))).toBe(true);
+    expect(canPayWith(account('savings'))).toBe(true);
+  });
+
+  it('leaves "Paid with", but is kept where a purchase already names it', () => {
+    expect(canPayWith(off('savings'))).toBe(false);
+    expect(canPayWith(off('bank'))).toBe(false);
+    expect(canPayWith(off('savings'), 'savings')).toBe(true);
+    // A card is charged whatever its row says: the switch is a money account's.
+    expect(canPayWith(off('credit_card', 'liability'))).toBe(true);
+  });
+
+  it('is still a transfer’s From or To, and still receives income', () => {
+    expect(canTransferWith(off('savings'))).toBe(true);
+    expect(canTransferBetween(off('savings'), account('bank'))).toBe(true);
+    expect(canTransferBetween(account('bank'), off('savings'))).toBe(true);
+    expect(canReceiveInto(off('savings'))).toBe(true);
+    expect(canMoveMoneyIn(off('savings'), account('cash'))).toBe(true);
   });
 });
 

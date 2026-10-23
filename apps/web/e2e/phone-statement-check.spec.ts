@@ -19,7 +19,7 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await addTransaction(page, { description: 'Kopi Senja', paidWith: 'BCA Visa', category: 'Cafe & dessert', amount: '85000', date: '2026-08-15' });
   await addTransaction(page, { description: 'Toko Buku', paidWith: 'BCA Visa', category: 'Books', amount: '126000', date: '2026-08-18' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
@@ -121,7 +121,7 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
 test('a foreign purchase missing from cicis shows the amount in its own currency under the charge', async ({ page }) => {
   await page.clock.setSystemTime(TODAY);
   await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
@@ -147,7 +147,7 @@ test('a statement older than the card’s start records as already paid off, wit
   // The card starts in the app today, owing what it owes: August is before that.
   await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25', owed: '2000000' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
@@ -169,6 +169,6 @@ test('a statement older than the card’s start records as already paid off, wit
   // Spending in August; the card still owes what it owed.
   await page.goto('/transactions?month=2026-08');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE PAK DIN' })).toContainText('45.000');
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
 });

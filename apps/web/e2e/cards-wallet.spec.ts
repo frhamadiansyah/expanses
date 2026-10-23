@@ -5,7 +5,7 @@ import { cardPage } from './card-section';
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -26,7 +26,7 @@ async function addEarningCard(page: Page, name: string) {
 test('a desktop stacks cards of one fixed width and raises the one tapped, with its page beside and below', async ({ page }) => {
   for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(2);
@@ -36,7 +36,8 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   // Overlapping, back to front: the front card lies over the lower part of the one behind it.
   expect(front.y).toBeLessThan(back.y + back.height);
   expect(front.y).toBeGreaterThan(back.y);
-  await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*\d+ points/);
+  // A covered card's band carries what it owes; its points are on the line beside the stack.
+  await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*Rp\s*0/);
   // The facts sit to the right of the stack.
   const facts = (await wall.getByTestId('wallet-facts').boundingBox())!;
   expect(facts.x).toBeGreaterThanOrEqual(front.x + front.width);
@@ -62,7 +63,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
 
   // Back behaves like ✕: the stack again, in its order.
   await page.goBack();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.getByRole('link')).toHaveCount(2);
   await expect(cards.nth(1)).toHaveAttribute('data-front', '');
   await expect(cards.nth(1).getByRole('link')).toHaveAccessibleName(/^Beta Card, /);

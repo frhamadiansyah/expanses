@@ -11,7 +11,7 @@ test.beforeEach(({ page }) => {
 async function cardWithAPurchase(page: Page, on?: string) {
   await openCard(page, { name: 'CIMB Octo' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await walletCard(page, 'CIMB Octo').click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -29,7 +29,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'CIMB Octo', category: 'Groceries', amount: '250000', date: on });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await walletCard(page, 'CIMB Octo').click();
   await cardPage(page, 'Settings');
 }

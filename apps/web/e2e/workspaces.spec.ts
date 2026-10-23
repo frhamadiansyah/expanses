@@ -1,16 +1,15 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openTypes } from './accounts';
+import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 
 /**
- * An account's history, reached the way a reader reaches it: its row on Accounts, which opens the account's own
+ * An account's history, reached the way a reader reaches it: its card on Wallet, which opens the account's own
  * page, then See all over the last few rows it lists.
  */
 async function openHistory(page: Page, name: string) {
-  await openTypes(page);
-  await page.getByRole('link', { name, exact: true }).click();
+  await walletCard(page, name).click();
   await page.getByRole('link', { name: 'See all' }).click();
 }
 
@@ -25,7 +24,7 @@ test('an account’s history opens from Accounts, and badges nothing while there
   await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });
   await expect(page.getByText('Supplier dinner')).toBeVisible();
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openHistory(page, 'BCA Tahapan');
   await expect(page.locator('li', { hasText: 'Supplier dinner' }).first()).toContainText('640.000');
   // One workspace, so no row names it: a badge every row carried would say nothing at all.
@@ -52,7 +51,7 @@ test('the sidebar names the open workspace and opens the switcher', async ({ pag
   await expect(rows.first().getByLabel('Open')).toBeVisible();
   // It is reachable from a screen that is not Cashflow, which is the point of it living in the sidebar.
   await page.getByRole('button', { name: 'Close' }).click();
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toBeVisible();
 });
 
@@ -191,7 +190,7 @@ test('the category gesture offers the open workspace’s categories and no other
 
   // The account's history holds both workspaces, and Personal's row is not offered the gesture at all: the
   // sheet speaks for the open workspace, so re-filing a row from another one could only move it.
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openHistory(page, 'BCA Tahapan');
   await expect(page.getByTestId('workspace-badge').filter({ hasText: 'Personal' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Category for Supplier dinner' })).toHaveCount(0);
@@ -208,7 +207,7 @@ test('an account’s history holds every workspace, each row saying which', asyn
   await newWorkspace(page, 'Business', 'Copy from Personal');
   await spend(page, 'Client lunch', '320000');
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await openHistory(page, 'BCA Tahapan');
   await expect(page.getByTestId('workspace-badge').filter({ hasText: 'Business' })).toBeVisible();
   await expect(page.getByTestId('workspace-badge').filter({ hasText: 'Personal' })).toBeVisible();
@@ -224,7 +223,7 @@ test('an account’s history holds every workspace, each row saying which', asyn
 async function addCard(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
@@ -254,7 +253,7 @@ test('a card’s statement holds every workspace, and each row says which', asyn
   await newWorkspace(page, 'Business', 'Copy from Personal');
   await buyOnCard(page, 'Client lunch', '320000');
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   const lines = page.getByTestId('statement-line');

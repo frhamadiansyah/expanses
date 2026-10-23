@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, walletCard } from './accounts';
 
 async function addBank(page: Page, name: string, balance: string) {
   await openAccount(page, { subtype: 'bank', name, balance });
@@ -27,7 +27,7 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Before backup', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'After backup', exact: true })).toHaveCount(0);
+  await page.goto('/wallet');
+  await expect(walletCard(page, 'Before backup')).toBeVisible();
+  await expect(walletCard(page, 'After backup')).toHaveCount(0);
 });

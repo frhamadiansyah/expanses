@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openSettings } from './accounts';
+import { openAccount, openSettings, walletCard } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
@@ -216,7 +216,7 @@ test('the report is not compared with a balance sheet that lacks a rate: the cur
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addBankAsset(page);
   await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD', balance: '1000', rate: '16250' });
-  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'Dollar Saver')).toBeVisible();
   await startReport(page);
   await expect(page.getByText(/the balance sheet on 31 December/)).toBeVisible();
 

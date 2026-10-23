@@ -26,7 +26,7 @@ test('ticked purchases on one card account are set to one of its cards at once',
   await addTransaction(page, { description: 'Pasar Pagi', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '52000' });
 
   // Two cards on the account, recorded after the purchases.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Visa(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('1467');

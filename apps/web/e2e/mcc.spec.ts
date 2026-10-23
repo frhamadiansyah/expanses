@@ -12,7 +12,7 @@ async function addCard(page: Page, name: string) {
 }
 
 async function openCardPage(page: Page, name: string) {
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }

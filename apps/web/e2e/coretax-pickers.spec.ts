@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { fillDay } from './add-asset';
-import { openTypes, openSettings } from './accounts';
+import { expectWalletFigure, openSettings, walletCard } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openAssets, openDrawers } from './drawers';
 
@@ -21,8 +21,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // The balance is optional here, and the group's footer says what happens to it.
   await expect(page.getByText('The balance is optional; it is posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'BCA Tahapan')).toBeVisible();
 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Time deposit' }).click();
@@ -34,11 +33,10 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Matures on').fill('2027-03-01');
   await page.getByLabel('Interest rate').fill('6,25');
   await page.getByRole('button', { name: 'Add account' }).click();
-  // The form lands on the money list when the save is done — and a deposit is not on that list any more. A deposit
-  // holds money it cannot be paid from, so it is not an account the ledger spends from: it lives where it is priced
+  // A deposit holds money it cannot be paid from, so it is not a card on Wallet: the form lands where it is priced
   // and where its maturity is read, on Net worth's Assets.
-  await expect(page).toHaveURL(/\/accounts$/);
-  await expect(page.getByRole('main')).not.toContainText('Deposito BCA 6 bulan');
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await expect(page.getByRole('region', { name: 'Cards' })).toHaveCount(0);
 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped. The way in is
   // the deposit's own page, reached from the asset list: the Accounts list shows no tax line to click any more.
@@ -78,11 +76,8 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(sheet.getByTestId('money-out-lands')).toContainText('Lands in BCA Tahapan');
   await sheet.getByRole('button', { name: 'Break early' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(
-    page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
-  ).toContainText('120.000.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '120.000.000');
 });
 
 /** An asset's tax code is no longer on its list row: it is on the asset's own settings, under the tax report. */
@@ -182,7 +177,7 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.getByLabel('Broker', { exact: true }).fill('RDN Mandiri Sekuritas');
   await page.getByLabel('Balance now', { exact: true }).fill('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
   /* A broker's cash is on no money list — it cannot be paid from — so it is looked for where it is priced, below. */
   await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
 

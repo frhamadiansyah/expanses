@@ -1,0 +1,13 @@
+-- "For spending": whether a money account is money to pay from, or savings kept out of the way.
+--
+-- Wallet is everything money is spent from or owed on, and the switch says which of the money accounts that is. On
+-- (the default, and what every account was until now) the account is offered under "Paid with" and every other
+-- pay-from list, is counted in the spending balance, and is a card in Wallet. Off, it is kept as savings: it leaves
+-- those lists, that balance and Wallet, but stays on Net worth's Assets with its own page unchanged, and a transfer
+-- still names it on either side — money can still be moved in and out.
+--
+-- A pocket follows its account: the switch is set on the parent and written onto every pocket, so a "Paid with" list,
+-- which offers pockets rather than parents, reads the answer off the row it offers.
+--
+-- A reading of the money, not a fact about it: local to this device and never synced (see NEVER_SYNCED_COLUMNS).
+ALTER TABLE accounts ADD COLUMN for_spending INTEGER NOT NULL DEFAULT 1 CHECK (for_spending IN (0, 1));

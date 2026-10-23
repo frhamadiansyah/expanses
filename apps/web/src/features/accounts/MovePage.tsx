@@ -28,7 +28,7 @@ export function MovePage() {
   if (!parent || pockets.length < 2)
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Move between pockets" back="Accounts" backTo="/accounts" />
+        <LargeTitle title="Move between pockets" back="Wallet" backTo="/wallet" />
         <Empty>This account has fewer than two pockets.</Empty>
       </div>
     );

@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { openAccount, openCard, openTypes } from './accounts';
+import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
@@ -468,12 +468,11 @@ async function netWorthReads(page: Page, figure: string, legend: string[] | null
   });
 }
 
-/** An own account's figure on Accounts, drawers open. */
+/** An own account's figure on its Wallet card. */
 async function accountReads(page: Page, name: string, figure: string) {
   await eventually(page, async () => {
-    await page.goto('/accounts');
-    await openTypes(page);
-    await expect(page.getByRole('link', { name, exact: true }).locator('xpath=ancestor::li[1]')).toContainText(figure, { timeout: 2_000 });
+    await page.goto('/wallet');
+    await expect(walletCard(page, name)).toHaveAccessibleName(new RegExp(figure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), { timeout: 2_000 });
   });
 }
 
@@ -485,7 +484,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // Fandri keeps a bank account and a card with a statement; Dewi a bank account.
   await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
   await openCard(page, { name: 'Fandri Card' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Fandri Card' }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
@@ -556,7 +555,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await form.getByLabel('Note').fill('Dewi dinner');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'Fandri Card' }).click();
   await cardPage(page, 'Statement');
   await eventually(page, () => expect(page.getByTestId('statement-line').filter({ hasText: 'Dewi dinner' })).toContainText('200.000', { timeout: 1_000 }));
@@ -601,19 +600,18 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   const fandriShared = dewi.locator('section').filter({ has: dewi.getByText("Fandri's, shared", { exact: true }) });
   const sharedRows = dewi.locator('[data-testid^="shared-item-"]');
   await eventually(dewi, async () => {
-    await dewi.goto('/accounts');
+    await dewi.goto('/wallet');
     await expect(fandriShared).toContainText('Fandri Bank', { timeout: 2_000 });
   });
   await shot(dewi, info, '20-accounts-shared');
 
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Fandri Bank', exact: true }).click();
+  await page.goto('/wallet');
+  await walletCard(page, 'Fandri Bank').click();
   await page.getByLabel('Share with Household').selectOption({ label: "Don't share" });
   await expect(page.getByLabel('Share with Household')).toHaveValue('hidden');
   await eventually(dewi, async () => {
-    await dewi.goto('/accounts');
+    await dewi.goto('/wallet');
     await expect(sharedRows.filter({ hasText: 'Fandri Card' })).toHaveCount(1, { timeout: 2_000 });
     await expect(sharedRows.filter({ hasText: 'Fandri Bank' })).toHaveCount(0, { timeout: 2_000 });
   });
@@ -623,7 +621,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await confirmDestructive(dewi, 'Stop sharing my net worth', 'Stop sharing net worth?', 'Stop sharing');
   await eventually(dewi, () => expect(theirs.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
   await netWorthReads(dewi, '10.000.000', null);
-  await dewi.goto('/accounts');
+  await dewi.goto('/wallet');
   await expect(dewi.getByText('Dewi Bank').first()).toBeVisible();
   await expect(sharedRows).toHaveCount(0);
   await shot(dewi, info, '21-left-personal');

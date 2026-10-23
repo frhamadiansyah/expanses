@@ -11,7 +11,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await openCard(page, { name: 'CIMB Octo' });
   await addCard(page, 'BCA Visa');
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -48,7 +48,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await expect(page.getByText('Wedding dinner')).toBeVisible();
 
   // 3,000,000 at 5/2,500 = 6,000 + 500,000 at 1/2,500 = 200
-  await page.goto('/cards');
+  await page.goto('/wallet');
   // On the card's band, and as the balance of the programme it earns into.
   await expect(page.getByRole('region', { name: 'Cards' }).getByText('6.200 points')).toBeVisible();
   await expect(page.getByTestId('programme-row')).toContainText('6.200 points');

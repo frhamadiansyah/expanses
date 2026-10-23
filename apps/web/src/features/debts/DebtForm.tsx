@@ -3,7 +3,7 @@ import { recordLoan } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { WALLET_SUBTYPES } from '../../lib/account-types';
+import { canPayWith, WALLET_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
@@ -52,8 +52,12 @@ export function DebtForm({
   const [detailsOpen, setDetailsOpen] = useState(() => debtDetailsFilled(draft));
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
-  // A loan comes from money you hold, or a card. Another person's account is not a source.
-  const money = loanMoneyAccounts(moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype)), draft.direction);
+  // A loan comes from money held, or a card; another person's account is not a source. Money lent out is paid from
+  // what is kept for spending, as every pay-from list is; money borrowed lands anywhere money can be held.
+  const money = loanMoneyAccounts(
+    moneyHolders(accounts).filter((account) => (draft.direction === 'lent' ? canPayWith(account) : WALLET_SUBTYPES.includes(account.subtype))),
+    draft.direction,
+  );
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const foreign = currency !== ws.baseCurrency;
   // The account decides the currency, so the figures name it only once there is an account: "(IDR)" before one is

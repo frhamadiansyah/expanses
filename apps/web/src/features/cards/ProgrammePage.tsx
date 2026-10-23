@@ -102,8 +102,8 @@ export function ProgrammePage() {
     <div className={SCREEN}>
       <PushedTitle
         title={programme.name}
-        back="Cards"
-        backTo="/cards"
+        back="Wallet"
+        backTo="/wallet"
         actions={[{ key: 'settings', label: 'Programme settings', glyph: <Settings size={20} aria-hidden />, run: () => setSheet('settings') }]}
       />
       <ErrorBox error={error} />
@@ -180,7 +180,7 @@ export function ProgrammePage() {
           programme={programme}
           earning={earners.length}
           onClose={() => setSheet(null)}
-          onArchived={() => void navigate({ to: '/cards' })}
+          onArchived={() => void navigate({ to: '/wallet' })}
         />
       )}
     </div>

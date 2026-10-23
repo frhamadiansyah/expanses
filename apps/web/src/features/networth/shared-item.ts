@@ -196,8 +196,8 @@ export function itemPage(
   itemId: string,
   purchases: readonly PurchaseLine[],
   transfers: readonly TransferIn[],
-): { item: ReceivedItem | null; view: SharedItemView | null; back: { back: string; backTo: '/net-worth' | '/accounts' } } {
-  const back = shared?.group.mode === 'joint' ? { back: 'Net worth', backTo: '/net-worth' as const } : { back: 'Accounts', backTo: '/accounts' as const };
+): { item: ReceivedItem | null; view: SharedItemView | null; back: { back: string; backTo: '/net-worth' | '/wallet' } } {
+  const back = shared?.group.mode === 'joint' ? { back: 'Net worth', backTo: '/net-worth' as const } : { back: 'Wallet', backTo: '/wallet' as const };
   const item = shared?.items.find((each) => each.itemId === itemId) ?? null;
   if (!shared || !item) return { item: null, view: null, back };
   const owner = memberName(shared.names, item.owner);

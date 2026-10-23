@@ -44,7 +44,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   // Recorded before the event exists, so there is a real receipt to share out between two items later on.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await settle(page);
   await addTransaction(page, { description: 'Mothercare', paidWith: 'BCA Tahapan', category: 'Food and beverage', amount: '4150000' });
 

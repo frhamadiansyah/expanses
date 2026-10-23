@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { walletCard } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 
@@ -13,8 +14,8 @@ const TRAVEL = { name: 'Travel Money', pockets: [{ currency: 'IDR', balance: '10
 const CASH = { name: 'Cash', kind: 'Cash banknotes and coins', pockets: [{ currency: 'IDR', balance: '2000000' }, { currency: 'TRY', balance: '' }] };
 
 async function move(page: Page, account: string, from: string, to: string, leaves: string, arrives: string) {
-  await page.goto('/accounts');
-  await page.getByRole('link', { name: account, exact: true }).click();
+  await page.goto('/wallet');
+  await walletCard(page, account).click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption(from);
   await page.getByLabel('To').selectOption(to);
@@ -42,8 +43,8 @@ async function saveAs(page: Page, form: ReturnType<typeof addForm>, note: string
 }
 
 async function openLiraPocket(page: Page, account: string) {
-  await page.goto('/accounts');
-  await page.getByRole('link', { name: account, exact: true }).click();
+  await page.goto('/wallet');
+  await walletCard(page, account).click();
   await page.getByTestId('pocket-TRY').click();
 }
 

@@ -2,7 +2,7 @@ import { type DebtDirection, isoDate, minorToMajorString } from '@expanses/core'
 import { deleteLoanEntry, editLoanEntry, type LoanEntry, recordRepayment } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
@@ -45,8 +45,8 @@ export function RepaymentForm({
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const accounts = useAccounts().data ?? [];
-  // Somewhere money can actually sit: never another person's account.
-  const moneyAccounts = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
+  // Somewhere money can actually sit and is spent from: never another person's account, never savings kept aside.
+  const moneyAccounts = moneyHolders(accounts).filter(keptForSpending);
   const today = isoDate();
   const [draft, setDraft] = useState<RepaymentDraft>(() =>
     entry

@@ -169,8 +169,8 @@ export function MerchantsPage() {
     <Screen>
       <LargeTitle
         title="Merchants & MCCs"
-        back="All cards"
-        backTo="/cards"
+        back="Wallet"
+        backTo="/wallet"
         actions={actions}
         subtitle="Banks give points by merchant category code (MCC). A purchase uses the MCC typed on it, else a merchant below, else a typical code for well-known merchants, else its category's MCC. Changes here apply to every card, including past cycles."
       />

@@ -33,7 +33,7 @@ const pointsEarned = (page: Page): Locator => page.getByText('Points earned', { 
  */
 async function cardEarningPer12501(page: Page) {
   await openCard(page, { name: 'CIMB Octo' });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -129,7 +129,7 @@ test('the card shows a purchase typed with cents at what it was charged, and sti
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
   // Wallet's latest transactions: the charge, 12.501, never the 12.500 the points are worked out on.
   const latest = page.getByTestId('latest-transactions');

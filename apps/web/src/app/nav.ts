@@ -8,7 +8,6 @@ import {
   CheckCheck,
   CreditCard,
   FileSpreadsheet,
-  Landmark,
   PiggyBank,
   Settings,
   Sparkles,
@@ -38,7 +37,8 @@ export interface NavGroup {
 export const TABS: readonly NavItem[] = [
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { to: '/net-worth', label: 'Net worth', icon: TrendingUp },
-  { to: '/cards', label: 'Cards', icon: CreditCard },
+  // Everything money is spent from or owed on: the Accounts page and the Cards tab, as one place.
+  { to: '/wallet', label: 'Wallet', icon: CreditCard },
 ] as const;
 
 /**
@@ -61,7 +61,6 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/bills', label: 'Recurring', icon: Bell },
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
-      { to: '/accounts', label: 'Accounts', icon: Landmark },
       // No "Add a debt" here. This sheet is a list of places, and a debt is added from the screens that list debts:
       // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
       // open a form where every other line opens a screen.

@@ -23,11 +23,10 @@ import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice'
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
-  { to: '/cards', label: 'Cards' },
+  { to: '/wallet', label: 'Wallet' },
   { to: '/budget', label: 'Budget' },
   { to: '/events', label: 'Events' },
   { to: '/goals', label: 'Goals' },
-  { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },
   { to: '/net-worth', label: 'Net worth' },
 ] as const;

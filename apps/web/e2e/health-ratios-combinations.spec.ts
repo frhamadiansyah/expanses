@@ -242,7 +242,7 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   // 24 months of Rp 3 jt, all spending — the target under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('72.000.000');
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await page.goto('/goals');
   await goalCard(page, 'Emergency fund');
   await openWorking(page);

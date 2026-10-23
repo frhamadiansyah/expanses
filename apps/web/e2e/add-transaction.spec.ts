@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
-import { openAccount, openTypes } from './accounts';
+import { expectWalletFigure, openAccount } from './accounts';
 import { addCap } from './budget';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
@@ -71,11 +71,9 @@ test('income lands in the account it was received into', async ({ page }) => {
 
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Freelance' })).toContainText('7.500.000');
   // Received, not spent: the account is 7.500.000 richer, which is what tells income from an expense.
-  await page.goto('/accounts');
-  // An account is a line of the kit's list now, not a row of a table: the name and its balance on one line,
-  // the actions under them. Every assertion below is the same fact, on the line that has it.
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
+  await page.goto('/wallet');
+  // An account is a card on Wallet, its balance on its band.
+  await expectWalletFigure(page, 'BCA Tahapan', '7.500.000');
 });
 
 test('an income category picked on Expense moves the form to Income, and keeps the category', async ({ page }) => {
@@ -107,7 +105,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
     await page.getByLabel('Last 4 digits').fill('1467');
   });
   // A second card on the same account: one statement, two sets of digits.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
@@ -150,7 +148,7 @@ test('a card whose primary was removed and a primary and a supplementary added a
     await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
   });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
   // The primary goes, and the account carries no card for a moment.
@@ -187,7 +185,7 @@ test('a purchase on the account’s only card keeps that card once it is removed
   await addTransaction(page, { description: 'Bakmi GM', paidWith: 'BCA KrisFlyer', category: 'Groceries', amount: '75000' });
 
   // A supplementary added, and the old primary removed.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
@@ -289,10 +287,9 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '500000', note: 'Top up' });
 
   // Out of one, into the other, to the rupiah.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '19.500.000');
+  await expectWalletFigure(page, 'Jenius', '500.000');
 });
 
 /**
@@ -353,10 +350,9 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   const moved = page.getByTestId('transaction-row').filter({ hasText: 'To Jago' });
   await expect(moved).toContainText('Rp 100');
   await expect(moved).not.toContainText('1.600.000');
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Jago' }).first()).toContainText('100');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '19.999.900');
+  await expectWalletFigure(page, 'Jago', '100');
 });
 
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
@@ -388,10 +384,9 @@ test('a transfer into a USD account asks for the received amount, and will not s
 
   // USD 100 landed as USD 100 on top of the opening 10 — not 10.000, which is what reading the second figure in
   // the wrong currency does.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'Wise USD', '110,00');
+  await expectWalletFigure(page, 'BCA Tahapan', '18.400.000');
 });
 
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
@@ -531,7 +526,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
     await page.getByLabel('Owed now').fill('0');
   });
   // A second card on the same account, so "which card" has a wrong answer available to be caught at.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
@@ -602,10 +597,9 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // What left and what landed, each in its own account's own money.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'Wise USD', '110,03');
+  await expectWalletFigure(page, 'BCA Tahapan', '18.400.000');
 
   // And the goal is funded out of the account the money landed in, for what that set-aside *is*: US$100,03,
   // not the Rp 1.600.000 that left, and not the `Rp 10.003` this page used to paint by printing the account's
@@ -634,7 +628,7 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
  * month, so the cycle is exactly the calendar month.
  */
 async function catalogueCard(page: Page, name: string, search: string, entryName: string, billingDay = '25') {
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill(billingDay);
@@ -738,10 +732,9 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 
   // …and still on the card: the statement, the balance and the points all still hold both of them, which is the
   // whole asymmetry exclusion exists for. 85.000 at MCC 5411, typed here rather than guessed from the category.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
-  await page.goto('/cards');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'KF Signature', '135.000');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPurchases(page);
   const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
@@ -817,9 +810,8 @@ test('a split by category posts one line per category, each with its own figure'
   await expect(form).toHaveCount(0);
 
   // The whole bill left the account, once.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '49.915.000');
 
   // And the month knows which 40.000 was groceries and which 45.000 was a restaurant: Groceries sits under
   // Household and Restaurants under Food and beverage, so the two figures cannot hide in one row.
@@ -984,9 +976,8 @@ test('a bill split equally between three people leaves each of them owing their 
   }
 
   // The card was charged the whole 400.000 — what the restaurant took, not what the dinner cost the owner.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Visa', '400.000');
 
   // …and only the owner's own quarter is spending. The month's total is the figure the ring is drawn from, so
   // a split that posted the whole bill to Restaurants would read 400.000 here.
@@ -1231,7 +1222,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
     await page.getByLabel('Owed now').fill('0');
   });
   // A second card on the same account, so "which card" is a real question with a wrong answer available.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Last 4 digits').fill('8802');
@@ -1320,7 +1311,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
 
   // The MCC: remembered for the merchant rather than typed onto this purchase, which is what the checkbox
   // promised. The points engine reads it back through `resolveMcc`, and says where it came from.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPurchases(page);
   const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
@@ -1442,10 +1433,9 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
 
   // …while the balance, the statement and the points all still hold both. This is the half the switch must not
   // touch, and the half a "leave it out of everything" reading of the switch would break.
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
-  await page.goto('/cards');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'KF Signature', '135.000');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('85.000');
@@ -1597,7 +1587,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await expect(form).toHaveCount(0);
 
   // It really is a card purchase with an MCC first, or the drop below proves nothing.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
@@ -1615,7 +1605,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await expect(edit).toHaveCount(0);
 
   // The card's own facts are gone with the purchase: no MCC, and no card on the row.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
@@ -1651,8 +1641,7 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
   await edit.getByRole('button', { name: 'Cancel' }).click();
 
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'GoPay' }).first()).toContainText('1.000.000');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('1.010.000');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'GoPay', '1.000.000');
+  await expectWalletFigure(page, 'BCA Tahapan', '1.010.000');
 });

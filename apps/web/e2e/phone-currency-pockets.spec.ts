@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { walletCard } from './accounts';
 import { openAssets } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
 import { setCurrency } from './currency-field';
@@ -12,7 +13,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
       { currency: 'SGD', balance: '1150.00' },
     ],
   });
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
+  await walletCard(page, 'Valas Plus').tap();
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
   await page.getByRole('link', { name: 'Move', exact: true }).tap();
   await page.getByLabel('Leaves USD').pressSequentially('500');
@@ -29,7 +30,7 @@ test('the account page reads in the dark', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Night Valas', pockets: [{ currency: 'USD', balance: '10.00', rate: '16250' }, { currency: 'SGD', balance: '10.00' }] });
-  await page.getByRole('link', { name: 'Night Valas', exact: true }).tap();
+  await walletCard(page, 'Night Valas').tap();
   const ground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(ground).not.toBe('rgb(255, 255, 255)');
 });
@@ -39,7 +40,7 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await openWithPockets(page, { name: 'Thumb Valas', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
   // Two rows and nothing under them, on a phone too.
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
-  await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
+  await walletCard(page, 'Thumb Valas').tap();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().tap();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');

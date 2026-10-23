@@ -78,6 +78,21 @@ export const MONEY_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES,
 /** What can pay a bill: money the owner holds, or a card that will be settled later. */
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];
 
+/** The one thing a pay-from question reads beyond an account's kind: its "For spending" switch (0086). */
+type SpendingSwitch = Partial<Pick<AccountRow, 'forSpending'>>;
+
+/**
+ * Is this money **kept for spending**: a kind that can be paid from, with its "For spending" switch on?
+ *
+ * The switch is the owner's reading of one account — a saving account kept as savings is still a saving account, and
+ * still money, but it is not offered where money is paid out of and is not counted as spending money. Every pay-from
+ * list asks this rather than the kind alone, so switching an account off takes it out of all of them at once. A row
+ * with no switch on it (a shape built by hand, a fixture) reads as on, which is what every account was before 0086.
+ */
+export function keptForSpending(account: Pick<AccountRow, 'kind' | 'subtype'> & SpendingSwitch): boolean {
+  return account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && account.forSpending !== 0;
+}
+
 /**
  * The accounts a **transfer** moves money between: money you hold, nothing else.
  *
@@ -142,13 +157,16 @@ export function canMoveMoneyIn(from: Pick<AccountRow, 'id' | 'kind' | 'subtype'>
  * a purchase posted against a property account years ago would open with an empty cell reading as an error,
  * and saving the row again would silently move the money. So the list is strict for everything but what is
  * already there.
+ *
+ * An account switched off "For spending" is kept the same way: a purchase paid from it before it was put aside as
+ * savings still opens naming it.
  */
-export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, current?: string | null): boolean {
+export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'> & SpendingSwitch, current?: string | null): boolean {
   if (current && account.id === current) return true;
-  // An asset has to be money you can spend from; of the liabilities, only a card can be charged. A loan and a
-  // person's account cannot pay for anything — an instalment is paid, and a person is settled, through their own
-  // doors — and a transfer is asked of neither.
-  return account.kind === 'asset' ? SPENDABLE_SUBTYPES.includes(account.subtype) : account.subtype === 'credit_card';
+  // An asset has to be money you can spend from, and kept for spending; of the liabilities, only a card can be
+  // charged. A loan and a person's account cannot pay for anything — an instalment is paid, and a person is settled,
+  // through their own doors — and a transfer is asked of neither.
+  return account.kind === 'asset' ? keptForSpending(account) : account.subtype === 'credit_card';
 }
 
 /**

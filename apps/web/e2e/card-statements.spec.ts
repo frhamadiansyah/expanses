@@ -14,7 +14,7 @@ async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await openCard(page, { name: 'BCA Visa' });
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
@@ -34,7 +34,7 @@ async function buy(page: Page, description: string, amount: string, on: string) 
 }
 
 async function openCardPage(page: Page) {
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
 }
 

@@ -8,7 +8,8 @@ import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
 import { CardHero } from './CardHero';
 
-const route = getRouteApi('/cards/$cardId');
+// The card page hangs off Wallet's layout, which has an id and no path, so its route is named through it.
+const route = getRouteApi('/_wallet/cards/$cardId');
 
 /** The ground a native screen is laid on, and the column a desktop reads it in. */
 function Screen({ children }: { children: ReactNode }) {
@@ -61,8 +62,8 @@ export function CardDetailPage() {
       {!slot && (
         <LargeTitle
           title={card.name}
-          back="Cards"
-          backTo="/cards"
+          back="Wallet"
+          backTo="/wallet"
           oneLine
           actions={[{ key: 'settings', label: 'Settings', glyph: <Settings size={20} aria-hidden />, to: '/cards/$cardId/settings', params: { cardId: card.id } }]}
         />

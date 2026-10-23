@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, walletCard } from './accounts';
 import { cardPage } from './card-section';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
@@ -8,8 +8,8 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
 
   await openCard(page, { name: 'BCA KrisFlyer Visa Signature' });
 
-  await page.goto('/cards');
-  const card = page.getByRole('link', { name: 'BCA KrisFlyer Visa Signature', exact: true });
+  await page.goto('/wallet');
+  const card = walletCard(page, 'BCA KrisFlyer Visa Signature');
   await expect(card).toBeVisible();
   const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(wide).toBe(false);
@@ -41,7 +41,7 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
@@ -60,15 +60,15 @@ const NAMES = ['Alpha Card', 'Beta Card', 'Gamma Card'];
 
 /**
  * The wall is Apple Wallet's stack, back to front: every card is a whole card at one width, each laid over the one
- * before it, so a covered card shows its own top band — its print and its points — and the front card comes last,
- * whole.
+ * before it, so a covered card shows its own top band — its print and what it owes — and the front card comes last,
+ * whole. Its points are on the line beside the stack, with its cycle.
  */
-test('the stack overlaps real cards of one width, each band carrying its own points', async ({ page }) => {
+test('the stack overlaps real cards of one width, each band carrying what it owes', async ({ page }) => {
   const crashes: string[] = [];
   page.on('pageerror', (e) => crashes.push(String(e)));
   for (const name of NAMES) await addEarningCard(page, name);
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(3);
@@ -89,20 +89,21 @@ test('the stack overlaps real cards of one width, each band carrying its own poi
   // The front card is the last one, whole; the others are bands.
   await expect(cards.nth(2)).toHaveAttribute('data-front', '');
 
-  // Each covered band prints the card's own name and its points, without a tap.
+  // Each covered band prints the card's own name and what it owes, without a tap.
   const bands = wall.getByTestId('card-band');
   await expect(bands).toHaveCount(2);
   for (const at of [0, 1]) {
     const band = cards.nth(at).getByTestId('card-band');
     await expect(band).toContainText(NAMES[at]!);
-    await expect(band).toContainText(/\d+ points/);
+    await expect(band).toContainText(/Rp\s*0/);
     await expect(band).toBeInViewport();
   }
   // Every card is one link named by the card and its figure.
-  for (const name of NAMES) await expect(wall.getByRole('link', { name: new RegExp(`^${name}, \\d+ points$`) })).toHaveCount(1);
+  for (const name of NAMES) await expect(wall.getByRole('link', { name: new RegExp(`^${name}, Rp\\s*0$`) })).toHaveCount(1);
 
-  // The front card's facts are one grouped row under the stack.
+  // The front card's facts are one grouped row under the stack, its points among them.
   await expect(wall.getByTestId('wallet-facts')).toContainText('Gamma Card');
+  await expect(wall.getByTestId('wallet-facts')).toContainText(/\d+ points/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   expect(crashes).toEqual([]);
 });
@@ -117,12 +118,12 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   page.on('pageerror', (e) => crashes.push(String(e)));
   for (const name of NAMES) await addEarningCard(page, name);
 
-  await page.goto('/cards');
+  await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const order = async () => wall.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('aria-label')));
   await expect(wall.getByRole('link')).toHaveCount(3);
   const before = await order();
-  expect(before).toEqual(['Alpha Card, 0 points', 'Beta Card, 0 points', 'Gamma Card, 0 points']);
+  expect(before.map((label) => label?.replace(/\s+/g, ' '))).toEqual(['Alpha Card, Rp 0', 'Beta Card, Rp 0', 'Gamma Card, Rp 0']);
   const covered = wall.getByTestId('wallet-card').first();
   const inStack = (await covered.boundingBox())!;
 
@@ -135,7 +136,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(raised).toHaveCount(1);
   await expect(raised.getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
   // No title drawn and no back link: the card is the header, with ✕ on the left and ⚙ on the right.
-  await expect(page.getByRole('link', { name: 'Cards', exact: true }).filter({ hasText: '‹' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Wallet', exact: true }).filter({ hasText: '‹' })).toHaveCount(0);
   const bar = page.locator('header').filter({ has: page.getByRole('heading', { name: 'Alpha Card', exact: true }) });
   const [closeBox, gearBox] = [(await bar.getByRole('button', { name: 'Close', exact: true }).boundingBox())!, (await bar.getByRole('link', { name: 'Settings' }).boundingBox())!];
   expect(closeBox.x).toBeLessThan(gearBox.x);
@@ -186,7 +187,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   // ✕ returns to the stack, in the order it had.
   const url = page.url();
   await closeCard(page).click();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.locator('[data-place="raised"]')).toHaveCount(0);
   expect(await order()).toEqual(before);
 
@@ -194,7 +195,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await wall.getByRole('link', { name: /^Beta Card, / }).click();
   await expect(page.getByRole('heading', { name: 'Beta Card', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   expect(await order()).toEqual(before);
 
   // A deep link opens straight into the raised card, and ✕ still lands on the stack.
@@ -202,7 +203,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(wall.locator('[data-place="raised"]').getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
   await expect(wall.locator('[data-place="hidden"]')).toHaveCount(2);
   await closeCard(page).click();
-  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page).toHaveURL(/\/wallet$/);
   expect(await order()).toEqual(before);
 
   expect(crashes).toEqual([]);
@@ -218,14 +219,14 @@ test.describe('in the dark', () => {
   test('the print on a card and on its band keeps its own colour', async ({ page }) => {
     for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
-    await page.goto('/cards');
+    await page.goto('/wallet');
     const wall = page.getByRole('region', { name: 'Cards' });
     // A card with no catalogue design is a dark bank colour, so it prints in white — in the dark as in the light.
     const front = wall.getByRole('img');
     await expect(front).toBeVisible();
     expect(await front.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
     const band = wall.getByTestId('card-band');
-    await expect(band).toContainText(/\d+ points/);
+    await expect(band).toContainText(/Rp\s*0/);
     expect(await band.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
   });
 });

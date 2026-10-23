@@ -248,11 +248,11 @@ describe('transfers are counted once (wave 4 review, finding 1)', () => {
 describe('itemPage (finding 3: Accounts → "Andi\'s, shared" → the item, in separate mode)', () => {
   const group = { mode: 'separate' as const, me: 'm-andi', groupBookId: 'g', workspaceBookId: 'w' };
 
-  it('draws the item in separate mode, and goes back to Accounts', () => {
+  it('draws the item in separate mode, and goes back to Wallet', () => {
     const page = itemPage({ group, items: [card], names: { 'm-rina': 'Rina' } }, 'i-visa', [], []);
     expect(page.view?.name).toBe('BCA Visa ···· 1234');
     expect(page.view?.details.owner).toBe('Rina');
-    expect(page.back).toEqual({ back: 'Accounts', backTo: '/accounts' });
+    expect(page.back).toEqual({ back: 'Wallet', backTo: '/wallet' });
   });
 
   it('goes back to Net worth in joint mode, and has nothing for an item no longer shared or no group', () => {

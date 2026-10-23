@@ -1,12 +1,13 @@
 import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
-import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, taxTreatmentOf } from '@expanses/db';
+import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, setAccountForSpending, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SwitchRow, TextRow } from '../../ui/native';
+import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
@@ -91,7 +92,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const link = (links.data ?? []).find((row) => row.accountId === accountId);
   const heldAt = link?.brokerAccountId ? (accounts.data ?? []).find((row) => row.id === link.brokerAccountId) : undefined;
   const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'the Institution on its page';
-  const list = () => navigate(money ? { to: '/accounts' } : { to: '/net-worth/assets' });
+  // Money kept for spending was a card in Wallet; anything else — savings put aside included — is listed on Assets.
+  const list = () => navigate(money && account && keptForSpending(account) ? { to: '/wallet' } : { to: '/net-worth/assets' });
 
   async function leaveBy(ask: string, act: () => Promise<void>) {
     if (!window.confirm(ask)) return;
@@ -213,6 +215,31 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {profile.data?.assetKind === 'fund' && <SameFundGroup accountId={accountId} />}
 
       {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAt={profile.data.coretaxFields.inst?.trim() || null} />}
+
+      {/*
+       * Whether this money is for spending: on, it is a card in Wallet, offered under Paid with and counted in the
+       * spending balance; off, it is kept as savings and read on Assets alone. Set on the account — a pocket follows
+       * its account, so a pocket's settings do not ask. Saves as it is switched, as every row here does.
+       */}
+      {account && account.kind === 'asset' && account.parentId === null && SPENDABLE_SUBTYPES.includes(account.subtype) && (
+        <InsetGroup footer="Off: kept as savings. Not offered under Paid with and not counted in the spending balance; money can still be moved in and out.">
+          <SwitchRow
+            label="For spending"
+            checked={keptForSpending(account)}
+            onChange={(on) =>
+              void (async () => {
+                setError(null);
+                try {
+                  await setAccountForSpending(database, ws, accountId, on);
+                  await invalidate();
+                } catch (err) {
+                  setError(err);
+                }
+              })()
+            }
+          />
+        </InsetGroup>
+      )}
 
       {/* A broker's cash account says what the broker charges, for the Buy and Sell sheets. */}
       {account?.subtype === 'fund' && <BrokerFeesGroup accountId={accountId} />}

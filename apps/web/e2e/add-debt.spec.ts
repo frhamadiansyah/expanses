@@ -76,9 +76,9 @@ test('a card that earns by level is refused until the level is chosen, and nothi
   await expect(page.getByText(/Choose the level before adding it/)).toBeVisible();
   await expect(page).toHaveURL(/\/debts\/new$/);
   // Nothing was opened, so the same button finishes the job once the level is given.
-  await page.goto('/cards');
+  await page.goto('/wallet');
   await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
 
-  await page.goto('/accounts');
+  await page.goto('/wallet');
   await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
 });

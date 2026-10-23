@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
-import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId, writeAccountAuditTx } from './accounts';
+import { AccountError, type AccountRow, createAccountTx, isSpendingOffTx, pocketName, systemAccountId, writeAccountAuditTx, writeForSpendingTx } from './accounts';
 import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
 import { carryShareSettingTx } from './net-worth-sharing';
@@ -87,7 +87,7 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
     if (!first) throw new AccountError(`${parent.name} has no pockets. Open a new account with pockets instead.`);
     const inst = (await getAssetProfileTx(tx, ws, first.id))?.coretaxFields.inst;
     const bank = inst?.trim() ? inst : undefined;
-    return openCashAccountTx(tx, ws, {
+    const pocket = await openCashAccountTx(tx, ws, {
       item: parent.subtype as MoneyAccountSubtype,
       name: pocketName(parent.name, input.currency),
       currency: input.currency,
@@ -99,6 +99,12 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       // After every pocket it has, archived ones included, so a re-added currency does not jump the queue.
       sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
+    // A pocket follows its account's "For spending": one kept as savings takes no pocket that is spent from.
+    if (await isSpendingOffTx(tx, parent.id)) {
+      await writeForSpendingTx(tx, pocket.id, false);
+      return { ...pocket, forSpending: 0 };
+    }
+    return pocket;
   });
 }
 
@@ -147,6 +153,8 @@ export async function makeMultiCurrency(
       icon: account.icon,
       sortOrder: account.sortOrder,
     });
+    // The account's "For spending" is the parent's now, as it is the parent that Wallet and the switch read.
+    if (await isSpendingOffTx(tx, account.id)) await writeForSpendingTx(tx, parent.id, false);
     // Its shared purchases name it by its old name; they go out again as the pocket's.
     await captureMoneyAccountRenamingTx(tx, account.id);
     await withCapture(tx, { entity: 'category', id: account.id }, () =>

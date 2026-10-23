@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openTypes } from './accounts';
+import { expectWalletFigure, walletCard } from './accounts';
 import { openDrawers } from './drawers';
 import { setCurrency } from './currency-field';
 
@@ -88,15 +88,13 @@ export async function addMoneyAccount(
   if (o.rate) await typeInto(page, 'Interest rate', o.rate);
   await page.getByLabel('Balance as of').fill(o.opened);
   await page.getByRole('button', { name: 'Add account' }).click();
-  /* The form navigates to the money list once the write is done, so that is what the save is waited for first. */
-  await expect(page).toHaveURL(/\/accounts$/);
   /*
-   * A current account is a row on that list, inside its type's drawer — and adding this one may be what made the
-   * cash group divide at all, so the drawers are opened after the save, not before it. A time deposit is a row on no
-   * such list: it holds money it cannot be paid from, so it is waited for where it is priced, on the asset list.
+   * The form navigates once the write is done, so that is what the save is waited for first: a current account to
+   * Wallet, where it is a card; a time deposit to the asset list, where it is priced — it holds money it cannot be
+   * paid from, so it is never a card.
    */
   if (o.kind === 'Time deposit') {
-    await page.goto('/net-worth/assets');
+    await expect(page).toHaveURL(/\/net-worth\/assets$/);
     // A deposit's row is folded into its kind's drawer, which the list opens shut.
     await openDrawers(page);
     // A prefix, not the whole name: an asset row reads "BCA Deposito · Time deposit · …", as every other list
@@ -104,8 +102,8 @@ export async function addMoneyAccount(
     await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
     return;
   }
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await expect(walletCard(page, o.name)).toBeVisible();
 }
 
 export async function setUp(page: Page, currency: 'IDR' | 'USD') {
@@ -165,11 +163,9 @@ export async function startReport(page: Page, year: number) {
 }
 
 export async function expectBalance(page: Page, name: string, figure: string) {
-  await page.goto('/accounts');
-  await openTypes(page);
-  // The accounts page is the kit's list now, not a table: each account is a line, and the name is its link.
-  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name, exact: true }) });
-  await expect(row).toContainText(figure);
+  await page.goto('/wallet');
+  // Each account is a card on Wallet, its balance on its band and in its name.
+  await expectWalletFigure(page, name, figure);
 }
 
 /**

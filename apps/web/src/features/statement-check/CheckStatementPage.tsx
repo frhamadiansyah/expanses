@@ -59,7 +59,7 @@ export function CheckStatementPage() {
   if (!card)
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Check statement" back="Cards" backTo="/cards" />
+        <LargeTitle title="Check statement" back="Wallet" backTo="/wallet" />
         <Empty>This card is not in this workspace.</Empty>
       </div>
     );
