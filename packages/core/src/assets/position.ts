@@ -25,8 +25,17 @@ export interface TradeRecord {
   /** Declared reinvestment of this payment, and the holding it was declared into. */
   reinvestedMinor?: number | null;
   reinvestedIntoAccountId?: string | null;
-  /** A sell from a holding tracked by money: the money still in it took out, fixed when the sell was saved. */
+  /**
+   * A sell from a holding tracked by money: the money still in it took out, fixed when the sell was saved. On the buy of
+   * a switch, the money that came with it from the fund it left: the buy's cost, in place of what it paid.
+   */
   basisMinor?: number | null;
+  /**
+   * One side of a switch between two funds tracked by money: the money left one and went into the other with no cash
+   * account touched. Both sides carry the same id. The side that left books no profit, and the side that arrived costs
+   * what left with it (`basisMinor`).
+   */
+  switchId?: string | null;
 }
 
 /** One goal's part of a split trade: its units, and — for a fund tracked by money — its amount of the gross. */

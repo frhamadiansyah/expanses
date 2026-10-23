@@ -1,7 +1,7 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
-import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, type TradeRow } from '@expanses/db';
+import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ArrowDownLeft, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -34,6 +34,7 @@ import { Sheet as SheetFrame } from '../../app/Sheet';
 import { institutionChoices } from './institutions';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
+import { SwitchSheet } from './SwitchSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
@@ -100,6 +101,7 @@ type Sheet =
   | { kind: 'gold-trade'; trade: 'buy' | 'sell' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string }
+  | { kind: 'switch'; editing: { out: TradeRow; into: TradeRow } | null }
   | { kind: 'new-broker' };
 
 /**
@@ -219,6 +221,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
   const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
   const holding = { accountId, name: value.name, currency, byMoney };
+  const nameOf = (id: string) => everyAccount.find((row) => row.id === id)?.name ?? 'another fund';
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
   const line = heroLine({
@@ -331,6 +334,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       ? [
           { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
           { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: buyOrSell('sell', 'Sell') },
+          // Money moved straight into another fund tracked by money, no bank account between them.
+          { key: 'switch', label: 'Switch', glyph: <ArrowLeftRight size={20} aria-hidden />, run: () => setSheet({ kind: 'switch', editing: null }) },
           { key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
         ]
     : estimated
@@ -358,11 +363,26 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
   async function removeTrade(row: TradeRow) {
     setSheet(null);
-    if (!window.confirm('Delete this trade? Later sells are worked out again at the new average cost.')) return;
+    // A switch goes as one: both funds' sides, and the money is back where it was.
+    const question = row.switchedWith
+      ? `Delete this switch? It goes from both funds, and the money is back in ${row.kind === 'sell' ? 'this fund' : nameOf(row.switchedWith.accountId)}.`
+      : 'Delete this trade? Later sells are worked out again at the new average cost.';
+    if (!window.confirm(question)) return;
     setError(null);
     try {
       await deleteTrade(database, ws, row.id);
       await invalidate();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  /** Changes a switch from either of its funds: the sheet opens on the fund the money left, both sides in it. */
+  async function editSwitch(row: TradeRow) {
+    setError(null);
+    try {
+      const pair = await switchOf(database, ws, row.id);
+      setSheet(pair ? { kind: 'switch', editing: pair } : null);
     } catch (e) {
       setError(e);
     }
@@ -392,8 +412,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                 key: row.id,
                 row,
                 line: {
-                  title: row.kind === 'buy' ? 'Bought' : 'Sold',
-                  subtitle: dayLabel(row.occurredOn),
+                  // A switch names the other fund: "Switched out · 23 Oct 2026 · into Bond Fund".
+                  title: row.switchedWith ? (row.kind === 'buy' ? 'Switched in' : 'Switched out') : row.kind === 'buy' ? 'Bought' : 'Sold',
+                  subtitle: row.switchedWith
+                    ? `${dayLabel(row.occurredOn)} · ${row.kind === 'buy' ? 'from' : 'into'} ${nameOf(row.switchedWith.accountId)}`
+                    : dayLabel(row.occurredOn),
                   value: `${row.kind === 'buy' ? '+' : '−'}${formatMinor(row.grossMinor, currency)}`,
                   note: null,
                   tone: 'quiet' as const,
@@ -727,6 +750,14 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           byMoney={byMoney ? { valueMinor: value.valueMinor } : null}
         />
       )}
+      {sheet?.kind === 'switch' && byMoney && (
+        <SwitchSheet
+          fromAccountId={sheet.editing ? sheet.editing.out.accountId : accountId}
+          icon={<KindGlyph size={16} aria-hidden />}
+          editing={sheet.editing}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet?.kind === 'gold-trade' && goldHolding && (
         <GoldTradeSheet
           kind={sheet.trade}
@@ -745,7 +776,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       {sheet?.kind === 'row' && (
         <TradeActionsSheet
           title={sheet.title}
-          onEdit={() => setSheet({ kind: 'trade', title: 'Edit trade', initial: draftFromTrade(sheet.trade, currency), editing: sheet.trade })}
+          onEdit={() =>
+            sheet.trade.switchedWith
+              ? void editSwitch(sheet.trade)
+              : setSheet({ kind: 'trade', title: 'Edit trade', initial: draftFromTrade(sheet.trade, currency), editing: sheet.trade })
+          }
           onDelete={() => void removeTrade(sheet.trade)}
           onClose={() => setSheet(null)}
         />

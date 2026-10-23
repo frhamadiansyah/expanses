@@ -46,6 +46,7 @@ export * from './repos/catalog';
 export * as assetsSchema from './schema-assets';
 export * from './repos/assets';
 export * from './repos/trades';
+export * from './repos/fund-switch';
 export * from './repos/base-costs';
 export * from './repos/prices';
 export * from './repos/listed-prices';

@@ -1,4 +1,4 @@
-import { moneySells } from '../assets/by-money';
+import { moneyBuyCost, moneySells } from '../assets/by-money';
 import type { GoalPart, TradeRecord } from '../assets/position';
 import { divRound, formatUnits } from '../assets/units';
 
@@ -142,7 +142,7 @@ export function goalMoneyOf(trades: readonly TradeRecord[], upTo?: string): Goal
   for (const trade of [...trades].sort(byTradeOrder)) {
     if (upTo && trade.occurredOn > upTo) continue;
     if (trade.kind === 'buy') {
-      const cost = trade.grossMinor + trade.feeMinor + trade.taxMinor;
+      const cost = moneyBuyCost(trade);
       for (const [key, share] of goalShares(trade, cost)) byGoal[key] = (byGoal[key] ?? 0) + share;
       costMinor += cost;
     } else if (trade.kind === 'sell') {
