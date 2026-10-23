@@ -242,8 +242,9 @@ export function WalletPage() {
   const raised = openId !== undefined ? wallet.find((card) => card.key === openId) : undefined;
   /*
    * Opened from the stack, the way back is the history's own steps, so ✕ and Back are one gesture and the stack is
-   * where they land; reached by a link from elsewhere, ✕ goes to the stack instead of out of the app. Where the
-   * stack was is the history's own index.
+   * where they land. Reached by a link from elsewhere — an account's row on Net worth — ✕ goes back there, as that
+   * page's own ‹ did; opened with nothing behind it (a deep link, a reload), it goes to the stack instead of out of
+   * the app. Where the stack was is the history's own index.
    */
   const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
   const stackAt = useRef<number | null>(null);
@@ -253,6 +254,7 @@ export function WalletPage() {
   const close = () => {
     const now = at();
     if (stackAt.current !== null && now > stackAt.current) router.history.go(stackAt.current - now);
+    else if (stackAt.current === null && router.history.canGoBack()) router.history.back();
     else void navigate({ to: '/wallet' });
   };
   // Opening a card moves focus to its heading, so a reader lands on the card they chose.

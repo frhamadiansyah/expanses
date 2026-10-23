@@ -362,7 +362,7 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('1000000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Entered after the update', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'Entered after the update')).toBeVisible();
 
   const reminder = page.getByText('Not backed up yet.');
   await expect(reminder).toHaveCount(0);
