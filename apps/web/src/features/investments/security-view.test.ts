@@ -1,7 +1,7 @@
 import { formatMinor, formatPriceMicro } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow, TradeRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { type HoldingLine, NO_BROKER, portfolioView } from './portfolio-view';
+import { heldAtPlaces, type HoldingLine, NO_BROKER, portfolioView } from './portfolio-view';
 import {
   baseGainLine,
   baseGainOf,
@@ -9,6 +9,7 @@ import {
   brokerPageModel,
   combinedSeries,
   dividendsInYear,
+  fundTiles,
   idleCash,
   institutionLine,
   overallTiles,
@@ -222,5 +223,76 @@ describe('the stock across brokers', () => {
     expect(institutionLine({ unitsMicro: 300_000_000, costMinor: 2_850_000, valueMinor: 2_736_000, currency: 'IDR' }, 100).gain).toEqual({ text: '−4,0%', tone: 'loss' });
     // Nothing paid for it: no gain to read, never one against a zero.
     expect(institutionLine({ unitsMicro: 300_000_000, costMinor: 0, valueMinor: 2_736_000, currency: 'IDR' }, 100).gain).toBeNull();
+  });
+});
+
+// A fund tied across places by "Same fund as": the same page, in a fund's words, each place by its institution's name.
+describe('the fund across places', () => {
+  const byMoney = (accountId: string, name: string, valueMinor: number, costMinor: number): AssetValueRow =>
+    ({ accountId, name, currency: 'IDR', planGroup: 'invest', mode: 'amount', unitsMicro: null, stale: false, valueMinor, costMinor, source: 'valuation', asOf: '2026-10-20' }) as AssetValueRow;
+  const fundProfile = (accountId: string, inst?: string) => ({ accountId, assetKind: 'fund', coretaxFields: inst ? { inst } : {} }) as AssetProfileRow;
+  const view = portfolioView({
+    values: [byMoney('mm-app', 'Harbour MM · app', 1_052_000, 1_000_000), byMoney('mm-bank', 'Harbour MM · bank', 2_340_000, 2_400_000)],
+    profiles: [fundProfile('mm-app', 'Fund App'), fundProfile('mm-bank', 'Northbank')],
+    links: [{ accountId: 'mm-app', securityId: 'mm', brokerAccountId: null }, { accountId: 'mm-bank', securityId: 'mm', brokerAccountId: null }],
+    securities: [{ id: 'mm', ticker: null, name: 'Harbour MM · app', market: '', currency: 'IDR', lotSize: null, kind: 'other', source: 'owner' } as SecurityRow],
+    accounts: [],
+    baseCosts: {},
+    baseCurrency: 'IDR',
+    ratesToBase: {},
+  });
+
+  it('adds both places into one fund: its value, what is in it, and each place by its institution', () => {
+    const model = securityPageModel({ view, securityId: 'mm', trades: [], buyBaseMinor: {}, base: 'IDR', fund: true })!;
+    expect(model.stock).toMatchObject({ valueMinor: 3_392_000, costMinor: 3_400_000, unitsMicro: 0 });
+    expect(model.stock.holdings.map((h) => h.place)).toEqual(['Fund App', 'Northbank']);
+    expect(heldAtPlaces(model.stock)).toBe('2 places');
+    // Places tracked by money have no units to add up: the card says what is in them, never "0 units".
+    expect(fundTiles({ stock: model.stock, price: null }).map((t) => [t.label, t.value])).toEqual([['Money in', formatMinor(3_400_000, 'IDR')]]);
+  });
+
+  it('names one institution once and counts its holdings, or counts the holdings alone when none is named', () => {
+    const at = (place: string | null, id: string) => ({ ...line(id, 'No broker named', 'IDR'), brokerAccountId: null, place });
+    expect(heldAtPlaces({ holdings: [at('Fund App', 'a'), at('fund app', 'b')] })).toBe('Fund App · 2 holdings');
+    expect(heldAtPlaces({ holdings: [at(null, 'a'), at(null, 'b')] })).toBe('2 holdings');
+  });
+
+  it('fills the card as one place’s own page does when every place is counted in units', () => {
+    const holdings = [{ ...line('a', 'x', 'IDR'), unitsMicro: 400_000_000 }, { ...line('b', 'y', 'IDR'), unitsMicro: 600_000_000 }];
+    const stock = { holdings, unitsMicro: 1_000_000_000, costMinor: 1_500_000, currency: 'IDR' };
+    const tiles = fundTiles({ stock, price: { priceMicro: 1_600_000_000, label: 'Price today', info: 'Typed · 20 Oct 2026' } });
+    expect(tiles.map((t) => [t.label, t.value])).toEqual([
+      ['Held', '1.000 units'],
+      ['Invested', formatMinor(1_500_000, 'IDR')],
+      ['Average buy', formatPriceMicro(1_500_000_000, 'IDR')],
+      ['Price today', formatPriceMicro(1_600_000_000, 'IDR')],
+    ]);
+  });
+
+  it('reads a place by units and its average, or by the money in it, each with its own gain', () => {
+    expect(institutionLine({ unitsMicro: 0, costMinor: 1_000_000, valueMinor: 1_052_000, currency: 'IDR' }, null, true)).toEqual({
+      subtitle: `Money in ${formatMinor(1_000_000, 'IDR')}`,
+      gain: { text: '+5,2%', tone: 'gain' },
+    });
+    expect(institutionLine({ unitsMicro: 400_000_000, costMinor: 600_000, valueMinor: 640_000, currency: 'IDR' }, null, true).subtitle).toBe(
+      `400 units · avg ${formatPriceMicro(1_500_000_000, 'IDR')}`,
+    );
+  });
+
+  it('lists the buys and sells at every place, each by its institution, in money when there are no units', () => {
+    const model = securityPageModel({ view, securityId: 'mm', trades: [], buyBaseMinor: {}, base: 'IDR', fund: true })!;
+    const money = (id: string, accountId: string, kind: TradeRow['kind'], on: string, grossMinor: number) => ({ ...trade(id, accountId, kind, on, grossMinor), unitsMicro: 0 });
+    const trades = [
+      money('t1', 'mm-app', 'buy', '2026-01-15', 1_000_000),
+      money('t2', 'mm-bank', 'buy', '2026-02-01', 2_500_000),
+      money('t3', 'mm-bank', 'sell', '2026-03-01', 100_000),
+      money('t4', 'mm-app', 'income', '2026-04-01', 9_000),
+      money('t5', 'other', 'buy', '2026-05-01', 7_000),
+    ];
+    expect(recentTrades(trades, model.stock, {}, 'IDR', { fund: true }).map((l) => [l.title, l.brokerName, l.grossMinor])).toEqual([
+      ['Sold', 'Northbank', 100_000],
+      ['Bought', 'Northbank', 2_500_000],
+      ['Bought', 'Fund App', 1_000_000],
+    ]);
   });
 });

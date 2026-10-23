@@ -93,14 +93,15 @@ function Row({ row, baseCurrency, money, nested = false, tree }: { row: AssetRow
 /**
  * A listed share held at two or more brokers: one row for the stock, at what its holdings come to together, opening
  * the stock across them — where each broker's holding is a row of its own. Drawn as a holding's row is, inside the
- * drawer, so the list reads one row per stock rather than one per stock per broker.
+ * drawer, so the list reads one row per stock rather than one per stock per broker. A fund tied across places by
+ * "Same fund as" is drawn the same way, one row for the fund.
  */
 function StockRowAcross({ stock, tree }: { stock: StockLine; tree?: TreePlace }) {
   return (
     <InsetRow
       to="/net-worth/investments/security/$securityId"
       params={{ securityId: stock.securityId }}
-      testId="assets-stock-row"
+      testId={`assets-${stock.kind}-row`}
       depth={1}
       tree={tree}
       title={stock.title}
@@ -137,7 +138,7 @@ function Group({ group, baseCurrency, money, stocks, opened = false }: { group: 
       {group.drawers.flatMap((drawer, index) => {
         const key = `${group.group}:${drawer.key}`;
         const shown = drawers.open.has(key);
-        // Listed shares read one row per stock: a stock at two brokers is one row, opening it across them.
+        // Listed shares read one row per stock: a stock at two brokers is one row, opening it across them; tied funds too.
         const lines = shown ? linesByStock(drawer.key, drawer.rows, stocks) : [];
         return [
           <Drawer
@@ -213,6 +214,7 @@ export function AssetsPage() {
     links: links.data ?? [],
     securities: securities.data ?? [],
     units: new Map((values.data ?? []).map((row) => [row.accountId, row.unitsMicro ?? 0])),
+    places: new Map((profiles.data ?? []).filter((row) => row.coretaxFields.inst?.trim()).map((row) => [row.accountId, row.coretaxFields.inst!.trim()])),
   };
 
   /*

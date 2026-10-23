@@ -10,17 +10,19 @@ import { BalanceCard } from '../accounts/BalanceCard';
 import { LINE_DAYS } from '../accounts/queries';
 import { NumberGrid } from '../networth/AssetDetailPage';
 import { gainPill, priceLine, pricedDaySeries } from '../networth/asset-page';
-import { usePrices, useTrades } from '../networth/queries';
+import { useAssetProfiles, usePrices, useTrades } from '../networth/queries';
 import { InvestTable } from './InvestTable';
-import { type HoldingLine, keptAt, type StockRow } from './portfolio-view';
+import { type HoldingLine, heldAtPlaces, keptAt, type StockRow } from './portfolio-view';
 import { usePortfolio } from './queries';
 import {
   baseGainLine,
   boughtAtRate,
   combinedSeries,
   dividendsInYear,
+  fundTiles,
   institutionLine,
   overallTiles,
+  placeTitle,
   type RecentLine,
   securityPageModel,
   soleHolding,
@@ -39,13 +41,13 @@ function recentDetail(line: RecentLine, base: string): string {
 }
 
 /** A foreign stock in base — both true: the card holds the stock's own figure, this one includes the rate. */
-function InBaseGroup({ stock, base }: { stock: StockRow; base: string }) {
+function InBaseGroup({ stock, base, fund }: { stock: StockRow; base: string; fund: boolean }) {
   // With no rate today the row names the missing rate: never a value of 0 read as a −100% gain.
   const gainLine = baseGainLine(stock, base);
   const boughtAt = boughtAtRate(stock, base);
   if (stock.currency === base || (gainLine === null && boughtAt === null)) return null;
   return (
-    <InsetGroup header={`In ${base}`} footer="Both are true: the figure above is what the stock did; this one includes the exchange rate moving.">
+    <InsetGroup header={`In ${base}`} footer={`Both are true: the figure above is what the ${fund ? 'fund' : 'stock'} did; this one includes the exchange rate moving.`}>
       {gainLine !== null && <ReadOnlyRow label={`Gain in ${base}`} value={gainLine} />}
       {boughtAt !== null && <ReadOnlyRow label="Bought at" value={rateLine(boughtAt, stock.currency, base)} />}
     </InsetGroup>
@@ -55,8 +57,8 @@ function InBaseGroup({ stock, base }: { stock: StockRow; base: string }) {
 const TONE = { gain: 'text-[var(--ph-tint)]', loss: 'text-[var(--ph-alarm)]', flat: 'text-[var(--ph-ink-3)]' } as const;
 
 /** A holding's figure on its row: its value, and its own gain under it in green or red. */
-function HoldingFigure({ h, lotSize }: { h: HoldingLine; lotSize: number | null }) {
-  const { gain } = institutionLine(h, lotSize);
+function HoldingFigure({ h }: { h: HoldingLine }) {
+  const { gain } = institutionLine(h, null);
   return (
     <span className="block text-right">
       <Figure tone={h.stale ? 'warn' : 'ink'}>{formatMinor(h.valueMinor, h.currency)}</Figure>
@@ -70,11 +72,15 @@ function HoldingFigure({ h, lotSize }: { h: HoldingLine; lotSize: number | null 
 }
 
 const HELD_FOOTER = 'Each broker keeps its own average price and its own cost basis.';
+const FUND_FOOTER = 'Each place keeps its own money, value and trades.';
 
 /**
  * `/net-worth/investments/security/$securityId` — one stock across the brokers it is held at, drawn as a holding's own
  * page is: the pushed title, the card with what it is worth now and its figures, then a row per broker opening that
  * holding, and the latest trades. No round buttons: a buy or a sell is at one broker, on that holding's page.
+ *
+ * A mutual fund tied across places by "Same fund as" opens here too, in the same design: a row per place, each its
+ * institution by name, and its figures in a fund's words — never units added up from a place tracked by money.
  *
  * A stock held at one place only has nothing to add to that holding's page, so this address opens it instead.
  */
@@ -83,26 +89,32 @@ export function SecurityPage() {
   const { securityId = '' } = useParams({ strict: false }) as { securityId?: string };
   const { view, rates, costs, securities, error, isPending } = usePortfolio();
   const trades = useTrades();
+  const profiles = useAssetProfiles();
   const base = ws.baseCurrency;
   const security = securities.find((s) => s.id === securityId);
-  const model = view ? securityPageModel({ view, securityId, trades: trades.data ?? [], buyBaseMinor: costs?.buyBaseMinor ?? {}, base }) : null;
+  // A fund: every holding of the security is a mutual fund, as "Same fund as" ties only funds.
+  const fundIds = new Set((profiles.data ?? []).filter((row) => row.assetKind === 'fund').map((row) => row.accountId));
+  const held = view?.stocks.find((s) => s.securityId === securityId)?.holdings ?? [];
+  const fund = held.length > 0 && held.every((h) => fundIds.has(h.accountId));
+  const model = view && profiles.data ? securityPageModel({ view, securityId, trades: trades.data ?? [], buyBaseMinor: costs?.buyBaseMinor ?? {}, base, fund }) : null;
   const title = security ? (security.ticker ?? security.name) : 'Stock';
   if (!model || !security)
     return (
       <div className={SCREEN}>
         <PushedTitle title={title} {...BACK} />
-        <ErrorBox error={error} />
-        {!isPending && !error && <Empty>Nothing of this is held now.</Empty>}
+        <ErrorBox error={error ?? profiles.error} />
+        {!isPending && !error && profiles.data && <Empty>Nothing of this is held now.</Empty>}
       </div>
     );
   const sole = soleHolding(model.stock);
   // Replaced, so Back from the holding goes where it came from rather than here and straight back again.
   if (sole !== null) return <Navigate to="/net-worth/assets/$accountId" params={{ accountId: sole }} replace />;
-  return <AcrossBrokers title={title} stock={model.stock} recent={model.recent} trades={trades.data ?? null} base={base} rates={rates} error={error ?? trades.error} />;
+  return <AcrossBrokers title={title} fund={fund} stock={model.stock} recent={model.recent} trades={trades.data ?? null} base={base} rates={rates} error={error ?? trades.error} />;
 }
 
 function AcrossBrokers({
   title,
+  fund,
   stock,
   recent,
   trades,
@@ -111,6 +123,7 @@ function AcrossBrokers({
   error,
 }: {
   title: string;
+  fund: boolean;
   stock: StockRow;
   recent: RecentLine[];
   trades: readonly TradeRow[] | null;
@@ -141,13 +154,16 @@ function AcrossBrokers({
     );
   }, [trades, prices.data, stock, today]);
 
-  const tiles = overallTiles({
-    stock,
-    price: latest ? { priceMicro: latest.priceMicro, label: 'Price', info: priceLine({ latest, fetches: false, failed: false, today }) } : null,
-    dividendsMinor: trades ? dividendsInYear(trades, ids, today.slice(0, 4)) : null,
-  });
+  const price = latest ? { priceMicro: latest.priceMicro, label: fund ? 'Price today' : 'Price', info: priceLine({ latest, fetches: false, failed: false, today }) } : null;
+  const tiles = fund
+    ? fundTiles({ stock, price })
+    : overallTiles({ stock, price, dividendsMinor: trades ? dividendsInYear(trades, ids, today.slice(0, 4)) : null });
   const gain = gainPill(stock.valueMinor, stock.costMinor, stock.currency);
   const recentFooter = foreign ? `The ${base} cost of a buy is fixed at the rate on its day, and it never moves again.` : undefined;
+  // A fund is held at an institution by name: each row is that place, never the account it was once linked to.
+  const rowTitle = fund ? placeTitle : holdingTitle;
+  const heldFooter = fund ? FUND_FOOTER : HELD_FOOTER;
+  const byUnits = !fund || stock.holdings.every((h) => h.unitsMicro > 0);
 
   return (
     <div className={SCREEN}>
@@ -156,7 +172,7 @@ function AcrossBrokers({
 
       {/* The holding page's card: what it is worth now across every broker, the gain, its line, and four figures. */}
       <BalanceCard
-        label="Value now · all brokers"
+        label={fund ? 'Value now · all places' : 'Value now · all brokers'}
         minor={stock.valueMinor}
         currency={stock.currency}
         series={series}
@@ -166,7 +182,7 @@ function AcrossBrokers({
         caption={
           <>
             <span className="block">
-              {keptAt(stock)}
+              {fund ? heldAtPlaces(stock) : keptAt(stock)}
               {gain && (
                 <>
                   {' · '}
@@ -183,18 +199,18 @@ function AcrossBrokers({
         {tiles.length > 0 && <NumberGrid tiles={tiles} />}
       </BalanceCard>
 
-      <InBaseGroup stock={stock} base={base} />
+      <InBaseGroup stock={stock} base={base} fund={fund} />
 
       {phone ? (
         <>
-          <InsetGroup header="Institutions" footer={HELD_FOOTER}>
+          <InsetGroup header="Institutions" footer={heldFooter}>
             {stock.holdings.map((h) => (
               <InsetRow
                 key={h.accountId}
                 testId="held-at-row"
-                title={holdingTitle(h)}
-                subtitle={institutionLine(h, stock.lotSize).subtitle}
-                value={<HoldingFigure h={h} lotSize={stock.lotSize} />}
+                title={rowTitle(h)}
+                subtitle={institutionLine(h, stock.lotSize, fund).subtitle || undefined}
+                value={<HoldingFigure h={h} />}
                 valueTone={h.stale ? 'warn' : 'ink'}
                 to="/net-worth/assets/$accountId"
                 params={{ accountId: h.accountId }}
@@ -215,17 +231,22 @@ function AcrossBrokers({
         <div>
           <InvestTable<HoldingLine>
             header="Institutions"
-            footer={HELD_FOOTER}
+            footer={heldFooter}
             testId="held-at-table"
             rowTestId="held-at-row"
             records={stock.holdings}
             rowKey={(h) => h.accountId}
-            title={holdingTitle}
+            title={rowTitle}
             destination={(h) => ({ to: '/net-worth/assets/$accountId', params: { accountId: h.accountId } })}
             columns={[
-              { key: 'broker', heading: 'Broker', cell: () => null },
-              { key: 'shares', heading: 'Shares', numeric: true, cell: (h) => formatUnits(h.unitsMicro) },
-              { key: 'avg', heading: 'Avg price', numeric: true, cell: (h) => formatPriceMicro(priceMicroFrom(h.costMinor, h.unitsMicro), h.currency) },
+              { key: 'broker', heading: fund ? 'Institution' : 'Broker', cell: () => null },
+              // A fund with a place tracked by money has no units to set beside the others: what is in each says it.
+              ...(byUnits
+                ? [
+                    { key: 'shares', heading: fund ? 'Units' : 'Shares', numeric: true, cell: (h: HoldingLine) => formatUnits(h.unitsMicro) },
+                    { key: 'avg', heading: 'Avg price', numeric: true, cell: (h: HoldingLine) => formatPriceMicro(priceMicroFrom(h.costMinor, h.unitsMicro), h.currency) },
+                  ]
+                : [{ key: 'in', heading: 'Money in', numeric: true, cell: (h: HoldingLine) => formatMinor(h.costMinor, h.currency) }]),
               {
                 key: 'gain',
                 heading: 'Gain',
@@ -251,7 +272,7 @@ function AcrossBrokers({
               destination={() => null}
               columns={[
                 { key: 'trade', heading: 'Trade', cell: () => null },
-                { key: 'where', heading: 'Broker', cell: (line) => line.brokerName },
+                { key: 'where', heading: fund ? 'Institution' : 'Broker', cell: (line) => line.brokerName },
                 { key: 'day', heading: 'Day', cell: (line) => line.day },
                 { key: 'amount', heading: 'Amount', numeric: true, cell: (line) => formatMinor(line.grossMinor, line.currency) },
                 ...(foreign
