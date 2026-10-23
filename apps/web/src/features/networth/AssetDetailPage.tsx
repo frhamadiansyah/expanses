@@ -1,7 +1,7 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, priceAgeDays, STALE_PRICE_DAYS, type UnitKind } from '@expanses/core';
 import { type AssetValueRow, couponOn, deleteTrade, setGoldPriceChoice, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ArrowDownLeft, ArrowLeftRight, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -36,6 +36,7 @@ import { institutionChoices } from './institutions';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
 import { SwitchSheet } from './SwitchSheet';
+import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GOLD_SOURCES, PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
@@ -100,6 +101,7 @@ type Sheet =
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
   | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
   | { kind: 'gold-trade'; trade: 'buy' | 'sell' }
+  | { kind: 'gold-chart' }
   | { kind: 'trade'; title: string; initial: Partial<TradeDraft>; editing: TradeRow | null }
   | { kind: 'row'; trade: TradeRow; title: string }
   | { kind: 'switch'; editing: { out: TradeRow; into: TradeRow } | null }
@@ -307,9 +309,12 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     ? [
         { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
         { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: buyOrSell('sell', 'Sell') },
-        // Gold pays nothing while it is held; a share, a fund and a bond each pay in their own word.
+        // Gold pays nothing while it is held, so its third button is the world price's chart with its buys and sells on
+        // it; a share, a fund and a bond each pay in their own word.
         ...(kind === 'gold'
-          ? []
+          ? unitKind === 'grams'
+            ? [{ key: 'chart', label: 'Chart', glyph: <ChartLine size={20} aria-hidden />, run: () => setSheet({ kind: 'gold-chart' }) }]
+            : []
           : [
               {
                 key: 'income',
@@ -760,6 +765,16 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           lastPrice={latestPrice}
           position={position}
           onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'gold-chart' && (
+        <GoldChartSheet
+          currency={currency}
+          trades={trades.data ?? []}
+          latest={latestPrice}
+          costMinor={value.costMinor}
+          unitsMicro={unitsMicro}
           onClose={() => setSheet(null)}
         />
       )}
