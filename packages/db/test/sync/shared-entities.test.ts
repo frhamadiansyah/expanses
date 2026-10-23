@@ -109,6 +109,12 @@ describe('SHARED_ENTITIES against a freshly migrated database', () => {
     expect(NEVER_SYNCED_COLUMNS.entries).not.toContain('amount_base_minor');
   });
 
+  it("a money account's digits, For spending and card tier stay on the device: the shared category row has none of them", () => {
+    expect(NEVER_SYNCED_COLUMNS.accounts).toEqual(expect.arrayContaining(['number_last4', 'for_spending', 'card_tier']));
+    const category = rows.find((e) => e.entity === 'category')!;
+    for (const column of ['number_last4', 'for_spending', 'card_tier']) expect(Object.values(category.fields)).not.toContain(column);
+  });
+
   it('never syncs workspace_id', () => {
     for (const e of rows) {
       expect(Object.values(e.fields)).not.toContain('workspace_id');

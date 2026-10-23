@@ -169,6 +169,50 @@ export async function writeForSpendingTx(tx: Db, accountId: string, on: boolean)
   await tx.run(sql`UPDATE accounts SET for_spending = ${on ? 1 : 0} WHERE id = ${accountId}`);
 }
 
+/*
+ * card_tier (0087) is read and written by name too: a database stopped before it has no such column, and there no
+ * account has a tier. Asked once per handle, and only a yes is kept, as the two columns before it are.
+ */
+const tierColumn = new WeakMap<object, boolean>();
+async function tierColumnExists(tx: Db): Promise<boolean> {
+  if (tierColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'card_tier'`);
+  if (rows.length > 0) tierColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/** A tier is the bank's short word for it: 'gold', 'prioritas' — letters alone, read by the app against the bank's list. */
+const TIER_WORD = /^[a-z]{2,24}$/;
+
+/** The kinds of money a debit card spends from: the only accounts a card tier means anything on. */
+const TIERED_SUBTYPES: readonly AccountSubtype[] = ['bank', 'savings'];
+
+/** Each account's card tier (0087), by account id: only the accounts that have one are listed. */
+export async function listCardTiers(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  if (!(await tierColumnExists(database.db))) return {};
+  const rows = await database.db.values<[string, string]>(
+    sql`SELECT id, card_tier FROM accounts WHERE workspace_id = ${ws.workspaceId} AND card_tier IS NOT NULL AND archived_at IS NULL`,
+  );
+  return Object.fromEntries(rows);
+}
+
+/**
+ * Which of its bank's debit cards a money account is drawn as in Wallet (0087): the tier's short word, or null for the
+ * bank's first. Only a current or saving account carries a debit card, so only those take a tier.
+ */
+export async function setAccountCardTier(database: Database, ws: WorkspaceContext, id: string, tier: string | null): Promise<void> {
+  const word = tier?.trim() || null;
+  if (word !== null && !TIER_WORD.test(word)) throw new AccountError('A card tier is a short word, like gold');
+  await database.transaction(async (tx) => {
+    const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new AccountError('Account not found');
+    if (account.kind !== 'asset' || !TIERED_SUBTYPES.includes(account.subtype)) throw new AccountError(`${account.name} is not an account a debit card spends from`);
+    if (!(await tierColumnExists(tx))) throw new AccountError('This database cannot keep that yet');
+    await tx.run(sql`UPDATE accounts SET card_tier = ${word} WHERE id = ${id}`);
+    await writeAudit(tx, ws, 'card_tier', id, { cardTier: word });
+  });
+}
+
 export async function systemAccountId(tx: Db, ws: WorkspaceContext, key: SystemAccountKey): Promise<string> {
   const [row] = await tx
     .select({ id: accounts.id })

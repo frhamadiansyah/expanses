@@ -4,6 +4,7 @@ import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef,
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { CardFace } from '../../features/cards/CardFace';
+import type { FaceRef } from '../../features/cards/debit-art/faces';
 import { cx } from '../index';
 import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, stackLayout } from './card-stack';
 import { InsetGroup, InsetRow } from './InsetList';
@@ -39,6 +40,8 @@ export interface WalletCard {
    * rather than a card product. Absent for a credit card, which keeps its catalogue art.
    */
   kind?: string;
+  /** The drawn face of the account's bank or app, when it has one (debit-art): then the card is drawn, not `kind`. */
+  face?: FaceRef | null;
   /** The figure on this card's band — points, miles, or what is owed. Already a whole number of its unit. */
   figure: string;
   figureLabel: string;
@@ -298,6 +301,7 @@ function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: n
         network={card.network}
         look={card.look}
         kind={card.kind}
+        face={card.face}
         size="md"
         band={band ? card.figure : undefined}
       />

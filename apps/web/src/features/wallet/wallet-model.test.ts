@@ -1,6 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { faceFor } from '../cards/debit-art/faces';
+import { bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
 
 const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -67,5 +68,43 @@ describe('the Balance box, hidden on this device', () => {
     const refusing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('denied'); } };
     expect(readBalanceHidden(refusing)).toBe(false);
     expect(() => writeBalanceHidden(true, refusing)).not.toThrow();
+  });
+});
+
+describe('faceKindsOf: which drawn faces each kind of money may be given', () => {
+  it('a bank account is only a debit card, a wallet its app or a prepaid card, cash a prepaid card', () => {
+    expect(faceKindsOf('bank')).toEqual(['debit']);
+    expect(faceKindsOf('savings')).toEqual(['debit']);
+    expect(faceKindsOf('ewallet')).toEqual(['ewallet', 'emoney']);
+    expect(faceKindsOf('cash')).toEqual(['emoney']);
+    expect(faceKindsOf('other_cash')).toEqual(['emoney']);
+    expect(faceKindsOf('fund')).toEqual([]);
+  });
+
+  it('so savings called "Dana darurat" is not the DANA wallet, and a wallet called OVO is', () => {
+    expect(faceFor([null, 'Dana darurat'], faceKindsOf('savings'))).toBeNull();
+    expect(faceFor(['Bank Mandiri', 'Dana darurat'], faceKindsOf('savings'))?.key).toBe('mandiri');
+    expect(faceFor([null, 'OVO'], faceKindsOf('ewallet'))?.key).toBe('ovo');
+    expect(faceFor([null, 'Flazz'], faceKindsOf('other_cash'))?.key).toBe('flazz');
+    expect(faceFor([null, 'Flazz'], faceKindsOf('bank'))).toBeNull();
+  });
+});
+
+describe('bankOf: the bank an account is at, for its drawn face', () => {
+  const profile = (accountId: string, inst?: string) => ({ accountId, coretaxFields: (inst === undefined ? {} : { inst }) as Record<string, string> });
+
+  it('reads the account’s own institution, trimmed, and null when none is written', () => {
+    const accounts = [row('payroll', 'bank'), row('cash', 'cash')];
+    expect(bankOf('payroll', accounts, [profile('payroll', ' Bank Mandiri ')])).toBe('Bank Mandiri');
+    expect(bankOf('payroll', accounts, [profile('payroll', '')])).toBeNull();
+    expect(bankOf('cash', accounts, [profile('payroll', 'Bank Mandiri')])).toBeNull();
+    expect(bankOf('payroll', accounts, [])).toBeNull();
+  });
+
+  it('an account with pockets is at the bank its pockets are at: the first pocket that names one', () => {
+    const accounts = [row('wise', 'bank'), row('wise-usd', 'bank', { parentId: 'wise' }), row('wise-idr', 'bank', { parentId: 'wise' })];
+    expect(bankOf('wise', accounts, [profile('wise-usd'), profile('wise-idr', 'Bank Jago')])).toBe('Bank Jago');
+    // The parent's own, when it has one, comes first.
+    expect(bankOf('wise', accounts, [profile('wise', 'Bank Permata'), profile('wise-idr', 'Bank Jago')])).toBe('Bank Permata');
   });
 });

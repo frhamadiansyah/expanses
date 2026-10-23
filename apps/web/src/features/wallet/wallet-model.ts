@@ -1,5 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { keptForSpending } from '../../lib/account-types';
+import type { FaceKind } from '../cards/debit-art/faces';
 
 /**
  * Which cards Wallet holds, and in what order: everything money is spent from or owed on.
@@ -38,6 +39,35 @@ export function moneyChip(account: Pick<AccountRow, 'subtype'>, numberLast4?: st
   if (account.subtype === 'ewallet') return 'E-wallet';
   if ((account.subtype === 'bank' || account.subtype === 'savings') && numberLast4) return `Debit ···· ${numberLast4}`;
   return 'Account';
+}
+
+/**
+ * Which drawn faces money of each kind may be given. A bank account is only ever a bank's debit card: "Dana darurat"
+ * is savings, not the DANA wallet. A digital wallet is its app, or a prepaid card recorded as one; cash and other cash
+ * equivalents can be a prepaid card. Nothing here is ever a PayLater line, which is a credit account.
+ */
+export function faceKindsOf(subtype: string): readonly FaceKind[] {
+  switch (subtype) {
+    case 'bank':
+    case 'savings':
+      return ['debit'];
+    case 'ewallet':
+      return ['ewallet', 'emoney'];
+    case 'cash':
+    case 'other_cash':
+      return ['emoney'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * The bank an account is at, as the tax report keeps it (Nama institusi): its own profile's, or — for an account with
+ * pockets, whose profiles are the pockets' — the first pocket's that names one. Null when none does.
+ */
+export function bankOf(accountId: string, accounts: readonly Pick<AccountRow, 'id' | 'parentId'>[], profiles: readonly { accountId: string; coretaxFields: Record<string, string> }[]): string | null {
+  const inst = (id: string) => profiles.find((profile) => profile.accountId === id)?.coretaxFields.inst?.trim() || null;
+  return inst(accountId) ?? accounts.filter((a) => a.parentId === accountId).map((pocket) => inst(pocket.id)).find((name) => name !== null) ?? null;
 }
 
 /** Where Wallet's Balance box is remembered as hidden: one device's choice, never synced. */

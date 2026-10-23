@@ -12,6 +12,7 @@ import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
 import { BankNumberGroup } from '../accounts/BankNumberGroup';
+import { CardTierGroup } from '../accounts/CardTierGroup';
 import { CouponGroup } from './CouponGroup';
 import { SameFundGroup } from './SameFundGroup';
 import { PricesGroup } from './PricesGroup';
@@ -247,6 +248,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       {account?.subtype === 'ewallet' && <WalletPhoneGroup accountId={accountId} />}
       {/* A bank account says which account number it is, by its last four digits. */}
       {(account?.subtype === 'bank' || account?.subtype === 'savings') && <BankNumberGroup accountId={accountId} />}
+      {/* …and, at a bank whose debit cards come in tiers, which of them its card in Wallet is drawn as. */}
+      {account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null && <CardTierGroup account={account} />}
 
       {/* A money account's tax fields stay here; an asset's are on its Edit screen, with its name and when it was got. */}
       {/* A money account opened before it had a profile (a broker made from Add holding) still shows its kas row: saving a
