@@ -13,6 +13,8 @@ test('phone: BBCA shows Yahoo Finance’s last close behind its ⓘ, and the Pri
   await openAsset(page, 'BBCA');
   await expect(await priceSaid(page, 'Last close')).toHaveText(`Yahoo Finance close · ${yesterdayOnIdx().label}. Delayed; the last close, not a live price.`);
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
+  // Price source and Update prices are in the holding's Settings.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /^Price source/ }).click();
   await expect(page.getByRole('dialog').getByRole('button')).toContainText([/Yahoo Finance/, /IDX daily file/, /I'll type it/]);
 });
@@ -33,6 +35,8 @@ test('phone: IDX’s daily file, chosen from Update prices, previews and saves t
   await routeYahoo(page, 'offline');
   await holdBbca(page);
   await openAsset(page, 'BBCA');
+  // Price source and Update prices are in the holding's Settings.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Update prices' }).click();
   await page.getByRole('button', { name: 'Import IDX daily file' }).click();
   const chooser = page.waitForEvent('filechooser');
