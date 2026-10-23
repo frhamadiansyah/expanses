@@ -1,7 +1,7 @@
 import { formatBps, formatMinor, formatPriceMicro, formatUnits, gainBps, priceMicroFrom, rateFromAmounts } from '@expanses/core';
 import { type AccountRow, pocketParentIds, type TradeRow } from '@expanses/db';
 import type { DayBalance } from '../accounts/balance-series';
-import { heldLabel, quantityLabel, type Tile } from '../networth/asset-page';
+import { heldLabel, pricedTiles, quantityLabel, type Tile } from '../networth/asset-page';
 import type { BrokerRow, HoldingLine, PortfolioView, StockRow } from './portfolio-view';
 import { dayLabel, NO_BROKER } from './portfolio-view';
 
@@ -50,21 +50,31 @@ export interface RecentLine {
   pinnedRate: number | null;
 }
 
+/** A fund's place on its page across places: the institution it is held at by name, or the holding's own name. */
+export const placeTitle = (h: Pick<HoldingLine, 'place' | 'name'>): string => h.place ?? h.name;
+
+/** A fund's trade in words: by units when it has them, else the money moved — a switch named as one. */
+function fundTradeTitle(trade: Pick<TradeRow, 'kind' | 'unitsMicro' | 'switchedWith'>): string {
+  if (trade.switchedWith) return trade.kind === 'buy' ? 'Switched in' : 'Switched out';
+  const word = KIND[trade.kind];
+  return trade.unitsMicro > 0 ? `${word} ${quantityLabel(trade.unitsMicro, 'units', null)}` : word;
+}
+
 /**
  * Up to ten trades across a stock's holdings, newest first — read-only: a trade is changed only on Buy & sell,
- * which works later sells out again (spec §9).
+ * which works later sells out again (spec §9). A fund's (`fund`) are its buys and sells only, each at its place.
  */
 export function recentTrades(
   trades: readonly TradeRow[],
   stock: Pick<StockRow, 'holdings' | 'currency'>,
   buyBaseMinor: Readonly<Record<string, number>>,
   base: string,
-  limit = 10,
+  { limit = 10, fund = false }: { limit?: number; fund?: boolean } = {},
 ): RecentLine[] {
-  const brokerOf = new Map(stock.holdings.map((h) => [h.accountId, h.brokerName]));
+  const brokerOf = new Map(stock.holdings.map((h) => [h.accountId, fund ? placeTitle(h) : h.brokerName]));
   const foreign = stock.currency !== base;
   return trades
-    .filter((t) => brokerOf.has(t.accountId))
+    .filter((t) => brokerOf.has(t.accountId) && (!fund || t.kind === 'buy' || t.kind === 'sell'))
     .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit)
     .map((trade) => {
@@ -75,7 +85,7 @@ export function recentTrades(
       return {
         id: trade.id,
         accountId: trade.accountId,
-        title: trade.kind === 'buy' || trade.kind === 'sell' ? `${KIND[trade.kind]} ${formatUnits(trade.unitsMicro)} shares` : KIND[trade.kind],
+        title: fund ? fundTradeTitle(trade) : trade.kind === 'buy' || trade.kind === 'sell' ? `${KIND[trade.kind]} ${formatUnits(trade.unitsMicro)} shares` : KIND[trade.kind],
         brokerName: brokerOf.get(trade.accountId)!,
         day: dayLabel(trade.occurredOn),
         grossMinor: trade.grossMinor,
@@ -116,10 +126,12 @@ export function securityPageModel(p: {
   trades: readonly TradeRow[];
   buyBaseMinor: Readonly<Record<string, number>>;
   base: string;
+  /** A mutual fund tied across places by "Same fund as", rather than a listed share. */
+  fund?: boolean;
 }): { stock: StockRow; recent: RecentLine[] } | null {
   const stock = p.view.stocks.find((s) => s.securityId === p.securityId);
   if (!stock) return null;
-  return { stock, recent: recentTrades(p.trades, stock, p.buyBaseMinor, p.base) };
+  return { stock, recent: recentTrades(p.trades, stock, p.buyBaseMinor, p.base, { fund: p.fund }) };
 }
 
 /**
@@ -163,12 +175,48 @@ export function overallTiles(o: {
   return tiles.filter((tile): tile is Tile => tile !== null);
 }
 
-/** A holding's row on the stock's page: "10 lots · avg Rp 8.750", and its own gain with the tone it is read in. */
-export function institutionLine(h: Pick<HoldingLine, 'unitsMicro' | 'costMinor' | 'valueMinor' | 'currency'>, lotSize: number | null): { subtitle: string; gain: { text: string; tone: 'gain' | 'loss' | 'flat' } | null } {
+/**
+ * The figures in a fund's card across its places. Every place counted in units: the units, what was invested, the
+ * average and the price, as one place's own page reads them. A place tracked by money has no units to add to the
+ * rest, so then the one figure that adds up is the money still in it, as that page's own card says.
+ */
+export function fundTiles(o: {
+  stock: Pick<StockRow, 'holdings' | 'unitsMicro' | 'costMinor' | 'currency'>;
+  price: { priceMicro: number; label: string; info: string } | null;
+}): Tile[] {
+  const { stock } = o;
+  if (stock.holdings.every((h) => h.unitsMicro > 0))
+    return pricedTiles({
+      unitKind: 'units',
+      unitsMicro: stock.unitsMicro,
+      costMinor: stock.costMinor,
+      lotSize: null,
+      currency: stock.currency,
+      priceMicro: o.price?.priceMicro ?? null,
+      priceLabel: o.price?.label ?? '',
+      priceTag: o.price ? { info: o.price.info } : undefined,
+    });
+  return [{ label: 'Money in', value: formatMinor(stock.costMinor, stock.currency), info: 'Money put in and not taken out yet, at every place. The value above minus this is the gain.' }];
+}
+
+/**
+ * A holding's row on the stock's page: "10 lots · avg Rp 8.750", and its own gain with the tone it is read in. A fund's
+ * (`fund`) reads its units and average, or — tracked by money — what is in it.
+ */
+export function institutionLine(
+  h: Pick<HoldingLine, 'unitsMicro' | 'costMinor' | 'valueMinor' | 'currency'>,
+  lotSize: number | null,
+  fund = false,
+): { subtitle: string; gain: { text: string; tone: 'gain' | 'loss' | 'flat' } | null } {
   const avg = h.unitsMicro > 0 ? `avg ${formatPriceMicro(priceMicroFrom(h.costMinor, h.unitsMicro), h.currency)}` : null;
   const bps = gainBps(h.valueMinor, h.costMinor);
+  const byMoney = fund && h.unitsMicro <= 0;
   return {
-    subtitle: [quantityLabel(h.unitsMicro, 'shares', lotSize), avg].filter(Boolean).join(' · '),
+    subtitle: byMoney
+      ? h.costMinor > 0
+        ? `Money in ${formatMinor(h.costMinor, h.currency)}`
+        : ''
+      : [quantityLabel(h.unitsMicro, fund ? 'units' : 'shares', lotSize), avg].filter(Boolean).join(' · '),
     gain: bps === null ? null : { text: formatBps(bps), tone: bps > 0 ? 'gain' : bps < 0 ? 'loss' : 'flat' },
   };
 }

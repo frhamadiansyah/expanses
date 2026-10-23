@@ -170,7 +170,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         <PricesGroup accountId={accountId} priced={value.mode === 'market'} gold={profile.data?.assetKind === 'gold' && profile.data.unitKind === 'grams'} />
       )}
 
-      {/* The same fund at another place, tied into one fund on Investments: seldom set, so here rather than on its page. */}
+      {/* The same fund at another place, tied into one row on Assets: seldom set, so here rather than on its page. */}
       {profile.data?.assetKind === 'fund' && <SameFundGroup accountId={accountId} />}
 
       {profile.data?.assetKind === 'bond' && <CouponGroup accountId={accountId} heldAt={profile.data.coretaxFields.inst?.trim() || null} />}

@@ -84,6 +84,13 @@ export interface PortfolioInputs {
   ratesToBase: Readonly<Record<string, number>>;
 }
 
+/**
+ * Which place a holding is kept at: its broker's cash account, or — a fund or bond held by name (0082) — its
+ * institution, one place however its name is cased. Holdings kept nowhere named share one key.
+ */
+export const placeKey = (h: Pick<HoldingLine, 'brokerAccountId' | 'place'>): string =>
+  h.brokerAccountId ?? (h.place ? `${PLACE}${h.place.toLowerCase()}` : NO_BROKER);
+
 const byBaseValue = <T extends { valueBaseMinor: number | null }>(a: T, b: T) => (b.valueBaseMinor ?? -1) - (a.valueBaseMinor ?? -1);
 
 export function portfolioView(p: PortfolioInputs): PortfolioView {
@@ -153,7 +160,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
 
   const brokersByKey = new Map<string, HoldingLine[]>();
   for (const line of lines) {
-    const key = line.brokerAccountId ?? (line.place ? `${PLACE}${line.place.toLowerCase()}` : NO_BROKER);
+    const key = placeKey(line);
     brokersByKey.set(key, [...(brokersByKey.get(key) ?? []), line]);
   }
   const brokers: BrokerRow[] = [...brokersByKey].map(([key, holdings]) => {
@@ -220,4 +227,14 @@ export function keptAt(row: StockRow): string {
   if (brokers.size > 1) return `${brokers.size} brokers`;
   const one = row.holdings[0]!.brokerName;
   return row.holdings.length > 1 ? `${one} · ${row.holdings.length} holdings` : one;
+}
+
+/**
+ * Where a fund is held, in words: the places counted, or — every holding at one institution — that institution and the
+ * holdings counted. A place is an institution's name, never the bank account a fund was once linked to.
+ */
+export function heldAtPlaces(row: Pick<StockRow, 'holdings'>): string {
+  const places = new Set(row.holdings.map(placeKey)).size;
+  if (places > 1) return `${places} places`;
+  return [row.holdings[0]!.place, `${row.holdings.length} holdings`].filter(Boolean).join(' · ');
 }
