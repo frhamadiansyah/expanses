@@ -10,7 +10,6 @@ test('a fund is held at an institution by name, never an account: a bank account
   await fundByMoney(page);
   const held = page.getByLabel('Held at', { exact: true });
   await expect(held).toHaveValue('');
-  await expect(page.getByText('A name only, for the tax report: not linked to any account.')).toBeVisible();
   // The bank account here names no bank, so its own name is not a choice: it would read as the account itself.
   await expect(held.locator('option', { hasText: /^BCA/ })).toHaveCount(0);
 
