@@ -7,8 +7,10 @@ export type TradeDoing = 'buy' | 'sell' | 'income' | 'units';
 /** The holding page's round button for each: a payment is named by what the holding pays (Dividend, Coupon, Income). */
 const BUTTON: Record<Exclude<TradeDoing, 'units'>, string | RegExp> = { buy: 'Buy', sell: 'Sell', income: /^(Dividend|Coupon|Income)$/ };
 
-/** Income, behind the Assets corner: the year's figures, the dividends and coupons, and every holding's trades. */
+/** Income, behind the Assets corner: the year's figures, and the dividends and coupons. */
 export const INCOME = '/net-worth/investments/dividends';
+/** All trades, from the foot of Assets' Investments: every holding's buys and sells by day. */
+export const ALL_TRADES = '/net-worth/investments/trades';
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -82,16 +84,16 @@ export async function recordTrade(page: Page, button = 'Record') {
   await expect(form).toHaveCount(0);
 }
 
-/** A line of Income's trades, by its title ("Bought Antam gold bars", "Sold AAPL · Stockbit"). */
+/** A line of All trades, by its title ("Bought Antam gold bars", "Sold AAPL · Stockbit"). */
 export const tradeRow = (page: Page, title: string | RegExp) => page.getByTestId('trade-row').filter({ hasText: title });
 
 /**
- * A recorded trade's ⋮, the way a reader reaches it: Income's line for it (the first with `title`, and `also` when
+ * A recorded trade's ⋮, the way a reader reaches it: All trades' line for it (the first with `title`, and `also` when
  * given) opens its holding's page, and the line of that page's history matching `line` ("Bought 2 g", "Dividend")
  * opens its sheet — Goals…, Reinvested…, Edit and Delete.
  */
 export async function openTradeRow(page: Page, title: string | RegExp, line: RegExp, also?: string | RegExp): Promise<Locator> {
-  await page.goto(INCOME);
+  await page.goto(ALL_TRADES);
   const row = tradeRow(page, title);
   await (also === undefined ? row : row.filter({ hasText: also })).first().click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);

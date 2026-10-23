@@ -1,6 +1,6 @@
-import { CASH_ITEMS } from '@expanses/core';
+import { CASH_ITEMS, isoDate } from '@expanses/core';
 import { Coins, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -12,7 +12,7 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useTrades } from './queries';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
 
 /** The kinds of account whose whole story lives on their own page: money, not things. */
@@ -129,7 +129,7 @@ function DrawerFigure({ drawer, baseCurrency }: { drawer: AssetDrawer; baseCurre
  * balance sheet on the page above folds the same money by. A kind of one still folds: "Intangible and other" holding
  * nothing but gold must still say that what is in it is gold.
  */
-function Group({ group, baseCurrency, money, stocks, opened = false }: { group: AssetGroup; baseCurrency: string; money: Set<string>; stocks: ByStockInputs; opened?: boolean }) {
+function Group({ group, baseCurrency, money, stocks, opened = false, after }: { group: AssetGroup; baseCurrency: string; money: Set<string>; stocks: ByStockInputs; opened?: boolean; after?: ReactNode }) {
   // A group picked on the chart above is shown with everything in it, not as drawers still to open.
   const drawers = useDrawers(opened ? group.drawers.map((drawer) => `${group.group}:${drawer.key}`) : []);
   const trailing = group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />;
@@ -162,6 +162,7 @@ function Group({ group, baseCurrency, money, stocks, opened = false }: { group: 
           }),
         ];
       })}
+      {after}
     </InsetGroup>
   );
 }
@@ -175,6 +176,11 @@ export function AssetsPage() {
   // What each holding is a share of, so a stock kept at two brokers is listed once.
   const links = useHoldingLinks();
   const securities = useSecurities();
+  // The buys and sells recorded this year, for the All trades row's count; null until read, and no row before any trade.
+  const trades = useTrades();
+  const thisYear = isoDate().slice(0, 4);
+  const tradesThisYear = trades.data && trades.data.length > 0 ? trades.data.filter((trade) => (trade.kind === 'buy' || trade.kind === 'sell') && trade.occurredOn.startsWith(thisYear)).length : null;
+  const traded = new Set((trades.data ?? []).map((trade) => trade.accountId));
   const [showSold, setShowSold] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
   const [picked, setPicked] = useState<string | null>(null);
@@ -194,6 +200,8 @@ export function AssetsPage() {
     : [];
   const total = totalOf(groups);
   const live = liveGroups(groups);
+  // The section All trades closes: Investments, or — with none, gold alone say — the first that holds a traded holding.
+  const tradesHome = (live.find((group) => group.group === 'invest') ?? live.find((group) => group.rows.some((row) => traded.has(row.accountId))))?.group ?? null;
   const sold = soldRows(groups);
   const stale = staleRows(groups);
   // The chart divides what is held: a section taken below nought by an overdraft is named under it instead.
@@ -299,6 +307,12 @@ export function AssetsPage() {
             money={money}
             stocks={stocks}
             opened={active === group.group}
+            // Every buy and sell, read on a page of its own: a row closing the section the trades are in.
+            after={
+              tradesThisYear !== null && group.group === tradesHome ? (
+                <InsetRow title="All trades" subtitle={`${tradesThisYear} this year`} to="/net-worth/investments/trades" testId="all-trades" />
+              ) : undefined
+            }
           />
         ))}
 

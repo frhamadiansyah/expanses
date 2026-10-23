@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openSettings } from './accounts';
 import { addPriced, openAsset } from './asset-page';
 import { addHoldingFlow } from './securities';
-import { INCOME, recordTrade, tradeRow } from './trades';
+import { ALL_TRADES, INCOME, recordTrade, tradeRow } from './trades';
 
 /*
  * Buy & sell is folded away (owner, 23 Oct): what only it did lives elsewhere now. Income (behind the Assets corner)
@@ -25,17 +25,26 @@ async function addStock(page: Page) {
   await expect(page.getByRole('heading', { name: 'BBRI' })).toBeVisible();
 }
 
-test('the old Buy & sell address lands on Income, whose trades show one holding at a time and open it', async ({ page }) => {
+test('Income reads the year; All trades, off Assets, shows one holding at a time and opens it; the old Buy & sell address lands there', async ({ page }) => {
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2026-03-09', '10', '18000000']]);
   await addPriced(page, 'Government bonds', 'ORI026', [['2026-01-15', '10000000', '10000000']]);
 
-  // An old link or bookmark: Income, not a page that is gone.
-  await page.goto('/net-worth/trades');
-  await expect(page).toHaveURL(new RegExp(`${INCOME}$`));
+  // Income: the year's two figures, side by side at the top, even before anything was sold or paid — and no trades.
+  await page.goto(INCOME);
   await expect(page.getByRole('heading', { name: 'Income' })).toBeVisible();
-  // The year's two figures, side by side at the top, even before anything was sold or paid.
   await expect(page.getByTestId('trades-year')).toContainText('Realized this year');
   await expect(page.getByTestId('trades-year')).toContainText('Income this year');
+  await expect(page.getByTestId('trade-history')).toHaveCount(0);
+
+  // All trades is the row closing Assets' Investments, with this year's count.
+  await page.goto('/net-worth/assets');
+  await expect(page.getByTestId('all-trades')).toContainText('2 this year');
+  await page.getByTestId('all-trades').click();
+  await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
+  await expect(page.getByRole('heading', { name: 'All trades' })).toBeVisible();
+  // An old link or bookmark to Buy & sell lands here, not on a page that is gone.
+  await page.goto('/net-worth/trades');
+  await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
 
   // Both purchases are listed, and a chip shows one holding's alone.
   await expect(tradeRow(page, 'Bought Antam gold bars')).toBeVisible();
@@ -73,8 +82,8 @@ test('a split is recorded from a share’s Settings, under Prices, and its line 
   await openAsset(page, 'BBRI');
   await expect(page.getByTestId('asset-history-row').filter({ hasText: 'Units changed' })).toContainText('100 lots');
   await expect(page.getByTestId('asset-card')).toContainText('200 lots');
-  // And Income lists it with the rest.
-  await page.goto(INCOME);
+  // And All trades lists it with the rest.
+  await page.goto(ALL_TRADES);
   await expect(tradeRow(page, 'Units of BBRI')).toContainText('+10.000 shares');
 });
 

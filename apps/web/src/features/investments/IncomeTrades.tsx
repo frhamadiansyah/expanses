@@ -159,8 +159,6 @@ export function HoldingsTable({ book }: { book: TradeBook }) {
  * Every holding's trades by day, newest first, with a chip per holding traded to show one alone. A line says what it
  * was, the goal it counts toward and whether a payment was put back in; it opens the holding's page, where its ⋮ edits
  * it, deletes it, and sets its goal or what was reinvested.
- *
- * The monthly plans sit at the head of it for now: a plan is a buy that comes every month, and its page is moving.
  */
 export function TradesSection({ book }: { book: TradeBook }) {
   const [filter, setFilter] = useState('all');
@@ -186,7 +184,6 @@ export function TradesSection({ book }: { book: TradeBook }) {
 
   return (
     <section aria-label="Trades" data-testid="trade-history">
-      <h2 className="px-[4px] pb-[6px] text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Trades</h2>
       {traded.length > 1 && (
         <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Show">
           {[{ accountId: 'all', name: 'All' }, ...traded].map((holding) => (
