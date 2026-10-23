@@ -470,9 +470,13 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     kind: 'purchase',
     entity: 'purchase',
     table: 'transactions',
-    tables: ['transactions', 'entries', 'book_transactions', 'transaction_flags', 'bill_payments'],
-    scopeRule: "the lineage's head is in book_transactions for the book (the ledger files only rows with an income or expense entry)",
-    scope: (bookId) => sql`t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})`,
+    // 0084: a purchase split across workspaces is filed in book_transaction_splits instead, and travels in its one shared
+    // workspace as its part there (capture.ts `projectPurchase`).
+    tables: ['transactions', 'entries', 'book_transactions', 'book_transaction_splits', 'transaction_flags', 'bill_payments'],
+    scopeRule:
+      "the lineage's head is in book_transactions for the book (the ledger files only rows with an income or expense entry), or has a part of a split across workspaces in it (book_transaction_splits)",
+    scope: (bookId) =>
+      sql`(t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId}) OR t.id IN (SELECT transaction_id FROM book_transaction_splits WHERE book_id = ${bookId}))`,
     keyColumns: ['lineage_id'],
     fields: {
       occurredOn: ['transactions.occurred_on'],
@@ -505,6 +509,8 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       'entries.transaction_id',
       'book_transactions.transaction_id',
       'book_transactions.book_id',
+      'book_transaction_splits.transaction_id',
+      'book_transaction_splits.book_id',
       'transaction_flags.transaction_id',
       'bill_payments.transaction_id',
     ],
@@ -545,6 +551,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   category_needs: ['workspace_id'],
   category_colours: ['workspace_id'],
   book_transactions: ['workspace_id'],
+  book_transaction_splits: ['workspace_id'],
   transaction_flags: ['workspace_id'],
   bill_payments: ['workspace_id'],
   // book_id is this row's own scope, not a synced field: apply writes it locally on insert (migration 0056).

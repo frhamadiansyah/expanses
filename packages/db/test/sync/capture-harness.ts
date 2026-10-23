@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
+import { bookSplitsExist, filedInBook } from '../../src/repos/book-splits';
 import { exactForTransactionTx } from '../../src/repos/exact-column';
 import { viewMember } from '../../src/sync/authority';
 import { configureCapture, projectPurchase } from '../../src/sync/capture';
@@ -93,8 +94,10 @@ function purchaseTables(entity: PurchaseEntity): Map<string, { txColumn: string;
       out.get(table)!.fieldOf.set(column, field);
     }
   }
-  // Moving a row between books is a synced fact too: it is judged by the lineage's head, not by a field.
+  // Moving a row between books is a synced fact too: it is judged by the lineage's head, not by a field. So is filing a
+  // purchase split across workspaces (0084).
   out.get('book_transactions')!.fieldOf.set('book_id', '');
+  out.get('book_transaction_splits')?.fieldOf.set('book_id', '');
   return out;
 }
 
@@ -102,6 +105,8 @@ function purchaseDdl(entity: PurchaseEntity, bookId: string, columnsOf: Readonly
   const parts: string[] = [];
   const when = watching(bookId);
   for (const [table, { txColumn, fieldOf }] of purchaseTables(entity)) {
+    // A database stopped at an older version has not got every purchase table yet (0084's splits, say).
+    if (!columnsOf.has(table)) continue;
     const record = (row: 'NEW' | 'OLD', op: string, cols: string) =>
       `INSERT INTO __writes (tbl, key, op, cols, old, mark) VALUES ('${table}', ${row}.${txColumn}, '${op}', ${cols}, NULL, ${MARK});`;
     const name = `__capture_${table}`;
@@ -248,6 +253,8 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   const ops = await outboxOps(database, bookId);
   const purchase = SHARED_ENTITIES.find((e) => e.kind === 'purchase') as PurchaseEntity;
   const fieldsByTable = purchaseTables(purchase);
+  // Filed in the book, or a part of a split across workspaces in it (0084) — where the database has splits.
+  const inBook = filedInBook(sql`t.id`, bookId, await bookSplitsExist(database.db));
   const misses: string[] = [];
 
   // Row entities: one judgement per row, from its first write in this batch.
@@ -314,9 +321,14 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   const reported = new Set<string>();
   for (const w of writes) {
     if (!purchase.tables.includes(w.table)) continue;
-    const filed = await database.db.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${w.key} AND book_id = ${bookId}`);
+    const filed = await database.db.values(sql`SELECT 1 FROM transactions t WHERE t.id = ${w.key} AND ${inBook}`);
     if (filed.length === 0) continue;
-    const [root] = await database.db.values<[string]>(sql`
+    // As capture finds it (`lineageOfTransaction`): the lineage the row heads, else the one its chain started — a row
+    // of a void lineage filed in the book again heads a lineage of its own.
+    const [headed] = await database.db.values<[string]>(sql`SELECT lineage_id FROM sync_lineage WHERE head_transaction_id = ${w.key}`);
+    const [root] = headed
+      ? [headed]
+      : await database.db.values<[string]>(sql`
       WITH RECURSIVE chain(id, prev, depth) AS (
         SELECT id, replaces_transaction_id, 0 FROM transactions WHERE id = ${w.key}
         UNION ALL
@@ -340,14 +352,16 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     if (lineagesChecked.has(lineageId)) continue;
     lineagesChecked.add(lineageId);
     const [lineage] = await database.db.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+    // Forward from its first row, up to a row that starts a lineage of its own.
     const [head] = await database.db.values<[string]>(sql`
       WITH RECURSIVE forward(id) AS (
         SELECT ${lineageId}
         UNION ALL
         SELECT t.id FROM transactions t JOIN forward f ON t.replaces_transaction_id = f.id
+        WHERE t.id NOT IN (SELECT lineage_id FROM sync_lineage)
       )
       SELECT t.id FROM transactions t JOIN forward f ON f.id = t.id
-      WHERE t.status = 'posted' AND t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})`);
+      WHERE t.status = 'posted' AND ${inBook}`);
     const expected = head?.[0] ?? null;
     if (!lineage) {
       if (expected !== null) misses.push(`${w.table} ${w.key}: purchase ${lineageId} has no sync_lineage row`);

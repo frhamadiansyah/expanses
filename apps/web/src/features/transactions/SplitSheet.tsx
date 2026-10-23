@@ -35,8 +35,10 @@ export interface OtherWorkspace {
 
 /**
  * The other workspaces a split's line can be filed in (one purchase split across workspaces, 0084), each with its
- * categories, roots first and each root's children after it. None while the open workspace is shared with a household,
- * and never a shared one: a shared workspace keeps each purchase whole, and the ledger refuses the split otherwise.
+ * categories, roots first and each root's children after it. A split may have a part in one workspace shared with a
+ * household, where that part alone reaches the other members: from a shared workspace only workspaces that are not
+ * shared are offered, and from any other every workspace but one whose sharing ended (kept read-only). Picking parts in
+ * two shared workspaces is refused by the ledger, in words.
  */
 export function otherWorkspaces(
   accounts: readonly AccountRow[],
@@ -45,10 +47,12 @@ export function otherWorkspaces(
   categoryBooks: Readonly<Record<string, string>>,
   membership: Record<string, unknown>,
   shared: ReadonlySet<string>,
+  readOnly: ReadonlySet<string> = new Set(),
 ): OtherWorkspace[] {
-  if (!openBookId || shared.has(openBookId)) return [];
+  if (!openBookId || readOnly.has(openBookId)) return [];
+  const fromShared = shared.has(openBookId);
   return books
-    .filter((book) => book.id !== openBookId && !shared.has(book.id))
+    .filter((book) => book.id !== openBookId && !readOnly.has(book.id) && !(fromShared && shared.has(book.id)))
     .map((book) => ({
       book,
       options: categoryGroups(offeredCategories(accounts, 'expense', membership, (a) => categoryBooks[a.id] === book.id)).flatMap(({ root, children }) => [
@@ -91,8 +95,10 @@ export function SplitSheet({
    */
   const membership = useCategorySetMembership().data ?? {};
   const categoryBooks = useCategoryBooks().data ?? {};
-  const shared = new Set((useSharedBooks().data ?? []).map((book) => book.bookId));
-  const others = otherWorkspaces(accounts, useBooks().data ?? [], ws.bookId, categoryBooks, membership, shared);
+  const sharedBooks = useSharedBooks().data ?? [];
+  const shared = new Set(sharedBooks.map((book) => book.bookId));
+  const readOnly = new Set(sharedBooks.filter((book) => book.state === 'unshared').map((book) => book.bookId));
+  const others = otherWorkspaces(accounts, useBooks().data ?? [], ws.bookId, categoryBooks, membership, shared, readOnly);
   const workspaceOf = (categoryId: string) => others.find((other) => other.book.id === categoryBooks[categoryId])?.book ?? null;
   return (
     <Sheet grouped title="Split" onClose={onClose}>

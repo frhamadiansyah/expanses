@@ -8,6 +8,7 @@ import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
 import { markForeignDirtyTx } from '../repos/fx-pending';
+import { bookSplitsExist } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
@@ -526,6 +527,101 @@ function rateFromPair(currency: string, base: string, amountMinor: number, amoun
   return rate > 0 && Number.isFinite(rate) ? rate : null;
 }
 
+/** A posting line that carries its book-currency figure. */
+type BasedLine = PostingLine & { amountBaseMinor: number };
+
+/**
+ * A purchase split across workspaces on this device (0084), whose part in this shared book is what travels: its category
+ * lines filed in its other workspaces — never sent, never received — as they stand, in the order they are posted around
+ * its first line in this book.
+ */
+interface PrivateParts {
+  before: BasedLine[];
+  after: BasedLine[];
+}
+
+/** The head's other parts, when it is a split here with parts outside this book; null for any other head. */
+async function privatePartsTx(tx: Db, ctx: BookContext, head: string): Promise<PrivateParts | null> {
+  if (!(await bookSplitsExist(tx))) return null;
+  if ((await tx.values(sql`SELECT 1 FROM book_transaction_splits WHERE transaction_id = ${head} LIMIT 1`)).length === 0) return null;
+  const rows = await tx.values<[string, number, string, number, string | null, number]>(sql`
+    SELECT e.account_id, e.amount_minor, e.currency, e.amount_base_minor, e.memo,
+           e.account_id IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ctx.bookId})
+    FROM entries e JOIN accounts a ON a.id = e.account_id
+    WHERE e.transaction_id = ${head} AND a.kind IN ('income', 'expense')
+    ORDER BY e.rowid`);
+  const parts: PrivateParts = { before: [], after: [] };
+  let here = false;
+  for (const [accountId, amountMinor, currency, amountBaseMinor, memo, inBook] of rows) {
+    if (Number(inBook)) {
+      here = true;
+      continue;
+    }
+    (here ? parts.after : parts.before).push({ accountId, amountMinor: Number(amountMinor), currency, amountBaseMinor: Number(amountBaseMinor), memo });
+  }
+  return parts.before.length + parts.after.length > 0 ? parts : null;
+}
+
+/**
+ * The head's other parts as a purchase of their own (0084): those category lines, and this device's own money lines of
+ * the head charged for them alone, a changed total on the largest line of each currency — as a partner's edit is
+ * carried. Rates as the head was posted at.
+ */
+async function remainderOfTx(tx: Db, head: string, parts: PrivateParts): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number> }> {
+  const category = [...parts.before, ...parts.after];
+  const own = (
+    await tx.values<[string, number, string, string | null, string | null]>(sql`
+      SELECT e.account_id, e.amount_minor, e.currency, e.memo, e.spend_category_id
+      FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id = ${head} AND a.kind NOT IN ('income', 'expense')
+        AND e.account_id NOT IN (SELECT account_id FROM book_member_accounts)
+      ORDER BY e.rowid`)
+  ).map(([accountId, amountMinor, currency, memo, spendCategoryId]) => ({ accountId, amountMinor: Number(amountMinor), currency, memo, spendCategoryId }));
+  const lines: PostingLine[] = [...category];
+  for (const currency of new Set(category.map((line) => line.currency))) {
+    const target = -category.filter((line) => line.currency === currency).reduce((sum, line) => sum + line.amountMinor, 0);
+    const mine = own.filter((entry) => entry.currency === currency);
+    // Never reached: a split is refused unless its money is this member's own (`splitRefusalTx`), in its lines' currency.
+    if (mine.length === 0) throw new Error(`apply: the split ${head} has no money of this device's own in ${currency} to keep its other parts on`);
+    const diff = target - mine.reduce((sum, entry) => sum + entry.amountMinor, 0);
+    const largest = mine.reduce((a, b) => (Math.abs(b.amountMinor) > Math.abs(a.amountMinor) ? b : a));
+    largest.amountMinor += diff;
+    for (const entry of mine) if (entry.amountMinor !== 0) lines.push(entry);
+  }
+  const rates = await tx.values<[string, number]>(sql`SELECT currency, fx_rate_to_base FROM entries WHERE transaction_id = ${head} ORDER BY rowid`);
+  const ratesToBase: Record<string, number> = {};
+  for (const [currency, rate] of rates) if (ratesToBase[currency] === undefined && rate !== null) ratesToBase[currency] = Number(rate);
+  return { lines, ratesToBase };
+}
+
+/**
+ * The head's other parts kept as a purchase of their own, apart from the lineage (0084): the part in this book is no
+ * longer this device's own spending — another member says they paid it — so it leaves the split, and the money spent
+ * here stays charged for the other parts alone. Dated, described and charged as the head; it takes the head's import
+ * identity (the caller clears it on the head), since the money side it keeps is the one the bank printed.
+ */
+async function postRemainderTx(tx: Tx, ctx: BookContext, head: string, parts: PrivateParts, author: string): Promise<string> {
+  const { lines, ratesToBase } = await remainderOfTx(tx, head, parts);
+  const [row] = await tx.values<[string, string, string, string | null, string | null, string | null]>(
+    sql`SELECT occurred_on, description, source, external_ref, card_id, mcc FROM transactions WHERE id = ${head}`,
+  );
+  const [occurredOn, description, source, externalRef, cardId, mcc] = row!;
+  const [flags] = await tx.values<[string | null, number]>(sql`SELECT channel, excluded FROM transaction_flags WHERE transaction_id = ${head}`).catch(() => []);
+  return postTransactionTx(tx, ctx.ws, {
+    occurredOn,
+    description,
+    lines,
+    ratesToBase,
+    source: source as PostTransactionInput['source'],
+    externalRef,
+    cardId,
+    mcc,
+    ...(flags ? { channel: flags[0] as PostTransactionInput['channel'], excludedFromReport: Number(flags[1]) === 1 } : {}),
+    acrossBooks: true,
+    syncAuthor: author,
+  });
+}
+
 /**
  * The posting lines a purchase's money reads as on this device (spec §7.4, corrected). The category lines post with
  * the figure the payer's device carried in the book's currency, never re-derived, so every device holds the same
@@ -545,19 +641,27 @@ async function postingLines(
   head: string | null,
   money: PurchaseMoney,
   trust: PaidFromTrust,
+  kept: PrivateParts | null = null,
 ): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined; refused: boolean }> {
   const lines: PostingLine[] = [];
   let refused = false;
   const perCurrency = new Map<string, { amount: number; base: number }>();
   const ratesToBase: Record<string, number> = {};
+  const carried: BasedLine[] = [];
   for (const line of money.lines) {
-    lines.push({
+    carried.push({
       accountId: await localCategory(tx, ctx, line.categoryId),
       amountMinor: line.amountMinor,
       currency: line.currency,
       amountBaseMinor: line.amountBaseMinor,
       memo: line.memo,
     });
+  }
+  // A purchase split across workspaces here (0084): its other parts, which never travel, stay as they are, around the
+  // part that came, and the money side is charged for every part — the card keeps the whole charge.
+  const category = kept ? [...kept.before, ...carried, ...kept.after] : carried;
+  for (const line of category) {
+    lines.push(line);
     const sum = perCurrency.get(line.currency) ?? { amount: 0, base: 0 };
     sum.amount += line.amountMinor;
     sum.base += line.amountBaseMinor;
@@ -641,8 +745,9 @@ async function ledgerInput(
   trust: PaidFromTrust,
   carriesDayOrder = false,
   carriesExact = false,
+  kept: PrivateParts | null = null,
 ): Promise<{ input: PostTransactionInput; refused: boolean }> {
-  const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust);
+  const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust, kept);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
   // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
   if (cardId !== undefined) input.cardId = cardId;
@@ -652,7 +757,8 @@ async function ledgerInput(
     input.templateId = state.bill?.templateId ?? null;
     input.billMonth = state.bill?.billMonth ?? null;
   }
-  if ('money' in winners) {
+  // A split here keeps its own original-currency figure: it is the whole charge's, which a part never carries (0084).
+  if ('money' in winners && !kept) {
     input.originalCurrency = state.money.originalCurrency;
     input.originalAmountMinor = state.money.originalAmountMinor;
   }
@@ -708,7 +814,17 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     if (!('money' in winners)) return false;
   }
   if (winners.void) {
-    await voidTransactionTx(tx, ctx.ws, lineage!.head!, {}, changeSet.member);
+    const parts = await privatePartsTx(tx, ctx, lineage!.head!);
+    if (parts) {
+      // A purchase split across workspaces here (0084), whose part in this book was deleted: that part goes, and the
+      // purchase stays as its other parts — an ordinary purchase in the other workspace, the card charged for what is
+      // left. The lineage is void as for any other purchase; what stays was never in it.
+      const [row] = await tx.values<[string, string]>(sql`SELECT occurred_on, description FROM transactions WHERE id = ${lineage!.head!}`);
+      const { lines, ratesToBase } = await remainderOfTx(tx, lineage!.head!, parts);
+      await replaceTransactionTx(tx, ctx.ws, lineage!.head!, { occurredOn: row![0], description: row![1], lines, ratesToBase, syncAuthor: changeSet.member });
+    } else {
+      await voidTransactionTx(tx, ctx.ws, lineage!.head!, {}, changeSet.member);
+    }
     await tx.run(sql`UPDATE sync_lineage SET head_transaction_id = NULL WHERE lineage_id = ${op.id}`);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
@@ -740,7 +856,17 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     known: lineage?.paidFrom ?? null,
     head: lineage?.head ?? null,
   };
-  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields, 'exactHundredths' in op.fields);
+  // A purchase split across workspaces here (0084): an edit of its part in this book keeps the other parts, so long as
+  // the part is still this device's own spending from its own money; otherwise the other parts leave it (below).
+  const parts = lineage ? await privatePartsTx(tx, ctx, lineage.head!) : null;
+  const ownStill = state.money.paidBy === ctx.memberId && (state.money.paidFrom?.owner ?? state.money.paidBy) === ctx.memberId;
+  const kept = parts && ownStill ? parts : null;
+  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields, 'exactHundredths' in op.fields, kept);
+  // Another member now says they paid the part here: it becomes theirs, as for any purchase (its money side on their
+  // placeholder), and the other parts stay this device's own, charged as they were, as a purchase of their own that
+  // takes the import identity with it.
+  const parted = parts && !ownStill ? parts : null;
+  if (parted) input.externalRef = null;
   // Final review item 2: the lineage keeps the `paidFrom` in effect here — none when this device refused to land it on
   // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
   const from = refused ? null : state.money.paidFrom;
@@ -751,7 +877,9 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
     );
   } else {
-    const id = await replaceTransactionTx(tx, ctx.ws, lineage.head!, input);
+    const was = lineage.head!;
+    const id = await replaceTransactionTx(tx, ctx.ws, was, input);
+    if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},
           paid_from_owner = ${from?.owner ?? null}, paid_from_item = ${from?.itemId ?? null} WHERE lineage_id = ${op.id}`,

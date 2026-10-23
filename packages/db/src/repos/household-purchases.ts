@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '../database';
+import { bookSplitsExist } from './book-splits';
 
 /*
  * The Household purchases of a period, as this phone holds them (joint-net-worth §8.3 "Lines you can see"): the shared
@@ -32,12 +33,16 @@ export interface HouseholdPurchase {
 export async function householdPurchases(database: Database, bookId: string, period: { start: string; end: string }): Promise<HouseholdPurchase[]> {
   const [table] = await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_lineage'`);
   if (!table) return [];
+  // A purchase split across workspaces (0084) is its part in the shared book alone, as it travels: never the other parts.
+  const inPart = (await bookSplitsExist(database.db))
+    ? sql`AND (t.id NOT IN (SELECT transaction_id FROM book_transaction_splits) OR a.id IN (SELECT category_account_id FROM book_categories WHERE book_id = l.book_id))`
+    : sql``;
   const rows = await database.db.values<[string, string, string, string, string, number, string, string, string | null, string | null]>(sql`
     SELECT l.lineage_id, t.id, t.occurred_on, t.created_at, t.description,
            COALESCE((SELECT sum(e.amount_minor) FROM entries e JOIN accounts a ON a.id = e.account_id
-                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income')), 0),
+                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') ${inPart}), 0),
            COALESCE((SELECT e.currency FROM entries e JOIN accounts a ON a.id = e.account_id
-                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') LIMIT 1), ''),
+                     WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') ${inPart} LIMIT 1), ''),
            l.paid_by, l.paid_from_item, l.paid_from_owner
     FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
     WHERE l.book_id = ${bookId} AND t.status = 'posted' AND t.occurred_on >= ${period.start} AND t.occurred_on <= ${period.end}
