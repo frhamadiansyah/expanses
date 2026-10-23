@@ -276,3 +276,35 @@ describe('what could be spent today', () => {
     expect(spendableOf([], TODAY)).toBe(0);
   });
 });
+
+describe('points converted in from another programme', () => {
+  const arrived = (id: string, quantity: number, occurredOn: string, expiresOn: string | null = null): PointEntry => ({
+    id,
+    kind: 'transfer',
+    quantity,
+    occurredOn,
+    status: 'posted',
+    batchId: null,
+    expiresOn,
+  });
+
+  it('are a batch of their own: spent from, and dying on their own date', () => {
+    const entries = [arrived('in', 6_660, '2026-08-01', '2026-10-01'), earn('e', 1_000, '2026-09-01', { expiresOn: '2028-09-01' })];
+
+    expect(balanceOf(entries, TODAY)).toMatchObject({ total: 7_660, expiringSoon: 6_660, nextExpiryOn: '2026-10-01' });
+    // The miles that die first go first.
+    expect(consumeFifo(entries, 7_000, TODAY)).toEqual([
+      { batchId: 'in', quantity: 6_660 },
+      { batchId: 'e', quantity: 340 },
+    ]);
+    expect(dueToExpire(entries, '2026-10-02')).toEqual([{ batchId: 'in', quantity: 6_660, expiresOn: '2026-10-01' }]);
+  });
+
+  it('leave a conversion out drawing on batches like any spending', () => {
+    const out: PointEntry = { id: 'out', kind: 'transfer', quantity: -10_000, occurredOn: TODAY, status: 'posted', batchId: 'e', expiresOn: null };
+    const entries = [earn('e', 25_000, '2026-08-01'), out];
+
+    expect(spendableOf(entries, TODAY)).toBe(15_000);
+    expect(balanceOf(entries, TODAY).total).toBe(15_000);
+  });
+});

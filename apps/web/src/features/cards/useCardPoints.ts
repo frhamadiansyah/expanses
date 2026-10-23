@@ -19,6 +19,8 @@ import {
   type CatalogState,
   cardSpendLines,
   type CardTermsRow,
+  programmeOfCard,
+  type ProgrammeRow,
   type Database,
   getCardTerms,
   getCatalogState,
@@ -50,6 +52,8 @@ export interface CardPoints {
   card: AccountRow;
   terms: CardTermsRow | undefined;
   program: RewardProgramRow | undefined;
+  /** The points programme the card earns into: where its balance, expiry and redemptions live. */
+  programme: ProgrammeRow | undefined;
   rules: EarnRule[];
   redemptions: RedemptionOptionRow[];
   best: Redemption | null;
@@ -83,7 +87,8 @@ export async function loadCardPoints(
 ): Promise<CardPoints> {
   const terms = await getCardTerms(database, ws, card.id);
   const program = (await listPrograms(database, ws)).find((p) => p.cardAccountId === card.id);
-  const empty: CardPoints = { card, terms, program, rules: [], redemptions: [], best: null, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
+  const programme = program ? await programmeOfCard(database, ws, program.id) : undefined;
+  const empty: CardPoints = { card, terms, program, programme, rules: [], redemptions: [], best: null, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
   if (!program) return empty;
 
   const rules = await listEarnRules(database, ws, program.id);
@@ -114,7 +119,7 @@ export async function loadCardPoints(
   const currentCycle = cycleFor(onDate, program.cycleAnchor, statementDay);
   const current = await load(currentCycle);
   const previous = await load(previousCycle(currentCycle, program.cycleAnchor, statementDay));
-  return { card, terms, program, rules, redemptions, best, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
+  return { card, terms, program, programme, rules, redemptions, best, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
 }
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

@@ -28,6 +28,7 @@ import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardsPage } from '../features/cards/CardsPage';
+import { ProgrammePage } from '../features/cards/ProgrammePage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CheckStatementPage, checkSearch } from '../features/statement-check/CheckStatementPage';
 import { PickCardPage, sharedStatementSearch } from '../features/statement-check/PickCardPage';
@@ -222,6 +223,9 @@ const routeTree = rootRoute.addChildren([
   ]),
   // A static segment, so it outranks the wallet's `$cardId` however the two are nested.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
+  // A points programme — a bank's, an airline's, a hotel's — is a balance of its own that cards earn into, so it has a
+  // page of its own beside the wallet. "points" is static, so it outranks the wallet's `$cardId`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId', component: ProgrammePage }),
   // A card's statement checked from screenshots (statement-check spec §3.4): a screen of its own over the wallet, as
   // Move is over an account. `batch` enters with screenshots the share sheet already read.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/check', component: CheckStatementPage, validateSearch: checkSearch }),

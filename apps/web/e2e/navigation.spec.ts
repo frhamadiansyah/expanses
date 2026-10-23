@@ -34,8 +34,9 @@ test('menu navigation between a card page and the cards list keeps working', asy
   await expect(page.getByRole('button', { name: 'Add rule' })).toBeVisible();
   await menu(page, 'Cards');
   await expect(page.getByRole('heading', { name: 'Cards & points' })).toBeVisible();
-  // Scope to the card's own row: the page heading "Cards & points" would also match a bare /points$/.
-  const row = page.locator('section', { has: page.getByRole('link', { name: 'Only Card' }) });
+  // Scope to the wallet: the page heading "Cards & points" would also match a bare /points$/, and the Points section
+  // below names the card on its programme's row.
+  const row = page.getByRole('region', { name: 'Cards' });
   await expect(row).toContainText(/\d+ points/);
   await expect(row).not.toContainText('Rewards not set up');
 

@@ -159,7 +159,34 @@ export const pointEntries = sqliteTable('point_entries', {
   expiresOn: text('expires_on'),
   note: text('note'),
   valueMinor: integer('value_minor'),
+  /** The reward program (a card's earning setup) whose rules earned this. Null on anything but an earn. See 0085. */
+  earnedById: text('earned_by_id'),
+  /** Shared by both sides of one conversion between programmes, so removing one removes both. */
+  conversionId: text('conversion_id'),
   createdAt: text('created_at').notNull(),
+});
+
+/**
+ * A points balance of its own (0085): a bank's programme, an airline's, a hotel's. Cards earn into one, and points
+ * move from one into another; `point_entries` and `point_snapshots` are keyed by it. A card's own programme from
+ * before 0085 shares the reward program's id.
+ */
+export const pointProgrammes = sqliteTable('point_programmes', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  name: text('name').notNull(),
+  unit: text('unit', { enum: ['points', 'miles', 'cashback'] }).notNull(),
+  expiryPolicy: text('expiry_policy', { enum: ['none', 'months_from_earn', 'fixed_annual'] }).notNull().default('none'),
+  expiryMonths: integer('expiry_months'),
+  archivedAt: text('archived_at'),
+  createdAt: text('created_at').notNull(),
+});
+
+/** Which programme a reward program's earning goes into: one row per reward program. */
+export const earnsInto = sqliteTable('earns_into', {
+  programId: text('program_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programmeId: text('programme_id').notNull(),
 });
 
 export const pointSnapshots = sqliteTable('point_snapshots', {

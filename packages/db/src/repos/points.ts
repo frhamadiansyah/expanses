@@ -19,6 +19,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
+import { openOwnProgrammeTx } from './programme-link';
 import { nonEarningInstallmentTransactionIds } from './installments';
 import { exactExists, exactFitsPosting } from './exact-column';
 import { extrasTablesExist } from './transaction-extras';
@@ -152,6 +153,8 @@ export async function createProgram(
   await database.transaction(async (tx) => {
     await requireEarningCard(tx, ws, input.cardAccountId);
     await tx.insert(rewardPrograms).values(row);
+    // The card's points go into a balance of their own until the owner joins them to another programme.
+    await openOwnProgrammeTx(tx, row);
   });
   return row;
 }

@@ -295,7 +295,8 @@ export function CardHero({
     queryFn: () => cardStatement(database, ws, card.id, lastCycle!, today),
   });
 
-  const unit = cp.program?.unit ?? 'points';
+  // The balance is the programme's the card earns into, counted in that programme's unit.
+  const unit = cp.programme?.unit ?? cp.program?.unit ?? 'points';
   const unitLabel = unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points';
   const result = cp.current;
   const bonus = result ? cp.bonuses.find((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : undefined;
@@ -487,7 +488,7 @@ export function CardHero({
                       {formatPoints(pointsBalance?.total ?? 0)} {unit}
                     </span>
                   }
-                  subtitle={[cp.program.name, result ? `+${formatPoints(result.earn.totalPoints)} this cycle` : null].filter(Boolean).join(' · ')}
+                  subtitle={[cp.programme?.name ?? cp.program.name, result ? `+${formatPoints(result.earn.totalPoints)} this cycle` : null].filter(Boolean).join(' · ')}
                   value={worth !== null && cp.best ? `≈ ${formatMinor(worth, cp.best.currency)}` : undefined}
                   valueTone="ink"
                   onClick={() => onTab('points')}
@@ -586,8 +587,9 @@ export function CardHero({
                 }
               />
             )}
-            {cp.program && pointsBalance && (
-              <InsetRow title={<span className="text-[var(--ph-tint)]">Use {unit}</span>} onClick={() => onTab('points', 'spend-points')} />
+            {/* Points are spent and converted from the programme they sit in, which has a page of its own. */}
+            {cp.programme && pointsBalance && (
+              <InsetRow title={<span className="text-[var(--ph-tint)]">Use {unit}</span>} to="/cards/points/$programmeId" params={{ programmeId: cp.programme.id }} />
             )}
             {cp.program && result && (
               <InsetRow title={<span className="text-[var(--ph-tint)]">See by rule</span>} onClick={() => onTab('points')} />

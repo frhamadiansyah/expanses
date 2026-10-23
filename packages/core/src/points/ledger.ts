@@ -21,7 +21,7 @@ export type EntrySource = 'transaction' | 'statement' | 'snapshot' | 'projected'
 export interface PointEntry {
   id: string;
   kind: EntryKind;
-  /** Signed: earn and a positive adjust are above zero; redeem, expire and transfer are below it. */
+  /** Signed: earn, a positive adjust and a conversion in are above zero; redeem, expire and a transfer out are below it. */
   quantity: number;
   occurredOn: string;
   status: 'posted' | 'projected';
@@ -59,9 +59,13 @@ const addDays = (date: string, days: number): string => {
   return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().slice(0, 10);
 };
 
-/** A batch is points you hold: earning them, or a correction upward from a balance you read. */
+/**
+ * A batch is points held: earning them, a correction upward from a balance read in the issuer's app, or points
+ * converted in from another programme. A conversion out is a `transfer` below zero, drawing on batches like any
+ * spending; the same kind above zero is what arrived on the other side, and ages under that programme's own policy.
+ */
 function opensBatch(entry: PointEntry): boolean {
-  return entry.kind === 'earn' || (entry.kind === 'adjust' && entry.quantity > 0);
+  return entry.kind === 'earn' || ((entry.kind === 'adjust' || entry.kind === 'transfer') && entry.quantity > 0);
 }
 
 /** What is left in each batch: the batch itself, less everything drawn against it. */
