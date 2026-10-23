@@ -198,10 +198,11 @@ export function tradeLine(
     const cost = trade.grossMinor + trade.feeMinor;
     if (o.priceMicro === null) return { title: `Bought ${quantity}`, subtitle: `${dayLabel(trade.occurredOn)}${at}`, value: formatMinor(cost, o.currency), note: null, tone: 'quiet' };
     const now = unitsValueMinor(trade.unitsMicro, o.priceMicro);
+    // What was paid is the figure (owner, 23 Oct): how much was bought; how it has done since is the small line.
     return {
       title: `Bought ${quantity}`,
       subtitle: `${dayLabel(trade.occurredOn)}${at}`,
-      value: formatMinor(now, o.currency),
+      value: formatMinor(cost, o.currency),
       note: signed(now - cost, o.currency),
       tone: now < cost ? 'loss' : 'gain',
     };
