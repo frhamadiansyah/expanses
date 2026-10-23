@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, openTypes } from './accounts';
+import { expectWalletFigure, openAccount, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openAssets } from './drawers';
 
@@ -13,7 +13,8 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   const broker = page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ });
   await expect(broker).toContainText('8.000.000');
   await page.goto('/wallet');
-  await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
+  await expect(walletCard(page, 'GoPay')).toBeVisible();
+  await expect(walletCard(page, 'RDN Mandiri Sekuritas')).toHaveCount(0);
   await expect(page.getByText('Parked at brokers')).toHaveCount(0);
 
   await page.goto('/transactions');
@@ -21,9 +22,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   await expect(page.getByText('Warung Tegal')).toBeVisible();
 
   await page.goto('/wallet');
-  await openTypes(page);
-  const wallet = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'GoPay', exact: true }) });
-  await expect(wallet).toContainText('455.000');
+  await expectWalletFigure(page, 'GoPay', '455.000');
 
   // Both are money the owner holds, so net worth counts them and the wallet's spending came off it.
   await page.goto('/');

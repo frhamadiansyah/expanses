@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { personRow } from './people';
-import { openAccount, openTypes, openSettings } from './accounts';
+import { openAccount, openSettings, walletCard } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
@@ -376,8 +376,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await name.blur();
   await expect(name).toHaveValue('Multi Plus');
   await page.goto('/wallet');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Multi Plus', exact: true }).click();
+  await walletCard(page, 'Multi Plus').click();
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByRole('heading', { name: 'Multi Plus · USD' })).toBeVisible();
 });

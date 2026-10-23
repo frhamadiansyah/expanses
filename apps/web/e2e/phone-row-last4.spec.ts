@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openSettings, openTypes } from './accounts';
+import { openAccount, openCard, openSettings, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -152,8 +152,7 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
 
   // Changed on the wallet's settings, the rows follow.
   await page.goto('/wallet');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Kantong Biru', exact: true }).click();
+  await walletCard(page, 'Kantong Biru').click();
   await openSettings(page);
   const digits = page.getByLabel('Last 4 digits of phone');
   await expect(digits).toHaveValue('5521');

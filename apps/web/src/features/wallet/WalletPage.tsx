@@ -152,7 +152,8 @@ export function WalletPage() {
   /** What moved in and out of that money each day: the ledger's own conversion, so the line needs no rate of its own. */
   const flows = useQuery({
     queryKey: ['wallet-flows', ws.workspaceId, today, countedIds.join(',')],
-    enabled: accounts.isSuccess,
+    // Read only while the box is on screen: an open card's page and a hidden box draw no line.
+    enabled: accounts.isSuccess && openId === undefined && !hidden,
     queryFn: async () => {
       const { transactions } = await listTransactionsIn(database, ws, { from: daysBefore(today, SPARK_DAYS), to: today });
       const ids = new Set(countedIds);
@@ -242,9 +243,16 @@ export function WalletPage() {
     if (raisedKey) header.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true });
   }, [raisedKey]);
 
-  // A page for an account or a card the stack does not hold stands on its own, as it always has. Until the stack has
-  // loaded it cannot be told which, so nothing is drawn rather than the wrong one.
-  if (openId !== undefined && !raised) return ready || accounts.isError ? <Outlet /> : null;
+  /*
+   * A page for an account or a card the stack does not hold — a deposit, savings kept aside, a pocket — stands on its
+   * own, as it always has, as soon as the accounts say so. One the stack does hold waits for the stack, so the card
+   * rises out of it rather than a page being drawn and then moved under a card.
+   */
+  if (openId !== undefined) {
+    if (!accounts.isSuccess) return accounts.isError ? <Outlet /> : null;
+    if (![...money, ...credit].some((account) => account.id === openId)) return <Outlet />;
+    if (!raised) return ready ? <Outlet /> : null;
+  }
 
   /*
    * The corners: the eye, then ＋ — money to spend from, or a credit card, each through its own door — and the card

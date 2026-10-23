@@ -1,16 +1,15 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openTypes } from './accounts';
+import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 
 /**
- * An account's history, reached the way a reader reaches it: its row on Accounts, which opens the account's own
+ * An account's history, reached the way a reader reaches it: its card on Wallet, which opens the account's own
  * page, then See all over the last few rows it lists.
  */
 async function openHistory(page: Page, name: string) {
-  await openTypes(page);
-  await page.getByRole('link', { name, exact: true }).click();
+  await walletCard(page, name).click();
   await page.getByRole('link', { name: 'See all' }).click();
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openTypes } from './accounts';
+import { walletCard } from './accounts';
 import { expireSnooze, overdueBanner, restoreAgedByDays } from './backup-reminders-fixture';
 import { addBank, forgetSafetyCopies, waitForSafetyCopy } from './recovery-fixture';
 
@@ -60,8 +60,7 @@ test('the backup screen lists the copies the app keeps, and restores one', async
 
   // What the copy held is back, and what was entered after it was taken is not.
   await page.goto('/wallet');
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: 'In the copy', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'In the copy')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Added afterwards', exact: true })).toHaveCount(0);
 
   /*

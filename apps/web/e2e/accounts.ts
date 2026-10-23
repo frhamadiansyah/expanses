@@ -75,6 +75,14 @@ export interface NewAccount {
 export const walletCard = (page: Page, name: string) =>
   page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(,|$)`) });
 
+/**
+ * What a card on Wallet reads — a balance, or what a credit card owes — read off the card's own name, which carries
+ * the figure on its band. Where the Accounts list's row once said "Rp 7.500.000", the card does.
+ */
+export async function expectWalletFigure(page: Page, name: string, figure: string) {
+  await expect(walletCard(page, name)).toHaveAccessibleName(new RegExp(figure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+}
+
 /** An account's own page, opened from its card on Wallet — under the raised card, as a person opens it. */
 export async function openWalletAccount(page: Page, name: string) {
   await page.goto('/wallet');

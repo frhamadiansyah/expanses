@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { openAccount, openCard, openTypes } from './accounts';
+import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
@@ -468,12 +468,11 @@ async function netWorthReads(page: Page, figure: string, legend: string[] | null
   });
 }
 
-/** An own account's figure on Accounts, drawers open. */
+/** An own account's figure on its Wallet card. */
 async function accountReads(page: Page, name: string, figure: string) {
   await eventually(page, async () => {
     await page.goto('/wallet');
-    await openTypes(page);
-    await expect(page.getByRole('link', { name, exact: true }).locator('xpath=ancestor::li[1]')).toContainText(figure, { timeout: 2_000 });
+    await expect(walletCard(page, name)).toHaveAccessibleName(new RegExp(figure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), { timeout: 2_000 });
   });
 }
 
@@ -608,8 +607,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
 
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
   await page.goto('/wallet');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Fandri Bank', exact: true }).click();
+  await walletCard(page, 'Fandri Bank').click();
   await page.getByLabel('Share with Household').selectOption({ label: "Don't share" });
   await expect(page.getByLabel('Share with Household')).toHaveValue('hidden');
   await eventually(dewi, async () => {

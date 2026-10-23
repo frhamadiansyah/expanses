@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openTypes, openSettings } from './accounts';
+import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
 import { cardPage, cardPointsPage } from './card-section';
@@ -242,10 +242,8 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
 
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/wallet');
-  await openTypes(page);
-  // An account is a row of the table now, not a list item — see `add-transaction.spec.ts` for the whole note.
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
+  await expectWalletFigure(page, 'BCA KrisFlyer', '3.995.000');
+  await expectWalletFigure(page, 'BCA Tahapan', '50.000.000');
 
   // And the refusals come with it: a trade's money half is corrected on its holding's page or not at all. The receipt is
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
@@ -277,8 +275,7 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('8 g');
   await page.goto('/wallet');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
+  await expectWalletFigure(page, 'BCA Tahapan', '54.200.000');
 });
 
 test('a purchase paid by card reaches the points engine with the MCC and category it was given', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { fillDay } from './add-asset';
-import { openTypes, openSettings } from './accounts';
+import { expectWalletFigure, openSettings, walletCard } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openAssets, openDrawers } from './drawers';
 
@@ -21,8 +21,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // The balance is optional here, and the group's footer says what happens to it.
   await expect(page.getByText('The balance is optional; it is posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await expect(walletCard(page, 'BCA Tahapan')).toBeVisible();
 
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Time deposit' }).click();
@@ -79,10 +78,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await sheet.getByRole('button', { name: 'Break early' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await page.goto('/wallet');
-  await openTypes(page);
-  await expect(
-    page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
-  ).toContainText('120.000.000');
+  await expectWalletFigure(page, 'BCA Tahapan', '120.000.000');
 });
 
 /** An asset's tax code is no longer on its list row: it is on the asset's own settings, under the tax report. */

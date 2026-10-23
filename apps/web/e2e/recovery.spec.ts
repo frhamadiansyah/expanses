@@ -171,8 +171,8 @@ test('start fresh still empties the device when the engine will not do the wipe'
   // opened on may have had a copy of its own taken since; that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
   await page.goto('/wallet');
-  // The corner action is a link to the picker: the inline form that used to make it a button is gone.
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  // Wallet drew: its ＋ corner, which offers a money account or a credit card.
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
 });
 
@@ -202,7 +202,7 @@ test('start fresh needs two presses, says what it deletes, and empties the devic
   await Promise.all([page.waitForEvent('load'), confirm.click()]);
 
   await page.goto('/wallet');
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
 });
 
@@ -222,7 +222,7 @@ test('start fresh from the recovery tools empties a device whose file will not o
 
   await page.goto('/wallet');
   // The app opens rather than falling back into recovery: a device that has never run Expanses.
-  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
   // A clean slate is clean: the copy of the old data went with the pool, not just the database the VFS
   // owns. (A fresh copy of the new, empty database may already have been taken — that one is not it.)
@@ -355,7 +355,8 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   // Deliberately not the shared walk: that one is a `goto`, and a reload is the very thing this test is about.
   // The link is walked in-app, so the open that entered the money is still the open the card belongs to.
-  await page.getByRole('link', { name: 'Add account' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Money account' }).click();
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
   await page.getByLabel('Balance now', { exact: true }).pressSequentially('1000000');

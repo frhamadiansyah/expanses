@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openTypes } from './accounts';
+import { expectWalletFigure, openAccount } from './accounts';
 import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
@@ -305,6 +305,5 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // extra, is exactly what left the dollar account: 2.400 − 500 − 12,50.
   await expect(page.getByText(/19\.500,00/).first()).toBeVisible();
   await page.goto('/wallet');
-  await openTypes(page);
-  await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
+  await expectWalletFigure(page, 'Wise USD', '1.887,50');
 });

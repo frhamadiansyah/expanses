@@ -36,7 +36,8 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   // Overlapping, back to front: the front card lies over the lower part of the one behind it.
   expect(front.y).toBeLessThan(back.y + back.height);
   expect(front.y).toBeGreaterThan(back.y);
-  await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*\d+ points/);
+  // A covered card's band carries what it owes; its points are on the line beside the stack.
+  await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*Rp\s*0/);
   // The facts sit to the right of the stack.
   const facts = (await wall.getByTestId('wallet-facts').boundingBox())!;
   expect(facts.x).toBeGreaterThanOrEqual(front.x + front.width);

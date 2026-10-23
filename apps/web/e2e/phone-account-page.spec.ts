@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, openTypes } from './accounts';
+import { openAccount, walletCard } from './accounts';
 
 import { mockRates, openWithPockets } from './pockets';
 
@@ -16,8 +16,7 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   await page.getByRole('dialog', { name: 'New expense' }).getByRole('button', { name: 'Close' }).tap();
 
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Valas Plus', exact: true }).tap();
+  await walletCard(page, 'Valas Plus').tap();
   await page.getByTestId('pocket-SGD').tap();
   await expect(page.getByRole('heading', { name: 'Valas Plus · SGD' })).toBeVisible();
   await page.getByRole('button', { name: 'Valas Plus', exact: true }).tap();
@@ -29,9 +28,8 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '932500' });
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '0' });
-  await openTypes(page);
 
-  await page.getByRole('link', { name: 'Pocket cash', exact: true }).tap();
+  await walletCard(page, 'Pocket cash').tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Count cash']);
   await page.getByRole('button', { name: 'Count cash', exact: true }).tap();
   const count = page.getByRole('dialog', { name: 'Count cash' });
@@ -48,8 +46,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await withdrawal.getByRole('button', { name: 'Close' }).tap();
 
   await page.goto('/wallet');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'GoPay', exact: true }).tap();
+  await walletCard(page, 'GoPay').tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Top up', 'Receive', 'Adjust']);
   await page.getByRole('button', { name: 'Top up', exact: true }).tap();
   const topUp = page.getByRole('dialog', { name: 'Top up' });
@@ -60,8 +57,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(page.getByTestId('balance-card')).toContainText('150.000');
 
   await page.goto('/wallet');
-  await openTypes(page);
-  await page.getByRole('link', { name: 'Everyday', exact: true }).tap();
+  await walletCard(page, 'Everyday').tap();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
   await page.getByTestId('add-currency').tap();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
