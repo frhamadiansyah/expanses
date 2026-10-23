@@ -5,7 +5,7 @@ import { editGoal, openGoalForm, openWorking, workingSettled } from './goals';
 import { openDrawers } from './drawers';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
-import { openTradeForm, openTradeRow, recordTrade } from './trades';
+import { openShortTrade, openTradeDetails, openTradeRow, recordShortTrade } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -48,12 +48,14 @@ async function addGoal(page: Page, kind: string, name: string, amount: string, d
   await expect(goalRow(page, name)).toBeVisible();
 }
 
+/** Gold's own Buy sheet, with the goal chosen behind its "Add more details". */
 async function buyGold(page: Page, grams: string, cost: string, goalName: string) {
-  const form = await openTradeForm(page, 'buy', 'Antam gold bars');
-  await form.getByLabel('Units, shares or grams').fill(grams);
-  await form.getByLabel('What it cost, before fees (IDR)').fill(cost);
-  await form.getByLabel('For goal').selectOption({ label: goalName });
-  await recordTrade(page);
+  const sheet = await openShortTrade(page, 'buy', 'Antam gold bars');
+  await sheet.getByLabel('Grams', { exact: true }).fill(grams);
+  await sheet.getByLabel('Total paid', { exact: true }).pressSequentially(cost);
+  await openTradeDetails(sheet);
+  await sheet.getByLabel('For goal').selectOption({ label: goalName });
+  await recordShortTrade(page, 'buy');
 }
 
 test('a goal funded by a tagged gold buy shows progress and what it needs each month', async ({ page }) => {
@@ -116,11 +118,12 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
   await addGoal(page, 'hajj', 'Hajj for two', '50000000', '2028-06-30');
   await buyGold(page, '2', '3600000', 'Hajj for two');
 
-  const form = await openTradeForm(page, 'sell', 'Antam gold bars');
-  await form.getByLabel('Units, shares or grams').fill('5');
-  await form.getByLabel('Proceeds, before fees (IDR)').fill('9500000');
-  await form.getByLabel('Sell from goal').selectOption({ label: 'Hajj for two' });
-  await form.getByRole('button', { name: 'Record', exact: true }).click();
+  const sheet = await openShortTrade(page, 'sell', 'Antam gold bars');
+  await sheet.getByLabel('Grams', { exact: true }).fill('5');
+  await sheet.getByLabel('Received', { exact: true }).pressSequentially('9500000');
+  await openTradeDetails(sheet);
+  await sheet.getByLabel('Sell from goal').selectOption({ label: 'Hajj for two' });
+  await page.getByRole('button', { name: 'Record sell', exact: true }).click();
 
   await expect(page.getByText(/Hajj for two holds/)).toBeVisible();
 });

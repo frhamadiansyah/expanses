@@ -732,7 +732,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           lastPrice={latestPrice}
           position={position}
           brokerAccountId={brokerId}
-          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
         />
       )}
@@ -744,7 +743,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           lastPrice={latestPrice}
           position={position}
           defaultCashId={brokerId}
-          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
           byMoney={byMoney ? { valueMinor: value.valueMinor } : null}
         />
@@ -764,7 +762,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           icon={<KindGlyph size={16} aria-hidden />}
           lastPrice={latestPrice}
           position={position}
-          onMore={(initial) => setSheet({ kind: 'trade', title: sheet.trade === 'buy' ? 'Buy' : 'Sell', initial, editing: null })}
           onClose={() => setSheet(null)}
         />
       )}

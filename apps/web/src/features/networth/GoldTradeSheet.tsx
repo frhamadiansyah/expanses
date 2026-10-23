@@ -8,13 +8,12 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { dayLabel } from './asset-page';
-import { type TradeDraft, typedAmount } from './trade-form';
-import { CashRow, CashSheet, HoldingRow, MoreOptionsRow, ResultRow, signedMinor, TypedRow, typedMinor, useCashSide, useTradeSave } from './trade-sheet-parts';
+import { CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const PAID_INFO =
-  "Type the receipt's total, including any tax on it, so the cost is what actually left the account. The sizes above the keyboard are the brand's own bar sizes; any other weight can be typed.";
+  "The receipt's total, with any tax on it. A fee charged on top of it goes under Fee in the details; the cost is the two together, which is what left the account. The sizes above the keyboard are the brand's own bar sizes; any other weight can be typed.";
 const RECEIVED_INFO =
-  'Type what actually arrived, after any tax the buyer withheld. A buyback price is usually below the selling price, so a quick sale often shows a loss.';
+  'What the sale brought. With no fee or tax in the details, that is what arrived; a fee or tax withheld typed there comes off it before it reaches the account. A buyback price is usually below the selling price, so a quick sale often shows a loss.';
 
 /** A price per gram in whole minor units, as the holding line writes it: Rp 1.950.000/g. */
 const perGram = (priceMicro: number, currency: string) => `${formatMinor(Math.round(priceMicro / 1_000_000), currency)}/g`;
@@ -23,7 +22,8 @@ const perGram = (priceMicro: number, currency: string) => `${formatMinor(Math.ro
  * Buy or Sell of gold bars from their own page, as a dealer's receipt reads: grams, the total paid or received, the
  * account and the day. While Grams is being typed on a phone the brand's bar sizes ride above the keyboard, one tap
  * each. A sell can take All, every gram, so the holding ends at exactly 0 g, and shows its gain against the average
- * cost. Recorded by `recordTrade`, as the full form records it; More options opens that form with these figures in it.
+ * cost. "Add more details" opens a second box under the first, in the same sheet: a fee, tax withheld, the goal, and
+ * the rate that day for an account in another currency. Recorded by `recordTrade`, as the full form records it.
  */
 export function GoldTradeSheet({
   kind,
@@ -31,7 +31,6 @@ export function GoldTradeSheet({
   icon,
   lastPrice,
   position,
-  onMore,
   onClose,
 }: {
   kind: 'buy' | 'sell';
@@ -39,7 +38,6 @@ export function GoldTradeSheet({
   icon: ReactNode;
   lastPrice: { priceMicro: number; onDate: string } | null;
   position: Position | undefined;
-  onMore: (initial: Partial<TradeDraft>) => void;
   onClose: () => void;
 }) {
   const today = isoDate();
@@ -57,12 +55,16 @@ export function GoldTradeSheet({
 
   const sold = kind === 'sell' ? goldSellGrams({ typedMicro: typed, all, heldMicro }) : null;
   const unitsMicro = kind === 'buy' ? typed : sold && !sold.tooMany ? sold.unitsMicro : null;
-  const input: RecordTradeInput | null =
+  const typedInput: RecordTradeInput | null =
     unitsMicro && moneyMinor && occurredOn <= today && side.cashAccountId
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor: moneyMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
-  const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency: side.cashAccount?.currency ?? undefined, onDone: onClose });
-  const gain = kind === 'sell' && position && unitsMicro && moneyMinor ? goldGainMinor(position, unitsMicro, moneyMinor) : null;
+  const cashCurrency = side.cashAccount?.currency ?? undefined;
+  const details = useTradeDetails({ holdingCurrency: currency, cashCurrency });
+  const { input, problem } = details.apply(typedInput);
+  const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency, details, onDone: onClose });
+  // The fee comes off the gain, as the ledger books it; tax withheld is filed as tax, not taken from the gain.
+  const gain = kind === 'sell' && position && unitsMicro && moneyMinor ? goldGainMinor(position, unitsMicro, moneyMinor - (input?.feeMinor ?? 0)) : null;
 
   const average = position ? averagePriceMicro(position) : null;
   const subtitle = [
@@ -88,6 +90,7 @@ export function GoldTradeSheet({
     <Sheet
       grouped
       tall
+      expanded={details.open}
       title={kind === 'buy' ? 'Buy' : 'Sell'}
       onClose={onClose}
       confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
@@ -134,6 +137,8 @@ export function GoldTradeSheet({
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
 
+      <TradeDetails kind={kind} details={details} currency={currency} emptyWord="None" whole={unitsMicro ? formatUnits(unitsMicro) : ''} unitLabel="g" problem={problem} />
+
       {gain !== null && (
         <InsetGroup>
           <ResultRow testId="gold-gain" label="Gain" value={signedMinor(gain, currency)} valueClass={gain > 0 ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]'} />
@@ -142,21 +147,6 @@ export function GoldTradeSheet({
 
       {saving.setAside.node}
       <ErrorBox error={saving.error} />
-      <InsetGroup>
-        <MoreOptionsRow
-          run={() =>
-            onMore({
-              kind,
-              occurredOn,
-              units: kind === 'sell' && all ? formatUnits(heldMicro) : typed ? formatUnits(typed) : '',
-              gross: moneyMinor ? typedAmount(moneyMinor, currency) : '',
-              fee: '0',
-              tax: '0',
-              cashAccountId: side.cashAccountId,
-            })
-          }
-        />
-      </InsetGroup>
       {typingGrams && (
         <KeyboardStrip
           label="Bar sizes"

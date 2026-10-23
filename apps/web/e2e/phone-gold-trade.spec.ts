@@ -40,3 +40,31 @@ test('phone: All sells every gram, down to 0 g, and more than is held is refused
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('0 g');
 });
+
+test('phone: every row of the sheet reads at one size, and the details open under the first box in the same sheet', async ({ page }) => {
+  await goldAtPrice(page);
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  const size = (label: string) => sheet.getByText(label, { exact: true }).first().evaluate((node) => getComputedStyle(node).fontSize);
+  // Grams and Total paid are typed in place; Paid from and Date are the kit's own rows: all one size on a phone.
+  expect(await size('Grams')).toBe('17px');
+  expect(await size('Total paid')).toBe(await size('Paid from'));
+  expect(await size('Total paid')).toBe(await size('Date'));
+  const grams = sheet.getByLabel('Grams', { exact: true });
+  expect(await grams.evaluate((node) => getComputedStyle(node).fontSize)).toBe('17px');
+
+  // Where the first box sits in the sheet, measured from the holding's line above it.
+  const holding = sheet.getByTestId('trade-holding');
+  const offset = async () => (await grams.boundingBox())!.y - (await holding.boundingBox())!.y;
+  const before = await offset();
+  await sheet.getByRole('button', { name: 'Add more details' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  const fee = sheet.getByLabel('Fee', { exact: true });
+  await expect(fee).toBeVisible();
+  expect(await size('Fee')).toBe('17px');
+  expect(await size('Tax withheld')).toBe('17px');
+  // The first box never moves within the sheet; the second is under it.
+  expect(await offset()).toBe(before);
+  expect((await fee.boundingBox())!.y).toBeGreaterThan((await sheet.getByLabel('Date').boundingBox())!.y);
+  await expect(sheet.getByRole('button', { name: 'Fewer details' })).toHaveAttribute('aria-expanded', 'true');
+});

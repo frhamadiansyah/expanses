@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fillDay, openNewAsset } from './add-asset';
 import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
+import { openAccount } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -166,19 +167,20 @@ test('a laptop worth less than it cost wears its loss in red', async ({ page }) 
   await expect(page).toHaveURL(/\/settings$/);
 });
 
-test('Buy opens the Buy & sell form over the page with this holding already chosen', async ({ page }) => {
+test('Buy opens the holding’s own sheet over the page, and records there', async ({ page }) => {
   await offline(page);
+  // The short sheet pays from a money account: it has no Opening balance of its own.
+  await openAccount(page, { subtype: 'bank', name: 'BCA', balance: '10000000' });
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2025-09-19', '10', '20395000']]);
   await openAsset(page, 'Antam gold bars');
-  // Gold's Buy is a short sheet of its own; its More options is the full form.
+  // Gold's Buy is a short sheet of its own, its details folded in the same sheet: there is no full form to go to.
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
-  await page.getByRole('button', { name: 'More options' }).click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByLabel('Holding')).toHaveValue(/.+/);
-  await expect(sheet.getByLabel('What happened')).toHaveValue('buy');
-  await sheet.getByLabel('Units, shares or grams').fill('2');
-  await sheet.getByLabel('What it cost, before fees (IDR)').fill('4970000');
-  await sheet.getByRole('button', { name: 'Record', exact: true }).click();
+  await expect(sheet.getByTestId('trade-holding')).toContainText('Antam gold bars');
+  await expect(sheet.getByRole('button', { name: 'More options' })).toHaveCount(0);
+  await sheet.getByLabel('Grams', { exact: true }).fill('2');
+  await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('4970000');
+  await page.getByRole('button', { name: 'Record buy', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('Gold bullion · 12 g')).toBeVisible();
   await expect(page.getByTestId('asset-history-row')).toHaveCount(2);
