@@ -1,15 +1,17 @@
-import { couponDatesBetween, type DividendHolding, dividendView, type DividendView, formatMinor, holdingPositionAfter, isoDate, yahooSymbol } from '@expanses/core';
+import { couponDatesBetween, type DividendHolding, type DividendMonth, dividendView, type DividendView, formatMinor, holdingPositionAfter, isoDate, sumToBase, yahooSymbol } from '@expanses/core';
 import type { TradeRow } from '@expanses/db';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox } from '../../ui';
-import { Hero, InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { GROUP_RADIUS, Hero, InsetGroup, InsetRow, Panel, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { ShareBar } from '../networth/ShareBar';
 import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
+import { IncomeBars } from './IncomeBars';
+import { receivedThisYear } from './income-year';
+import { useTradeBook } from './IncomeTrades';
 import { usePortfolio } from './queries';
-import { useTradeBook, YearFigures } from './IncomeTrades';
 
 const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 /** How many payers get a row of their own before the rest fold into "others". */
@@ -29,13 +31,45 @@ function Swatch({ className }: { className: string }) {
 }
 
 /**
- * Income: what the holdings brought in. At the top the year's two figures, what the sells realized and what the
- * dividends and coupons paid since 1 January. Then what the shares and bonds held today pay: a year of dividends and
- * coupons, this year so far and still to come, the two yields, the share of a year's spending it would cover, and who
- * pays it. Each stock's history is Yahoo's, read once a day on this device. Last, every holding's trades by day.
+ * One of the two figures under the hero, side by side: a small label in the quiet ink over the money in bold, on the
+ * group's own surface — the shape a card's Owed tile takes. The figure is named by its label, as a read-only row's is,
+ * so a screen reader (and a test) finds "Received this year" and hears its value.
+ */
+function Tile({ label, minor, currency }: { label: string; minor: number; currency: string }) {
+  const id = useId();
+  return (
+    <div className="min-w-0 bg-[var(--ph-surface)] px-[13px] py-[10px]" style={{ borderRadius: GROUP_RADIUS }}>
+      <span id={id} className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+        {label}
+      </span>
+      <span aria-labelledby={id} className="tabular block truncate text-[19px] leading-[24px] font-bold tracking-[-0.01em] text-[var(--ph-ink)]">
+        {formatMinor(minor, currency)}
+      </span>
+    </div>
+  );
+}
+
+/** A month's line in the sheet: what it paid in the ink, or what it still owes in the quiet ink, and who. */
+function monthLine(m: DividendMonth, currency: string): { subtitle?: string; value: string; tone: 'ink' | 'ink-3' } {
+  const who = m.titles.join(', ');
+  if (m.paidMinor > 0) {
+    const owed = m.toComeMinor > 0 ? `${formatMinor(m.toComeMinor, currency)} still to come` : '';
+    return { subtitle: [who, owed].filter(Boolean).join(' · ') || undefined, value: formatMinor(m.paidMinor, currency), tone: 'ink' };
+  }
+  if (m.toComeMinor > 0) return { subtitle: `${who} · still to come`, value: formatMinor(m.toComeMinor, currency), tone: 'ink-3' };
+  return { value: '—', tone: 'ink-3' };
+}
+
+/**
+ * Income: what the shares and bonds held today pay. The hero is a year of dividends and coupons at today's holdings,
+ * with this year's twelve months drawn under it — paid months in the tint, months still to come faint. Under it, what
+ * has been received this year and what is still to come, side by side; then the two yields and the share of a year's
+ * spending the income would cover; then who pays it. Each stock's history is Yahoo's, read once a day on this device;
+ * a bond's coupons come from the terms on its Settings.
  *
- * The year's figures were Buy & sell's, a page of their own off Net worth until it was folded in here (owner, 23 Oct).
- * Its list of every trade is a page of its own now, All trades, off Assets: a buy pays nothing, so it is not income.
+ * The year's two trade figures that opened this page (what the sells realized, what was recorded as paid) left with
+ * the redesign (owner, 23 Oct): Realized this year is All trades', off Assets, and what was recorded as paid is folded
+ * into Received this year rather than shown twice.
  */
 export function IncomePage() {
   const { ws } = useApp();
@@ -104,6 +138,27 @@ export function IncomePage() {
     return dividendView({ holdings, today, baseCurrency: base, ratesToBase: rates });
   }, [portfolio, trades.data, history.data, listed, bonds, today, base, rates]);
 
+  /*
+   * Received this year: the history's estimate, reconciled with what was recorded as paid on each holding since
+   * 1 January (`receivedThisYear` says how). A recorded payment is in the holding's currency; it is brought to base
+   * at the page's rates, and one whose currency has no rate is left out rather than summed unconverted.
+   */
+  const received = useMemo(() => {
+    if (!view) return null;
+    const recorded: Record<string, number> = {};
+    for (const holding of book.holdings) {
+      const minor = book.year[holding.accountId]?.incomeMinor ?? 0;
+      if (minor === 0) continue;
+      const inBase = sumToBase({ amounts: [{ minor, currency: holding.currency }], baseCurrency: base, ratesToBase: rates }).totalMinor;
+      if (inBase !== null) recorded[holding.accountId] = inBase;
+    }
+    const estimated = [
+      ...listed.map(({ row, security }) => ({ accountIds: row.holdings.map((h) => h.accountId), minor: view.receivedBy[security.id] ?? 0 })),
+      ...bonds.map(({ term }) => ({ accountIds: [term.accountId], minor: view.receivedBy[term.accountId] ?? 0 })),
+    ];
+    return receivedThisYear(estimated, recorded);
+  }, [view, book.holdings, book.year, listed, bonds, base, rates]);
+
   const spending = flows.data?.spendingMinor ?? null;
   const named = view ? (all ? view.payers : view.payers.slice(0, NAMED)) : [];
   const rest = view ? view.payers.slice(NAMED) : [];
@@ -113,14 +168,14 @@ export function IncomePage() {
     <div className={SCREEN}>
       <PushedTitle title="Income" {...BACK} />
       <ErrorBox error={error ?? trades.error ?? book.values.error} />
-      {book.holdings.length > 0 && <YearFigures book={book} />}
       {portfolio && couponTerms.data && listed.length === 0 && bonds.length === 0 && (
         <Empty>No listed shares or bonds with a coupon yet. Dividends show here once a share with a ticker is held, and coupons once a bond's terms are set.</Empty>
       )}
       {listed.length + bonds.length > 0 && !view && <Empty>Reading dividend history…</Empty>}
-      {view && listed.length + bonds.length > 0 && (
+      {view && received !== null && listed.length + bonds.length > 0 && (
         <>
-          <div data-testid="dividends-year">
+          {/* The hero card: the year's figure, and under it the twelve months it is spread over. */}
+          <Panel testId="dividends-year">
             <Hero
               label="A year, at today's holdings"
               minor={view.yearMinor}
@@ -129,27 +184,23 @@ export function IncomePage() {
               align="center"
               caption={`${formatMinor(Math.round(view.yearMinor / 12), base)} a month · estimate, before tax`}
             />
-          </div>
+            <IncomeBars months={view.months} onOpen={() => setMonths(true)} />
+          </Panel>
 
-          <InsetGroup>
-            <ReadOnlyRow label="Received this year" value={formatMinor(view.receivedMinor, base)} />
-            <InsetRow
-              title="Still to come"
-              subtitle={view.toComeMonths.length > 0 ? view.toComeMonths.map(monthName).join(', ') : undefined}
-              value={formatMinor(view.toComeMinor, base)}
-              valueTone="ink"
-            />
-          </InsetGroup>
+          {/* The year so far, split in two: what has come in and what the pattern still owes. */}
+          <div className="grid grid-cols-2 gap-3 md:max-w-2xl" style={{ marginBottom: 18 }}>
+            <Tile label="Received this year" minor={received} currency={base} />
+            <Tile label="Still to come" minor={view.toComeMinor} currency={base} />
+          </div>
 
           <InsetGroup>
             <ReadOnlyRow label="Yield on cost" value={percent(view.yieldOnCostBps)} />
             <ReadOnlyRow label="Yield at today's price" value={percent(view.yieldAtPriceBps)} />
             {spending !== null && spending > 0 && (
-              <InsetRow
-                title="Covers a year's spending"
-                subtitle={`${formatMinor(spending, base)} spent in the last 12 months`}
+              <ReadOnlyRow
+                label="Covers a year's spending"
                 value={percent(Math.round((view.yearMinor * 10_000) / spending))}
-                valueTone="ink"
+                info={`${formatMinor(spending, base)} spent in the last 12 months`}
               />
             )}
           </InsetGroup>
@@ -201,28 +252,20 @@ export function IncomePage() {
           )}
           {view.payers.length === 0 && view.unknown.length > 0 && <Empty>No dividend history could be read for {view.unknown.join(', ')}.</Empty>}
 
-          <InsetGroup>
-            <InsetRow title="Month by month" onClick={() => setMonths(true)} />
-          </InsetGroup>
+          {/* Behind the bars: each month named, with who pays in it and its figure, which twelve bars cannot carry. */}
           {months && (
             <Sheet title="Month by month" grouped onClose={() => setMonths(false)}>
-              <InsetGroup footer="By ex-dividend month, from the last 12 months at the shares held now.">
-                {view.months.map((m) => (
-                  <InsetRow
-                    key={m.month}
-                    title={monthName(m.month)}
-                    subtitle={m.titles.length > 0 ? m.titles.join(', ') : undefined}
-                    value={m.minor > 0 ? formatMinor(m.minor, base) : '—'}
-                    valueTone={m.minor > 0 ? 'ink' : 'ink-3'}
-                  />
-                ))}
+              <InsetGroup footer="By ex-dividend month, this year: what each has paid at the shares held then, and what it still owes from last year's pattern at the shares held now.">
+                {view.months.map((m) => {
+                  const line = monthLine(m, base);
+                  return <InsetRow key={m.month} title={monthName(m.month)} subtitle={line.subtitle} value={line.value} valueTone={line.tone} />;
+                })}
               </InsetGroup>
             </Sheet>
           )}
         </>
       )}
       {isPending && !error && <Empty>Loading…</Empty>}
-
     </div>
   );
 }

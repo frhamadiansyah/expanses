@@ -19,7 +19,7 @@ const holding = (over: Partial<DividendHolding>): DividendHolding => ({
 const TODAY = '2026-10-21';
 
 describe('dividendView', () => {
-  it('counts the last 365 days at the shares held now, by month, with both yields', () => {
+  it('counts the last 365 days at the shares held now, with both yields', () => {
     const view = dividendView({
       today: TODAY,
       baseCurrency: 'IDR',
@@ -32,8 +32,28 @@ describe('dividendView', () => {
     expect(view.yearMinor).toBe(100_000);
     expect(view.yieldOnCostBps).toBe(200); // 100.000 of 5.000.000
     expect(view.yieldAtPriceBps).toBe(167);
-    expect(view.months.find((m) => m.month === 11)).toEqual({ month: 11, minor: 40_000, titles: ['AAAA'] });
+  });
+
+  it('lays this year out by month: what each has paid, and what it still owes from last year', () => {
+    const view = dividendView({
+      today: TODAY,
+      baseCurrency: 'IDR',
+      ratesToBase: {},
+      holdings: [
+        holding({ payments: [{ exDate: '2025-10-20', perShare: 99 }, { exDate: '2025-11-12', perShare: 40 }, { exDate: '2026-05-04', perShare: 60 }] }),
+        // Paid in May last year and nothing yet this year: May is paid by AAAA and still owed by BBBB at once.
+        holding({ securityId: 'bbbb', title: 'BBBB', unitsMicro: LOTS(1), payments: [{ exDate: '2025-05-20', perShare: 10 }] }),
+      ],
+    });
     expect(view.months).toHaveLength(12);
+    // One of last year's two is matched by May's; the other, November's, is still to come.
+    expect(view.months[4]).toEqual({ month: 5, paidMinor: 60_000, toComeMinor: 1_000, titles: ['AAAA', 'BBBB'] });
+    expect(view.months[10]).toEqual({ month: 11, paidMinor: 0, toComeMinor: 40_000, titles: ['AAAA'] });
+    expect(view.months[0]).toEqual({ month: 1, paidMinor: 0, toComeMinor: 0, titles: [] });
+    // The twelve months add up to the two figures, and each holding's part of Received is named.
+    expect(view.months.reduce((sum, m) => sum + m.paidMinor, 0)).toBe(view.receivedMinor);
+    expect(view.months.reduce((sum, m) => sum + m.toComeMinor, 0)).toBe(view.toComeMinor);
+    expect(view.receivedBy).toEqual({ aaaa: 60_000, bbbb: 0 });
   });
 
   it('counts this year at the shares held the day before each ex-date', () => {

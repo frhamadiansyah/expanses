@@ -33,20 +33,31 @@ test('Dividends shows a year at today’s holdings, both yields and who pays it,
   // The Assets corner opens Income, where the dividends are read.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Income', exact: true }).click();
-  await expect(page.getByTestId('dividends-year')).toContainText('50.000');
-  await expect(page.getByTestId('dividends-year')).toContainText('a month');
+  const hero = page.getByTestId('dividends-year');
+  await expect(hero).toContainText('50.000');
+  await expect(hero).toContainText('a month');
   await expect(page.getByText('Yield on cost', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Yield on cost', { exact: true })).toHaveText('0,6%');
-  if (paidOn.slice(0, 4) === (await todayIn(page)).slice(0, 4)) await expect(page.getByLabel('Received this year', { exact: true })).toContainText('50.000');
+  // The two tiles under the hero, and the one bar among the twelve in the hero: paid when the ex-date was this year,
+  // still to come (last year's payment, unmatched yet) when it fell before 1 January.
+  const thisYear = paidOn.slice(0, 4) === (await todayIn(page)).slice(0, 4);
+  await expect(page.getByLabel('Received this year', { exact: true })).toHaveText(thisYear ? /50\.000/ : /^Rp\s?0$/);
+  await expect(page.getByLabel('Still to come', { exact: true })).toHaveText(thisYear ? /^Rp\s?0$/ : /50\.000/);
+  await expect(hero.getByTestId('income-month-paid')).toHaveCount(thisYear ? 1 : 0);
+  await expect(hero.getByTestId('income-month-due')).toHaveCount(thisYear ? 0 : 1);
+  // The spending it covers explains itself behind an ⓘ, not a line always under the row.
+  await expect(page.getByText(/spent in the last 12 months/)).toHaveCount(0);
 
   const payer = page.getByTestId('dividend-payer');
   await expect(payer).toHaveCount(1);
   await expect(payer).toContainText('BBCA');
   await expect(payer).toContainText('100%');
 
-  await page.getByRole('button', { name: 'Month by month' }).click();
+  // The bars are the way into Month by month, where the month is named with its payer.
+  await hero.getByRole('button', { name: 'Month by month' }).click();
   const sheet = page.getByRole('dialog', { name: 'Month by month' });
   await expect(sheet).toContainText('BBCA');
+  await expect(sheet).toContainText('50.000');
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
 

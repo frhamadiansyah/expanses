@@ -68,15 +68,12 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
   // 12 g left of the 17 g held.
   await expect(page.getByText('12 g').first()).toBeVisible();
 
-  // The year's figures are read on Income, behind the Assets corner: 5 g sold for Rp 9.000.000 at an average cost of
-  // Rp 26.380.000 over 17 g realizes about Rp 1.241.176, and nothing has paid income.
+  // What the year's sells realized is read on All trades, at the foot of Assets' Investments: 5 g sold for Rp 9.000.000
+  // at an average cost of Rp 26.380.000 over 17 g realizes about Rp 1.241.176, a gain and so signed.
   await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: 'Income', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Income' })).toBeVisible();
-  const year = page.getByTestId('trades-year');
-  await expect(year).toContainText('Realized this year');
-  await expect(year).toContainText(/\+Rp\s?1\.241\.17\d/);
-  await expect(year).toContainText('Income this year');
+  await page.getByTestId('all-trades').click();
+  await expect(page.getByRole('heading', { name: 'All trades' })).toBeVisible();
+  await expect(page.getByLabel('Realized this year', { exact: true })).toHaveText(/^\+Rp\s?1\.241\.17\d$/);
 });
 
 test('updates a price from the assets list and shows the new value', async ({ page }) => {

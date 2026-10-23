@@ -6,9 +6,10 @@ import { ALL_TRADES, INCOME, recordTrade, tradeRow } from './trades';
 
 /*
  * Buy & sell is folded away (owner, 23 Oct): what only it did lives elsewhere now. Income (behind the Assets corner)
- * reads the year's figures and every holding's trades, a line of which opens its holding; a split or bonus shares is
- * recorded from the holding's Settings. A trade's goal and a payment's reinvested part are set from the line's ⋮ on
- * the holding's page — `goals.spec.ts` and `income-treatment.spec.ts` walk those two.
+ * reads the dividends and coupons alone — `dividends.spec.ts` walks it; All trades reads what the year's sells realized
+ * and every holding's trades, a line of which opens its holding; a split or bonus shares is recorded from the
+ * holding's Settings. A trade's goal and a payment's reinvested part are set from the line's ⋮ on the holding's page —
+ * `goals.spec.ts` and `income-treatment.spec.ts` walk those two.
  */
 
 test.beforeEach(({ page }) => {
@@ -25,15 +26,15 @@ async function addStock(page: Page) {
   await expect(page.getByRole('heading', { name: 'BBRI' })).toBeVisible();
 }
 
-test('Income reads the year; All trades, off Assets, shows one holding at a time and opens it; the old Buy & sell address lands there', async ({ page }) => {
+test('Income keeps to dividends; All trades, off Assets, reads the year’s realized figure, shows one holding at a time and opens it; the old Buy & sell address lands there', async ({ page }) => {
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2026-03-09', '10', '18000000']]);
   await addPriced(page, 'Government bonds', 'ORI026', [['2026-01-15', '10000000', '10000000']]);
 
-  // Income: the year's two figures, side by side at the top, even before anything was sold or paid — and no trades.
+  // Income: no trade figures and no trades — gold and a bond without coupon terms pay nothing it can read.
   await page.goto(INCOME);
   await expect(page.getByRole('heading', { name: 'Income' })).toBeVisible();
-  await expect(page.getByTestId('trades-year')).toContainText('Realized this year');
-  await expect(page.getByTestId('trades-year')).toContainText('Income this year');
+  await expect(page.getByText('Realized this year')).toHaveCount(0);
+  await expect(page.getByText('Income this year')).toHaveCount(0);
   await expect(page.getByTestId('trade-history')).toHaveCount(0);
 
   // All trades is the row closing Assets' Investments, with this year's count.
@@ -42,6 +43,10 @@ test('Income reads the year; All trades, off Assets, shows one holding at a time
   await page.getByTestId('all-trades').click();
   await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
   await expect(page.getByRole('heading', { name: 'All trades' })).toBeVisible();
+  // What the year's sells realized sits above the list, nothing yet, with its ⓘ saying what it counts.
+  await expect(page.getByLabel('Realized this year', { exact: true })).toHaveText(/^Rp\s?0$/);
+  await page.getByRole('button', { name: 'About Realized this year' }).click();
+  await expect(page.getByText('Gains and losses from sales this year, against what the units cost.')).toBeVisible();
   // An old link or bookmark to Buy & sell lands here, not on a page that is gone.
   await page.goto('/net-worth/trades');
   await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
