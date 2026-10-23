@@ -3,9 +3,14 @@ import type { Db } from '../database';
 
 /*
  * One purchase split across workspaces (0084): one transaction, one card line, its category lines filed in two or more
- * workspaces. It has no `book_transactions` row — that row is the one workspace a transaction is in, and household
- * sharing, net worth and every reader of a single workspace go by it — and a `book_transaction_splits` row for each
- * workspace with a part. Read and written by name: a database stopped before 0084 has no such table, and nothing split.
+ * workspaces. It has no `book_transactions` row — that row is the one workspace a transaction is in, and net worth and
+ * every reader of a single workspace go by it — and a `book_transaction_splits` row for each workspace with a part. Read
+ * and written by name: a database stopped before 0084 has no such table, and nothing split.
+ *
+ * Household sharing: at most one of a split's workspaces may be shared (or have been, with its share still here). The
+ * purchase travels in that workspace as its part there alone — its category lines in that workspace, paid from the
+ * same card — and the other parts, their categories and the whole charge never leave the phone (sync/capture.ts,
+ * `projectPurchase`; sync/apply.ts keeps them when a partner's edit or delete of the part comes back).
  */
 
 const present = new WeakMap<object, true>();
@@ -54,11 +59,13 @@ export function splitHasPartIn(transactionId: SQLWrapper, bookId: string): SQL {
 }
 
 /**
- * Whether a workspace is, or was, shared with a household (any `shared_books` row: an ended share is read-only). Its
- * purchases travel whole, with the one workspace they are in, so none of them can be split with another workspace.
+ * Over a transaction id: whether it is filed in this book, by its one `book_transactions` row or as a part of a purchase
+ * split across workspaces (0084). What household sharing goes by: a split travels in the one shared workspace it has a
+ * part in, as that part. `splits` false (a database stopped before 0084) reads `book_transactions` alone.
  */
-export async function bookEverSharedTx(db: Db, bookId: string): Promise<boolean> {
-  const tables = await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`);
-  if (tables.length === 0) return false;
-  return (await db.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0;
+export function filedInBook(transactionId: SQLWrapper, bookId: string, splits: boolean): SQL {
+  return splits
+    ? sql`(${transactionId} IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})
+        OR ${transactionId} IN (SELECT transaction_id FROM book_transaction_splits WHERE book_id = ${bookId}))`
+    : sql`${transactionId} IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})`;
 }

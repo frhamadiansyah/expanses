@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Db, Tx } from '../database';
-import { bookSplitsExist } from '../repos/book-splits';
+import { bookSplitsExist, filedInBook } from '../repos/book-splits';
 import { AuthorityError, viewRoleOfDevice } from './authority';
 import { isRevivable, lineageOfTransaction, localDeviceId, paidFromOf, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
 import { localTick } from './hlc';
@@ -89,15 +89,22 @@ export async function assertShareableTx(tx: Tx, bookId: string): Promise<void> {
   if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0) {
     throw new SharingError('ALREADY_SHARED', 'This workspace is already shared');
   }
-  // A shared workspace keeps each purchase whole (0084): a purchase split with another workspace has no single
-  // workspace to sync under, so it would never reach the partner. Refused until each split is folded back.
+  // A purchase split across workspaces (0084) travels in its one shared workspace as its part there. One already split
+  // with a workspace that is shared (or was, its share still here) would have parts in two: refused until it is folded
+  // back. A split with private workspaces only is fine — the seed sends this workspace's part.
   if (
     (await bookSplitsExist(tx)) &&
-    (await tx.values(sql`SELECT 1 FROM book_transaction_splits s JOIN transactions t ON t.id = s.transaction_id WHERE s.book_id = ${bookId} AND t.status = 'posted' LIMIT 1`)).length > 0
+    (
+      await tx.values(sql`
+        SELECT 1 FROM book_transaction_splits s JOIN transactions t ON t.id = s.transaction_id
+        WHERE s.book_id = ${bookId} AND t.status = 'posted'
+          AND EXISTS (SELECT 1 FROM book_transaction_splits o JOIN shared_books b ON b.book_id = o.book_id WHERE o.transaction_id = s.transaction_id AND o.book_id <> s.book_id)
+        LIMIT 1`)
+    ).length > 0
   ) {
     throw new SharingError(
       'HAS_SPLITS',
-      'This workspace holds a purchase split with another workspace. A shared workspace keeps each purchase whole: record its part as a purchase of its own first.',
+      'This workspace holds a purchase split with a workspace that is already shared. A purchase can be split with one shared workspace at most: fold that split back first.',
     );
   }
 }
@@ -175,17 +182,24 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
   ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')), ...(await rows('bill_pause')));
 
-  // Every non-void purchase, oldest first. A void one never existed for the other member.
+  // Every non-void purchase, oldest first. A void one never existed for the other member. A purchase split across
+  // workspaces (0084) with a part here goes as that part (`projectPurchase`).
   const heads = await tx.values<[string]>(sql`
-    SELECT t.id FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id
-    WHERE bt.book_id = ${book.bookId} AND t.status = 'posted'
+    SELECT t.id FROM transactions t
+    WHERE ${filedInBook(sql`t.id`, book.bookId, await bookSplitsExist(tx))} AND t.status = 'posted'
     ORDER BY t.occurred_on, t.created_at, t.rowid`);
   for (const [head] of heads) {
-    const lineageId = await lineageOfTransaction(tx, head);
-    if (!keep('purchase', lineageId)) continue;
-    const [known] = await tx.values<[string, string, string | null, string | null]>(
-      sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+    let lineageId = await lineageOfTransaction(tx, head);
+    let [known] = await tx.values<[string, string, string | null, string | null, string | null]>(
+      sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item, head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId}`,
     );
+    // Void wins for ever: a row of a void lineage back in the book (moved out and back, a split's part taken off and
+    // put back) is a new purchase, under a lineage of its own rooted at it — as capture makes one (`resolveLineage`).
+    if (known && known[4] === null) {
+      lineageId = head;
+      known = undefined;
+    }
+    if (!keep('purchase', lineageId)) continue;
     if (!known && !record) continue;
     const purchase = (await projectPurchase(tx, head, book.memberId, known ? { paidBy: known[0], paidLabel: known[1], paidFrom: paidFromOf(known[2], known[3]) } : null))!;
     if (!known) {
@@ -269,7 +283,7 @@ async function postedHeadTx(tx: Db, bookId: string, head: string): Promise<strin
       SELECT t.id, f.depth + 1 FROM transactions t JOIN forward f ON t.replaces_transaction_id = f.id
     )
     SELECT t.id FROM transactions t JOIN forward f ON f.id = t.id
-    WHERE t.status = 'posted' AND t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})
+    WHERE t.status = 'posted' AND ${filedInBook(sql`t.id`, bookId, await bookSplitsExist(tx))}
     ORDER BY f.depth DESC LIMIT 1`);
   return row?.[0] ?? null;
 }

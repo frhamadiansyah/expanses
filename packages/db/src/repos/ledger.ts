@@ -7,14 +7,14 @@ import { bookTransactions } from '../schema-books';
 import { cardPostings, cards, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
-import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
+import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom, splitRefusalTx } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, type BookKind, hasBooks } from './books';
-import { bookEverSharedTx, bookSplitsExist, splitBooksOfMany, splitBooksOfTx, splitHasPartIn, writeSplitBooksTx } from './book-splits';
+import { bookSplitsExist, splitBooksOfMany, splitBooksOfTx, splitHasPartIn, writeSplitBooksTx } from './book-splits';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
@@ -203,16 +203,15 @@ async function booksOfCategories(tx: Db, lineAccounts: readonly { id: string; ki
 }
 
 /**
- * A purchase split across workspaces may be filed: the table is there (0084), and none of its workspaces is shared with
- * a household, whose purchases travel whole with the one workspace they are in.
+ * A purchase split across workspaces may be filed: the table is there (0084), and household sharing can carry it — at
+ * most one of its workspaces shared, where it travels as its part there, paid from this member's own money
+ * (`splitRefusalTx`).
  */
-async function refuseSplitTx(tx: Db, bookIds: readonly string[]): Promise<void> {
+async function refuseSplitTx(tx: Db, bookIds: readonly string[], lineAccounts: readonly { id: string; kind: string }[], replacesTransactionId: string | null): Promise<void> {
   if (!(await bookSplitsExist(tx))) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
-  for (const bookId of bookIds) {
-    if (await bookEverSharedTx(tx, bookId)) {
-      throw new LedgerError('SPLIT_SHARED', 'A shared workspace keeps each purchase whole. Record its part as a purchase of its own there.');
-    }
-  }
+  const money = lineAccounts.filter((account) => account.kind !== 'income' && account.kind !== 'expense').map((account) => account.id);
+  const why = await splitRefusalTx(tx, bookIds, money, replacesTransactionId);
+  if (why) throw new LedgerError('SPLIT_SHARED', why);
 }
 
 /** The workspaces a saved transaction is filed in: its one book, each book of a split, or none (a transfer). */
@@ -306,7 +305,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // checked before any insert below, so a refused posting leaves nothing behind.
   // Split across workspaces, it belongs to each book it has a part in instead (0084).
   const bookIds = (await hasBooks(tx)) ? await booksOfCategories(tx, found, input.acrossBooks) : [];
-  if (bookIds.length > 1) await refuseSplitTx(tx, bookIds);
+  if (bookIds.length > 1) await refuseSplitTx(tx, bookIds, found, input.replacesTransactionId ?? null);
   const bookId = bookIds.length === 1 ? bookIds[0] : undefined;
 
   const id = input.id ?? uuidv7();

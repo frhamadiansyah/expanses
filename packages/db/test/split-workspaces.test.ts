@@ -138,13 +138,24 @@ describe('a purchase split across workspaces', () => {
     await expect(postTransaction(h.database, inBook(h.ws, h.family), market(h))).rejects.toMatchObject({ code: 'TWO_BOOKS' });
   });
 
-  it('is refused when a workspace in it is shared with a household', async () => {
+  it('may have a part in one workspace shared with a household, never in two', async () => {
     const h = await threeBooks();
-    await h.database.db.run(
-      sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${h.business}, 'relay-1', 1, 'member-1', 'active', '2026-05-01T00:00:00Z')`,
-    );
-    await expect(postTransaction(h.database, inBook(h.ws, h.family), { ...market(h), acrossBooks: true })).rejects.toMatchObject({ code: 'SPLIT_SHARED' });
+    const share = (bookId: string, relay: string) =>
+      h.database.db.run(
+        sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${relay}, 1, 'member-1', 'unshared', '2026-05-01T00:00:00Z')`,
+      );
+    // Shared once and read-only since: what a split may touch is decided by the share being here at all.
+    await share(h.business, 'relay-1');
+    await share(h.family, 'relay-2');
+    await expect(postTransaction(h.database, inBook(h.ws, h.family), { ...market(h), acrossBooks: true })).rejects.toMatchObject({
+      code: 'SPLIT_SHARED',
+      message: expect.stringContaining('one shared workspace at most'),
+    });
     expect(await listed(h, h.family)).toEqual([]);
+    await h.database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${h.business}`);
+    await h.database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${h.family}`);
+    const id = await postTransaction(h.database, inBook(h.ws, h.family), { ...market(h), acrossBooks: true });
+    expect(await filing(h, id)).toEqual({ one: [], split: [h.family, h.business] });
   });
 });
 
@@ -232,14 +243,50 @@ describe('editing and deleting a split across workspaces', () => {
     expect((await cardStatementLines(h.database, h.ws, h.card))[0]!.splitCategories).toBeUndefined();
   });
 
-  it('keeps a workspace holding a split from being shared, until the split is folded back', async () => {
+  it('lets a workspace holding a split be shared, unless the split’s other part is in a shared workspace already', async () => {
     const h = await threeBooks();
     const id = await postTransaction(h.database, inBook(h.ws, h.family), { ...market(h), acrossBooks: true });
     const shareable = (bookId: string) => h.database.transaction((tx) => assertShareableTx(tx, bookId));
-    await expect(shareable(h.family)).rejects.toMatchObject({ code: 'HAS_SPLITS' });
-    await expect(shareable(h.business)).rejects.toMatchObject({ code: 'HAS_SPLITS' });
-    await expect(shareable(h.personal)).resolves.toBeUndefined();
-    await voidTransaction(h.database, inBook(h.ws, h.family), id);
+    // Either side may be shared: the split travels in it as its part there.
     await expect(shareable(h.family)).resolves.toBeUndefined();
+    await expect(shareable(h.business)).resolves.toBeUndefined();
+    await h.database.db.run(
+      sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${h.family}, 'relay-1', 1, 'member-1', 'active', '2026-05-01T00:00:00Z')`,
+    );
+    // With Family shared, Business may not be too while the split holds parts in both.
+    await expect(shareable(h.business)).rejects.toMatchObject({ code: 'HAS_SPLITS' });
+    await h.database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${h.family}`);
+    await voidTransaction(h.database, inBook(h.ws, h.family), id);
+    await h.database.db.run(
+      sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${h.family}, 'relay-1', 1, 'member-1', 'active', '2026-05-01T00:00:00Z')`,
+    );
+    await expect(shareable(h.business)).resolves.toBeUndefined();
+  });
+});
+
+describe('a split with a part in the first workspace', () => {
+  // The capture run (`npm run test:capture`) shares each first workspace and checks every write to it against what goes
+  // out: here a split's part there, edited, folded away and back, made whole and split again, then deleted.
+  it('is edited, folded, split again and deleted like any other', async () => {
+    const h = await threeBooks();
+    const parts = (own: number, office: number) =>
+      market(h, [
+        { categoryAccountId: h.personalGroceries, amountMinor: own },
+        { categoryAccountId: h.office, amountMinor: office },
+      ]);
+    const id = await postTransaction(h.database, inBook(h.ws, h.personal), { ...parts(700_000, 650_000), acrossBooks: true });
+    const edited = await replaceTransaction(h.database, inBook(h.ws, h.business), id, parts(800_000, 550_000));
+    expect(await spent(h, h.personal)).toBe(800_000);
+    const folded = await replaceTransaction(h.database, inBook(h.ws, h.business), edited, market(h, [{ categoryAccountId: h.office, amountMinor: 1_350_000 }]));
+    expect(await spent(h, h.personal)).toBe(0);
+    const again = await replaceTransaction(h.database, inBook(h.ws, h.business), folded, { ...parts(600_000, 750_000), acrossBooks: true });
+    const whole = await replaceTransaction(h.database, inBook(h.ws, h.personal), again, market(h, [{ categoryAccountId: h.personalGroceries, amountMinor: 1_350_000 }]));
+    expect(await filing(h, whole)).toEqual({ one: [[h.personal]], split: [] });
+    const split = await replaceTransaction(h.database, inBook(h.ws, h.personal), whole, { ...parts(500_000, 850_000), acrossBooks: true });
+    expect(await spent(h, h.personal)).toBe(500_000);
+    expect(await spent(h, h.business)).toBe(850_000);
+    await voidTransaction(h.database, inBook(h.ws, h.personal), split);
+    expect(await spent(h, h.personal)).toBe(0);
+    expect((await nativeBalances(h.database, h.ws))[h.card] ?? 0).toBe(0);
   });
 });

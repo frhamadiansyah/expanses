@@ -1,6 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
+import { bookSplitsExist } from '../repos/book-splits';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
@@ -422,9 +423,17 @@ export class CaptureSession {
   /** The net effect of this transaction on one lineage (spec §6.3's table). */
   private async resolveLineage(touch: LineageTouch, books: SharedBook[]): Promise<{ bookId: string; op: Op } | null> {
     const { known, lineageId } = touch;
-    if (known && known.head === null) return null; // void wins, for ever
     const head = await postedHeadOf(this.tx, touch);
     const headBook = head ? await bookOfTransaction(this.tx, head) : null;
+    if (known && known.head === null) {
+      // Void wins, for ever: nothing more is said under this lineage. A row of it filed in a shared book again — a
+      // purchase moved out of the book and back, a split whose shared part was taken off and put back (0084) — is a
+      // new purchase to the other devices: a lineage of its own, rooted at that row (`lineageOfTransaction` finds it
+      // as the head of one from here on).
+      const again = head && headBook ? books.find((b) => b.bookId === headBook) : undefined;
+      if (!head || !again || head === lineageId) return null;
+      return this.newLineage(head, head, again);
+    }
 
     if (known) {
       const book = books.find((b) => b.bookId === known.bookId);
@@ -445,6 +454,11 @@ export class CaptureSession {
 
     const book = head && headBook ? books.find((b) => b.bookId === headBook) : undefined;
     if (!head || !book) return null;
+    return this.newLineage(lineageId, head, book);
+  }
+
+  /** A purchase the other devices have not got: its lineage row, and every field. */
+  private async newLineage(lineageId: string, head: string, book: SharedBook): Promise<{ bookId: string; op: Op }> {
     const after = (await projectPurchase(this.tx, head, book.memberId, null, this.paidFromHints.get(head)))!;
     await this.tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
@@ -976,9 +990,63 @@ export function paidFromOf(owner: string | null | undefined, itemId: string | nu
   return owner && itemId ? { owner, itemId } : null;
 }
 
-async function bookOfTransaction(tx: Db, transactionId: string): Promise<string | null> {
+/**
+ * The book a transaction travels in: the one it is filed in, or — a purchase split across workspaces (0084) — the one of
+ * its workspaces that is shared here (in any state: a share that ended keeps its book read-only), as only that part
+ * travels. The ledger never lets a split have parts in two shared books (`splitRefusalTx`). Null for anything else.
+ */
+export async function bookOfTransaction(tx: Db, transactionId: string): Promise<string | null> {
   const rows = await tx.values<[string]>(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${transactionId}`);
-  return rows[0]?.[0] ?? null;
+  if (rows[0]) return rows[0][0];
+  if (!(await bookSplitsExist(tx))) return null;
+  const [part] = await tx.values<[string]>(sql`
+    SELECT s.book_id FROM book_transaction_splits s JOIN shared_books b ON b.book_id = s.book_id
+    WHERE s.transaction_id = ${transactionId} ORDER BY s.rowid LIMIT 1`);
+  return part?.[0] ?? null;
+}
+
+/**
+ * A purchase split across workspaces (0084): the categories of its part in the book it travels in (`bookOfTransaction`),
+ * none when no workspace of it is shared. Null for any other transaction, whose every category line travels.
+ */
+async function travellingPartTx(tx: Db, transactionId: string): Promise<ReadonlySet<string> | null> {
+  if (!(await bookSplitsExist(tx))) return null;
+  if ((await tx.values(sql`SELECT 1 FROM book_transaction_splits WHERE transaction_id = ${transactionId} LIMIT 1`)).length === 0) return null;
+  const bookId = await bookOfTransaction(tx, transactionId);
+  if (!bookId) return new Set();
+  const rows = await tx.values<[string]>(sql`SELECT category_account_id FROM book_categories WHERE book_id = ${bookId}`);
+  return new Set(rows.map(([id]) => id));
+}
+
+/**
+ * Why a purchase split across workspaces may not be filed as it stands, in words a screen shows; null when it may
+ * (household sharing). At most one of its workspaces may be shared, or have been with its share still here: the
+ * purchase travels in that one as its part there, and a lineage lives in one book. That part must be this member's own
+ * spending, paid from this member's own money: the other parts never leave this phone, and the whole charge stays only
+ * where the money was spent from. So money on another member's placeholder, or a purchase another member paid, stays whole.
+ */
+export async function splitRefusalTx(
+  tx: Db,
+  bookIds: readonly string[],
+  moneyAccountIds: readonly string[],
+  replacesTransactionId: string | null,
+): Promise<string | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length === 0) return null;
+  const shared: string[] = [];
+  for (const bookId of bookIds) if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).length > 0) shared.push(bookId);
+  if (shared.length === 0) return null;
+  if (shared.length > 1) return 'A purchase can be split with one shared workspace at most. Record the other shared workspace’s part as a purchase of its own there.';
+  if (moneyAccountIds.length > 0 && (await tx.values(sql`SELECT 1 FROM book_member_accounts WHERE account_id IN ${[...moneyAccountIds]} LIMIT 1`)).length > 0) {
+    return 'A purchase paid with another member’s money stays whole in the shared workspace.';
+  }
+  if (replacesTransactionId) {
+    const lineageId = await lineageOfTransaction(tx, replacesTransactionId);
+    const [paid] = await tx.values<[string, string]>(sql`
+      SELECT l.paid_by, s.member_id FROM sync_lineage l JOIN shared_books s ON s.book_id = l.book_id
+      WHERE l.lineage_id = ${lineageId} AND l.head_transaction_id IS NOT NULL`);
+    if (paid && paid[0] !== paid[1]) return 'A purchase another member paid stays whole in the shared workspace.';
+  }
+  return null;
 }
 
 /** The lineage's posted row after this transaction: the latest touched row still posted, else the known head. */
@@ -1022,10 +1090,14 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     WHERE e.transaction_id = ${transactionId}
     ORDER BY e.rowid`);
 
+  // Split across workspaces (0084): only the part in the book it travels in goes, never the other parts, their
+  // categories, or the whole charge — the original-currency figure and the one typed with cents are the whole's.
+  const part = await travellingPartTx(tx, transactionId);
   const lines: PurchaseMoney['lines'] = [];
   const moneySide: { accountId: string; name: string; placeholderMember: string | null }[] = [];
   for (const [accountId, amountMinor, currency, amountBaseMinor, memo, kind, name, placeholderMember] of entryRows) {
     if (kind === 'income' || kind === 'expense') {
+      if (part && !part.has(accountId)) continue;
       lines.push({ categoryId: accountId, amountMinor: Number(amountMinor), currency, amountBaseMinor: Number(amountBaseMinor), memo });
     } else if (!moneySide.some((m) => m.accountId === accountId)) {
       moneySide.push({ accountId, name, placeholderMember });
@@ -1082,8 +1154,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     bill: templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
     money: {
       lines,
-      originalCurrency,
-      originalAmountMinor: originalAmountMinor === null ? null : Number(originalAmountMinor),
+      originalCurrency: part ? null : originalCurrency,
+      originalAmountMinor: part || originalAmountMinor === null ? null : Number(originalAmountMinor),
       paidBy,
       paidLabel,
       paidFrom,
@@ -1091,7 +1163,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     // Only where 0067 is: a database before it sends no place, as a device before it would not.
     ...(placed ? { dayOrder: dayOrder === null ? null : Number(dayOrder) } : {}),
     // Likewise only where 0068 is.
-    ...(typed ? { exactHundredths: exact === null ? null : Number(exact) } : {}),
+    ...(typed ? { exactHundredths: part || exact === null ? null : Number(exact) } : {}),
   };
 }
 
@@ -1165,6 +1237,8 @@ export async function capturePostedTx(
   if (paidFrom !== undefined) session.hintPaidFrom(transactionId, paidFrom);
   const books = await session.sharedBooks();
   const readOnly = await session.readOnlyBooks();
+  // A purchase split across workspaces is in none of the ledger's one books: it travels in its shared one (0084).
+  if (bookId === null && (books.length > 0 || readOnly.size > 0)) bookId = await bookOfTransaction(tx, transactionId);
   if (readOnly.size > 0) {
     // §8.6: nothing is posted into a book no longer shared, nor does anything in it change.
     if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId);
