@@ -82,6 +82,7 @@ import bondCoupons from '../migrations/0081_bond_coupons.sql?raw';
 import eventPlanOff from '../migrations/0082_event_plan_off.sql?raw';
 import tradeGoalParts from '../migrations/0083_trade_goal_parts.sql?raw';
 import bookTransactionSplits from '../migrations/0084_book_transaction_splits.sql?raw';
+import pointProgrammes from '../migrations/0085_point_programmes.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -174,6 +175,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 82, name: 'event_plan_off', sql: eventPlanOff },
   { version: 83, name: 'trade_goal_parts', sql: tradeGoalParts },
   { version: 84, name: 'book_transaction_splits', sql: bookTransactionSplits },
+  { version: 85, name: 'point_programmes', sql: pointProgrammes },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -7,6 +7,7 @@ import { accounts } from '../schema';
 import { cardIdentity } from '../schema-cards';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 import { categoryIdsByKeyAllTx } from './categories';
+import { nameOwnProgrammeTx, openOwnProgrammeTx } from './programme-link';
 import { type RewardProgramRow, saveCycleBonusTx, saveEarnRuleTx, saveRedemptionOptionTx, saveTransferPartnerTx } from './points';
 
 export class CatalogError extends Error {
@@ -218,6 +219,7 @@ export function applyCatalogEntry(
         createdAt: now(),
       };
       await tx.insert(rewardPrograms).values(program);
+      await openOwnProgrammeTx(tx, program);
     } else if (!input.replaceManual) {
       const [manual] = await tx
         .select({ id: earnRules.id })
@@ -229,6 +231,7 @@ export function applyCatalogEntry(
 
     await clearRows(tx, ws, program.id, input.replaceManual);
     const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true, memberLevel);
+    await nameOwnProgrammeTx(tx, ws, program.id, input.entry.program.name, input.entry.program.unit);
     return { programId: program.id, unmappedKeys };
   });
 }

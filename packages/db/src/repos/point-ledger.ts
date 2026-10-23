@@ -18,11 +18,12 @@ import {
   previousCycle,
   uuidv7,
 } from '@expanses/core';
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
-import { pointEntries, pointSnapshots, rewardPrograms } from '../schema-points';
+import { earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
+import { findProgramme, programmeIdOf } from './programme-link';
 import { listAccounts } from './accounts';
 import { listTransactionPointActuals } from './point-actuals';
 import { categoryIdsByKeyAll } from './categories';
@@ -33,14 +34,20 @@ import { cardSpendLines, listCycleActuals, listCycleBonuses, listEarnRules, list
 const DERIVED_SOURCES = ['transaction', 'statement', 'projected'] as const;
 
 export interface PointEntryRow extends PointEntry {
+  /** The balance programme the entry sits in (0085). */
   programId: string;
   transactionId: string | null;
   note: string | null;
   /** What a redemption fetched, when the owner recorded it. */
   valueMinor: number | null;
+  /** The card's reward program whose rules earned this; null on anything but an earn. */
+  earnedById: string | null;
+  /** Shared by the two sides of one conversion between programmes. */
+  conversionId: string | null;
 }
 
 export interface RecordSnapshotInput {
+  /** The balance programme. */
   programId: string;
   /** The balance the owner read in the issuer's app. */
   balance: number;
@@ -71,6 +78,8 @@ export async function listPointEntries(database: Database, ws: WorkspaceContext,
     expiresOn: row.expiresOn,
     note: row.note,
     valueMinor: row.valueMinor,
+    earnedById: row.earnedById,
+    conversionId: row.conversionId,
   }));
 }
 
@@ -84,6 +93,11 @@ export async function programBalance(database: Database, ws: WorkspaceContext, p
  *
  * Only the entries this derivation owns are rewritten. A redemption, an expiry or a correction from a
  * balance the owner read stays exactly where it is — otherwise typing a figure in would erase them.
+ *
+ * `programId` is the card's reward program. Its points land in the programme it earns into (0085), each entry naming
+ * the card that earned it, so a second card earning into the same programme never has its points rewritten by this
+ * one. What the card earned is replaced wherever it sits, so a cycle worked out again after the card moved to another
+ * programme lands in that one.
  */
 export async function deriveCycleEntries(database: Database, ws: WorkspaceContext, programId: string, cycle: Cycle): Promise<number> {
   const [program] = await database.db
@@ -91,6 +105,9 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
     .from(rewardPrograms)
     .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
   if (!program) throw new PointsError('Reward program not found');
+  const programmeId = await programmeIdOf(database.db, ws, programId);
+  // The programme decides how the points die; a database without programmes yet has the policy on the program.
+  const policy = (await findProgramme(database.db, ws, programmeId)) ?? program;
 
   const [card] = await database.db
     .select({ currency: accounts.currency })
@@ -118,7 +135,7 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
   }) => ({
     id: uuidv7(),
     workspaceId: ws.workspaceId,
-    programId,
+    programId: programmeId,
     transactionId: input.transactionId,
     kind: 'earn' as const,
     quantity: input.quantity,
@@ -126,9 +143,10 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
     status: input.status,
     source: input.source,
     batchId: null,
-    // Stamped from the program's policy, so changing the policy restamps on the next derivation.
-    expiresOn: expiryDateFor(input.occurredOn, program.expiryPolicy, program.expiryMonths),
+    // Stamped from the programme's policy, so changing the policy restamps on the next derivation.
+    expiresOn: expiryDateFor(input.occurredOn, policy.expiryPolicy, policy.expiryMonths),
     note: null,
+    earnedById: programId,
     createdAt: now,
   });
 
@@ -157,7 +175,7 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
       .where(
         and(
           eq(pointEntries.workspaceId, ws.workspaceId),
-          eq(pointEntries.programId, programId),
+          eq(pointEntries.earnedById, programId),
           eq(pointEntries.kind, 'earn'),
           inArray(pointEntries.source, [...DERIVED_SOURCES]),
           gte(pointEntries.occurredOn, cycle.start),
@@ -178,11 +196,8 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
 export async function recordPointSnapshot(database: Database, ws: WorkspaceContext, input: RecordSnapshotInput): Promise<number> {
   if (!Number.isFinite(input.balance) || input.balance < 0) throw new PointsError('A balance cannot be below nothing');
 
-  const [program] = await database.db
-    .select()
-    .from(rewardPrograms)
-    .where(and(eq(rewardPrograms.id, input.programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
-  if (!program) throw new PointsError('Reward program not found');
+  const program = await findProgramme(database.db, ws, input.programId);
+  if (!program) throw new PointsError('Points programme not found');
   // Points typed in are a batch like any other, so they age under the same policy.
   const anchoredExpiry = expiryDateFor(input.earnedOn ?? input.observedOn, program.expiryPolicy, program.expiryMonths);
 
@@ -241,7 +256,7 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
   return difference;
 }
 
-/** How this program's points die. Setting a policy restamps the batches next time they are derived. */
+/** How this programme's points die. Setting a policy restamps the batches next time they are derived. */
 export async function setProgramExpiry(
   database: Database,
   ws: WorkspaceContext,
@@ -254,10 +269,10 @@ export async function setProgramExpiry(
     throw new PointsError('Say how many months the points last');
   }
   await database.db
-    .update(rewardPrograms)
+    .update(pointProgrammes)
     // A month count left behind by an earlier policy would be read again if that policy came back.
     .set({ expiryPolicy: policy, expiryMonths: policy === 'months_from_earn' ? months : null })
-    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
+    .where(and(eq(pointProgrammes.id, programId), eq(pointProgrammes.workspaceId, ws.workspaceId)));
 }
 
 /**
@@ -293,7 +308,9 @@ export async function expireDueEntries(database: Database, ws: WorkspaceContext,
 }
 
 export interface ExpiringSoonRow {
+  /** The balance programme. */
   programId: string;
+  /** What the warning names: the one card earning into the programme, else the programme itself. */
   cardName: string;
   unit: string;
   expiringSoon: number;
@@ -301,33 +318,35 @@ export interface ExpiringSoonRow {
 }
 
 /**
- * Every program holding points that die soon, for the warning on the dashboard.
+ * Every programme holding points that die soon, for the warning on the dashboard.
  *
- * This only reports. Writing dead points off happens when a card is opened, so that looking at a
- * summary never changes what it is summarising.
+ * This only reports. Writing dead points off happens when a card or a programme is opened, so that
+ * looking at a summary never changes what it is summarising.
  */
 export async function expiringSoonAcross(database: Database, ws: WorkspaceContext, today: string): Promise<ExpiringSoonRow[]> {
-  const programs = await database.db
-    .select({ id: rewardPrograms.id, cardAccountId: rewardPrograms.cardAccountId, unit: rewardPrograms.unit })
-    .from(rewardPrograms)
-    .where(eq(rewardPrograms.workspaceId, ws.workspaceId));
-  if (programs.length === 0) return [];
+  const programmes = await database.db
+    .select({ id: pointProgrammes.id, name: pointProgrammes.name, unit: pointProgrammes.unit })
+    .from(pointProgrammes)
+    .where(and(eq(pointProgrammes.workspaceId, ws.workspaceId), isNull(pointProgrammes.archivedAt)));
+  if (programmes.length === 0) return [];
 
-  const cards = new Map(
-    (await database.db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId))).map((row) => [
-      row.id,
-      row.name,
-    ]),
-  );
+  // The cards earning into each programme, by name: a programme one card earns into is still called by that card.
+  const earners = await database.db
+    .select({ programmeId: earnsInto.programmeId, name: accounts.name })
+    .from(earnsInto)
+    .innerJoin(rewardPrograms, eq(rewardPrograms.id, earnsInto.programId))
+    .innerJoin(accounts, eq(accounts.id, rewardPrograms.cardAccountId))
+    .where(and(eq(earnsInto.workspaceId, ws.workspaceId), isNull(rewardPrograms.archivedAt)));
 
   const rows: ExpiringSoonRow[] = [];
-  for (const program of programs) {
-    const balance = balanceOf(await listPointEntries(database, ws, program.id), today);
+  for (const programme of programmes) {
+    const balance = balanceOf(await listPointEntries(database, ws, programme.id), today);
     if (balance.expiringSoon <= 0) continue;
+    const cards = earners.filter((earner) => earner.programmeId === programme.id);
     rows.push({
-      programId: program.id,
-      cardName: cards.get(program.cardAccountId) ?? 'Card',
-      unit: program.unit,
+      programId: programme.id,
+      cardName: cards.length === 1 ? cards[0]!.name : programme.name,
+      unit: programme.unit,
       expiringSoon: balance.expiringSoon,
       nextExpiryOn: balance.nextExpiryOn,
     });
@@ -336,6 +355,7 @@ export async function expiringSoonAcross(database: Database, ws: WorkspaceContex
 }
 
 export interface RecordRedemptionInput {
+  /** The balance programme the points are spent from. */
   programId: string;
   /** Spending them on something, or moving them to an airline. */
   kind: 'redeem' | 'transfer';
@@ -480,7 +500,10 @@ export async function cardYearRoi(database: Database, ws: WorkspaceContext, prog
   const best = bestRedemption((await listRedemptionOptions(database, ws, programId)).map(toRedemption));
   const valuePerPointMicro = best ? Math.round((best.valueMinor * 1_000_000) / best.perPoints) : 0;
 
-  const entries = await listPointEntries(database, ws, programId);
+  // The card's year is the card's own earning: in a programme other cards also earn into, only this card's points
+  // count. Spending, expiry and conversions are the programme's, and feeRoi leaves them out anyway.
+  const ledger = await listPointEntries(database, ws, await programmeIdOf(database.db, ws, programId));
+  const entries = ledger.filter((entry) => entry.kind !== 'earn' || entry.earnedById === programId);
   const roi = feeRoi({ entries, from, to, valuePerPointMicro, annualFeeMinor });
 
   // What points have really fetched, over every redemption that recorded a value — not only this
