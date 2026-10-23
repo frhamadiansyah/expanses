@@ -1,12 +1,12 @@
 import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
-import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, taxTreatmentOf } from '@expanses/db';
+import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
@@ -57,6 +57,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
   const money = account !== undefined && CASH_SUBTYPES.has(account.subtype);
+  // An account with pockets holds nothing itself, so it is no asset and has no value row: its settings are its name
+  // and the way out, and its pockets' are their own.
+  const parentMoney = money && value === undefined && !values.isPending;
   // A holding linked to a security takes its lot size from the security, so the row is not offered.
   const linkedToSecurity = (links.data ?? []).some((link) => link.accountId === accountId && link.securityId !== null);
   const name = value?.name ?? account?.name ?? 'Asset';
@@ -102,9 +105,11 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
     }
   }
 
-  // An asset holding anything is not archived: it would leave the list with money still in it. A money account's own
-  // page has its rules for that, so only an asset's are said here.
-  const archivable = money || !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
+  // An asset holding anything is not archived: it would leave the list with money still in it. A money account goes
+  // whatever it holds (a parent with pockets is refused by the database, which says which are left), but a pocket only
+  // once it is empty.
+  const pocket = Boolean(account?.parentId);
+  const archivable = money ? !pocket || !value || value.valueMinor === 0 : !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
   const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
     <div className={SCREEN}>
@@ -128,7 +133,29 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         onBack={goBack}
       />
       <ErrorBox error={values.error ?? profile.error} />
-      {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
+      {!value && !money && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
+      {parentMoney && (
+        <InsetGroup footer="Renaming it renames its pockets.">
+          <TextRow
+            label="Name"
+            defaultValue={account!.name}
+            placeholder="Name"
+            onBlur={(e) => {
+              const next = e.target.value.trim();
+              if (next === '' || next === account!.name) return;
+              void (async () => {
+                setError(null);
+                try {
+                  await renameAccount(database, ws, accountId, next);
+                  await invalidate();
+                } catch (err) {
+                  setError(err);
+                }
+              })();
+            }}
+          />
+        </InsetGroup>
+      )}
 
       {/* Only once the profile is in: the rows fill themselves when they mount, and an empty code reads as "not chosen". */}
       {value && !profile.isPending && (
@@ -205,7 +232,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         />
       )}
 
-      {value && (
+      {(value || parentMoney) && (
         <>
           <InsetGroup>
             <DestructiveRow
@@ -215,7 +242,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
               onClick={() =>
                 archivable
                   ? void leaveBy(`Archive ${name}? It leaves the list; its history stays in reports.`, () => archiveAccount(database, ws, accountId))
-                  : window.alert('Archiving is available once nothing is left in this asset.')
+                  : window.alert(`Archiving is available once nothing is left in this ${money ? 'pocket' : 'asset'}.`)
               }
             />
             <DestructiveRow

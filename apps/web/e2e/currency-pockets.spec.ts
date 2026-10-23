@@ -366,18 +366,15 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
 test('the parent archives only after its pockets, and renaming it renames them', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  // Both edits are on the account's own page now, not on the Accounts list. Three corners fold the last two behind
-  // the kit's `…`: the gear stays out, and Rename and Archive wait inside.
+  // Both are in the account's Settings, behind the ⚙ in its corner: its Name, and Archive at the foot.
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
-  page.removeAllListeners('dialog');
-  page.on('dialog', (dialog) => void dialog.accept('Multi Plus'));
-  const more = page.getByRole('button', { name: 'More', exact: true });
-  await more.click();
-  await page.getByRole('menuitem', { name: 'Archive' }).click();
+  await openSettings(page);
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page.getByText(/Valas Plus still has pockets: USD, SGD, IDR/)).toBeVisible();
-  await more.click();
-  await page.getByRole('menuitem', { name: 'Edit' }).click();
-  await expect(page.getByRole('heading', { name: 'Multi Plus', exact: true })).toBeVisible();
+  const name = page.getByLabel('Name', { exact: true });
+  await name.fill('Multi Plus');
+  await name.blur();
+  await expect(name).toHaveValue('Multi Plus');
   await page.goto('/accounts');
   await openTypes(page);
   await page.getByRole('link', { name: 'Multi Plus', exact: true }).click();

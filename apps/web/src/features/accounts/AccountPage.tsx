@@ -1,16 +1,13 @@
 import { isFxLotAccount, isoDate, takesPockets } from '@expanses/core';
-import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import {
-  Archive,
   ArrowDownLeft,
   ArrowDownToLine,
   ArrowLeftRight,
   ArrowUpFromLine,
   ArrowUpRight,
   ChevronRight,
-  MoreHorizontal,
-  Pencil,
   Plus,
   Repeat,
   Scale,
@@ -21,7 +18,7 @@ import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { SPENDABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
-import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import {
   ActionButtons,
@@ -127,14 +124,14 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const title = parent ? `${parent.name} · ${account.currency}` : account.name;
   // A plain current, saving or cash account takes another currency from its ⋯; one with pockets from the foot of its list.
   const takesCurrency = !parent && !pockets && takesPockets(account.subtype);
-  const menu = usePageMenu(account, { parent, empty: minor === 0, onError: setActionError, onAddCurrency: takesCurrency ? () => setAddingCurrency(true) : undefined });
+  const menu = pageCorner(account);
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
     <div className={SCREEN}>
       {/*
        * A pushed screen's bar, as Add transaction draws its own: the way back in a circle, the name centred, and the
-       * one ⋯ on the right. An account is something you came into from a list, not a section of the app.
+       * ⚙ on the right. An account is something you came into from a list, not a section of the app.
        */}
       <PushedTitle
         title={title}
@@ -218,6 +215,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
+          // Once it has pockets this is the last row of their list; before then, the last of the facts.
+          takesCurrency ? <InsetRow key="currency" testId="add-currency" icon={<Plus size={16} aria-hidden />} title="Add a currency" onClick={() => setAddingCurrency(true)} /> : null,
         ]}
       />
       {/* Joint net worth (§8.1): what the household sees of it, under the facts. Nothing while this person is in no group. */}
@@ -289,68 +288,12 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
 }
 
 /**
- * The page's ⋯, and nothing else in its corner: the settings the account has always had, the rename, and the way out.
- *
- * The gear used to sit beside the ⋯. Settings are looked up now and then, never on the way to spending, so they wait
- * behind the one corner button with the edits rather than taking a second one. The code the account files under is
- * one of those settings, and is shown and changed there only — it once had an item of its own here as well.
- *
- * Archiving a parent that still has pockets is refused by the database, and its answer — which pockets are left —
- * is shown where the ask was made, which is why it stays enabled. A pocket is refused here instead, while anything
- * is left in it, and says why on the greyed line: the rule its old page printed under the figure.
+ * The page's corner: its ⚙, and nothing else. Settings hold the name, the code it files under and the way out
+ * (Archive, Delete), as a holding's do (owner, 23 Oct): they are looked up now and then, never on the way to spending.
+ * The ⋯ that held them, with a rename by prompt, is gone; adding a currency is a row on the page.
  */
-function usePageMenu(
-  account: AccountRow,
-  o: { parent: AccountRow | undefined; empty: boolean; onError: (error: unknown) => void; onAddCurrency?: () => void },
-): CornerAction[] {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const navigate = useNavigate();
-  const blocked = Boolean(o.parent) && !o.empty;
-  const items: CornerAction[] = [
-    {
-      key: 'settings',
-      label: 'Settings',
-      glyph: <Settings size={18} aria-hidden />,
-      to: '/net-worth/assets/$accountId/settings',
-      params: { accountId: account.id },
-    },
-    // Once a round action of its own; it is done once in an account's life, so it waits here with the settings.
-    ...(o.onAddCurrency ? [{ key: 'currency', label: 'Add a currency', glyph: <Plus size={18} aria-hidden />, run: o.onAddCurrency }] : []),
-    {
-      key: 'edit',
-      label: 'Edit',
-      glyph: <Pencil size={18} aria-hidden />,
-      run: () => {
-        const next = window.prompt('Rename account', account.name);
-        if (!next || next.trim() === '' || next === account.name) return;
-        void (async () => {
-          await renameAccount(database, ws, account.id, next);
-          await invalidate();
-        })();
-      },
-    },
-    {
-      key: 'archive',
-      label: 'Archive',
-      glyph: <Archive size={18} aria-hidden />,
-      disabled: blocked,
-      detail: blocked ? 'Archiving is available once nothing is left in this account.' : undefined,
-      run: () => {
-        if (!window.confirm(`Archive ${account.name}? It leaves the list; its history stays in reports.`)) return;
-        void (async () => {
-          try {
-            await archiveAccount(database, ws, account.id);
-            await invalidate();
-            await navigate(o.parent ? { to: '/accounts/$accountId', params: { accountId: o.parent.id } } : { to: '/accounts' });
-          } catch (e) {
-            o.onError(e);
-          }
-        })();
-      },
-    },
-  ];
-  return [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu: items }];
+function pageCorner(account: AccountRow): CornerAction[] {
+  return [{ key: 'settings', label: 'Settings', glyph: <Settings size={18} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId: account.id } }];
 }
 
 /**

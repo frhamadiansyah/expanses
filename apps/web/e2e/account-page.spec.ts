@@ -23,7 +23,7 @@ async function openHeld(page: Page, name: string) {
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).click();
 }
 
-test('a current account: its actions, its last rows, its ⋯ and a way to add a currency', async ({ page }) => {
+test('a current account: its actions, its last rows, its ⚙ and a way to add a currency', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000', extra: (p) => p.getByLabel('Bank', { exact: true }).pressSequentially('Bank One') });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
@@ -36,12 +36,10 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await expect(actions).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 
-  // The ⋯ holds the settings, adding a currency, the rename and the archive; the code it files under lives in the
-  // settings alone.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  for (const item of ['Settings', 'Add a currency', 'Edit', 'Archive']) await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // The corner is the ⚙ alone: Edit and Archive wait in Settings, and Add a currency is the last row of the facts.
+  await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('add-currency')).toBeVisible();
 
   await page.getByRole('link', { name: 'See all' }).click();
   await expect(page).toHaveURL(/\/transactions\?account=/);
@@ -54,8 +52,8 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
   await openMoney(page, 'Everyday');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add a currency', exact: true }).click();
+  // The last row of the account's facts: the corner holds only its ⚙.
+  await page.getByTestId('add-currency').click();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   // The currency it already holds is not offered again.
   await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="IDR"]')).toHaveCount(0);
@@ -101,8 +99,8 @@ test('cash takes a second currency like a bank account: it becomes one with pock
   await openMoney(page, 'Pocket cash');
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add a currency', exact: true }).click();
+  // The last row of the account's facts: the corner holds only its ⚙.
+  await page.getByTestId('add-currency').click();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'TRY');
   await page.getByLabel('Opening TRY').pressSequentially('1000');
   await page.getByLabel('Rate: IDR per 1 TRY', { exact: true }).pressSequentially('480');
@@ -129,9 +127,7 @@ test('a new cash account offers Multi-currency, and a wallet does not', async ({
 test('a wallet still has nothing to add a currency to', async ({ page }) => {
   await openAccount(page, { subtype: 'ewallet', name: 'Pocket wallet', balance: '300000' });
   await openMoney(page, 'Pocket wallet');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Add a currency', exact: true })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('add-currency')).toHaveCount(0);
 });
 
 test('cash is withdrawn into and counted: a short count is unrecorded spending, and the balance is what was counted', async ({ page }) => {
