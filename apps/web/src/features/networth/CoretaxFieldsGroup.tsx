@@ -1,4 +1,4 @@
-import { CORETAX_SECTIONS, type CoretaxSection, missingCoretaxFields, validateCoretaxFields } from '@expanses/core';
+import { CORETAX_SECTIONS, type CoretaxSection, validateCoretaxFields } from '@expanses/core';
 import { type AssetProfileRow, getAssetProfile, saveAssetProfile } from '@expanses/db';
 import { type ReactElement, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -52,33 +52,35 @@ export function CoretaxFieldsGroup({
   const [error, setError] = useState<unknown>(null);
 
   const problems = validateCoretaxFields(section, fields);
-  // What the report will find missing: counted from what is saved, so it changes when a row has been kept.
-  const missing = missingCoretaxFields(section, { ...Object.fromEntries(Object.entries(fallbacks).map(([key, f]) => [key, f.value])), ...profile.coretaxFields });
+  // The row just kept, said to a screen reader (and waited on by tests): nothing shows, the row already reads it.
+  const [saved, setSaved] = useState<string | null>(null);
 
-  async function save() {
+  async function save(label: string) {
     const wrong = new Set(problems.map((problem) => problem.key));
     setError(null);
     try {
       // Written over what is saved now, not what this screen was drawn from: another row saved a moment ago (when it
       // was acquired, a field just left) would otherwise be put back.
-      const saved = (await getAssetProfile(database, ws, profile.accountId)) ?? profile;
-      const next = fieldsToSave(saved.coretaxFields, fields, wrong);
-      if (JSON.stringify(next) === JSON.stringify(saved.coretaxFields)) return;
+      const current = (await getAssetProfile(database, ws, profile.accountId)) ?? profile;
+      const next = fieldsToSave(current.coretaxFields, fields, wrong);
+      if (JSON.stringify(next) === JSON.stringify(current.coretaxFields)) return setSaved(`${label} saved`);
       await saveAssetProfile(database, ws, {
-        accountId: saved.accountId,
-        assetKind: saved.assetKind,
-        planGroup: saved.planGroup,
-        unitKind: saved.unitKind,
-        lotSize: saved.lotSize,
-        risk: saved.risk,
-        coretaxSection: saved.coretaxSection,
-        coretaxCode: saved.coretaxCode,
-        acquiredYear: saved.acquiredYear,
+        accountId: current.accountId,
+        assetKind: current.assetKind,
+        planGroup: current.planGroup,
+        unitKind: current.unitKind,
+        lotSize: current.lotSize,
+        risk: current.risk,
+        coretaxSection: current.coretaxSection,
+        coretaxCode: current.coretaxCode,
+        acquiredYear: current.acquiredYear,
         // Written whole, so what was set elsewhere is carried rather than put back to the kind's defaults.
-        reportable: saved.reportable,
-        taxTreatment: saved.taxTreatment,
+        reportable: current.reportable,
+        taxTreatment: current.taxTreatment,
         coretaxFields: next,
       });
+      // Said once it is written, not once every screen has caught up.
+      setSaved(`${label} saved`);
       await invalidate();
     } catch (e) {
       setError(e);
@@ -86,7 +88,11 @@ export function CoretaxFieldsGroup({
   }
 
   return (
-    <InsetGroup header={lead.length > 0 ? 'Tax report' : 'Tax report details'} trailing={missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}>
+    <>
+    <span role="status" className="sr-only">
+      {saved}
+    </span>
+    <InsetGroup header={lead.length > 0 ? 'Tax report' : 'Tax report details'}>
       {lead}
       {CORETAX_SECTIONS[section].fields.map((field, i, all) => {
         const problem = problems.find((item) => item.key === field.key);
@@ -96,7 +102,7 @@ export function CoretaxFieldsGroup({
             label={ENGLISH[section][field.key] ?? field.label}
             value={fields[field.key] ?? ''}
             onChange={(e) => setFields({ ...fields, [field.key]: e.target.value })}
-            onBlur={() => void save()}
+            onBlur={() => void save(ENGLISH[section][field.key] ?? field.label)}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             inputMode={field.kind === 'number' || field.kind === 'npwp' ? 'numeric' : undefined}
             placeholder={fallbacks[field.key]?.value ?? (field.kind === 'country' ? 'Country code' : 'Not set')}
@@ -110,5 +116,6 @@ export function CoretaxFieldsGroup({
         );
       })}
     </InsetGroup>
+    </>
   );
 }

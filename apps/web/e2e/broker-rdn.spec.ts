@@ -21,11 +21,9 @@ test('a broker opened from Add holding names its RDN bank in its Settings, and i
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const bank = page.getByLabel('Bank or institution');
-  await expect(page.getByText('4 still missing')).toBeVisible();
   await bank.fill('CIMB Niaga');
   await bank.blur();
-  // Saved: the kas row has one field fewer to fill.
-  await expect(page.getByText('3 still missing')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Bank or institution saved' })).toBeAttached();
 
   await page.goto('/net-worth/assets');
   await openDrawers(page);

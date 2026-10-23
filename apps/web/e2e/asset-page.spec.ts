@@ -127,8 +127,8 @@ test('a car added with a year and month shows just that, and its Settings take t
   await page.getByLabel('Make and model').blur();
   await page.getByLabel('Registration number').fill('X 1234 YZ');
   await page.getByLabel('Registration number').blur();
-  // Kept once the count reads both: what is saved, not what is typed.
-  await expect(page.getByText('3 still missing')).toBeVisible();
+  // Kept: the last row left says so, and it carries both.
+  await expect(page.getByRole('status').filter({ hasText: 'Registration number saved' })).toBeAttached();
 
   await page.reload();
   await expect(page.getByLabel('Make and model')).toHaveValue('Hatchback 1.5');

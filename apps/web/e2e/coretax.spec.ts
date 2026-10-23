@@ -100,9 +100,9 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await page.getByLabel('Account holder').fill('Fandrian');
   await page.getByLabel('Bank or institution').fill('Bank Central Asia');
   await page.getByLabel('Country', { exact: true }).fill('IDN');
-  // Each row is kept when it is left; the count reads what is kept.
+  // Each row is kept when it is left.
   await page.getByLabel('Country', { exact: true }).press('Enter');
-  await expect(page.getByText('Nothing missing')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Country saved' })).toBeAttached();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
@@ -200,9 +200,9 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   await page.getByLabel('Account holder').fill('Fandrian');
   await page.getByLabel('Bank or institution').fill('Bank Central Asia');
   await page.getByLabel('Country', { exact: true }).fill('IDN');
-  // Each row is kept when it is left; the count reads what is kept.
+  // Each row is kept when it is left.
   await page.getByLabel('Country', { exact: true }).press('Enter');
-  await expect(page.getByText('Nothing missing')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Country saved' })).toBeAttached();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
