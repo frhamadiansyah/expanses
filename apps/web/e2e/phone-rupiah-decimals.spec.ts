@@ -138,7 +138,8 @@ test('the card shows a purchase typed with cents at what it was charged, and sti
 
   await cardPage(page, 'Points');
   // The cycle's Spend and the purchase's row say what the card was charged ...
-  const spend = page.getByText('Spend', { exact: true }).locator('xpath=following-sibling::span');
+  // A read-only row's figure is named by its label, so the figure is found as a field is.
+  const spend = page.getByLabel('Spend', { exact: true });
   await expect(spend).toContainText('12.501');
   await expect(spend).not.toContainText('12.500');
   await cardPointsPage(page, 'Purchases');
