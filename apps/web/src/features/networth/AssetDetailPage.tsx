@@ -341,7 +341,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ...(currency === ws.baseCurrency
             ? [{ key: 'switch', label: 'Switch', glyph: <ArrowLeftRight size={20} aria-hidden />, run: () => setSheet({ kind: 'switch', editing: null }) }]
             : []),
-          { key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
+          { key: 'value', label: 'Value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
         ]
     : estimated
       ? [{ key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]

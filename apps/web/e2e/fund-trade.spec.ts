@@ -23,7 +23,8 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   // History lists money moved only; the value typed is the hero's, its day under Held at.
   await expect(page.getByText('Last updated', { exact: true })).toBeVisible();
   await expect(page.getByText('Bought', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Value', { exact: true })).toHaveCount(0);
+  // The one "Value" on the page is the round button: no row of History says it.
+  await expect(page.getByText('Value', { exact: true })).toHaveCount(1);
 });
 
 test('Sell half the value: half the money comes out, the rest is gain; never more than it is worth; All ends at zero', async ({ page }) => {

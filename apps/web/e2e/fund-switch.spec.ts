@@ -26,7 +26,7 @@ test('Switch 5.000.000 from one fund into another: both histories show it, and t
   await addFund(page, MONEY_MARKET, '8000000');
   await addFund(page, BOND, '2000000');
   await openAsset(page, MONEY_MARKET);
-  await page.getByRole('button', { name: 'Update value' }).click();
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
   await page.getByLabel('Value (IDR)').fill('10000000');
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText('10.000.000');
