@@ -146,9 +146,10 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
   const sheet = page.getByRole('dialog', { name: /^(Paid with|Received into|From)$/ });
   await expect(sheet.getByRole('button', { name: 'Kantong Biru', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /5521/ })).toHaveCount(0);
+  // On Wallet it is a card of its own kind — an e-wallet, drawn by the app — never a credit card with digits.
   await page.goto('/wallet');
-  await expect(page.getByRole('main')).toBeVisible();
-  await expect(page.getByText('Kantong Biru')).toHaveCount(0);
+  await expect(walletCard(page, 'Kantong Biru')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Cards' })).not.toContainText('5521');
 
   // Changed on the wallet's settings, the rows follow.
   await page.goto('/wallet');
