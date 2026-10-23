@@ -1197,6 +1197,25 @@ export async function captureMoneyAccountRenamingTx(tx: Db, accountId: string): 
   for (const [lineageId, head] of rows) await session.touchLineage(lineageId, head);
 }
 
+/**
+ * The ledger's card door (`setTransactionsCard`), called before a purchase's card changes in place: a shared
+ * purchase's Paid with label names the card's digits, so its lineage is touched and goes out again with the new label
+ * at flush. Not money, so no summary is marked dirty. A book no longer shared is read-only (§8.6), as an edit is.
+ */
+export async function captureCardChangingTx(tx: Db, transactionId: string): Promise<void> {
+  const session = sessionOf(tx);
+  if (!session) return;
+  const books = await session.sharedBooks();
+  const readOnly = await session.readOnlyBooks();
+  if (books.length === 0 && readOnly.size === 0) return;
+  const bookId = await bookOfTransaction(tx, transactionId);
+  if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId);
+  if (books.length === 0) return;
+  const lineageId = await lineageOfTransaction(tx, transactionId);
+  const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
+  if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
 /** The ledger's void door (`markVoidTx`), called before the status changes, so the lineage's before is still readable. */
 export async function captureVoidingTx(tx: Db, transactionId: string): Promise<void> {
   const session = sessionOf(tx);

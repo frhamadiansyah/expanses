@@ -12,6 +12,16 @@ export interface StatementGroup {
   totalMinor: number;
 }
 
+/** A card as a statement names it: which of the account's cards, and its digits ("Primary", "···· 1467"). */
+export function plasticName(card: Pick<CardRow, 'isPrimary' | 'last4'>): { title: string; digits: string } {
+  return { title: card.isPrimary ? 'Primary' : 'Supplementary', digits: `···· ${card.last4 ?? '????'}` };
+}
+
+/** The account's cards, primary first, as a statement lists its sections. */
+export function primaryFirst<T extends Pick<CardRow, 'isPrimary'>>(cards: readonly T[]): T[] {
+  return [...cards].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+}
+
 const total = (lines: readonly StatementLine[]) => lines.reduce((sum, line) => sum + line.countedMinor, 0);
 
 /**
@@ -21,13 +31,13 @@ const total = (lines: readonly StatementLine[]) => lines.reduce((sum, line) => s
  */
 export function groupStatementLines(lines: readonly StatementLine[], cards: readonly CardRow[]): StatementGroup[] {
   if (cards.length < 2) return [{ key: 'all', title: null, digits: null, kind: 'all', lines: [...lines], totalMinor: total(lines) }];
-  const ordered = [...cards].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+  const ordered = primaryFirst(cards);
   const groups: StatementGroup[] = [];
   for (const card of ordered) {
     const own = lines.filter((line) => line.spending && line.cardId === card.id);
     if (own.length === 0) continue;
     // The heading says which card, not who holds it: the digits are what a statement is read by.
-    groups.push({ key: card.id, title: card.isPrimary ? 'Primary' : 'Supplementary', digits: `···· ${card.last4 ?? '????'}`, kind: 'card', lines: own, totalMinor: total(own) });
+    groups.push({ key: card.id, ...plasticName(card), kind: 'card', lines: own, totalMinor: total(own) });
   }
   const known = new Set(cards.map((card) => card.id));
   const unassigned = lines.filter((line) => line.spending && (line.cardId === null || !known.has(line.cardId)));

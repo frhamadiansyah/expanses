@@ -4,10 +4,10 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookTransactions } from '../schema-books';
-import { cardPostings, cardSettlements } from '../schema-cards';
+import { cardPostings, cards, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
-import { captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
+import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { dayOrderExists } from './day-order-column';
@@ -74,7 +74,9 @@ export type LedgerErrorCode =
   | 'OTHER_DAY'
   | 'INVALID_EXACT'
   | 'EVENT_POSTING'
-  | 'NOT_A_CARD_PURCHASE';
+  | 'NOT_A_CARD_PURCHASE'
+  | 'CARD_NOT_FOUND'
+  | 'NOT_ON_CARD';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -723,6 +725,44 @@ export function setTransactionMcc(database: Database, ws: WorkspaceContext, tran
     if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
     await tx.update(transactions).set({ mcc }).where(eq(transactions.id, transactionId));
     await audit(tx, ws, 'set_mcc', transactionId, { mcc });
+  });
+}
+
+/**
+ * Says which card several purchases were made on, in place: which plastic paid is a fact about the purchase, not
+ * money, so nothing is reposted. Every one must still stand and have a line on the account the card belongs to; one
+ * that does not refuses the lot, so nothing is half done. Null takes the card off them. Returns how many were set.
+ */
+export function setTransactionsCard(database: Database, ws: WorkspaceContext, transactionIds: readonly string[], cardId: string | null): Promise<number> {
+  return database.transaction(async (tx) => {
+    const ids = [...new Set(transactionIds)];
+    let accountId: string | null = null;
+    if (cardId !== null) {
+      const [card] = await tx
+        .select({ accountId: cards.accountId, archivedAt: cards.archivedAt })
+        .from(cards)
+        .where(and(eq(cards.id, cardId), eq(cards.workspaceId, ws.workspaceId)));
+      if (!card || card.archivedAt !== null) throw new LedgerError('CARD_NOT_FOUND', 'That card is not on any account here');
+      accountId = card.accountId;
+    }
+    for (const id of ids) {
+      const [row] = await tx
+        .select({ status: transactions.status, description: transactions.description })
+        .from(transactions)
+        .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+      if (!row || row.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
+      if (accountId !== null) {
+        const [line] = await tx.select({ id: entries.id }).from(entries).where(and(eq(entries.transactionId, id), eq(entries.accountId, accountId))).limit(1);
+        if (!line) throw new LedgerError('NOT_ON_CARD', `${row.description || 'A transaction'} is not on that card’s account`);
+      }
+    }
+    for (const id of ids) {
+      // Household sharing: a shared purchase's Paid with names the card's digits, so it goes out again.
+      await captureCardChangingTx(tx, id);
+      await tx.update(transactions).set({ cardId }).where(eq(transactions.id, id));
+      await audit(tx, ws, 'set_card', id, { cardId });
+    }
+    return ids.length;
   });
 }
 
