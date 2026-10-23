@@ -39,6 +39,7 @@ import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
 import { IncomePage } from '../features/investments/IncomePage';
+import { AllTradesPage } from '../features/investments/AllTradesPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
@@ -255,6 +256,8 @@ const routeTree = rootRoute.addChildren([
     validateSearch: (search: Record<string, unknown>): { link?: string } => ({ link: typeof search.link === 'string' ? search.link : undefined }),
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/dividends', component: IncomePage }),
+  // Every buy and sell of every holding, off the foot of Assets' Investments.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/trades', component: AllTradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId', component: SecurityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId/price', component: SecurityPricePage }),
   // The static `none` outranks `$accountId`: holdings kept with no broker named.
@@ -270,13 +273,13 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/edit', component: EditAssetRoute }),
   /*
    * Buy & sell was folded away (owner, 23 Oct): a trade is recorded and changed on its holding's page, a split in its
-   * Settings, and the year's figures and every trade are read on Income. An old link lands there.
+   * Settings, and every trade is read on All trades. An old link lands there.
    */
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/net-worth/trades',
     beforeLoad: () => {
-      throw redirect({ to: '/net-worth/investments/dividends', replace: true });
+      throw redirect({ to: '/net-worth/investments/trades', replace: true });
     },
   }),
   // Monthly plans are set on each holding's own page and come due on Recurring, under the bills: an old link lands there.

@@ -89,8 +89,8 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   await reinvested.getByLabel(`Reinvested into for ${YEAR}-06-10`).selectOption({ label: 'SBN ORI025' });
   await reinvested.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText(/Recorded as reinvested/)).toBeVisible();
-  // Income's line for it carries the marker.
-  await page.goto('/net-worth/investments/dividends');
+  // All trades' line for it carries the marker.
+  await page.goto('/net-worth/investments/trades');
   await expect(page.getByTestId('trade-row').filter({ hasText: /Dividend BBRI/ })).toContainText('Reinvested');
 
   await startReport(page);

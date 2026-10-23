@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addPriced } from './asset-page';
-import { INCOME, tradeRow } from './trades';
+import { ALL_TRADES, INCOME, tradeRow } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -22,6 +22,12 @@ test('by thumb: Income reads the year side by side and opens a trade’s holding
   await expect(page.getByRole('table')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
+  // The trades are a page of their own, from the foot of Assets' Investments.
+  await page.goto('/net-worth/assets');
+  await page.getByTestId('all-trades').tap();
+  await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
+  await expect(page.getByRole('table')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await tradeRow(page, 'Bought Antam gold bars').tap();
   await expect(page.getByRole('heading', { name: 'Antam gold bars' })).toBeVisible();
   // The line's ⋮ there carries what Buy & sell set on it: Edit and Delete, and Goals… only once a goal exists.

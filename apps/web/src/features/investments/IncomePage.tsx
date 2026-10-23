@@ -9,7 +9,7 @@ import { ShareBar } from '../networth/ShareBar';
 import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
 import { usePortfolio } from './queries';
-import { HoldingsTable, TradesSection, useTradeBook, YearFigures } from './IncomeTrades';
+import { useTradeBook, YearFigures } from './IncomeTrades';
 
 const BACK = { back: 'Assets', backTo: '/net-worth/assets' } as const;
 /** How many payers get a row of their own before the rest fold into "others". */
@@ -34,8 +34,8 @@ function Swatch({ className }: { className: string }) {
  * coupons, this year so far and still to come, the two yields, the share of a year's spending it would cover, and who
  * pays it. Each stock's history is Yahoo's, read once a day on this device. Last, every holding's trades by day.
  *
- * The figures and the trades were Buy & sell's, a page of their own off Net worth until it was folded in here (owner,
- * 23 Oct): a trade is recorded and changed on its holding's page, so what was left of that page was reading.
+ * The year's figures were Buy & sell's, a page of their own off Net worth until it was folded in here (owner, 23 Oct).
+ * Its list of every trade is a page of its own now, All trades, off Assets: a buy pays nothing, so it is not income.
  */
 export function IncomePage() {
   const { ws } = useApp();
@@ -223,8 +223,6 @@ export function IncomePage() {
       )}
       {isPending && !error && <Empty>Loading…</Empty>}
 
-      <HoldingsTable book={book} />
-      <TradesSection book={book} />
     </div>
   );
 }
