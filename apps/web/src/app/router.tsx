@@ -69,6 +69,7 @@ import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { newTransactionSearch } from '../features/transactions/new-search';
+import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { AddHoldingPage } from '../features/investments/AddHoldingPage';
@@ -173,6 +174,8 @@ const routeTree = rootRoute.addChildren([
   // ordered here — asserted in `add-transaction.spec.ts` rather than trusted, since being wrong about it means
   // opening a receipt for a transaction called "new".
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
+  // The Money flow box, on a screen of its own and sideways: "flow" is static too, so it beats `$transactionId`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/flow', component: MoneyFlowPage, validateSearch: moneyFlowSearch }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
