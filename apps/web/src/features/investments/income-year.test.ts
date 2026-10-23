@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { TradeRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { yearByHolding, yearSum } from './income-year';
+import { receivedThisYear, yearByHolding, yearSum } from './income-year';
 
 // Invented figures: a holding bought last year, sold in part each year, paying once a year either side of 1 January.
 const trade = (id: string, accountId: string, kind: TradeRow['kind'], occurredOn: string, unitsMicro: number, grossMinor: number, feeMinor = 0, taxMinor = 0): TradeRow =>
@@ -55,5 +55,29 @@ describe('the year added up', () => {
 
   it('is nothing at all with no holdings', () => {
     expect(yearSum([], {}, 'incomeMinor', 'IDR')).toEqual({ base: 0, others: '' });
+  });
+});
+
+describe('received this year, the estimate and the record together', () => {
+  it('takes the larger of the two for a payer both know, and the record alone for a holding the estimate does not', () => {
+    const estimated = [
+      // A share held at two brokers, estimated before tax; recorded after it at one of them.
+      { accountIds: ['bbca-stockbit', 'bbca-ipot'], minor: 50_000 },
+      // A bond whose coupon was recorded before the estimate's day.
+      { accountIds: ['ori'], minor: 0 },
+      // Nothing recorded against it: the estimate stands.
+      { accountIds: ['tlkm'], minor: 12_000 },
+    ];
+    const recorded = { 'bbca-stockbit': 45_000, ori: 47_250, 'fund-by-hand': 30_000 };
+    expect(receivedThisYear(estimated, recorded)).toBe(50_000 + 47_250 + 12_000 + 30_000);
+  });
+
+  it('adds a payer’s holdings up before comparing, so two brokers’ records are not each matched against the whole', () => {
+    expect(receivedThisYear([{ accountIds: ['a', 'b'], minor: 50_000 }], { a: 30_000, b: 30_000 })).toBe(60_000);
+  });
+
+  it('is nothing with nothing estimated or recorded', () => {
+    expect(receivedThisYear([], {})).toBe(0);
+    expect(receivedThisYear([{ accountIds: ['a'], minor: 0 }], {})).toBe(0);
   });
 });

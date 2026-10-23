@@ -1,5 +1,5 @@
 import { CASH_ITEMS, isoDate } from '@expanses/core';
-import { Coins, Plus } from 'lucide-react';
+import { Percent, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -233,11 +233,11 @@ export function AssetsPage() {
    */
   const estimatesStale = stale.filter((row) => row.method !== 'Units × price');
   /*
-   * The corner beside + opens Income: the year's realized gains and income, what the shares and bonds held pay in
-   * dividends and coupons, and every trade (owner, 23 Oct). It used to hold the price tag; Update prices is now in each
-   * priced holding's Settings, under Prices.
+   * The corner beside + opens Income: what the shares and bonds held pay in dividends and coupons, a year at a glance and
+   * month by month (owner, 23 Oct). It used to hold the price tag; Update prices is now in each priced holding's
+   * Settings, under Prices. The glyph is a yield's sign, chosen over coins, a hand of them and a sprout (owner, 23 Oct).
    */
-  const income: CornerAction = { key: 'income', label: 'Income', glyph: <Coins size={19} aria-hidden />, to: '/net-worth/investments/dividends' };
+  const income: CornerAction = { key: 'income', label: 'Income', glyph: <Percent size={19} aria-hidden />, to: '/net-worth/investments/dividends' };
   const actions: CornerAction[] = [income, { key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (

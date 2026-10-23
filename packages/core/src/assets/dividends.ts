@@ -15,7 +15,8 @@ import { percentShares } from './securities';
  *   buyer still qualifies).
  * - Still to come: last calendar year's payments that this year has not matched yet, in order, at the shares held now —
  *   a stock that paid twice last year and once so far this year still owes last year's second.
- * - By month: the year's dividends by the month of their ex-date.
+ * - By month: this calendar year's twelve months, each with what it has paid (Received's basis) and what it still owes
+ *   (Still to come's), so the two figures and the twelve bars under the hero add up to the same thing.
  */
 
 /** One stock held, with the history it pays by. */
@@ -43,10 +44,13 @@ export interface DividendPayer {
 }
 
 export interface DividendMonth {
-  /** 1 to 12. */
+  /** 1 to 12, of this calendar year. */
   month: number;
-  minor: number;
-  /** The stocks paying that month, largest first. */
+  /** Paid: an ex-date from 1 January to today, at the shares held the day before it. In base. */
+  paidMinor: number;
+  /** Still to come: last year's payment in this month that this year has not matched, at the shares held now. In base. */
+  toComeMinor: number;
+  /** The stocks paying that month, paid and still to come together, largest first. */
   titles: string[];
 }
 
@@ -54,6 +58,8 @@ export interface DividendView {
   /** All in base. */
   yearMinor: number;
   receivedMinor: number;
+  /** Received this year by each holding (`securityId`), for the page to set what was recorded against it. */
+  receivedBy: Record<string, number>;
   toComeMinor: number;
   /** Months (1 to 12) still to pay this year, in order. */
   toComeMonths: number[];
@@ -90,8 +96,17 @@ export function dividendView(o: { holdings: readonly DividendHolding[]; today: s
   let cost: number | null = 0;
   let value: number | null = 0;
   const payers: Omit<DividendPayer, 'percent'>[] = [];
-  const months = new Map<number, Map<string, number>>();
+  const receivedBy: Record<string, number> = {};
+  const months = new Map<number, { paid: number; toCome: number; byTitle: Map<string, number> }>();
   const unknown: string[] = [];
+  /** The month a payment lands in, by ex-date, with what each stock put in it so far. */
+  const monthOf = (exDate: string, title: string, minor: number) => {
+    const month = Number(exDate.slice(5, 7));
+    const at = months.get(month) ?? { paid: 0, toCome: 0, byTitle: new Map<string, number>() };
+    at.byTitle.set(title, (at.byTitle.get(title) ?? 0) + minor);
+    months.set(month, at);
+    return at;
+  };
 
   for (const holding of o.holdings) {
     if (holding.payments === null || toBase(1_000_000, holding.currency) === null) {
@@ -102,19 +117,23 @@ export function dividendView(o: { holdings: readonly DividendHolding[]; today: s
     let year = 0;
     for (const p of holding.payments) {
       if (p.exDate <= yearAgo || p.exDate > today) continue;
-      const minor = inBase(paidMinor(p.perShare, holding.unitsMicro, holding.currency));
-      year += minor;
-      const month = Number(p.exDate.slice(5, 7));
-      const byTitle = months.get(month) ?? new Map<string, number>();
-      byTitle.set(holding.title, (byTitle.get(holding.title) ?? 0) + minor);
-      months.set(month, byTitle);
+      year += inBase(paidMinor(p.perShare, holding.unitsMicro, holding.currency));
     }
     const paidThisYear = holding.payments.filter((p) => p.exDate.startsWith(thisYear) && p.exDate <= today);
-    for (const p of paidThisYear) receivedMinor += inBase(paidMinor(p.perShare, holding.unitsOn(shiftDays(p.exDate, -1)), holding.currency));
-    for (const p of holding.payments.filter((p) => p.exDate.startsWith(lastYear)).slice(paidThisYear.length)) {
-      toComeMinor += inBase(paidMinor(p.perShare, holding.unitsMicro, holding.currency));
-      toComeMonths.add(Number(p.exDate.slice(5, 7)));
+    let received = 0;
+    for (const p of paidThisYear) {
+      const minor = inBase(paidMinor(p.perShare, holding.unitsOn(shiftDays(p.exDate, -1)), holding.currency));
+      received += minor;
+      monthOf(p.exDate, holding.title, minor).paid += minor;
     }
+    for (const p of holding.payments.filter((p) => p.exDate.startsWith(lastYear)).slice(paidThisYear.length)) {
+      const minor = inBase(paidMinor(p.perShare, holding.unitsMicro, holding.currency));
+      toComeMinor += minor;
+      toComeMonths.add(Number(p.exDate.slice(5, 7)));
+      monthOf(p.exDate, holding.title, minor).toCome += minor;
+    }
+    receivedMinor += received;
+    receivedBy[holding.securityId] = received;
     yearMinor += year;
     if (year > 0) payers.push({ securityId: holding.securityId, title: holding.title, yearMinor: year });
     cost = cost === null || holding.costBaseMinor === null ? null : cost + holding.costBaseMinor;
@@ -126,14 +145,16 @@ export function dividendView(o: { holdings: readonly DividendHolding[]; today: s
   return {
     yearMinor,
     receivedMinor,
+    receivedBy,
     toComeMinor,
     toComeMonths: [...toComeMonths].sort((a, b) => a - b),
     yieldOnCostBps: bpsOf(yearMinor, cost),
     yieldAtPriceBps: bpsOf(yearMinor, value),
     payers: payers.map((p, i) => ({ ...p, percent: percents[i]! })),
     months: Array.from({ length: 12 }, (_, i) => {
-      const byTitle = [...(months.get(i + 1) ?? new Map<string, number>())].sort((a, b) => b[1] - a[1]);
-      return { month: i + 1, minor: byTitle.reduce((sum, [, m]) => sum + m, 0), titles: byTitle.map(([title]) => title) };
+      const at = months.get(i + 1);
+      const byTitle = [...(at?.byTitle ?? new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+      return { month: i + 1, paidMinor: at?.paid ?? 0, toComeMinor: at?.toCome ?? 0, titles: byTitle.map(([title]) => title) };
     }),
     unknown,
   };

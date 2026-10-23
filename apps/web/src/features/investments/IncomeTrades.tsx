@@ -12,10 +12,11 @@ import { DayHeader } from '../transactions/DayHeader';
 import { yearByHolding, yearSum } from './income-year';
 
 /**
- * Every holding bought and sold by the unit or by money, and what Income reads of them: the year's two figures, the
- * wide screen's holdings table, and the trades of every holding by day. These were Buy & sell's, which is folded into
- * Income now (owner, 23 Oct): a trade is recorded and changed on its holding's page, so here it is read, and a line
- * opens that page.
+ * Every holding bought and sold by the unit or by money, and what All trades reads of them: what the year's sells
+ * realized, the wide screen's holdings table, and the trades of every holding by day. These were Buy & sell's, folded
+ * into Income and then on into All trades (owner, 23 Oct): a trade is recorded and changed on its holding's page, so
+ * here it is read, and a line opens that page. What each holding recorded as paid this year stays in `year` for Income,
+ * which sets it against what the dividend history estimates.
  */
 export function useTradeBook() {
   const { ws } = useApp();
@@ -48,7 +49,6 @@ export function useTradeBook() {
     holdings,
     year,
     realized: yearSum(holdings, year, 'realizedMinor', ws.baseCurrency),
-    income: yearSum(holdings, year, 'incomeMinor', ws.baseCurrency),
     positions: positions.data ?? {},
     nameOf: (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.name ?? 'Holding',
     currencyOf: (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency,
@@ -64,37 +64,6 @@ export function useTradeBook() {
 }
 
 export type TradeBook = ReturnType<typeof useTradeBook>;
-
-/** The year's two figures side by side: what the sells realized, and what the dividends and coupons paid. */
-export function YearFigures({ book }: { book: TradeBook }) {
-  return (
-    <div data-testid="trades-year" className="mb-[18px] flex overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
-      <YearFigure label="Realized this year" minor={book.realized.base} currency={book.ws.baseCurrency} others={book.realized.others} signed />
-      <YearFigure label="Income this year" minor={book.income.base} currency={book.ws.baseCurrency} others={book.income.others} />
-    </div>
-  );
-}
-
-/** One of the year's two figures: the base currency's sum, and any other currency's under it. */
-function YearFigure({ label, minor, currency, others, signed = false }: { label: string; minor: number; currency: string; others: string; signed?: boolean }) {
-  return (
-    <div className="min-w-0 flex-1 px-[14px] py-2.5 [&+&]:border-l-[0.5px] [&+&]:border-[var(--ph-hair)]">
-      <span className="block text-[11.5px] leading-[14px] text-[var(--ph-ink-3)]">{label}</span>
-      <span
-        className={cx(
-          'tabular block text-base leading-6 font-bold',
-          signed && minor > 0 && 'text-[var(--ph-tint)]',
-          signed && minor < 0 && 'text-[var(--ph-alarm)]',
-          !signed && 'text-[var(--ph-ink)]',
-        )}
-      >
-        {signed && minor > 0 ? '+' : ''}
-        {formatMinor(minor, currency)}
-      </span>
-      {others && <span className="block truncate text-[11.5px] leading-[14px] text-[var(--ph-ink-3)]">{others}</span>}
-    </div>
-  );
-}
 
 /** A wide screen has room for the table the phone gave up: every holding with all eight columns. */
 export function HoldingsTable({ book }: { book: TradeBook }) {

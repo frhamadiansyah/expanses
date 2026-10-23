@@ -43,3 +43,31 @@ export function yearSum(
   const others = [...sums].filter(([currency, minor]) => currency !== baseCurrency && minor !== 0);
   return { base: sums.get(baseCurrency) ?? 0, others: others.map(([currency, minor]) => formatMinor(minor, currency)).join(' · ') };
 }
+
+/**
+ * Received this year, as Income shows it: the history's estimate and what was recorded, reconciled per payer.
+ *
+ * For each payer the history estimates for (a listed share across every broker holding it, a bond with coupon terms)
+ * the figure is the larger of its estimate and the payments recorded on its holdings: the estimate is before tax and a
+ * recorded payment is after it, so a payment both know would otherwise lower the figure the moment it was written
+ * down, and a payment only the record knows — Yahoo missing one, a coupon recorded before its day — is not lost. A
+ * holding the estimate knows nothing of, a fund named by hand or a share with no ticker, counts what was recorded,
+ * which is all there is for it. Every figure arrives in base; a holding whose currency has no rate is left out upstream.
+ */
+export function receivedThisYear(
+  estimated: readonly { accountIds: readonly string[]; minor: number }[],
+  recorded: Readonly<Record<string, number>>,
+): number {
+  const covered = new Set<string>();
+  let total = 0;
+  for (const payer of estimated) {
+    let own = 0;
+    for (const accountId of payer.accountIds) {
+      covered.add(accountId);
+      own += recorded[accountId] ?? 0;
+    }
+    total += Math.max(payer.minor, own);
+  }
+  for (const [accountId, minor] of Object.entries(recorded)) if (!covered.has(accountId)) total += minor;
+  return total;
+}

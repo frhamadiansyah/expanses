@@ -5,6 +5,7 @@ import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './fo
 import { KeyboardStrip } from './KeyboardStrip';
 import { type GroupChild, toneClass } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
+import type { Tone } from './row';
 /**
  * Primitive 6: the form row.
  *
@@ -122,15 +123,7 @@ export function TextRow({
             <label htmlFor={id} className={LABEL}>
               {label}
             </label>
-            <button
-              type="button"
-              aria-label={`About ${label}`}
-              aria-expanded={explained}
-              onClick={() => setExplained((was) => !was)}
-              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
-            >
-              <Info size={16} aria-hidden />
-            </button>
+            <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />
           </span>
         ) : (
           <label htmlFor={id} className={LABEL}>
@@ -206,17 +199,7 @@ export function SelectRow({
           <label htmlFor={id} className={LABEL}>
             {label}
           </label>
-          {info && (
-            <button
-              type="button"
-              aria-label={`About ${label}`}
-              aria-expanded={explained}
-              onClick={() => setExplained((was) => !was)}
-              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
-            >
-              <Info size={16} aria-hidden />
-            </button>
-          )}
+          {info && <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />}
         </span>
         <span
           className={cx(
@@ -264,22 +247,58 @@ export function optionLabel(children: ReactNode, value: string): string | null {
 }
 
 /** A row that shows rather than asks: a computed total, a workspace's name. Quieter ink, and it points nowhere. */
-export function ReadOnlyRow({ label, value, position }: GroupChild & { label: string; value: string | null | undefined }) {
+export function ReadOnlyRow({
+  label,
+  value,
+  tone,
+  info,
+  position,
+}: GroupChild & {
+  label: string;
+  value: string | null | undefined;
+  /** The figure's ink when the quiet one would mislead: a gain in the tint, a loss in alarm. */
+  tone?: Tone;
+  /** What the figure is, behind an ⓘ beside the label and under the row only when asked for — as TextRow's `info`. */
+  info?: ReactNode;
+}) {
   const plan = planFormRow('static', value, '—');
   // The figure is named by its label, as a field is, so a screen reader (and a test) finds "Total" and hears its value.
   const id = useId();
+  const [explained, setExplained] = useState(false);
   return (
     <div className="relative" style={{ minHeight: TAP }}>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
-        <span id={id} className={LABEL}>
-          {label}
+        <span className="flex shrink-0 items-center gap-[6px]">
+          <span id={id} className={LABEL}>
+            {label}
+          </span>
+          {info && <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />}
         </span>
-        <span aria-labelledby={id} className={cx('tabular min-w-0 flex-1 truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>
+        <span aria-labelledby={id} className={cx('tabular min-w-0 flex-1 truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.placeholder ? plan.tone : (tone ?? plan.tone)))}>
           {plan.text}
         </span>
       </div>
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
+  );
+}
+
+/**
+ * The ⓘ beside a label: the one button every row with an `info` carries, 18 px round in the quiet ink, saying whether
+ * its explanation is open. The row keeps the state and draws the explanation; this only asks.
+ */
+function InfoToggle({ label, explained, onToggle }: { label: string; explained: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`About ${label}`}
+      aria-expanded={explained}
+      onClick={onToggle}
+      className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+    >
+      <Info size={16} aria-hidden />
+    </button>
   );
 }
 
@@ -356,17 +375,7 @@ export function SwitchRow({
           <label htmlFor={id} className={cx('min-w-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.labelTone))}>
             {label}
           </label>
-          {info && (
-            <button
-              type="button"
-              aria-label={`About ${label}`}
-              aria-expanded={explained}
-              onClick={() => setExplained((was) => !was)}
-              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
-            >
-              <Info size={16} aria-hidden />
-            </button>
-          )}
+          {info && <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />}
         </span>
         <span
           className={cx(

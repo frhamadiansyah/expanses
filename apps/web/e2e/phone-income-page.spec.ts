@@ -7,18 +7,19 @@ test.beforeEach(({ page }) => {
 });
 
 /*
- * Income on a phone: the year's two figures side by side, the trades under them by day, and a line opened by thumb
- * onto its holding. The wide screen's holdings table stays off a phone, and nothing runs off the right edge.
+ * Income and All trades on a phone: Income says plainly when nothing held pays; All trades has the year's realized
+ * figure over the trades by day, and a line opened by thumb onto its holding. The wide screen's holdings table stays
+ * off a phone, and nothing runs off the right edge.
  */
-test('by thumb: Income reads the year side by side and opens a trade’s holding', async ({ page }) => {
+test('by thumb: Income and All trades fit the screen, and a trade’s line opens its holding', async ({ page }) => {
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2026-03-09', '10', '18000000']]);
 
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Income', exact: true }).tap();
   await expect(page).toHaveURL(new RegExp(`${INCOME}$`));
-  const year = page.getByTestId('trades-year');
-  await expect(year).toContainText('Realized this year');
-  await expect(year).toContainText('Income this year');
+  // Gold pays nothing, so there is no year to draw, and no trade figure here any more.
+  await expect(page.getByText(/No listed shares or bonds with a coupon yet/)).toBeVisible();
+  await expect(page.getByText('Realized this year')).toHaveCount(0);
   await expect(page.getByRole('table')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
@@ -26,6 +27,7 @@ test('by thumb: Income reads the year side by side and opens a trade’s holding
   await page.goto('/net-worth/assets');
   await page.getByTestId('all-trades').tap();
   await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
+  await expect(page.getByLabel('Realized this year', { exact: true })).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await tradeRow(page, 'Bought Antam gold bars').tap();

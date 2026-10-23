@@ -7,7 +7,7 @@ export type TradeDoing = 'buy' | 'sell' | 'income' | 'units';
 /** The holding page's round button for each: a payment is named by what the holding pays (Dividend, Coupon, Income). */
 const BUTTON: Record<Exclude<TradeDoing, 'units'>, string | RegExp> = { buy: 'Buy', sell: 'Sell', income: /^(Dividend|Coupon|Income)$/ };
 
-/** Income, behind the Assets corner: the year's figures, and the dividends and coupons. */
+/** Income, behind the Assets corner: a year of dividends and coupons, month by month, and who pays it. */
 export const INCOME = '/net-worth/investments/dividends';
 /** All trades, from the foot of Assets' Investments: every holding's buys and sells by day. */
 export const ALL_TRADES = '/net-worth/investments/trades';
