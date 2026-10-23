@@ -7,7 +7,7 @@ import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { cx } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -146,14 +146,30 @@ export function useCashSide(defaultId: string | null) {
   const accounts = useAccounts();
   const choices: AccountRow[] = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
   const [picked, setPicked] = useState('');
-  const cashAccountId = picked || (defaultId && choices.some((a) => a.id === defaultId) ? defaultId : '') || choices[0]?.id || '';
-  const cashAccount = choices.find((account) => account.id === cashAccountId);
-  return { accounts: accounts.data ?? [], choices, cashAccountId, cashAccount, pick: setPicked };
+  // Owned before the app: recorded against Opening Balances, so no account's balance moves (an empty cash account).
+  const [past, setPast] = useState(false);
+  const chosen = picked || (defaultId && choices.some((a) => a.id === defaultId) ? defaultId : '') || choices[0]?.id || '';
+  const cashAccountId = past ? '' : chosen;
+  const cashAccount = past ? undefined : choices.find((account) => account.id === cashAccountId);
+  return {
+    accounts: accounts.data ?? [],
+    choices,
+    cashAccountId,
+    cashAccount,
+    past,
+    setPast,
+    /** An account to move, or a past trade that moves none. */
+    ready: past || cashAccountId !== '',
+    pick: (id: string) => {
+      setPast(false);
+      setPicked(id);
+    },
+  };
 }
 
 /** "Paid from" or "To": the account, opening the list of them. */
 export function CashRow({ label, side, onOpen, position }: GroupChild & { label: string; side: ReturnType<typeof useCashSide>; onOpen: () => void }) {
-  return <PickerRow position={position} label={label} value={side.cashAccount?.name ?? null} placeholder="Account" onOpen={onOpen} />;
+  return <PickerRow position={position} label={label} value={side.past ? (label === 'To' ? 'Past sale' : 'Past purchase') : (side.cashAccount?.name ?? null)} placeholder="Account" onOpen={onOpen} />;
 }
 
 /** The list of accounts in a sheet of its own, as a transaction's Paid with — drawn outside the groups. */
@@ -240,7 +256,10 @@ export function TradeDetails({
   byMoney = false,
   unitLabel,
   problem,
+  past,
 }: {
+  /** A trade made before the app: the switch that records it against Opening Balances, no account moving. */
+  past?: { on: boolean; set: (on: boolean) => void };
   kind: 'buy' | 'sell';
   details: TradeDetailsState;
   /** The holding's currency: the fee and tax are in it. */
@@ -260,6 +279,14 @@ export function TradeDetails({
       {details.open && (
         <>
           <InsetGroup footer={problem ?? undefined}>
+            {past ? (
+              <SwitchRow
+                label={kind === 'buy' ? 'Past purchase' : 'Past sale'}
+                checked={past.on}
+                onChange={past.set}
+                info="Made before the app was used: recorded against Opening Balances, so no account's balance moves."
+              />
+            ) : null}
             <TypedRow
               label="Fee"
               value={draft.fee}
@@ -360,7 +387,8 @@ export function useTradeSave(o: {
         database, ws, input, holdingCurrency: o.holdingCurrency, cashCurrency: o.cashCurrency ?? ws.baseCurrency,
         needsRate: o.details.needsRate, manualRate: o.details.draft.dayRate, resolveRates, onMissing: o.details.onMissing, where: o.details.dayRateLabel,
       });
-      await recordTrade(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
+      // A past trade names no account: Opening Balances stands for it, as the full form's empty choice did.
+      await recordTrade(database, ws, { ...input, cashAccountId: input.cashAccountId || null, ratesToBase, setAside: setAside.choice });
       await invalidate();
       o.onDone();
     } catch (e) {

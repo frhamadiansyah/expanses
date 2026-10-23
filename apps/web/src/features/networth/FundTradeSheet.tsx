@@ -66,7 +66,7 @@ export function FundTradeSheet({
     : kind === 'sell' ? fundSell({ amountMinor, all, priceMicro, heldMicro }) : null;
   const trade = buy ?? (sell && !sell.tooMany ? sell : null);
   const typedInput: RecordTradeInput | null =
-    trade && occurredOn <= today && side.cashAccountId
+    trade && occurredOn <= today && side.ready
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro: trade.unitsMicro, grossMinor: trade.grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
   const cashCurrency = side.cashAccount?.currency ?? undefined;
@@ -133,6 +133,7 @@ export function FundTradeSheet({
       </InsetGroup>
 
       <TradeDetails
+        past={{ on: side.past, set: side.setPast }}
         kind={kind}
         details={details}
         currency={currency}

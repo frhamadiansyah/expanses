@@ -96,6 +96,21 @@ test('Add more details opens a second box in the same sheet; a fee folded away i
   await expectBalance(page, 'BCA', '20.100.000'); // 30.000.000 − 9.900.000
 });
 
+test('a past purchase is recorded with no account moving: Paid from reads Past purchase', async ({ page }) => {
+  await goldAtPrice(page);
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('Grams', { exact: true }).fill('5');
+  await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
+  await openTradeDetails(sheet);
+  await sheet.getByLabel('Past purchase', { exact: true }).click();
+  await expect(sheet.getByRole('button', { name: /^Paid from/ })).toContainText('Past purchase');
+  await page.getByRole('button', { name: 'Record buy' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('asset-grid')).toContainText('17 g');
+  await expectBalance(page, 'BCA', '30.000.000');
+});
+
 test('a sell from a goal takes its grams out of that goal', async ({ page }) => {
   await addGoal(page, 'Hajj fund', '50000000');
   await goldAtPrice(page);

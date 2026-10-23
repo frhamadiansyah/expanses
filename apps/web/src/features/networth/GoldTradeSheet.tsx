@@ -56,7 +56,7 @@ export function GoldTradeSheet({
   const sold = kind === 'sell' ? goldSellGrams({ typedMicro: typed, all, heldMicro }) : null;
   const unitsMicro = kind === 'buy' ? typed : sold && !sold.tooMany ? sold.unitsMicro : null;
   const typedInput: RecordTradeInput | null =
-    unitsMicro && moneyMinor && occurredOn <= today && side.cashAccountId
+    unitsMicro && moneyMinor && occurredOn <= today && side.ready
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor: moneyMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
   const cashCurrency = side.cashAccount?.currency ?? undefined;
@@ -137,7 +137,7 @@ export function GoldTradeSheet({
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
 
-      <TradeDetails kind={kind} details={details} currency={currency} emptyWord="None" whole={unitsMicro ? formatUnits(unitsMicro) : ''} unitLabel="g" problem={problem} />
+      <TradeDetails past={{ on: side.past, set: side.setPast }} kind={kind} details={details} currency={currency} emptyWord="None" whole={unitsMicro ? formatUnits(unitsMicro) : ''} unitLabel="g" problem={problem} />
 
       {gain !== null && (
         <InsetGroup>
