@@ -284,7 +284,7 @@ export function TradeDetails({
                 label={kind === 'buy' ? 'Past purchase' : 'Past sale'}
                 checked={past.on}
                 onChange={past.set}
-                info="Made before the app was used: recorded against Opening Balances, so no account's balance moves."
+                info={kind === 'buy' ? "Bought earlier, so no account's balance moves." : "Sold earlier, so no account's balance moves."}
               />
             ) : null}
             <TypedRow
