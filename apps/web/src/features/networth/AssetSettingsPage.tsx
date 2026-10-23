@@ -14,6 +14,7 @@ import { BankNumberGroup } from '../accounts/BankNumberGroup';
 import { CouponGroup } from './CouponGroup';
 import { SameFundGroup } from './SameFundGroup';
 import { PricesGroup } from './PricesGroup';
+import { MonthlyPlanGroup } from './MonthlyPlanGroup';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -177,6 +178,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           holding={{ name: value.name, currency: value.currency, unitKind: profile.data?.unitKind ?? null }}
         />
       )}
+
+      {/* A regular monthly buy of it: set once, and due on Recurring when its day comes. */}
+      {value && <MonthlyPlanGroup accountId={accountId} />}
 
       {/* The same fund at another place, tied into one row on Assets: seldom set, so here rather than on its page. */}
       {profile.data?.assetKind === 'fund' && <SameFundGroup accountId={accountId} />}

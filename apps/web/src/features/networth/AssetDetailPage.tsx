@@ -43,9 +43,7 @@ import { ASSET_TILES } from '../ownables/catalogue-view';
 import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
-import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTradeTemplates, useTrades, useValuations } from './queries';
-import { planRowValue } from './monthly-plans';
-import { PlanSheet } from './PlanSheet';
+import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
@@ -110,8 +108,7 @@ type Sheet =
   | { kind: 'goals'; trade: TradeRow }
   | { kind: 'reinvested'; trade: TradeRow }
   | { kind: 'switch'; editing: { out: TradeRow; into: TradeRow } | null }
-  | { kind: 'new-broker' }
-  | { kind: 'plan' };
+  | { kind: 'new-broker' };
 
 /**
  * `/net-worth/assets/$accountId` — one page for everything owned that is not money: priced things (gold, shares, a
@@ -161,7 +158,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const valuations = useValuations(accountId);
   const lastValued = (valuations.data ?? []).filter((row) => row.basis !== 'njop').reduce<string | null>((last, row) => (last === null || row.asOf > last ? row.asOf : last), null);
   const trades = useTrades(accountId);
-  const templates = useTradeTemplates();
   const history = useMonthEndValues(accountId, months);
   const goalLinks = useGoalLinks();
   const goals = useGoals();
@@ -232,8 +228,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
   const heldAtValue = typingPlace ? ANOTHER_PLACE : heldName === '' ? '' : institutions.includes(heldName) ? heldName : ANOTHER_PLACE;
   const holding = { accountId, name: value.name, currency, byMoney };
-  // Its monthly buys: set here, and shown as due on the Recurring page when their day comes.
-  const plans = (templates.data ?? []).filter((template) => template.accountId === accountId && template.kind === 'buy');
   const nameOf = (id: string) => everyAccount.find((row) => row.id === id)?.name ?? 'another fund';
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
   const gain = gainPill(value.valueMinor, value.costMinor, currency);
@@ -659,10 +653,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               <option value={NEW_BROKER}>Another broker…</option>
             </SelectRow>
           ) : null,
-          // A regular buy of it: the money and the day, opening the sheet that sets, changes or removes it.
-          (priced || byMoney) && templates.isSuccess ? (
-            <InsetRow key="plan" title="Monthly plan" value={planRowValue(plans, currency)} onClick={() => setSheet({ kind: 'plan' })} testId="monthly-plan" />
-          ) : null,
           // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
           rdnBank ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
@@ -770,7 +760,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onClose={() => setSheet(null)}
         />
       )}
-      {sheet?.kind === 'plan' && <PlanSheet holding={holding} plans={plans} defaultCashId={brokerId} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'trade' && (
         <TradeSheet title={sheet.title} holding={holding} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
