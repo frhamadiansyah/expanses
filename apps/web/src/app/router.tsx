@@ -42,7 +42,6 @@ import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
-import { MonthlyPlansPage } from '../features/networth/MonthlyPlansPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
@@ -267,7 +266,14 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/edit', component: EditAssetRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades/plans', component: MonthlyPlansPage }),
+  // Monthly plans are set on each holding's own page and come due on Recurring, under the bills: an old link lands there.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/trades/plans',
+    beforeLoad: () => {
+      throw redirect({ to: '/bills', replace: true });
+    },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
   // One goal on its own page: the list reads them as a set, and a goal that was a card among cards is a page now.
   createRoute({ getParentRoute: () => rootRoute, path: '/goals/$goalId', component: GoalRoute }),

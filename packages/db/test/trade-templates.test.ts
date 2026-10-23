@@ -10,6 +10,7 @@ import {
   listTrades,
   recordTrade,
   saveTradeTemplate,
+  templateBuysIn,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -28,13 +29,13 @@ beforeEach(async () => {
 const monthly = (extra: Record<string, unknown> = {}) =>
   saveTradeTemplate(database, ws, { accountId: fund.id, cashAccountId: bca.id, amountMinor: 2_000_000, unitsMicro: null, dayOfMonth: 5, active: true, ...extra });
 
-const buyFromTemplate = (templateId: string, occurredOn: string) =>
+const buyFromTemplate = (templateId: string, occurredOn: string, grossMinor = 2_000_000) =>
   recordTrade(database, ws, {
     accountId: fund.id,
     kind: 'buy',
     occurredOn,
     unitsMicro: 1_085_700,
-    grossMinor: 2_000_000,
+    grossMinor,
     feeMinor: 0,
     taxMinor: 0,
     cashAccountId: bca.id,
@@ -110,6 +111,37 @@ describe('dueTemplates', () => {
     await monthly({ active: false });
 
     await expect(dueTemplates(database, ws, '2026-09-12')).resolves.toEqual([]);
+  });
+
+  it('never lists a monthly move, which no trade answers', async () => {
+    await saveTradeTemplate(database, ws, { accountId: bca.id, cashAccountId: bca.id, amountMinor: 500_000, unitsMicro: null, dayOfMonth: 1, active: true, kind: 'move' });
+
+    await expect(dueTemplates(database, ws, '2026-09-12')).resolves.toEqual([]);
+  });
+});
+
+describe('templateBuysIn', () => {
+  it('says the day and the money of the month’s buy from each template', async () => {
+    const id = await monthly();
+    await buyFromTemplate(id, '2026-09-06', 2_150_000);
+    await buyFromTemplate(id, '2026-08-05');
+
+    await expect(templateBuysIn(database, ws, '2026-09')).resolves.toEqual([{ templateId: id, occurredOn: '2026-09-06', grossMinor: 2_150_000 }]);
+  });
+
+  it('adds two buys from one plan in the same month together, on the later day', async () => {
+    const id = await monthly();
+    await buyFromTemplate(id, '2026-09-20', 500_000);
+    await buyFromTemplate(id, '2026-09-05', 1_500_000);
+
+    await expect(templateBuysIn(database, ws, '2026-09')).resolves.toEqual([{ templateId: id, occurredOn: '2026-09-20', grossMinor: 2_000_000 }]);
+  });
+
+  it('leaves out buys that answer no plan', async () => {
+    await monthly();
+    await recordTrade(database, ws, { accountId: fund.id, kind: 'buy', occurredOn: '2026-09-05', unitsMicro: 1_000_000, grossMinor: 1_000_000, feeMinor: 0, taxMinor: 0, cashAccountId: bca.id });
+
+    await expect(templateBuysIn(database, ws, '2026-09')).resolves.toEqual([]);
   });
 });
 

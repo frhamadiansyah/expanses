@@ -101,17 +101,20 @@ export async function deleteTradeTemplate(database: Database, ws: WorkspaceConte
   await database.db.delete(tradeTemplates).where(and(eq(tradeTemplates.id, id), eq(tradeTemplates.workspaceId, ws.workspaceId)));
 }
 
+/** What one monthly buy recorded in a month: the day of its last buy and the money of all of them. */
+export interface TemplateBuy {
+  templateId: string;
+  occurredOn: string;
+  grossMinor: number;
+}
+
 /**
- * Monthly buys whose day has passed this month with nothing recorded from them yet.
- * There is no background job: the Buy & sell page asks this when it opens.
+ * The buys recorded against a monthly buy in a month (`YYYY-MM`), one entry per template. A month with two buys from
+ * the same plan says the later day and both amounts together.
  */
-export async function dueTemplates(database: Database, ws: WorkspaceContext, onDate: string): Promise<TradeTemplateRow[]> {
-  const month = onDate.slice(0, 7);
-  const day = Number(onDate.slice(8, 10));
-  const templates = (await listTradeTemplates(database, ws)).filter((template) => template.active && template.dayOfMonth <= day);
-  if (templates.length === 0) return [];
+export async function templateBuysIn(database: Database, ws: WorkspaceContext, month: string): Promise<TemplateBuy[]> {
   const recorded = await database.db
-    .select({ templateId: investmentTrades.templateId })
+    .select({ templateId: investmentTrades.templateId, occurredOn: investmentTrades.occurredOn, grossMinor: investmentTrades.grossMinor })
     .from(investmentTrades)
     .where(
       and(
@@ -121,6 +124,30 @@ export async function dueTemplates(database: Database, ws: WorkspaceContext, onD
         lte(investmentTrades.occurredOn, `${month}-31`),
       ),
     );
-  const done = new Set(recorded.map((row) => row.templateId).filter((id): id is string => id !== null));
+  const byTemplate = new Map<string, TemplateBuy>();
+  for (const row of recorded) {
+    if (row.templateId === null) continue;
+    const was = byTemplate.get(row.templateId);
+    byTemplate.set(row.templateId, {
+      templateId: row.templateId,
+      occurredOn: was && was.occurredOn > row.occurredOn ? was.occurredOn : row.occurredOn,
+      grossMinor: (was?.grossMinor ?? 0) + row.grossMinor,
+    });
+  }
+  return [...byTemplate.values()];
+}
+
+/**
+ * Monthly buys whose day has passed this month with nothing recorded from them yet. There is no background job: the
+ * Recurring page and the Net worth attention rows ask this when they open.
+ *
+ * A monthly move is never due: it parks money rather than buying anything, so no trade is ever recorded against it
+ * and it would stay due all month.
+ */
+export async function dueTemplates(database: Database, ws: WorkspaceContext, onDate: string): Promise<TradeTemplateRow[]> {
+  const day = Number(onDate.slice(8, 10));
+  const templates = (await listTradeTemplates(database, ws)).filter((template) => template.active && template.kind === 'buy' && template.dayOfMonth <= day);
+  if (templates.length === 0) return [];
+  const done = new Set((await templateBuysIn(database, ws, onDate.slice(0, 7))).map((row) => row.templateId));
   return templates.filter((template) => !done.has(template.id));
 }
