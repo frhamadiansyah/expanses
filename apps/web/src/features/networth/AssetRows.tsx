@@ -179,8 +179,8 @@ export function MoneyRow({
         <label htmlFor={id} className={LABEL}>
           {label}
         </label>
-        {/* Symbol and figure sit together at the right. */}
-        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
+        {/* Symbol and figure as one, "Rp1.000.000": no gap between them (owner, 23 Oct). */}
+        <span className="flex min-w-0 flex-1 items-center justify-end">
           {/* Only once there is a figure: an empty row reads as its prompt alone. */}
           {value.trim() === '' ? null : onCurrency ? (
             <button type="button" aria-label={`${label} currency: ${currency}`} onClick={() => setPicking(true)} className={cx('ph-focus rounded', quiet)}>
@@ -192,10 +192,10 @@ export function MoneyRow({
             </span>
           )}
           {/*
-           * As wide as what it shows, an unseen copy of the text setting the width — but never narrower than a
-           * thirteen-digit figure (1.150.000.000), so the symbols of the rows above and below stand in one column.
+           * As wide as what it shows, an unseen copy of the text setting the width, so the symbol sits right against
+           * the figure.
            */}
-          <span className="inline-grid min-w-[min(13ch,100%)] text-[17px] tabular md:text-[15px]">
+          <span className="inline-grid min-w-0 text-[17px] tabular md:text-[15px]">
             <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[17px] leading-[22px] md:leading-[20px] tabular md:text-[15px]">
               {value || prompt}
             </span>

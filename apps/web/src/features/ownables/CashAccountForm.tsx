@@ -117,7 +117,7 @@ const STRIP_GRACE_MS = 300;
  * A name typed on a row of its own, with the names it could be offered over the keyboard as it is typed — the banks
  * or the brokers of a rupiah workspace — the way the bank row offers them. Anything else typed is kept as typed.
  */
-function SuggestRow({
+export function SuggestRow({
   label,
   value,
   onChange,

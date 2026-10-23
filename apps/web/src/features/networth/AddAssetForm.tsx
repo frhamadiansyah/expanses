@@ -1,4 +1,4 @@
-import { ASSET_FAMILIES, ASSET_ITEMS, isoDate } from '@expanses/core';
+import { ASSET_FAMILIES, ASSET_ITEMS, goldBrandMatches, isoDate } from '@expanses/core';
 import { createAccount, openDebtBalance, recordTrade, recordValuation, saveAcquired, saveAssetProfile } from '@expanses/db';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -9,6 +9,7 @@ import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/na
 import { byMoneyItem, chosenItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset, type PurchaseDraft } from './add-asset';
 import { AcquiredRow, MoneyRow } from './AssetRows';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
+import { SuggestRow } from '../ownables/CashAccountForm';
 
 /** Everything the five families name, so what is left over in `ASSET_ITEMS` is the legacy entry alone. */
 const IN_A_FAMILY = new Set(ASSET_FAMILIES.flatMap((family) => family.items.map((item) => item.id)));
@@ -183,7 +184,19 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
           </SelectRow>
         ) : null}
         {/* "Required" beside Current value's "Optional", as iOS's own label-left rows say it; the header names the kind. */}
-        <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Required" required />
+        {/* Gold bullion offers its makers over the keyboard as the name is typed, as a bank account offers banks. */}
+        {draft.itemId === 'gold' ? (
+          <SuggestRow
+            label="Name"
+            stripLabel="Gold makers"
+            value={draft.name}
+            onChange={(name) => change({ name })}
+            placeholder="Required"
+            offers={(typed) => goldBrandMatches(typed, ws.baseCurrency === 'IDR')}
+          />
+        ) : (
+          <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Required" required />
+        )}
         {canType ? (
           <SwitchRow label="I'd rather type what it is worth" checked={draft.typedInstead} onChange={(checked) => retarget(draft.itemId, checked)} />
         ) : null}
@@ -218,6 +231,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
                 value={purchase.units}
                 inputMode="decimal"
                 placeholder={byMoney ? 'Optional' : byPar ? 'Amount' : 'Quantity'}
+                suffix={item.behaviour.opens === 'holding' && item.behaviour.unitKind === 'grams' ? 'g' : undefined}
                 info={byPar ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
                 onChange={(e) => setPurchase(index, { units: e.target.value })}
               />
