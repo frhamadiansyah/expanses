@@ -298,7 +298,7 @@ async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccou
 }
 
 /**
- * The same read for an edit: Buy & sell opens a trade that crossed a currency with "Charged in" filled from what its
+ * The same read for an edit: a holding's page opens a trade that crossed a currency with "Charged in" filled from what its
  * own transaction posted, never empty. Reads only; the trade must be an active one of this workspace.
  */
 export async function postedTradeMoney(database: Database, ws: WorkspaceContext, tradeId: string): Promise<PostedTradeMoney> {

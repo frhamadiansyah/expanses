@@ -3,7 +3,7 @@
  *
  * "A table becomes rows on a phone and stays a table on desktop" is the kit's rule, and it works because the
  * columns the row drops are waiting on the detail screen behind the chevron. Where there is no detail screen —
- * `/net-worth/trades` has none for a holding, `/net-worth/loans/$accountId` none for a schedule line — that
+ * Income's holdings table (`/net-worth/investments/dividends`) has none for a holding, `/net-worth/loans/$accountId` none for a schedule line — that
  * second half of the rule is not true, and collapsing the table puts average cost, unrealized, realized this
  * year, income this year and "Left after" **on no screen at all**. Losing a column is worse than scrolling one.
  *

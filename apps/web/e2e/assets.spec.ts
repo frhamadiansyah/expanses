@@ -2,17 +2,17 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings as openSettingsMenu } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { addTransfer } from './add-transaction';
-import { addPriced } from './asset-page';
+import { addPriced, openAsset } from './asset-page';
 import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-/** Buy & sell's button for the one holding: it opens the holding's own page with the gold sheet up. */
+/** The gold's own page and its round Buy or Sell: the gold sheet up. */
 async function openGoldSheet(page: Page, kind: 'Buy' | 'Sell') {
-  await page.goto('/net-worth/trades');
-  await page.getByRole('button', { name: kind, exact: true }).click();
+  await openAsset(page, 'Antam gold bars');
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: kind, exact: true }).click();
   await expect(page.getByRole('button', { name: `Record ${kind.toLowerCase()}`, exact: true })).toBeVisible();
 }
 
@@ -49,11 +49,6 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
   await addBank(page);
   await addGold(page);
 
-  // Buy & sell is a corner button of its own on Net worth.
-  await page.goto('/net-worth');
-  await page.getByRole('link', { name: 'Buy & sell' }).click();
-  await expect(page.getByRole('heading', { name: 'Buy & sell' })).toBeVisible();
-
   await openGoldSheet(page, 'Buy');
   await page.getByLabel('Grams', { exact: true }).fill('2');
   await page.getByLabel('Total paid', { exact: true }).pressSequentially('3980000');
@@ -72,14 +67,24 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
 
   // 12 g left of the 17 g held.
   await expect(page.getByText('12 g').first()).toBeVisible();
+
+  // The year's figures are read on Income, behind the Assets corner: 5 g sold for Rp 9.000.000 at an average cost of
+  // Rp 26.380.000 over 17 g realizes about Rp 1.241.176, and nothing has paid income.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: 'Income', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Income' })).toBeVisible();
+  const year = page.getByTestId('trades-year');
+  await expect(year).toContainText('Realized this year');
+  await expect(year).toContainText(/\+Rp\s?1\.241\.17\d/);
+  await expect(year).toContainText('Income this year');
 });
 
 test('updates a price from the assets list and shows the new value', async ({ page }) => {
   await addBank(page);
   await addGold(page);
 
-  // The corner beside + opens Dividends; Update prices is reached from a holding's Settings. Gold is there too.
-  await expect(page.getByRole('link', { name: 'Dividends' })).toBeVisible();
+  // The corner beside + opens Income; Update prices is reached from a holding's Settings. Gold is there too.
+  await expect(page.getByRole('link', { name: 'Income', exact: true })).toBeVisible();
   await page.goto('/net-worth/prices');
   await expect(page.getByRole('heading', { name: 'Update prices' })).toBeVisible();
   await page.getByLabel(/Antam gold bars/).fill('1842000');
@@ -133,7 +138,7 @@ test('an account opened by mistake deletes once asked; one with entries refuses 
   await expect(page.getByRole('link', { name: /Hana/ })).toHaveCount(0);
 });
 
-test('sends trade edits to Buy & sell instead of the transaction form', async ({ page }) => {
+test('sends trade edits to the holding’s page instead of the transaction form', async ({ page }) => {
   await addBank(page);
   await addGold(page);
 
@@ -147,8 +152,11 @@ test('sends trade edits to Buy & sell instead of the transaction form', async ({
   await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
-  await expect(row.getByRole('link', { name: 'Buy & sell' })).toBeVisible();
   await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+  // The row's link opens the gold's own page, where its ⋮ edits it.
+  await row.getByRole('link', { name: 'Holding', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
+  await expect(page.getByRole('heading', { name: 'Antam gold bars' })).toBeVisible();
 });
 
 test('a section picked on the chart divides where it stands: the other boxes stay, and its kinds are boxes inside it', async ({ page }) => {

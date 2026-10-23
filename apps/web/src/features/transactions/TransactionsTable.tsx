@@ -31,7 +31,8 @@ export interface TableHandlers {
   duplicate: (id: string) => void;
   /** The full form, for a row too involved to edit as cells. */
   renderForm: (tx: TransactionView, onDone: () => void) => ReactNode;
-  tradeIds: ReadonlySet<string>;
+  /** A trade's money half, by its transaction: the holding whose page corrects it, so its units stay in step. */
+  tradeHoldings: ReadonlyMap<string, string>;
   /** The workspace a row has to be opened in before it can be edited; null when this one will do. */
   elsewhereOf: (transactionId: string) => RowBook | null;
   /**
@@ -224,7 +225,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   // Money back on a purchase reads as money in.
   const sign = row.refund ? '+' : row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
   // A holding owned before the app is bought against Opening Balances, but it is a purchase, not an account's first balance.
-  const pastPurchase = row.type === 'opening' && handlers.tradeIds.has(tx.id);
+  const pastPurchase = row.type === 'opening' && handlers.tradeHoldings.has(tx.id);
   const kind = pastPurchase
     ? 'Past purchase'
     : { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
@@ -262,9 +263,14 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName}</span>
         <span className="flex items-center justify-end gap-1 pl-1">
           <ReceiptLink transactionId={tx.id} description={row.description} />
-          {handlers.tradeIds.has(tx.id) ? (
-            <Link to="/net-worth/trades" className="px-2 text-xs text-slate-500 underline">
-              Buy &amp; sell
+          {handlers.tradeHoldings.has(tx.id) ? (
+            <Link
+              to="/net-worth/assets/$accountId"
+              params={{ accountId: handlers.tradeHoldings.get(tx.id)! }}
+              className="px-2 text-xs text-slate-500 underline"
+              title="Edit this on its holding's page so units stay in step"
+            >
+              Holding
             </Link>
           ) : elsewhere ? (
             <SwitchToEdit book={elsewhere} className="px-2 text-right" />
@@ -282,7 +288,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <div className="space-y-1 px-2 pb-3">
           {handlers.renderForm(tx, () => setForm(false))}
           <div className="flex justify-end gap-1">
-            {!handlers.tradeIds.has(tx.id) && handlers.canDuplicate(tx) && (
+            {!handlers.tradeHoldings.has(tx.id) && handlers.canDuplicate(tx) && (
               <button type="button" onClick={() => handlers.duplicate(tx.id)} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
                 Duplicate
               </button>
@@ -336,7 +342,7 @@ export function TransactionsTable({
           // A purchase another member paid for is posted here against their placeholder, which no cell offers: it is
           // corrected in the full form, which keeps them as its payer (household sharing spec §4.4).
           const theirs = row.kind !== 'draft' && (handlers.paidByOther?.(row.tx!) ?? false);
-          if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!) && !theirs)) {
+          if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeHoldings.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!) && !theirs)) {
             return <EditableRow key={key} row={row} options={options} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} />;
           }
           return <LockedRow key={key} row={row} today={today} handlers={handlers} />;

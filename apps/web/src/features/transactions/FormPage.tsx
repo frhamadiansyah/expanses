@@ -159,7 +159,7 @@ const route = getRouteApi('/transactions/$transactionId/edit');
  * `phone-transaction-gestures.spec.ts` walks it.
  *
  * The refusals are not re-stated here either. `useChangeable` answers them, and what it refuses is sent to the
- * receipt, which already says in words which workspace to open, or that a trade is corrected on Buy & sell.
+ * receipt, which already says in words which workspace to open, or that a trade is corrected on its holding's page.
  */
 export function EditTransactionRoute() {
   const { transactionId } = route.useParams();

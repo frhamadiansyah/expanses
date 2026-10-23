@@ -103,7 +103,8 @@ export async function deleteTradeTemplate(database: Database, ws: WorkspaceConte
 
 /**
  * Monthly buys whose day has passed this month with nothing recorded from them yet.
- * There is no background job: the Buy & sell page asks this when it opens.
+ * There is no background job: the pages that show what is due (Net worth's attention, Monthly plans, Income) ask
+ * this when they open.
  */
 export async function dueTemplates(database: Database, ws: WorkspaceContext, onDate: string): Promise<TradeTemplateRow[]> {
   const month = onDate.slice(0, 7);

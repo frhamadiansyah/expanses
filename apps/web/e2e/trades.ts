@@ -1,31 +1,43 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openSettings } from './accounts';
+import { openAsset } from './asset-page';
 
 export type TradeDoing = 'buy' | 'sell' | 'income' | 'units';
 
-const BUTTON: Record<TradeDoing, string> = { buy: 'Buy', sell: 'Sell', income: 'Income', units: 'Units' };
-const ASK: Record<TradeDoing, string> = { buy: 'Buy which?', sell: 'Sell which?', income: 'Income from which?', units: 'Units of which?' };
+/** The holding page's round button for each: a payment is named by what the holding pays (Dividend, Coupon, Income). */
+const BUTTON: Record<Exclude<TradeDoing, 'units'>, string | RegExp> = { buy: 'Buy', sell: 'Sell', income: /^(Dividend|Coupon|Income)$/ };
+
+/** Income, behind the Assets corner: the year's figures, the dividends and coupons, and every holding's trades. */
+export const INCOME = '/net-worth/investments/dividends';
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * What to do on a holding, from its own page: its round button (Buy, Sell, the payment), or — for a change of units
+ * with no money, a split or bonus shares — the row under Prices in its Settings. `holding` is the start of the name
+ * the Assets list gives it ("BBRI", "Antam gold bars").
+ */
+async function startOn(page: Page, doing: TradeDoing, holding: string) {
+  await openAsset(page, holding);
+  if (doing === 'units') {
+    await openSettings(page);
+    await page.getByRole('button', { name: /^(Shares|Units|Grams) changed/ }).click();
+    return;
+  }
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: BUTTON[doing], exact: true }).click();
+}
 
 /** The sheet the full trade form sits in: the one dialog holding "What happened". */
 export const tradeForm = (page: Page): Locator => page.getByRole('dialog').filter({ has: page.getByLabel('What happened') });
 
 /**
- * Buy & sell's round button, then the holding (when more than one can take it): the full form, open in a sheet on the
- * holding's page. Only for a holding with no short sheet of its own — gold, a fund and a listed share buy and sell in
- * theirs (`openShortTrade`), whose details are in the same sheet. `holding` is the start of the holding's name, as the
- * picker lists it ("BBRI", "AAPL · Stockbit").
+ * The holding's own page, then what to do on it: the full form, open in a sheet. Only for a holding with no short sheet
+ * of its own — gold, a fund and a listed share buy and sell in theirs (`openShortTrade`), whose details are in the same
+ * sheet; their payment and a change of units still open the full form.
  */
 export async function openTradeForm(page: Page, doing: TradeDoing, holding: string): Promise<Locator> {
-  await page.goto('/net-worth/trades');
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: BUTTON[doing], exact: true }).click();
-  const picker = page.getByRole('dialog', { name: ASK[doing] });
+  await startOn(page, doing, holding);
   const form = tradeForm(page);
-  await expect(picker.or(form)).toBeVisible();
-  if (await picker.isVisible()) {
-    await picker.getByRole('button', { name: new RegExp(`^${escape(holding)}`) }).first().click();
-  }
-  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
   await expect(form).toBeVisible();
   return form;
 }
@@ -34,20 +46,10 @@ export async function openTradeForm(page: Page, doing: TradeDoing, holding: stri
 export const shortTrade = (page: Page, doing: 'buy' | 'sell'): Locator =>
   page.getByRole('dialog').filter({ has: page.getByRole('button', { name: doing === 'buy' ? 'Record buy' : 'Record sell', exact: true }) });
 
-/**
- * Buy & sell's round button, then the holding (when more than one can take it): the holding's own page, with its short
- * Buy / Sell sheet up.
- */
+/** The holding's own page, with its short Buy / Sell sheet up. */
 export async function openShortTrade(page: Page, doing: 'buy' | 'sell', holding: string): Promise<Locator> {
-  await page.goto('/net-worth/trades');
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: BUTTON[doing], exact: true }).click();
-  const picker = page.getByRole('dialog', { name: ASK[doing] });
+  await startOn(page, doing, holding);
   const sheet = shortTrade(page, doing);
-  await expect(picker.or(sheet)).toBeVisible();
-  if (await picker.isVisible()) {
-    await picker.getByRole('button', { name: new RegExp(`^${escape(holding)}`) }).first().click();
-  }
-  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
   await expect(sheet).toBeVisible();
   return sheet;
 }
@@ -80,14 +82,20 @@ export async function recordTrade(page: Page, button = 'Record') {
   await expect(form).toHaveCount(0);
 }
 
-/** A line of Buy & sell's history, by its title ("Bought Antam gold bars", "Sold AAPL · Stockbit"). */
+/** A line of Income's trades, by its title ("Bought Antam gold bars", "Sold AAPL · Stockbit"). */
 export const tradeRow = (page: Page, title: string | RegExp) => page.getByTestId('trade-row').filter({ hasText: title });
 
-/** A line of the history opened (the first with `title`, and `also` when given): its sheet, titled as the line is. */
-export async function openTradeRow(page: Page, title: string | RegExp, also?: string | RegExp): Promise<Locator> {
-  await page.goto('/net-worth/trades');
+/**
+ * A recorded trade's ⋮, the way a reader reaches it: Income's line for it (the first with `title`, and `also` when
+ * given) opens its holding's page, and the line of that page's history matching `line` ("Bought 2 g", "Dividend")
+ * opens its sheet — Goals…, Reinvested…, Edit and Delete.
+ */
+export async function openTradeRow(page: Page, title: string | RegExp, line: RegExp, also?: string | RegExp): Promise<Locator> {
+  await page.goto(INCOME);
   const row = tradeRow(page, title);
   await (also === undefined ? row : row.filter({ hasText: also })).first().click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
+  await page.getByRole('button', { name: new RegExp(`^More for ${line.source}`) }).first().click();
   const sheet = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: 'Delete' }) });
   await expect(sheet).toBeVisible();
   return sheet;

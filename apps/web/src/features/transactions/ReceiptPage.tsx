@@ -92,11 +92,11 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const urls = usePhotoUrls(photoRows.data ?? []);
   /*
    * The three refusals, asked once for the whole app rather than copied onto every way in: a trade is
-   * corrected on Buy & sell so its units stay in step, an opening balance and a deleted row have no form that
+   * corrected on its holding's page so its units stay in step, an opening balance and a deleted row have no form that
    * could represent them, and another workspace's row is read-only until that workspace is open. The form
    * route asks the same hook, so the two can never answer differently.
    */
-  const { changeable, elsewhere, isTrade } = useChangeable(tx);
+  const { changeable, elsewhere, isTrade, holdingId } = useChangeable(tx);
   /*
    * A transaction a shared event put here follows its record (shared events §5, §7): it is changed on the event — Edit
    * opens the expense's own card, or the event for a settle-up — never deleted or copied on its own (the ledger refuses
@@ -299,10 +299,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <SwitchToEdit book={elsewhere} className="self-center text-center" />
       ) : (
         <div className="flex flex-col items-center gap-2">
-          {isTrade ? (
+          {isTrade && holdingId ? (
             /* The row's whole trailing slot, exactly as `TransactionsPage` and `TransactionsTable` replace it. */
-            <Link to="/net-worth/trades" title="Edit this on Buy & sell so units stay in step" className="min-h-11 py-2 text-sm font-medium text-slate-600 underline">
-              Buy &amp; sell
+            <Link
+              to="/net-worth/assets/$accountId"
+              params={{ accountId: holdingId }}
+              title="Edit this on its holding's page so units stay in step"
+              className="min-h-11 py-2 text-sm font-medium text-slate-600 underline"
+            >
+              Holding
             </Link>
           ) : (
             <>

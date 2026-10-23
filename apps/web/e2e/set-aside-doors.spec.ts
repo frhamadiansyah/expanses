@@ -330,7 +330,7 @@ async function addGold(page: Page) {
 }
 
 async function buyGold(page: Page, grams: string, cost: string, goal: string | null) {
-  // Buy & sell's Buy opens the gold's own sheet on its page; the goal is behind its "Add more details".
+  // The gold's own Buy opens its sheet on its page; the goal is behind its "Add more details".
   const sheet = await openShortTrade(page, 'buy', 'Antam gold bars');
   await pickTradeCash(page, sheet, 'Paid from', 'Jenius');
   await sheet.getByLabel('Grams', { exact: true }).pressSequentially(grams);

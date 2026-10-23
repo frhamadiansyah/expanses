@@ -30,9 +30,9 @@ test('Dividends shows a year at today’s holdings, both yields and who pays it,
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
 
-  // The Assets corner opens Dividends.
+  // The Assets corner opens Income, where the dividends are read.
   await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: 'Dividends' }).click();
+  await page.getByRole('link', { name: 'Income', exact: true }).click();
   await expect(page.getByTestId('dividends-year')).toContainText('50.000');
   await expect(page.getByTestId('dividends-year')).toContainText('a month');
   await expect(page.getByText('Yield on cost', { exact: true })).toBeVisible();

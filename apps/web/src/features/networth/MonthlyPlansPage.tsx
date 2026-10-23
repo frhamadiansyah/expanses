@@ -37,7 +37,7 @@ export function MonthlyPlansPage() {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Monthly plans" back="Buy & sell" backTo="/net-worth/trades" />
+      <PushedTitle title="Monthly plans" back="Assets" backTo="/net-worth/assets" />
       <ErrorBox error={values.error ?? templates.error} />
 
       {(due.data?.length ?? 0) > 0 && (

@@ -99,10 +99,15 @@ test('retagging a buy moves it between goals without touching the ledger', async
   await page.goto('/net-worth/assets');
   const valueBefore = await page.getByText(/21\.600\.000/).first().textContent();
 
-  // The buy's line on Buy & sell opens it, and its goal is changed there.
-  const bought = await openTradeRow(page, 'Bought Antam gold bars', 'Hajj for two');
-  await bought.getByLabel('Goal for this buy').selectOption({ label: 'University for Aisyah' });
+  // The buy's line on Income opens its holding; the line's ⋮ there says the goal it has, and Goals… changes it.
+  const bought = await openTradeRow(page, 'Bought Antam gold bars', /Bought 2 g/, 'Hajj for two');
+  await bought.getByRole('button', { name: /^Goals…/ }).click();
+  await page.getByRole('dialog', { name: 'Goals' }).getByLabel('Goal for this buy').selectOption({ label: 'University for Aisyah' });
   await expect(page.getByTestId('trade-notice')).toContainText('University for Aisyah');
+  // Kept, and said again where it was changed: the ⋮ now names the new goal.
+  await page.getByRole('button', { name: /^More for Bought 2 g/ }).click();
+  await expect(page.getByRole('button', { name: /^Goals…/ })).toContainText('University for Aisyah');
+  await page.keyboard.press('Escape');
 
   await page.goto('/goals');
   const education = goalRow(page, 'University for Aisyah');

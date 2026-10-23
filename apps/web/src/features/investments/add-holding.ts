@@ -160,7 +160,7 @@ export function brokerlessNote(names: readonly string[], label: string): string 
   if (rest.length === 0) return `This adds to ${first}, the ${label} with no broker named.`;
   const times = names.length === 2 ? 'twice' : `${names.length} times`;
   const others = rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(', ')} or ${rest[rest.length - 1]}`;
-  return `Held as ${label} ${times} with no broker named. This adds to ${first}, the first recorded; to add to ${others} instead, record the buy on Buy & sell.`;
+  return `Held as ${label} ${times} with no broker named. This adds to ${first}, the first recorded; to add to ${others} instead, record the buy on that holding’s page.`;
 }
 
 /**
