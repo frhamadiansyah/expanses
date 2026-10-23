@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage, cardPointsPage } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addHoldingFlow } from './securities';
@@ -288,13 +288,14 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   // A card with real terms, so there is a points scheme for the purchase to be measured against.
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByLabel('Search catalogue').fill('signature');
   await page.getByRole('button', { name: 'BCA Singapore Airlines KrisFlyer Visa Signature', exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('From catalogue · Linked')).toBeVisible();
+  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
 
   await page.goto('/transactions');
   await addPurchase(page, {
@@ -308,7 +309,8 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Points');
+  await cardPointsPage(page, 'Purchases');
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
   const row = page.getByTestId('purchase').filter({ hasText: 'Bought 1 Antam gold bars' });
   await expect(row).toContainText('MCC 5944 · typed');

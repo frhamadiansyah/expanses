@@ -1,37 +1,39 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
- * The segmented control's name for each section, and what opens it from Wallet's summary: a round button for the
- * statement and the points, the ⋯ menu for the settings.
- */
-const MENU = { Activity: 'Statement', Points: 'Points', 'Rewards rules': 'Rewards rules', Card: 'Card details' } as const;
-const ROUND = new Set<keyof typeof MENU>(['Activity', 'Points']);
-
-/**
  * A card on the wallet, by name. The Cards page also lists the points programmes, and a programme's row carries the
  * name of the card earning into it, so a card is looked for on the wallet itself.
  */
 export const walletCard = (page: Page, name: string) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
 
 /**
- * Open one section of the card on screen.
- *
- * A card opened from the Wallet stack shows Wallet's summary first, with its sections behind ⋯; a card still being
- * set up, or already in one of its sections, has the segmented control. Either way this lands on the section.
+ * Open one of the card's own pages from its summary. The four tabs it had are pages now: the statement (the round
+ * Statement button), this statement's points (its row on the summary), and the settings (⚙ in the corner), which hold
+ * what the Card and Rewards rules tabs did.
  */
-export async function cardSection(page: Page, section: keyof typeof MENU) {
-  const tabs = page.getByRole('radiogroup', { name: 'Card sections' });
-  await expect(tabs.or(page.getByTestId('latest-transactions')).first()).toBeVisible();
-  if (!(await tabs.isVisible())) {
-    if (ROUND.has(section)) {
-      // A card's round Points button is named for what it earns: Points, Miles or Cashback.
-      const name = section === 'Points' ? /^(Points|Miles|Cashback)$/ : MENU[section];
-      await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name }).click();
-    } else {
-      await page.getByRole('button', { name: 'More' }).click();
-      await page.getByRole('menuitem', { name: MENU[section], exact: true }).click();
-    }
-  }
-  await page.getByRole('radio', { name: section, exact: true }).click();
-  await expect(page.getByRole('radio', { name: section, exact: true })).toHaveAttribute('aria-checked', 'true');
+export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Settings') {
+  const main = page.getByRole('main');
+  if (which === 'Statement') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Statement', exact: true }).click();
+  else if (which === 'Points') await main.getByTestId('this-statement-points').click();
+  else await main.getByRole('link', { name: 'Settings', exact: true }).first().click();
+  const title = { Statement: 'Statement', Points: "This statement's points", Settings: 'Settings' }[which];
+  await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
+}
+
+/** Open a page under the card's Settings — Card product, Earning rules, Spend bonuses — from the Settings page. */
+export async function cardSettingsPage(page: Page, which: 'Card product' | 'Earning rules' | 'Spend bonuses') {
+  await page.getByRole('main').getByRole('link', { name: new RegExp(`^${which}`) }).click();
+  await expect(page.getByRole('heading', { name: which, exact: true }).first()).toBeVisible();
+}
+
+/** The card's purchases with what each earned: this statement's points, then Purchases. */
+export async function cardPurchases(page: Page) {
+  await cardPage(page, 'Points');
+  await cardPointsPage(page, 'Purchases');
+}
+
+/** Open a page under this statement's points — the purchases, or the points the statement shows. */
+export async function cardPointsPage(page: Page, which: 'Purchases' | 'Points the statement shows') {
+  await page.getByRole('main').getByRole('link', { name: new RegExp(`^${which}`) }).click();
+  await expect(page.getByRole('heading', { name: which === 'Purchases' ? 'Purchases' : 'Points on the statement', exact: true }).first()).toBeVisible();
 }

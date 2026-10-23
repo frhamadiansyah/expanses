@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cardSection } from './card-section';
+import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
 
 /**
@@ -60,7 +60,7 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
-  await cardSection(page, 'Card');
+  await cardPage(page, 'Settings');
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
 });
 

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { cardSection } from './card-section';
+import { cardPage, cardPointsPage } from './card-section';
 import { openSplit } from './split-row';
 
 /*
@@ -35,6 +35,7 @@ async function cardEarningPer12501(page: Page) {
   await openCard(page, { name: 'CIMB Octo' });
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
+  await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -135,11 +136,12 @@ test('the card shows a purchase typed with cents at what it was charged, and sti
   await expect(latest).toContainText('12.501');
   await expect(latest).not.toContainText('12.500');
 
-  await cardSection(page, 'Points');
+  await cardPage(page, 'Points');
   // The cycle's Spend and the purchase's row say what the card was charged ...
   const spend = page.getByText('Spend', { exact: true }).locator('xpath=following-sibling::span');
   await expect(spend).toContainText('12.501');
   await expect(spend).not.toContainText('12.500');
+  await cardPointsPage(page, 'Purchases');
   const purchase = page.getByTestId('purchase').filter({ hasText: 'Kopi' });
   await expect(purchase).toContainText('12.501');
   await expect(purchase).not.toContainText('12.500');
