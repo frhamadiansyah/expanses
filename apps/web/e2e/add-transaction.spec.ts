@@ -983,7 +983,8 @@ test('a bill split equally between three people leaves each of them owing their 
   // a split that posted the whole bill to Restaurants would read 400.000 here.
   await page.goto('/transactions');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 100.000');
-  await expect(page.getByTestId('spending-report')).toContainText('Restaurants');
+  // The ring folds every category into its top-level parent: Restaurants is read as Food and beverage here.
+  await expect(page.getByTestId('spending-report')).toContainText('Food and beverage');
 });
 
 /**
