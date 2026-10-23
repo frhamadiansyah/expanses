@@ -27,7 +27,8 @@ export function positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Re
     if (trade.kind === 'buy') {
       const base = baseCostOfBuy[trade.id];
       if (base === undefined) throw new Error(`No base-currency cost for buy ${trade.id}`);
-      walked.push({ ...trade, grossMinor: base, feeMinor: 0, taxMinor: 0 });
+      // The buy of a switch cost what its holding line pinned in base, as any buy did: the carried cost is the native one.
+      walked.push({ ...trade, grossMinor: base, feeMinor: 0, taxMinor: 0, basisMinor: null });
     } else if (native && trade.kind === 'sell') {
       // The base basis is filled in below, once the base cost before this sell is known.
       walked.push({ ...trade, grossMinor: 0, feeMinor: 0, taxMinor: 0, basisMinor: null });

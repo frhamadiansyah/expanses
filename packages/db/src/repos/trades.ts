@@ -11,6 +11,7 @@ import {
   moneyPositionAfter,
   moneySellBasis,
   moneySells,
+  moneyWalkFits,
   goalMoneyOf,
   GoalError,
   inflowTo,
@@ -26,10 +27,10 @@ import {
   tradePostings,
   uuidv7,
 } from '@expanses/core';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts, entries } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goalDraws, goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
@@ -47,6 +48,8 @@ export interface TradeRow extends TradeRecord {
   templateId: string | null;
   status: 'active' | 'replaced' | 'deleted';
   replacesTradeId: string | null;
+  /** One side of a switch (`recordSwitch`): the other side's trade and the fund it is in. Present only on a switch. */
+  switchedWith?: { tradeId: string; accountId: string };
 }
 
 export interface RecordTradeInput {
@@ -129,10 +132,87 @@ export async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: str
     .orderBy(asc(investmentTrades.occurredOn), asc(investmentTrades.createdAt));
   const bases = rows.length > 0 ? await tradeBasesTx(tx, ws) : new Map<string, number>();
   const parts = rows.length > 0 ? await goalPartsByTradeTx(tx, ws) : new Map<string, GoalPart[]>();
+  const switches = rows.length > 0 ? await switchLinksTx(tx, ws) : new Map<string, SwitchLink>();
   return rows.map((row) => {
-    const trade = bases.has(row.id) ? { ...toRow(row), basisMinor: bases.get(row.id)! } : toRow(row);
-    return parts.has(row.id) ? { ...trade, goalParts: parts.get(row.id)! } : trade;
+    let trade: TradeRow = bases.has(row.id) ? { ...toRow(row), basisMinor: bases.get(row.id)! } : toRow(row);
+    if (parts.has(row.id)) trade = { ...trade, goalParts: parts.get(row.id)! };
+    const link = switches.get(row.id);
+    return link ? { ...trade, switchId: link.switchId, switchedWith: { tradeId: link.tradeId, accountId: link.accountId } } : trade;
   });
+}
+
+/** The other side of a switch, seen from one side: the switch (its shared transaction), the other trade and its fund. */
+interface SwitchLink {
+  switchId: string;
+  tradeId: string;
+  accountId: string;
+}
+
+/**
+ * A switch between two funds tracked by money is two active trades — the sell out of one, the buy into the other —
+ * posted as one ledger transaction: that shared transaction is what ties them, and no other trade shares one. Read for
+ * the whole workspace, each side keyed by its own id.
+ */
+async function switchLinksTx(tx: Db, ws: WorkspaceContext): Promise<Map<string, SwitchLink>> {
+  const rows = await tx.values<[string, string, string, string]>(sql`
+    SELECT a.id, a.transaction_id, b.id, b.account_id
+    FROM investment_trades a
+    JOIN investment_trades b ON b.transaction_id = a.transaction_id AND b.id <> a.id AND b.workspace_id = a.workspace_id AND b.status = 'active'
+    JOIN transactions t ON t.id = a.transaction_id AND t.status = 'posted'
+    WHERE a.workspace_id = ${ws.workspaceId} AND a.status = 'active' AND a.transaction_id IS NOT NULL`);
+  return new Map(rows.map(([id, switchId, tradeId, accountId]) => [id, { switchId, tradeId, accountId }]));
+}
+
+/** Both sides of the switch a trade is one side of, the side that left first; null when it is no switch. */
+export async function switchPairTx(tx: Db, ws: WorkspaceContext, tradeId: string): Promise<{ out: TradeRow; into: TradeRow } | null> {
+  const [row] = await tx
+    .select({ transactionId: investmentTrades.transactionId })
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
+  if (!row?.transactionId) return null;
+  // A switch stands while its transaction does: one voided under it is no switch to change.
+  const [posted] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, row.transactionId));
+  if (posted?.status !== 'posted') return null;
+  const sides = await tx
+    .select()
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.transactionId, row.transactionId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
+  const out = sides.find((side) => side.kind === 'sell');
+  const into = sides.find((side) => side.kind === 'buy');
+  if (sides.length !== 2 || !out || !into) return null;
+  const bases = await tradeBasesTx(tx, ws);
+  const withBasis = (side: TradeDbRow, other: TradeDbRow): TradeRow => ({
+    ...toRow(side),
+    basisMinor: bases.get(side.id) ?? null,
+    switchId: row.transactionId,
+    switchedWith: { tradeId: other.id, accountId: other.accountId },
+  });
+  return { out: withBasis(out, into), into: withBasis(into, out) };
+}
+
+/** The words a switch is refused with when the fund it went into has since sold the money it brought. */
+export const SWITCH_SOLD_SINCE = 'Money from this switch was sold since. Delete those sells first.';
+
+/**
+ * Refuses, with `message`, when a fund a switch touched no longer adds up after the change: a sell saved with its cost
+ * finds less put in before it than it took out, or a goal is left with less in than it sold. Run after the change is
+ * written, inside its transaction, so a refusal takes the whole change back.
+ */
+export async function assertFundWalksTx(tx: Db, ws: WorkspaceContext, accountId: string, message: string): Promise<void> {
+  const trades = await activeTrades(tx, ws, accountId);
+  if (!moneyWalkFits(trades)) throw new AssetError(message);
+  try {
+    goalMoneyOf(trades);
+  } catch (e) {
+    if (e instanceof GoalError) throw new AssetError(message);
+    throw e;
+  }
+}
+
+/** Takes a switch back, both sides at once: its one transaction voided, and both trades marked replaced or deleted. */
+export async function retireSwitchTx(tx: Db, ws: WorkspaceContext, pair: { out: TradeRow; into: TradeRow }, status: 'replaced' | 'deleted'): Promise<void> {
+  if (pair.out.transactionId) await voidTransactionTx(tx, ws, pair.out.transactionId, {}, undefined, { fundSwitch: true });
+  await tx.update(investmentTrades).set({ status }).where(inArray(investmentTrades.id, [pair.out.id, pair.into.id]));
 }
 
 /** The accounts a trade posts to: the holding, the cash side, and the income and tax categories. */
@@ -236,7 +316,7 @@ export async function postedTradeMoney(database: Database, ws: WorkspaceContext,
  * Reposts sells on or after `fromDate` whose average cost moved. The ledger stays immutable:
  * each changed sell is voided and posted again in the same database transaction.
  */
-async function recalculateSells(
+export async function recalculateSells(
   tx: Db,
   ws: WorkspaceContext,
   accountId: string,
@@ -524,6 +604,8 @@ export function recordTrade(database: Database, ws: WorkspaceContext, input: Rec
 /** Edits a trade: the old one and its transaction are retired and a fresh pair is written. */
 export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
   return database.transaction(async (tx) => {
+    // A switch is two trades that are one: changed as one by `replaceSwitch`, never one side alone.
+    if (await switchPairTx(tx, ws, tradeId)) throw new AssetError('A switch is changed as a whole, with Switch on its fund’s page');
     // The answer the old trade was saved with, read before the void reverses it, carried as an edit carries one.
     const prior = (await activeTrades(tx, ws)).find((trade) => trade.id === tradeId);
     const saved = prior?.transactionId && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, prior.transactionId) : null;
@@ -551,6 +633,17 @@ export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: 
 
 export function deleteTrade(database: Database, ws: WorkspaceContext, tradeId: string): Promise<TradeResult> {
   return database.transaction(async (tx) => {
+    // Either side of a switch takes the switch with it: the money goes back to the fund it left.
+    const pair = await switchPairTx(tx, ws, tradeId);
+    if (pair) {
+      await retireSwitchTx(tx, ws, pair, 'deleted');
+      await assertFundWalksTx(tx, ws, pair.into.accountId, SWITCH_SOLD_SINCE);
+      const recalculatedSells = [
+        ...(await recalculateSells(tx, ws, pair.out.accountId, pair.out.occurredOn, undefined)),
+        ...(await recalculateSells(tx, ws, pair.into.accountId, pair.into.occurredOn, undefined)),
+      ];
+      return { tradeId, transactionId: null, recalculatedSells };
+    }
     const old = await retire(tx, ws, tradeId, 'deleted');
     const recalculatedSells = await recalculateSells(tx, ws, old.accountId, old.occurredOn, undefined);
     return { tradeId, transactionId: null, recalculatedSells };

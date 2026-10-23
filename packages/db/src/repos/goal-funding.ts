@@ -42,9 +42,12 @@ import { resolveRates } from './fx';
 import { type EmergencyInputs, listGoalCalculators } from './goal-calculators';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { type DrawRow, listDraws, setAsideViews } from './set-aside';
-import { activeTrades, listTrades } from './trades';
+import { activeTrades, listTrades, switchPairTx } from './trades';
 import { writeGoalPartsTx } from './goal-parts';
 import { listTradeTemplates } from './trade-templates';
+
+/** A switch's two trades carry money with no goal, and only that: neither is given one. */
+const SWITCH_NO_GOAL = 'A switch takes only money with no goal';
 
 export interface GoalLinkRow extends GoalLink {
   goalId: string;
@@ -83,6 +86,7 @@ export async function resplitTrade(database: Database, ws: WorkspaceContext, tra
     const trades = await activeTrades(tx, ws);
     const trade = trades.find((row) => row.id === tradeId);
     if (!trade) throw new GoalDbError('That trade was already changed or removed');
+    if (trade.switchedWith) throw new GoalDbError(SWITCH_NO_GOAL);
     const holding = trades.filter((row) => row.accountId === trade.accountId);
     const byMoney = tradedByMoney(holding);
     const kept = parts.filter((part) => (byMoney ? part.moneyMinor : part.unitsMicro) > 0);
@@ -122,6 +126,7 @@ export async function retagTrade(database: Database, ws: WorkspaceContext, trade
       .from(investmentTrades)
       .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
     if (!trade) throw new GoalDbError('That trade was already changed or removed');
+    if (await switchPairTx(tx, ws, tradeId)) throw new GoalDbError(SWITCH_NO_GOAL);
     if (goalId !== null) {
       const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
       if (!goal) throw new GoalDbError('Goal not found in this workspace');

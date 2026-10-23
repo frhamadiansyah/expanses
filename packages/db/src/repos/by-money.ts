@@ -43,7 +43,7 @@ export async function byMoneyHistoryTx(tx: Db, ws: WorkspaceContext, accountId: 
  */
 const seen = new WeakSet<object>();
 
-async function basisColumnExists(db: Db): Promise<boolean> {
+export async function basisColumnExists(db: Db): Promise<boolean> {
   if (seen.has(db)) return true;
   const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('investment_trades') WHERE name = 'basis_minor'`);
   if (rows.length === 0) return false;

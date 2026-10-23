@@ -37,6 +37,15 @@ export function moneySellBasis(costMinor: number, valueBeforeMinor: number, gros
   return Number(divRound(BigInt(costMinor) * BigInt(grossMinor), BigInt(valueBeforeMinor)));
 }
 
+/**
+ * What a buy of a holding tracked by money put in: its amount with the fee and tax on it — or, the buy of a switch, the
+ * money that came with it from the fund it left, so a switch moves cost and books no profit or loss of its own.
+ */
+export function moneyBuyCost(trade: Pick<TradeRecord, 'grossMinor' | 'feeMinor' | 'taxMinor' | 'basisMinor' | 'switchId'>): number {
+  if (trade.switchId && trade.basisMinor != null) return trade.basisMinor;
+  return trade.grossMinor + trade.feeMinor + trade.taxMinor;
+}
+
 /** Shares a whole out of year buckets by their cost, the rounding difference to the largest. */
 function shareCost(buckets: YearBucket[], total: number, target: number): void {
   if (buckets.length === 0) return;
@@ -66,7 +75,7 @@ export function moneyPositionAfter(trades: readonly TradeRecord[], upTo?: string
       throw new TradeError('INVALID_AMOUNT', 'Amounts on a trade cannot be negative');
     }
     if (trade.kind === 'buy') {
-      const cost = trade.grossMinor + trade.feeMinor + trade.taxMinor;
+      const cost = moneyBuyCost(trade);
       const bucket = (position.byYear[trade.occurredOn.slice(0, 4)] ??= { unitsMicro: 0, costMinor: 0 });
       position.costMinor += cost;
       bucket.costMinor += cost;
@@ -82,7 +91,8 @@ export function moneyPositionAfter(trades: readonly TradeRecord[], upTo?: string
       for (const bucket of buckets) bucket.unitsMicro = position.unitsMicro > 0 ? Number(divRound(BigInt(bucket.unitsMicro) * BigInt(unitsLeft), BigInt(position.unitsMicro))) : 0;
       position.unitsMicro = unitsLeft;
       position.costMinor = costLeft;
-      position.realizedMinor += trade.grossMinor - trade.feeMinor - trade.taxMinor - basis;
+      // The side of a switch that left books nothing: its cost went on into the other fund, to be realised there.
+      if (!trade.switchId) position.realizedMinor += trade.grossMinor - trade.feeMinor - trade.taxMinor - basis;
     } else if (trade.kind === 'income') {
       position.incomeMinor += trade.grossMinor - trade.taxMinor;
     }
@@ -116,7 +126,57 @@ export function byMoneyInputs(
   valuations: readonly ValuationRow[],
   date: string,
 ): { position: Position; valuations: ValuationRow[]; flows: MoneyFlow[] } {
-  return { position: moneyPositionAfter(trades, date), valuations: [...navAnchors(trades, prices), ...valuations], flows: moneyFlows(trades) };
+  const anchors = [...navAnchors(trades, prices), ...valuations];
+  return { position: moneyPositionAfter(trades, date), valuations: [...switchAnchors(trades, anchors), ...anchors], flows: moneyFlows(trades) };
+}
+
+/**
+ * A fund with no value typed is worth the money still in it — but money switched in arrives at its value, not at the
+ * cost that came with it. So the first switch into a fund with no value typed by then stands as a value of its own, on
+ * its day: the money in just before it plus what arrived. Later buys and sells move it as they move a typed value, and
+ * a value typed on or before that day takes its place.
+ */
+export function switchAnchors(trades: readonly TradeRecord[], anchors: readonly ValuationRow[]): ValuationRow[] {
+  const ordered = [...trades].sort(byTradeOrder);
+  const made: ValuationRow[] = [];
+  ordered.forEach((trade, index) => {
+    if (trade.kind !== 'buy' || !trade.switchId) return;
+    if (anchors.some((row) => row.asOf <= trade.occurredOn) || made.length > 0) return;
+    const before = moneyPositionAfter(ordered.slice(0, index)).costMinor;
+    made.push({ asOf: trade.occurredOn, valueMinor: before + trade.grossMinor, basis: 'estimate', createdAt: trade.createdAt });
+  });
+  return made;
+}
+
+/**
+ * Whether every sell saved with its cost still finds that cost in the holding when walked in trade order — a rupiah of
+ * rounding allowed. False when money a later sell took out is no longer put in before it: a switch into the holding
+ * deleted or shrunk after that money was sold, or one out of it dated before a sell that needed the money.
+ */
+export function moneyWalkFits(trades: readonly TradeRecord[]): boolean {
+  const ordered = [...trades].sort(byTradeOrder);
+  return ordered.every((trade, index) => trade.kind !== 'sell' || trade.basisMinor == null || trade.basisMinor <= moneyPositionAfter(ordered.slice(0, index)).costMinor + 1);
+}
+
+/** What one switch between two funds tracked by money moves: the cost that leaves with it, and the money that arrives. */
+export interface SwitchPlan {
+  /** The share of the money still in the fund it leaves that goes with it, by `moneySellBasis`: the arriving buy's cost. */
+  basisMinor: number;
+  /** What reaches the other fund: the amount less the fee. */
+  intoMinor: number;
+}
+
+/**
+ * A switch of `amountMinor` out of a fund worth `valueBeforeMinor` with `costMinor` still in it, `feeMinor` taken on
+ * the way. Refused when it is nothing, more than the fund is worth, or all fee.
+ */
+export function switchPlan(input: { costMinor: number; valueBeforeMinor: number; amountMinor: number; feeMinor: number }): SwitchPlan {
+  const { costMinor, valueBeforeMinor, amountMinor, feeMinor } = input;
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new TradeError('INVALID_AMOUNT', 'A switch needs an amount greater than zero');
+  if (!Number.isSafeInteger(feeMinor) || feeMinor < 0) throw new TradeError('INVALID_AMOUNT', 'A fee cannot be negative');
+  if (feeMinor >= amountMinor) throw new TradeError('INVALID_AMOUNT', 'The fee takes the whole amount');
+  if (amountMinor > valueBeforeMinor) throw new TradeError('OVERSELL', 'A switch can take up to what the fund is worth');
+  return { basisMinor: moneySellBasis(costMinor, valueBeforeMinor, amountMinor), intoMinor: amountMinor - feeMinor };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, holdingPositionAfter, isoDate } from '@expanses/core';
-import { declareReinvestment, deleteTrade, resplitTrade, retagTrade, type TradeRow } from '@expanses/db';
+import { declareReinvestment, deleteTrade, resplitTrade, retagTrade, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowDownLeft, CalendarClock, Minus, Plus, Shuffle } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -28,6 +28,8 @@ import { TradeSheet } from './AssetSheets';
 import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, useDueTemplates, usePositions, useTradeTemplates, useTrades } from './queries';
 import { draftFromTrade } from './trade-form';
+import { SwitchSheet } from './SwitchSheet';
+import { ASSET_TILES } from '../ownables/catalogue-view';
 import { GoalParts } from './GoalParts';
 import { type PartDraft, partsFromTyped, partsToTyped, SPLIT } from './goal-parts-form';
 
@@ -61,6 +63,8 @@ export function TradesPage() {
   const [asking, setAsking] = useState<Doing | null>(null);
   const [open, setOpen] = useState<TradeRow | null>(null);
   const [editing, setEditing] = useState<TradeRow | null>(null);
+  // A switch being changed: both its sides, opened on the fund the money left.
+  const [switching, setSwitching] = useState<{ out: TradeRow; into: TradeRow } | null>(null);
   const [filter, setFilter] = useState('all');
   // The split being typed on an open trade's sheet, before Save goals; null while it is not being split.
   const [splitting, setSplitting] = useState<PartDraft[] | null>(null);
@@ -150,6 +154,7 @@ export function TradesPage() {
 
   const titleOf = (trade: TradeRow) => {
     const name = nameOf(trade.accountId);
+    if (trade.switchedWith) return trade.kind === 'buy' ? `Switched into ${name}` : `Switched out of ${name}`;
     if (trade.kind === 'buy') return `Bought ${name}`;
     if (trade.kind === 'sell') return `Sold ${name}`;
     if (trade.kind === 'income') return `${incomeWordOf(trade.accountId)} ${name}`;
@@ -297,7 +302,9 @@ export function TradesPage() {
                   const parts = (trade.goalParts ?? []).map((part) => `${goalName(part.goalId) ?? 'A goal'} ${part.moneyMinor > 0 ? formatMinor(part.moneyMinor, currencyOf(trade.accountId)) : formatUnits(part.unitsMicro)}`);
                   const reinvested = trade.kind === 'income' && (trade.reinvestedMinor ?? 0) > 0;
                   const out = trade.kind === 'buy';
-                  const sub = [unitsLine(trade), trade.cashAccountId === null && trade.kind === 'buy' ? 'opening position' : cashName(trade.cashAccountId)].filter(Boolean).join(' · ');
+                  // A switch moved no cash: it names the other fund instead, and its figure is the fund's own, + in and − out.
+                  const other = trade.switchedWith ? `${trade.kind === 'buy' ? 'from' : 'into'} ${nameOf(trade.switchedWith.accountId)}` : null;
+                  const sub = [unitsLine(trade), other ?? (trade.cashAccountId === null && trade.kind === 'buy' ? 'opening position' : cashName(trade.cashAccountId))].filter(Boolean).join(' · ');
                   return (
                     <li key={trade.id} data-testid="trade-row">
                       <button type="button" onClick={() => openTrade(trade)} className="ph-focus-inset flex min-h-11 w-full items-center gap-3 py-2 text-left">
@@ -315,8 +322,8 @@ export function TradesPage() {
                           {sub && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{sub}</span>}
                         </span>
                         {trade.kind === 'unit_change' ? null : (
-                          <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
-                            {out ? '−' : '+'}
+                          <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', other ? 'text-[var(--ph-ink)]' : out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                            {other ? (out ? '+' : '−') : out ? '−' : '+'}
                             {formatMinor(trade.grossMinor, currencyOf(trade.accountId))}
                           </span>
                         )}
@@ -359,14 +366,18 @@ export function TradesPage() {
             {open.feeMinor > 0 && <ReadOnlyRow label="Fee" value={formatMinor(open.feeMinor, currencyOf(open.accountId))} />}
             {open.taxMinor > 0 && <ReadOnlyRow label="Tax" value={formatMinor(open.taxMinor, currencyOf(open.accountId))} />}
             {open.kind !== 'unit_change' && (
-              <ReadOnlyRow
-                label={open.kind === 'buy' ? 'Paid from' : 'Paid into'}
-                value={open.cashAccountId === null ? 'Opening position' : (cashName(open.cashAccountId) ?? '—')}
-              />
+              open.switchedWith ? (
+                <ReadOnlyRow label={open.kind === 'buy' ? 'Switched from' : 'Switched into'} value={nameOf(open.switchedWith.accountId)} />
+              ) : (
+                <ReadOnlyRow
+                  label={open.kind === 'buy' ? 'Paid from' : 'Paid into'}
+                  value={open.cashAccountId === null ? 'Opening position' : (cashName(open.cashAccountId) ?? '—')}
+                />
+              )
             )}
             <ReadOnlyRow label="Date" value={open.occurredOn} />
           </InsetGroup>
-          {(open.kind === 'buy' || open.kind === 'sell') && goalOptions.length > 0 && (
+          {(open.kind === 'buy' || open.kind === 'sell') && !open.switchedWith && goalOptions.length > 0 && (
             <InsetGroup footer={open.kind === 'buy' ? 'Which goal the units of this buy belong to — or several, each with its share.' : 'Which goal this sell took from.'}>
               <SelectRow
                 label={open.kind === 'buy' ? 'For goal' : 'Sell from goal'}
@@ -453,8 +464,11 @@ export function TradesPage() {
               title="Edit"
               chevron={false}
               onClick={() => {
-                setEditing(open);
+                const trade = open;
                 setOpen(null);
+                // A switch is changed as one, in its own sheet; any other trade in the full form.
+                if (trade.switchedWith) void switchOf(database, ws, trade.id).then(setSwitching).catch(setError);
+                else setEditing(trade);
               }}
             />
             <InsetRow
@@ -463,7 +477,10 @@ export function TradesPage() {
               chevron={false}
               onClick={() => {
                 const trade = open;
-                if (!window.confirm('Delete this trade? Later sells are worked out again at the new average cost.')) return;
+                const question = trade.switchedWith
+                  ? 'Delete this switch? It goes from both funds, and the money is back in the fund it left.'
+                  : 'Delete this trade? Later sells are worked out again at the new average cost.';
+                if (!window.confirm(question)) return;
                 setOpen(null);
                 setError(null);
                 void deleteTrade(database, ws, trade.id)
@@ -477,6 +494,8 @@ export function TradesPage() {
           </InsetGroup>
         </Sheet>
       )}
+
+      {switching && <SwitchSheet fromAccountId={switching.out.accountId} icon={<SwitchGlyph />} editing={switching} onClose={() => setSwitching(null)} />}
 
       {editing && (
         <TradeSheet
@@ -515,4 +534,10 @@ function YearFigure({ label, minor, currency, others, signed = false }: { label:
       {others && <span className="block truncate text-[11.5px] leading-[14px] text-[var(--ph-ink-3)]">{others}</span>}
     </div>
   );
+}
+
+/** A fund's own drawing, as the Assets list draws it, for the Switch sheet's line. */
+function SwitchGlyph() {
+  const Glyph = ASSET_TILES.fund!;
+  return <Glyph size={16} aria-hidden />;
 }
