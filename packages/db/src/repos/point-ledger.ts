@@ -18,12 +18,12 @@ import {
   previousCycle,
   uuidv7,
 } from '@expanses/core';
-import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
-import { findProgramme, programmeIdOf } from './programme-link';
+import { findProgramme, programmeIdOf, programmesExist } from './programme-link';
 import { listAccounts } from './accounts';
 import { listTransactionPointActuals } from './point-actuals';
 import { categoryIdsByKeyAll } from './categories';
@@ -61,8 +61,12 @@ export interface RecordSnapshotInput {
 }
 
 export async function listPointEntries(database: Database, ws: WorkspaceContext, programId: string): Promise<PointEntryRow[]> {
+  // A database stopped before 0085 (a migration test reading its figures before the update) has no columns for the
+  // card that earned an entry or the conversion it belongs to; it reads every entry as neither.
+  const { earnedById, conversionId, ...before0085 } = getTableColumns(pointEntries);
+  const columns = (await programmesExist(database.db)) ? { ...before0085, earnedById, conversionId } : { ...before0085, earnedById: sql<null>`NULL`, conversionId: sql<null>`NULL` };
   const rows = await database.db
-    .select()
+    .select(columns)
     .from(pointEntries)
     .where(and(eq(pointEntries.workspaceId, ws.workspaceId), eq(pointEntries.programId, programId)));
   return rows.map((row) => ({
