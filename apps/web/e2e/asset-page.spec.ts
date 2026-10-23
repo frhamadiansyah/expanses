@@ -76,7 +76,7 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await expect(page.getByTestId('asset-grid')).toContainText('Original costRp');
   await expect(page.getByTestId('asset-grid')).toContainText('Acquired12 Mar 2019');
 
-  await page.getByRole('button', { name: 'Update value' }).click();
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
   const value = page.getByLabel('Value (IDR)');
   await expect(value).toHaveValue('');
   // Every typed value is an estimate: the sheet no longer asks where it came from.
@@ -97,7 +97,7 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await expect(rows.last()).toContainText('12 Mar 2019');
 
   // Opened again, it is empty again.
-  await page.getByRole('button', { name: 'Update value' }).click();
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
   await expect(page.getByLabel('Value (IDR)')).toHaveValue('');
   await expect(page.getByLabel('Note')).toHaveValue('');
 });
