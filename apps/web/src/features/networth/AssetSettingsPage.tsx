@@ -13,6 +13,7 @@ import { AssetSettings } from './AssetSettings';
 import { BankNumberGroup } from '../accounts/BankNumberGroup';
 import { CouponGroup } from './CouponGroup';
 import { SameFundGroup } from './SameFundGroup';
+import { ListedPriceGroup } from './ListedPriceGroup';
 import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -164,6 +165,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       )}
 
       {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
+      {/* A listed holding's price source and the way to Update prices: set once, so here rather than on its page. */}
+      {value && <ListedPriceGroup accountId={accountId} priced={value.mode === 'market'} />}
+
       {/* The same fund at another place, tied into one fund on Investments: seldom set, so here rather than on its page. */}
       {profile.data?.assetKind === 'fund' && <SameFundGroup accountId={accountId} />}
 

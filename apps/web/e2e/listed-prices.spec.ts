@@ -18,6 +18,8 @@ test('a BBCA holding follows Yahoo Finance: the last close, said by name with it
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fetch the latest close' })).toBeVisible();
 
+  // Price source and Update prices are in the holding's Settings.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /^Price source/ }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('button', { name: /^Yahoo Finance/ })).toHaveAttribute('aria-pressed', 'true');
@@ -30,9 +32,12 @@ test('a share set to “I’ll type it” never asks Yahoo, and keeps its price'
   await holdBbca(page);
   await openAsset(page, 'BBCA');
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
+  // Price source and Update prices are in the holding's Settings.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /^Price source/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: /^I'll type it/ }).click();
   await expect(page.getByRole('button', { name: /^Price source/ })).toContainText("I'll type it");
+  await page.goBack();
   await expect(page.getByRole('button', { name: 'Fetch the latest close' })).toHaveCount(0);
 
   // A new day as far as the app knows: it would ask again, if the share still followed Yahoo.
