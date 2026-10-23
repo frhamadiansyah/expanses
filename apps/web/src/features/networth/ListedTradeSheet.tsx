@@ -1,22 +1,19 @@
 import {
   averagePriceMicro, formatMinor, formatUnits, idxCharge, idxTickSize, isIdxTick, isoDate, parseMajor, type Position, ppmPercent, sellBasisMinor, stepIdxPrice,
 } from '@expanses/core';
-import { chargedAtBrokerOn, type RecordTradeInput, recordTrade, type SecurityRow } from '@expanses/db';
+import { chargedAtBrokerOn, type RecordTradeInput, type SecurityRow } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Minus, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, ROW_PAD_X, ROW_PAD_Y, SelectRow, TextRow } from '../../ui/native';
-import { tradeDoor } from '../goals/set-aside-question';
-import { useSetAside } from '../goals/SetAsideQuestion';
 import { dayLabel } from './asset-page';
 import { useBrokerFees } from './BrokerFeesGroup';
-import { type TradeDraft, typedAmount } from './trade-form';
-import { tradeRatesForSave } from './trade-money';
+import { TradeDetails, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 /** IDX trades in lots of 100 shares. */
 const IDX_LOT = 100;
@@ -37,8 +34,9 @@ function typedPrice(text: string): number | null {
 /**
  * Buy or Sell of a listed IDX share, from its own page: the price on IDX's tick with − / +, whole lots with − / +, the
  * day, and the total worked out from the broker's fees — what leaves its cash account on a buy, what reaches it on a
- * sell, with the gain on the lots sold. Recorded by `recordTrade`, as the full form records it; "More options" opens
- * that form with these figures in it, for a fee in rupiah, another account, odd lots or a goal.
+ * sell, with the gain on the lots sold. "Add more details" opens a second box under the first, in the same sheet: a fee
+ * or tax in rupiah in place of the worked-out one, the goal, and the rate that day for an account in another currency.
+ * Recorded by `recordTrade`, as the full form records it.
  */
 export function ListedTradeSheet({
   kind,
@@ -47,7 +45,6 @@ export function ListedTradeSheet({
   lastPrice,
   position,
   brokerAccountId,
-  onMore,
   onClose,
 }: {
   kind: 'buy' | 'sell';
@@ -56,12 +53,9 @@ export function ListedTradeSheet({
   lastPrice: { priceMicro: number; onDate: string } | null;
   position: Position | undefined;
   brokerAccountId: string | null;
-  onMore: (initial: Partial<TradeDraft>) => void;
   onClose: () => void;
 }) {
   const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const resolveRates = useResolveRates();
   const accounts = useAccounts();
   const today = isoDate();
   const lotSize = security.lotSize ?? IDX_LOT;
@@ -74,8 +68,6 @@ export function ListedTradeSheet({
   const [picked, setPicked] = useState('');
   const cashAccountId = brokerAccountId ?? (picked || cashChoices[0]?.id || '');
   const cashAccount = (accounts.data ?? []).find((account) => account.id === cashAccountId);
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
 
   const fees = useBrokerFees(brokerAccountId);
   const chargedToday = useQuery({
@@ -97,33 +89,16 @@ export function ListedTradeSheet({
       ? idxCharge({ kind, grossMinor, fees: rates, etf: security.kind === 'etf', chargedTodayMinor: chargedToday.data ?? 0 })
       : null;
   const tooMany = kind === 'sell' && lots > heldLots;
-  const input: RecordTradeInput | null =
+  // The broker's worked-out fee and tax go on the trade; a fee or tax typed in the details takes their place.
+  const typedInput: RecordTradeInput | null =
     charge && !tooMany && lots >= 1 && occurredOn <= today && cashAccountId
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor, feeMinor: charge.feeMinor, taxMinor: charge.taxMinor, cashAccountId, goalId: null }
       : null;
-  const door = input ? tradeDoor(input) : null;
-  const setAside = useSetAside(door);
+  const cashCurrency = cashAccount?.currency ?? undefined;
+  const details = useTradeDetails({ holdingCurrency: holding.currency, cashCurrency });
+  const { input, problem } = details.apply(typedInput);
+  const saving = useTradeSave({ input, holdingCurrency: holding.currency, cashCurrency, details, onDone: onClose });
   const sold = kind === 'sell' && position && !tooMany && lots >= 1 ? { basis: sellBasisMinor(position, unitsMicro), average: averagePriceMicro(position) } : null;
-
-  async function save() {
-    if (!input || !setAside.ready) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const cashCurrency = cashAccount?.currency ?? ws.baseCurrency;
-      const ratesToBase = await tradeRatesForSave({
-        database, ws, input, holdingCurrency: holding.currency, cashCurrency, needsRate: null, manualRate: '', resolveRates,
-        onMissing: () => undefined, where: 'Rate that day',
-      });
-      await recordTrade(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
-      await invalidate();
-      onClose();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const step = (direction: 1 | -1) => {
     const from = rupiah ?? lastRupiah ?? 0;
@@ -132,16 +107,29 @@ export function ListedTradeSheet({
   };
   const ticker = security.ticker ?? security.name;
   const where = cashAccount ? cashAccount.name : 'the account';
-  const minimumNote = charge?.minimumApplied && rates?.minDailyMinor ? ` · minimum fee ${formatMinor(rates.minDailyMinor, 'IDR')} applies` : '';
-  const charged = charge ? charge.feeMinor + charge.taxMinor : 0;
+  // What the total box reads: the trade as it will be recorded, the details' fee and tax included.
+  const feeMinor = input?.feeMinor ?? charge?.feeMinor ?? 0;
+  const taxMinor = input?.taxMinor ?? charge?.taxMinor ?? 0;
+  const charged = feeMinor + taxMinor;
+  const totalMinor = kind === 'buy' ? grossMinor + charged : grossMinor - charged;
+  const typedCharge = details.draft.fee.trim() !== '' || details.draft.tax.trim() !== '';
+  const minimumNote = !typedCharge && charge?.minimumApplied && rates?.minDailyMinor ? ` · minimum fee ${formatMinor(rates.minDailyMinor, 'IDR')} applies` : '';
+  const chargeNote = typedCharge
+    ? kind === 'sell' && taxMinor > 0
+      ? ' (tax included)'
+      : ''
+    : charge
+      ? ` (${ppmPercent(charge.ratePpm)}${kind === 'sell' && charge.taxMinor > 0 ? ', tax included' : ''})`
+      : '';
 
   return (
     <Sheet
       grouped
       tall
+      expanded={details.open}
       title={`${kind === 'buy' ? 'Buy' : 'Sell'} ${ticker}`}
       onClose={onClose}
-      confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: busy || !input || !setAside.ready, run: () => void save() }}
+      confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
     >
       <div className="flex items-center gap-3 px-[4px] pb-3">
         <span aria-hidden className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[var(--ph-tint)] text-[11px] font-bold text-white">
@@ -195,6 +183,8 @@ export function ListedTradeSheet({
         ) : null}
       </InsetGroup>
 
+      <TradeDetails kind={kind} details={details} currency={holding.currency} emptyWord="Worked out" whole={formatUnits(unitsMicro)} unitLabel="shares" problem={problem} />
+
       {charge && (
         <div className="mb-[18px] rounded-[11px] bg-[var(--ph-surface)] px-4 py-3" data-testid="trade-total">
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -203,18 +193,18 @@ export function ListedTradeSheet({
               : `Selling · ${formatUnits(shares * 1_000_000)} shares of ${formatUnits(position?.unitsMicro ?? 0)} held`}
           </p>
           <p className={cx('tabular text-[22px] leading-[28px] font-bold', kind === 'buy' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
-            {formatMinor(charge.totalMinor, 'IDR')}
+            {formatMinor(totalMinor, 'IDR')}
           </p>
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-            {formatMinor(grossMinor, 'IDR')} {kind === 'buy' ? '+' : '−'} fee {formatMinor(charged, 'IDR')} ({ppmPercent(charge.ratePpm)}
-            {kind === 'sell' && charge.taxMinor > 0 ? ', tax included' : ''}) · {kind === 'buy' ? 'from' : 'into'} {where}
+            {formatMinor(grossMinor, 'IDR')} {kind === 'buy' ? '+' : '−'} fee {formatMinor(charged, 'IDR')}
+            {chargeNote} · {kind === 'buy' ? 'from' : 'into'} {where}
             {minimumNote}
           </p>
           {sold && (
             <p className="mt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="trade-gain">
               Gain on these {formatUnits(unitsMicro)}:{' '}
-              <span className={cx('font-semibold', grossMinor - charge.feeMinor - sold.basis < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
-                {signed(grossMinor - charge.feeMinor - sold.basis)}
+              <span className={cx('font-semibold', grossMinor - feeMinor - sold.basis < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                {signed(grossMinor - feeMinor - sold.basis)}
               </span>
               {sold.average !== null && ` (bought at avg ${priceText(Math.round(sold.average / 1_000_000))})`}
             </p>
@@ -222,25 +212,8 @@ export function ListedTradeSheet({
         </div>
       )}
 
-      {setAside.node}
-      <ErrorBox error={error} />
-      <button
-        type="button"
-        onClick={() =>
-          onMore({
-            kind,
-            occurredOn,
-            units: formatUnits(unitsMicro),
-            gross: onTick ? typedAmount(grossMinor, 'IDR') : '',
-            fee: charge ? typedAmount(charge.feeMinor, 'IDR') : '0',
-            tax: charge ? typedAmount(charge.taxMinor, 'IDR') : '0',
-            cashAccountId,
-          })
-        }
-        className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-tint)]"
-      >
-        More options
-      </button>
+      {saving.setAside.node}
+      <ErrorBox error={saving.error} />
     </Sheet>
   );
 }
@@ -274,7 +247,7 @@ function StepperRow({
     <div className="relative">
       {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: 0 }} />}
       <div className="flex items-center gap-3" style={{ padding: `${ROW_PAD_Y - 4}px ${ROW_PAD_X}px` }}>
-        <span className="flex-1 text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">{label}</span>
+        <span className="flex-1 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{label}</span>
         <button type="button" aria-label={`Less ${label.toLowerCase()}`} disabled={!canDown} onClick={() => onStep(-1)} className={button}>
           <Minus size={16} aria-hidden />
         </button>

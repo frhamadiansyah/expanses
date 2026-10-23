@@ -86,7 +86,24 @@ test('a broker’s fees are set on its cash account, and the Buy sheet works fro
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   // 0,19% of 615.000 is 1.168,5, a whole 1.169.
   await expect(page.getByTestId('trade-total')).toContainText('Rp 615.000 + fee Rp 1.169 (0,19%)');
-  await page.getByRole('button', { name: 'More options' }).click();
-  await expect(page.getByRole('dialog').getByLabel(/^Fee/)).toHaveValue('1.169');
   await openAsset(page, 'BBCA');
+});
+
+test('a fee in rupiah, typed in the details, takes the worked-out fee’s place in the total and on the trade', async ({ page }) => {
+  await openBroker(page, 'Stockbit Sekuritas', '8000000');
+  await bbcaAt(page, 'Stockbit Sekuritas');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByRole('button', { name: 'More options' })).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Add more details' }).click();
+  // Empty, the fee is the broker's worked-out one, and the row says so in a word.
+  const fee = sheet.getByLabel('Fee', { exact: true });
+  await expect(fee).toHaveAttribute('placeholder', 'Worked out');
+  await fee.pressSequentially('2500');
+  const total = page.getByTestId('trade-total');
+  await expect(total).toContainText('Rp 617.500');
+  await expect(total).toContainText('Rp 615.000 + fee Rp 2.500 · from Stockbit Sekuritas');
+  await page.getByRole('button', { name: 'Record buy' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expectBrokerBalance(page, 'Stockbit Sekuritas', '7.382.500');
 });

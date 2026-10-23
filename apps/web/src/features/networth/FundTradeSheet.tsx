@@ -5,11 +5,11 @@ import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { dayLabel } from './asset-page';
-import { type TradeDraft, typedAmount } from './trade-form';
-import { CashRow, CashSheet, HoldingRow, MoreOptionsRow, ResultRow, signedMinor, TypedRow, typedMinor, useCashSide, useTradeSave } from './trade-sheet-parts';
+import { typedAmount } from './trade-form';
+import { CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const BUY_INFO =
-  "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade.";
+  "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade. A fee in the details is added to the cost, not taken from the units.";
 const MONEY_SELL_INFO =
   "A sell takes out the same share of the money put in as it takes of the fund's value; the rest is gain. All takes everything.";
 const SELL_INFO =
@@ -18,8 +18,9 @@ const SELL_INFO =
 /**
  * Buy or Sell of a mutual fund (reksadana) from its own page, the way a fund app takes the order: an amount of money,
  * the account it comes from or goes to, and the day; the units it comes to at the last NAV are worked out, to four
- * places. No fee. A sell can take All, which sells every unit so the holding ends at zero. Recorded by `recordTrade`,
- * as the full form records it; More options opens that form with these figures in it.
+ * places. No fee unless one is typed in the details. A sell can take All, which sells every unit so the holding ends at
+ * zero. "Add more details" opens a second box under the first, in the same sheet: a fee, tax withheld, the goal, and the
+ * rate that day for an account in another currency. Recorded by `recordTrade`, as the full form records it.
  */
 export function FundTradeSheet({
   kind,
@@ -28,7 +29,6 @@ export function FundTradeSheet({
   lastPrice,
   position,
   defaultCashId,
-  onMore,
   onClose,
   byMoney = null,
 }: {
@@ -39,7 +39,6 @@ export function FundTradeSheet({
   position: Position | undefined;
   /** The account the fund's money normally comes from and goes to: the broker or fund app it is kept at. */
   defaultCashId: string | null;
-  onMore: (initial: Partial<TradeDraft>) => void;
   onClose: () => void;
   /**
    * A fund tracked by money (spec 2026-10-19-fund-by-amount): what it is worth now. Buy and sell are amounts alone, no
@@ -66,14 +65,20 @@ export function FundTradeSheet({
     ? kind === 'sell' && moneyGross !== null && moneyGross > 0 ? { unitsMicro: 0, grossMinor: moneyGross, tooMany: moneyGross > byMoney.valueMinor } : null
     : kind === 'sell' ? fundSell({ amountMinor, all, priceMicro, heldMicro }) : null;
   const trade = buy ?? (sell && !sell.tooMany ? sell : null);
-  const input: RecordTradeInput | null =
+  const typedInput: RecordTradeInput | null =
     trade && occurredOn <= today && side.cashAccountId
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro: trade.unitsMicro, grossMinor: trade.grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
-  const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency: side.cashAccount?.currency ?? undefined, onDone: onClose });
+  const cashCurrency = side.cashAccount?.currency ?? undefined;
+  const details = useTradeDetails({ holdingCurrency: currency, cashCurrency, byMoney: byMoney !== null });
+  const { input, problem } = details.apply(typedInput);
+  const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency, details, onDone: onClose });
+  // The fee comes off the gain, as the ledger books it; tax withheld is filed as tax, not taken from the gain.
   const gain =
     kind === 'sell' && position && sell && !sell.tooMany
-      ? sell.grossMinor - (byMoney ? moneySellBasis(position.costMinor, byMoney.valueMinor, sell.grossMinor) : sellBasisMinor(position, sell.unitsMicro))
+      ? sell.grossMinor -
+        (input?.feeMinor ?? 0) -
+        (byMoney ? moneySellBasis(position.costMinor, byMoney.valueMinor, sell.grossMinor) : sellBasisMinor(position, sell.unitsMicro))
       : null;
 
   const subtitle = byMoney
@@ -90,6 +95,7 @@ export function FundTradeSheet({
     <Sheet
       grouped
       tall
+      expanded={details.open}
       title={kind === 'buy' ? 'Buy' : 'Sell'}
       onClose={onClose}
       confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
@@ -125,6 +131,17 @@ export function FundTradeSheet({
         <CashRow label={kind === 'buy' ? 'Paid from' : 'To'} side={side} onOpen={() => setPicking(true)} />
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
+
+      <TradeDetails
+        kind={kind}
+        details={details}
+        currency={currency}
+        emptyWord="None"
+        whole={byMoney ? (worked ? typedAmount(worked.grossMinor, currency) : '') : worked ? formatUnits(worked.unitsMicro) : ''}
+        byMoney={byMoney !== null}
+        unitLabel="units"
+        problem={problem}
+      />
 
       {worked && byMoney && gain !== null && (
         <InsetGroup>
@@ -164,23 +181,6 @@ export function FundTradeSheet({
 
       {saving.setAside.node}
       <ErrorBox error={saving.error} />
-      {!byMoney && (
-      <InsetGroup>
-        <MoreOptionsRow
-          run={() =>
-            onMore({
-              kind,
-              occurredOn,
-              units: worked ? formatUnits(worked.unitsMicro) : '',
-              gross: worked ? typedAmount(worked.grossMinor, currency) : '',
-              fee: '0',
-              tax: '0',
-              cashAccountId: side.cashAccountId,
-            })
-          }
-        />
-      </InsetGroup>
-      )}
       {picking && <CashSheet title={kind === 'buy' ? 'Paid from' : 'To'} side={side} onClose={() => setPicking(false)} />}
     </Sheet>
   );

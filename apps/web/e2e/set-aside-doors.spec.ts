@@ -5,7 +5,7 @@ import { addForm, choosePayment, saveButton } from './add-transaction';
 import { openNewAsset, fillDay } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
-import { openTradeForm, recordTrade, tradeForm } from './trades';
+import { openShortTrade, openTradeDetails, pickTradeCash, recordShortTrade, shortTrade } from './trades';
 
 /*
  * Every door that pays money out of an account with money set aside, on the laptop's figures: Jenius holds
@@ -330,12 +330,15 @@ async function addGold(page: Page) {
 }
 
 async function buyGold(page: Page, grams: string, cost: string, goal: string | null) {
-  // Buy & sell's Buy opens the gold's own sheet on its page; More options is the full form, with the goal in it.
-  await openTradeForm(page, 'buy', 'Antam gold bars');
-  await page.getByLabel('Money account').selectOption({ label: 'Jenius' });
-  await page.getByLabel('Units, shares or grams').pressSequentially(grams);
-  await page.getByLabel(/What it cost, before fees/).pressSequentially(cost);
-  if (goal) await page.getByLabel('For goal').selectOption({ label: goal });
+  // Buy & sell's Buy opens the gold's own sheet on its page; the goal is behind its "Add more details".
+  const sheet = await openShortTrade(page, 'buy', 'Antam gold bars');
+  await pickTradeCash(page, sheet, 'Paid from', 'Jenius');
+  await sheet.getByLabel('Grams', { exact: true }).pressSequentially(grams);
+  await sheet.getByLabel('Total paid', { exact: true }).pressSequentially(cost);
+  if (goal) {
+    await openTradeDetails(sheet);
+    await sheet.getByLabel('For goal').selectOption({ label: goal });
+  }
 }
 
 test('adding a holding owned before never asks; buying gold from Jenius does', async ({ page }) => {
@@ -343,12 +346,12 @@ test('adding a holding owned before never asks; buying gold from Jenius does', a
   await addGold(page);
   await buyGold(page, '3', '6800000', null);
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  const record = page.getByRole('button', { name: 'Record', exact: true });
+  const record = page.getByRole('button', { name: 'Record buy', exact: true });
   await expect(record).toBeDisabled();
   await borrowFromEmergencyFund(page.locator('body'));
   await record.click();
   // The sheet closes on a saved trade only.
-  await expect(tradeForm(page)).toHaveCount(0);
+  await expect(shortTrade(page, 'buy')).toHaveCount(0);
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
 });
@@ -363,7 +366,7 @@ test('gold bought for Umrah uses Umrah\'s own money first, and borrows only the 
   await expect(page.getByRole('button', { name: 'Take from Umrah 2027' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
   await expect(page.getByRole('button', { name: /this is what I saved for/ })).toHaveCount(0);
-  await recordTrade(page);
+  await recordShortTrade(page, 'buy');
 
   await expectShort(page, 'Emergency fund', /short by Rp.500\.000/i);
 });

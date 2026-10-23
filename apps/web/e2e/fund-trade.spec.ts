@@ -27,6 +27,20 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   await expect(page.getByText('Value', { exact: true })).toHaveCount(1);
 });
 
+test('a fee typed in the details is put in with the amount: Money in grows by both', async ({ page }) => {
+  await fundByMoney(page);
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
+  await sheet.getByRole('button', { name: 'Add more details' }).click();
+  await expect(sheet.getByLabel('Tax withheld', { exact: true })).toBeVisible();
+  await sheet.getByLabel('Fee', { exact: true }).pressSequentially('5000');
+  await page.getByRole('button', { name: 'Record buy' }).click();
+  await expect(sheet).toHaveCount(0);
+  // 1.000.000 put in before, and 500.000 + 5.000 now.
+  await expect(page.getByTestId('asset-grid')).toContainText('Rp 1.505.000');
+});
+
 test('Sell half the value: half the money comes out, the rest is gain; never more than it is worth; All ends at zero', async ({ page }) => {
   await fundByMoney(page);
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
