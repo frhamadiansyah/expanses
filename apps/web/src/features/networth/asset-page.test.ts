@@ -95,9 +95,9 @@ describe('the numbers grid', () => {
 
 describe('each purchase on its own', () => {
   const gold = { unitKind: 'grams', lotSize: null, currency: 'IDR', incomeWord: 'Income' } as const;
-  it('is valued at today’s price with its own gain or loss, fees counted in its cost', () => {
+  it('shows what was paid, fees counted, with its own gain or loss at today’s price under it', () => {
     const up = tradeLine({ kind: 'buy', occurredOn: '2025-09-19', unitsMicro: 10 * M, grossMinor: 20_395_000, feeMinor: 0 }, { ...gold, priceMicro: 2_485_000 * M });
-    expect([up.title, plain(up.subtitle), plain(up.value), plain(up.note ?? ''), up.tone]).toEqual(['Bought 10 g', '19 Sep 2025 · Rp 2.039.500/g', 'Rp 24.850.000', '+Rp 4.455.000', 'gain']);
+    expect([up.title, plain(up.subtitle), plain(up.value), plain(up.note ?? ''), up.tone]).toEqual(['Bought 10 g', '19 Sep 2025 · Rp 2.039.500/g', 'Rp 20.395.000', '+Rp 4.455.000', 'gain']);
     const down = tradeLine({ kind: 'buy', occurredOn: '2026-07-11', unitsMicro: 10 * M, grossMinor: 25_900_000, feeMinor: 95_000 }, { ...gold, priceMicro: 2_485_000 * M });
     expect([plain(down.note ?? ''), down.tone]).toEqual(['−Rp 1.145.000', 'loss']);
   });
