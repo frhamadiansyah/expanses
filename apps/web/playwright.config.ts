@@ -14,12 +14,17 @@ const RELAY_URL = `http://localhost:${RELAY_PORT}`;
 export default defineConfig({
   testDir: 'e2e',
   timeout: 60_000,
+  // One more try for a test that fails: a minute-long timeout on a busy machine is retried at once rather than costing
+  // a second run, and a test that passes only on its retry is still reported as flaky.
+  retries: 1,
   use: { baseURL: ORIGIN, trace: 'retain-on-failure' },
   webServer: [
     {
-      command: `npm run build && npm run preview -- --port ${PORT}`,
+      // E2E_REUSE=1 serves the build already in dist and keeps a server already on the port: a rerun of a few specs
+      // after nothing in src changed skips the minute-long build. Left unset, every run builds fresh.
+      command: process.env.E2E_REUSE ? `npm run preview -- --port ${PORT}` : `npm run build && npm run preview -- --port ${PORT}`,
       url: ORIGIN,
-      reuseExistingServer: false,
+      reuseExistingServer: Boolean(process.env.E2E_REUSE),
       timeout: 180_000,
       // The build alone gets VITE_E2E: the test hook exists in what a journey loads and in nothing else.
       env: { VITE_RELAY_URL: RELAY_URL, VITE_E2E: '1' },
