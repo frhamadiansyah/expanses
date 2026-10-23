@@ -148,6 +148,16 @@ export function switchAnchors(trades: readonly TradeRecord[], anchors: readonly 
   return made;
 }
 
+/**
+ * Whether every sell saved with its cost still finds that cost in the holding when walked in trade order — a rupiah of
+ * rounding allowed. False when money a later sell took out is no longer put in before it: a switch into the holding
+ * deleted or shrunk after that money was sold, or one out of it dated before a sell that needed the money.
+ */
+export function moneyWalkFits(trades: readonly TradeRecord[]): boolean {
+  const ordered = [...trades].sort(byTradeOrder);
+  return ordered.every((trade, index) => trade.kind !== 'sell' || trade.basisMinor == null || trade.basisMinor <= moneyPositionAfter(ordered.slice(0, index)).costMinor + 1);
+}
+
 /** What one switch between two funds tracked by money moves: the cost that leaves with it, and the money that arrives. */
 export interface SwitchPlan {
   /** The share of the money still in the fund it leaves that goes with it, by `moneySellBasis`: the arriving buy's cost. */

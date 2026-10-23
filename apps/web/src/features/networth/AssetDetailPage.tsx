@@ -334,8 +334,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
       ? [
           { key: 'buy', label: 'Buy', glyph: <Plus size={20} aria-hidden />, run: buyOrSell('buy', 'Buy') },
           { key: 'sell', label: 'Sell', glyph: <Minus size={20} aria-hidden />, run: buyOrSell('sell', 'Sell') },
-          // Money moved straight into another fund tracked by money, no bank account between them.
-          { key: 'switch', label: 'Switch', glyph: <ArrowLeftRight size={20} aria-hidden />, run: () => setSheet({ kind: 'switch', editing: null }) },
+          // Money moved straight into another fund tracked by money, no bank account between them — in the base currency
+          // for now, where cost needs no second, base figure carried with it.
+          ...(currency === ws.baseCurrency
+            ? [{ key: 'switch', label: 'Switch', glyph: <ArrowLeftRight size={20} aria-hidden />, run: () => setSheet({ kind: 'switch', editing: null }) }]
+            : []),
           { key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
         ]
     : estimated

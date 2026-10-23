@@ -11,6 +11,7 @@ import {
   moneyPositionAfter,
   moneySellBasis,
   moneySells,
+  moneyWalkFits,
   goalMoneyOf,
   GoalError,
   inflowTo,
@@ -29,7 +30,7 @@ import {
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts, entries } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goalDraws, goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
@@ -157,6 +158,7 @@ async function switchLinksTx(tx: Db, ws: WorkspaceContext): Promise<Map<string, 
     SELECT a.id, a.transaction_id, b.id, b.account_id
     FROM investment_trades a
     JOIN investment_trades b ON b.transaction_id = a.transaction_id AND b.id <> a.id AND b.workspace_id = a.workspace_id AND b.status = 'active'
+    JOIN transactions t ON t.id = a.transaction_id AND t.status = 'posted'
     WHERE a.workspace_id = ${ws.workspaceId} AND a.status = 'active' AND a.transaction_id IS NOT NULL`);
   return new Map(rows.map(([id, switchId, tradeId, accountId]) => [id, { switchId, tradeId, accountId }]));
 }
@@ -168,6 +170,9 @@ export async function switchPairTx(tx: Db, ws: WorkspaceContext, tradeId: string
     .from(investmentTrades)
     .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
   if (!row?.transactionId) return null;
+  // A switch stands while its transaction does: one voided under it is no switch to change.
+  const [posted] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, row.transactionId));
+  if (posted?.status !== 'posted') return null;
   const sides = await tx
     .select()
     .from(investmentTrades)
@@ -185,9 +190,28 @@ export async function switchPairTx(tx: Db, ws: WorkspaceContext, tradeId: string
   return { out: withBasis(out, into), into: withBasis(into, out) };
 }
 
+/** The words a switch is refused with when the fund it went into has since sold the money it brought. */
+export const SWITCH_SOLD_SINCE = 'Money from this switch was sold since. Delete those sells first.';
+
+/**
+ * Refuses, with `message`, when a fund a switch touched no longer adds up after the change: a sell saved with its cost
+ * finds less put in before it than it took out, or a goal is left with less in than it sold. Run after the change is
+ * written, inside its transaction, so a refusal takes the whole change back.
+ */
+export async function assertFundWalksTx(tx: Db, ws: WorkspaceContext, accountId: string, message: string): Promise<void> {
+  const trades = await activeTrades(tx, ws, accountId);
+  if (!moneyWalkFits(trades)) throw new AssetError(message);
+  try {
+    goalMoneyOf(trades);
+  } catch (e) {
+    if (e instanceof GoalError) throw new AssetError(message);
+    throw e;
+  }
+}
+
 /** Takes a switch back, both sides at once: its one transaction voided, and both trades marked replaced or deleted. */
 export async function retireSwitchTx(tx: Db, ws: WorkspaceContext, pair: { out: TradeRow; into: TradeRow }, status: 'replaced' | 'deleted'): Promise<void> {
-  if (pair.out.transactionId) await voidTransactionTx(tx, ws, pair.out.transactionId);
+  if (pair.out.transactionId) await voidTransactionTx(tx, ws, pair.out.transactionId, {}, undefined, { fundSwitch: true });
   await tx.update(investmentTrades).set({ status }).where(inArray(investmentTrades.id, [pair.out.id, pair.into.id]));
 }
 
@@ -613,6 +637,7 @@ export function deleteTrade(database: Database, ws: WorkspaceContext, tradeId: s
     const pair = await switchPairTx(tx, ws, tradeId);
     if (pair) {
       await retireSwitchTx(tx, ws, pair, 'deleted');
+      await assertFundWalksTx(tx, ws, pair.into.accountId, SWITCH_SOLD_SINCE);
       const recalculatedSells = [
         ...(await recalculateSells(tx, ws, pair.out.accountId, pair.out.occurredOn, undefined)),
         ...(await recalculateSells(tx, ws, pair.into.accountId, pair.into.occurredOn, undefined)),

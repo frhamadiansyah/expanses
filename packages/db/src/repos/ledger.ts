@@ -74,6 +74,7 @@ export type LedgerErrorCode =
   | 'OTHER_DAY'
   | 'INVALID_EXACT'
   | 'EVENT_POSTING'
+  | 'FUND_SWITCH'
   | 'NOT_A_CARD_PURCHASE'
   | 'CARD_NOT_FOUND'
   | 'NOT_ON_CARD';
@@ -473,6 +474,7 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
  */
 async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string, door: LedgerDoor = {}): Promise<void> {
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
+  if (!door.fundSwitch) await guardFundSwitchTx(tx, ws, id, author);
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
@@ -517,6 +519,33 @@ export interface LedgerDoor {
    * record. Every other door is refused on a derived transaction.
    */
   eventDerivation?: boolean;
+  /** The caller is `fund-switch.ts` taking back a switch it wrote, both its trades with it. */
+  fundSwitch?: boolean;
+}
+
+/** The words every other door says when it meets a switch between two funds. */
+export const FUND_SWITCH_MESSAGE = 'This is a switch between two funds. Change or delete it with Switch on either fund’s page.';
+
+const tradesTableSeen = new WeakSet<object>();
+
+/**
+ * A switch between two funds tracked by money (`recordSwitch`) is two trades sharing this one transaction: voided or
+ * edited from anywhere but the switch, the trades would be left pointing at nothing. Every such door is refused — except
+ * a change another member made, applied here by household sharing (`author`), which cannot be refused: both trades are
+ * retired with it, so the funds read as they would had the switch been deleted.
+ */
+async function guardFundSwitchTx(tx: Db, ws: WorkspaceContext, id: string, author: string | undefined): Promise<void> {
+  if (!tradesTableSeen.has(tx)) {
+    const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'investment_trades'`);
+    if (table.length === 0) return;
+    tradesTableSeen.add(tx);
+  }
+  const sides = await tx.values<[string]>(
+    sql`SELECT id FROM investment_trades WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId} AND status = 'active'`,
+  );
+  if (sides.length < 2) return;
+  if (!author) throw new LedgerError('FUND_SWITCH', FUND_SWITCH_MESSAGE);
+  await tx.run(sql`UPDATE investment_trades SET status = 'deleted' WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId} AND status = 'active'`);
 }
 
 /** The words every door but the event's says when it meets a transaction a shared event put here. */

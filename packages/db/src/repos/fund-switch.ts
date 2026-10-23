@@ -8,7 +8,7 @@ import { createAccountTx } from './accounts';
 import { AssetError, assertAccountInWorkspace, getAssetProfileTx, saveAssetProfileTx } from './assets';
 import { basisColumnExists, byMoneyHistoryTx, isByMoneyTx, setTradeBasisTx } from './by-money';
 import { postTransactionTx } from './ledger';
-import { activeTrades, type RecalculatedSell, recalculateSells, retireSwitchTx, switchPairTx, type TradeRow } from './trades';
+import { activeTrades, assertFundWalksTx, type RecalculatedSell, recalculateSells, retireSwitchTx, SWITCH_SOLD_SINCE, switchPairTx, type TradeRow } from './trades';
 
 /*
  * Switch (owner's mockup, 23 Oct 2026): money moved from one fund tracked by money straight into another, with no cash
@@ -78,10 +78,14 @@ async function writeSwitchTx(tx: Db, ws: WorkspaceContext, input: SwitchInput, r
   if (!DATE.test(input.occurredOn)) throw new AssetError('A switch needs a date');
   if (!(await basisColumnExists(tx))) throw new AssetError('Reopen the app to finish updating it, then switch');
   const from = await fundOf(tx, ws, input.fromAccountId);
+  /* A fund in another currency keeps its cost in base too, pinned at each buy's own day: a switch would re-pin the cost
+     it carries at the switch day's rate, and base cost would not add up across the two. Kept to the base currency until
+     that cost is carried in base as well. */
+  if (from.currency !== ws.baseCurrency) throw new AssetError(`Switch is for funds in ${ws.baseCurrency} for now`);
   const toAccountId = 'accountId' in input.to ? input.to.accountId : await openFundTx(tx, ws, input.to.newFundName, from);
   if (toAccountId === from.id) throw new AssetError('A fund cannot switch into itself; choose another fund');
   const to = await fundOf(tx, ws, toAccountId);
-  if (to.currency !== from.currency) throw new AssetError(`A switch stays in one currency: ${to.name} is in ${to.currency}, ${from.name} in ${from.currency}`);
+  if (to.currency !== from.currency) throw new AssetError(`Switch is for funds in ${ws.baseCurrency} for now: ${to.name} is in ${to.currency}`);
 
   // The fund it leaves, just before: the money still in it and its value, as a sell from it reads them.
   const trades = await activeTrades(tx, ws, from.id);
@@ -117,16 +121,21 @@ async function writeSwitchTx(tx: Db, ws: WorkspaceContext, input: SwitchInput, r
     ],
     ratesToBase: input.ratesToBase,
   });
+  // An edit keeps each side's place among the same day's trades: its rows take the old ones' saved time.
   const createdAt = new Date().toISOString();
   const outTradeId = uuidv7();
   const inTradeId = uuidv7();
   const common = { workspaceId: ws.workspaceId, transactionId: switchId, occurredOn: input.occurredOn, unitsMicro: 0, taxMinor: 0, cashAccountId: null, goalId: null, templateId: null, status: 'active' as const, createdAt };
   await tx.insert(investmentTrades).values([
-    { ...common, id: outTradeId, accountId: from.id, kind: 'sell', grossMinor: input.amountMinor, feeMinor: 0, replacesTradeId: replaces?.out.id ?? null },
-    { ...common, id: inTradeId, accountId: to.id, kind: 'buy', grossMinor: plan.intoMinor, feeMinor: input.feeMinor, replacesTradeId: replaces?.into.id ?? null },
+    { ...common, id: outTradeId, accountId: from.id, kind: 'sell', grossMinor: input.amountMinor, feeMinor: 0, replacesTradeId: replaces?.out.id ?? null, createdAt: replaces?.out.createdAt ?? createdAt },
+    { ...common, id: inTradeId, accountId: to.id, kind: 'buy', grossMinor: plan.intoMinor, feeMinor: input.feeMinor, replacesTradeId: replaces?.into.id ?? null, createdAt: replaces?.into.createdAt ?? createdAt },
   ]);
   await setTradeBasisTx(tx, outTradeId, plan.basisMinor);
   await setTradeBasisTx(tx, inTradeId, plan.basisMinor);
+  // Both funds still add up with it in place: a sell after it from the fund it left still finds the money it took out,
+  // and — an edit that moved less, or elsewhere — the fund it went into has not sold what it no longer brings.
+  await assertFundWalksTx(tx, ws, from.id, `${from.name} sold money after that day that this switch would take; switch less or on a later day`);
+  await assertFundWalksTx(tx, ws, to.id, SWITCH_SOLD_SINCE);
   const recalculatedSells = [
     ...(await recalculateSells(tx, ws, from.id, input.occurredOn, input.ratesToBase)),
     ...(await recalculateSells(tx, ws, to.id, input.occurredOn, input.ratesToBase)),
@@ -154,6 +163,8 @@ export function replaceSwitch(database: Database, ws: WorkspaceContext, tradeId:
     if (!pair) throw new AssetError('That switch was already changed or removed');
     await retireSwitchTx(tx, ws, pair, 'replaced');
     const result = await writeSwitchTx(tx, ws, input, pair);
+    // The fund it went into before, when that is another one now, gives back all it brought.
+    if (pair.into.accountId !== result.toAccountId) await assertFundWalksTx(tx, ws, pair.into.accountId, SWITCH_SOLD_SINCE);
     const done = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
     const more: RecalculatedSell[] = [];
     for (const side of [pair.out, pair.into]) {
@@ -173,6 +184,7 @@ export function deleteSwitch(database: Database, ws: WorkspaceContext, tradeId: 
     const pair = await switchPairTx(tx, ws, tradeId);
     if (!pair) throw new AssetError('That switch was already changed or removed');
     await retireSwitchTx(tx, ws, pair, 'deleted');
+    await assertFundWalksTx(tx, ws, pair.into.accountId, SWITCH_SOLD_SINCE);
     for (const side of [pair.out, pair.into]) await recalculateSells(tx, ws, side.accountId, side.occurredOn, undefined);
   });
 }
@@ -185,7 +197,7 @@ export async function switchTargets(database: Database, ws: WorkspaceContext, fr
     .innerJoin(assetProfiles, eq(assetProfiles.accountId, accounts.id))
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(assetProfiles.workspaceId, ws.workspaceId)));
   const from = rows.find((row) => row.id === fromAccountId);
-  if (!from) return [];
+  if (!from || (from.currency ?? ws.baseCurrency) !== ws.baseCurrency) return [];
   const currencyOf = (row: { currency: string | null }) => row.currency ?? ws.baseCurrency;
   return rows
     .filter((row) => row.id !== fromAccountId && row.archivedAt === null && presetFor(row.assetKind).valuationMode === 'amount' && currencyOf(row) === currencyOf(from))

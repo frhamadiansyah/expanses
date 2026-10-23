@@ -16,11 +16,16 @@ import {
   recordTrade,
   recordValuation,
   replaceSwitch,
+  replaceTransaction,
+  resplitTrade,
+  retagTrade,
   replaceTrade,
   saveAssetProfile,
   saveGoal,
   switchOf,
   switchTargets,
+  voidTransaction,
+  voidTransactionTx,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -138,7 +143,7 @@ describe('Switch between two funds tracked by money', () => {
     await expect(recordSwitch(database, ws, { fromAccountId: mm.id, to: { accountId: mm.id }, occurredOn: '2026-10-23', amountMinor: 1_000_000, feeMinor: 0 })).rejects.toThrow(/into itself/);
     const usd = await createAccount(database, ws, { name: 'Dollar Fund', kind: 'asset', subtype: 'investment', currency: 'USD' });
     await saveAssetProfile(database, ws, { accountId: usd.id, assetKind: 'fund' });
-    await expect(recordSwitch(database, ws, { fromAccountId: mm.id, to: { accountId: usd.id }, occurredOn: '2026-10-23', amountMinor: 1_000_000, feeMinor: 0 })).rejects.toThrow(/one currency/);
+    await expect(recordSwitch(database, ws, { fromAccountId: mm.id, to: { accountId: usd.id }, occurredOn: '2026-10-23', amountMinor: 1_000_000, feeMinor: 0 })).rejects.toThrow(/funds in IDR for now/);
     await expect(recordSwitch(database, ws, { fromAccountId: mm.id, to: { accountId: bank.id }, occurredOn: '2026-10-23', amountMinor: 1_000_000, feeMinor: 0 })).rejects.toThrow(/tracked by money/);
     await expect(switchOut(1_000_000, 1_000_000)).rejects.toThrow(/fee takes the whole amount/);
     expect((await listTrades(database, ws)).length).toBe(1);
@@ -208,5 +213,82 @@ describe('Switch between two funds tracked by money', () => {
     const gold = await createAccount(database, ws, { name: 'Gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
     await saveAssetProfile(database, ws, { accountId: gold.id, assetKind: 'gold' });
     expect(await switchTargets(database, ws, mm.id)).toEqual([{ accountId: bond.id, name: 'Bond Fund' }]);
+  });
+
+  it('refuses a fund outside the base currency on either side, before anything is opened or posted', async () => {
+    const usd = await createAccount(database, ws, { name: 'Dollar Fund', kind: 'asset', subtype: 'investment', currency: 'USD' });
+    await saveAssetProfile(database, ws, { accountId: usd.id, assetKind: 'fund' });
+    const usd2 = await createAccount(database, ws, { name: 'Dollar Bond Fund', kind: 'asset', subtype: 'investment', currency: 'USD' });
+    await saveAssetProfile(database, ws, { accountId: usd2.id, assetKind: 'fund' });
+    await expect(recordSwitch(database, ws, { fromAccountId: usd.id, to: { accountId: usd2.id }, occurredOn: '2026-10-23', amountMinor: 100, feeMinor: 0 })).rejects.toThrow(/funds in IDR for now/);
+    await expect(recordSwitch(database, ws, { fromAccountId: usd.id, to: { newFundName: 'Dollar Index Fund' }, occurredOn: '2026-10-23', amountMinor: 100, feeMinor: 0 })).rejects.toThrow(/funds in IDR for now/);
+    expect(await switchTargets(database, ws, usd.id)).toEqual([]);
+    expect((await assetValuesAt(database, ws, '2026-10-23')).some((row) => row.name === 'Dollar Index Fund')).toBe(false);
+  });
+
+  describe('once the money it moved was sold from the fund it went into', () => {
+    const sellAllOfBond = () =>
+      recordTrade(database, ws, { accountId: bond.id, kind: 'sell', occurredOn: '2026-10-25', unitsMicro: 0, grossMinor: 5_000_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
+
+    it('refuses to delete it, from either door, and leaves both funds as they were', async () => {
+      const first = await switchOut(5_000_000);
+      await sellAllOfBond();
+      const before = await positionsFor(database, ws);
+      await expect(deleteSwitch(database, ws, first.outTradeId)).rejects.toThrow('Money from this switch was sold since. Delete those sells first.');
+      await expect(deleteTrade(database, ws, first.inTradeId)).rejects.toThrow(/sold since/);
+      expect(await positionsFor(database, ws)).toEqual(before);
+      expect((await listTrades(database, ws)).filter((trade) => trade.switchedWith)).toHaveLength(2);
+      await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+    });
+
+    it('refuses to shrink it or send it elsewhere, but lets it grow', async () => {
+      const first = await switchOut(5_000_000);
+      await sellAllOfBond();
+      const other = await createAccount(database, ws, { name: 'Equity Fund', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+      await saveAssetProfile(database, ws, { accountId: other.id, assetKind: 'fund' });
+      const edit = (to: string, amountMinor: number) => replaceSwitch(database, ws, first.outTradeId, { fromAccountId: mm.id, to: { accountId: to }, occurredOn: '2026-10-23', amountMinor, feeMinor: 0 });
+      await expect(edit(bond.id, 2_500_000)).rejects.toThrow(/sold since/);
+      await expect(edit(other.id, 5_000_000)).rejects.toThrow(/sold since/);
+      expect((await listTrades(database, ws)).find((trade) => trade.id === first.inTradeId)).toBeDefined();
+      const grown = await edit(bond.id, 6_000_000);
+      expect(grown.basisMinor).toBe(4_800_000);
+    });
+  });
+
+  it('refuses a switch dated before a sell from the fund it leaves that needs the money', async () => {
+    await recordTrade(database, ws, { accountId: mm.id, kind: 'sell', occurredOn: '2026-10-25', unitsMicro: 0, grossMinor: 10_000_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
+    await expect(switchOut(5_000_000, 0, '2026-10-23')).rejects.toThrow(/sold money after that day/);
+    expect((await listTrades(database, ws)).some((trade) => trade.switchedWith)).toBe(false);
+  });
+
+  it('keeps each side’s saved time when edited, so the same day’s order stays', async () => {
+    const first = await switchOut(5_000_000);
+    const before = await listTrades(database, ws);
+    await replaceSwitch(database, ws, first.outTradeId, { fromAccountId: mm.id, to: { accountId: bond.id }, occurredOn: '2026-10-23', amountMinor: 4_000_000, feeMinor: 0 });
+    const after = await listTrades(database, ws);
+    const timeOf = (rows: typeof before, accountId: string) => rows.find((trade) => trade.accountId === accountId && trade.switchedWith)!.createdAt;
+    expect(timeOf(after, mm.id)).toBe(timeOf(before, mm.id));
+    expect(timeOf(after, bond.id)).toBe(timeOf(before, bond.id));
+  });
+
+  it('cannot be voided or edited from the ledger’s own doors; a change applied from another member retires both sides', async () => {
+    const first = await switchOut(5_000_000);
+    await expect(voidTransaction(database, ws, first.switchId)).rejects.toThrow(/Switch on either fund’s page/);
+    await expect(
+      replaceTransaction(database, ws, first.switchId, { occurredOn: '2026-10-23', description: 'Edited', lines: [{ accountId: mm.id, amountMinor: -1, currency: 'IDR' }, { accountId: bond.id, amountMinor: 1, currency: 'IDR' }] }),
+    ).rejects.toThrow(/Switch on either fund’s page/);
+    expect((await switchOf(database, ws, first.inTradeId))?.out.id).toBe(first.outTradeId);
+
+    await database.transaction((tx) => voidTransactionTx(tx, ws, first.switchId, {}, 'another-member'));
+    expect(await switchOf(database, ws, first.inTradeId)).toBeNull();
+    expect(await listTrades(database, ws)).toHaveLength(1);
+    expect((await valuesOn('2026-10-23')).mm).toMatchObject({ valueMinor: 10_000_000, costMinor: 8_000_000 });
+  });
+
+  it('gives neither side a goal', async () => {
+    const first = await switchOut(5_000_000);
+    const goalId = await saveGoal(database, ws, { name: 'House', kind: 'home', growthBps: 0, returnBps: 0, stages: [{ name: 'Down payment', targetMinor: 50_000_000, targetMonths: null, dueOn: '2030-06-30' }] });
+    await expect(retagTrade(database, ws, first.inTradeId, goalId)).rejects.toThrow('A switch takes only money with no goal');
+    await expect(resplitTrade(database, ws, first.outTradeId, [{ goalId, moneyMinor: 1_000_000, unitsMicro: 0 }])).rejects.toThrow('A switch takes only money with no goal');
   });
 });

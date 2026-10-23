@@ -50,6 +50,9 @@ export function SwitchSheet({
   const resolveRates = useResolveRates();
   const today = isoDate();
   const values = useAssetValues();
+  const [occurredOn, setOccurredOn] = useState(editing?.out.occurredOn ?? today);
+  // What it is worth on the day chosen, which is what the switch can take; the line above says what it is worth now.
+  const dated = useAssetValues(occurredOn && occurredOn <= today ? occurredOn : today);
   const targets = useQuery({ queryKey: ['switch-targets', ws.workspaceId, fromAccountId], queryFn: () => switchTargets(database, ws, fromAccountId) });
   const from = values.data?.find((row) => row.accountId === fromAccountId);
   const currency = from?.currency ?? ws.baseCurrency;
@@ -58,7 +61,6 @@ export function SwitchSheet({
   const [fee, setFee] = useState(editing && editing.into.feeMinor > 0 ? typedAmount(editing.into.feeMinor, currency) : '');
   const [picked, setPicked] = useState(editing?.into.accountId ?? '');
   const [newName, setNewName] = useState('');
-  const [occurredOn, setOccurredOn] = useState(editing?.out.occurredOn ?? today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,8 +69,9 @@ export function SwitchSheet({
   const target = picked || (targets.isSuccess ? (choices[0]?.accountId ?? NEW_FUND) : '');
   const amountMinor = typedMinor(amount, currency);
   const feeMinor = typedFee(fee, currency);
-  // What the fund is worth to switch from: being changed, the switch's own amount is still in it.
-  const worthMinor = (from?.valueMinor ?? 0) + (editing ? editing.out.grossMinor : 0);
+  // What the fund is worth that day to switch from: being changed, the switch's own amount is still in it from its day on.
+  const thatDay = dated.data?.find((row) => row.accountId === fromAccountId)?.valueMinor ?? from?.valueMinor ?? 0;
+  const worthMinor = thatDay + (editing && editing.out.occurredOn <= occurredOn ? editing.out.grossMinor : 0);
   const tooMuch = amountMinor !== null && amountMinor > worthMinor;
   const allFee = amountMinor !== null && feeMinor !== null && feeMinor >= amountMinor;
   const to: SwitchInput['to'] | null = target === NEW_FUND ? (newName.trim() ? { newFundName: newName.trim() } : null) : target ? { accountId: target } : null;
@@ -138,7 +141,7 @@ export function SwitchSheet({
       </InsetGroup>
 
       {tooMuch && (
-        <InsetGroup footer="A switch can take up to what the fund is worth. If the fund app shows more, update its value first.">
+        <InsetGroup footer="A switch can take up to what the fund is worth that day. If the fund app shows more, update its value first.">
           <ResultRow testId="switch-worth" label="Worth" value={formatMinor(worthMinor, currency)} />
         </InsetGroup>
       )}

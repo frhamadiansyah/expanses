@@ -5,6 +5,7 @@ import {
   goalMoneyOf,
   moneyBuyCost,
   moneyPositionAfter,
+  moneyWalkFits,
   positionInBase,
   switchAnchors,
   switchPlan,
@@ -102,5 +103,16 @@ describe('a switch between two funds tracked by money', () => {
   it('costs, in base, what its holding line pinned, as every foreign buy does', () => {
     const into = trade('i', 'usd', 'buy', '2026-10-23', 500_00, { basisMinor: 400_00, switchId: 'sw' });
     expect(positionInBase([into], { i: 6_400_000 }).costMinor).toBe(6_400_000);
+  });
+
+  it('tells when a later sell no longer finds the money it took out', () => {
+    const into = trade('i', 'bond', 'buy', '2026-10-23', 5_000_000, { basisMinor: 4_000_000, switchId: 'sw' });
+    const sold = trade('s', 'bond', 'sell', '2026-10-25', 5_000_000, { basisMinor: 4_000_000 });
+    expect(moneyWalkFits([into, sold])).toBe(true);
+    expect(moneyWalkFits([sold])).toBe(false);
+    expect(moneyWalkFits([{ ...into, basisMinor: 2_000_000 }, sold])).toBe(false);
+    // A rupiah of rounding is the holding's, and a sell from the units days, saved with no cost, is not judged here.
+    expect(moneyWalkFits([{ ...into, basisMinor: 3_999_999 }, sold])).toBe(true);
+    expect(moneyWalkFits([{ ...sold, basisMinor: null, unitsMicro: 1_000_000 }])).toBe(true);
   });
 });

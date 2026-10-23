@@ -377,7 +377,7 @@ export function TradesPage() {
             )}
             <ReadOnlyRow label="Date" value={open.occurredOn} />
           </InsetGroup>
-          {(open.kind === 'buy' || open.kind === 'sell') && goalOptions.length > 0 && (
+          {(open.kind === 'buy' || open.kind === 'sell') && !open.switchedWith && goalOptions.length > 0 && (
             <InsetGroup footer={open.kind === 'buy' ? 'Which goal the units of this buy belong to — or several, each with its share.' : 'Which goal this sell took from.'}>
               <SelectRow
                 label={open.kind === 'buy' ? 'For goal' : 'Sell from goal'}
