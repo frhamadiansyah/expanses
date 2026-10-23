@@ -23,7 +23,7 @@ async function openHeld(page: Page, name: string) {
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).click();
 }
 
-test('a current account: its actions, its last rows, its ⋯ and a way to add a currency', async ({ page }) => {
+test('a current account: its actions, its last rows, its ⚙ and a way to add a currency', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000', extra: (p) => p.getByLabel('Bank', { exact: true }).pressSequentially('Bank One') });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
@@ -36,12 +36,10 @@ test('a current account: its actions, its last rows, its ⋯ and a way to add a 
   await expect(actions).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 
-  // The ⋯ holds the settings, adding a currency, the rename and the archive; the code it files under lives in the
-  // settings alone.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  for (const item of ['Settings', 'Add a currency', 'Edit', 'Archive']) await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /Tax report code/ })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // The corner is the ⚙ alone: Edit and Archive wait in Settings, and Add a currency is the last row of the facts.
+  await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('add-currency')).toBeVisible();
 
   await page.getByRole('link', { name: 'See all' }).click();
   await expect(page).toHaveURL(/\/transactions\?account=/);

@@ -17,7 +17,6 @@ test('a bank account named by the end of its number shows it on its transactions
 
   await page.goto('/accounts');
   await page.getByRole('link', { name: 'BCA Tahapan', exact: true }).click();
-  await page.getByRole('main').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Last 4 digits of account number')).toHaveValue('4321');
 });
