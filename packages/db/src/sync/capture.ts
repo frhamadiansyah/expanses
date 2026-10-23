@@ -1151,7 +1151,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     description,
     channel: (flags?.[0] ?? null) as PurchaseFields['channel'],
     excluded: Number(flags?.[1] ?? 0),
-    bill: templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
+    // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
+    bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,

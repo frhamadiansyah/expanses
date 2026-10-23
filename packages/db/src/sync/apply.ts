@@ -821,7 +821,16 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
       // left. The lineage is void as for any other purchase; what stays was never in it.
       const [row] = await tx.values<[string, string]>(sql`SELECT occurred_on, description FROM transactions WHERE id = ${lineage!.head!}`);
       const { lines, ratesToBase } = await remainderOfTx(tx, lineage!.head!, parts);
-      await replaceTransactionTx(tx, ctx.ws, lineage!.head!, { occurredOn: row![0], description: row![1], lines, ratesToBase, syncAuthor: changeSet.member });
+      // The foreign figure was the whole charge's: what is left is a different amount, so it no longer stands.
+      await replaceTransactionTx(tx, ctx.ws, lineage!.head!, {
+        occurredOn: row![0],
+        description: row![1],
+        lines,
+        ratesToBase,
+        originalCurrency: null,
+        originalAmountMinor: null,
+        syncAuthor: changeSet.member,
+      });
     } else {
       await voidTransactionTx(tx, ctx.ws, lineage!.head!, {}, changeSet.member);
     }
