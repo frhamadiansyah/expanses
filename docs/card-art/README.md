@@ -1,6 +1,9 @@
 # Card art for Wallet (approved drawings, 23 Oct 2026)
 
-The drawn faces the owner approved for the Wallet stack, kept here until they are moved into the app.
+The drawn faces the owner approved for the Wallet stack. They are in the app: `apps/web/scripts/debit-art.mjs` cuts
+each drawing in `cards.json` down to its art (no text, chip, mark or digits — `CardFace` prints those) and writes
+`apps/web/src/features/cards/debit-art/faces.generated.ts`; which account gets which face, and the card tiers, are in
+`debit-art/faces.ts`. Redraw here, then run the script.
 
 - `wallet-card-art.html` — open in a browser: every face, with notes and the Wallet stack.
 - `draw_cards.py` — draws them (`python3 draw_cards.py cards.json`); `cards.json` is its output, one SVG per key.

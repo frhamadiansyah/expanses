@@ -1,6 +1,8 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { type ReactNode, useId } from 'react';
 import { cx } from '../../ui';
+import { type FaceRef, holderLine } from './debit-art/faces';
+import { useFaceArt } from './debit-art/use-face-art';
 
 /** A hue per issuer, so a card with no catalogue design still shares its bank's colour. */
 function issuerHue(issuer: string | null): number | null {
@@ -38,7 +40,7 @@ function NetworkMark({ network }: { network: string | null }) {
 function Chip({ kind, md, id }: { kind: 'gold' | 'silver'; md: boolean; id: string }) {
   const [light, dark, line] = kind === 'silver' ? ['#f1f3f5', '#9aa1a9', '#6b7280'] : ['#f6dd9a', '#b8892f', '#8a6424'];
   return (
-    <svg aria-hidden viewBox="0 0 46 34" className={md ? 'h-[1.95rem] w-[2.6rem]' : 'h-4 w-5'}>
+    <svg aria-hidden data-testid="card-chip" viewBox="0 0 46 34" className={md ? 'h-[1.95rem] w-[2.6rem]' : 'h-4 w-5'}>
       <defs>
         <linearGradient id={`${id}chip`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor={light} />
@@ -57,7 +59,7 @@ function Chip({ kind, md, id }: { kind: 'gold' | 'silver'; md: boolean; id: stri
 
 function Contactless({ md }: { md: boolean }) {
   return (
-    <svg aria-hidden viewBox="0 0 24 24" className={cx('opacity-80', md ? 'h-5 w-5' : 'h-2.5 w-2.5')} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <svg aria-hidden data-testid="card-contactless" viewBox="0 0 24 24" className={cx('opacity-80', md ? 'h-5 w-5' : 'h-2.5 w-2.5')} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M7.5 8.5a5 5 0 0 1 0 7M11 6a9 9 0 0 1 0 12M14.5 3.5a13 13 0 0 1 0 17M4 11a1.5 1.5 0 0 1 0 2" />
     </svg>
   );
@@ -741,10 +743,16 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
  * A catalogue card is redrawn from its official picture (colours, finish, texture or illustration) without
  * shipping the bank's artwork. Any other card gets a plain face in its bank's colour.
  *
- * Money that is not a credit card — a bank account, cash, a digital wallet — is drawn by the app outright (`kind`):
- * never a brand's logo, only the account's name in type, a colour worked out from that name the way a bank's is, and
- * a chip of words saying what it is ("Debit ···· 1102", "Cash"). No network mark, no plastic chip, no digits line: it
- * is a card in Wallet, not a picture of a piece of plastic the bank never issued.
+ * Money that is not a credit card — a bank account, cash, a digital wallet — whose bank or app has a drawn face
+ * (`face`, from debit-art) is drawn as that card: the art under the same print, laid out as a credit card's is, with
+ * the bank's mark top-left and nothing top-right. What it carries follows what it is: a debit card its chip and
+ * contactless mark, a prepaid e-money card the contactless mark alone, a wallet or a PayLater line neither — and a
+ * PayLater line no number. The holder's line names what a wallet or a prepaid card is ("E-WALLET", "E-MONEY").
+ *
+ * Money nothing is drawn for is drawn by the app outright (`kind`): never a brand's logo, only the account's name in
+ * type, a colour worked out from that name the way a bank's is, and a chip of words saying what it is ("Debit ····
+ * 1102", "Cash"). No network mark, no plastic chip, no digits line: it is a card in Wallet, not a picture of a piece
+ * of plastic the bank never issued.
  */
 export function CardFace({
   issuer,
@@ -757,6 +765,7 @@ export function CardFace({
   behind = false,
   band,
   kind,
+  face,
   className,
 }: {
   issuer: string | null;
@@ -776,27 +785,40 @@ export function CardFace({
   band?: string;
   /** What a money card is, as the words on its chip: drawn by the app from its name rather than a card product. */
   kind?: string;
+  /** The drawn face of the account's bank or app, when it has one: then `kind` is not drawn, the card is. */
+  face?: FaceRef | null;
   className?: string;
 }) {
   // SVG ids must be unique on the page and plain enough for url(#…).
   const id = `face${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const md = size === 'md';
   const portrait = look?.orientation === 'portrait';
+  const faced = face !== undefined && face !== null;
+  // The face's art arrives a moment after the first face asks for it; until then the card is its bank's plain colour.
+  const art = useFaceArt(faced ? face.key : undefined);
   // A drawn money card takes its colour from its own name, as a bank card takes its bank's.
-  const drawn = kind !== undefined;
-  const hue = issuerHue(drawn ? name : issuer);
-  const background = look
-    ? look.colours.length === 1
-      ? look.colours[0]
-      : `linear-gradient(${look.angle ?? 135}deg, ${look.colours.join(', ')})`
-    : hue === null
-      ? 'linear-gradient(135deg, hsl(215 20% 42%), hsl(222 30% 20%))'
-      : `linear-gradient(135deg, hsl(${hue} 55% 40%), hsl(${(hue + 35) % 360} 60% 18%))`;
-  const dark = look?.ink === 'dark';
+  const drawn = kind !== undefined && !faced;
+  const hue = issuerHue(faced ? face.mark : drawn ? name : issuer);
+  const plain = hue === null ? 'linear-gradient(135deg, hsl(215 20% 42%), hsl(222 30% 20%))' : `linear-gradient(135deg, hsl(${hue} 55% 40%), hsl(${(hue + 35) % 360} 60% 18%))`;
+  const background = faced
+    ? art
+      ? 'transparent'
+      : plain
+    : look
+      ? look.colours.length === 1
+        ? look.colours[0]
+        : `linear-gradient(${look.angle ?? 135}deg, ${look.colours.join(', ')})`
+      : plain;
+  const dark = faced ? art?.ink === 'dark' : look?.ink === 'dark';
   // The bank is printed on its own, so "BCA KrisFlyer" names the card as "KrisFlyer".
   const product = issuer && name.toLowerCase().startsWith(`${issuer.toLowerCase()} `) ? name.slice(issuer.length + 1) : name;
-  const bank = drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
-  const cardName = drawn ? name : (look?.wordmark ?? product);
+  const bank = faced ? face.mark : drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
+  const cardName = drawn || faced ? name : (look?.wordmark ?? product);
+  /* What a drawn face carries, by what it is; a credit card carries everything its catalogue look says. */
+  const chip = faced ? (face.kind === 'debit' ? (art?.chip ?? 'silver') : null) : look?.chip === 'none' ? null : look?.chip === 'silver' ? 'silver' : 'gold';
+  const contactless = !faced || face.kind === 'debit' || face.kind === 'emoney';
+  const digits = faced ? (face.kind === 'paylater' ? null : face.kind === 'ewallet' ? last4 : (last4 ?? '····')) : (last4 ?? '····');
+  const holder = faced ? (holderLine(face.kind) ?? holderName) : holderName;
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
   const hidden = behind || band !== undefined;
@@ -805,8 +827,10 @@ export function CardFace({
     <div
       role={hidden ? undefined : 'img'}
       aria-hidden={hidden || undefined}
-      aria-label={hidden ? undefined : drawn ? `${name}, ${kind}` : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
+      // A drawn debit face with no holder recorded prints the account's name on the holder's line: said once, not twice.
+      aria-label={hidden ? undefined : drawn ? `${name}, ${kind}` : `${name}${last4 ? ` ending ${last4}` : ''}${holderName && holderName !== name ? `, ${holderName}` : ''}`}
       data-testid="card-face"
+      data-face={faced ? face.key : undefined}
       className={cx(
         // A face is art, not a surface lifted off the page: it casts nothing. The seams between the cards in a
         // pile belong to the stack, which knows where the card beneath it is.
@@ -819,6 +843,19 @@ export function CardFace({
       )}
       style={{ background, textShadow: dark ? undefined : '0 1px 2px rgb(0 0 0 / 0.35)' }}
     >
+      {faced && art && (
+        /*
+         * The drawing, in the card's own coordinates, stretched to the face: its gradients' ids are prefixed with this
+         * face's, since two accounts at one bank draw the same art on one page. Generated markup, never typed by anyone.
+         */
+        <svg
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox="0 0 340 214"
+          preserveAspectRatio="none"
+          dangerouslySetInnerHTML={{ __html: `<defs>${art.defs}</defs>${art.art}`.replace(/(id="|url\(#)/g, `$1${id}`) }}
+        />
+      )}
       {look?.motif ? <Motif look={look} id={id} /> : look ? <Pattern look={look} /> : null}
       <Surface finish={look?.finish ?? 'plain'} id={id} />
       {band !== undefined && (
@@ -849,33 +886,42 @@ export function CardFace({
       {!hidden && !drawn && (
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
-            <div className="min-w-0 truncate font-bold tracking-wide">{bank}</div>
-            <div
-              className={cx(
-                'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
-                // A portrait card is barely half as wide, so its name steps down a size much sooner.
-                md ? (cardName.length > (portrait ? 7 : 14) ? (cardName.length > (portrait ? 12 : 22) ? 'text-[11px]' : 'text-[13px]') : 'text-[15px]') : 'text-[10px]',
-              )}
-            >
-              {cardName}
+            {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
+            <div className="min-w-0 truncate font-bold tracking-wide" style={faced && art?.bank ? { color: art.bank, textShadow: 'none' } : undefined}>
+              {bank}
             </div>
+            {!faced && (
+              <div
+                className={cx(
+                  'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
+                  // A portrait card is barely half as wide, so its name steps down a size much sooner.
+                  md ? (cardName.length > (portrait ? 7 : 14) ? (cardName.length > (portrait ? 12 : 22) ? 'text-[11px]' : 'text-[13px]') : 'text-[15px]') : 'text-[10px]',
+                )}
+              >
+                {cardName}
+              </div>
+            )}
           </div>
-          <div className={cx('absolute flex items-center gap-2', portrait ? 'top-[34%]' : 'top-[37%]')} style={{ left: inset }}>
-            {look?.chip !== 'none' && <Chip kind={look?.chip === 'silver' ? 'silver' : 'gold'} md={md} id={id} />}
-            <Contactless md={md} />
-          </div>
+          {(chip || contactless) && (
+            <div className={cx('absolute flex items-center gap-2', portrait ? 'top-[34%]' : 'top-[37%]')} style={{ left: inset }}>
+              {chip && <Chip kind={chip} md={md} id={id} />}
+              {contactless && <Contactless md={md} />}
+            </div>
+          )}
           <div className="absolute flex items-end justify-between gap-2" style={{ bottom: inset - 4, left: inset, right: inset }}>
             <div className="min-w-0">
-              <div className={cx('tabular tracking-[0.18em] whitespace-nowrap', md ? 'text-[15px]' : 'text-[10px]')} style={{ textShadow: emboss }}>
-                •••• {last4 ?? '····'}
-              </div>
-              {holderName && (
+              {digits !== null && (
+                <div className={cx('tabular tracking-[0.18em] whitespace-nowrap', md ? 'text-[15px]' : 'text-[10px]')} style={{ textShadow: emboss }}>
+                  •••• {digits}
+                </div>
+              )}
+              {holder && (
                 <div className="truncate tracking-[0.12em] uppercase opacity-85" style={{ textShadow: emboss }}>
-                  {holderName}
+                  {holder}
                 </div>
               )}
             </div>
-            <NetworkMark network={network ?? null} />
+            {!faced && <NetworkMark network={network ?? null} />}
           </div>
         </>
       )}

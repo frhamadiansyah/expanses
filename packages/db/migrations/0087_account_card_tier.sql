@@ -1,0 +1,11 @@
+-- "Card tier": which of a bank's debit cards a money account's card in Wallet is drawn as.
+--
+-- Wallet draws a bank account as the bank's debit card. A few banks issue that card in tiers that look nothing alike —
+-- Mandiri's Silver, Gold, Platinum and Prioritas; BCA's Paspor blue, gold and platinum and its Prioritas; BSI's Silver,
+-- Gold and Platinum; CIMB's and its Preferred — so the account says which, and its face follows. Null, the default, is
+-- the bank's first tier. The value is the tier's own short name ('gold', 'prioritas'), read by the app against the
+-- bank's list; a tier the bank has no face for draws the first.
+--
+-- A look, not a fact about the money: local to this device and never synced (see NEVER_SYNCED_COLUMNS), as the
+-- account's digits (0080) and "For spending" (0086) are.
+ALTER TABLE accounts ADD COLUMN card_tier TEXT;

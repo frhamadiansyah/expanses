@@ -14,13 +14,14 @@ import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series'
 import { SPENDABLE_KINDS, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { sharedSections } from '../accounts/shared-accounts';
-import { useAccountNumberLast4, useCardIdentities, useCards, useProgramAccounts } from '../cards/card-queries';
+import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useProgramAccounts, useWalletLast4 } from '../cards/card-queries';
+import { faceFor, tieredKey } from '../cards/debit-art/faces';
 import { PointsSection } from '../cards/PointsSection';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
-import { useSharedNetWorth } from '../networth/queries';
-import { BALANCE_HIDDEN_KEY, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
+import { BALANCE_HIDDEN_KEY, bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
 
 /** The ground a native screen is laid on, and the column a desktop reads it in. */
 function Screen({ children }: { children: ReactNode }) {
@@ -88,6 +89,9 @@ export function WalletPage() {
   const parents = pocketParentIds(everything);
   const owed = useSetAsideViews();
   const digits = useAccountNumberLast4().data ?? {};
+  const phones = useWalletLast4().data ?? {};
+  const tiers = useCardTiers().data ?? {};
+  const profiles = useAssetProfiles().data ?? [];
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
   const earning = useProgramAccounts().data ?? new Set<string>();
@@ -172,19 +176,32 @@ export function WalletPage() {
     const pockets = pocketsOf(account.id, everything);
     return groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text;
   };
-  const moneyCards: WalletCard[] = money.map((account) => ({
-    key: account.id,
-    issuer: null,
-    name: account.name,
-    last4: null,
-    kind: moneyChip(account, digits[account.id]),
-    figure: moneyFigure(account),
-    figureLabel: 'Balance',
-    subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
-    to: '/accounts/$accountId' as const,
-    params: { accountId: account.id },
-    label: account.name,
-  }));
+  /*
+   * The drawn face for each money card: its bank's (the tax report's Nama institusi, read off its profile or its
+   * pockets'), else whatever its own name names — a wallet's app, a prepaid card. On a debit face the digits and holder
+   * are the account's debit card's where one is recorded, else the account number's last four and the account's name;
+   * a wallet's digits are its phone's. Money nothing is drawn for keeps the plain face with its chip of words.
+   */
+  const faceOf = (account: AccountRow) => faceFor([bankOf(account.id, everything, profiles), account.name], faceKindsOf(account.subtype));
+  const moneyCards: WalletCard[] = money.map((account) => {
+    const face = faceOf(account);
+    const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;
+    return {
+      key: account.id,
+      issuer: null,
+      name: account.name,
+      last4: face === null ? null : face.kind === 'ewallet' ? (phones[account.id] ?? null) : (debit?.last4 ?? digits[account.id] ?? phones[account.id] ?? null),
+      holderName: face?.kind === 'debit' ? (debit?.holderName ?? account.name) : undefined,
+      kind: moneyChip(account, digits[account.id]),
+      face: face ? { key: tieredKey(face, tiers[account.id]), kind: face.kind, mark: face.mark } : undefined,
+      figure: moneyFigure(account),
+      figureLabel: 'Balance',
+      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+      to: '/accounts/$accountId' as const,
+      params: { accountId: account.id },
+      label: account.name,
+    };
+  });
   const creditCards: WalletCard[] = (data.data ?? []).map((cp) => {
     const own = [...plastic.filter((card) => card.accountId === cp.card.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const points = cp.current?.earn.totalPoints ?? 0;
@@ -207,6 +224,8 @@ export function WalletPage() {
       holderName: own[0]?.holderName,
       network: cp.catalog.entry?.network,
       look: cp.catalog.entry?.look,
+      // A PayLater line is a credit account with no catalogue look: its own name finds its drawn face.
+      face: cp.catalog.entry?.look ? undefined : faceFor([cp.card.name], ['paylater']),
       // What the card owes, unmasked: the figure a credit card is opened to read.
       figure: formatMinor(owedMinor(all, cp.card.id), cp.card.currency ?? ws.baseCurrency),
       figureLabel: 'Owed',
