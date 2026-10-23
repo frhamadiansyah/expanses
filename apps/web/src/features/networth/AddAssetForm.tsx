@@ -221,7 +221,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
           {draft.purchases.map((purchase, index) => (
             <InsetGroup
               key={index}
-              header={index === 0 ? 'Already own some?' : `Purchase ${index + 1}`}
+              header={index === 0 ? 'Past purchase' : `Purchase ${index + 1}`}
               footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so bank balances do not move.' : undefined}
             >
               <AcquiredRow label="Bought" value={purchase.on} onChange={(on) => setPurchase(index, { on })} />

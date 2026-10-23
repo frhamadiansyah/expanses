@@ -15,7 +15,7 @@ test('by thumb: gold’s grid and purchases, and a laptop valued again from its 
   await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');
   await openAsset(page, 'Laptop');
   await expect(page.getByTestId('asset-gain')).toHaveAttribute('data-tone', 'loss');
-  await page.getByRole('button', { name: 'Update value' }).tap();
+  await page.getByRole('button', { name: 'Value', exact: true }).tap();
   await expect(page.getByLabel('Value (IDR)')).toHaveValue('');
   await page.getByLabel('Value (IDR)').fill('12000000');
   await page.getByRole('button', { name: 'Save value' }).tap();

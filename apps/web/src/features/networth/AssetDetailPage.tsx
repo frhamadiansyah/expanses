@@ -349,7 +349,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           { key: 'value', label: 'Value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
         ]
     : estimated
-      ? [{ key: 'value', label: 'Update value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]
+      ? [{ key: 'value', label: 'Value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]
       : [];
 
   /*
