@@ -53,10 +53,14 @@ export function useWalletCards() {
     queryFn: () => Promise.all(credit.map((card) => loadCardPoints(database, ws, card, everything, today))),
   });
 
-  /** A money card's figure: its balance, or — for an account with pockets — what they come to here. */
+  /**
+   * A money card's figure: its balance, or — for an account with pockets — what its pockets kept for spending come to
+   * here. A pocket switched off (the lira left after a trip) is savings, so it is not in the card's figure any more than
+   * in the Balance box; the account's page and Assets still count it.
+   */
   const moneyFigure = (account: AccountRow) => {
     if (!parents.has(account.id)) return formatMinor(all[account.id] ?? 0, account.currency!);
-    const pockets = pocketsOf(account.id, everything);
+    const pockets = pocketsOf(account.id, book);
     return groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text;
   };
   /*
@@ -79,7 +83,7 @@ export function useWalletCards() {
       face: face ? { key: tieredKey(face, tiers[account.id]), kind: face.kind, mark: face.mark } : undefined,
       figure: moneyFigure(account),
       figureLabel: 'Balance',
-      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, book).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
       to: '/accounts/$accountId' as const,
       params: { accountId: account.id },
       label: account.name,

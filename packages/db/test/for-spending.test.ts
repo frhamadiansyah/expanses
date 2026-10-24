@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addPocket, createAccount, listAccounts, makeMultiCurrency, MIGRATIONS, openCashAccount, openPocketedAccount, setAccountForSpending, type Database, type WorkspaceContext } from '../src/index';
+import { addPocket, createAccount, listAccounts, makeMultiCurrency, MIGRATIONS, openCashAccount, openPocketedAccount, setAccountForSpending, spendingSwitchOn, type Database, type WorkspaceContext } from '../src/index';
 import { setupDb } from './helpers';
 
 /**
  * "For spending" (0086): which money is paid from, and which is kept as savings. On by default; set on an account and
- * carried onto its pockets, because the lists that ask offer the pockets rather than the account.
+ * on each of its pockets, and read together, because the lists that ask offer the pockets rather than the account.
  */
 
 let database: Database;
@@ -32,7 +32,18 @@ describe('for spending', () => {
     expect((await byId(savings.id)).forSpending).toBe(1);
   });
 
-  it('is written onto every pocket of the account, and a pocket added later follows', async () => {
+  it('reads a pocket off when its account is, and otherwise by its own switch', async () => {
+    expect(spendingSwitchOn({ forSpending: 1 }, { forSpending: 1 })).toBe(true);
+    expect(spendingSwitchOn({ forSpending: 0 }, { forSpending: 1 })).toBe(false);
+    expect(spendingSwitchOn({ forSpending: 1 }, { forSpending: 0 })).toBe(false);
+    expect(spendingSwitchOn({ forSpending: 0 }, { forSpending: 0 })).toBe(false);
+    // No switch on either side — a row read before 0086, or with no account above it — is on.
+    expect(spendingSwitchOn({}, {})).toBe(true);
+    expect(spendingSwitchOn({ forSpending: 1 })).toBe(true);
+    expect(spendingSwitchOn({ forSpending: 1 }, null)).toBe(true);
+  });
+
+  it('is read off the account for every pocket, and a pocket added later follows', async () => {
     const { parent, pockets } = await openPocketedAccount(database, ws, {
       item: 'bank',
       name: 'Wise',
@@ -48,9 +59,47 @@ describe('for spending', () => {
     for (const id of [parent.id, ...pockets.map((p) => p.id), sgd.id]) expect((await byId(id)).forSpending).toBe(1);
   });
 
-  it('refuses a pocket of its own: the account decides for all of them', async () => {
-    const { pockets } = await openPocketedAccount(database, ws, { item: 'bank', name: 'Wise', pockets: [{ currency: 'USD', openingRateToBase: 16_250 }, { currency: 'IDR' }] });
-    await expect(setAccountForSpending(database, ws, pockets[0]!.id, false)).rejects.toThrow('is a pocket');
+  it('switches one pocket off and on by itself, leaving the account and the other pockets on', async () => {
+    const { parent, pockets } = await openPocketedAccount(database, ws, {
+      item: 'cash',
+      name: 'Cash',
+      pockets: [{ currency: 'IDR', openingBalanceMinor: 500_000 }, { currency: 'TRY', openingBalanceMinor: 1_200_00, openingRateToBase: 480 }],
+    });
+    const [idr, lira] = pockets;
+    await setAccountForSpending(database, ws, lira!.id, false);
+    expect((await byId(lira!.id)).forSpending).toBe(0);
+    expect((await byId(idr!.id)).forSpending).toBe(1);
+    expect((await byId(parent.id)).forSpending).toBe(1);
+    await setAccountForSpending(database, ws, lira!.id, true);
+    expect((await byId(lira!.id)).forSpending).toBe(1);
+  });
+
+  it('keeps a pocket switched off through the account going off and on again', async () => {
+    const { parent, pockets } = await openPocketedAccount(database, ws, {
+      item: 'cash',
+      name: 'Cash',
+      pockets: [{ currency: 'IDR', openingBalanceMinor: 500_000 }, { currency: 'TRY', openingBalanceMinor: 1_200_00, openingRateToBase: 480 }],
+    });
+    const [idr, lira] = pockets;
+    await setAccountForSpending(database, ws, lira!.id, false);
+    await setAccountForSpending(database, ws, parent.id, false);
+    // The account off: every pocket reads off, the rupiah one too.
+    expect((await byId(idr!.id)).forSpending).toBe(0);
+    expect((await byId(lira!.id)).forSpending).toBe(0);
+    // A pocket's own switch can still be written while its account is off; it reads off until the account is on.
+    await setAccountForSpending(database, ws, idr!.id, true);
+    expect((await byId(idr!.id)).forSpending).toBe(0);
+    await setAccountForSpending(database, ws, parent.id, true);
+    expect((await byId(idr!.id)).forSpending).toBe(1);
+    expect((await byId(lira!.id)).forSpending).toBe(0);
+  });
+
+  it('has every pocket on again when the account comes back on with all of them off', async () => {
+    const { parent, pockets } = await openPocketedAccount(database, ws, { item: 'bank', name: 'Wise', pockets: [{ currency: 'USD', openingRateToBase: 16_250 }, { currency: 'IDR' }] });
+    for (const pocket of pockets) await setAccountForSpending(database, ws, pocket.id, false);
+    await setAccountForSpending(database, ws, parent.id, false);
+    await setAccountForSpending(database, ws, parent.id, true);
+    for (const pocket of pockets) expect((await byId(pocket.id)).forSpending).toBe(1);
   });
 
   it('stays with the account when a second currency turns it into one with pockets', async () => {
@@ -59,6 +108,9 @@ describe('for spending', () => {
     const { parent } = await makeMultiCurrency(database, ws, { accountId: plain.id, currency: 'USD', openingBalanceMinor: 100_00, openedOn: '2026-09-02', openingRateToBase: 16_250 });
     expect((await byId(parent.id)).forSpending).toBe(0);
     expect((await byId(plain.id)).forSpending).toBe(0);
+    // The switch moved to the account: on again, the old account (now its first pocket) is spent from again.
+    await setAccountForSpending(database, ws, parent.id, true);
+    expect((await byId(plain.id)).forSpending).toBe(1);
   });
 
   it('is only a question about money that can be spent from', async () => {

@@ -46,7 +46,7 @@ export function RepaymentForm({
   const resolveRates = useResolveRates();
   const accounts = useAccounts().data ?? [];
   // Somewhere money can actually sit and is spent from: never another person's account, never savings kept aside.
-  const moneyAccounts = moneyHolders(accounts).filter(keptForSpending);
+  const moneyAccounts = moneyHolders(accounts).filter((a) => keptForSpending(a));
   const today = isoDate();
   const [draft, setDraft] = useState<RepaymentDraft>(() =>
     entry

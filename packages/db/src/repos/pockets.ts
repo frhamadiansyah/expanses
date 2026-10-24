@@ -1,5 +1,5 @@
 import { cashItem, type MoneyAccountSubtype, takesPockets } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -99,9 +99,15 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       // After every pocket it has, archived ones included, so a re-added currency does not jump the queue.
       sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
-    // A pocket follows its account's "For spending": one kept as savings takes no pocket that is spent from.
+    /*
+     * A new pocket's own "For spending" is on; under an account kept as savings it reads off all the same
+     * (`spendingSwitchOn`). The one exception keeps an account whose pockets all say off saying so — the state
+     * `setAccountForSpending` reads as "switch them all back on with the account" — so the new one is not left the
+     * only pocket on, and the others with it stay off when the account is switched on again.
+     */
     if (await isSpendingOffTx(tx, parent.id)) {
-      await writeForSpendingTx(tx, pocket.id, false);
+      const on = await tx.values(sql`SELECT 1 FROM accounts WHERE parent_id = ${parent.id} AND kind = 'asset' AND id <> ${pocket.id} AND for_spending <> 0`);
+      if (on.length === 0) await writeForSpendingTx(tx, pocket.id, false);
       return { ...pocket, forSpending: 0 };
     }
     return pocket;
@@ -153,8 +159,12 @@ export async function makeMultiCurrency(
       icon: account.icon,
       sortOrder: account.sortOrder,
     });
-    // The account's "For spending" is the parent's now, as it is the parent that Wallet and the switch read.
-    if (await isSpendingOffTx(tx, account.id)) await writeForSpendingTx(tx, parent.id, false);
+    // The account's "For spending" is the parent's now, as it is the parent that Wallet and the switch read; the
+    // account, now the first pocket, keeps its own on, so switching the parent back on brings the money back.
+    if (await isSpendingOffTx(tx, account.id)) {
+      await writeForSpendingTx(tx, parent.id, false);
+      await writeForSpendingTx(tx, account.id, true);
+    }
     // Its shared purchases name it by its old name; they go out again as the pocket's.
     await captureMoneyAccountRenamingTx(tx, account.id);
     await withCapture(tx, { entity: 'category', id: account.id }, () =>

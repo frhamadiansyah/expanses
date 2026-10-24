@@ -1,5 +1,6 @@
 import { formatMinor } from '@expanses/core';
-import { type AccountRow, type NamedPayment, type SharedEventView, type SharedExpenseView, type SharedPersonView, type SharedSettlementView, SPENDABLE_SUBTYPES } from '@expanses/db';
+import { type AccountRow, type NamedPayment, type SharedEventView, type SharedExpenseView, type SharedPersonView, type SharedSettlementView } from '@expanses/db';
+import { keptForSpending } from '../../lib/account-types';
 
 /*
  * The words of a shared event's page (shared events §6, §7), kept out of the components so a test can hold them to
@@ -147,6 +148,5 @@ export function takeOverBatches(rows: readonly TakeOverRow[], picks: Readonly<Re
 
 /** The accounts money can be paid from or into on this event: everyday money kept for spending, and cards, still open. */
 export function moneyAccounts(accounts: readonly AccountRow[]): AccountRow[] {
-  const spendable = SPENDABLE_SUBTYPES as readonly string[];
-  return accounts.filter((a) => a.archivedAt === null && ((a.kind === 'asset' && spendable.includes(a.subtype) && a.forSpending !== 0) || (a.kind === 'liability' && a.subtype === 'credit_card')));
+  return accounts.filter((a) => a.archivedAt === null && (keptForSpending(a) || (a.kind === 'liability' && a.subtype === 'credit_card')));
 }

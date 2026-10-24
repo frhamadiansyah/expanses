@@ -108,7 +108,7 @@ export function WalletPage() {
   const estimated = spendable.converted || [...promiseAmounts, ...askedAmounts].some((amount) => amount.currency !== ws.baseCurrency);
   /** The money the box counts — a parent's pockets rather than the parent — so its line is drawn from the same money. */
   const countedIds = money.flatMap((account) => {
-    const pockets = pocketsOf(account.id, everything);
+    const pockets = pocketsOf(account.id, book);
     return pockets.length > 0 ? pockets.map((pocket) => pocket.id) : [account.id];
   });
   /** What moved in and out of that money each day: the ledger's own conversion, so the line needs no rate of its own. */

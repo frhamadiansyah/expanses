@@ -33,6 +33,14 @@ describe('the cards Wallet holds', () => {
     for (const id of ['rainy', 'deposit', 'rdn', 'lent', 'wise-usd', 'closed']) expect(ids).not.toContain(id);
   });
 
+  it('holds an account with pockets while one pocket is kept for spending, and leaves it once none is', () => {
+    const cash = row('cash', 'cash');
+    const idr = row('cash-idr', 'cash', { parentId: 'cash' });
+    const lira = row('cash-try', 'cash', { parentId: 'cash', currency: 'TRY', forSpending: 0 });
+    expect(walletMoney([cash, idr, lira]).map((a) => a.id)).toEqual(['cash']);
+    expect(walletMoney([cash, { ...idr, forSpending: 0 }, lira])).toEqual([]);
+  });
+
   it('holds credit cards only of what is owed: a loan and a person are read on Net worth', () => {
     expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
   });

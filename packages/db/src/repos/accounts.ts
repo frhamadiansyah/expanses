@@ -16,9 +16,25 @@ export type AccountRow = typeof accounts.$inferSelect & {
    * Wallet — or 0, kept as savings: still on Assets, still a transfer's From or To. Filled by `listAccounts` (every
    * list a screen reads); absent on a row read any other way, and on a database stopped before 0086, which reads as
    * on — what every account was until the switch existed. Means nothing on anything but a spendable money account.
+   *
+   * On a pocket it is the answer, not the pocket's own switch: on only when the pocket and its account both are
+   * (`spendingSwitchOn`), so every list that offers pockets reads it off the row it offers.
    */
   forSpending?: number;
 };
+
+/** One row's "For spending" switch as stored: 0 off, anything else (1, or none at all) on. */
+export type SpendingSwitch = { forSpending?: number };
+
+/**
+ * The rule for "For spending" (0086), in one place: money is for spending when its own switch is on and — for a
+ * pocket — its account's is too. An account switched off keeps every pocket under it out, whatever each pocket says;
+ * an account switched on leaves each pocket to its own switch, which is on until a pocket is switched off (leftover
+ * lira after a trip, kept beside the rupiah that is still spent). A switch that is not there reads as on.
+ */
+export function spendingSwitchOn(row: SpendingSwitch, parent?: SpendingSwitch | null): boolean {
+  return row.forSpending !== 0 && (parent?.forSpending ?? 1) !== 0;
+}
 export type AccountSubtype = AccountRow['subtype'];
 
 export class AccountError extends Error {
@@ -136,7 +152,9 @@ export async function listAccounts(
     .orderBy(asc(accounts.kind), sql`case when ${accounts.sortOrder} = 0 and ${accounts.parentId} is null then 1 else 0 end`, asc(accounts.sortOrder), asc(accounts.name))
     .then(async (rows) => {
       const off = await spendingOffIdsTx(database.db, ws);
-      return rows.map((row) => ({ ...row, forSpending: off.has(row.id) ? 0 : 1 }));
+      const own = (id: string) => ({ forSpending: off.has(id) ? 0 : 1 });
+      // A pocket reads the answer, its own switch and its account's together, so a pay-from list needs no parent.
+      return rows.map((row) => ({ ...row, forSpending: spendingSwitchOn(own(row.id), row.parentId ? own(row.parentId) : null) ? 1 : 0 }));
     });
 }
 
@@ -338,19 +356,26 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
  * From or To, but asked for nowhere money is paid out of. Only a spendable kind of money has the switch: a deposit, a
  * broker's cash, a card or a thing owned cannot be paid from whatever it says.
  *
- * Set on the account and written onto every pocket under it, archived ones too: a "Paid with" list offers the pockets
- * rather than the parent, so the answer has to be on the row it offers. A pocket of its own is refused — its account
- * decides for all of them, or the parent's card in Wallet would count a pocket its own list leaves out.
+ * An account and each of its pockets have a switch of their own, read together by `spendingSwitchOn`: the account's
+ * off keeps all its pockets out, and its on leaves each pocket to its own. So switching the account off writes
+ * nothing onto its pockets — a pocket switched off before (the lira left after a trip) is still off when the account
+ * comes back on. One thing is written: an account switched back on whose pockets all say off (as every pocket did
+ * when the account's switch was still copied onto them) has them all on again, rather than coming back with nothing
+ * in it to spend.
  */
 export async function setAccountForSpending(database: Database, ws: WorkspaceContext, id: string, on: boolean): Promise<void> {
   await database.transaction(async (tx) => {
     const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new AccountError('Account not found');
     if (account.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(account.subtype)) throw new AccountError(`${account.name} is not money that can be spent from`);
-    if (account.parentId !== null) throw new AccountError(`${account.name} is a pocket: set this on its account`);
     if (!(await spendingColumnExists(tx))) throw new AccountError('This database cannot keep that yet');
     await writeForSpendingTx(tx, id, on);
-    await tx.run(sql`UPDATE accounts SET for_spending = ${on ? 1 : 0} WHERE workspace_id = ${ws.workspaceId} AND parent_id = ${id} AND kind = 'asset'`);
+    if (on && account.parentId === null) {
+      const pockets = await tx.values<[number]>(sql`SELECT for_spending FROM accounts WHERE workspace_id = ${ws.workspaceId} AND parent_id = ${id} AND kind = 'asset'`);
+      if (pockets.length > 0 && pockets.every(([flag]) => flag === 0)) {
+        await tx.run(sql`UPDATE accounts SET for_spending = 1 WHERE workspace_id = ${ws.workspaceId} AND parent_id = ${id} AND kind = 'asset'`);
+      }
+    }
     await writeAudit(tx, ws, 'for_spending', id, { forSpending: on });
   });
 }

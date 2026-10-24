@@ -171,6 +171,40 @@ describe('an account switched off "For spending"', () => {
 });
 
 /**
+ * A pocket switched off "For spending": the lira left in a Cash account after a trip, kept as savings while the rupiah
+ * beside it is still spent. A pocket is kept for spending only when it and its account both are.
+ */
+describe('a pocket switched off "For spending"', () => {
+  const cash = (id: string, forSpending: number, parentId: string | null = null, currency = 'IDR') =>
+    ({ id, name: id, kind: 'asset', subtype: 'cash', parentId, currency, forSpending, archivedAt: null }) as AccountRow;
+
+  it('is kept only when the pocket and its account both are', () => {
+    expect(keptForSpending(cash('idr', 1, 'c'), cash('c', 1))).toBe(true);
+    expect(keptForSpending(cash('try', 0, 'c'), cash('c', 1))).toBe(false);
+    // The account off keeps every pocket out, whatever the pocket's own switch says.
+    expect(keptForSpending(cash('idr', 1, 'c'), cash('c', 0))).toBe(false);
+    expect(keptForSpending(cash('try', 0, 'c'), cash('c', 0))).toBe(false);
+  });
+
+  it('is on by default: no switch on the pocket or on its account reads as on', () => {
+    const bare = { id: 'p', kind: 'asset', subtype: 'cash', parentId: 'c' } as AccountRow;
+    expect(keptForSpending(bare, { forSpending: undefined })).toBe(true);
+    expect(keptForSpending(bare, null)).toBe(true);
+    expect(keptForSpending(bare)).toBe(true);
+  });
+
+  it('leaves Paid with, but stays a transfer’s To and still receives', () => {
+    // Rows as listAccounts reads them: a pocket's switch is already its own and its account's together.
+    const rows = [cash('idr', 1, 'c'), cash('try', 0, 'c', 'TRY'), cash('wallet', 1)];
+    expect(rows.filter((a) => canPayWith(a)).map((a) => a.id)).toEqual(['idr', 'wallet']);
+    expect(canPayWith(rows[1]!, 'try')).toBe(true);
+    expect(canTransferWith(rows[1]!)).toBe(true);
+    expect(canTransferBetween(rows[0]!, rows[1]!)).toBe(true);
+    expect(canReceiveInto(rows[1]!)).toBe(true);
+  });
+});
+
+/**
  * The owner's rule for transfers, asked on the way money never leaves: ANTAM gold bars, the car, the house, KPR BCA
  * and a car loan were all on offer as somewhere to transfer *from*, because every picker of money was built from
  * "every active account".
