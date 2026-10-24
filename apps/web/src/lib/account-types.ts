@@ -1,4 +1,4 @@
-import type { AccountRow, AccountSubtype } from '@expanses/db';
+import { type AccountRow, type AccountSubtype, spendingSwitchOn } from '@expanses/db';
 
 /**
  * The kinds of account someone can open, and what each is called. Pure data, so the list the Accounts page
@@ -88,9 +88,13 @@ type SpendingSwitch = Partial<Pick<AccountRow, 'forSpending'>>;
  * still money, but it is not offered where money is paid out of and is not counted as spending money. Every pay-from
  * list asks this rather than the kind alone, so switching an account off takes it out of all of them at once. A row
  * with no switch on it (a shape built by hand, a fixture) reads as on, which is what every account was before 0086.
+ *
+ * A pocket has a switch of its own (cash with a lira pocket after the trip is over): it is kept for spending when it
+ * and its account both are (`spendingSwitchOn`). `listAccounts` already reads a pocket's row that way, so a list of
+ * rows from it needs no `parent`; one is passed where a row may not have come from there, and it is never wrong to.
  */
-export function keptForSpending(account: Pick<AccountRow, 'kind' | 'subtype'> & SpendingSwitch): boolean {
-  return account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && account.forSpending !== 0;
+export function keptForSpending(account: Pick<AccountRow, 'kind' | 'subtype'> & SpendingSwitch, parent?: SpendingSwitch | null): boolean {
+  return account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && spendingSwitchOn(account, parent);
 }
 
 /**

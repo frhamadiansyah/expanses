@@ -1,5 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { keptForSpending } from '../../lib/account-types';
+import { spendingBook } from '../accounts/pockets';
 import type { FaceKind } from '../cards/debit-art/faces';
 
 /**
@@ -16,9 +17,13 @@ import type { FaceKind } from '../cards/debit-art/faces';
  */
 const MONEY_RANK: Record<string, number> = { bank: 0, savings: 0, cash: 1, ewallet: 2, other_cash: 3 };
 
-/** The money cards: one per account kept for spending, an account with pockets once (its pockets are never cards). */
+/**
+ * The money cards: one per account kept for spending, an account with pockets once (its pockets are never cards) —
+ * and only while one of its pockets is kept for spending: with every pocket switched off it leaves, as an account
+ * switched off does (`spendingBook`).
+ */
 export function walletMoney(accounts: readonly AccountRow[]): AccountRow[] {
-  return accounts
+  return spendingBook(accounts)
     .filter((a) => a.archivedAt === null && a.parentId === null && keptForSpending(a))
     .map((account, index) => ({ account, index }))
     .sort((a, b) => MONEY_RANK[a.account.subtype]! - MONEY_RANK[b.account.subtype]! || a.index - b.index)

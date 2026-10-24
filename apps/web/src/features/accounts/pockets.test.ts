@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -293,5 +293,43 @@ describe('the money kept for spending', () => {
   it('reads a row with no switch at all as on, as every account was before the switch existed', () => {
     const old = [{ id: 'bca', name: 'BCA', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 }] as AccountRow[];
     expect(spendingBook(old)).toHaveLength(1);
+  });
+});
+
+/**
+ * A pocket of its own switched off: Cash holding rupiah and the lira left after a trip. The lira leaves the spending
+ * money; the rupiah, and the account, stay.
+ */
+describe('a pocket kept as savings', () => {
+  const row = (id: string, extra: Partial<AccountRow> = {}) =>
+    ({ id, name: id, parentId: null, kind: 'asset', subtype: 'cash', currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
+  const cash = row('cash');
+  const idr = row('cash-idr', { parentId: 'cash' });
+  const lira = row('cash-try', { parentId: 'cash', currency: 'TRY', sortOrder: 1, forSpending: 0 });
+  const everyday = row('everyday', { subtype: 'bank' });
+  const balances = { 'cash-idr': 400_000, 'cash-try': 1_000_00, everyday: 3_000_000 };
+  const rates = { TRY: 480 };
+
+  it('leaves the spending book, and the account and its rupiah stay', () => {
+    expect(spendingBook([cash, idr, lira, everyday]).map((a) => a.id)).toEqual(['cash', 'cash-idr', 'everyday']);
+    expect(spendingPocketsOf('cash', [cash, idr, lira, everyday]).map((a) => a.id)).toEqual(['cash-idr']);
+  });
+
+  it('is not counted in the spending balance; Net worth still counts it', () => {
+    const book = [cash, idr, lira, everyday];
+    expect(moneySummary(spendingBook(book), balances, 'IDR', rates, SPENDABLE_KINDS)).toMatchObject({ totalMinor: 3_400_000, missing: [], accounts: 2, converted: false });
+    expect(moneySummary(book, balances, 'IDR', rates, SPENDABLE_KINDS).totalMinor).toBe(3_400_000 + 1_000 * 480);
+  });
+
+  it('takes the account out too when every open pocket is switched off', () => {
+    const idrOff = { ...idr, forSpending: 0 };
+    expect(spendingBook([cash, idrOff, lira, everyday]).map((a) => a.id)).toEqual(['everyday']);
+    // An archived pocket still on is not money to spend: the account still leaves.
+    const archived = row('cash-eur', { parentId: 'cash', currency: 'EUR', archivedAt: '2026-01-01' });
+    expect(spendingBook([cash, idrOff, lira, archived, everyday]).map((a) => a.id)).not.toContain('cash');
+  });
+
+  it('reads a pocket off under an account switched off, whatever the pocket says', () => {
+    expect(spendingBook([{ ...cash, forSpending: 0 }, idr, everyday]).map((a) => a.id)).toEqual(['everyday']);
   });
 });

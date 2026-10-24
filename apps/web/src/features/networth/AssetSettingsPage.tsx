@@ -1,5 +1,5 @@
 import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
-import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, setAccountForSpending, taxTreatmentOf } from '@expanses/db';
+import { type AccountRow, archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, setAccountForSpending, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
@@ -30,6 +30,16 @@ import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 /** The kas code a money account of this kind files under. */
 const cashCodeFor = (subtype: string | undefined): string | null => (subtype && CASH_SUBTYPES.has(subtype) ? cashItem(subtype as MoneyAccountSubtype).code : null);
+
+/**
+ * What "For spending" means, under its switch: for an account, what off does; for a pocket, the same said of its
+ * currency; and for a pocket under an account kept as savings, why its switch cannot be changed.
+ */
+function spendingFooter(account: Pick<AccountRow, 'currency'>, parent: Pick<AccountRow, 'name' | 'kind' | 'subtype' | 'forSpending'> | null): string {
+  if (parent === null) return 'Off: kept as savings. Not offered under Paid with and not counted in the spending balance; money can still be moved in and out.';
+  if (!keptForSpending(parent)) return `${parent.name} is kept as savings, so all its pockets are too. Switch it on for spending in its own Settings to choose pocket by pocket.`;
+  return `Off: the ${account.currency} is kept as savings. Not offered under Paid with and not counted in Wallet's balance; money can still be moved in and out.`;
+}
 
 export function AssetSettingsRoute() {
   const { accountId } = useParams({ from: '/net-worth/assets/$accountId/settings' });
@@ -113,6 +123,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   // whatever it holds (a parent with pockets is refused by the database, which says which are left), but a pocket only
   // once it is empty.
   const pocket = Boolean(account?.parentId);
+  // A pocket's account, whose "For spending" decides before the pocket's own does.
+  const spendingParent = (account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined) ?? null;
   const archivable = money ? !pocket || !value || value.valueMinor === 0 : !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
   const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
@@ -220,14 +232,17 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
 
       {/*
        * Whether this money is for spending: on, it is a card in Wallet, offered under Paid with and counted in the
-       * spending balance; off, it is kept as savings and read on Assets alone. Set on the account — a pocket follows
-       * its account, so a pocket's settings do not ask. Saves as it is switched, as every row here does.
+       * spending balance; off, it is kept as savings and read on Assets alone. An account has the switch, and so does
+       * each of its pockets — the lira left in cash after a trip, kept while the rupiah is still spent. A pocket counts
+       * only while its account does too (`keptForSpending`), so under an account kept as savings its switch is shown
+       * off and cannot be changed. Saves as it is switched, as every row here does.
        */}
-      {account && account.kind === 'asset' && account.parentId === null && SPENDABLE_SUBTYPES.includes(account.subtype) && (
-        <InsetGroup footer="Off: kept as savings. Not offered under Paid with and not counted in the spending balance; money can still be moved in and out.">
+      {account && account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && (
+        <InsetGroup footer={spendingFooter(account, spendingParent)}>
           <SwitchRow
             label="For spending"
-            checked={keptForSpending(account)}
+            checked={keptForSpending(account, spendingParent)}
+            disabled={spendingParent !== null && !keptForSpending(spendingParent)}
             onChange={(on) =>
               void (async () => {
                 setError(null);

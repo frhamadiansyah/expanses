@@ -1,5 +1,5 @@
 import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
-import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds } from '@expanses/db';
+import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds, spendingSwitchOn } from '@expanses/db';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -108,16 +108,22 @@ const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
 export const SPENDABLE_KINDS = new Set<string>(SPENDABLE_SUBTYPES);
 
 /**
- * The accounts Wallet reads: `accounts` less every account switched off "For spending" (0086), and the pockets under
- * one that is. The account decides for its pockets — the switch is written onto them, but a pocket is left out here
- * by its parent's answer rather than its own, so a stack that draws one card per account never counts a pocket whose
- * card it does not draw. Everything that is not a money account passes through untouched: a card, a loan, a category
- * are not what the switch is about, and the callers that want them still find them.
+ * The accounts Wallet reads: `accounts` less every account switched off "For spending" (0086), every pocket under one
+ * that is, and every pocket switched off by itself (`spendingSwitchOn`: a pocket counts when it and its account both
+ * do). An account with pockets whose open pockets are all switched off leaves too, as an account switched off does:
+ * it holds nothing left to spend, so it is no card in Wallet. Everything that is not a money account passes through
+ * untouched: a card, a loan, a category are not what the switch is about, and the callers that want them still find
+ * them.
  */
 export function spendingBook(accounts: readonly AccountRow[]): AccountRow[] {
-  const off = new Set(accounts.filter((a) => a.kind === 'asset' && a.parentId === null && a.forSpending === 0).map((a) => a.id));
-  return accounts.filter((a) => !off.has(a.id) && (a.parentId === null || !off.has(a.parentId)));
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const switchedOn = accounts.filter((a) => a.kind !== 'asset' || spendingSwitchOn(a, a.parentId === null ? null : byId.get(a.parentId)));
+  const parents = pocketParentIds(accounts);
+  return switchedOn.filter((a) => !parents.has(a.id) || pocketsOf(a.id, accounts).length === 0 || pocketsOf(a.id, switchedOn).length > 0);
 }
+
+/** An account's open pockets that are kept for spending: the ones its card in Wallet and the Balance box count. */
+export const spendingPocketsOf = (parentId: string, accounts: readonly AccountRow[]): AccountRow[] => pocketsOf(parentId, spendingBook(accounts));
 
 /** One side of the arithmetic below: a figure in the base currency, or the rate it is missing. */
 interface BaseTotal {

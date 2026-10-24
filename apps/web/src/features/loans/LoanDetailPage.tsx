@@ -109,7 +109,7 @@ function useRateForPayment(currency: string, onDate: string) {
 /** The accounts a loan is paid from: the ones money is spent from, and kept for spending. */
 function usePayingAccounts() {
   const accounts = useAccounts().data ?? [];
-  return { accounts, money: moneyHolders(accounts).filter(keptForSpending) };
+  return { accounts, money: moneyHolders(accounts).filter((a) => keptForSpending(a)) };
 }
 
 /** A sheet's save: the error it ended in, whether it is under way, and the run itself. */
