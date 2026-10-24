@@ -1,12 +1,13 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { CardFace } from '../../features/cards/CardFace';
 import type { FaceRef } from '../../features/cards/debit-art/faces';
 import { cx } from '../index';
-import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, stackLayout } from './card-stack';
+import { arriveFrom, flightKeyframes, flyInto, leaveFrom, MOVE_MS, PILE_LAG_MS, PILE_STAGGER_MS, type Pose, poseFrom, poseTransform, reducedMotion, springProgress } from './card-motion';
+import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, PILE_PEEK, type StackedCard, stackLayout } from './card-stack';
 import { InsetGroup, InsetRow } from './InsetList';
 import { WalletSlotContext } from './wallet-slot';
 
@@ -22,9 +23,10 @@ import { WalletSlotContext } from './wallet-slot';
  * right — so every figure reads without a tap.
  *
  * The pile runs back to front, as Wallet's does: the rearmost card at the top, the front card last and whole.
- * Tapping any card opens it — that same element rises to the top at the same width, the others slide off the
- * bottom of the screen, and its page fades in below it. The ✕, the raised card or Escape put it back in its slot,
- * and the others come back into theirs.
+ * Tapping any card opens it — that same element rises to the top at the same width on Wallet's spring, the others
+ * follow a beat behind, sliding down into a tight pile and off the bottom of the screen, and once the card has
+ * landed its page comes up below it. The ✕, the raised card or Escape put it back in its slot, and the others rise
+ * back into theirs. A card opened from the grid or the carousel flies from where it was tapped (`card-motion`).
  */
 
 export interface WalletCard {
@@ -65,12 +67,9 @@ export interface WalletCard {
   label?: string;
 }
 
-/** Wallet's own beat for a card moving: long enough to follow, with the settle of a spring. */
-const MOVE_MS = 420;
-const MOVE_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
-
-function reducedMotion(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** The pose a card rests in: none in its slot or raised; in the pile, narrower and centred under its top edge. */
+function restPose(placed: StackedCard, width: number): Pose {
+  return placed.pile ? { x: (width * (1 - placed.pile.scale)) / 2, y: 0, scale: placed.pile.scale } : { x: 0, y: 0, scale: 1 };
 }
 
 export function CardStack({
@@ -131,56 +130,141 @@ export function CardStack({
   useEffect(() => setShown(null), [raisedKey]);
 
   /*
-   * FLIP: where every card was is read the moment the stack is asked to change state — during that render, while
-   * the page still shows the old one — and once the new places are committed each card is sent back to where it
-   * was by a transform and let go. So a card travels, continuously, from its slot to the top and back, whatever
-   * positioning each end uses; nothing is redrawn and nothing cuts.
+   * A card that changes between its band and its whole face on the way — the covered card raised, the raised card
+   * put back under the next one, the front card dropping into the pile — is drawn whole for the flight, with its band
+   * laid over it on a ghost that travels with it and fades out (or in). So nothing is redrawn mid-flight; the band
+   * dissolves. The ghost is a sibling of the card rather than inside it, so a card is still one face to whoever
+   * reads it. `flight` is the place the cards are leaving, kept until they land.
    */
+  const [seen, setSeen] = useState(raisedKey);
+  const [flight, setFlight] = useState<{ from: string | null } | null>(null);
+  if (seen !== raisedKey) {
+    setSeen(raisedKey);
+    setFlight(reducedMotion() ? null : { from: seen });
+  }
+  const leaving = flight ? stackLayout(keys, { raised: flight.from === null ? null : keys.indexOf(flight.from), cardWidth: layout.cardWidth }) : null;
+
+  /*
+   * FLIP: where every card was is read the moment the stack is asked to change state — during that render, while
+   * the page still shows the old one, and wherever a flight still under way has got the card to — and once the new
+   * places are committed each card is sent from there to its new place on Wallet's spring. So a card travels,
+   * continuously, from its slot to the top and back, whatever positioning each end uses. The flight is keyframes on
+   * `transform` (and a held `opacity`) alone, so the compositor plays it and nothing is laid out while it runs.
+   */
+  const section = useRef<HTMLElement>(null);
   const elements = useRef(new Map<string, HTMLDivElement>());
+  const ghosts = useRef(new Map<string, HTMLDivElement>());
   const committed = useRef<string | null | undefined>(undefined);
-  const before = useRef<Map<string, { rect: DOMRect; opacity: string }> | null>(null);
+  const before = useRef<Map<string, { rect: DOMRect; hidden: boolean }> | null>(null);
   const scrollAtRest = useRef(0);
+  const flights = useRef(0);
   if (committed.current !== undefined && committed.current !== raisedKey && before.current === null) {
-    before.current = new Map([...elements.current].map(([key, node]) => [key, { rect: node.getBoundingClientRect(), opacity: getComputedStyle(node).opacity }]));
+    before.current = new Map([...elements.current].map(([key, node]) => [key, { rect: node.getBoundingClientRect(), hidden: node.dataset.place === 'hidden' }]));
   }
   useLayoutEffect(() => {
     const was = committed.current;
     committed.current = raisedKey;
     const rects = before.current;
     before.current = null;
-    if (was === undefined || was === raisedKey || !rects) return;
-    // A raised card goes to the top of the screen, as in Wallet; closing it returns the reader to where they were.
-    if (was === null) {
-      scrollAtRest.current = window.scrollY;
-      window.scrollTo(0, 0);
-    } else if (raisedKey === null) {
-      window.scrollTo(0, scrollAtRest.current);
-      elements.current.get(was)?.querySelector<HTMLElement>('a,button')?.focus({ preventScroll: true });
+    if (was === raisedKey) return;
+    const id = ++flights.current;
+    const motion = !reducedMotion();
+    const animations: Animation[] = [];
+    const moving: HTMLElement[] = [];
+    if (was === undefined) {
+      // Drawn with a card already open: one opened from the grid or the carousel flies up from where it was tapped —
+      // once the stack has measured its column, since until then the card is not yet the width it lands at.
+      arrival.current = raisedKey && motion ? arriveFrom([raisedKey]) : null;
+    } else {
+      // A raised card goes to the top of the screen, as in Wallet; closing it returns the reader to where they were.
+      // Both are read into the flight: every rectangle is the screen's, so the scroll is part of the one movement.
+      if (was === null) {
+        scrollAtRest.current = window.scrollY;
+        window.scrollTo(0, 0);
+      } else if (raisedKey === null) {
+        window.scrollTo(0, scrollAtRest.current);
+        elements.current.get(was)?.querySelector<HTMLElement>('a,button')?.focus({ preventScroll: true });
+      }
+      if (motion && rects) {
+        const progress = springProgress();
+        // A flight still under way is let go of where it is: `rects` already holds where it had got to.
+        for (const node of [...elements.current.values(), ...ghosts.current.values()]) for (const running of node.getAnimations({ subtree: true })) running.cancel();
+        const order = layout.cards.map((placed) => placed.key).filter((key) => key !== raisedKey && key !== was);
+        // Every landing place is read before anything is written, so the page is laid out once, not once a card.
+        const landing = layout.cards.map((placed) => elements.current.get(placed.key)?.getBoundingClientRect());
+        layout.cards.forEach((placed, index) => {
+          const node = elements.current.get(placed.key);
+          const from = rects.get(placed.key);
+          const to = landing[index];
+          if (!node || !from || !to) return;
+          const rest = restPose(placed, layout.cardWidth);
+          const start = poseFrom(from.rect, to, rest, layout.cardWidth);
+          if (Math.abs(start.x - rest.x) < 0.5 && Math.abs(start.y - rest.y) < 0.5 && Math.abs(start.scale - rest.scale) < 0.002) return;
+          /*
+           * The card that was tapped, or put back, leads; the rest follow a beat behind it, the nearest first, as
+           * Wallet's pile does. A card on its way to or from the pile is drawn throughout: it rests out of sight.
+           */
+          const lead = placed.key === raisedKey || placed.key === was;
+          const rank = lead ? 0 : Math.min(order.length - 1 - order.indexOf(placed.key), 5);
+          const timing: KeyframeAnimationOptions = { duration: MOVE_MS, delay: lead ? 0 : PILE_LAG_MS + rank * PILE_STAGGER_MS, easing: 'linear', fill: 'backwards' };
+          const frames = flightKeyframes(start, rest, progress, from.hidden || placed.place === 'hidden' ? 1 : undefined);
+          node.style.willChange = 'transform';
+          animations.push(node.animate(frames, timing));
+          moving.push(node);
+          const ghost = ghosts.current.get(placed.key);
+          if (ghost) {
+            ghost.style.willChange = 'transform';
+            animations.push(ghost.animate(frames, timing));
+            moving.push(ghost);
+            // The band fades out as the card leaves the pile, and in as it lands under the next one.
+            const band = ghost.firstElementChild as HTMLElement | null;
+            const showing = Boolean(leaving && faceIsBehind(leaving.cards[index]!));
+            if (band) animations.push(band.animate([{ opacity: showing ? 1 : 0 }, { opacity: showing ? 0 : 1 }], showing ? { duration: 200, delay: 30, easing: 'ease-out', fill: 'both' } : { duration: 220, delay: MOVE_MS * 0.3, easing: 'ease-in-out', fill: 'both' }));
+          }
+        });
+      }
     }
-    if (reducedMotion()) return;
-    const moving: [HTMLDivElement, string][] = [];
-    for (const [key, node] of elements.current) {
-      const from = rects.get(key);
-      if (!from) continue;
-      const to = node.getBoundingClientRect();
-      const dx = from.rect.left - to.left;
-      const dy = from.rect.top - to.top;
-      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
-      // What React set is where the card lands; it starts from where it was, as it was, and is let go.
-      const opacity = node.style.opacity;
-      node.style.transition = 'none';
-      node.style.transform = `translate(${dx}px, ${dy}px)`;
-      node.style.opacity = from.opacity;
-      moving.push([node, opacity]);
-    }
-    if (moving.length === 0) return;
-    void document.body.offsetHeight;
-    for (const [node, opacity] of moving) {
-      node.style.transition = `transform ${MOVE_MS}ms ${MOVE_EASE}, opacity ${MOVE_MS}ms ease-out`;
-      node.style.transform = '';
-      node.style.opacity = opacity;
-    }
+    takeOff(id, animations, moving);
   }, [raisedKey]);
+
+  const arrival = useRef<ReturnType<typeof arriveFrom>>(null);
+  useLayoutEffect(() => {
+    const from = arrival.current;
+    const node = from ? elements.current.get(from.key) : undefined;
+    if (!from || !node || column === null) return;
+    arrival.current = null;
+    const flown = flyInto(node, from.rect, { width: layout.cardWidth });
+    if (flown) takeOff(++flights.current, [flown], [node]);
+  }, [column]);
+
+  /** Marks the stack as moving until every animation of flight `id` has finished, then lets the flight go. */
+  function takeOff(id: number, animations: Animation[], moving: HTMLElement[]) {
+    const land = () => {
+      if (id !== flights.current) return;
+      section.current?.removeAttribute('data-moving');
+      for (const node of moving) node.style.willChange = '';
+      setFlight(null);
+    };
+    if (animations.length === 0) {
+      land();
+      return;
+    }
+    // While anything moves the stack says so, so a test — or anything else — can wait for the cards to land.
+    section.current?.setAttribute('data-moving', '');
+    for (const node of moving) node.style.willChange = 'transform';
+    Promise.all(animations.map((animation) => animation.finished)).then(land, () => {});
+  }
+
+  // A raised card that goes with the stack — put down from the grid or the carousel — says where it was, so the
+  // layout drawn next can fly it home.
+  useLayoutEffect(() => {
+    const cards = elements.current;
+    return () => {
+      const key = committed.current;
+      const node = key ? cards.get(key) : undefined;
+      if (key && node?.isConnected) leaveFrom(key, node.getBoundingClientRect());
+    };
+  }, []);
 
   // Escape puts the raised card back, as the ✕ does.
   useEscape(() => onClose?.(), isRaised);
@@ -189,12 +273,16 @@ export function CardStack({
 
   return (
     <div className={className}>
-      <section aria-label={label} className={cx(!isRaised && 'md:pb-5')}>
+      <section ref={section} aria-label={label} className={cx(!isRaised && 'md:pb-5')}>
         <div ref={shelf} className={cx(!isRaised && 'md:w-[380px] md:max-w-full md:shrink-0')}>
           <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
             {layout.cards.map((placed, index) => {
               const card = cards[index]!;
               const covered = faceIsBehind(placed);
+              // On its way between its band and its whole face: drawn whole, under a ghost of its band (above).
+              const was = leaving?.cards[index];
+              const turning = was !== undefined && faceIsBehind(was) !== covered;
+              const drawn = placed.place === 'raised' && shown ? { ...card, last4: shown.last4, holderName: shown.holderName } : card;
               // One link per card, named by the card and its figure, so a reader hears every figure moving through.
               const name = card.label ?? card.name;
               const named = card.figure && card.figure !== '—' ? `${name}, ${card.figure}` : name;
@@ -212,54 +300,73 @@ export function CardStack({
               const hit = 'ph-focus-inset absolute top-0 left-0 block w-full text-left';
               /*
                * Every card is drawn whole, at one width; the card after it is laid over it, so what shows is its top
-               * band. While another card is open the rest wait below the bottom of the screen, faded and inert — out
-               * of sight, out of the tab order and out of the accessibility tree — and come back up into their slots.
+               * band. While another card is open the rest wait in their pile below the bottom of the screen, inert —
+               * out of sight, out of the tab order and out of the accessibility tree — and come back up into their
+               * slots. A pile that rests out of sight is not drawn there at all.
                */
               const hidden = placed.place === 'hidden';
+              const pose = poseTransform(restPose(placed, layout.cardWidth));
               const box: CSSProperties = hidden
-                ? { position: 'fixed', left: column?.left ?? 16, top: '100vh', zIndex: 1, opacity: 0 }
+                ? {
+                    position: 'fixed',
+                    left: column?.left ?? 16,
+                    top: `calc(100vh - ${PILE_PEEK}px + ${placed.pile?.top ?? 0}px)`,
+                    zIndex: 1 + index,
+                    opacity: PILE_PEEK > 0 ? undefined : 0,
+                    transform: pose === 'none' ? undefined : pose,
+                  }
                 : { position: 'absolute', left: 0, top: placed.top, zIndex: placed.place === 'raised' ? 15 : placed.zIndex };
+              const frame: CSSProperties = { ...box, width: layout.cardWidth, height: layout.cardHeight, borderRadius: radius, transformOrigin: '0 0', pointerEvents: 'none' };
               return (
-                <div
-                  key={card.key}
-                  ref={(node) => {
-                    if (node) elements.current.set(card.key, node);
-                    else elements.current.delete(card.key);
-                  }}
-                  data-testid="wallet-card"
-                  data-place={placed.place}
-                  data-front={index === layout.front ? '' : undefined}
-                  inert={hidden}
-                  aria-hidden={hidden || undefined}
-                  style={{
-                    ...box,
-                    width: layout.cardWidth,
-                    height: layout.cardHeight,
-                    borderRadius: radius,
-                    /*
-                     * The seam a covering card casts up onto the card it covers — never on a card that has nothing
-                     * above it. That is the rearmost card of the pile, at the top, and a card raised out of it: the
-                     * two cases where the shadow has no card to land on and lands on the page instead, which is
-                     * what made a pile lying on the ground look like a pile hovering over it.
-                     */
-                    boxShadow: placed.place === 'slot' && index > 0 ? 'var(--ph-card-edge)' : undefined,
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <Face
-                    card={placed.place === 'raised' && shown ? { ...card, last4: shown.last4, holderName: shown.holderName } : card}
-                    band={covered}
-                    scale={scale}
-                  />
-                  {placed.place === 'raised' ? (
-                    // The raised card is the page's header; tapping it closes it, as in Wallet.
-                    <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
-                  ) : card.to ? (
-                    <Link to={card.to} params={card.params} aria-label={named} className={hit} style={style} />
-                  ) : (
-                    <button type="button" aria-label={named} className={hit} style={style} onClick={() => onOpen?.(card.key)} />
+                <Fragment key={card.key}>
+                  <div
+                    ref={(node) => {
+                      if (node) elements.current.set(card.key, node);
+                      else elements.current.delete(card.key);
+                    }}
+                    data-testid="wallet-card"
+                    data-place={placed.place}
+                    data-front={index === layout.front ? '' : undefined}
+                    inert={hidden}
+                    aria-hidden={hidden || undefined}
+                    style={{
+                      ...frame,
+                      /*
+                       * The seam a covering card casts up onto the card it covers — never on a card that has nothing
+                       * above it. That is the rearmost card of the stack, at the top, and a card raised out of it: the
+                       * two cases where the shadow has no card to land on and lands on the page instead, which is
+                       * what made a pile lying on the ground look like a pile hovering over it. The pile below the
+                       * screen is a pile too, so its cards keep their seams.
+                       */
+                      boxShadow: placed.place !== 'raised' && index > 0 && !(hidden && index === (raisedIndex === 0 ? 1 : 0)) ? 'var(--ph-card-edge)' : undefined,
+                    }}
+                  >
+                    <Face card={drawn} band={turning ? false : covered} scale={scale} />
+                    {placed.place === 'raised' ? (
+                      // The raised card is the page's header; tapping it closes it, as in Wallet.
+                      <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
+                    ) : card.to ? (
+                      <Link to={card.to} params={card.params} aria-label={named} className={hit} style={style} />
+                    ) : (
+                      <button type="button" aria-label={named} className={hit} style={style} onClick={() => onOpen?.(card.key)} />
+                    )}
+                  </div>
+                  {turning && (
+                    <div
+                      ref={(node) => {
+                        if (node) ghosts.current.set(card.key, node);
+                        else ghosts.current.delete(card.key);
+                      }}
+                      aria-hidden
+                      data-ghost=""
+                      style={{ ...frame, overflow: 'hidden' }}
+                    >
+                      <span className="absolute inset-0 block" style={{ opacity: was && faceIsBehind(was) ? 1 : 0 }}>
+                        <Face card={drawn} band scale={scale} />
+                      </span>
+                    </div>
                   )}
-                </div>
+                </Fragment>
               );
             })}
           </div>
@@ -267,8 +374,8 @@ export function CardStack({
       </section>
       {isRaised && (
         <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown }}>
-          {/* The page fades in under the raised card. */}
-          <div className="ph-fade-in">{children}</div>
+          {/* The page comes up under the raised card once it has all but landed, as a pass's details do in Wallet. */}
+          <div className="ph-card-page-in">{children}</div>
         </WalletSlotContext.Provider>
       )}
     </div>

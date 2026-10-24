@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_H, CARD_W, cardFigure, cardHeightFor, cardsBeforeScrolling, DESKTOP_CARD_W, faceIsBehind, stackLayout, STRIP } from './card-stack';
+import { CARD_H, CARD_W, cardFigure, cardHeightFor, cardsBeforeScrolling, DESKTOP_CARD_W, faceIsBehind, PILE_EDGES, PILE_SHRINK, PILE_STEP, pilePlace, stackLayout, STRIP } from './card-stack';
 
 const WALLET = ['bca-krisflyer', 'mandiri-skyz', 'bni-bonvoy'];
 
@@ -79,8 +79,29 @@ describe('stackLayout', () => {
     expect(stackLayout(WALLET, { raised: 0 }).height).toBe(0);
   });
 
+  it('drops the others into a pile, back to front: the front card lowest and whole width, each behind it a step higher and narrower', () => {
+    const open = stackLayout(WALLET, { raised: 1 });
+    expect(open.cards[1]!.pile).toBeUndefined();
+    expect(open.cards[0]!.pile).toEqual({ top: 0, scale: 1 - PILE_SHRINK });
+    expect(open.cards[2]!.pile).toEqual({ top: PILE_STEP, scale: 1 });
+    expect(stackLayout(WALLET).cards.every((card) => card.pile === undefined)).toBe(true);
+  });
+
   it('ignores a raised card it does not have', () => {
     expect(stackLayout(WALLET, { raised: 9 })).toEqual(stackLayout(WALLET));
+  });
+});
+
+describe('pilePlace', () => {
+  it('shows a few edges and tucks the rest behind the last one', () => {
+    const places = Array.from({ length: 7 }, (_, at) => pilePlace(at, 7));
+    expect(places.map((place) => place.top)).toEqual([0, 0, 0, 0, PILE_STEP, PILE_STEP * 2, PILE_STEP * 3]);
+    expect(new Set(places.map((place) => place.top)).size).toBe(PILE_EDGES);
+    expect(places.at(-1)).toEqual({ top: PILE_STEP * (PILE_EDGES - 1), scale: 1 });
+  });
+
+  it('is one card at the line, whole, when only one is left', () => {
+    expect(pilePlace(0, 1)).toEqual({ top: 0, scale: 1 });
   });
 });
 

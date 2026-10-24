@@ -236,7 +236,23 @@
   inset: calc(-1 * var(--ph-tap-y, 0px)) calc(-1 * var(--ph-tap-x, 0px));
 }
 
-/* A page appearing under a raised card: a fade, which a reader who asked for less motion still gets as a cross-fade. */
+/*
+ * A card's page coming up under the raised card: once the card has all but landed (its spring is most of the way
+ * there by 220 ms), the details rise a few pixels into place as they fade in, as a pass's do in Wallet. It ends on
+ * no transform at all, so nothing fixed inside the page is held to it afterwards. A reader who asked for less
+ * motion gets the fade alone, at once.
+ */
+@keyframes ph-card-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes ph-fade-in {
   from {
     opacity: 0;
@@ -246,8 +262,19 @@
   }
 }
 
-.ph-fade-in {
-  animation: ph-fade-in 320ms ease-out both;
+.ph-card-page-in {
+  animation: ph-card-page-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms both;
+}
+
+/* The bar over an open card — ✕ and ⚙ — fading in where the large title was, rather than standing in for it at once. */
+.ph-bar-in {
+  animation: ph-fade-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-card-page-in {
+    animation: ph-fade-in 160ms ease-out both;
+  }
 }
 
 /* The value inside a WebKit date or time input carries a margin of its own; without it the row is a text row's height. */

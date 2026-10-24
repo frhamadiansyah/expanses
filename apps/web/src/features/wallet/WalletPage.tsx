@@ -204,7 +204,7 @@ export function WalletPage() {
            * Wallet's bar over an open pass: ✕ on the left, ⚙ on the right, and no title — the raised card is the
            * header. The card's name is still the heading a reader hears.
            */
-          <header className="mb-[14px] flex items-center justify-between gap-3" style={{ paddingTop: 8 }}>
+          <header className="ph-bar-in mb-[14px] flex items-center justify-between gap-3" style={{ paddingTop: 8 }}>
             <CornerButton label="Close" onClick={close}>
               <X size={20} aria-hidden />
             </CornerButton>
