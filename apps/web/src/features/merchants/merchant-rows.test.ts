@@ -1,6 +1,6 @@
 import type { BundledMerchant } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { bundledRows, merchantOutcome, mineRows } from './merchant-rows';
+import { bundledRows, merchantOutcome, mineRows, patternAsName } from './merchant-rows';
 
 const bundled: BundledMerchant[] = [
   { pattern: 'mcdonald', mcc: '5814', name: "McDonald's", basis: 'typical' },
@@ -32,11 +32,11 @@ describe('mineRows', () => {
     { id: 'c', pattern: 'bengkel', mcc: '7538' },
   ];
 
-  it("names an entry after the typical merchant sharing its text, else its own text, sorted by name", () => {
+  it("names an entry after the typical merchant sharing its text, else its own text capitalised, sorted by name", () => {
     expect(mineRows(memory, bundled, '').map((r) => [r.name, r.typical?.pattern ?? null])).toEqual([
-      ['bengkel', null],
+      ['Bengkel', null],
       ['Pertamina', 'pertamina'],
-      ['warung bunda', null],
+      ['Warung Bunda', null],
     ]);
   });
 
@@ -76,5 +76,13 @@ describe('merchantOutcome', () => {
   it('a different code on a typical merchant makes it the owner’s', () => {
     expect(merchantOutcome({ pattern: 'kfc', mcc: '5812', useTypical: true }, bundled)).toEqual({ kind: 'save', entry: { id: undefined, pattern: 'kfc', mcc: '5812' } });
     expect(merchantOutcome({ id: 'x', pattern: 'kfc', mcc: '5812', useTypical: true }, bundled)).toEqual({ kind: 'save', entry: { id: 'x', pattern: 'kfc', mcc: '5812' } });
+  });
+});
+
+describe('patternAsName', () => {
+  it('starts each word with a capital and keeps the rest as typed', () => {
+    expect(patternAsName('kedai senja')).toBe('Kedai Senja');
+    expect(patternAsName('grab* food')).toBe('Grab* Food');
+    expect(patternAsName('')).toBe('');
   });
 });

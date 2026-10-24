@@ -22,6 +22,9 @@ export function bundledRows(bundled: readonly BundledMerchant[], memory: readonl
 /** The text a purchase is matched on, as the repository keeps it: trimmed, lowercase, single spaces. */
 export const normalisePattern = (pattern: string) => pattern.trim().toLowerCase().replace(/\s+/g, ' ');
 
+/** A pattern is kept in lowercase to match on; shown as a name, each word starts with a capital: "kedai senja" → "Kedai Senja". */
+export const patternAsName = (pattern: string) => pattern.replace(/(^|\s)(\S)/g, (_, gap: string, first: string) => gap + first.toUpperCase());
+
 export interface MineRow<T extends { pattern: string; mcc: string | null }> {
   entry: T;
   /** The typical merchant's own name when one shares the text, else the text as kept. */
@@ -40,7 +43,7 @@ export function mineRows<T extends { pattern: string; mcc: string | null }>(memo
   return memory
     .map((entry): MineRow<T> => {
       const match = typical.get(entry.pattern) ?? null;
-      return { entry, name: match?.name ?? entry.pattern, typical: match };
+      return { entry, name: match?.name ?? patternAsName(entry.pattern), typical: match };
     })
     .filter((row) => words.every((word) => `${row.name} ${row.entry.pattern} ${row.entry.mcc ?? ''}`.toLowerCase().includes(word)))
     .sort((a, b) => a.name.localeCompare(b.name));

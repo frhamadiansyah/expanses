@@ -22,7 +22,7 @@ import {
   TextRow,
 } from '../../ui/native';
 import { MccPicker } from './MccPicker';
-import { type BundledRow, bundledRows, merchantOutcome, type MineRow, mineRows, normalisePattern, typicalFor } from './merchant-rows';
+import { type BundledRow, bundledRows, merchantOutcome, type MineRow, mineRows, normalisePattern, patternAsName, typicalFor } from './merchant-rows';
 
 const describeMcc = (mcc: string | null) => (mcc === null ? 'Ignored: the typical MCC is not used' : `${mcc} ${mccName(mcc) ?? ''}`.trim());
 /** A code and its kind as a row's second line reads them: "5814 · Fast food". */
@@ -109,7 +109,7 @@ export function MerchantsPage() {
   }
 
   const mine = memory.data ?? [];
-  const nameOf = (pattern: string) => typicalFor(MERCHANTS.merchants, pattern)?.name ?? pattern;
+  const nameOf = (pattern: string) => typicalFor(MERCHANTS.merchants, pattern)?.name ?? patternAsName(pattern);
   const openMine = (row: MemoryRow) => setOpened({ id: row.id, title: nameOf(row.pattern), pattern: row.pattern, mcc: row.mcc ?? '', useTypical: row.mcc !== null });
   const openTypical = (row: BundledRow) => {
     const entry = mine.find((own) => own.pattern === row.pattern);
