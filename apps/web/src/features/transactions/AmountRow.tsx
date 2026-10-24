@@ -170,7 +170,6 @@ export function AmountRow({
   draft,
   accounts,
   set,
-  unsure = false,
   selectOnOpen = false,
   noRefund = false,
   anyCurrency = false,
@@ -183,8 +182,6 @@ export function AmountRow({
   set: (patch: Partial<FormDraft>) => void;
   /** No minus-for-refund here: a capture under review is confirmed by its own rule, not posted as a refund. */
   noRefund?: boolean;
-  /** The figure was read off a capture without certainty: marked on the warning panel, with "check" beside it. */
-  unsure?: boolean;
   /** Opened on a copied figure: a desktop field is selected, a phone's keypad opens and its first digit replaces it. */
   selectOnOpen?: boolean;
   /**
@@ -325,7 +322,7 @@ export function AmountRow({
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
           {/* Two figures share the row in halves, the rule between them at its middle: a nine-digit amount and a seven-digit fee each fit their half. */}
-          <span className={cx(codeGroup, 'relative transition-opacity', other ? 'flex-1 basis-0' : 'flex-1', fadeUnlessTyping('amount'), unsure && '-mx-1 my-[8px] self-auto rounded-[6px] bg-[var(--ph-warn-panel)] px-1 py-[2px]')}>
+          <span className={cx(codeGroup, 'relative transition-opacity', other ? 'flex-1 basis-0' : 'flex-1', fadeUnlessTyping('amount'))}>
             {/* Beside a fee the flag already names the one currency both are in, so the code would only take room. */}
             {named && second?.field.which !== 'fee' && (
               <span aria-hidden className={codeClass}>
@@ -369,7 +366,6 @@ export function AmountRow({
               </span>
             </>
           )}
-          {unsure && <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-warn)]">check</span>}
           {photos && !locked && (
             <button
               type="button"

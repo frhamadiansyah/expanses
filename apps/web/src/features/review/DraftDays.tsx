@@ -4,6 +4,7 @@ import { Card, cx } from '../../ui';
 import { type SwipeAction, type SwipeHint, SwipeRow } from '../../ui/SwipeRow';
 import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
+import { CaptureTypeMark } from './CaptureTypeMark';
 import { captureRowView, draftDays } from './capture-view';
 
 /**
@@ -97,7 +98,7 @@ function DraftFace({ draft, accounts, source }: { draft: DraftRow; accounts: rea
           {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-xs font-normal text-[var(--ph-warn)]">unsure</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {view.icon && <span aria-hidden>{view.icon} </span>}
+          {view.type && <CaptureTypeMark type={view.type} />}
           {draft.description}
           {' · '}
           {from ?? warn('Which account?')}

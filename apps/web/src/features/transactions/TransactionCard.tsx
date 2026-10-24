@@ -138,8 +138,6 @@ export interface CardFinish {
    * owner can name. `side` is which row asks; picking there is also `onAnswer`.
    */
   accountAsk?: { side: 'money' | 'to'; label: string; note: string; onAnswer: (accountId: string) => void };
-  /** The figure was read without certainty: the amount is marked for checking. */
-  amountUnsure?: boolean;
 }
 
 /**
@@ -1106,7 +1104,6 @@ function CardBody({
               draft={draft}
               accounts={accounts}
               set={set}
-              unsure={finish?.amountUnsure}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
               {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}

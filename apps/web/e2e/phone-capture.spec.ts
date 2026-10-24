@@ -48,7 +48,7 @@ test('a capture asks which account it is once, and the app remembers', async ({ 
   await inject(page, [notice()]);
 
   const row = page.getByTestId('draft-row').filter({ hasText: 'TOKO KOPI' });
-  await expect(row).toContainText('🔔');
+  await expect(row.locator('[data-capture-type="notification"]')).toHaveCount(1);
   await row.click();
 
   // The reader knew the figure and the merchant. Whose money it was is the one thing only the owner knows, and the
@@ -132,7 +132,7 @@ test('correcting the merchant teaches the source, and the next screenshot is rea
   await expect(page.getByRole('form', { name: 'Review SOTO BETAWI' }).getByLabel('Note')).toHaveValue('SOTO BETAWI');
 });
 
-test('the viewer draws a box around everything it read', async ({ page }) => {
+test('a screenshot opens as the plain picture, with nothing drawn over it', async ({ page }) => {
   await page.goto('/review');
   await inject(
     page,
@@ -144,12 +144,48 @@ test('the viewer draws a box around everything it read', async ({ page }) => {
     picture('captures/38.000.png'),
   );
 
-  // The picture stays one tap from the form, and it is where a wrong reading is easiest to see.
+  // The picture stays one tap from the form, on one row that only says what it was.
   await page.getByTestId('draft-row').filter({ hasText: 'TOKO KOPI' }).click();
-  await expect(page.getByText('📱 Screenshot · Pay')).toBeVisible();
-  await page.getByRole('button', { name: 'See what was read from TOKO KOPI' }).click();
+  const box = page.getByRole('button', { name: 'Screenshot · what was read from TOKO KOPI' });
+  await expect(box).toHaveText('Screenshot›');
+  await expect(box.locator('[data-capture-type="screenshot"]')).toHaveCount(1);
+  await expect(page.getByRole('switch', { name: 'Keep photo' })).toBeVisible();
+  await box.click();
 
   const viewer = page.getByRole('dialog', { name: 'What was read from TOKO KOPI' });
-  await expect(viewer.getByText('Amount', { exact: true })).toBeVisible();
-  await expect(viewer.getByText('Merchant', { exact: true })).toBeVisible();
+  await expect(viewer.getByRole('heading', { name: 'Screenshot' })).toBeVisible();
+  await expect(viewer).toContainText('Screen scanner · Wed 30 Sep');
+  await expect(viewer.locator('img')).toBeVisible();
+  await expect(viewer.getByText('Pinch to zoom')).toBeVisible();
+  // What was read is the form's to say: the picture carries no boxes or labels of its own.
+  await expect(viewer.getByText('Amount', { exact: true })).toHaveCount(0);
+  await expect(viewer.getByText('Merchant', { exact: true })).toHaveCount(0);
+  await viewer.getByRole('button', { name: 'Done' }).click();
+  await expect(viewer).toHaveCount(0);
+});
+
+test('a text message opens as its words, said once, under who sent it', async ({ page }) => {
+  await page.goto('/review');
+  // The shortcut handed the whole message over as both the title and the body.
+  const said = 'Pembayaran Rp38.000 berhasil. Merchant: TOKO KOPI';
+  await inject(page, [notice({ app: 'com.apple.MobileSMS', title: said, body: said })]);
+
+  const row = page.getByTestId('draft-row').filter({ hasText: 'TOKO KOPI' });
+  await expect(row.locator('[data-capture-type="sms"]')).toHaveCount(1);
+  await row.click();
+  const box = page.getByRole('button', { name: 'SMS · what was read from TOKO KOPI' });
+  await expect(box).toHaveText('SMS›');
+  // The amount reads like any other row of the form: nothing beside it asks for it to be checked.
+  await expect(page.getByRole('form', { name: 'Review TOKO KOPI' }).getByText('check', { exact: true })).toHaveCount(0);
+  await box.click();
+
+  const viewer = page.getByRole('dialog', { name: 'What was read from TOKO KOPI' });
+  await expect(viewer.getByRole('heading', { name: 'SMS' })).toBeVisible();
+  // The source's name is only the Messages app, which the title already says: the line is just when it arrived.
+  await expect(viewer).toContainText('Wed 30 Sep');
+  await expect(viewer).not.toContainText('MobileSMS');
+  await expect(viewer.getByText(said, { exact: true })).toHaveCount(1);
+  await expect(viewer).not.toContainText('The notification said');
+  await viewer.getByRole('button', { name: 'Close' }).click();
+  await expect(viewer).toHaveCount(0);
 });

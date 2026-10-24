@@ -1,10 +1,12 @@
 import type { DraftRow } from '@expanses/db';
-import { Minus, Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
 import { captureBytes, native } from '../../capture/native';
-import { fieldBoxes, type ReadingWithLines } from './capture-view';
+import { CAPTURE_TYPES, captureTypeOf } from './capture-type';
+import { arrivalLine, fieldBoxes, messageOnce, type ReadingWithLines } from './capture-view';
+import { useCaptureSources } from './queries';
 
 const MAX_SCALE = 6;
 
@@ -15,15 +17,17 @@ interface View {
 }
 
 /**
- * One capture, full screen: the picture the reading came from, with a box around everything that was read.
+ * One capture, plain: what it was, who it came from and when, and then the thing itself — a message's words, or the
+ * picture.
  *
- * It exists because a wrong figure is easiest to see against what it was read from. The picture is fetched from
- * the phone's own storage through the capture bridge — no URL, no copy anywhere — and shown with the line boxes
- * the reader wrote down. A notification has no picture, so it shows its own words instead; either way nothing
- * here is editable — correcting happens on the sheet behind, and it is the correction that teaches the source.
+ * It exists because a wrong figure is easiest to see against what it was read from, so it shows that and nothing
+ * else: no boxes over the picture, no caption, no word on how to correct a field. It is a sheet of the app's own
+ * colours, light or dark, not a dark veil. The title is the kind (SMS, Screenshot, Photo), and the grey line under it
+ * says who sent it and when it arrived. A message is shown once at reading size, even where its title repeated its
+ * body. A picture is fetched from the phone's own storage through the capture bridge — no URL, no copy anywhere.
  *
- * Pinch or scroll to zoom, drag to move, double-tap to step between "the whole thing" and "close enough to read".
- * `focus` — the field whose row was tapped — starts the view centred on that box.
+ * Pinch or scroll to zoom a picture, drag to move it, double-tap to step between "the whole thing" and "close enough
+ * to read". `focus` — the field whose row was tapped — starts the view centred on the line it was read from.
  */
 export function CaptureViewer({
   draft,
@@ -38,6 +42,9 @@ export function CaptureViewer({
   onClose: () => void;
 }) {
   useEscape(onClose);
+  const sources = useCaptureSources().data ?? [];
+  const source = sources.find((one) => one.id === draft.sourceId) ?? null;
+  const type = captureTypeOf(draft, source) ?? (draft.imageFile ? 'photo' : 'notification');
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0 });
@@ -77,7 +84,7 @@ export function CaptureViewer({
     };
   }, [draft.imageFile]);
 
-  // Opened from a field: start close, with that box in the middle of the screen.
+  // Opened from a field: start close, with the line it was read from in the middle of the screen.
   useEffect(() => {
     if (!src || !focus) return;
     const wanted = fieldBoxes(reading).find((box) => box.field === focus);
@@ -132,8 +139,6 @@ export function CaptureViewer({
     if (pointers.current.size < 2) gesture.current = null;
   }
 
-  const boxes = fieldBoxes(reading);
-
   /*
    * On the document's body, not inside the page: a sheet or a screen that moves (a transform) would otherwise hold
    * a "fixed" layer inside itself, and the top bar would sit under the phone's status bar where nothing can be tapped.
@@ -142,24 +147,29 @@ export function CaptureViewer({
     <div
       role="dialog"
       aria-label={`What was read from ${draft.description}`}
-      className="fixed inset-0 z-50 flex flex-col bg-black text-white"
-      onWheel={(event) => zoomBy(event.deltaY < 0 ? 1.1 : 0.9)}
+      className="fixed inset-0 z-50 flex flex-col bg-[var(--ph-surface)] text-[var(--ph-ink)]"
+      onWheel={draft.imageFile ? (event) => zoomBy(event.deltaY < 0 ? 1.1 : 0.9) : undefined}
     >
-      <div className="flex items-center justify-between gap-3 px-4 pb-3" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
-        <span className="min-w-0 truncate text-[15px] font-semibold">{draft.description}</span>
+      {/* The title in the middle, the ✕ at the end, and an empty slot as wide as it so the title stays centred. */}
+      <div className="flex items-center gap-3 px-3 pb-2" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
+        <span aria-hidden className="w-11 shrink-0" />
+        <h2 className="min-w-0 flex-1 truncate text-center text-[17px] leading-[22px] font-semibold">{CAPTURE_TYPES[type].word}</h2>
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15"
+          className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
         >
-          <X size={20} aria-hidden />
+          <span aria-hidden className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]">
+            <X size={17} strokeWidth={2.4} />
+          </span>
         </button>
       </div>
+      <p className="px-4 pb-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{arrivalLine(draft, source, type)}</p>
 
       {draft.imageFile && src && (
         <div
-          className="relative flex-1 touch-none overflow-hidden"
+          className="relative mx-4 flex-1 touch-none overflow-hidden rounded-[10px] bg-[var(--ph-fill)]"
           onPointerDown={down}
           onPointerMove={move}
           onPointerUp={up}
@@ -167,69 +177,32 @@ export function CaptureViewer({
           onDoubleClick={() => (view.scale > 1.05 ? setView({ scale: 1, x: 0, y: 0 }) : zoomBy(2.5))}
         >
           <div className="flex h-full w-full items-center justify-center">
-            <div
-              ref={stage}
-              className="relative"
-              style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
-            >
-              <img src={src} alt="" className="max-h-[70vh] max-w-[92vw] select-none object-contain" draggable={false} />
-              {boxes.map((box) => {
-                const [x, y, width, height] = box.box;
-                const chosen = box.field === focus;
-                return (
-                  <div
-                    key={box.field}
-                    className={chosen ? 'absolute border-2 border-[var(--ph-tint)]' : 'absolute border border-white/80'}
-                    style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%` }}
-                  >
-                    <span
-                      className={
-                        chosen
-                          ? 'absolute -top-[20px] left-0 whitespace-nowrap rounded bg-[var(--ph-tint)] px-1 text-[11px] font-semibold'
-                          : 'absolute -top-[20px] left-0 whitespace-nowrap rounded bg-white/90 px-1 text-[11px] font-semibold text-black'
-                      }
-                    >
-                      {box.label}
-                    </span>
-                  </div>
-                );
-              })}
+            <div ref={stage} className="relative" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+              <img src={src} alt="" className="max-h-[calc(100dvh-230px)] max-w-[calc(100vw-48px)] select-none object-contain" draggable={false} />
             </div>
           </div>
         </div>
       )}
 
       {draft.imageFile && !src && (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-[14px] text-white/70">
+        <div className="mx-4 flex flex-1 items-center justify-center rounded-[10px] bg-[var(--ph-fill)] px-6 text-center text-[15px] text-[var(--ph-ink-3)]">
           {failed ? 'That picture is not on this phone any more.' : 'Opening the picture…'}
         </div>
       )}
 
       {!draft.imageFile && (
-        <div className="flex-1 overflow-auto px-6 py-4">
-          <p className="mb-1 text-[12.5px] uppercase tracking-wide text-white/50">The notification said</p>
-          <p className="whitespace-pre-wrap text-[15px] leading-6">{draft.rawPayload ?? draft.description}</p>
+        <div className="flex-1 overflow-auto px-4 pb-4">
+          <p className="whitespace-pre-wrap text-[17px] leading-6 text-[var(--ph-ink)]">{messageOnce(draft.rawPayload ?? draft.description)}</p>
         </div>
       )}
 
       <div className="px-4 pt-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}>
-        {draft.imageFile && src && (
-          <div className="mb-3 flex items-center justify-center gap-3">
-            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.5)} className="ph-focus flex h-11 w-11 items-center justify-center rounded-full bg-white/15">
-              <Minus size={20} aria-hidden />
-            </button>
-            <button type="button" onClick={() => setView({ scale: 1, x: 0, y: 0 })} className="ph-focus h-11 rounded-full bg-white/15 px-5 text-[15px] font-semibold">
-              Fit
-            </button>
-            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(1.5)} className="ph-focus flex h-11 w-11 items-center justify-center rounded-full bg-white/15">
-              <Plus size={20} aria-hidden />
-            </button>
-          </div>
-        )}
-        <p className="mb-3 text-center text-[12.5px] text-white/50">
-          {draft.imageFile ? 'Pinch to zoom · drag to move · double-tap to fit' : 'Correcting a field happens on the screen behind this view'}
-        </p>
-        <button type="button" onClick={onClose} className="ph-focus min-h-11 w-full rounded-full bg-white text-[15px] font-semibold text-black">
+        {draft.imageFile && src && <p className="mb-3 text-center text-[13px] text-[var(--ph-ink-3)]">Pinch to zoom</p>}
+        <button
+          type="button"
+          onClick={onClose}
+          className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-fill)] text-[17px] font-semibold text-[var(--ph-ink)] active:opacity-70"
+        >
           Done
         </button>
       </div>

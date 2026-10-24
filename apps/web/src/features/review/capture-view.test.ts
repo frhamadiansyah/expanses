@@ -1,7 +1,7 @@
 import type { CaptureLine, Reading } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { answerPatch, asksForSourceAccount, captureRowView, draftDays, fieldBoxes, majorText, minorFromTyped } from './capture-view';
+import { answerPatch, arrivalLine, asksForSourceAccount, captureRowView, draftDays, fieldBoxes, majorText, messageOnce, minorFromTyped } from './capture-view';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -55,12 +55,14 @@ const reading: Reading & { lines: CaptureLine[] } = {
 };
 
 describe('the row a capture sits on', () => {
-  it('wears the icon of where it came from', () => {
-    const icon = (kind: DraftRow['source']) => captureRowView(draft({ source: kind }), source()).icon;
-    expect(icon('notification')).toBe('🔔');
-    expect(icon('screen')).toBe('📱');
-    expect(icon('photo')).toBe('🧾');
-    expect(icon('csv')).toBeNull();
+  it('names the kind of thing it came from', () => {
+    const type = (kind: DraftRow['source'], app = 'com.example.pay') => captureRowView(draft({ source: kind }), source({ key: app })).type;
+    expect(type('notification')).toBe('notification');
+    expect(type('notification', 'com.apple.MobileSMS')).toBe('sms');
+    expect(type('notification', 'net.whatsapp.WhatsApp')).toBe('whatsapp');
+    expect(type('screen')).toBe('screenshot');
+    expect(type('photo')).toBe('photo');
+    expect(type('csv')).toBeNull();
   });
 
   it('asks a source nobody has answered for which account it is', () => {
@@ -90,6 +92,32 @@ describe('the row a capture sits on', () => {
     const alone = captureRowView(draft(), source());
     expect(alone.merged).toBeNull();
     expect(alone.subtitle).toBe('Pay');
+  });
+});
+
+describe('the plain view of a capture', () => {
+  it('says a message once, however often its title repeated it', () => {
+    const body = 'Pembayaran QRIS ke TOKO SEGAR Rp87.500\ndari rekening ****0000.';
+    expect(messageOnce(`${body}\n${body}`)).toBe(body);
+    expect(messageOnce(`${body}\n${body}\n${body}`)).toBe(body);
+    expect(messageOnce(`Transaksi berhasil\nTransaksi berhasil\n${body}`)).toBe(`Transaksi berhasil\n${body}`);
+    expect(messageOnce(`Pay\n${body}`)).toBe(`Pay\n${body}`);
+  });
+
+  it('names the sender and when it arrived', () => {
+    const arrived = draft({ createdAt: '2026-10-24T23:49:00' });
+    expect(arrivalLine(arrived, source({ label: 'BANKNUSA' }), 'sms')).toBe('BANKNUSA · Sat 24 Oct, 23:49');
+    // A label that is only the messaging app says nothing the title does not.
+    expect(arrivalLine(arrived, source({ key: 'com.apple.MobileSMS', label: 'MobileSMS' }), 'sms')).toBe('Sat 24 Oct, 23:49');
+    expect(arrivalLine(arrived, null, 'notification')).toBe('Sat 24 Oct, 23:49');
+  });
+
+  it('says where a picture came from only when the draft knows', () => {
+    const arrived = draft({ source: 'screen', createdAt: '2026-10-24T23:49:00' });
+    expect(arrivalLine(arrived, source({ keyKind: 'fingerprint', label: 'Nusa Mobile' }), 'screenshot')).toBe('Screen scanner · Sat 24 Oct, 23:49');
+    expect(arrivalLine({ ...arrived, source: 'photo' }, null, 'photo')).toBe('Sat 24 Oct, 23:49');
+    // A row with no time of its own says its day.
+    expect(arrivalLine(draft({ source: 'photo', occurredOn: '2026-10-24' }), null, 'photo')).toBe('Sat 24 Oct');
   });
 });
 
