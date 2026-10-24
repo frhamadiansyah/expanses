@@ -29,6 +29,11 @@ const chunks = js.map((file) => {
   return { file, text: bytes.toString('utf8'), gzipped: gzipSync(bytes).length };
 });
 const { problems, warnings, lines } = checkLists({ entry, chunks, lists: LISTS, rows });
+// The membership card drawings (programme-art, ~80 KB gzipped) are a chunk of their own that the first programme face
+// fetches: never in the entry. Their brand layer is the sentinel, which no line of the app's own code contains.
+const ART = 'data-layer="brand"';
+for (const file of entry) if (read(file).includes(ART)) problems.push(`entry ${file} carries the membership card drawings: they must stay a lazy chunk`);
+for (const chunk of chunks) if (!entry.includes(chunk.file) && chunk.text.includes(ART)) lines.push(`Membership cards ${chunk.file}: ${kb(chunk.gzipped)} gzipped (lazy)`);
 for (const line of lines) console.log(line);
 for (const warning of warnings) console.warn(`warning: ${warning}`);
 if (problems.length > 0) {

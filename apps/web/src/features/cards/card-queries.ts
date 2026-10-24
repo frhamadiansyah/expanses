@@ -1,5 +1,5 @@
 import { CATALOG } from '@expanses/catalog';
-import { accountNumberLast4s, listCardIdentities, listCards, listCardTiers, listIssuers, listPrograms, listWalletLast4 } from '@expanses/db';
+import { accountNumberLast4s, listCardIdentities, listCards, listCardTiers, listIssuers, listProgrammeTiers, listPrograms, listWalletLast4 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -33,6 +33,12 @@ export function useWalletLast4() {
 export function useCardTiers() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['card-tiers', ws.workspaceId], queryFn: () => listCardTiers(database, ws) });
+}
+
+/** Each points programme's card tier, by programme id (0088): which of its membership cards Points draws it as. */
+export function useProgrammeTiers() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['programme-tiers', ws.workspaceId], queryFn: () => listProgrammeTiers(database, ws) });
 }
 
 /** Issuer and product name keyed by account, for every surface that shows a card. */

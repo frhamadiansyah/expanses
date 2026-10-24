@@ -180,6 +180,8 @@ export const pointProgrammes = sqliteTable('point_programmes', {
   expiryMonths: integer('expiry_months'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
+  // tier (0088) is read and written by name, never through this table: a database stopped before it has no such
+  // column, and every select and insert this schema writes would name it.
 });
 
 /** Which programme a reward program's earning goes into: one row per reward program. */

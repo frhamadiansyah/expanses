@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { cardPage, walletCard } from './card-section';
+import { programmeFaces } from './programme-faces';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -109,4 +110,8 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await expect(values).toContainText('Mandiri Platinum');
   await values.getByRole('button', { name: 'Remove Statement credit' }).click();
   await expect(values).toContainText('No values yet');
+});
+
+test('a KrisFlyer programme is drawn as its membership card, its tier changes the face, and an unknown programme keeps the plain face', async ({ page }) => {
+  await programmeFaces(page);
 });
