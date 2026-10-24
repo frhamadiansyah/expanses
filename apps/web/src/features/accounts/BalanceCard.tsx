@@ -9,7 +9,9 @@ import { BalanceSpark } from './BalanceSpark';
  * and the line the figure is the end of — read a day at a time by touching it. What else a page wants inside the card
  * (an asset's four figures) goes under the line.
  *
- * Shared by an account's page and an asset's, so the two figures are one shape.
+ * Shared by an account's page and an asset's, so the two figures are one shape — and by Income, whose year is drawn
+ * as twelve bars rather than a line: a page with a drawing of its own hands it over as `chart`, and it takes the
+ * line's place under the same dashed rule.
  */
 export function BalanceCard({
   label,
@@ -18,6 +20,7 @@ export function BalanceCard({
   approximate = false,
   caption,
   series,
+  chart,
   ends,
   throughZero = true,
   testId,
@@ -32,6 +35,8 @@ export function BalanceCard({
   caption?: ReactNode;
   /** Oldest first, ending on the figure. Null while it is read, or when it cannot be drawn (a rate missing). */
   series: readonly DayBalance[] | null;
+  /** A drawing of the page's own in the line's place, under the same rule: Income's twelve months. */
+  chart?: ReactNode;
   ends?: readonly [string, string];
   /** Whether the line is read against nothing: money is, a thing's value is not. */
   throughZero?: boolean;
@@ -53,7 +58,8 @@ export function BalanceCard({
         </p>
         {caption && <p className="mt-[2px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{caption}</p>}
       </div>
-      {series && series.length > 1 && (
+      {chart && <div className="border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">{chart}</div>}
+      {!chart && series && series.length > 1 && (
         <div className="border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">
           <BalanceSpark series={series} currency={currency} crossing={crossing(series)} readable ends={ends} throughZero={throughZero} />
         </div>
