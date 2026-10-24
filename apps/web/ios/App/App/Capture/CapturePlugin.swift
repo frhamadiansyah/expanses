@@ -1,8 +1,10 @@
 import Capacitor
+import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The web layer's door to the phone's capture services: the holding area the shortcuts and the share sheet write
-/// to, the camera, and the pictures themselves.
+/// to, the camera, the photo library, and the pictures themselves.
 ///
 /// Nothing here decides what a capture means — that is the reader's work in `@expanses/core` — and nothing leaves
 /// the phone.
@@ -14,6 +16,7 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "drainCaptures", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "ackCaptures", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scanReceipt", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pickPhotos", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readCaptureImage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteCaptureImage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "holdingAreaStatus", returnType: CAPPluginReturnPromise),
@@ -22,6 +25,10 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private var receiptCall: CAPPluginCall?
+    private var photosCall: CAPPluginCall?
+
+    /// The most pictures one pick takes: the share sheet's own limit, so both doors take the same statements.
+    private static let mostPhotos = 20
 
     /// Everything the shortcuts and the share sheet left behind, in the order it arrived. Nothing is removed: the
     /// web layer calls `ackCaptures` once it has stored them.
@@ -117,7 +124,7 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
     /// The camera, for a paper receipt: one picture, read on the phone, handed back as a capture.
     @objc func scanReceipt(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            guard self.receiptCall == nil else {
+            guard self.receiptCall == nil, self.photosCall == nil else {
                 call.reject("The camera is already open")
                 return
             }
@@ -130,6 +137,74 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
             picker.delegate = self
             self.receiptCall = call
             self.bridge?.viewController?.present(picker, animated: true)
+        }
+    }
+}
+
+extension CapturePlugin {
+    /// The photo library, for pictures already taken: up to `mostPhotos`, in the order chosen. The system picker runs
+    /// outside the app, so it needs no access to the library and asks for none; only the chosen pictures come back.
+    /// Each is read on the phone and kept as the camera's photo is — what they are (a statement's screenshots or one
+    /// draft) is the web layer's call, the same one it makes for what the share sheet hands over.
+    @objc func pickPhotos(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard self.photosCall == nil, self.receiptCall == nil else {
+                call.reject("A picker is already open")
+                return
+            }
+            var configuration = PHPickerConfiguration()
+            configuration.filter = .images
+            configuration.selectionLimit = Self.mostPhotos
+            configuration.selection = .ordered
+            let picker = PHPickerViewController(configuration: configuration)
+            picker.delegate = self
+            self.photosCall = call
+            self.bridge?.viewController?.present(picker, animated: true)
+        }
+    }
+
+    /// One chosen picture, read and kept under the app's private captures; nil when it cannot be opened.
+    private static func capture(of provider: NSItemProvider) async -> RawCapture? {
+        let data: Data? = await withCheckedContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+        // Upright once, here, as the camera's photo is: the text is read and the JPEG saved from the same pixels.
+        guard let data, let chosen = UIImage(data: data), case let picture = TextRecognizer.upright(chosen),
+              let cgImage = picture.cgImage else {
+            return nil
+        }
+        let lines = (try? await TextRecognizer.recognize(image: cgImage)) ?? []
+        let id = UUID().uuidString
+        var imageFile: String?
+        if let jpeg = picture.jpegData(compressionQuality: 0.9) {
+            let file = "captures/\(id).jpg"
+            if (try? HoldingArea.store(imageData: jpeg, at: file)) != nil { imageFile = file }
+        }
+        return RawCapture(id: id, kind: "shared-image", capturedAt: CaptureClock.stamp(), lines: lines, imageFile: imageFile)
+    }
+}
+
+extension CapturePlugin: PHPickerViewControllerDelegate {
+    public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let call = photosCall else { return }
+        photosCall = nil
+        let providers = results.map(\.itemProvider)
+        Task {
+            // One picture in memory at a time, as the share sheet reads a statement's screenshots.
+            var captures: [RawCapture] = []
+            for provider in providers {
+                if let capture = await Self.capture(of: provider) {
+                    captures.append(capture)
+                } else if providers.count > 1 {
+                    // A screenshot of several that cannot be opened still counts, as the share sheet counts it: the
+                    // check says nothing was read from it, rather than the rest reading as one receipt.
+                    captures.append(RawCapture(id: UUID().uuidString, kind: "shared-image", capturedAt: CaptureClock.stamp()))
+                }
+            }
+            call.resolve(with: PickedPhotos(captures: captures))
         }
     }
 }
@@ -181,6 +256,10 @@ extension CapturePlugin: UIImagePickerControllerDelegate, UINavigationController
 }
 
 private struct DrainedCaptures: Encodable {
+    let captures: [RawCapture]
+}
+
+private struct PickedPhotos: Encodable {
     let captures: [RawCapture]
 }
 

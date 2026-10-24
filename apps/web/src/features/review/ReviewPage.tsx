@@ -13,17 +13,20 @@ import {
   unmerge,
   voidTransaction,
 } from '@expanses/db';
-import { Check, Camera, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { Check, Camera, Images, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { useBackToCashflow } from '../../app/from-search';
 import { usePhone } from '../../app/use-phone';
 import { captureBytes, native } from '../../capture/native';
+import { nextWaitingStatement, onWaitingStatement } from '../../capture/statements';
 import { useScanReceipt } from '../../capture/use-scan';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { photos } from '../../photos/store';
 import { cx, Empty, ErrorBox, Select } from '../../ui';
-import { Figure, LargeTitle, RecordTable, SCREEN } from '../../ui/native';
+import { type CornerAction, Figure, LargeTitle, PushedTitle, RecordTable, SCREEN } from '../../ui/native';
 import { UndoToast } from '../../ui/UndoToast';
 import { CategoryOptions } from '../cards/options';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -60,6 +63,22 @@ export function ReviewPage() {
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources().data ?? [];
   const scan = useScanReceipt();
+  const navigate = useNavigate();
+  // A section from the More sheet; a step down from Cashflow when Cashflow opened it.
+  const backToCashflow = useBackToCashflow();
+  /*
+   * A single screenshot shared from Photos lands here (`cicis://review`), and the drain decides what it is: a
+   * statement page waits for its card instead of becoming a draft. Whether the drain finishes before this screen
+   * opens or after, the owner is handed on to the card picker, as several shared screenshots are.
+   */
+  useEffect(() => {
+    const open = () => {
+      const batch = nextWaitingStatement();
+      if (batch) void navigate({ to: '/statement/shared', search: { batch }, replace: true });
+    };
+    open();
+    return onWaitingStatement(open);
+  }, [navigate]);
   // Confirming a draft records real spending, so the account it names has to be one that can pay.
   const money = moneyHolders(accounts).filter((a) => canPayWith(a));
   const [error, setError] = useState<unknown>(null);
@@ -298,19 +317,23 @@ export function ReviewPage() {
     );
   }
 
+  const scanActions: CornerAction[] = [
+    {
+      key: 'scan',
+      label: 'Scan a receipt',
+      glyph: <Camera size={20} aria-hidden />,
+      // The camera for a receipt in hand; the library for a picture already taken — one receipt or payment
+      // screen becomes a draft, a statement's screenshots go on to their card, as the share sheet sends them.
+      menu: [
+        { key: 'camera', label: 'Take photo', glyph: <Camera size={18} aria-hidden />, run: () => void scan.scan('camera') },
+        { key: 'photos', label: 'Choose from Photos', glyph: <Images size={18} aria-hidden />, run: () => void scan.scan('photos') },
+      ],
+    },
+  ];
+
   return (
     <div className={SCREEN}>
-      <LargeTitle
-        title="Review"
-        subtitle={
-          list.length === 0
-            ? undefined
-            : phone
-              ? `${list.length} waiting. Swipe right to record a row, left to discard it, or tap it to check it first.`
-              : `${list.length} waiting. Nothing here has been recorded yet — check what was read, then confirm it.`
-        }
-        actions={[{ key: 'scan', label: 'Scan a receipt', glyph: <Camera size={20} aria-hidden />, run: () => void scan.scan() }]}
-      />
+      {backToCashflow ? <PushedTitle title="Review" actions={scanActions} {...backToCashflow} /> : <LargeTitle title="Review" actions={scanActions} />}
       <ErrorBox error={error ?? scan.error ?? drafts.error} />
 
       {drafts.isSuccess && list.length === 0 && <Empty>Nothing waiting. Captured spending appears here before it reaches the accounts.</Empty>}

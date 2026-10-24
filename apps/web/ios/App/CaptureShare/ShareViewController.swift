@@ -5,7 +5,9 @@ import UniformTypeIdentifiers
 ///
 /// There is nothing to compose and nothing to confirm — sharing the image was already the owner's decision — so
 /// the picture is read and stored as soon as the sheet opens. Once it is stored the app is opened on Review
-/// (`cicis://review`), where the drain that runs on opening turns it into the draft the owner came to check.
+/// (`cicis://review`), where the drain that runs on opening turns it into the draft the owner came to check — or,
+/// when the one picture is a statement page (`readsAsStatement`, decided in the app, as it is for "Choose from
+/// Photos"), hands the owner on to the card picker instead.
 ///
 /// Two or more images are one statement's screenshots (statement-check S2): each is read on the phone, only its
 /// text lines are written to `captures/statement-<batchId>/` — no picture is kept — and the app is opened on

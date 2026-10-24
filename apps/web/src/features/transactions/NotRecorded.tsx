@@ -36,7 +36,7 @@ export function NotRecorded({ drafts }: { drafts: readonly DraftRow[] }) {
   const approximate = (rows ?? []).some((row) => row?.approximate);
 
   return (
-    <Link to="/review" className="flex w-full items-center gap-3 py-3 text-left" data-testid="not-recorded-card">
+    <Link to="/review" search={{ from: 'cashflow' }} className="flex w-full items-center gap-3 py-3 text-left" data-testid="not-recorded-card">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
         <CircleAlert size={18} strokeWidth={2.2} aria-hidden />
       </span>

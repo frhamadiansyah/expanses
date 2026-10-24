@@ -1,6 +1,7 @@
 import { monthName } from '@expanses/core';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { useFrom } from '../../app/from-search';
 import { Banknote, Check, MoreHorizontal, SkipForward } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
@@ -46,7 +47,9 @@ export function BillRow({
   const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
   const status = statusOf(bill);
   const navigate = useNavigate();
-  const seeBill = () => void navigate({ to: '/bills/$billId', params: { billId: bill.id } });
+  // Opened from Cashflow, the list says so on to the bill, so the bill's way back keeps Recurring's.
+  const from = useFrom();
+  const seeBill = () => void navigate({ to: '/bills/$billId', params: { billId: bill.id }, search: from });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 

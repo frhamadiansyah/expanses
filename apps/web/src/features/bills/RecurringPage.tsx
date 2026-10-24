@@ -4,10 +4,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { useBackToCashflow, useFrom } from '../../app/from-search';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
-import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
+import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
 import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
@@ -89,6 +90,9 @@ export function RecurringPage() {
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const today = isoDate();
+  // A section from the More sheet; a step down from Cashflow when Cashflow opened it.
+  const from = useFrom();
+  const backToCashflow = useBackToCashflow();
   const bills = useMonthlyBills(today);
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
@@ -196,7 +200,7 @@ export function RecurringPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title={title} actions={actions} />
+      {backToCashflow ? <PushedTitle title={title} actions={actions} {...backToCashflow} /> : <LargeTitle title={title} actions={actions} />}
 
       <ErrorBox error={error ?? bills.error} />
 
@@ -307,7 +311,7 @@ export function RecurringPage() {
             setPaying(null);
             setToast({ text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
           }}
-          onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id } })}
+          onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id }, search: from })}
         />
       )}
     </div>

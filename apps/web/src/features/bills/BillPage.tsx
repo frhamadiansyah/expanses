@@ -4,6 +4,7 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { useFrom } from '../../app/from-search';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
@@ -42,6 +43,8 @@ export function BillRoute() {
  */
 export function BillPage({ billId }: { billId: string }) {
   const { database, ws } = useApp();
+  // Recurring opened from Cashflow: back to Recurring keeps its way back to Cashflow.
+  const from = useFrom();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
@@ -58,9 +61,9 @@ export function BillPage({ billId }: { billId: string }) {
   if (detail.error instanceof RecurringError && detail.error.code === 'NOT_FOUND') {
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Bill stopped" back="Recurring" backTo="/bills" />
+        <LargeTitle title="Bill stopped" back="Recurring" backTo="/bills" backSearch={from} />
         <InsetGroup footer="This bill has been stopped.">
-          <InsetRow title={<span className="text-[var(--ph-tint)]">Back to Recurring</span>} label="Back to Recurring" to="/bills" />
+          <InsetRow title={<span className="text-[var(--ph-tint)]">Back to Recurring</span>} label="Back to Recurring" to="/bills" search={from} />
         </InsetGroup>
       </div>
     );
@@ -112,7 +115,7 @@ export function BillPage({ billId }: { billId: string }) {
     try {
       await deleteExpenseTemplate(database, ws, bill.id);
       await invalidate();
-      await navigate({ to: '/bills' });
+      await navigate({ to: '/bills', search: from });
     } catch (e) {
       setError(e);
     }
@@ -140,6 +143,7 @@ export function BillPage({ billId }: { billId: string }) {
         title={bill.name}
         back="Recurring"
         backTo="/bills"
+        backSearch={from}
         actions={[{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu: [{ key: 'stop', label: 'Stop this bill', run: () => void stop() }] }]}
       />
 

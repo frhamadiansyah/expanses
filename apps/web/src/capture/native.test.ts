@@ -35,6 +35,15 @@ describe('reading a handed-over picture outside the iPhone app', () => {
     await expect(native.recognizeImage({ base64: 'x' })).rejects.toThrow('Not available here');
   });
 
+  it('hands the e2e photo picks back in order, their pictures readable, then refuses', async () => {
+    vi.stubEnv('VITE_E2E', '1');
+    const capture = { id: 'p1', kind: 'shared-image', capturedAt: '2026-10-15T18:00:00+07:00', app: null, title: null, body: null, lines: [l1], imageFile: 'captures/p1.png' } as const;
+    vi.stubGlobal('window', { __photoPicks: [{ captures: [capture], images: { 'captures/p1.png': { base64: 'eA==', mime: 'image/png' } } }] });
+    expect(await native.pickPhotos()).toEqual({ captures: [capture] });
+    expect(await native.readCaptureImage({ file: 'captures/p1.png' })).toEqual({ base64: 'eA==', mime: 'image/png' });
+    await expect(native.pickPhotos()).rejects.toThrow('Not available here');
+  });
+
   it('hands the e2e readings back in order, then runs dry', async () => {
     vi.stubEnv('VITE_E2E', '1');
     page([[l1], [l2]]);

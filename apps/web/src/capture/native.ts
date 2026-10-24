@@ -19,6 +19,12 @@ export interface CapturePluginApi {
   ackCaptures(opts: { ids: string[] }): Promise<void>;
   /** The camera, for a paper receipt; null when it was closed without one. */
   scanReceipt(): Promise<{ capture: RawCapture | null }>;
+  /**
+   * The photo library, for pictures already taken: each chosen picture read on the phone and kept as the camera's
+   * is, in the order chosen. None when the picker was closed. What they are — a statement or a draft — is the web
+   * layer's call (`pickPhotos` in `drain.ts`).
+   */
+  pickPhotos(): Promise<{ captures: RawCapture[] }>;
   /** The bytes of a capture's picture, base64 with its mime type. */
   readCaptureImage(opts: { file: string }): Promise<{ base64: string; mime: string }>;
   /** Drops a capture's picture from the app's private storage. */
@@ -45,6 +51,14 @@ class CaptureWeb extends WebPlugin implements CapturePluginApi {
 
   async scanReceipt(): Promise<{ capture: RawCapture | null }> {
     throw new Error('Not available here');
+  }
+
+  async pickPhotos(): Promise<{ captures: RawCapture[] }> {
+    // The e2e build's picks stand in for the photo library, one per call, their pictures where a picture is read from.
+    const pick = import.meta.env.VITE_E2E === '1' ? window.__photoPicks?.shift() : undefined;
+    if (!pick) throw new Error('Not available here');
+    Object.assign((window.__captureImages ??= {}), pick.images ?? {});
+    return { captures: pick.captures };
   }
 
   async readCaptureImage({ file }: { file: string }): Promise<{ base64: string; mime: string }> {
@@ -103,6 +117,7 @@ export const native: CapturePluginApi = {
   drainCaptures: () => plugin.drainCaptures().then(({ captures }) => ({ captures: (captures ?? []).map(wholeCapture) })),
   ackCaptures: (opts) => plugin.ackCaptures(opts),
   scanReceipt: () => plugin.scanReceipt().then(({ capture }) => ({ capture: capture ? wholeCapture(capture) : null })),
+  pickPhotos: () => plugin.pickPhotos().then(({ captures }) => ({ captures: (captures ?? []).map(wholeCapture) })),
   readCaptureImage: (opts) => plugin.readCaptureImage(opts),
   deleteCaptureImage: (opts) => plugin.deleteCaptureImage(opts),
   recognizeImage: (opts) => plugin.recognizeImage(opts).then(({ lines }) => ({ lines: lines ?? [] })),

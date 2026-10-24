@@ -10,7 +10,7 @@
  * full of accumulated captures arrives. It is cheap when there is nothing: one bridge call that reads a folder, and
  * the leftover sweep (a few indexed queries) that lets go of what has passed its week.
  */
-import { isoDate, type RawCapture } from '@expanses/core';
+import { isoDate, type RawCapture, readsAsStatement } from '@expanses/core';
 import {
   type Database,
   type IngestResult,
@@ -20,6 +20,7 @@ import {
 } from '@expanses/db';
 import { App as Shell } from '@capacitor/app';
 import { native, wholeCapture } from './native';
+import { offerStatement } from './statements';
 
 /** What the drain needs from the capture bridge: the phone, or a stand-in in a test. */
 export interface CaptureBridge {
@@ -28,6 +29,8 @@ export interface CaptureBridge {
   /** Lets the holding area drop captures the queue has stored. */
   ackCaptures(opts: { ids: string[] }): Promise<void>;
   scanReceipt(): Promise<{ capture: RawCapture | null }>;
+  /** Pictures chosen from the photo library, each read and kept like a camera's; none when the picker was closed. */
+  pickPhotos(): Promise<{ captures: RawCapture[] }>;
   deleteCaptureImage(opts: { file: string }): Promise<void>;
 }
 
@@ -80,11 +83,17 @@ export async function drainCaptures(
       lastReport = { at: new Date().toISOString(), found, result: nothing(), error: null };
       return nothing();
     }
-    const result = await ingestCaptures(database, ws, captures, { today: on });
+    // A single screenshot shared from Photos that is a statement page goes to the card picker, exactly as one
+    // picked with "Choose from Photos" does: offered once the drafts are stored, its picture let go.
+    const statements = captures.filter((capture) => isSharedStatement(capture, on, ws.baseCurrency));
+    const drafts = captures.filter((capture) => !statements.includes(capture));
+    const result = drafts.length > 0 ? await ingestCaptures(database, ws, drafts, { today: on }) : nothing();
+    for (const statement of statements) offerStatement([statement.lines], { waits: true });
     // Stored: what is left is housekeeping. An ack that fails is retried by the next drain (the queue takes each
     // capture once), so it must not hide this drain's drafts from the screen.
     await bridge.ackCaptures({ ids: captures.map((capture) => capture.id) }).catch(() => undefined);
-    await tidyImages(database, bridge, result.discardedImages, on);
+    const letGo = statements.flatMap((statement) => (statement.imageFile ? [statement.imageFile] : []));
+    await tidyImages(database, bridge, [...result.discardedImages, ...letGo], on);
     lastReport = { at: new Date().toISOString(), found, result, error: null };
     return result;
   } catch (error) {
@@ -130,6 +139,43 @@ export async function scanReceipt(
   const result = await ingestCaptures(database, ws, [capture], { today: on });
   await tidyImages(database, bridge, result.discardedImages, on);
   return result;
+}
+
+/** A screenshot the share sheet handed over alone, that reads as a statement page rather than a payment. */
+function isSharedStatement(capture: RawCapture, on: string, currency: string): boolean {
+  return capture.kind === 'shared-image' && readsAsStatement([capture.lines], on, currency);
+}
+
+/** What "Choose from Photos" came to: drafts in the queue, or a statement waiting for its card. */
+export interface PhotoPick {
+  result: IngestResult;
+  /** The card picker's `batch` when the pictures are a statement's screenshots; null otherwise. */
+  statement: string | null;
+}
+
+/**
+ * Pictures chosen from the photo library, sent the way the share sheet sends the same pictures (`readsAsStatement`):
+ * two or more, or one statement page, are a statement's screenshots and wait for the owner to say which card — only
+ * their text is kept. One picture of anything else is a receipt or a payment screen, and joins the queue as the
+ * camera's photo does, its picture kept with the draft.
+ */
+export async function pickPhotos(
+  database: Database,
+  ws: WorkspaceContext,
+  bridge: CaptureBridge = native,
+  on = today(),
+): Promise<PhotoPick> {
+  const captures = ((await bridge.pickPhotos()).captures ?? []).map(wholeCapture);
+  if (captures.length === 0) return { result: nothing(), statement: null };
+  if (readsAsStatement(captures.map((capture) => capture.lines), on, ws.baseCurrency)) {
+    const statement = offerStatement(captures.map((capture) => capture.lines));
+    const pictures = captures.flatMap((capture) => (capture.imageFile ? [capture.imageFile] : []));
+    await Promise.all(pictures.map((file) => bridge.deleteCaptureImage({ file }).catch(() => undefined)));
+    return { result: nothing(), statement };
+  }
+  const result = await ingestCaptures(database, ws, captures, { today: on });
+  await tidyImages(database, bridge, result.discardedImages, on);
+  return { result, statement: null };
 }
 
 /**
