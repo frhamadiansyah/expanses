@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { ArrowLeftRight, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ChartCandlestick, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -416,7 +416,7 @@ export function OverviewPage() {
   const canTrade = buyChoices(assetValues.data ?? [], assetProfiles.data ?? []).buys.length > 0;
   const actions: CornerAction[] = [
     ...(canTrade
-      ? [{ key: 'trade', label: 'Buy or sell', glyph: <ArrowLeftRight size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
+      ? [{ key: 'trade', label: 'Buy or sell', glyph: <ChartCandlestick size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
       : []),
     /*
      * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the
