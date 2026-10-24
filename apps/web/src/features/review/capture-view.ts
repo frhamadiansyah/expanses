@@ -9,13 +9,14 @@
  */
 import { exponentOf, findAmounts, type CaptureLine, type Reading, WORDS } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
+import { type CaptureType, captureTypeOf, messageTypeOf } from './capture-type';
 
 /** One thing a capture still has to be told before it can be recorded. */
 export type CaptureNeed = 'account' | 'to-account' | 'amount';
 
 export interface CaptureRowView {
-  /** Where it came from; null for anything that is not a capture with a kind of its own. */
-  icon: '🔔' | '📱' | '🧾' | null;
+  /** What it was — an SMS, a screenshot, a photo; null for anything that is not a capture with a kind of its own. */
+  type: CaptureType | null;
   /** Under the name: where it came from, and whether more than one sighting is folded into it. */
   subtitle: string;
   /** What still has to be answered before it can be recorded, in the order the sheet asks. */
@@ -23,12 +24,6 @@ export interface CaptureRowView {
   /** The earlier sightings folded in, when there are any: "Seen in N captures". */
   merged: string | null;
 }
-
-const ICONS: Partial<Record<DraftRow['source'], '🔔' | '📱' | '🧾'>> = {
-  notification: '🔔',
-  screen: '📱',
-  photo: '🧾',
-};
 
 /** How sure the reader must be of the figure for the row to stop asking the owner to check it. */
 export const SURE = 70;
@@ -42,11 +37,59 @@ export function captureRowView(draft: DraftRow, source: CaptureSource | null): C
   const merged = draft.captureIds.length > 1 ? `Seen in ${draft.captureIds.length} captures` : null;
   const where = source?.label ?? 'Captured on this phone';
   return {
-    icon: ICONS[draft.source] ?? null,
+    type: captureTypeOf(draft, source),
     subtitle: merged ? `${where} · ${merged}` : where,
     needs,
     merged,
   };
+}
+
+/**
+ * The grey line under the plain view's title: who it came from, and when it arrived.
+ *
+ * A message names its sender — the source's label — unless that label is only the messaging app itself ("MobileSMS",
+ * "WhatsApp"), which the title already says. A screenshot came from the Screen scanner. A photo is either the camera's
+ * or one shared from another app, and the draft does not say which, so it names nothing rather than guess. The time is
+ * when the phone noticed it, which is when the draft was written; a row with no such time says only its day.
+ */
+export function arrivalLine(draft: DraftRow, source: CaptureSource | null, type: CaptureType): string {
+  const who =
+    type === 'screenshot'
+      ? 'Screen scanner'
+      : type === 'photo'
+        ? null
+        : source && messageTypeOf(source.label) === 'notification'
+          ? source.label
+          : null;
+  const when = (draft.createdAt && arrivedAt(draft.createdAt)) ?? arrivedAt(`${draft.occurredOn}T00:00:00`, false);
+  return [who, when].filter((part): part is string => Boolean(part)).join(' · ');
+}
+
+/** "Sat 24 Oct, 23:49" — in the phone's own time zone, where the owner was when it arrived. */
+function arrivedAt(iso: string, withTime = true): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const day = at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return withTime ? `${day}, ${at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : day;
+}
+
+/**
+ * A message's words, each said once.
+ *
+ * What a source hands over is its title and its body, one under the other, and a shortcut often fills both with the
+ * whole message — or makes the title the body's first line — so the same words arrive twice. A block of lines that
+ * is repeated straight after itself is dropped until nothing repeats; blank lines are not words and are left out.
+ */
+export function messageOnce(raw: string): string {
+  let lines = raw.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((line, i) => line.replace(/\s+/g, ' ') === b[i]!.replace(/\s+/g, ' '));
+  for (let size = Math.floor(lines.length / 2); size >= 1; size -= 1) {
+    if (same(lines.slice(0, size), lines.slice(size, size * 2))) {
+      lines = lines.slice(size);
+      size = Math.floor(lines.length / 2) + 1;
+    }
+  }
+  return lines.join('\n');
 }
 
 /** One day of the queue, as the phone draws it: a card headed by the day and what it came to. */

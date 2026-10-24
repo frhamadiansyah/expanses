@@ -54,6 +54,11 @@ export interface DraftRow {
   confidence: number | null;
   externalRef: string | null;
   transactionId: string | null;
+  /**
+   * When the row was written — for a capture, when the phone noticed it, which is the moment the plain view says it
+   * arrived. Optional so a row built by hand need not name it; every row `listDrafts` reads carries it.
+   */
+  createdAt?: string;
 }
 
 /** What a draft turns out to be: money out, money in, or money moved between two of the owner's own accounts. */
@@ -115,6 +120,7 @@ const toRow = (row: typeof draftTransactions.$inferSelect & { exactHundredths: n
   confidence: row.confidence,
   externalRef: row.externalRef,
   transactionId: row.transactionId,
+  createdAt: row.createdAt,
 });
 
 /** The captures a draft was read out of, as they were written. A row written by hand may carry none. */
