@@ -249,7 +249,7 @@ export function LargeTitle({
    * phone the field also stays where it opened: moved from the title row to the bar at the first pixel of scrolling,
    * it was unmounted and mounted again, the keyboard dropped, the page jumped back under the title, and the list could
    * not be scrolled while searching. So the fold is read once, as the field opens, and held until it closes — opened
-   * at the top, the field scrolls away with its row; opened far down, it stays in the bar.
+   * at the top, the title row sticks to the top with the field in it (below); opened far down, it stays in the bar.
    */
   const observed = useScrolledPast(head, pinned || !field, pinned);
   const heldFold = useRef<boolean | null>(null);
@@ -318,8 +318,20 @@ export function LargeTitle({
   );
   const backShell =
     'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-ink)]';
+  /*
+   * A field opened at the top of a phone's page stays on top while the page scrolls under it: the title row itself
+   * sticks, on the pinned bar's glass, so the field is never moved and keeps the keyboard and what was typed. The
+   * glass is a layer behind it and the safe area is given back with a negative margin, so nothing moves at rest.
+   */
+  const sticky = !!field && phone && pinned && !folded;
   return (
-    <header ref={head} className="mb-[14px] md:max-w-4xl">
+    <header
+      ref={head}
+      className={cx('mb-[14px] md:max-w-4xl', sticky && 'sticky top-0 z-[29] -mx-4 px-4')}
+      style={sticky ? { marginTop: 'calc(-1 * env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' } : undefined}
+    >
+      {/* The glass is a layer behind the row, reaching a little below it to fade, so the header keeps its own height. */}
+      {sticky && <div aria-hidden className="ph-edge-glass pointer-events-none absolute inset-x-0 top-0 -bottom-5 -z-10" />}
       {folded &&
         (pinned ? (
           <PinnedTitleBar live={!!field}>{titleRow(true)}</PinnedTitleBar>

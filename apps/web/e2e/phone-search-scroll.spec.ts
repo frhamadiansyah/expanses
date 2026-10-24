@@ -44,6 +44,9 @@ test('the list still scrolls while the search is open, and what was typed stays'
   await page.waitForTimeout(400);
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
   await expect(page.getByLabel('Search transactions')).toBeVisible();
+  // Opened at the top, the field rides along at the top of the screen as the page scrolls under it.
+  await expect(page.getByLabel('Search transactions')).toBeInViewport();
+  expect((await page.getByLabel('Search transactions').boundingBox())!.y).toBeLessThan(80);
   await page.getByLabel('Search transactions').fill('grab');
   await expect(page.getByTestId('transaction-row')).toHaveCount(1);
   await page.mouse.wheel(0, -1000);
