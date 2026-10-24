@@ -52,6 +52,7 @@ import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { AttentionPage } from '../features/networth/AttentionPage';
 import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
+import { HealthSettingsPage } from '../features/networth/HealthSettingsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
 import { LendBorrowPage } from '../features/debts/LendBorrowPage';
@@ -283,6 +284,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   // The ratios, on a screen of their own: Net worth's corner glyph opens it.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/health', component: FinancialHealthPage }),
+  // What the ratios are read with, and how, behind that screen's ⚙.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/health/settings', component: HealthSettingsPage }),
   // And what is waiting, behind the corner that counts it.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/attention', component: AttentionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),

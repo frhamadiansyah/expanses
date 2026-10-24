@@ -42,8 +42,14 @@ function emergencyCard(page: Page) {
   return page.locator('section', { has: page.getByRole('heading', { name: 'Emergency fund', exact: true }) }).last();
 }
 
-function emergencyBase(page: Page) {
-  return page.getByRole('radiogroup', { name: 'Emergency fund counts' });
+/** Switches what the emergency fund counts — on the Settings page behind the ⚙ — and comes back to the tiles. */
+async function countEmergency(page: Page, base: 'Essential spending' | 'All spending') {
+  await page.locator('header').getByRole('link', { name: 'Settings' }).click();
+  const group = page.getByRole('radiogroup', { name: 'Emergency fund counts' });
+  await group.getByRole('radio', { name: base }).click();
+  await expect(group.getByRole('radio', { name: base })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('button', { name: 'Financial health' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/health$/);
 }
 
 /** Adds a goal from a template and leaves the browser on the goal's own page, where its working is read. */
@@ -70,8 +76,7 @@ test('row 1 — nothing marked: essential and all read the same months', async (
   // No goal, so the flat guide: 5,7 is inside it.
   await expect(card).toContainText('3–6 months');
   await expect(card).toContainText('On track');
-  await emergencyBase(page).getByRole('radio', { name: 'All spending' }).click();
-  await expect(emergencyBase(page).getByRole('radio', { name: 'All spending' })).toHaveAttribute('aria-checked', 'true');
+  await countEmergency(page, 'All spending');
   await expect(card).toContainText('5,7 months');
 });
 
@@ -88,7 +93,7 @@ test('row 3 — the same marks, counting all spending', async ({ page }) => {
   await markFoodLifestyle(page);
   await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('8,5 months');
-  await emergencyBase(page).getByRole('radio', { name: 'All spending' }).click();
+  await countEmergency(page, 'All spending');
   await expect(emergencyCard(page)).toContainText('5,7 months');
 });
 

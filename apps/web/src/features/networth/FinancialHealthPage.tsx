@@ -1,7 +1,8 @@
 import { isoDate, lastNMonths, monthOf, type SheetTotals } from '@expanses/core';
+import { Settings } from 'lucide-react';
 import { useState } from 'react';
 import { ErrorBox } from '../../ui';
-import { PushedTitle, SCREEN } from '../../ui/native';
+import { type CornerAction, PushedTitle, SCREEN } from '../../ui/native';
 import { HealthRatios } from './HealthRatios';
 import { periodRange, type RatioPeriod, ratioInputs, ratioTotals } from './health-cards';
 import { useJointSheet, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
@@ -14,7 +15,12 @@ import { useJointSheet, useNetWorthSeries, usePeriodFlows, useSheet } from './qu
  * in the corner rather than at the foot of another screen, and the period they are read over belongs to this screen:
  * `useNetWorthSeries` is the same query the page behind it makes, so the earliest year the switch offers costs no
  * second read.
+ *
+ * The screen is the period switch and the tiles. What the emergency fund counts, the debt guide and how each ratio
+ * is worked out are a Settings page behind the ⚙, as a holding's seldom-changed details are behind its own.
  */
+const CORNER: CornerAction[] = [{ key: 'settings', label: 'Settings', glyph: <Settings size={20} aria-hidden />, to: '/net-worth/health/settings' }];
+
 export function FinancialHealthPage() {
   const today = isoDate();
   const months = lastNMonths(monthOf(today), 12);
@@ -39,16 +45,11 @@ export function FinancialHealthPage() {
     jointMissing = household?.missing ?? [];
     jointTotals = household && joint.data?.totalMinor !== null ? household.totals : null;
   }
-  const monthsWithData = flows.data?.months ?? 0;
-  const monthsNote =
-    monthsWithData === 0
-      ? 'No transactions in this period yet, so the ratios that need cash flow stay empty.'
-      : `${range.label}: ${monthsWithData === 1 ? '1 month' : `${monthsWithData} months`} of transactions, with balances as of ${range.balanceDate}.`;
   const points = series.data ?? [];
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Financial health" back="Net worth" backTo="/net-worth" />
+      <PushedTitle title="Financial health" back="Net worth" backTo="/net-worth" actions={CORNER} />
       <ErrorBox error={flows.error ?? periodSheetInputs.error ?? series.error ?? joint.error} />
       <HealthRatios
         flows={flows.data}
@@ -60,7 +61,6 @@ export function FinancialHealthPage() {
         onPeriod={setPeriod}
         today={today}
         earliestYear={Number((points[0]?.month ?? today).slice(0, 4))}
-        monthsNote={monthsNote}
       />
     </div>
   );

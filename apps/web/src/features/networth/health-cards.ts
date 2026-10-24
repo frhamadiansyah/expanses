@@ -8,12 +8,18 @@ import {
   type RatioKey,
   householdEmergencyMonths,
   monthOf,
+  type PeriodFlows,
   type RatioStatus,
   type SheetAsset,
   type SheetLiability,
   type SheetTotals,
   sheetTotals,
 } from '@expanses/core';
+
+/** A period with nothing in it: the ratios read from it are all "not enough data", their names and guides intact. */
+export const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, lifestyleSpendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
+/** A sheet with nothing on it, for the same reading. */
+export const EMPTY_TOTALS: SheetTotals = { liquidMinor: 0, investMinor: 0, assetsMinor: 0, liabilitiesMinor: 0, netWorthMinor: 0 };
 
 export type RatioPeriod = { key: 'ttm' } | { key: 'year'; year: number };
 
