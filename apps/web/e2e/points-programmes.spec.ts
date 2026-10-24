@@ -36,7 +36,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await cardEarningInto(page, 'Mandiri Prioritas', "Livin' Poin");
 
   // The programme is on the Cards page, called by the card that earns into it.
-  await page.goto('/wallet');
+  await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toContainText('Mandiri Prioritas');
   await programmeRow(page, "Livin' Poin").click();
   await expect(page.getByTestId('programme-balance')).toHaveText('0 points');
@@ -61,7 +61,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await expect(page.getByTestId('programme-history')).toContainText('10.000 → 6.660 miles');
 
   // Both balances on the Cards page: the airline's filled by the conversion alone.
-  await page.goto('/wallet');
+  await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toContainText('10.000 points');
   await expect(programmeRow(page, 'KrisFlyer')).toContainText('6.660 miles');
   await expect(programmeRow(page, 'KrisFlyer')).toContainText('No card · converted in');
@@ -73,7 +73,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   // Removing the conversion puts both back.
   await page.getByRole('button', { name: "Remove conversion From Livin' Poin" }).click();
   await expect(page.getByTestId('programme-balance')).toHaveText('0 miles');
-  await page.goto('/wallet');
+  await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toContainText('20.000 points');
 });
 
@@ -89,7 +89,7 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await expect(page.getByRole('link', { name: /Livin' Poin/ })).toBeVisible();
 
   // One programme for the two cards; the second card's own was empty, so it is put away.
-  await page.goto('/wallet');
+  await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toContainText('2 cards earn here');
   await expect(programmeRow(page, 'Platinum points')).toHaveCount(0);
   await programmeRow(page, "Livin' Poin").click();

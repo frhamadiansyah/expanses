@@ -102,8 +102,8 @@ export function ProgrammePage() {
     <div className={SCREEN}>
       <PushedTitle
         title={programme.name}
-        back="Wallet"
-        backTo="/wallet"
+        back="Points"
+        backTo="/cards/points"
         actions={[{ key: 'settings', label: 'Programme settings', glyph: <Settings size={20} aria-hidden />, run: () => setSheet('settings') }]}
       />
       <ErrorBox error={error} />

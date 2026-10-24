@@ -2,7 +2,7 @@ import { formatMinor, isoDate, sumToBase } from '@expanses/core';
 import { type AccountRow, listTransactionsIn, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { Award, Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
@@ -16,7 +16,6 @@ import { useHeldRates } from '../accounts/queries';
 import { sharedSections } from '../accounts/shared-accounts';
 import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
 import { faceFor, tieredKey } from '../cards/debit-art/faces';
-import { PointsSection } from '../cards/PointsSection';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
@@ -299,6 +298,8 @@ export function WalletPage() {
       glyph: view === 'stack' ? <Layers size={20} aria-hidden /> : view === 'grid' ? <LayoutGrid size={20} aria-hidden /> : <GalleryHorizontal size={20} aria-hidden />,
       run: () => changeWalletView(WALLET_VIEWS[(WALLET_VIEWS.indexOf(view) + 1) % WALLET_VIEWS.length]!),
     },
+    // The points programmes the cards earn into: a page of their own, not a list under the cards.
+    { key: 'points', label: 'Points', glyph: <Award size={20} aria-hidden />, to: '/cards/points' },
     {
       key: 'add',
       label: 'Add',
@@ -334,7 +335,7 @@ export function WalletPage() {
             </CornerButton>
           </header>
         ) : (
-          <LargeTitle title="Wallet" actions={actions} max={boxed ? 4 : 3} />
+          <LargeTitle title="Wallet" actions={actions} max={boxed ? 5 : 4} />
         )}
       </div>
       {/*
@@ -393,7 +394,6 @@ export function WalletPage() {
       {ready && wallet.length > 0 && !raised && view === 'grid' && <WalletGrid cards={wallet} />}
       {ready && wallet.length > 0 && !raised && view === 'carousel' && <WalletCarousel cards={wallet} accounts={everything} />}
       {/* A bank account's debit card rewards are set up from the account's Settings (`DebitRewardsGroup`), not from here. */}
-      {!raised && <PointsSection />}
       {/*
        * With separate tax IDs, the other members' shared items (joint-net-worth §8.2): listed under "Andi's, shared",
        * to see and open, and counted in nothing on this page. With one tax ID they are the household's Net worth.
