@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_H, CARD_W, cardFigure, cardHeightFor, cardsBeforeScrolling, DESKTOP_CARD_W, faceIsBehind, PILE_EDGES, PILE_SHRINK, PILE_STEP, pilePlace, stackLayout, STRIP } from './card-stack';
+import { CARD_H, CARD_W, cardFigure, cardHeightFor, cardsBeforeScrolling, DESKTOP_CARD_W, faceIsBehind, PILE_EDGES, PILE_PEEK, PILE_SHRINK, PILE_STEP, pileHeight, pilePlace, stackLayout, STRIP } from './card-stack';
 
 const WALLET = ['bca-krisflyer', 'mandiri-skyz', 'bni-bonvoy'];
 
@@ -98,6 +98,14 @@ describe('pilePlace', () => {
     expect(places.map((place) => place.top)).toEqual([0, 0, 0, 0, PILE_STEP, PILE_STEP * 2, PILE_STEP * 3]);
     expect(new Set(places.map((place) => place.top)).size).toBe(PILE_EDGES);
     expect(places.at(-1)).toEqual({ top: PILE_STEP * (PILE_EDGES - 1), scale: 1 });
+  });
+
+  it('peeks: the front card’s strip and one step for each edge behind it, up to the edges shown', () => {
+    expect(PILE_PEEK).toBeGreaterThan(0);
+    expect(pileHeight(0)).toBe(0);
+    expect(pileHeight(1)).toBe(PILE_PEEK);
+    expect(pileHeight(3)).toBe(PILE_PEEK + 2 * PILE_STEP);
+    expect(pileHeight(12)).toBe(PILE_PEEK + (PILE_EDGES - 1) * PILE_STEP);
   });
 
   it('is one card at the line, whole, when only one is left', () => {

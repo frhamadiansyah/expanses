@@ -13,8 +13,8 @@ import { formatMinor } from '@expanses/core';
  * *and* the card's figure, so "how many miles have I got?" is answered without a tap.
  *
  * Opening a card is Wallet's selected state: that card rises to the top of the stack's place, whole and at the
- * same width, and the others slide down together into a tight pile and on off the bottom of the screen, out of
- * sight — the open card and its page are all there is (decisions, 2026-09-22: no pile left showing). Closing it
+ * same width, and the others slide down together into a tight pile at the foot of the screen, their top edges
+ * peeking, as Wallet's do (owner, 2026-10-24); a tap on the pile puts the open card back. Closing it
  * puts every card back in its slot. Both states are laid out here, so the component only moves one element between
  * them.
  *
@@ -40,17 +40,30 @@ export const PILE_EDGES = 4;
 export const PILE_STEP = 8;
 export const PILE_SHRINK = 0.04;
 /**
- * How much of the pile shows above the bottom of the screen at rest. None: the owner chose to have the open card and
- * its page be all there is (2026-09-22), so the pile is drawn as the cards leave and lands just out of sight.
- * Wallet's own peeking pile is this number made the pile's height.
+ * How much of the pile's front card shows at the foot of the screen while a card is open, as in Wallet: a strip of
+ * plain colour, above the band's print, with the edges of the cards behind it stepped up over it. The owner chose
+ * Wallet's peeking pile (2026-10-24), replacing the earlier "nothing else showing" (2026-09-22).
  */
-export const PILE_PEEK = 0;
+export const PILE_PEEK = 16;
+/**
+ * What the pile stands on, above the bottom of the screen and its home indicator: the phone's tab bar — its 48 px
+ * tabs in a 6 px padded, 1 px bordered capsule over a 12 px margin (`TabBar`) — and a small gap; a desktop's margin.
+ */
+export const PILE_FLOOR_PHONE = 74 + 6;
+export const PILE_FLOOR_DESKTOP = 16;
+
+/** How tall the peeking pile of `count` cards is: the front card's strip and the stepped edges above it. */
+export function pileHeight(count: number): number {
+  if (count <= 0) return 0;
+  return PILE_PEEK + (Math.min(count, PILE_EDGES) - 1) * PILE_STEP;
+}
 
 export interface StackedCard {
   key: string;
   /**
-   * Where the card is: in its `slot` in the stack at rest, `raised` to the top while it is open, or `hidden` below
-   * the bottom of the screen while another card is — out of sight, and out of reach of a tap or the keyboard.
+   * Where the card is: in its `slot` in the stack at rest, `raised` to the top while it is open, or `hidden` in the
+   * pile at the foot of the screen while another card is — its edge showing, out of reach of the keyboard and of a
+   * reader, and a tap on the pile closes the open card rather than opening this one.
    */
   place: 'slot' | 'raised' | 'hidden';
   /** Offset of the card's face from the stack's top, in px, for a card in its slot or raised. */
