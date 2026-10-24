@@ -118,8 +118,8 @@ export function HealthRatios({
 
       {/*
        * Eleven tiles, still a grid on a desktop: four across, two on a tablet, one on a phone. Each is the name, the
-       * figure and its grade, the guide's figure and the gauge — and nothing explaining it: how each ratio is worked
-       * out is read on the Settings page behind the ⚙, beside the choices that change it.
+       * figure and its grade, the guide's figure, the gauge and one line on how it is worked out. What the emergency
+       * fund counts and the debt guide are on the Settings page behind the ⚙, beside the choices that change them.
        */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ratios.map((ratio) => {
@@ -131,7 +131,10 @@ export function HealthRatios({
                 <span className={`text-[11.5px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase ${STATUS_INK[ratio.status]}`}>{display.statusLabel}</span>
               </div>
               <div className="tabular text-[22px] leading-[26px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)]">{display.value}</div>
-              <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-2)]">Guide: {ratio.benchmarkText}</div>
+              <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-2)]">
+                Guide: {ratio.benchmarkText}
+                {ratio.companion && ' · companion to the savings ratio'}
+              </div>
               <div
                 className="relative h-1.5 rounded-full bg-[var(--ph-track)]"
                 title={`Guide: ${ratio.lowerBetter ? 'at most' : 'at least'} ${ratio.target}${ratio.unit === 'percent' ? '%' : ' months'}`}
@@ -139,6 +142,7 @@ export function HealthRatios({
                 <i className={`absolute top-0 bottom-0 left-0 rounded-full ${STATUS_BAR[ratio.status]}`} style={{ width: `${display.gaugePercent}%` }} />
                 <b className="absolute -top-1 h-3.5 w-0.5 bg-[var(--ph-ink)] opacity-60" style={{ left: `calc(${display.targetPercent}% - 1px)` }} />
               </div>
+              <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{ratio.guide}</p>
             </Panel>
           );
         })}

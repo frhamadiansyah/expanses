@@ -16,10 +16,10 @@ test('the emergency card divides cash by a month of spending, and the debt guide
   // Rp 16 jt left in the bank against Rp 4 jt of one month's spending.
   const card = page.locator('section', { has: page.getByRole('heading', { name: 'Emergency fund', exact: true }) }).last();
   await expect(card).toContainText('4,0 months');
-  // The screen is the switch and the tiles: no count of the months read, and nothing explaining a ratio on its tile.
+  // The screen is the switch and the tiles: no count of the months read; each tile keeps its one line on how it is worked out.
   await expect(page.getByText(/months? of transactions/)).toHaveCount(0);
   await expect(page.getByText('How the ratios are worked out')).toHaveCount(0);
-  await expect(card).not.toContainText('Cash & equivalents ÷');
+  await expect(card).toContainText('Cash & equivalents ÷');
 
   // What the fund counts, the debt guide and each ratio's working are the Settings page behind the ⚙.
   await page.locator('header').getByRole('link', { name: 'Settings' }).click();
