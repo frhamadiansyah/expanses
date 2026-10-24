@@ -1,3 +1,4 @@
+import { cardTopUpLines } from '@expanses/core';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -123,11 +124,15 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
         occurredOn: input.occurredOn,
         description: input.description,
         cardId,
-        lines: [
-          { accountId: to.id, amountMinor: input.amountMinor, currency },
-          { accountId: from.id, amountMinor: -(input.amountMinor + input.feeMinor), currency, spendCategoryId: topUps },
-          ...(feeCategory ? [{ accountId: feeCategory, amountMinor: input.feeMinor, currency }] : []),
-        ],
+        lines: cardTopUpLines({
+          cardAccountId: from.id,
+          walletAccountId: to.id,
+          chargedMinor: input.amountMinor + input.feeMinor,
+          feeMinor: input.feeMinor,
+          currency,
+          topUpsCategoryId: topUps,
+          feeCategoryId: feeCategory ?? null,
+        }),
         ratesToBase,
       });
       return { transferId, feeId: null };

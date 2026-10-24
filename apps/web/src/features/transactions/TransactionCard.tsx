@@ -75,7 +75,7 @@ import { PhotosSheet } from './PhotosSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -670,6 +670,8 @@ function CardBody({
    * Off by default for every date; only a tap on the icon ticks it. A saved one reads back what it was saved as.
    */
   const payingAccount = accounts.find((account) => account.id === draft.moneyId);
+  // A card's purchase under Top-ups grows Into and Fee rows under Category, and saves as the top-up it is.
+  const expenseTopUp = isExpenseTopUp(draft, accounts);
   const cardOpening = useOpenings(payingAccount?.subtype === 'credit_card' ? [payingAccount.id] : []);
   const cardStart = payingAccount?.subtype === 'credit_card' ? (cardOpening.data?.[payingAccount.id]?.occurredOn ?? payingAccount.createdAt.slice(0, 10)) : null;
   /*
@@ -1123,6 +1125,43 @@ function CardBody({
                 caption=""
                 onClick={() => setSheet('category')}
               />
+            )}
+            {/* A card's purchase filed under Top-ups is a top-up of a wallet: where it went, and the fee in the charge. */}
+            {expenseTopUp && (
+              <>
+                <SelectFormRow
+                  icon={
+                    <RowGlyph>
+                      <ArrowDownLeft size={15} />
+                    </RowGlyph>
+                  }
+                  label="Into"
+                  caption="Into"
+                  placeholder="Into"
+                  value={draft.toId}
+                  onChange={(toId) => set({ toId })}
+                >
+                  <option value="">Choose a wallet</option>
+                  {topUpWallets(payingAccount, accounts).map((wallet) => (
+                    <option key={wallet.id} value={wallet.id}>
+                      {wallet.name}
+                    </option>
+                  ))}
+                </SelectFormRow>
+                <FieldRow
+                  icon={
+                    <RowGlyph>
+                      <Hash size={15} />
+                    </RowGlyph>
+                  }
+                  label="Fee"
+                  caption="Fee"
+                  placeholder="Fee"
+                  inputMode="decimal"
+                  value={draft.fee}
+                  onChange={(fee) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory })}
+                />
+              </>
             )}
 
             <NoteRow
