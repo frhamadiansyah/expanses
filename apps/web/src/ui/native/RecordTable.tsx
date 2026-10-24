@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../index';
+import type { SwipeAction, SwipeHint } from '../SwipeRow';
 import { InsetGroup, InsetRow, toneClass } from './InsetList';
 import { planRecordTable } from './record-table';
 import type { Tone } from './row';
@@ -85,7 +86,7 @@ export function RecordTable<T>({
    * The gestures a phone row answers to, when a screen has them: a right drag past the threshold, and the action
    * revealed behind the left edge. Nothing on a desktop — the table's own buttons are one click away there.
    */
-  rowSwipe?: (record: T) => { onSwipeRight?: () => void; rightHint?: ReactNode; leftAction?: ReactNode } | undefined;
+  rowSwipe?: (record: T) => { onSwipeRight?: () => void; rightHint?: SwipeHint; leftActions?: readonly SwipeAction[] } | undefined;
   header?: string;
   className?: string;
 }) {
@@ -108,7 +109,7 @@ export function RecordTable<T>({
               onClick={detail.kind === 'screen' ? () => detail.open(record) : undefined}
               onSwipeRight={swipe?.onSwipeRight}
               rightHint={swipe?.rightHint}
-              leftAction={swipe?.leftAction}
+              leftActions={swipe?.leftActions}
             />
           );
         })}

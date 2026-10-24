@@ -200,7 +200,7 @@ test('a purchase on the account’s only card keeps that card once it is removed
   await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KrisFlyer ···· 1467 · removed card');
 
   // Edit shows it as the purchase's value, and never offers it for another.
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Edit transaction' });
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('···· 1467 · removed card');
   await form.getByRole('button', { name: 'Paid with' }).click();
@@ -280,7 +280,7 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   // The hint that keeps a fund purchase off this tab is under the To list, where the account is chosen.
   await form.getByRole('button', { name: /^To/ }).click();
   const toList = page.getByRole('dialog', { name: 'To', exact: true });
-  await expect(toList.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  await expect(toList.getByText(/Use Buy or sell on Net worth, so units are counted/)).toBeVisible();
   await toList.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Cancel' }).click();
 
@@ -1090,7 +1090,7 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
    * picture was never lost (`movePhotosTx` carries it across a correction) but the one screen that can show or
    * remove it said there was nothing there, which from the user's side is indistinguishable from data loss.
    */
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('button', { name: 'Add more details' }).click();
   const reopened = page.getByRole('region', { name: 'More details' });
@@ -1596,7 +1596,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   // The refund, made from the receipt the purchase already has.
   await page.goto('/transactions');
   await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('radio', { name: 'Income' }).click();
   // Changing the tab clears the category, because a category of the old shape cannot answer the new one.
@@ -1636,7 +1636,7 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
 
   // Reopened, it is the transfer it was: the amount that landed, and its fee under Fees & charges.
   await row.getByRole('link').first().click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await expect(edit.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(edit.getByLabel(/^Fee in /)).toHaveValue('10000');

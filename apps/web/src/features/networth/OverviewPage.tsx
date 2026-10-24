@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -13,7 +13,8 @@ import { NetWorthChart } from './NetWorthChart';
 import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
-import { memberName, useJointSheet, useNetWorthSeries, useSheet } from './queries';
+import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useSheet } from './queries';
+import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing } from './joint-rows';
 import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
@@ -339,6 +340,9 @@ function fold(
 export function OverviewPage() {
   const { ws } = useApp();
   const today = isoDate();
+  // What there is to buy or sell, for the corner's Buy or sell: the same list the Add form's trade rows offer.
+  const assetValues = useAssetValues();
+  const assetProfiles = useAssetProfiles();
   /*
    * The range is chosen first because it decides how much is read: a snapshot a month, so six months are six of them
    * and five years are sixty. The page opens on the shortest and cheapest, and each range that has been read once is
@@ -406,9 +410,14 @@ export function OverviewPage() {
    * The corner: how the figure is doing. Needs attention is no longer one of them: what it gathered is said where it
    * belongs — an old price on a holding's Settings, a due monthly buy on Recurring, under the bills. Buy & sell was the second until
    * it was folded away (owner, 23 Oct): a trade is recorded on its holding's page, and read with the year's figures on
-   * Income, behind Assets' corner.
+   * Income, behind Assets' corner. Recording one came back here (owner, 24 Oct) as a corner of its own, taken off the
+   * Add form's tabs: Buy or sell opens the Add screen on the very form that tab drew, once there is a holding to trade.
    */
+  const canTrade = buyChoices(assetValues.data ?? [], assetProfiles.data ?? []).buys.length > 0;
   const actions: CornerAction[] = [
+    ...(canTrade
+      ? [{ key: 'trade', label: 'Buy or sell', glyph: <ArrowLeftRight size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
+      : []),
     /*
      * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the
      * period they are read over belongs to that screen with them.

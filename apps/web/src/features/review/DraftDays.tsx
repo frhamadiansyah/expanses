@@ -1,8 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, CaptureSource, DraftRow } from '@expanses/db';
-import type { ReactNode } from 'react';
 import { Card, cx } from '../../ui';
-import { SwipeRow } from '../../ui/SwipeRow';
+import { type SwipeAction, type SwipeHint, SwipeRow } from '../../ui/SwipeRow';
 import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
 import { captureRowView, draftDays } from './capture-view';
@@ -23,7 +22,8 @@ export function DraftDays({
   busy,
   onOpen,
   onSwipeRight,
-  discardAction,
+  discardActions,
+  recordHint,
 }: {
   drafts: readonly DraftRow[];
   accounts: readonly AccountRow[];
@@ -33,7 +33,9 @@ export function DraftDays({
   onOpen: (draft: DraftRow) => void;
   onSwipeRight: (draft: DraftRow) => void;
   /** What stands behind the row once it is dragged left. */
-  discardAction: (draft: DraftRow) => ReactNode;
+  discardActions: (draft: DraftRow) => readonly SwipeAction[];
+  /** What the ground under a right drag shows. */
+  recordHint: SwipeHint;
 }) {
   return (
     <>
@@ -47,8 +49,8 @@ export function DraftDays({
                   enabled
                   testId="draft-row"
                   onSwipeRight={() => onSwipeRight(draft)}
-                  rightHint="Record"
-                  leftAction={discardAction(draft)}
+                  rightHint={recordHint}
+                  actions={discardActions(draft)}
                 >
                   {(suppressClick) => (
                     <button

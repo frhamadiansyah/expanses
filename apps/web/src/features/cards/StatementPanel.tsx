@@ -304,18 +304,19 @@ export function StatementPanel({
         className={cx('flex items-center gap-[6px]', line.convertedTo && 'opacity-60')}
         // A purchase there is still something to pay for can be marked paid off before the app with a left swipe;
         // a refund whose credit was used before the app is marked settled the same way.
-        leftAction={
-          settleable(line) ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => markPaidOff(line)}
-              aria-label={`Mark ${line.description} already ${settledWord(line)}`}
-              className="w-[88px] bg-[var(--ph-tint)] text-[14px] leading-[18px] font-semibold text-white"
-            >
-              {line.owedMinor < 0 ? 'Settled' : 'Paid off'}
-            </button>
-          ) : undefined
+        leftActions={
+          settleable(line)
+            ? [
+                {
+                  label: line.owedMinor < 0 ? 'Settled' : 'Paid off',
+                  name: `Mark ${line.description} already ${settledWord(line)}`,
+                  icon: CircleCheck,
+                  tone: 'primary',
+                  disabled: busy,
+                  onPress: () => markPaidOff(line),
+                },
+              ]
+            : undefined
         }
       >
         {tick(line)}

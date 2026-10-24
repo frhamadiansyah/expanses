@@ -1,6 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
-import { Check, Undo2 } from 'lucide-react';
+import { Check, Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -13,7 +13,6 @@ import { isEditable } from './draft';
 import { type AmountExtraPart, amountLook, type ListRow, paidWithLook } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
-import { TwoTapDelete } from './TwoTapDelete';
 
 /**
  * One transaction, in every list that shows transactions.
@@ -248,25 +247,15 @@ export function TransactionRow({
       <li {...itemProps} className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
           enabled
-          reveal={(onDuplicate ? 64 : 0) + (onEdit ? 64 : 0) + (onDelete ? 64 : 0)}
           testId={testId}
-          leftAction={
-            <>
-              {onDuplicate && (
-                <button type="button" onClick={() => onDuplicate(row)} title={`Duplicate ${row.description}`} className="w-[64px] bg-blue-600 text-[13px] font-semibold text-white">
-                  Duplicate
-                </button>
-              )}
-              {onEdit && (
-                <button type="button" onClick={() => onEdit(row)} title={`Edit ${row.description}`} className="w-[64px] bg-slate-600 text-[13px] font-semibold text-white">
-                  Edit
-                </button>
-              )}
-              {/* The app's one two-tap delete, in the swipe's shape. It used to be a copy of it, with the
-                  arming kept out here where the gesture could not take it back. */}
-              {onDelete && <TwoTapDelete look="swipe" busy={busy} title={`Delete ${row.description}`} onConfirm={() => onDelete(row)} />}
-            </>
-          }
+          actions={[
+            ...(onDuplicate ? [{ label: 'Duplicate', icon: Copy, tone: 'neutral' as const, title: `Duplicate ${row.description}`, onPress: () => onDuplicate(row) }] : []),
+            ...(onEdit ? [{ label: 'Edit', icon: Pencil, tone: 'primary' as const, title: `Edit ${row.description}`, onPress: () => onEdit(row) }] : []),
+            // The app's one two-tap delete, asked through the same `useTwoTap` as the receipt's: armed, it reads "Delete?".
+            ...(onDelete
+              ? [{ label: 'Delete', confirm: 'Delete?', icon: Trash2, tone: 'destructive' as const, title: `Delete ${row.description}`, disabled: busy, onPress: () => onDelete(row) }]
+              : []),
+          ]}
         >
           {(suppressClick) => face({ suppressClick })}
         </SwipeRow>

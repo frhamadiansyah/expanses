@@ -1,7 +1,7 @@
 import { monthName } from '@expanses/core';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { Check, MoreHorizontal } from 'lucide-react';
+import { Banknote, Check, MoreHorizontal, SkipForward } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -78,12 +78,8 @@ export function BillRow({
         className="group-first:rounded-t-[11px] group-last:rounded-b-[11px]"
         enabled={!selecting && !settled}
         onSwipeRight={() => onPay(bill)}
-        rightHint="Pay"
-        leftAction={
-          <button type="button" onClick={() => onSkip(bill)} aria-label={`Skip ${bill.name}`} className="w-[76px] bg-[var(--ph-ink-3)] text-[15px] font-semibold text-white">
-            Skip
-          </button>
-        }
+        rightHint={{ label: 'Pay', icon: Banknote }}
+        actions={[{ label: 'Skip', name: `Skip ${bill.name}`, icon: SkipForward, tone: 'neutral', onPress: () => onSkip(bill) }]}
       >
         {(suppressClick) => (
           <button
