@@ -50,6 +50,15 @@ test('the page holds the guides behind rows, not on it', async ({ page }) => {
   }
 });
 
+test('the e-money reader is one row marked as a test, and its page says NFC is off in a browser', async ({ page }) => {
+  await expect(page.getByText('E-money (test)')).toBeVisible();
+  await page.getByRole('link', { name: 'Read an e-money card (test)', exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/capture\/emoney$/);
+  await expect(page.getByRole('heading', { name: 'Read an e-money card' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hold card to phone' })).toBeDisabled();
+  await expect(page.getByText('This tool needs an iPhone with NFC.')).toBeVisible();
+});
+
 test('Notifications opens its steps, the iOS note and Open Shortcuts', async ({ page }) => {
   await page.getByRole('link', { name: 'Notifications', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/capture\/ways\/notifications$/);

@@ -41,6 +41,7 @@
 		CC5901012FEC000000000006 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
 		CC5901012FEC000000000007 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
 		CC5901012FEC000000000008 /* CicisWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000008 /* CicisWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		95F1D0012FEA0000000000E1 /* EmoneyReaderPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA0000000000E1 /* EmoneyReaderPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +61,7 @@
 		CB5802012FEB000000000001 /* WidgetSummaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSummaryStore.swift; sourceTree = "<group>"; };
 		CB5802012FEB000000000002 /* WidgetSummaryPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSummaryPlugin.swift; sourceTree = "<group>"; };
 		CD5A02012FED000000000001 /* FormAccessoryBarPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormAccessoryBarPlugin.swift; sourceTree = "<group>"; };
+		95F1D0002FEA0000000000E1 /* EmoneyReaderPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Nfc/EmoneyReaderPlugin.swift; sourceTree = "<group>"; };
 		95F1D0002FEA000000000004 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
@@ -157,6 +159,7 @@
 				CB5802012FEB000000000002 /* WidgetSummaryPlugin.swift */,
 				CD5A02012FED000000000001 /* FormAccessoryBarPlugin.swift */,
 				CC5902012FEC000000000007 /* OpenOneLineIntent.swift */,
+				95F1D0002FEA0000000000E1 /* EmoneyReaderPlugin.swift */,
 				95F1D0002FEA000000000004 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -382,6 +385,7 @@
 				CB5801012FEB000000000002 /* WidgetSummaryPlugin.swift in Sources */,
 				CD5A01012FED000000000001 /* FormAccessoryBarPlugin.swift in Sources */,
 				CC5901012FEC000000000007 /* OpenOneLineIntent.swift in Sources */,
+				95F1D0012FEA0000000000E1 /* EmoneyReaderPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

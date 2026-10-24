@@ -13,5 +13,6 @@ class AppViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(CapturePlugin())
         bridge?.registerPluginInstance(WidgetSummaryPlugin())
         bridge?.registerPluginInstance(FormAccessoryBarPlugin())
+        bridge?.registerPluginInstance(EmoneyReaderPlugin())
     }
 }

@@ -141,6 +141,11 @@ export function CaptureSettingsPage() {
       </InsetGroup>
 
       <HoldingArea />
+
+      {/* A test tool: read a Mandiri e-money card over NFC. Diagnostic only — nothing is saved or sent. */}
+      <InsetGroup header="E-money (test)" info="A test tool: tap a card to read its number and balance over NFC. Nothing is saved or sent.">
+        <InsetRow title="Read an e-money card (test)" to="/settings/capture/emoney" />
+      </InsetGroup>
     </div>
   );
 }
