@@ -1,3 +1,5 @@
+import { ChevronLeft } from 'lucide-react';
+
 /** Where a point sits on a circle, measured clockwise from twelve. */
 function point(cx: number, cy: number, r: number, angle: number): [number, number] {
   return [cx + r * Math.cos(angle - Math.PI / 2), cy + r * Math.sin(angle - Math.PI / 2)];
@@ -62,6 +64,7 @@ export function Donut({
   label,
   under,
   onPick,
+  onBack,
 }: {
   slices: readonly DonutSlice[];
   totalMinor: number;
@@ -72,6 +75,11 @@ export function Donut({
   /** A quieter line under it, usually how many transactions made it up. */
   under?: string;
   onPick?: (key: string) => void;
+  /**
+   * Given, the ring is one category's and the middle is the way back out of it: a button reading the category's name
+   * behind a chevron, over the same amount. Without it the middle is plain writing, as a whole month's is.
+   */
+  onBack?: () => void;
 }) {
   // The drawing is the ring plus what is written against it, so it is wider than it is tall: the names
   // need room at the sides, and cutting them to fit a square is what forces "Proper…" on a plain word.
@@ -98,83 +106,113 @@ export function Donut({
   let at = 0;
   const drawn: { key: string; mid: number; share: number; label: string; colour: string }[] = [];
 
+  /*
+   * The middle, written in the drawing's own units when it is plain text and in the box's when it is the way back.
+   *
+   * A button cannot live inside the picture: the picture is one image to assistive tech, and anything inside it is
+   * part of that image. So the way back is laid over the hole instead — the hole is 38% of the drawing's width — and
+   * its type is measured against the box's width (10 drawing units are 2.5% of it), so it comes out the size the
+   * drawn middle would have, and nothing about the ring changes size or place when a category opens or closes.
+   */
   return (
-    <svg
-      viewBox={`0 0 ${size} ${height}`}
-      className="mx-auto block w-full"
-      role="img"
-      // Only what the middle says: the word "category" here would answer to a search for the field of that name.
-      aria-label={`${middle} ${label}`}
-    >
-      {slices.map((slice, index) => {
-        const sweep = sweeps[index] ?? 0;
-        // A slice that takes the whole circle cannot be an arc: its ends meet, and an arc of zero shows nothing.
-        const whole = sweep >= Math.PI * 2 - 0.001;
-        const inset = Math.min(cap, sweep / 2);
-        const from = at + air / 2 + inset;
-        const d = whole
-          ? `${arc(centre, middleOf, radius, 0, Math.PI)} ${arc(centre, middleOf, radius, Math.PI, Math.PI * 2)}`
-          : arc(centre, middleOf, radius, from, Math.max(from, at + air / 2 + sweep - inset));
-        drawn.push({
-          key: slice.key,
-          mid: at + air / 2 + sweep / 2,
-          share: totalMinor > 0 ? Math.round((slice.totalMinor / totalMinor) * 100) : 0,
-          label: slice.label,
-          colour: slice.colour,
-        });
-        at += sweep + air;
-        return (
-          <path
-            key={slice.key}
-            d={d}
-            stroke={slice.colour}
-            strokeWidth={width}
-            strokeLinecap="round"
-            fill="none"
-            className={onPick ? 'cursor-pointer' : undefined}
-            onClick={onPick ? () => onPick(slice.key) : undefined}
-          >
-            <title>{slice.label}</title>
-          </path>
-        );
-      })}
-      {/* The share and the name are written against the slice, on a leader that runs outwards from it. */}
-      {drawn.map((slice) => {
-        if (slice.share < LABEL_FLOOR) return null;
-        const [lx, ly] = point(centre, middleOf, edge + 4, slice.mid);
-        const [tx, ty] = point(centre, middleOf, edge + 24, slice.mid);
-        const right = Math.cos(slice.mid - Math.PI / 2) >= 0;
-        const x = right ? tx + 4 : tx - 4;
-        // The words run outwards from the ring and never back towards it: a name too long for the room left
-        // is cut to fit, because moving it inwards would put it over the chart.
-        const space = right ? size - 3 - x : x - 3;
-        const fits = Math.floor(space / 5.4);
-        const name = slice.label.length <= fits ? slice.label : fits >= 5 ? `${slice.label.slice(0, fits - 1)}…` : '';
-        return (
-          <g key={`${slice.key}-label`}>
-            <line x1={lx} y1={ly} x2={tx} y2={ty} stroke={slice.colour} strokeWidth={1.5} />
-            <text x={x} y={ty + 3} textAnchor={right ? 'start' : 'end'} className="fill-slate-900 text-[10px] font-semibold">
-              {slice.share}%
+    <div className="relative @container">
+      <svg
+        viewBox={`0 0 ${size} ${height}`}
+        className="mx-auto block w-full"
+        role="img"
+        // Only what the middle says: the word "category" here would answer to a search for the field of that name.
+        aria-label={`${middle} ${label}`}
+      >
+        {slices.map((slice, index) => {
+          const sweep = sweeps[index] ?? 0;
+          // A slice that takes the whole circle cannot be an arc: its ends meet, and an arc of zero shows nothing.
+          const whole = sweep >= Math.PI * 2 - 0.001;
+          const inset = Math.min(cap, sweep / 2);
+          const from = at + air / 2 + inset;
+          const d = whole
+            ? `${arc(centre, middleOf, radius, 0, Math.PI)} ${arc(centre, middleOf, radius, Math.PI, Math.PI * 2)}`
+            : arc(centre, middleOf, radius, from, Math.max(from, at + air / 2 + sweep - inset));
+          drawn.push({
+            key: slice.key,
+            mid: at + air / 2 + sweep / 2,
+            share: totalMinor > 0 ? Math.round((slice.totalMinor / totalMinor) * 100) : 0,
+            label: slice.label,
+            colour: slice.colour,
+          });
+          at += sweep + air;
+          return (
+            <path
+              key={slice.key}
+              d={d}
+              stroke={slice.colour}
+              strokeWidth={width}
+              strokeLinecap="round"
+              fill="none"
+              className={onPick ? 'cursor-pointer' : undefined}
+              onClick={onPick ? () => onPick(slice.key) : undefined}
+            >
+              <title>{slice.label}</title>
+            </path>
+          );
+        })}
+        {/* The share and the name are written against the slice, on a leader that runs outwards from it. */}
+        {drawn.map((slice) => {
+          if (slice.share < LABEL_FLOOR) return null;
+          const [lx, ly] = point(centre, middleOf, edge + 4, slice.mid);
+          const [tx, ty] = point(centre, middleOf, edge + 24, slice.mid);
+          const right = Math.cos(slice.mid - Math.PI / 2) >= 0;
+          const x = right ? tx + 4 : tx - 4;
+          // The words run outwards from the ring and never back towards it: a name too long for the room left
+          // is cut to fit, because moving it inwards would put it over the chart.
+          const space = right ? size - 3 - x : x - 3;
+          const fits = Math.floor(space / 5.4);
+          const name = slice.label.length <= fits ? slice.label : fits >= 5 ? `${slice.label.slice(0, fits - 1)}…` : '';
+          return (
+            <g key={`${slice.key}-label`}>
+              <line x1={lx} y1={ly} x2={tx} y2={ty} stroke={slice.colour} strokeWidth={1.5} />
+              <text x={x} y={ty + 3} textAnchor={right ? 'start' : 'end'} className="fill-slate-900 text-[10px] font-semibold">
+                {slice.share}%
+              </text>
+              {name && (
+                <text x={x} y={ty + 14} textAnchor={right ? 'start' : 'end'} className="fill-slate-500 text-[9.5px]">
+                  {name}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {!onBack && (
+          <>
+            <text x={centre} y={middleOf - 12} textAnchor="middle" className="fill-slate-500 text-[10px]">
+              {label}
             </text>
-            {name && (
-              <text x={x} y={ty + 14} textAnchor={right ? 'start' : 'end'} className="fill-slate-500 text-[9.5px]">
-                {name}
+            <text x={centre} y={middleOf + 9} textAnchor="middle" className="fill-slate-900 text-[16px] font-bold">
+              {middle}
+            </text>
+            {under && (
+              <text x={centre} y={middleOf + 24} textAnchor="middle" className="fill-slate-500 text-[10px]">
+                {under}
               </text>
             )}
-          </g>
-        );
-      })}
-      <text x={centre} y={middleOf - 12} textAnchor="middle" className="fill-slate-500 text-[10px]">
-        {label}
-      </text>
-      <text x={centre} y={middleOf + 9} textAnchor="middle" className="fill-slate-900 text-[16px] font-bold">
-        {middle}
-      </text>
-      {under && (
-        <text x={centre} y={middleOf + 24} textAnchor="middle" className="fill-slate-500 text-[10px]">
-          {under}
-        </text>
+          </>
+        )}
+      </svg>
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="All categories"
+          data-testid="ring-back"
+          className="absolute top-1/2 left-1/2 flex aspect-square w-[38%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full text-center leading-none"
+        >
+          <span className="flex max-w-full items-center text-[2.5cqw] text-slate-500">
+            <ChevronLeft aria-hidden className="-ml-[0.5em] h-[1.4em] w-[1.4em] shrink-0 text-emerald-800" />
+            <span className="truncate">{label}</span>
+          </span>
+          <span className="mt-[1.1cqw] text-[4cqw] font-bold text-slate-900">{middle}</span>
+          {under && <span className="mt-[1.1cqw] text-[2.5cqw] text-slate-500">{under}</span>}
+        </button>
       )}
-    </svg>
+    </div>
   );
 }
