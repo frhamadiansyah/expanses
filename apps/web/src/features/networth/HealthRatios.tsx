@@ -1,19 +1,9 @@
-import {
-  DEFAULT_DEBT_SERVICE_BPS,
-  DEFAULT_EMERGENCY_BASE,
-  type EmergencyBase,
-  healthRatios,
-  householdEmergencyMonths,
-  type PeriodFlows,
-  type RatioSettings,
-  type RatioStatus,
-  type SheetTotals,
-} from '@expanses/core';
-import { useState } from 'react';
+import { DEFAULT_EMERGENCY_BASE, healthRatios, householdEmergencyMonths, type PeriodFlows, type RatioStatus, type SheetTotals } from '@expanses/core';
 import { usePhone } from '../../app/use-phone';
-import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
+import { Panel, type Segment, SegmentedControl } from '../../ui/native';
 import { useGoalCalculators, useGoals } from '../goals/queries';
-import { emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading, withJointRatios } from './health-cards';
+import { EMPTY_FLOWS, emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading, withJointRatios } from './health-cards';
+import { useHealthSettings } from './health-settings';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -29,14 +19,6 @@ const STATUS_BAR: Record<RatioStatus, string> = {
   unknown: 'bg-[var(--ph-chevron)]',
 };
 
-const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, lifestyleSpendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
-
-/** What the emergency fund's months multiply — the spec's segmented switch, essential by default. */
-const EMERGENCY_BASE_SEGMENTS: Segment[] = [
-  { key: 'essential', label: 'Essential spending', short: 'Essential' },
-  { key: 'all', label: 'All spending', short: 'All' },
-];
-
 /** How wide the period track is on a desktop, where every year worth offering can be shown at once. */
 const DESKTOP_TRACK = 640;
 
@@ -48,7 +30,6 @@ export function HealthRatios({
   onPeriod,
   today,
   earliestYear,
-  monthsNote,
   jointTotals,
   jointMissing = [],
 }: {
@@ -60,7 +41,6 @@ export function HealthRatios({
   onPeriod: (period: RatioPeriod) => void;
   today: string;
   earliestYear: number;
-  monthsNote: string;
   /**
    * The household's totals when the group files jointly (§8.2): its balance-sheet ratios are read from them, the rest
    * stay this phone's own. Undefined when not filing jointly; null while they cannot be told (those ratios blank).
@@ -69,8 +49,9 @@ export function HealthRatios({
   /** Currencies the household's sheet has no rate for, named under the ratios they blank. */
   jointMissing?: readonly string[];
 }) {
+  // What the emergency fund counts and the debt guide, as set on this screen's Settings page (the ⚙ in the corner).
   // The base stays unset until it is switched: until then it is the emergency goal's own.
-  const [settings, setSettings] = useState<RatioSettings>({ debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
+  const settings = useHealthSettings();
   const phone = usePhone();
   // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
   // Called whether or not the totals are there: hooks run on every render.
@@ -104,9 +85,10 @@ export function HealthRatios({
   return (
     <section className="mb-[18px]">
       {/* No heading of its own: the screen this is on is called Financial health already, and a section repeating
-       * the name in the bar is the screen introducing itself twice. */}
+       * the name in the bar is the screen introducing itself twice. Nor a line under the switch counting the months
+       * of transactions: the tiles say "Not enough data" themselves when there are none. */}
       <SegmentedControl
-        className="mb-[10px] md:max-w-2xl"
+        className="mb-[18px] md:max-w-2xl"
         label="Period"
         segments={segments}
         value={keyOf(period)}
@@ -117,7 +99,6 @@ export function HealthRatios({
         width={phone ? undefined : DESKTOP_TRACK}
         max={phone ? undefined : segments.length}
       />
-      <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{monthsNote}</p>
 
       {totals === null && (
         <Panel wide className="mb-[18px]">
@@ -135,8 +116,12 @@ export function HealthRatios({
         </Panel>
       )}
 
-      {/* Eleven tiles, still a grid on a desktop: four across, two on a tablet, one on a phone. */}
-      <div className="mb-[18px] grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/*
+       * Eleven tiles, still a grid on a desktop: four across, two on a tablet, one on a phone. Each is the name, the
+       * figure and its grade, the guide's figure and the gauge — and nothing explaining it: how each ratio is worked
+       * out is read on the Settings page behind the ⚙, beside the choices that change it.
+       */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ratios.map((ratio) => {
           const display = ratioDisplay(ratio);
           return (
@@ -146,10 +131,7 @@ export function HealthRatios({
                 <span className={`text-[11.5px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase ${STATUS_INK[ratio.status]}`}>{display.statusLabel}</span>
               </div>
               <div className="tabular text-[22px] leading-[26px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)]">{display.value}</div>
-              <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-2)]">
-                Guide: {ratio.benchmarkText}
-                {ratio.companion && ' · companion to the savings ratio'}
-              </div>
+              <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-2)]">Guide: {ratio.benchmarkText}</div>
               <div
                 className="relative h-1.5 rounded-full bg-[var(--ph-track)]"
                 title={`Guide: ${ratio.lowerBetter ? 'at most' : 'at least'} ${ratio.target}${ratio.unit === 'percent' ? '%' : ' months'}`}
@@ -157,33 +139,10 @@ export function HealthRatios({
                 <i className={`absolute top-0 bottom-0 left-0 rounded-full ${STATUS_BAR[ratio.status]}`} style={{ width: `${display.gaugePercent}%` }} />
                 <b className="absolute -top-1 h-3.5 w-0.5 bg-[var(--ph-ink)] opacity-60" style={{ left: `calc(${display.targetPercent}% - 1px)` }} />
               </div>
-              <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{ratio.guide}</p>
             </Panel>
           );
         })}
       </div>
-
-      <p className="px-[4px] pb-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Emergency fund counts</p>
-      <SegmentedControl
-        className="mb-[18px] md:max-w-2xl"
-        label="Emergency fund counts"
-        segments={EMERGENCY_BASE_SEGMENTS}
-        value={emergencyBase}
-        onChange={(key) => setSettings((current) => ({ ...current, emergencyBase: key as EmergencyBase }))}
-      />
-      <InsetGroup
-        header="How the ratios are worked out"
-        footer="Take-home pay is what actually landed in these accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet. Loan principal counts toward the emergency fund either way; the interest is already spending."
-      >
-        <SelectRow
-          label="Debt servicing guide"
-          value={settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS}
-          onChange={(e) => setSettings((current) => ({ ...current, debtServiceBenchmarkBps: Number(e.target.value) }))}
-        >
-          <option value={3000}>30% · the planning guide</option>
-          <option value={3500}>35% · a looser guide</option>
-        </SelectRow>
-      </InsetGroup>
     </section>
   );
 }

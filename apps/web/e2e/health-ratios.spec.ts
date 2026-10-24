@@ -16,11 +16,23 @@ test('the emergency card divides cash by a month of spending, and the debt guide
   // Rp 16 jt left in the bank against Rp 4 jt of one month's spending.
   const card = page.locator('section', { has: page.getByRole('heading', { name: 'Emergency fund', exact: true }) }).last();
   await expect(card).toContainText('4,0 months');
+  // The screen is the switch and the tiles: no count of the months read, and nothing explaining a ratio on its tile.
+  await expect(page.getByText(/months? of transactions/)).toHaveCount(0);
+  await expect(page.getByText('How the ratios are worked out')).toHaveCount(0);
+  await expect(card).not.toContainText('Cash & equivalents ÷');
+
+  // What the fund counts, the debt guide and each ratio's working are the Settings page behind the ⚙.
+  await page.locator('header').getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/health\/settings$/);
   await expect(page.getByLabel('Debt servicing guide')).toHaveValue('3000');
+  await expect(page.getByText('How the ratios are worked out')).toBeVisible();
   const base = page.getByRole('radiogroup', { name: 'Emergency fund counts' });
   await expect(base.getByRole('radio', { name: 'Essential spending' })).toHaveAttribute('aria-checked', 'true');
   await base.getByRole('radio', { name: 'All spending' }).click();
   await expect(base.getByRole('radio', { name: 'All spending' })).toHaveAttribute('aria-checked', 'true');
-  // Nothing is marked lifestyle, so the figure does not move.
+
+  // ‹ goes back to the tiles, which read the choice. Nothing is marked lifestyle, so the figure does not move.
+  await page.getByRole('button', { name: 'Financial health' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/health$/);
   await expect(card).toContainText('4,0 months');
 });
