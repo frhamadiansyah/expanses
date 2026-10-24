@@ -6,6 +6,7 @@ import { Check, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
+import { typedNameOf } from '../../lib/account-name';
 import { useBalances } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
@@ -198,9 +199,10 @@ export function CardSettingsPage() {
     setLimit(saved.limit);
     setFee(saved.fee);
   }
-  if (loadedName !== `${card.id}:${card.name}`) {
-    setLoadedName(`${card.id}:${card.name}`);
-    setName(card.name);
+  // The name as typed: its issuer, shown in front of it everywhere else, is the Institution row's.
+  if (loadedName !== `${card.id}:${typedNameOf(card)}`) {
+    setLoadedName(`${card.id}:${typedNameOf(card)}`);
+    setName(typedNameOf(card));
   }
 
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
@@ -209,7 +211,7 @@ export function CardSettingsPage() {
   const saveTerms = () =>
     run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee) }));
   const saveName = () => {
-    if (!name.trim() || name.trim() === card.name) return;
+    if (!name.trim() || name.trim() === typedNameOf(card)) return;
     void run(() => renameAccount(database, ws, card.id, name));
   };
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();

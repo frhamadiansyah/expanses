@@ -18,7 +18,7 @@ export async function mockRates(page: Page, rates: Record<string, number>) {
 /** Opens an account with pockets through Add account, typing every figure one key at a time. */
 export async function openWithPockets(
   page: Page,
-  account: { name: string; kind?: string; bank?: string; pockets: { currency: string; balance: string; rate?: string }[] },
+  account: { name: string; kind?: string; bank?: string; shown?: string; pockets: { currency: string; balance: string; rate?: string }[] },
 ) {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: account.kind ?? 'Saving account' }).click();
@@ -34,7 +34,8 @@ export async function openWithPockets(
   await page.getByRole('button', { name: 'Add account' }).click();
   /* An account with pockets is one card on Wallet, where the form lands. */
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(walletCard(page, account.name)).toBeVisible();
+  // Shown by its bank and its name when a bank was typed ("Bank One Valas Plus"): `shown` says so.
+  await expect(walletCard(page, account.shown ?? account.name)).toBeVisible();
 }
 
 /**

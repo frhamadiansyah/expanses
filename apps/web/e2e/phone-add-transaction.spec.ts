@@ -736,12 +736,12 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
-  // Saved as its bank and its own name — UOB, PRVI — so the account's name is the card's own.
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('PRVI');
+  // Saved as its bank and its own name — UOB, PRVI — and shown by both, the bank once.
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
   // Picked as the card row is: the sheet opens on Credit cards with it marked.
   await form.getByRole('button', { name: 'Paid with' }).click();
   await expect(sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
-  await expect(sheet.getByRole('button', { name: /^PRVI/ })).toHaveAttribute('aria-current', 'true');
+  await expect(sheet.getByRole('button', { name: /^UOB PRVI/ })).toHaveAttribute('aria-current', 'true');
 });
 
 test('Paid with › Add credit card › the catalogue over the keyboard › a card saves with only its last 4 digits', async ({ page }) => {
@@ -775,11 +775,11 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await step.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UnionPay');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA UnionPay');
 
   // Opened with no dates: the card's page offers to add them, and its settings offer the published fee beside them.
   await page.goto('/wallet');
-  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^UnionPay(,|$)/ }).click();
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^BCA UnionPay(,|$)/ }).click();
   const dates = page.getByTestId('card-setup');
   await expect(dates).toContainText('Billing and due dates');
   await dates.click();

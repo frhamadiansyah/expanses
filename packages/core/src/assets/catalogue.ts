@@ -12,8 +12,12 @@ import { searchTokens } from '../entry/quick-entry';
 export type OwnableFlow = 'account' | 'asset' | 'debt';
 export type OwnableFamily = 'receivable' | 'invest' | 'movable' | 'immovable' | 'other';
 
-/** The seven kinds of account that hold money. Mirrored by `AccountSubtype` in packages/db; a test holds them in step. */
-export type MoneyAccountSubtype = 'cash' | 'bank' | 'savings' | 'time_deposit' | 'ewallet' | 'fund' | 'other_cash';
+/**
+ * The eight kinds of account that hold money. Mirrored by `AccountSubtype` in packages/db; a test holds them in step.
+ * 'ewallet' is an app on a phone (GoPay, OVO); 'emoney' is a prepaid chip card tapped at a gate (Flazz, Brizzi). Both
+ * are electronic money on the tax report (0105) and both are spent from; only a wallet has a phone number.
+ */
+export type MoneyAccountSubtype = 'cash' | 'bank' | 'savings' | 'time_deposit' | 'ewallet' | 'emoney' | 'fund' | 'other_cash';
 
 export type OwnableBehaviour =
   | { opens: 'money'; subtype: MoneyAccountSubtype; valuedBy: 'balance' | 'deposit'; spendable: boolean }
@@ -129,7 +133,8 @@ export const CASH_ITEMS: readonly OwnableItem[] = [
   money('bank', 'Current account', 'everyday account at a bank', '0102'),
   money('savings', 'Saving account', 'money set aside', '0102'),
   money('time_deposit', 'Time deposit', 'locked until it matures', '0104', { valuedBy: 'deposit', spendable: false }),
-  money('ewallet', 'Digital wallet', 'electronic money — GoPay, OVO, DANA', '0105'),
+  { ...money('ewallet', 'Digital wallet', 'GoPay, OVO, DANA, ShopeePay', '0105'), searchAlso: 'e-wallet app' },
+  { ...money('emoney', 'Electronic money', 'Flazz, e-money, Brizzi, TapCash', '0105'), searchAlso: 'prepaid chip card' },
   money('fund', 'Fund account', 'broker or RDN cash', '0109'),
   money('other_cash', 'Other cash equivalents', 'cheque, wesel, commercial paper', '0109'),
 ];
@@ -148,6 +153,7 @@ const CASH_CODE_BY_SUBTYPE: Record<MoneyAccountSubtype, string> = {
   savings: '0102',
   time_deposit: '0104',
   ewallet: '0105',
+  emoney: '0105',
   fund: '0109',
   other_cash: '0109',
 };

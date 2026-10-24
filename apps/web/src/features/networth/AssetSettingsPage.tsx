@@ -7,6 +7,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SwitchRow, TextRow } from '../../ui/native';
+import { typedNameOf } from '../../lib/account-name';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
@@ -156,11 +157,12 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         <InsetGroup footer="Renaming it renames its pockets.">
           <TextRow
             label="Name"
-            defaultValue={account!.name}
+            // The name as typed: the bank shown in front of it on every other screen is not part of it.
+            defaultValue={typedNameOf(account!)}
             placeholder="Name"
             onBlur={(e) => {
               const next = e.target.value.trim();
-              if (next === '' || next === account!.name) return;
+              if (next === '' || next === typedNameOf(account!)) return;
               void (async () => {
                 setError(null);
                 try {
@@ -180,7 +182,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         <AssetSettings
           key={accountId}
           accountId={accountId}
-          name={value.name}
+          name={value.typedName}
           group={profile.data?.planGroup ?? value.planGroup}
           assetKind={profile.data?.assetKind ?? null}
           subtype={account?.subtype}

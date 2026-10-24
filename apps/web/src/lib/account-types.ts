@@ -5,7 +5,8 @@ import { type AccountRow, type AccountSubtype, spendingSwitchOn } from '@expanse
  * offers and the label every screen prints stay one thing.
  *
  * A fund account is money held at a broker or fund manager ready to invest — an Indonesian RDN, a brokerage
- * cash account. A digital wallet is GoPay, OVO, DANA or ShopeePay. Both hold money and both pay and receive,
+ * cash account. A digital wallet is GoPay, OVO, DANA or ShopeePay; electronic money is a prepaid chip card — Flazz,
+ * e-money, Brizzi, TapCash. All of them hold money and pay and receive,
  * so both are money accounts, not holdings: what they are worth is what the ledger says. So are a time
  * deposit, which holds money the bank keeps until it matures, and other cash equivalents — a cheque, a
  * wesel, commercial paper.
@@ -15,6 +16,7 @@ export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liabilit
   { subtype: 'cash', kind: 'asset' },
   { subtype: 'savings', kind: 'asset' },
   { subtype: 'ewallet', kind: 'asset' },
+  { subtype: 'emoney', kind: 'asset' },
   { subtype: 'fund', kind: 'asset' },
   { subtype: 'time_deposit', kind: 'asset' },
   { subtype: 'other_cash', kind: 'asset' },
@@ -37,6 +39,7 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   savings: 'Saving account',
   fund: 'Fund account',
   ewallet: 'Digital wallet',
+  emoney: 'Electronic money',
   time_deposit: 'Time deposit',
   other_cash: 'Other cash equivalents',
   investment: 'Investment',
@@ -63,7 +66,7 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
  * A time deposit is left out on purpose: it cannot be paid from, and the money leaves by a transfer when it
  * matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'ewallet', 'other_cash'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'ewallet', 'emoney', 'other_cash'];
 
 /**
  * Money the ledger can move that nobody can spend: cash at a broker.
@@ -136,15 +139,16 @@ export function canTransferBetween(from: Pick<AccountRow, 'id' | 'subtype'>, to:
 }
 
 /**
- * May money come **into** cash or a digital wallet from this account, by the account's own Withdraw or Top up?
+ * May money come **into** cash, a digital wallet or electronic money from this account, by the account's own Withdraw
+ * or Top up?
  *
- * Money you hold, by the transfer's own pairing rule — so never a broker's cash. And, into a wallet only, a credit
- * card: GoPay, OVO and the rest take a card, and topping one up from it is the one time a card's money goes anywhere
- * but a purchase. That is allowed here and nowhere else — a transfer's From and To still never name a card.
+ * Money you hold, by the transfer's own pairing rule — so never a broker's cash. And, into a wallet or a chip card
+ * only, a credit card: GoPay, OVO and the rest take a card, and topping one up from it is the one time a card's money
+ * goes anywhere but a purchase. That is allowed here and nowhere else — a transfer's From and To still never name a card.
  */
 export function canMoveMoneyIn(from: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, into: Pick<AccountRow, 'id' | 'subtype'>): boolean {
   if (from.id === into.id) return false;
-  if (from.kind === 'liability') return from.subtype === 'credit_card' && into.subtype === 'ewallet';
+  if (from.kind === 'liability') return from.subtype === 'credit_card' && (into.subtype === 'ewallet' || into.subtype === 'emoney');
   return from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype) && canTransferBetween(from, into);
 }
 

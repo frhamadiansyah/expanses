@@ -30,11 +30,11 @@ export const MONEY_IN_FEE_KEY = 'miscellaneous.fees_charges';
 export const TOP_UP_KEY = { key: 'miscellaneous.top_ups', name: 'Top-ups' };
 
 /**
- * A credit card topping up a digital wallet — the one way a card's money moves anywhere but to a purchase. Its card
- * line names Top-ups, whichever door records it: this one, or the Transfer tab.
+ * A credit card topping up a digital wallet or an electronic money card — the one way a card's money moves anywhere but
+ * to a purchase. Its card line names Top-ups, whichever door records it: this one, or the Transfer tab.
  */
 export function cardTopsUpWallet(from: Pick<AccountRow, 'kind' | 'subtype'>, to: Pick<AccountRow, 'kind' | 'subtype'>): boolean {
-  return from.kind === 'liability' && from.subtype === 'credit_card' && to.kind === 'asset' && to.subtype === 'ewallet';
+  return from.kind === 'liability' && from.subtype === 'credit_card' && to.kind === 'asset' && (to.subtype === 'ewallet' || to.subtype === 'emoney');
 }
 
 /** The open book's Top-ups, made under its Miscellaneous the first time a book without one needs it. */
@@ -90,7 +90,7 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
     const to = both.find((a) => a.id === input.toId);
     const from = both.find((a) => a.id === input.fromId);
     if (!to || !from) throw new MoneyInError('NOT_FOUND', 'That account is not in this workspace');
-    if (to.kind !== 'asset' || (to.subtype !== 'cash' && to.subtype !== 'ewallet')) throw new MoneyInError('NOT_ALLOWED', `${to.name} is not cash or a wallet`);
+    if (to.kind !== 'asset' || (to.subtype !== 'cash' && to.subtype !== 'ewallet' && to.subtype !== 'emoney')) throw new MoneyInError('NOT_ALLOWED', `${to.name} is not cash or a wallet`);
     const card = from.kind === 'liability' && from.subtype === 'credit_card';
     if (from.id === to.id || !((from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype)) || cardTopsUpWallet(from, to))) {
       throw new MoneyInError('NOT_ALLOWED', `Money cannot come into ${to.name} from ${from.name}`);

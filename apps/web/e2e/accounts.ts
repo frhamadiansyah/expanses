@@ -40,6 +40,7 @@ const MONEY_KIND: Record<string, string> = {
   savings: 'Saving account',
   time_deposit: 'Time deposit',
   ewallet: 'Digital wallet',
+  emoney: 'Electronic money',
   fund: 'Fund account',
   other_cash: 'Other cash equivalents',
 };
@@ -70,6 +71,8 @@ export interface NewAccount {
   last4?: string;
   /** Anything else the caller's walk has to fill before saving, in the form's own labels. */
   extra?: (page: Page) => Promise<void>;
+  /** The name the account is shown by when a bank typed in `extra` goes in front of it ("Mandiri Xpresi"); `name` else. */
+  shown?: string;
 }
 
 /**
@@ -146,12 +149,12 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
     await expect(page).toHaveURL(/\/net-worth\/assets$/);
     /* The asset list folds its rows into a drawer per kind, and opens with them closed. */
     await openDrawers(page);
-    await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
+    await expect(page.getByRole('link', { name: new RegExp(`^${o.shown ?? o.name}`) })).toBeVisible();
     return;
   }
   /* Money kept for spending is a card on Wallet, where the form lands once the write is done. */
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(walletCard(page, o.name)).toBeVisible();
+  await expect(walletCard(page, o.shown ?? o.name)).toBeVisible();
 }
 
 export interface NewCard {

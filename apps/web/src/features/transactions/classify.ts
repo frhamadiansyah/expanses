@@ -20,7 +20,7 @@ export interface Classified {
 }
 
 /** Where money is held: what a transfer moves between, never a holding, a loan or a person. */
-const HOLDS_MONEY = new Set(['cash', 'bank', 'savings', 'ewallet', 'fund', 'other_cash', 'credit_card']);
+const HOLDS_MONEY = new Set(['cash', 'bank', 'savings', 'ewallet', 'emoney', 'fund', 'other_cash', 'credit_card']);
 
 export function classify(tx: TransactionView): Classified {
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');

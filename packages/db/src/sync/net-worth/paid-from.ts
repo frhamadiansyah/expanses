@@ -13,7 +13,7 @@ import { receivedItems } from './summaries';
  */
 
 /** The item kinds that can pay for something (§7.1): money held, and a credit card. */
-export const PAYABLE_SUBTYPES: readonly string[] = ['bank', 'cash', 'ewallet', 'credit_card'];
+export const PAYABLE_SUBTYPES: readonly string[] = ['bank', 'cash', 'ewallet', 'emoney', 'credit_card'];
 
 /**
  * The other group members' shared items this form's book can pay with: the live ones that can pay, and only when

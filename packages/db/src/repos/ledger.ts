@@ -1,4 +1,4 @@
-import { compareWithinDay, isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { accountDisplayName, BANK_NAMED_SUBTYPES, compareWithinDay, isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, getTableColumns, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -18,7 +18,7 @@ import { bookSplitsExist, splitBooksOfMany, splitBooksOfTx, splitHasPartIn, writ
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
-import { systemAccountId } from './accounts';
+import { accountBanksTx, systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -843,6 +843,7 @@ export function moveTransactionInDay(database: Database, ws: WorkspaceContext, t
 export interface TransactionEntryView {
   id: string;
   accountId: string;
+  /** The account's name as a screen shows it: an account at a bank with its bank in front (`accountDisplayName`). */
   accountName: string;
   accountKind: 'asset' | 'liability' | 'income' | 'expense' | 'equity';
   /**
@@ -1034,6 +1035,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   // A purchase split across workspaces: which workspace each of its category lines is in, and the workspaces' names.
   const splits = await splitBooksOfMany(database.db, txs.map((t) => t.id));
   const splitBooks = splits.size > 0 ? await splitBooksNamed(database, ws, rows.filter((row) => splits.has(row.transactionId)).map((row) => row.accountId)) : null;
+
+  // An account at a bank is named with its bank, as every list of accounts names it ("Mandiri Xpresi").
+  const banks = await accountBanksTx(database.db, rows.filter((row) => BANK_NAMED_SUBTYPES.includes(row.accountSubtype)).map((row) => row.accountId));
+  for (const row of rows) {
+    const bank = banks.get(row.accountId);
+    if (bank) row.accountName = accountDisplayName({ name: row.accountName, subtype: row.accountSubtype, bank });
+  }
 
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {

@@ -52,11 +52,11 @@ describe('the catalogue is a table the tax form recognises', () => {
 });
 
 describe('cash and cash equivalents', () => {
-  const SUBTYPES: MoneyAccountSubtype[] = ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'fund', 'other_cash'];
+  const SUBTYPES: MoneyAccountSubtype[] = ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'emoney', 'fund', 'other_cash'];
 
-  it('offers the seven kinds of account that hold money, in the order the screen lists them', () => {
+  it('offers the eight kinds of account that hold money, in the order the screen lists them', () => {
     expect(CASH_ITEMS.map((item) => item.id)).toEqual(SUBTYPES);
-    expect(CASH_ITEMS.map((item) => item.code)).toEqual(['0101', '0102', '0102', '0104', '0105', '0109', '0109']);
+    expect(CASH_ITEMS.map((item) => item.code)).toEqual(['0101', '0102', '0102', '0104', '0105', '0105', '0109', '0109']);
   });
 
   it('opens an account of its own subtype, and only the deposit cannot be paid from', () => {
@@ -70,7 +70,7 @@ describe('cash and cash equivalents', () => {
 
   it('lets a current account, a saving one and cash hold pockets, and nothing else', () => {
     for (const kind of ['bank', 'savings', 'cash']) expect(takesPockets(kind)).toBe(true);
-    for (const kind of ['ewallet', 'fund', 'time_deposit', 'other_cash', 'investment', 'credit_card']) expect(takesPockets(kind)).toBe(false);
+    for (const kind of ['ewallet', 'emoney', 'fund', 'time_deposit', 'other_cash', 'investment', 'credit_card']) expect(takesPockets(kind)).toBe(false);
   });
 
   it('answers with a default code for any subtype, and falls back to tabungan', () => {
@@ -79,6 +79,7 @@ describe('cash and cash equivalents', () => {
     expect(cashCodeForSubtype('savings')).toBe('0102');
     expect(cashCodeForSubtype('time_deposit')).toBe('0104');
     expect(cashCodeForSubtype('ewallet')).toBe('0105');
+    expect(cashCodeForSubtype('emoney')).toBe('0105');
     expect(cashCodeForSubtype('fund')).toBe('0109');
     expect(cashCodeForSubtype('other_cash')).toBe('0109');
     expect(cashCodeForSubtype('investment')).toBe('0102');
@@ -188,6 +189,7 @@ describe('debts', () => {
 describe('searching', () => {
   it('finds a thing by its name, by its quieter line, and by its code', () => {
     expect(searchOwnables('gopay', 'account').map((item) => item.id)).toEqual(['ewallet']);
+    expect(searchOwnables('flazz', 'account').map((item) => item.id)).toEqual(['emoney']);
     expect(searchOwnables('reksadana', 'asset').map((item) => item.id)).toEqual(['fund']);
     expect(searchOwnables('0503', 'asset').map((item) => item.id)).toEqual(['apartment']);
     expect(searchOwnables('paylater', 'debt').map((item) => item.id)).toEqual(['online_loan']);
