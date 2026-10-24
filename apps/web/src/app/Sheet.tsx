@@ -55,7 +55,8 @@ export function Sheet({
   closeHidden?: boolean;
   /**
    * A step inside the sheet rather than a sheet of its own: ‹ in the ✕'s place goes back to where it came from,
-   * named for a screen reader. Only with `confirm`.
+   * named for a screen reader. With `confirm` the step saves; without it the step is one that picks — a search
+   * whose row is the answer — and the ✓'s corner stays empty, so the title still sits in the middle.
    */
   back?: { label: string; run: () => void };
   /**
@@ -194,7 +195,7 @@ export function Sheet({
         {/* The grabber and the header are where the sheet is dragged between its detents, as on iOS. */}
         <div onPointerDown={onDown} className={detents ? 'touch-none' : undefined} data-testid="sheet-drag">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
-        {confirm ? (
+        {confirm || back ? (
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"
@@ -205,15 +206,19 @@ export function Sheet({
               {back ? <ChevronLeft size={22} aria-hidden /> : <X size={18} aria-hidden />}
             </button>
             <h2 className="flex-1 text-center text-base font-semibold">{title}</h2>
-            <button
-              type="button"
-              onClick={confirm.run}
-              disabled={confirm.disabled}
-              aria-label={confirm.label}
-              className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] disabled:opacity-40"
-            >
-              <Check size={20} aria-hidden />
-            </button>
+            {confirm ? (
+              <button
+                type="button"
+                onClick={confirm.run}
+                disabled={confirm.disabled}
+                aria-label={confirm.label}
+                className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] disabled:opacity-40"
+              >
+                <Check size={20} aria-hidden />
+              </button>
+            ) : (
+              <span aria-hidden className="h-11 w-11 shrink-0" />
+            )}
           </div>
         ) : (
           <div className="-mt-1 mb-1 flex items-center justify-between gap-3">

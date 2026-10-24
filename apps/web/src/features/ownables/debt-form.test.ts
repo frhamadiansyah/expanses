@@ -1,6 +1,6 @@
 import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { emptyDebtItemDraft, emptyNewCardDraft, type NewCardDraft, planNewCard, planNewDebt } from './debt-form';
+import { cardAccountName, emptyDebtItemDraft, emptyNewCardDraft, issuerInName, type NewCardDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
 
 const draft = (id: string, patch: Record<string, string>) => ({ ...emptyDebtItemDraft(id, '2026-09-18'), ...patch });
 
@@ -85,11 +85,99 @@ describe('planning a card before anything is written', () => {
     expect(planNewCard(card({ name: 'Kartu lama', issuer: 'Bank Mega' }), null, 'IDR')).toMatchObject({ issuer: 'Bank Mega', terms: null });
   });
 
+  it('opens a card from the catalogue with no dates at all: no terms, which its page asks for later', () => {
+    expect(planNewCard(card({ name: 'BCA UnionPay', last4: '4821' }), plain, 'IDR')).toEqual({
+      name: 'BCA UnionPay',
+      issuer: 'BCA',
+      last4: '4821',
+      currency: 'IDR',
+      openingBalanceMinor: 0,
+      memberLevel: null,
+      terms: null,
+    });
+    // Blanks are no dates either: a day typed and cleared again is not half of the terms.
+    expect(planNewCard(card({ name: 'BCA UnionPay', statementDay: ' ', dueDay: '' }), plain, 'IDR').terms).toBeNull();
+  });
+
+  it('refuses one date without the other, whichever is missing, for any card', () => {
+    const half = 'Give both the billing date and the due date, or leave both for later';
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25' }), plain, 'IDR')).toThrow(half);
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', dueDay: '12' }), plain, 'IDR')).toThrow(half);
+    expect(() => planNewCard(card({ name: 'Kartu lama', statementDay: '25' }), null, 'IDR')).toThrow(half);
+  });
+
+  it('takes the billing date from an issuer that closes every statement on one day, once a due date is given', () => {
+    const fixed = entryFor('cimb-niaga-world-all-accor');
+    expect(planNewCard(card({ name: fixed.name, dueDay: '12' }), fixed, 'IDR').terms).toEqual({ statementDay: 22, dueDay: 12 });
+    // A day typed over the issuer's is the holder's own, and stands.
+    expect(planNewCard(card({ name: fixed.name, statementDay: '20', dueDay: '12' }), fixed, 'IDR').terms).toEqual({ statementDay: 20, dueDay: 12 });
+    // Nothing typed is still nothing: the issuer's day alone is not terms.
+    expect(planNewCard(card({ name: fixed.name }), fixed, 'IDR').terms).toBeNull();
+  });
+
+  it('reads what is owed now in the card’s own currency, and nothing typed as nothing owed', () => {
+    expect(planNewCard(card({ name: 'BCA UnionPay', owed: '1.250.000' }), plain, 'IDR').openingBalanceMinor).toBe(1_250_000);
+    expect(planNewCard(card({ name: 'BCA UnionPay' }), plain, 'IDR').openingBalanceMinor).toBe(0);
+    // A hand-typed card in dollars keeps its cents; the catalogue card above is read in the entry's rupiah.
+    expect(planNewCard(card({ name: 'Travel card', owed: '120.50' }), null, 'IDR', 'USD')).toMatchObject({ currency: 'USD', openingBalanceMinor: 12_050 });
+  });
+
   it('says what is missing, in words meant for the screen', () => {
     expect(() => planNewCard(card({ statementDay: '25', dueDay: '12' }), plain, 'IDR')).toThrow('Give the card a name');
-    expect(() => planNewCard(card({ name: 'BCA UnionPay' }), plain, 'IDR')).toThrow(/needs its billing date and due date/);
     expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25', dueDay: '40' }), plain, 'IDR')).toThrow('The due date is a day of the month, 1 to 31');
-    expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25' }), plain, 'IDR')).toThrow('The due date is a day of the month, 1 to 31');
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: 'soon', dueDay: '12' }), plain, 'IDR')).toThrow('The billing date is a day of the month, 1 to 31');
     expect(() => planNewCard(card({ name: 'Kartu lama', owed: 'lots' }), null, 'IDR')).toThrow('The amount must be a number');
+  });
+});
+
+describe('the bank a hand-typed card name already says', () => {
+  const banks = ['BCA', 'BNI', 'CIMB', 'CIMB Niaga', 'Mandiri', 'blu by BCA Digital'];
+
+  it('is the bank its leading words name, whatever their case', () => {
+    expect(issuerInName('Mandiri Signature', banks)).toBe('Mandiri');
+    expect(issuerInName('bca everyday', banks)).toBe('BCA');
+    expect(issuerInName('  BCA  ', banks)).toBe('BCA');
+    // Of two banks that both lead the name, the longer is the more exact.
+    expect(issuerInName('CIMB Niaga World', banks)).toBe('CIMB Niaga');
+    expect(issuerInName('CIMB Octo', banks)).toBe('CIMB');
+    expect(issuerInName('Blu by BCA Digital card', banks)).toBe('blu by BCA Digital');
+  });
+
+  it('is nothing when no bank leads the name — a bank later in it, or part of a word, is not one', () => {
+    expect(issuerInName('Travel card', banks)).toBeNull();
+    expect(issuerInName('Bcaxyz Gold', banks)).toBeNull();
+    expect(issuerInName('My BCA card', banks)).toBeNull();
+    expect(issuerInName('', banks)).toBeNull();
+    expect(issuerInName('Mandiri', [])).toBeNull();
+  });
+});
+
+describe('a hand-typed card name on the bank-and-name row, and back', () => {
+  const banks = ['BCA', 'CIMB Niaga', 'Mandiri'];
+
+  it('splits off the bank its name leads with, and keeps the rest as the card’s own name', () => {
+    expect(splitCardName('Mandiri Signature', banks)).toEqual({ bank: 'Mandiri', name: 'Signature' });
+    expect(splitCardName('  cimb   niaga World Mastercard ', banks)).toEqual({ bank: 'CIMB Niaga', name: 'World Mastercard' });
+    // The bank alone is still the card's name; no bank leaves the name whole.
+    expect(splitCardName('BCA', banks)).toEqual({ bank: 'BCA', name: 'BCA' });
+    expect(splitCardName('Travel card', banks)).toEqual({ bank: '', name: 'Travel card' });
+    expect(splitCardName('Bcaxyz Gold', banks)).toEqual({ bank: '', name: 'Bcaxyz Gold' });
+  });
+
+  it('saves the two read together, never naming the bank twice', () => {
+    expect(cardAccountName('Mandiri', 'Signature')).toBe('Mandiri Signature');
+    expect(cardAccountName('Mandiri', 'Mandiri Signature')).toBe('Mandiri Signature');
+    expect(cardAccountName('BCA', 'BCA')).toBe('BCA');
+    expect(cardAccountName('', 'Travel card')).toBe('Travel card');
+    expect(cardAccountName(' UOB ', ' PRVI ')).toBe('UOB PRVI');
+    // No name is no name, whatever the bank: the plan refuses it in words.
+    expect(cardAccountName('BCA', '  ')).toBe('');
+  });
+
+  it('round-trips: what was searched for is what is saved', () => {
+    for (const typed of ['Mandiri Signature', 'CIMB Niaga World', 'Travel card', 'BCA']) {
+      const { bank, name } = splitCardName(typed, banks);
+      expect(cardAccountName(bank, name)).toBe(typed);
+    }
   });
 });

@@ -49,10 +49,19 @@ export function CardDetailPage() {
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   // Paid past what it owed: the bank holds the rest. Unpaid stays at nothing, as the Debts page says.
   const credit = isDebit ? 0 : creditMinor(balances.data ?? {}, card.id);
+  /*
+   * A card opened from the catalogue without its dates already has its product and rules, so the dates are not
+   * step 1 of anything: the row names them and offers to add them, in the settings where the card's terms live.
+   */
+  const onlyDates = step === 1 && cp.program !== undefined;
   const setup =
     step === null ? undefined : (
       <InsetGroup>
-        <InsetRow testId="card-setup" title="Finish setting up" subtitle={`Step ${step} of 3 · ${STEP_ASKS[step]}`} to="/cards/$cardId/settings" params={{ cardId: card.id }} />
+        {onlyDates ? (
+          <InsetRow testId="card-setup" title="Billing and due dates" value="Add" valueTone="tint" to="/cards/$cardId/settings" params={{ cardId: card.id }} />
+        ) : (
+          <InsetRow testId="card-setup" title="Finish setting up" subtitle={`Step ${step} of 3 · ${STEP_ASKS[step]}`} to="/cards/$cardId/settings" params={{ cardId: card.id }} />
+        )}
       </InsetGroup>
     );
 

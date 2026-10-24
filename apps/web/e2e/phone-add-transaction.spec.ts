@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { nameCardByHand, openAccount } from './accounts';
 import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { todayIn } from './today';
 import { setChannel } from './split-row';
@@ -723,17 +723,68 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
   await expect(step).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(step.getByRole('button', { name: 'Add card' })).toHaveCount(0);
-  await step.getByLabel('Name', { exact: true }).fill('UOB PRVI');
+  // A card the catalogue does not carry, named from ⌕'s last row: the bank it leads with goes to the bank half.
+  await nameCardByHand(page, 'UOB PRVI', step);
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveValue('UOB');
+  await expect(step.getByLabel('Name', { exact: true })).toHaveValue('PRVI');
+  // The details ask its currency, and never a bank: the row has one.
+  await step.getByRole('button', { name: 'Add more details' }).click();
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveCount(1);
+  await expect(step.getByLabel('Currency', { exact: true })).toBeVisible();
   await step.getByLabel('Last 4 digits').fill('3310');
   await step.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
+  // Saved as its bank and its own name — UOB, PRVI — so the account's name is the card's own.
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('PRVI');
   // Picked as the card row is: the sheet opens on Credit cards with it marked.
   await form.getByRole('button', { name: 'Paid with' }).click();
   await expect(sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
-  await expect(sheet.getByRole('button', { name: /^UOB PRVI/ })).toHaveAttribute('aria-current', 'true');
+  await expect(sheet.getByRole('button', { name: /^PRVI/ })).toHaveAttribute('aria-current', 'true');
+});
+
+test('Paid with › Add credit card › the catalogue over the keyboard › a card saves with only its last 4 digits', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await sheet.getByRole('button', { name: 'Add credit card' }).click();
+
+  const step = page.getByRole('dialog', { name: 'New credit card' });
+  // The quick form: the New account form's bank-and-name row, the digits and the balance; the rest folded away.
+  await expect(step.getByLabel('Bank', { exact: true })).toBeVisible();
+  await expect(step.getByLabel('Name', { exact: true })).toBeVisible();
+  await expect(step.getByLabel('Current balance')).toBeVisible();
+  await expect(step.getByLabel('Billing date')).toHaveCount(0);
+  await expect(step.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+
+  // The name typed offers the catalogue's cards over the keyboard, across every bank while none is chosen.
+  await step.getByLabel('Name', { exact: true }).pressSequentially('union');
+  const strip = page.getByRole('listbox', { name: 'Catalogue cards' });
+  await strip.getByRole('option', { name: 'BCA UnionPay' }).click();
+  // Picked: the bank half filled in, the name without it, and the keyboard's field still the name.
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveValue('BCA');
+  await expect(step.getByLabel('Name', { exact: true })).toHaveValue('UnionPay');
+  // No words under the group, whichever card it is.
+  await expect(step.getByText(/verified|catalogue|keeps its statement/)).toHaveCount(0);
+  await step.getByLabel('Last 4 digits').fill('4821');
+  await step.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UnionPay');
+
+  // Opened with no dates: the card's page offers to add them, and its settings offer the published fee beside them.
+  await page.goto('/wallet');
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^UnionPay(,|$)/ }).click();
+  const dates = page.getByTestId('card-setup');
+  await expect(dates).toContainText('Billing and due dates');
+  await dates.click();
+  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
+  await expect(page.getByLabel('Billing date')).toHaveValue('');
 });
 
 test('Note offers past notes over the keyboard, and a pick brings its category', async ({ page }) => {
