@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readAccountNumberLast4, readWalletLast4 } from './wallet-last4';
+import { keepLast4, last4Field, readAccountNumberLast4, readWalletLast4 } from './wallet-last4';
 
 describe('readWalletLast4', () => {
   it('reads four digits as the digits, with the spaces around them dropped', () => {
@@ -30,5 +30,37 @@ describe('readAccountNumberLast4', () => {
     expect(readAccountNumberLast4('123-456-7890')).toEqual({ ok: true, last4: '7890' });
     expect(readAccountNumberLast4('  ')).toEqual({ ok: true, last4: null });
     expect(readAccountNumberLast4('12')).toMatchObject({ ok: false });
+  });
+});
+
+describe('keepLast4', () => {
+  it('keeps digits only, at most four of them', () => {
+    expect(keepLast4('55')).toBe('55');
+    expect(keepLast4('5a5-2')).toBe('552');
+    expect(keepLast4('')).toBe('');
+  });
+
+  it('keeps the end of a whole number pasted in, never its start', () => {
+    expect(keepLast4('0812-3456-5521')).toBe('5521');
+    expect(keepLast4('+62 812 3456 5521')).toBe('5521');
+    expect(keepLast4('123-456-4321')).toBe('4321');
+  });
+});
+
+describe('last4Field', () => {
+  it('asks for the number pad and four characters at most', () => {
+    const field = last4Field(() => {});
+    expect(field.inputMode).toBe('numeric');
+    expect(field.maxLength).toBe(4);
+  });
+
+  it('hands on only digits, typed or pasted, and takes the paste over from the browser', () => {
+    const seen: string[] = [];
+    const field = last4Field((digits) => seen.push(digits));
+    field.onChange({ target: { value: '12a' } });
+    let prevented = false;
+    field.onPaste({ preventDefault: () => (prevented = true), clipboardData: { getData: () => '0812-3456-5521' } });
+    expect(seen).toEqual(['12', '5521']);
+    expect(prevented).toBe(true);
   });
 });

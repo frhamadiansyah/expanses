@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
 import { setCurrency } from './currency-field';
+import { todayIn } from './today';
 
 /**
  * Opening an account the way the app opens one now: the picker asks what it is, the form asks only that.
@@ -47,12 +48,15 @@ export interface NewAccount {
   /** The ledger's subtype — `bank`, `savings`, `fund`, `ewallet`, `cash`, `other_cash`, `time_deposit`. */
   subtype: string;
   name: string;
-  /** What the account holds now. The old form called this "Current balance"; the picker calls it "Balance now". */
+  /** What the account holds now: the form's "Current balance". */
   balance?: string;
   currency?: string;
   /** A rate typed for a day the device holds none for: the row under a foreign currency. */
   rate?: string;
-  /** The day the money is in the account's name from. Defaults to today. */
+  /**
+   * The day the money is in the account's name from. Defaults to today. The form asks no day — its balance is
+   * today's — so an earlier day is reached by setting the browser's clock to it while the account is opened.
+   */
   opened?: string;
   /** A deposit's term: the day it comes back and what it pays. */
   matures?: string;
@@ -97,6 +101,19 @@ export async function openAccount(page: Page, o: NewAccount) {
   // months left keeps no terms at all, so the walk gives the field an answer and nothing more.
   if (o.subtype === 'credit_card') return openCard(page, { name: o.name, owed: o.balance, bank: o.bank, last4: o.last4, currency: o.currency, rate: o.rate, extra: o.extra });
   if (o.subtype === 'loan') return openLoan(page, { kind: 'Multi-purpose loan', name: o.name, owed: o.balance, currency: o.currency, rate: o.rate, lender: o.lender ?? 'Bank' });
+  // The browser's own now, not Node's: a spec that already pinned the clock gets its pinned day back afterwards.
+  const back = o.opened && o.opened !== (await todayIn(page)) ? { browser: await page.evaluate(() => Date.now()), node: Date.now() } : null;
+  if (back) await page.clock.setSystemTime(new Date(`${o.opened}T12:00:00`));
+  try {
+    await openMoneyAccount(page, o);
+  } finally {
+    // Put back where it was, plus the seconds the walk took, so a later step's "today" is the run's own.
+    if (back) await page.clock.setSystemTime(back.browser + (Date.now() - back.node));
+  }
+}
+
+/** The money account's own walk, on whatever day the browser's clock says. */
+async function openMoneyAccount(page: Page, o: NewAccount) {
   await page.goto('/accounts/new');
   /* A picker row's accessible name is its title *plus* the line under it, so the name is anchored rather than
    * exact — and anchored rather than loose, because several other rows say "cash" in their own subtitle. */
@@ -110,12 +127,11 @@ export async function openAccount(page: Page, o: NewAccount) {
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
   }
   if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
-  if (o.balance) await page.getByLabel('Balance now', { exact: true }).pressSequentially(o.balance);
+  if (o.balance) await page.getByLabel('Current balance', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);
   if (o.interestRate) await page.getByLabel('Interest rate').pressSequentially(o.interestRate);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
-  if (o.opened) await page.getByLabel('Balance as of').fill(o.opened);
   if (o.extra) await o.extra(page);
   await page.getByRole('button', { name: 'Add account' }).click();
   /*

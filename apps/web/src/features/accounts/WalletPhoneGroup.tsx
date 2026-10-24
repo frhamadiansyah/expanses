@@ -5,7 +5,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { useWalletLast4 } from '../cards/card-queries';
-import { readWalletLast4 } from './wallet-last4';
+import { last4Field, readWalletLast4 } from './wallet-last4';
 
 /**
  * A digital wallet's phone number, by its last four digits, on its settings: what its rows show as "···· 5521", the way
@@ -39,13 +39,13 @@ function WalletPhoneRow({ accountId, saved }: { accountId: string; saved: string
 
   return (
     <>
-      <InsetGroup header="Phone" footer="Shown on this wallet's transactions, as a card's last 4 digits are.">
+      {/* Read as the bank account's settings read: the group names the number, its row the part of it kept. */}
+      <InsetGroup header="Phone number" footer="Shown on this wallet's transactions, as a card's last 4 digits are.">
         <TextRow
-          label="Last 4 digits of phone"
+          label="Last 4 digits"
           value={typed}
-          onChange={(e) => setTyped(e.target.value)}
+          {...last4Field(setTyped)}
           onBlur={() => void save()}
-          inputMode="tel"
           placeholder="None"
           className="tabular"
           hint={read.ok ? undefined : read.error}

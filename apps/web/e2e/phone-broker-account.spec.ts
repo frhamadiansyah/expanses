@@ -12,7 +12,7 @@ test('by thumb: the broker and the RDN bank are picked from what the keyboard of
   await page.getByLabel('Custodian', { exact: true }).tap();
   await page.getByLabel('Custodian', { exact: true }).pressSequentially('cimb');
   await page.getByRole('listbox', { name: 'Banks' }).getByRole('option', { name: 'CIMB Niaga' }).click();
-  await page.getByLabel('Balance now', { exact: true }).pressSequentially('8000000');
+  await page.getByLabel('Current balance', { exact: true }).pressSequentially('8000000');
   await page.getByRole('button', { name: 'Add account' }).tap();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await page.goto('/net-worth/assets');

@@ -65,6 +65,6 @@ export async function drawnFaces(page: Page) {
   // An account at a bank with no tiers is offered none.
   await walletCard(page, 'Everyday').click();
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByLabel('Last 4 digits of account number')).toBeVisible();
+  await expect(page.getByLabel('Last 4 digits', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Card tier')).toHaveCount(0);
 }

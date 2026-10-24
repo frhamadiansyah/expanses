@@ -1,9 +1,9 @@
 import { bankMatches, takesPockets, brokerMatches, cashItem, walletMatches, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { NUMBERED_SUBTYPES, openCashAccount, openPocketedAccount, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
-import { readAccountNumberLast4, readWalletLast4 } from '../accounts/wallet-last4';
+import { last4Field, readAccountNumberLast4, readWalletLast4 } from '../accounts/wallet-last4';
 import { openOnce } from './open-once';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -178,6 +178,9 @@ export function SuggestRow({
   );
 }
 
+/** A row's label at the size and ink `TextRow` draws its own in, so a row drawn here lines up with the kit's. */
+const ROW_LABEL = 'shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]';
+
 /** An amount field as wide as what is in it (never narrower than its placeholder), so a rate beside it sits close. */
 function amountWidth(value: string): string {
   return `${Math.max(value.length, 6) + 1}ch`;
@@ -204,12 +207,20 @@ function RateField({ label, value, onChange }: { label: string; value: string; o
 }
 
 /**
- * A currency and what it opens with, on one row: the flag and the typed code with its › on the left, where a label
- * would be, and the amount at the right, as the amount row of a transaction reads. A currency other than the
- * workspace's puts its opening rate beside the amount behind a hairline. Both the plain account's balance and each
- * pocket are one of these, so turning Multi-currency on only turns one row into several.
+ * A currency and what it opens with, on one row, read one of two ways.
+ *
+ * A pocket has no label of its own — its currency is what it is — so the flag and the typed code with its › sit on
+ * the left, where a label would be, and the amount at the right, as the amount row of a transaction reads; a currency
+ * other than the workspace's puts its opening rate before the amount behind a hairline.
+ *
+ * The plain account's balance is a row like the ones above it instead: "Current balance" on the left, and the code,
+ * still typed to change it, just before the amount it is the currency of. With the label taking the left, a rate
+ * beside them no longer fits a phone's width, so a foreign balance asks its opening rate on a row of its own under it.
+ *
+ * Both the plain balance and each pocket are one of these, so turning Multi-currency on only turns one row into several.
  */
 function MoneyRow({
+  label,
   currencyLabel,
   amountLabel,
   currency,
@@ -222,6 +233,8 @@ function MoneyRow({
   hint,
   position,
 }: GroupChild & {
+  /** The row's name on the left, in a label's ink, as a `TextRow` draws it; without one the currency takes its place. */
+  label?: string;
   currencyLabel: string;
   amountLabel: string;
   currency: string;
@@ -235,9 +248,64 @@ function MoneyRow({
   /** A line under the row, such as how a typed rate reads. */
   hint?: string;
 }) {
+  const amountId = useId();
+  const rateId = useId();
+  const foreign = currency !== base;
+  const rateLabel = `Rate: ${base} per 1 ${currency}`;
+  const hairline = <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />;
+  if (label) {
+    return (
+      <div className="relative">
+        {position?.separator && hairline}
+        <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
+          {/* The label's own size and ink, so the row reads as one of the form's rows; a tap on it types the amount. */}
+          <label htmlFor={amountId} className={ROW_LABEL}>
+            {label}
+          </label>
+          <span className="flex-1" />
+          {/* The code sits against the amount it is the currency of, closer than the row's gap: "IDR  Amount". */}
+          <span className="flex shrink-0 items-center gap-[8px]">
+            <CurrencyCode label={currencyLabel} value={currency} onChange={onCurrency} codes={CURRENCIES} className="text-[var(--ph-ink-2)]" />
+            <input
+              id={amountId}
+              aria-label={amountLabel}
+              value={balance}
+              onChange={(e) => onBalance(e.target.value)}
+              inputMode="decimal"
+              placeholder="Amount"
+              style={{ width: amountWidth(balance) }}
+              className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
+            />
+          </span>
+        </div>
+        {/* A foreign opening rate, under its balance: left empty, the day's rate is fetched. The prompt names the
+            unit it is typed in, so "IDR per 1 USD" is never typed the other way round. */}
+        {foreign && (
+          <div className="relative">
+            {hairline}
+            <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
+              <label htmlFor={rateId} className={ROW_LABEL}>
+                Rate
+              </label>
+              <input
+                id={rateId}
+                aria-label={rateLabel}
+                value={rate}
+                onChange={(e) => onRate(e.target.value)}
+                inputMode="decimal"
+                placeholder={`${base} per 1 ${currency}`}
+                className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
+              />
+            </div>
+          </div>
+        )}
+        {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      </div>
+    );
+  }
   return (
     <div className="relative">
-      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      {position?.separator && hairline}
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
         <span className="flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
           <span aria-hidden>{currencyFlag(currency)}</span>
@@ -247,7 +315,7 @@ function MoneyRow({
           </span>
         </span>
         {/* A foreign opening rate, beside its amount behind a hairline: left empty, the day's rate is fetched. */}
-        {currency !== base ? <RateField label={`Rate: ${base} per 1 ${currency}`} value={rate} onChange={onRate} /> : <span className="flex-1" />}
+        {foreign ? <RateField label={rateLabel} value={rate} onChange={onRate} /> : <span className="flex-1" />}
         <input
           aria-label={amountLabel}
           value={balance}
@@ -292,7 +360,8 @@ export function CashAccountForm({
   const [sourceId, setSourceId] = useState('');
   const [maturesOn, setMaturesOn] = useState('');
   const [rate, setRate] = useState('');
-  const [openedOn, setOpenedOn] = useState(isoDate());
+  // A new account's balance is what it holds today: the form asks no day, so the opening, plain or pocketed, is today's.
+  const openedOn = isoDate();
   const [manualRate, setManualRate] = useState('');
   const [pocketed, setPocketed] = useState(false);
   const [pockets, setPockets] = useState<PocketDraft[]>([]);
@@ -464,14 +533,14 @@ export function CashAccountForm({
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
           )
         )}
-        {/* What tells two wallets of one app apart, shown on their rows as a card's digits are: "···· 5521". */}
+        {/* What tells two wallets of one app apart, shown on their rows as a card's digits are: "···· 5521". Only the
+            last four are kept, so the field takes no more — the number pad, digits only. */}
         {item === 'ewallet' && (
           <TextRow
-            label="Last 4 digits of phone"
+            label="Phone number"
             value={phoneLast4}
-            onChange={(e) => setPhoneLast4(e.target.value)}
-            inputMode="tel"
-            placeholder="Optional"
+            {...last4Field(setPhoneLast4)}
+            placeholder="Last 4 digits"
             className="tabular"
             hint={phone?.ok === false ? phone.error : undefined}
           />
@@ -479,24 +548,23 @@ export function CashAccountForm({
         {/* What a bank's own alerts name the account by, shown on its rows as a card's digits are: "···· 1234". */}
         {numbered && (
           <TextRow
-            label="Last 4 digits of account number"
+            label="Account number"
             value={numberLast4}
-            onChange={(e) => setNumberLast4(e.target.value)}
-            inputMode="numeric"
-            placeholder="Optional"
+            {...last4Field(setNumberLast4)}
+            placeholder="Last 4 digits"
             className="tabular"
             hint={numbered.ok === false ? numbered.error : undefined}
           />
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="% a year" />}
-        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
-        {/* The balance comes after the day it is as of: the date first, then what the account held on it — in which
-            currency, and at what rate when it is not the workspace's, all on the one row a pocket also takes. */}
+        {/* What the account holds today — in which currency, and at what rate when it is not the workspace's — all on
+            the one row a pocket also takes, named the way the rows above it are. */}
         {!pocketed && (
           <MoneyRow
+            label="Current balance"
             currencyLabel="Currency"
-            amountLabel="Balance now"
+            amountLabel="Current balance"
             currency={currency}
             onCurrency={(next) => {
               setCurrency(next);
