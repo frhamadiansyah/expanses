@@ -42,6 +42,10 @@
 	<string>To photograph a receipt and keep it with the purchase. Pictures stay on this device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>To attach a receipt you have already photographed. Pictures stay on this device.</string>
+	<!-- Asked the first time a receipt is photographed with the app's camera: that photo is saved to Photos as well
+	     as kept with the purchase. Add-only; refused, the photo is still kept in the app. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Saves receipt photos taken in the app to Photos.</string>
 	<!-- Answered here so every upload does not stop to ask. Expanses uses no encryption beyond what iOS and
 	     HTTPS provide, which is the exemption this key claims. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
