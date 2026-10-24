@@ -35,6 +35,7 @@ export { heroFigure, progressFraction, progressPercent, progressTone, type HeroF
 export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type SwitchRowPlan } from './form-row';
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { planPanel, type PanelPlan } from './surface';
+export { arriveFrom, flyInto, leaveFrom, reducedMotion } from './card-motion';
 export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardHeightFor, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
 export { type TreePlace, TreeLines, TreeStem } from './TreeLines';
 export { iconCentre } from './metrics';

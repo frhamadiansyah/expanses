@@ -13,9 +13,10 @@ import { formatMinor } from '@expanses/core';
  * *and* the card's figure, so "how many miles have I got?" is answered without a tap.
  *
  * Opening a card is Wallet's selected state: that card rises to the top of the stack's place, whole and at the
- * same width, and the others slide off the bottom of the screen and out of sight — the open card and its page are
- * all there is (decisions, 2026-09-22: no pile). Closing it puts every card back in its slot. Both states are laid
- * out here, so the component only moves one element between them.
+ * same width, and the others slide down together into a tight pile and on off the bottom of the screen, out of
+ * sight — the open card and its page are all there is (decisions, 2026-09-22: no pile left showing). Closing it
+ * puts every card back in its slot. Both states are laid out here, so the component only moves one element between
+ * them.
  *
  * A phone and a desktop use the same stack; a desktop simply draws its cards at Wallet's fixed width on a Mac
  * rather than the phone's whole column.
@@ -31,6 +32,20 @@ export const STRIP = 60;
 /** A desktop's card: Wallet's own size on a Mac, rather than a card stretched across a 1440 px column. */
 export const DESKTOP_CARD_W = 380;
 
+/**
+ * The pile the other cards drop into while one is open, as Wallet's does: a few top edges stepped down, each card
+ * behind a little narrower than the one in front, the rest tucked behind the last edge.
+ */
+export const PILE_EDGES = 4;
+export const PILE_STEP = 8;
+export const PILE_SHRINK = 0.04;
+/**
+ * How much of the pile shows above the bottom of the screen at rest. None: the owner chose to have the open card and
+ * its page be all there is (2026-09-22), so the pile is drawn as the cards leave and lands just out of sight.
+ * Wallet's own peeking pile is this number made the pile's height.
+ */
+export const PILE_PEEK = 0;
+
 export interface StackedCard {
   key: string;
   /**
@@ -45,6 +60,11 @@ export interface StackedCard {
   visible: number;
   /** Whether another card is laid over all but this card's top band. */
   covered: boolean;
+  /**
+   * A hidden card's place in the pile below the screen: how far its top sits below the pile's top line, and how much
+   * narrower it is drawn, from its top centre. Absent for a card in its slot or raised.
+   */
+  pile?: { top: number; scale: number };
 }
 
 export interface StackLayout {
@@ -95,7 +115,7 @@ export function stackLayout(keys: readonly string[], options: StackOptions = {})
   const cards: StackedCard[] = keys.map((key, index) => {
     if (raised === null) return { key, place: 'slot', top: index * STRIP, zIndex: index, visible: index === last ? height : STRIP, covered: index !== last };
     if (index === raised) return { key, place: 'raised', top: 0, zIndex: keys.length, visible: height, covered: false };
-    return { key, place: 'hidden', top: index * STRIP, zIndex: index, visible: 0, covered: true };
+    return { key, place: 'hidden', top: index * STRIP, zIndex: index, visible: 0, covered: true, pile: pilePlace(index < raised ? index : index - 1, last) };
   });
   return {
     cards,
@@ -106,6 +126,17 @@ export function stackLayout(keys: readonly string[], options: StackOptions = {})
     cardWidth: width,
     cardHeight: height,
   };
+}
+
+/**
+ * Where the `at`-th of `count` cards in the pile sits (back to front, as in the stack): the front card lowest and
+ * whole width, each card behind it one step higher and a shade narrower, and every card past the last edge tucked
+ * behind it.
+ */
+export function pilePlace(at: number, count: number): { top: number; scale: number } {
+  const edges = Math.min(count, PILE_EDGES);
+  const depth = Math.min(count - 1 - at, edges - 1);
+  return { top: (edges - 1 - depth) * PILE_STEP, scale: Math.round((1 - depth * PILE_SHRINK) * 1000) / 1000 };
 }
 
 /**

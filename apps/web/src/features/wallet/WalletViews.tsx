@@ -5,7 +5,7 @@ import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { CARD_W, DESKTOP_CARD_W, InsetGroup, InsetRow, Panel, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
+import { arriveFrom, CARD_W, DESKTOP_CARD_W, flyInto, InsetGroup, InsetRow, leaveFrom, Panel, reducedMotion, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
 import { pocketsOf } from '../accounts/pockets';
 import { useRecentTransactions } from '../accounts/queries';
 import { buildRows } from '../transactions/list-model';
@@ -32,6 +32,40 @@ function useColumnWidth(node: RefObject<HTMLDivElement | null>): number | null {
   return width;
 }
 
+/**
+ * A card put down from the stack flies home to its place in this layout, from where the raised card was: the
+ * stack's card and this one are two elements, so the one leaving says where it was and this one starts there
+ * (`card-motion`). Lifted over its neighbours while it flies, and let go when it lands.
+ */
+function useFlyHome(cards: readonly WalletCard[], ready: boolean, node: (index: number) => HTMLElement | null | undefined, width: number | null, before?: (index: number) => void) {
+  useLayoutEffect(() => {
+    if (!ready || width === null || reducedMotion()) return;
+    const arrival = arriveFrom(cards.map((card) => card.key));
+    if (!arrival) return;
+    const index = cards.findIndex((card) => card.key === arrival.key);
+    before?.(index);
+    const element = node(index);
+    if (!element) return;
+    const flight = flyInto(element, arrival.rect, { width });
+    if (!flight) return;
+    element.style.zIndex = '1';
+    element.style.willChange = 'transform';
+    const land = () => {
+      element.style.zIndex = '';
+      element.style.willChange = '';
+    };
+    flight.finished.then(land, land);
+    // Run once the layout has its width: that is when the cells it flies into exist.
+  }, [ready, width]);
+}
+
+/** Says where a face was as it is tapped open, so the stack's raised card can rise from there. */
+const leaving = (key: string) => (event: { currentTarget: HTMLElement }) => {
+  leaveFrom(key, event.currentTarget.getBoundingClientRect());
+  // The opened card is drawn at the top of the page, as the stack raises it.
+  window.scrollTo(0, 0);
+};
+
 /** A card's accessible name, as the stack gives it: the name and the figure, so a reader hears every figure. */
 const named = (card: WalletCard) => {
   const name = card.label ?? card.name;
@@ -55,13 +89,22 @@ export function WalletGrid({ cards }: { cards: readonly WalletCard[] }) {
   const cell = width === null ? null : Math.floor((width - GAP) / 2);
   const scale = (cell ?? CARD_W) / CARD_W;
   const height = cardHeightFor(cell ?? CARD_W);
+  const faces = useRef<(HTMLDivElement | null)[]>([]);
+  useFlyHome(cards, cell !== null, (index) => faces.current[index], cell);
   return (
     <section aria-label="Cards" data-testid="wallet-grid" className="md:pb-5">
       <div ref={shelf} className="grid grid-cols-2" style={{ columnGap: GAP, rowGap: 16, maxWidth: 2 * DESKTOP_CARD_W + GAP }}>
         {cell !== null &&
-          cards.map((card) => (
+          cards.map((card, index) => (
             <div key={card.key} className="min-w-0">
-              <div data-testid="wallet-card" className="relative" style={{ width: cell, height, borderRadius: radiusFor(scale) }}>
+              <div
+                ref={(node) => {
+                  faces.current[index] = node;
+                }}
+                data-testid="wallet-card"
+                className="relative"
+                style={{ width: cell, height, borderRadius: radiusFor(scale) }}
+              >
                 {/* The face prints its own name and figure, so the grid needs no caption under it. */}
                 <WalletFace card={card} band={false} scale={scale} figure />
                 {/* The tap is the whole face; a link, as in the stack, so a desktop keeps its new tab. */}
@@ -72,8 +115,8 @@ export function WalletGrid({ cards }: { cards: readonly WalletCard[] }) {
                     aria-label={named(card)}
                     className="ph-focus-inset absolute inset-0 block"
                     style={{ borderRadius: radiusFor(scale) }}
-                    // The opened card is drawn at the top of the page, as the stack raises it.
-                    onClick={() => window.scrollTo(0, 0)}
+                    // It rises from here to the top of the page, where the stack raises it.
+                    onClick={leaving(card.key)}
                   />
                 )}
               </div>
@@ -119,6 +162,17 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
   };
   const scrollTo = (i: number) => strip.current?.scrollTo({ left: i * step, behavior: 'smooth' });
   const shown = cards[index];
+  // A card put down from the stack comes home to the middle of the strip, scrolled to before it lands there.
+  useFlyHome(
+    cards,
+    cardWidth !== null,
+    (i) => strip.current?.children[i] as HTMLElement | undefined,
+    cardWidth,
+    (i) => {
+      if (strip.current) strip.current.scrollLeft = i * step;
+      setCurrent(i);
+    },
+  );
 
   return (
     <section aria-label="Cards" data-testid="wallet-carousel" className="md:pb-5">
@@ -142,7 +196,7 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
                 <WalletFace card={card} band={false} scale={scale} />
                 {/* The card in the middle opens; a tap on a card peeking at the edge brings it to the middle first. */}
                 {i === index && card.to ? (
-                  <Link to={card.to} params={card.params} aria-label={named(card)} className="ph-focus-inset absolute inset-0 block" style={{ borderRadius: radiusFor(scale) }} onClick={() => window.scrollTo(0, 0)} />
+                  <Link to={card.to} params={card.params} aria-label={named(card)} className="ph-focus-inset absolute inset-0 block" style={{ borderRadius: radiusFor(scale) }} onClick={leaving(card.key)} />
                 ) : (
                   <button type="button" aria-label={named(card)} className="ph-focus-inset absolute inset-0 block" style={{ borderRadius: radiusFor(scale) }} onClick={() => scrollTo(i)} />
                 )}
