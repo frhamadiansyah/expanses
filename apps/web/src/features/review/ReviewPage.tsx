@@ -36,6 +36,7 @@ import { CaptureTypeMark } from './CaptureTypeMark';
 import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
+import { keepsPicture } from './keep-picture';
 import { corrections, draftPatch } from './draft-form';
 import type { FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDrafts } from './queries';
@@ -141,11 +142,11 @@ export function ReviewPage() {
   /**
    * Confirms the draft. A purchase that would take promised money gets its question first, in a sheet; money in
    * and transfers do not, because nothing about them is spending. The picture's fate is settled afterwards — see
-   * `settlePicture`.
+   * `settlePicture`: the app's camera's picture is kept with the purchase, any other let go (`keepsPicture`).
    */
-  async function record(draft: DraftRow, opts: { undoable?: boolean; keepPhoto?: boolean } = {}) {
+  async function record(draft: DraftRow, opts: { undoable?: boolean } = {}) {
     setError(null);
-    const keepPhoto = opts.keepPhoto ?? draft.source === 'photo';
+    const keepPhoto = keepsPicture(draft);
     if (draft.kind === 'expense') {
       const door = spendingDoor(draft.accountId ?? '', Math.max(0, draft.amountMinor));
       let asks = false;
@@ -192,7 +193,7 @@ export function ReviewPage() {
    * from it is read right. The set-aside question was the form's own, asked the way Add asks it. Throws, so the form
    * shows what went wrong where Save was pressed.
    */
-  async function recordForm(draft: DraftRow, form: FormDraft, opts: { setAside: SetAsideChoice | null; keepPhoto: boolean }) {
+  async function recordForm(draft: DraftRow, form: FormDraft, opts: { setAside: SetAsideChoice | null }) {
     setError(null);
     const patch = draftPatch(form, draft);
     for (const { field, value } of corrections(form, draft)) {
@@ -201,7 +202,7 @@ export function ReviewPage() {
     await editDraft(database, ws, draft.id, patch);
     const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, {
       setAside: opts.setAside,
-      keepPhoto: opts.keepPhoto,
+      keepPhoto: keepsPicture(draft),
       extras: {
         eventId: form.eventId || null,
         channel: form.channel || null,
