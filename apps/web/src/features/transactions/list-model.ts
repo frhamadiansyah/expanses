@@ -49,6 +49,8 @@ export interface ListRow {
   accountLabel: string;
   /** The money accounts' whole names, searched as well as the label (a pocket's label is its currency alone). */
   accountNames?: string[];
+  /** The currency of the pocket a one-account row was paid from or into ("USD"), shown beside the bank's digits. */
+  pocketCurrency?: string;
   cardId: string | null;
   /** The digits of the one account the row was paid from, when known; nothing on money moving between two. */
   last4: string | null;
@@ -158,7 +160,22 @@ export function buildRows(
     const own = cardsOf.get(accountId) ?? [];
     return byId.get(accountId)?.subtype === 'credit_card' && own.length === 1 ? own[0]!.last4 : null;
   };
-  const ownDigits = (accountId: string) => soleCard(accountId) ?? walletLast4[accountId] ?? null;
+  // A bank's currency pocket reads the bank account's own number, kept on the account it belongs to.
+  const parentOf = (accountId: string) => byId.get(byId.get(accountId)?.parentId ?? '');
+  const ownDigits = (accountId: string) => soleCard(accountId) ?? walletLast4[accountId] ?? (parentOf(accountId) && parentOf(accountId)!.subtype !== 'cash' ? (walletLast4[parentOf(accountId)!.id] ?? null) : null);
+  /*
+   * A currency pocket is named by its currency: a cash pocket by the currency alone ("TRY", not "Cash · TRY"), a bank's
+   * by its currency with the bank account's number after it ("USD 0917"), as a row names any account with digits;
+   * a bank pocket whose account has no number on record keeps its whole name.
+   */
+  const pocketCode = (accountId: string) => {
+    const parent = parentOf(accountId);
+    if (!parent) return null;
+    // a bank's pocket with no number on record keeps its whole name, which is all that tells it apart
+    if (parent.subtype !== 'cash' && !walletLast4[parent.id]) return null;
+    return byId.get(accountId)?.currency ?? null;
+  };
+  const label = (accountId: string | undefined, name: string) => (accountId ? (pocketCode(accountId) ?? name) : name);
   const digitsOf = (cardId: string | null, accountIds: readonly string[]) => {
     if (cardId) return cardById.get(cardId)?.last4 ?? null;
     return accountIds.length === 1 ? ownDigits(accountIds[0]!) : null;
@@ -190,7 +207,7 @@ export function buildRows(
     // paid from one account keeps its digits out of the label (`last4`), where the row shows them alone.
     const between = accountIds.length > 1;
     const idByName = new Map(money.map((e) => [e.accountName, e.accountId]));
-    const sides = c.moneyAccountNames.map((name) => ({ name: shortPocketName(name), last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
+    const sides = c.moneyAccountNames.map((name) => ({ name: label(idByName.get(name), name), last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
     const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
@@ -216,6 +233,8 @@ export function buildRows(
       accountNames: c.moneyAccountNames,
       cardId: tx.cardId,
       last4: between ? null : digitsOf(tx.cardId, accountIds),
+      // a pocket's row keeps its currency beside its digits, where another account shows its digits alone
+      ...(!between && accountIds.length === 1 && pocketCode(accountIds[0]!) ? { pocketCurrency: pocketCode(accountIds[0]!)! } : {}),
       ...(sidesLast4.length > 0 ? { sidesLast4 } : {}),
       ...(c.feeMinor ? { feeMinor: c.feeMinor } : {}),
       holderName: card?.holderName ?? null,
@@ -379,8 +398,8 @@ export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; mut
  * "4417" says which card more surely than a long account name, and leaves the line room for the note. Money moving
  * between two accounts keeps both names, each side's digits already after it ("BCA Tahapan → GoPay 5521").
  */
-export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4'>): { name: string; last4: string | null } {
-  if (row.last4 && row.accountIds.length <= 1) return { name: '', last4: row.last4 };
+export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4' | 'pocketCurrency'>): { name: string; last4: string | null } {
+  if (row.last4 && row.accountIds.length <= 1) return { name: row.pocketCurrency ?? '', last4: row.last4 };
   return { name: row.accountLabel, last4: row.last4 };
 }
 
@@ -431,11 +450,3 @@ export function totals(rows: readonly ListRow[]): { count: number; spentMinor: n
   };
 }
 
-/**
- * A currency pocket named as its row shows it: "Cash · TRY" is "TRY" — the currency says which pocket, and the
- * account's name only lengthened the line. Any other account keeps its name.
- */
-export function shortPocketName(name: string): string {
-  const pocket = /^.+ · ([A-Z]{3})$/.exec(name);
-  return pocket ? pocket[1]! : name;
-}

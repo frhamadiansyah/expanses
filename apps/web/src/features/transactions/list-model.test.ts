@@ -567,12 +567,25 @@ describe('a purchase split across workspaces', () => {
   });
 });
 
-describe('shortPocketName', () => {
-  it('names a currency pocket by its currency alone, and leaves any other account as it is', async () => {
-    const { shortPocketName } = await import('./list-model');
-    expect(shortPocketName('Cash · TRY')).toBe('TRY');
-    expect(shortPocketName('Valas Plus · USD')).toBe('USD');
-    expect(shortPocketName('BCA Tahapan')).toBe('BCA Tahapan');
-    expect(shortPocketName('Kas · kecil')).toBe('Kas · kecil');
+describe('currency pockets on a row', () => {
+  const at = '2026-10-20';
+  const acct = (id: string, name: string, subtype: string, extra: Partial<AccountRow> = {}) =>
+    ({ id, name, kind: 'asset', subtype, currency: 'IDR', parentId: null, archivedAt: null, systemKey: null, sortOrder: 0, ...extra }) as unknown as AccountRow;
+  const accounts = [
+    acct('cash', 'Cash', 'cash'), acct('cash-try', 'Cash · TRY', 'cash', { parentId: 'cash', currency: 'TRY' }),
+    acct('bank', 'Valas Plus', 'bank'), acct('bank-usd', 'Valas Plus · USD', 'bank', { parentId: 'bank', currency: 'USD' }),
+    acct('food', 'Food', 'food'),
+  ];
+  const spend = (id: string, from: string, fromName: string, currency: string) =>
+    ({ id, occurredOn: at, description: 'Lunch', status: 'posted', cardId: null, createdAt: at, billMonth: null,
+       entries: [
+         { accountId: from, accountName: fromName, accountKind: 'asset', amountMinor: -1000, currency, amountBaseMinor: -1000 },
+         { accountId: 'food', accountName: 'Food', accountKind: 'expense', amountMinor: 1000, currency, amountBaseMinor: 1000 },
+       ] }) as unknown as TransactionView;
+  it('names a cash pocket by its currency alone, and a bank pocket by its currency with the bank account number', () => {
+    const rows = buildRows([spend('t1', 'cash-try', 'Cash · TRY', 'TRY'), spend('t2', 'bank-usd', 'Valas Plus · USD', 'USD')], [], accounts, [], { bank: '0917' }) as ListRow[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(paidWithLook(byId.get('t1')!)).toEqual({ name: 'TRY', last4: null });
+    expect(paidWithLook(byId.get('t2')!)).toEqual({ name: 'USD', last4: '0917' });
   });
 });
