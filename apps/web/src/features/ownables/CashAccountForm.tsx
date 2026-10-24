@@ -62,7 +62,7 @@ function BankNameRow({
         <span className="flex min-w-0 max-w-[55%] shrink items-center gap-[6px]">
           {/* As wide as its text, so the › sits right after the bank: an unseen copy of the text sets the width. */}
           <span className="inline-grid min-w-0">
-            <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[16px] leading-[20px] md:text-[15px]">
+            <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[17px] leading-[22px] md:text-[15px]">
               {bank || 'Bank'}
             </span>
             <input
@@ -80,7 +80,7 @@ function BankNameRow({
               autoComplete="off"
               autoCapitalize="words"
               placeholder="Bank"
-              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink)] md:text-[15px]"
+              className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink)] md:text-[15px]"
             />
           </span>
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
@@ -93,7 +93,7 @@ function BankNameRow({
           onChange={(e) => onName(e.target.value)}
           placeholder="Account name"
           required
-          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+          className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
       <KeyboardStrip
@@ -199,7 +199,7 @@ function RateField({ label, value, onChange }: { label: string; value: string; o
         onChange={(e) => onChange(e.target.value)}
         inputMode="decimal"
         placeholder="Rate"
-        className="ph-focus min-w-[56px] flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+        className="ph-focus min-w-[56px] flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink-2)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
       />
       <span aria-hidden className="h-[24px] w-[0.5px] shrink-0 bg-[var(--ph-hair)]" />
     </>
@@ -307,7 +307,7 @@ function MoneyRow({
     <div className="relative">
       {position?.separator && hairline}
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
-        <span className="flex shrink-0 items-center gap-[6px] text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]">
+        <span className="flex shrink-0 items-center gap-[6px] text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px]">
           <span aria-hidden>{currencyFlag(currency)}</span>
           <CurrencyCode label={currencyLabel} value={currency} onChange={onCurrency} codes={CURRENCIES} className="font-medium text-[var(--ph-ink)]" />
           <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">
@@ -323,7 +323,7 @@ function MoneyRow({
           inputMode="decimal"
           placeholder="Amount"
           style={{ width: amountWidth(balance) }}
-          className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+          className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
