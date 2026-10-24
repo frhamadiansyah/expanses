@@ -139,6 +139,15 @@ export async function walletViews(page: Page) {
   await expect(page.getByTestId('wallet-carousel')).toBeVisible();
   await expect(page.getByTestId('wallet-grid')).toHaveCount(0);
   await expect(page.getByTestId('wallet-dot')).toHaveCount(2);
+  // The carousel is the cards alone: no Balance box over it, and no eye.
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
+  // On a phone the strip runs to the screen's edges, so the next card peeks in from the edge, not cut at the gutter.
+  if (page.viewportSize()!.width < 768) {
+    const strip = (await page.getByTestId('wallet-strip').boundingBox())!;
+    expect(Math.round(strip.x)).toBe(0);
+    expect(Math.round(strip.width)).toBe(page.viewportSize()!.width);
+  }
   await expect(page.getByTestId('wallet-dot').nth(0)).toHaveAttribute('aria-current', 'true');
   await expect(wall.getByTestId('wallet-facts')).toContainText('Everyday');
   const recent = page.getByTestId('wallet-recent');

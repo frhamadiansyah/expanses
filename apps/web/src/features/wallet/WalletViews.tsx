@@ -108,7 +108,12 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
   const scale = (cardWidth ?? CARD_W) / CARD_W;
   const height = cardHeightFor(cardWidth ?? CARD_W);
   const step = (cardWidth ?? CARD_W) + GAP;
-  const pad = width !== null && cardWidth !== null ? (width - cardWidth) / 2 : PEEK;
+  /*
+   * On a phone the strip runs edge to edge, out through the screen's 16 px gutter, so the cards either side peek in
+   * from the screen's own edges rather than being cut off at the column's: the padding centres a card in the wider strip.
+   */
+  const BLEED = phone ? 16 : 0;
+  const pad = width !== null && cardWidth !== null ? (width + 2 * BLEED - cardWidth) / 2 : PEEK + BLEED;
 
   const [current, setCurrent] = useState(0);
   const index = Math.min(current, Math.max(cards.length - 1, 0));
@@ -128,7 +133,7 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
           onScroll={onScroll}
           data-testid="wallet-strip"
           className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={{ gap: GAP, paddingInline: pad, scrollPaddingInline: pad }}
+          style={{ gap: GAP, paddingInline: pad, scrollPaddingInline: pad, marginInline: -BLEED }}
         >
           {cardWidth !== null &&
             cards.map((card, i) => (

@@ -116,12 +116,14 @@ function MenuLine({ action }: { action: CornerAction }) {
 export function CornerMenu({ label, glyph, actions }: { label: string; glyph: ReactNode; actions: CornerAction[] }) {
   const [open, setOpen] = useState(false);
   // Where the menu hangs: under the button's own corner, read as the menu opens.
+  // Set only for a button in the pinned bar (see below); everywhere else the menu hangs from the button itself.
   const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const anchor = useRef<HTMLSpanElement>(null);
   useEscape(() => setOpen(false), open);
   const toggle = () => {
     if (!open) {
-      const rect = anchor.current?.getBoundingClientRect();
+      const node = anchor.current;
+      const rect = node?.closest('.ph-edge-glass') ? node.getBoundingClientRect() : null;
       setAt(rect ? { top: rect.bottom + 6, right: Math.max(16, window.innerWidth - rect.right) } : null);
     }
     setOpen((was) => !was);
@@ -132,19 +134,22 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
         {glyph}
       </CornerButton>
       {/*
-       * The menu is drawn at the top of the document, fixed under the button, rather than inside the button's own
-       * corner: scrolled past the title, the corner lives in the pinned bar's copy of the row, whose glass fades to
-       * nothing a few pixels under it — a menu hanging there was masked away with it.
+       * Scrolled past the title, the corner lives in the pinned bar's copy of the row, whose glass fades to nothing a
+       * few pixels under it — a menu hanging there was masked away with it. From there the menu is drawn on the body,
+       * fixed under the button; anywhere else it hangs from the button, inside the page it belongs to.
        */}
-      {open && createPortal(
+      {open && (at ? (body: ReactNode) => createPortal(body, document.body) : (body: ReactNode) => body)(
         <>
           {/* A tap anywhere else puts the menu away, the way a tap outside a sheet does. */}
-          <span className="fixed inset-0 z-[40]" onClick={() => setOpen(false)} role="presentation" />
+          <span className={cx('fixed inset-0', at ? 'z-[40]' : 'z-10')} onClick={() => setOpen(false)} role="presentation" />
           <span
             role="menu"
             aria-label={label}
-            style={{ top: at?.top ?? 60, right: at?.right ?? 16 }}
-            className="fixed z-[41] block w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]"
+            style={at ? { top: at.top, right: at.right } : undefined}
+            className={cx(
+              'block w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]',
+              at ? 'fixed z-[41]' : 'absolute right-0 z-20 mt-[6px]',
+            )}
           >
             {actions.map((action) => {
               const item = cx(
@@ -185,7 +190,6 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
             })}
           </span>
         </>,
-        document.body,
       )}
     </span>
   );

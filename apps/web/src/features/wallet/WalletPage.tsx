@@ -117,9 +117,8 @@ export function WalletPage() {
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
-  // The pile is the cards and nothing else: the Balance box and its eye belong to the grid and the carousel, whose
-  // faces print no figure of their own.
-  const boxed = view !== 'stack';
+  // The pile and the carousel are the cards and nothing else: the Balance box and its eye belong to the grid alone.
+  const boxed = view === 'grid';
   const [hidden, setHidden] = useState(() => readBalanceHidden());
   const toggleBalance = () =>
     setHidden((was) => {
@@ -283,7 +282,7 @@ export function WalletPage() {
   }
 
   /*
-   * The corners: the eye (grid and carousel only), the View button beside it — a tap steps pile, grid, one at a time —
+   * The corners: the eye (grid only), the View button beside it — a tap steps pile, grid, one at a time —
    * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
    * which wait behind the ⋯.
    */
