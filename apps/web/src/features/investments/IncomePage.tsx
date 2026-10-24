@@ -4,7 +4,8 @@ import { useId, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox } from '../../ui';
-import { GROUP_RADIUS, Hero, InsetGroup, InsetRow, Panel, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { BalanceCard } from '../accounts/BalanceCard';
 import { ShareBar } from '../networth/ShareBar';
 import { useAssetValues, useBondCoupons, usePeriodFlows, useTrades } from '../networth/queries';
 import { useDividendHistory } from '../prices/yahoo';
@@ -31,18 +32,18 @@ function Swatch({ className }: { className: string }) {
 }
 
 /**
- * One of the two figures under the hero, side by side: a small label in the quiet ink over the money in bold, on the
- * group's own surface — the shape a card's Owed tile takes. The figure is named by its label, as a read-only row's is,
- * so a screen reader (and a test) finds "Received this year" and hears its value.
+ * One of the two figures inside the hero, under its bars: a small label in the quiet ink over the money, two to a row
+ * — the shape an asset's card gives its four figures (`NumberGrid`). The figure is named by its label, as a read-only
+ * row's is, so a screen reader (and a test) finds "Received this year" and hears its value.
  */
-function Tile({ label, minor, currency }: { label: string; minor: number; currency: string }) {
+function Figure({ label, minor, currency }: { label: string; minor: number; currency: string }) {
   const id = useId();
   return (
-    <div className="min-w-0 bg-[var(--ph-surface)] px-[13px] py-[10px]" style={{ borderRadius: GROUP_RADIUS }}>
-      <span id={id} className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+    <div className="min-w-0">
+      <span id={id} className="block truncate text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
         {label}
       </span>
-      <span aria-labelledby={id} className="tabular block truncate text-[19px] leading-[24px] font-bold tracking-[-0.01em] text-[var(--ph-ink)]">
+      <span aria-labelledby={id} className="tabular block truncate text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">
         {formatMinor(minor, currency)}
       </span>
     </div>
@@ -62,9 +63,10 @@ function monthLine(m: DividendMonth, currency: string): { subtitle?: string; val
 
 /**
  * Income: what the shares and bonds held today pay. The hero is a year of dividends and coupons at today's holdings,
- * with this year's twelve months drawn under it — paid months in the tint, months still to come faint. Under it, what
- * has been received this year and what is still to come, side by side; then the two yields and the share of a year's
- * spending the income would cover; then who pays it. Each stock's history is Yahoo's, read once a day on this device;
+ * with this year's twelve months drawn under it — paid months in the tint, months still to come faint — and, in the
+ * same card, what has been received this year and what is still to come, side by side. The card is drawn as every
+ * card's figure is (`BalanceCard`), read from the left rather than centred (owner, 24 Oct). Then the two yields and
+ * the share of a year's spending the income would cover; then who pays it. Each stock's history is Yahoo's, read once a day on this device;
  * a bond's coupons come from the terms on its Settings.
  *
  * The year's two trade figures that opened this page (what the sells realized, what was recorded as paid) left with
@@ -174,24 +176,25 @@ export function IncomePage() {
       {listed.length + bonds.length > 0 && !view && <Empty>Reading dividend history…</Empty>}
       {view && received !== null && listed.length + bonds.length > 0 && (
         <>
-          {/* The hero card: the year's figure, and under it the twelve months it is spread over. */}
-          <Panel testId="dividends-year">
-            <Hero
-              label="A year, at today's holdings"
-              minor={view.yearMinor}
-              currency={base}
-              plain
-              align="center"
-              caption={`${formatMinor(Math.round(view.yearMinor / 12), base)} a month · estimate, before tax`}
-            />
-            <IncomeBars months={view.months} onOpen={() => setMonths(true)} />
-          </Panel>
-
-          {/* The year so far, split in two: what has come in and what the pattern still owes. */}
-          <div className="grid grid-cols-2 gap-3 md:max-w-2xl" style={{ marginBottom: 18 }}>
-            <Tile label="Received this year" minor={received} currency={base} />
-            <Tile label="Still to come" minor={view.toComeMinor} currency={base} />
-          </div>
+          {/*
+           * The hero, as every figure in a card is drawn (Wallet's Balance, an asset's Value now): the label and the
+           * year's figure from the left, the month under it, the twelve months it is spread over under a dashed rule,
+           * and the year so far split in two under another — what has come in and what the pattern still owes.
+           */}
+          <BalanceCard
+            label="A year, at today's holdings"
+            minor={view.yearMinor}
+            currency={base}
+            series={null}
+            testId="dividends-year"
+            caption={`${formatMinor(Math.round(view.yearMinor / 12), base)} a month · estimate, before tax`}
+            chart={<IncomeBars months={view.months} onOpen={() => setMonths(true)} />}
+          >
+            <div className="grid grid-cols-2 gap-x-4 border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">
+              <Figure label="Received this year" minor={received} currency={base} />
+              <Figure label="Still to come" minor={view.toComeMinor} currency={base} />
+            </div>
+          </BalanceCard>
 
           <InsetGroup>
             <ReadOnlyRow label="Yield on cost" value={percent(view.yieldOnCostBps)} />
