@@ -55,11 +55,19 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
-  await page.getByLabel('Current balance', { exact: true }).pressSequentially('1800.00');
+  const balance = page.getByLabel('Current balance', { exact: true });
+  // No currency to change until there is a figure: the symbol before it is the control.
+  await expect(page.getByRole('button', { name: /^Currency: / })).toHaveCount(0);
+  await balance.pressSequentially('1800');
+  await expect(balance).toHaveValue('1.800');
   // Exact: "Multi-currency" is on this form too.
-  // Typed as its code rather than scrolled for.
-  await page.getByLabel('Currency', { exact: true }).fill('usd');
-  await expect(page.getByLabel('Currency', { exact: true })).toHaveValue('USD');
+  await page.getByRole('button', { name: 'Currency: IDR', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^USD / }).first().click();
+  await expect(page.getByRole('button', { name: 'Currency: USD', exact: true })).toBeVisible();
+  // The figure typed stands, now read in dollars, and takes its cents after a comma.
+  await expect(balance).toHaveValue('1.800');
+  await balance.fill('1800,00');
+  await expect(balance).toHaveValue('1.800,00');
   await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('15720');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expectWalletFigure(page, 'Dollar Saver', '1.800,00');

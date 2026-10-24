@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
-import { setCurrency } from './currency-field';
+import { setBalanceCurrency, setCurrency } from './currency-field';
 import { todayIn } from './today';
 
 /**
@@ -126,7 +126,8 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
   } else {
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
   }
-  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
+  // The currency is the symbol before the balance, picked before the figure is typed so the figure is read in it.
+  if (o.currency && o.currency !== 'IDR') await setBalanceCurrency(page, o.currency);
   if (o.balance) await page.getByLabel('Current balance', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);

@@ -264,7 +264,7 @@ test('a loan in another currency is printed in its own currency, and the monthly
 test('an extra payment reads its penalty in the loan’s own money, cents and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // A dollar account to pay from, and a dollar loan with the terms its schedule is worked out from.
-  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD', balance: '2400.00', rate: '16250' });
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD', balance: '2400,00', rate: '16250' });
   await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '20000.00', rate: '16250' });
 
   // The terms are written on the loan's own page; the list is how the loan is reached.
