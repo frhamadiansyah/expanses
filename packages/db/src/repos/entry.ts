@@ -1,7 +1,7 @@
-import { merchantKey, UNCATEGORISED } from '@expanses/core';
-import { and, desc, eq, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { capturedCategory, merchantKey, UNCATEGORISED } from '@expanses/core';
+import { and, desc, eq, isNull, like, notInArray, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { eventOnlyExists, notShareCategory } from './event-only';
 
@@ -73,6 +73,59 @@ export async function guessCategoryFromHistory(
     if (seen.split(' ')[0] === first) byFirstWord.add(category);
   }
   return byFirstWord.size === 1 ? [...byFirstWord][0]! : null;
+}
+
+/**
+ * The category a captured payment is filed under before anyone sees it: what the same merchant was recorded under
+ * lately in this workspace, as `capturedCategory` reads it (the newest of the last three, when the others do not
+ * disagree), or null.
+ *
+ * Asked inside the capture's own transaction, so it takes the database handle that is running. The history is narrowed
+ * to notes holding the merchant's first word before it is read, so a backlog of captures reads only its merchants'
+ * rows rather than a year of spending each. An archived category is put away, never filed into; Uncategorised and a
+ * shared event's share categories are no evidence, as for a typed note.
+ */
+export async function capturedCategoryFromHistory(
+  db: Db,
+  ws: WorkspaceContext,
+  description: string,
+  kind: 'expense' | 'income',
+): Promise<string | null> {
+  const key = merchantKey(description);
+  if (!key) return null;
+  const first = key.split(' ')[0]!;
+  const shareCategories = !ws.bookId && (await eventOnlyExists(db));
+  const rows = await db
+    .select({ transactionId: transactions.id, description: transactions.description, categoryId: entries.accountId })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(
+      and(
+        eq(entries.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        eq(accounts.kind, kind),
+        isNull(accounts.archivedAt),
+        notUncategorised,
+        // SQLite's LIKE folds ASCII case only, so a name with any other letter is matched in full below instead.
+        ...(/^[a-z ]+$/.test(key) ? [like(transactions.description, `%${first}%`)] : []),
+        ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+        ...(shareCategories ? [notShareCategory(entries.accountId)] : []),
+      ),
+    )
+    .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+    .limit(HISTORY_LIMIT);
+  const perTransaction = new Map<string, { description: string; categories: Set<string> }>();
+  for (const row of rows) {
+    const seen = perTransaction.get(row.transactionId) ?? { description: row.description, categories: new Set<string>() };
+    seen.categories.add(row.categoryId);
+    perTransaction.set(row.transactionId, seen);
+  }
+  // A purchase split across categories says nothing about any one of them.
+  const history = [...perTransaction.values()].flatMap(({ description: seen, categories }) =>
+    categories.size === 1 ? [{ description: seen, categoryId: [...categories][0]! }] : [],
+  );
+  return capturedCategory(description, history);
 }
 
 /** A note written before, offered back while a new one is typed, with the category it was last filed under. */

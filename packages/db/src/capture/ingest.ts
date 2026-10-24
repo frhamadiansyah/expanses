@@ -15,6 +15,7 @@ import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
+import { capturedCategoryFromHistory } from '../repos/entry';
 import { accounts, transactions, workspaces } from '../schema';
 import { cards } from '../schema-cards';
 import { captureSettings, captureSkipped } from '../schema-capture';
@@ -157,6 +158,24 @@ function directionOf(type: Reading['type']['value']): 'out' | 'in' {
 }
 
 /**
+ * The category a capture arrives with: the one its merchant was recorded under lately (`capturedCategoryFromHistory`),
+ * so "KOPI KENANGAN" from a bank's message is Cafe in the queue at once, as typing the note "Kopi Kenangan" fills it
+ * on the Add form. It is only a draft's starting answer: the queue shows it, and the owner changes it there.
+ *
+ * Only a capture that read a merchant has one to look up — with no name the note is the message's heading
+ * ("Pembayaran berhasil"), which every nameless payment shares. The note as written is tried first, since an earlier
+ * capture of the same app and shop was recorded under it ("KANTONG Lazada Indonesia"); then the merchant alone, as a
+ * note typed by hand names it.
+ */
+async function remembered(tx: Db, ws: WorkspaceContext, description: string, merchant: string | null, kind: 'expense' | 'income'): Promise<string | null> {
+  const name = merchant?.trim();
+  if (!name) return null;
+  const found = await capturedCategoryFromHistory(tx, ws, description, kind);
+  if (found || name === description) return found;
+  return capturedCategoryFromHistory(tx, ws, name, kind);
+}
+
+/**
  * What one capture becomes, in the draft's own terms.
  *
  * The conventions are the import's, which the queue already keeps: a figure is positive when money left the account
@@ -206,22 +225,24 @@ export async function planDraft(
           ? read.minor * 10 ** exponentOf(currency)
           : read.minor;
   const printed = reading.occurredAt?.value ?? null;
+  const kind = type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income';
+  const description = descriptionOf(capture, source, reading, throughApp);
 
   return {
     workspace,
     draft: {
       source: capture.kind === 'notification' ? 'notification' : capture.kind === 'screen' ? 'screen' : 'photo',
-      kind: type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income',
+      kind,
       // The day where the owner was, from the offset the capture was stamped with — never the UTC day.
       occurredOn: printed?.slice(0, 10) || capturedDayOf(capture.capturedAt) || opts.today,
-      description: descriptionOf(capture, source, reading, throughApp),
+      description,
       // Leaving is positive, arriving is negative: the one convention every other draft already keeps.
       amountMinor: directionOf(type) === 'out' ? amountMinor : -amountMinor,
       exactHundredths: exact,
       currency,
       accountId: type === 'topup' ? (card?.id ?? null) : (account?.id ?? null),
       toAccountId: type === 'topup' ? (learned?.id ?? null) : null,
-      categoryAccountId: null,
+      categoryAccountId: kind === 'transfer' ? null : await remembered(tx, workspace, description, reading.name?.value ?? null, kind),
       sourceId: source.id,
       captureIds: [capture.id],
       imageFile: capture.imageFile,

@@ -1,4 +1,4 @@
-import type { CaptureLine, RawCapture } from '@expanses/core';
+import { type CaptureLine, expenseLines, type RawCapture } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getCaptureScope, ingestCaptures, purgeCaptureLeftovers, purgeCaptures, setCaptureScope } from '../src/capture/ingest';
 import { bringBack, listSkipped } from '../src/capture/skipped';
@@ -15,6 +15,7 @@ import {
   countPendingDrafts,
   createAccount,
   createWorkspace,
+  postTransaction,
   type WorkspaceContext,
   addCard,
   setAccountNumberLast4,
@@ -215,6 +216,75 @@ describe('a capture becomes a draft', () => {
     const rows = await database.db.select().from(draftTransactions);
     expect(rows.at(-1)).toMatchObject({ workspaceId: other.workspaceId, accountId: theirs.id });
     expect(await draftsOf(database, other)).toHaveLength(1);
+  });
+});
+
+describe('a capture of a merchant recorded before', () => {
+  async function filed() {
+    const t = await workspace();
+    const all = await listAccounts(t.database, t.ws);
+    const key = (k: string) => all.find((a) => a.systemKey === k)!.id;
+    const spend = (occurredOn: string, description: string, category: string) =>
+      postTransaction(t.database, t.ws, {
+        occurredOn,
+        description,
+        lines: expenseLines({ categoryAccountId: key(category), paymentAccountId: t.bank.id, amountMinor: 41_000, currency: 'IDR' }),
+      });
+    await answer(t.database, t.ws, at('08:00'), t.bank.id);
+    return { ...t, key, spend };
+  }
+  const paidAt = (time: string, merchant: string) => at(time, { body: `Pembayaran Rp41.000 berhasil. Merchant: ${merchant}` });
+
+  it('arrives filed under the category the merchant was last recorded with, ready to record', async () => {
+    const { database, ws, key, spend } = await filed();
+    await spend('2026-09-12', 'Kedai Senja', 'food_beverage.cafe_dessert');
+    await spend('2026-09-20', 'Roti Pagi', 'household.groceries');
+
+    await ingestCaptures(database, ws, [paidAt('09:30', 'QRIS KEDAI SENJA')], { today: DAY });
+
+    const [draft] = await draftsOf(database, ws);
+    expect(draft).toMatchObject({ description: 'QRIS KEDAI SENJA', categoryAccountId: key('food_beverage.cafe_dessert') });
+    // Nothing is left to ask: the account and the category are both there, and it records as it stands.
+    await confirmDraft(database, ws, draft!.id);
+    expect(await countPendingDrafts(database, ws)).toBe(0);
+  });
+
+  it('arrives with no category for a merchant never recorded, or a payment that names no merchant', async () => {
+    const { database, ws, spend } = await filed();
+    await spend('2026-09-12', 'Kedai Senja', 'food_beverage.cafe_dessert');
+    // A note that is only the message's heading is no merchant: every nameless payment would share it.
+    await spend('2026-09-13', 'Bank', 'food_beverage.cafe_dessert');
+
+    await ingestCaptures(database, ws, [paidAt('09:30', 'ROTI PAGI'), at('09:40', { body: 'Pembayaran Rp27.500 berhasil' })], { today: DAY });
+
+    const drafts = await draftsOf(database, ws);
+    expect(drafts.map((d) => [d.description, d.categoryAccountId])).toEqual([
+      ['ROTI PAGI', null],
+      ['Bank', null],
+    ]);
+  });
+
+  it('leaves the category for the owner when the merchant’s last records disagree', async () => {
+    const { database, ws, key, spend } = await filed();
+    await spend('2026-09-10', 'Kedai Senja', 'food_beverage.cafe_dessert');
+    await spend('2026-09-12', 'Kedai Senja', 'food_beverage.restaurants');
+
+    await ingestCaptures(database, ws, [paidAt('09:30', 'KEDAI SENJA')], { today: DAY });
+    expect((await draftsOf(database, ws))[0]!.categoryAccountId).toBeNull();
+
+    // Restaurants twice of the last three agrees with the newest.
+    await spend('2026-09-14', 'kedai senja', 'food_beverage.restaurants');
+    await ingestCaptures(database, ws, [paidAt('09:50', 'KEDAI SENJA')], { today: DAY });
+    expect((await draftsOf(database, ws)).map((d) => d.categoryAccountId)).toEqual([null, key('food_beverage.restaurants')]);
+  });
+
+  it('never files into a category that has been archived since', async () => {
+    const { database, ws, key, spend } = await filed();
+    await spend('2026-09-12', 'Kedai Senja', 'food_beverage.cafe_dessert');
+    await archiveAccount(database, ws, key('food_beverage.cafe_dessert'));
+
+    await ingestCaptures(database, ws, [paidAt('09:30', 'KEDAI SENJA')], { today: DAY });
+    expect((await draftsOf(database, ws))[0]!.categoryAccountId).toBeNull();
   });
 });
 
