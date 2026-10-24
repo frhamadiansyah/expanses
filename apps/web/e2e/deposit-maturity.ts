@@ -76,17 +76,17 @@ export async function typeInto(page: Page, label: string, text: string) {
 
 export async function addMoneyAccount(
   page: Page,
-  o: { kind: 'Current account' | 'Time deposit'; name: string; balance: string; currency: 'IDR' | 'USD'; fx?: string; opened: string; matures?: string; rate?: string },
+  o: { kind: 'Current account' | 'Time deposit'; name: string; balance: string; currency: 'IDR' | 'USD'; fx?: string; matures?: string; rate?: string },
 ) {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: o.kind }).click();
   await typeInto(page, 'Name', o.name);
-  await typeInto(page, 'Balance now', o.balance);
+  await typeInto(page, 'Current balance', o.balance);
   if (o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.fx) await typeInto(page, `Rate: IDR per 1 ${o.currency}`, o.fx);
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures); // a date input only takes a whole date
   if (o.rate) await typeInto(page, 'Interest rate', o.rate);
-  await page.getByLabel('Balance as of').fill(o.opened);
+  // No day is asked: the balance is the clock's today, which `setUp` has already set to the opening day.
   await page.getByRole('button', { name: 'Add account' }).click();
   /*
    * The form navigates once the write is done, so that is what the save is waited for first: a current account to
@@ -110,8 +110,8 @@ export async function setUp(page: Page, currency: 'IDR' | 'USD') {
   const s = SETUP[currency];
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await page.clock.setSystemTime(at(s.opened));
-  await addMoneyAccount(page, { kind: 'Current account', name: s.payoutName, balance: s.payoutBalance, currency, fx: s.fx, opened: s.opened });
-  await addMoneyAccount(page, { kind: 'Time deposit', name: s.depositName, balance: s.depositBalance, currency, fx: s.fx, opened: s.opened, matures: s.matures, rate: s.rate });
+  await addMoneyAccount(page, { kind: 'Current account', name: s.payoutName, balance: s.payoutBalance, currency, fx: s.fx });
+  await addMoneyAccount(page, { kind: 'Time deposit', name: s.depositName, balance: s.depositBalance, currency, fx: s.fx, matures: s.matures, rate: s.rate });
   return s;
 }
 

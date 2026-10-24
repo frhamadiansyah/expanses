@@ -55,7 +55,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
-  await page.getByLabel('Balance now', { exact: true }).pressSequentially('1800.00');
+  await page.getByLabel('Current balance', { exact: true }).pressSequentially('1800.00');
   // Exact: "Multi-currency" is on this form too.
   // Typed as its code rather than scrolled for.
   await page.getByLabel('Currency', { exact: true }).fill('usd');
@@ -170,12 +170,13 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
 
 test('a rate missing only for an earlier month leaves today’s net worth standing (M1)', async ({ page }, testInfo) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  const earlier = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+  // The form asks no day — its balance is today's — so the account is opened with the clock sixty days back.
+  const now = new Date();
+  await page.clock.setSystemTime(new Date(now.getTime() - 60 * 86_400_000));
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Old Valas');
   await page.getByLabel('Multi-currency', { exact: true }).check();
-  await page.getByLabel('Balance as of').fill(earlier);
   await setCurrency(page.getByLabel('Pocket 1', { exact: true }), 'IDR');
   await page.getByLabel('Opening IDR', { exact: true }).pressSequentially('5400000');
   await setCurrency(page.getByLabel('Pocket 2', { exact: true }), 'USD');
@@ -183,8 +184,10 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(walletCard(page, 'Old Valas')).toBeVisible();
+  await page.clock.setSystemTime(new Date());
 
   // Every dollar moved to rupiah today, at the last-known rate: today the account holds no USD at all.
+  await page.goto('/wallet');
   await walletCard(page, 'Old Valas').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('From').selectOption('USD');

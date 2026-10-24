@@ -5,7 +5,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { useAccountNumberLast4 } from '../cards/card-queries';
-import { readAccountNumberLast4 } from './wallet-last4';
+import { last4Field, readAccountNumberLast4 } from './wallet-last4';
 
 /**
  * A bank account's number, by its last four digits, on its settings: what its alerts name it by ("rek ****1234") and its
@@ -40,12 +40,13 @@ function BankNumberRow({ accountId, saved }: { accountId: string; saved: string 
   return (
     <>
       <InsetGroup header="Account number" footer="Shown on this account's transactions, and how bank alerts that name it are filed here.">
+        {/* "Last 4 digits" under the group's "Account number", not "Account number" again: this page's tax group
+            further down already has an "Account number" row, the whole number the tax report prints. */}
         <TextRow
-          label="Last 4 digits of account number"
+          label="Last 4 digits"
           value={typed}
-          onChange={(e) => setTyped(e.target.value)}
+          {...last4Field(setTyped)}
           onBlur={() => void save()}
-          inputMode="numeric"
           placeholder="None"
           className="tabular"
           hint={read.ok ? undefined : read.error}

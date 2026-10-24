@@ -360,7 +360,7 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByRole('menuitem', { name: 'Money account' }).click();
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
-  await page.getByLabel('Balance now', { exact: true }).pressSequentially('1000000');
+  await page.getByLabel('Current balance', { exact: true }).pressSequentially('1000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(walletCard(page, 'Entered after the update')).toBeVisible();
 

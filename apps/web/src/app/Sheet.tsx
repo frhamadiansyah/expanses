@@ -1,5 +1,6 @@
 import { Check, ChevronLeft, Plus, Search, X } from 'lucide-react';
 import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useKeyboardInset } from '../ui/native/KeyboardStrip';
 import { type Detent, landing } from './sheet-detents';
 import { usePhone } from './use-phone';
 import { useEscape } from './use-escape';
@@ -110,6 +111,33 @@ export function Sheet({
   // Only a tap that both starts and ends on the scrim closes the sheet: a drag let go of outside the sheet does not.
   const scrimDown = useRef(false);
 
+  /*
+   * The keyboard is the sheet's to make room for, not WebKit's. Left to itself, iOS scrolls the window to reveal a
+   * field it focuses — but only a field its own heuristic agrees to reveal, and the window is not what holds the
+   * sheet: the sheet is fixed to the bottom of the layout viewport, which the keyboard covers. A field WebKit chose
+   * to reveal dragged the whole sheet up with the window; one it passed over left the sheet under the keyboard. The
+   * currency code was one: a field one code wide that selects its own text as it takes the focus, beside an amount
+   * field on the same row that WebKit did reveal.
+   *
+   * So the sheet stands on the keyboard itself, by however much of the window the keyboard still covers — what
+   * WebKit already scrolled is not counted twice, since the inset is read from where the window was left — and a
+   * field focused in it is scrolled into the sheet's own view. Every field in a sheet then behaves the same, whatever
+   * kind of field it is. On a desktop there is no keyboard, the inset is zero, and nothing here moves.
+   */
+  const keyboard = useKeyboardInset();
+  const reveal = (field: Element | null) => {
+    if (keyboard === 0 || !(field instanceof HTMLElement) || field === panel.current || !panel.current?.contains(field)) return;
+    // `nearest` moves the sheet's list only as far as the field needs; the stylesheet's scroll margin keeps it clear
+    // of a strip of suggestions riding on the keyboard too.
+    field.scrollIntoView({ block: 'nearest' });
+  };
+  useEffect(() => {
+    // The keyboard arriving (or changing height) after the field took the focus: reveal the field once it has.
+    reveal(document.activeElement);
+    // Only the keyboard's height decides this: the field is read fresh from the document each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboard]);
+
   useEscape(onClose);
 
   useEffect(() => {
@@ -133,6 +161,8 @@ export function Sheet({
   return (
     <div
       className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
+      // The sheet rests on the keyboard's top edge rather than on the bottom of the window the keyboard covers.
+      style={keyboard > 0 ? { paddingBottom: keyboard } : undefined}
       onPointerDown={(e) => {
         scrimDown.current = e.target === e.currentTarget;
       }}
@@ -149,10 +179,15 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
+        // Focus moving from one field to the next while the keyboard is already up: the next one is revealed too.
+        onFocus={(event) => reveal(event.target)}
         className={`${detents ? (dragged === null ? 'transition-[height] duration-300 ease-out' : '') : tall ? 'h-[85dvh] md:h-[80dvh]' : ''} ${detents ? '' : 'max-h-[85dvh]'} w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
         style={{
           paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
           ...(detents ? { height: dragged ?? (detent === 'large' ? '92dvh' : '50dvh') } : {}),
+          // Standing on the keyboard, the sheet is no taller than what is left above it, under the status bar: a
+          // large detent would otherwise push its own header off the top. Its rows scroll inside it meanwhile.
+          ...(keyboard > 0 ? { maxHeight: 'calc(100% - env(safe-area-inset-top))' } : {}),
         }}
         data-detent={detents ? detent : undefined}
       >

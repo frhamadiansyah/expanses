@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openSettings, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
+import { pasteInto } from './paste';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
 
@@ -122,12 +123,16 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
     name: 'Kantong Biru',
     balance: '500000',
     extra: async (p) => {
-      const digits = p.getByLabel('Last 4 digits of phone');
+      const digits = p.getByLabel('Phone number', { exact: true });
       // Anything but four digits is refused in words.
       await digits.fill('55');
       await expect(p.getByText('The last 4 digits of the phone number are four numbers, like 5521.')).toBeVisible();
+      await expect(digits).toHaveAttribute('inputmode', 'numeric');
+      await expect(digits).toHaveAttribute('placeholder', 'Last 4 digits');
       // A whole number pasted in keeps its last four, never the carrier's prefix.
-      await digits.fill('0812-3456-5521');
+      await digits.fill('');
+      await pasteInto(digits, '0812-3456-5521');
+      await expect(digits).toHaveValue('5521');
       await expect(p.getByText('The last 4 digits of the phone number are four numbers, like 5521.')).toHaveCount(0);
     },
   });
@@ -155,7 +160,7 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
   await page.goto('/wallet');
   await walletCard(page, 'Kantong Biru').click();
   await openSettings(page);
-  const digits = page.getByLabel('Last 4 digits of phone');
+  const digits = page.getByLabel('Last 4 digits', { exact: true });
   await expect(digits).toHaveValue('5521');
   await digits.fill('7310');
   await digits.blur();

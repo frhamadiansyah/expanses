@@ -456,6 +456,86 @@ test('New account offers currencies over the keyboard, not in a floating bubble'
   await expect(strip).toHaveCount(0);
 });
 
+test('New account asks no day: one Current balance row, its code just before its amount, for every kind', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  const step = page.getByRole('dialog', { name: 'New account' });
+  const type = step.getByLabel('Type');
+  const kinds = await type.locator('option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+  expect(kinds.length).toBeGreaterThan(1);
+  for (const kind of kinds) {
+    await type.selectOption(kind);
+    await expect(step.getByLabel('Balance as of')).toHaveCount(0);
+    await expect(step.getByText('Current balance', { exact: true })).toBeVisible();
+    // Read left to right on the one row: the label, then the code, then the amount.
+    const label = (await step.getByText('Current balance', { exact: true }).boundingBox())!;
+    const code = (await step.getByLabel('Currency', { exact: true }).boundingBox())!;
+    const amount = (await step.getByLabel('Current balance', { exact: true }).boundingBox())!;
+    expect(Math.abs(code.y + code.height / 2 - (amount.y + amount.height / 2))).toBeLessThan(4);
+    expect(label.x + label.width).toBeLessThan(code.x);
+    expect(code.x + code.width).toBeLessThanOrEqual(amount.x);
+  }
+
+  // The code is still typed to change it, and a foreign one asks its opening rate on a row of its own under it.
+  await type.selectOption(kinds[0]!);
+  await step.getByLabel('Name', { exact: true }).fill('Wise');
+  await step.getByLabel('Currency', { exact: true }).fill('USD');
+  const rateField = step.getByLabel('Rate: IDR per 1 USD', { exact: true });
+  await expect(rateField).toBeVisible();
+  await expect(rateField).toHaveAttribute('placeholder', 'IDR per 1 USD');
+  const rate = (await rateField.boundingBox())!;
+  const code = (await step.getByLabel('Currency', { exact: true }).boundingBox())!;
+  expect(rate.y).toBeGreaterThan(code.y + code.height);
+  // Nothing on the row runs past the sheet's edge at a phone's width, a long figure and a rate both typed.
+  await step.getByLabel('Rate: IDR per 1 USD', { exact: true }).fill('16350');
+  await step.getByLabel('Current balance', { exact: true }).fill('1000000.00');
+  const sheet = (await step.boundingBox())!;
+  const amount = (await step.getByLabel('Current balance', { exact: true }).boundingBox())!;
+  expect(amount.x + amount.width).toBeLessThanOrEqual(sheet.x + sheet.width);
+});
+
+/*
+ * The iOS keyboard cannot be raised in Chromium, so it is stood in for the way the app reads it: the visual
+ * viewport shrinks by the keyboard's height and says so with a resize. That checks the sheet's half of the fix —
+ * it stands on the keyboard and reveals whichever field has the focus — not WebKit's own scrolling, which only a
+ * device or the Simulator shows.
+ */
+test('a field focused in a sheet sits above the keyboard, the currency code as much as the name or the amount', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  const step = page.getByRole('dialog', { name: 'New account' });
+  await expect(step).toBeVisible();
+
+  const KEYBOARD = 336;
+  const keyboard = (up: boolean) =>
+    page.evaluate(
+      ([height, raised]) => {
+        const view = window.visualViewport!;
+        Object.defineProperty(view, 'height', { configurable: true, get: () => window.innerHeight - (raised ? height : 0) });
+        view.dispatchEvent(new Event('resize'));
+      },
+      [KEYBOARD, up] as const,
+    );
+  const top = await page.evaluate(() => window.innerHeight);
+  for (const field of [step.getByLabel('Name', { exact: true }), step.getByLabel('Current balance', { exact: true }), step.getByLabel('Currency', { exact: true })]) {
+    await field.focus();
+    await keyboard(true);
+    await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeLessThanOrEqual(top - KEYBOARD + 1);
+    const box = (await field.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual((await step.boundingBox())!.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(top - KEYBOARD);
+    await field.blur();
+    await keyboard(false);
+    await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeGreaterThan(top - 2);
+  }
+});
+
 test('‹ out of New account returns to the list, and makes nothing', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');

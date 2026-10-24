@@ -15,7 +15,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0);
   await page.getByLabel('Broker', { exact: true }).pressSequentially('Stockbit Sekuritas');
   await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
-  await page.getByLabel('Balance now', { exact: true }).pressSequentially('8000000');
+  await page.getByLabel('Current balance', { exact: true }).pressSequentially('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 
