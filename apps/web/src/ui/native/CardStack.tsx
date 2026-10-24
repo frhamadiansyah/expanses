@@ -46,6 +46,11 @@ export interface WalletCard {
   figure: string;
   figureLabel: string;
   /**
+   * The ink a caption writes the figure in, where a layout captions the card rather than printing the band: `alarm`
+   * for what a credit card owes, as every owed figure is drawn; the page's ink otherwise, and when unset.
+   */
+  figureTone?: 'ink' | 'alarm';
+  /**
    * The line under the name: the digits, the cycle, what the points are worth — whatever the wall would lose if
    * the card were only a name and a figure. Drawn in the facts row beside the card in front.
    */
@@ -286,8 +291,11 @@ export function CardStack({
   );
 }
 
-/** One card's art, drawn at 240 and scaled to the stack's card width, whole or as its top band. */
-function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: number }) {
+/**
+ * One card's art, drawn at 240 and scaled to the stack's card width, whole or as its top band. Wallet's grid and
+ * carousel draw the same art through this, so a card is one drawing however the cards are laid out.
+ */
+export function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: number }) {
   return (
     <span
       className="pointer-events-none absolute top-0 left-0 block origin-top-left overflow-hidden"

@@ -29,6 +29,11 @@ export interface CornerAction {
   /** The action opens something: carried as `aria-expanded`, for the corner that is a menu in disguise. */
   expanded?: boolean;
   /**
+   * The action is one of a set a menu chooses between — a view, a sort — rather than something done: drawn as a
+   * `menuitemradio`, ticked while it is the one in force. Menu lines only; set on every line of such a menu.
+   */
+  checked?: boolean;
+  /**
    * Where the action goes, when it goes somewhere.
    *
    * An action that is a journey is drawn as a link, so a desktop keeps the middle-click and the new tab it has

@@ -64,6 +64,112 @@ export async function forSpendingOff(page: Page) {
   await expect(page.getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: 'Rainy day', exact: true })).toBeVisible();
 }
 
+/**
+ * The View menu lays the same cards out three ways, and the choice outlives a reload. A grid is two faces to a row,
+ * each captioned with its name and its figure, and a face opens the card's page as the stack does. A carousel is one
+ * card at a time with a dot per card and the shown card's Recent under it, which follow the card scrolled to the
+ * middle. Stack puts the pile back.
+ */
+export async function walletViews(page: Page) {
+  // A bank account and cash: the stack's order puts the bank first. Each opening balance is a transaction of its own.
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '3000000' });
+  await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '250000' });
+  await page.goto('/wallet');
+  const wall = page.getByRole('region', { name: 'Cards' });
+  const faces = wall.getByTestId('wallet-card');
+  const view = page.getByRole('button', { name: 'View', exact: true });
+  const choose = async (name: string) => {
+    await view.click();
+    const menu = page.getByRole('menu', { name: 'View' });
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
+    await menu.getByRole('menuitemradio', { name }).click();
+    await expect(menu).toHaveCount(0);
+  };
+  const ticked = async (name: string) => {
+    await view.click();
+    await expect(page.getByRole('menu', { name: 'View' }).getByRole('menuitemradio', { name })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu', { name: 'View' })).toHaveCount(0);
+  };
+
+  // The stack to begin with, ticked as such.
+  await expect(wall.getByTestId('wallet-facts')).toBeVisible();
+  await ticked('Stack');
+
+  // Grid: two whole faces side by side — one y, two x — each captioned with its name and its balance.
+  await choose('Grid');
+  await expect(page.getByTestId('wallet-grid')).toBeVisible();
+  await expect(faces).toHaveCount(2);
+  const [left, right] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
+  expect(Math.abs(left.y - right.y)).toBeLessThan(2);
+  expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
+  expect(Math.round(left.width)).toBe(Math.round(right.width));
+  const captions = page.getByTestId('wallet-caption');
+  await expect(captions.nth(0)).toContainText('Everyday');
+  await expect(captions.nth(0)).toContainText('3.000.000');
+  await expect(captions.nth(1)).toContainText('Pocket cash');
+  await expect(captions.nth(1)).toContainText('250.000');
+  // The face is the card's art, as in the stack.
+  await expect(faces.nth(1).getByTestId('card-face')).toBeVisible();
+
+  // A face opens the same page the stack opens, under the raised card; ✕ comes back to the grid.
+  await walletCard(page, 'Everyday').click();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await expect(page.getByTestId('balance-card')).toContainText('3.000.000');
+  await expect(wall.locator('[data-place="raised"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await expect(page.getByTestId('wallet-grid')).toBeVisible();
+
+  // Remembered on this device.
+  await page.reload();
+  await expect(page.getByTestId('wallet-grid')).toBeVisible();
+  await expect(faces).toHaveCount(2);
+  await ticked('Grid');
+
+  // Carousel: a dot per card, and the first card's Recent — its opening balance — under it.
+  await choose('Carousel');
+  await expect(page.getByTestId('wallet-carousel')).toBeVisible();
+  await expect(page.getByTestId('wallet-grid')).toHaveCount(0);
+  await expect(page.getByTestId('wallet-dot')).toHaveCount(2);
+  await expect(page.getByTestId('wallet-dot').nth(0)).toHaveAttribute('aria-current', 'true');
+  await expect(wall.getByTestId('wallet-facts')).toContainText('Everyday');
+  const recent = page.getByTestId('wallet-recent');
+  await expect(recent.getByTestId('wallet-recent-row')).toHaveCount(1);
+  await expect(recent).toContainText('3.000.000');
+  // The next card peeks: it starts to the right of the shown one, inside the screen.
+  const [shown, next] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
+  expect(next.x).toBeGreaterThan(shown.x + shown.width);
+  expect(next.x).toBeLessThan(page.viewportSize()!.width);
+
+  // Scrolled to the second card, the dots and the Recent follow it.
+  await faces.nth(1).evaluate((node) => node.scrollIntoView({ inline: 'center', block: 'nearest' }));
+  await expect(page.getByTestId('wallet-dot').nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(wall.getByTestId('wallet-facts')).toContainText('Pocket cash');
+  await expect(recent).toContainText('250.000');
+  await expect(recent).not.toContainText('3.000.000');
+  // See all opens the list filtered to that account.
+  await expect(recent.getByRole('link', { name: 'See all' })).toHaveAttribute('href', /\/transactions\?account=/);
+  // The centred card opens its page.
+  await walletCard(page, 'Pocket cash').click();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await expect(page.getByTestId('balance-card')).toContainText('250.000');
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('wallet-carousel')).toBeVisible();
+
+  // Stack: the pile is back, back to front, with the front card's facts under it.
+  await choose('Stack');
+  await expect(page.getByTestId('wallet-carousel')).toHaveCount(0);
+  await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
+  const [back, front] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
+  expect(Math.round(back.x)).toBe(Math.round(front.x));
+  expect(front.y).toBeGreaterThan(back.y);
+  expect(front.y).toBeLessThan(back.y + back.height);
+  await expect(wall.getByTestId('wallet-facts')).toContainText('Pocket cash');
+  await page.reload();
+  await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
+}
+
 export async function eyeHidesBalance(page: Page) {
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '250000' });
   await page.goto('/wallet');

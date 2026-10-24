@@ -14,7 +14,7 @@ export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { SearchPill } from './SearchPill';
 export { CurrencyCode, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
-export { CardStack, type WalletCard } from './CardStack';
+export { CardStack, Face as WalletFace, type WalletCard } from './CardStack';
 export { Drawer, useDrawers } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';
@@ -35,6 +35,6 @@ export { heroFigure, progressFraction, progressPercent, progressTone, type HeroF
 export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type SwitchRowPlan } from './form-row';
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { planPanel, type PanelPlan } from './surface';
-export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
+export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardHeightFor, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
 export { type TreePlace, TreeLines, TreeStem } from './TreeLines';
 export { iconCentre } from './metrics';
