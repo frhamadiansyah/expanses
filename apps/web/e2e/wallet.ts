@@ -7,8 +7,7 @@ import { openAssets } from './drawers';
  * Wallet's two promises, walked once and run at both widths (`wallet.spec.ts`, `phone-wallet.spec.ts`).
  *
  * "For spending" off keeps an account as savings: it leaves Wallet, its Balance and every Paid with, and stays on Net
- * worth's Assets and in a transfer's To. The eye hides the Balance box, the stack moves up into its place, and the
- * choice is still there after a reload.
+ * worth's Assets and in a transfer's To. The Balance box is the grid's, always shown there, with no eye.
  */
 
 /** Picks a Wallet view from the View corner; the pile shows no Balance box, so a journey that reads it picks the grid first. */
@@ -186,41 +185,25 @@ export async function walletViews(page: Page) {
   await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
 }
 
-export async function eyeHidesBalance(page: Page) {
+export async function balanceOnGridOnly(page: Page) {
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '250000' });
   await page.goto('/wallet');
   const box = page.getByTestId('wallet-balance');
-  // The pile is the cards alone: no Balance box over it, and no eye to hide one with.
+  const noEye = () => expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
+  // The pile is the cards alone: no Balance box over it, and no eye anywhere.
   await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="slot"]')).toHaveCount(1);
   await expect(box).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
+  await noEye();
 
-  // The grid prints no figure on a face, so it has the box, and the eye.
+  // The grid prints no figure on a face, so the box is always over it, with nothing to hide it with.
   await pickView(page, 'Grid');
   await expect(box).toBeVisible();
-  const card = page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card').first();
-  const shownAt = (await card.boundingBox())!.y;
-
-  await page.getByRole('button', { name: 'Hide balance' }).click();
-  await expect(box).toHaveCount(0);
-  // The grid moves up into the box's place.
-  await expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(shownAt);
-  // Card figures are never masked.
-  await expect(walletCard(page, 'Pocket cash')).toHaveAccessibleName(/250\.000/);
-
-  // Remembered on this device.
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Show balance' })).toBeVisible();
-  await expect(box).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Show balance' }).click();
-  await expect(box).toBeVisible();
+  await noEye();
   await page.reload();
   await expect(box).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Hide balance' })).toBeVisible();
 
-  // Back to the pile: box and eye both gone, the hidden choice kept for the grid.
-  await pickView(page, 'Stack');
+  // The carousel, like the pile, is the cards alone.
+  await pickView(page, 'Carousel');
   await expect(box).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
+  await noEye();
 }

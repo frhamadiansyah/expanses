@@ -2,7 +2,7 @@ import { formatMinor, isoDate, sumToBase } from '@expanses/core';
 import { type AccountRow, listTransactionsIn, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { Award, Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { Award, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
@@ -20,7 +20,7 @@ import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate }
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
-import { BALANCE_HIDDEN_KEY, bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { bankOf, faceKindsOf, moneyChip, walletCredit, walletMoney } from './wallet-model';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
 
@@ -117,20 +117,8 @@ export function WalletPage() {
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
-  // The pile and the carousel are the cards and nothing else: the Balance box and its eye belong to the grid alone.
+  // The pile and the carousel are the cards and nothing else; the grid always has the Balance box over it.
   const boxed = view === 'grid';
-  const [hidden, setHidden] = useState(() => readBalanceHidden());
-  const toggleBalance = () =>
-    setHidden((was) => {
-      writeBalanceHidden(!was);
-      return !was;
-    });
-  // Another tab of the app hiding or showing the box agrees with it, as Settings in one tab do in the next.
-  useEffect(() => {
-    const listen = (event: StorageEvent) => event.key === BALANCE_HIDDEN_KEY && setHidden(readBalanceHidden());
-    window.addEventListener('storage', listen);
-    return () => window.removeEventListener('storage', listen);
-  }, []);
 
   /*
    * The Balance box: money kept for spending, less what goals have claimed of it, less what the credit cards owe —
@@ -161,7 +149,7 @@ export function WalletPage() {
   const flows = useQuery({
     queryKey: ['wallet-flows', ws.workspaceId, today, countedIds.join(',')],
     // Read only while the box is on screen: an open card's page and a hidden box draw no line.
-    enabled: accounts.isSuccess && openId === undefined && boxed && !hidden,
+    enabled: accounts.isSuccess && openId === undefined && boxed,
     queryFn: async () => {
       const { transactions } = await listTransactionsIn(database, ws, { from: daysBefore(today, SPARK_DAYS), to: today });
       const ids = new Set(countedIds);
@@ -282,14 +270,11 @@ export function WalletPage() {
   }
 
   /*
-   * The corners: the eye (grid only), the View button beside it — a tap steps pile, grid, one at a time —
+   * The corners: the View button — a tap steps pile, grid, one at a time — the Points page,
    * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
    * which wait behind the ⋯.
    */
   const actions: CornerAction[] = [
-    ...(boxed
-      ? [{ key: 'balance', label: hidden ? 'Show balance' : 'Hide balance', glyph: hidden ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />, run: toggleBalance, pressed: hidden } satisfies CornerAction]
-      : []),
     // One tap steps to the next view — pile, grid, one at a time, and round again; the glyph is the view in force.
     {
       key: 'view',
@@ -334,14 +319,14 @@ export function WalletPage() {
             </CornerButton>
           </header>
         ) : (
-          <LargeTitle title="Wallet" actions={actions} max={boxed ? 5 : 4} />
+          <LargeTitle title="Wallet" actions={actions} max={4} />
         )}
       </div>
       {/*
        * Balance, and the two numbers it is made of, as one block: the figure, the month behind it, and the rows that
-       * are its legend. The goals are already subtracted in the first row. Hidden with the eye, the stack moves up.
+       * are its legend. The goals are already subtracted in the first row. The grid's alone.
        */}
-      {!raised && boxed && !hidden && accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
+      {!raised && boxed && accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
           <Panel className="space-y-3" testId="wallet-balance">
             <div>

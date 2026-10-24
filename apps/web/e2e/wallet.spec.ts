@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, walletCard } from './accounts';
-import { eyeHidesBalance, forSpendingOff, walletViews } from './wallet';
+import { balanceOnGridOnly, forSpendingOff, walletViews } from './wallet';
 
 test('an account switched off For spending leaves Wallet and Paid with, and stays on Assets and in a transfer’s To', async ({ page }) => {
   await forSpendingOff(page);
 });
 
-test('the eye hides the Balance box, the stack moves up, and the choice outlives a reload', async ({ page }) => {
-  await eyeHidesBalance(page);
+test('the Balance box is always over the grid and nowhere else, with no eye', async ({ page }) => {
+  await balanceOnGridOnly(page);
 });
 
 test('View lays the cards out as a grid with captions or a carousel with the shown card’s Recent, remembers the choice, and Stack puts the pile back', async ({ page }) => {
