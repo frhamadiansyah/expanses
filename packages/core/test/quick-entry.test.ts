@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayNet, matchCategory, matchesSearch, matchPayment, merchantKey, parseLooseAmount, parseLooseDate, type PaymentOption } from '../src/index';
+import { capturedCategory, dayNet, matchCategory, matchesSearch, matchPayment, merchantKey, parseLooseAmount, parseLooseDate, type PaymentOption } from '../src/index';
 
 const TODAY = '2026-09-15';
 
@@ -125,5 +125,65 @@ describe('merchantKey', () => {
   it('reads a statement line and a typed name as the same merchant', () => {
     expect(merchantKey('SUPERINDO KEBAYORAN 0912')).toBe(merchantKey('Superindo Kebayoran'));
     expect(merchantKey('Grab*A-7X2')).toBe('grab');
+  });
+});
+
+describe('merchantKey on what a capture reads', () => {
+  it('leaves out the payment words, masked numbers and references a bank prints around the name', () => {
+    const typed = merchantKey('Kedai Senja');
+    expect(typed).toBe('kedai senja');
+    expect(merchantKey('QRIS KEDAI SENJA')).toBe(typed);
+    expect(merchantKey('KEDAI SENJA XXXX7731')).toBe(typed);
+    expect(merchantKey('VA kedai  senja 004417')).toBe(typed);
+    expect(merchantKey('EDC Kedai Senja REF 99812')).toBe(typed);
+    expect(merchantKey('trx qris  KEDAI-SENJA')).toBe(typed);
+  });
+
+  it('keeps a name that only shares a payment word with another apart from it', () => {
+    expect(merchantKey('QRIS Roti Pagi')).not.toBe(merchantKey('QRIS Kedai Senja'));
+    // Nothing but payment words names no merchant at all.
+    expect(merchantKey('QRIS XXXX1234')).toBe('');
+  });
+});
+
+describe('capturedCategory', () => {
+  const seen = (description: string, categoryId: string) => ({ description, categoryId });
+
+  it('files a merchant under the category it was last recorded with', () => {
+    expect(capturedCategory('QRIS KEDAI SENJA', [seen('Bensin', 'cat-fuel'), seen('Kedai Senja', 'cat-cafe')])).toBe('cat-cafe');
+  });
+
+  it('knows nothing of a merchant never recorded, or a capture that names none', () => {
+    expect(capturedCategory('ROTI PAGI', [seen('Kedai Senja', 'cat-cafe')])).toBeNull();
+    expect(capturedCategory('QRIS 0042', [seen('Kedai Senja', 'cat-cafe')])).toBeNull();
+    expect(capturedCategory('Kedai Senja', [])).toBeNull();
+  });
+
+  it('takes the newest when one of the two before it agrees', () => {
+    const history = [seen('Kedai Senja', 'cat-cafe'), seen('KEDAI SENJA 12', 'cat-restaurants'), seen('kedai senja', 'cat-cafe')];
+    expect(capturedCategory('KEDAI SENJA', history)).toBe('cat-cafe');
+    expect(capturedCategory('KEDAI SENJA', [seen('Kedai Senja', 'cat-cafe'), seen('Kedai Senja', 'cat-cafe')])).toBe('cat-cafe');
+  });
+
+  it('leaves the row for the owner when the newest disagrees with the ones before it', () => {
+    // Changed once: a change of mind and a one-off look the same.
+    expect(capturedCategory('KEDAI SENJA', [seen('Kedai Senja', 'cat-restaurants'), seen('Kedai Senja', 'cat-cafe')])).toBeNull();
+    expect(
+      capturedCategory('KEDAI SENJA', [seen('Kedai Senja', 'cat-restaurants'), seen('Kedai Senja', 'cat-cafe'), seen('Kedai Senja', 'cat-cafe')]),
+    ).toBeNull();
+    expect(
+      capturedCategory('KEDAI SENJA', [seen('Kedai Senja', 'cat-gifts'), seen('Kedai Senja', 'cat-cafe'), seen('Kedai Senja', 'cat-restaurants')]),
+    ).toBeNull();
+  });
+
+  it('reads only the newest three of the merchant, and no other merchant between them', () => {
+    const history = [
+      seen('Kedai Senja', 'cat-cafe'),
+      seen('Roti Pagi', 'cat-groceries'),
+      seen('Kedai Senja', 'cat-cafe'),
+      seen('Kedai Senja', 'cat-restaurants'),
+      seen('Kedai Senja', 'cat-restaurants'),
+    ];
+    expect(capturedCategory('Kedai Senja', history)).toBe('cat-cafe');
   });
 });

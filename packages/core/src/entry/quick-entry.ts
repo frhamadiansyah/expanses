@@ -138,15 +138,52 @@ export function dayNet(rows: readonly DayRow[]): number {
 }
 
 /**
+ * Words a bank or a wallet puts around a merchant's name that say how it was paid, not who was paid: "QRIS KOPI
+ * KENANGAN", "VA TOKO ABC", "EDC WARUNG SATE". Read as part of the name they would make every QRIS payment one shop.
+ */
+const PAYMENT_WORDS = new Set(['qris', 'va', 'edc', 'trx', 'ref']);
+
+/** A card or account number printed masked ("XXXX5512", "xx12"): the digits go with the other digits, the x's stay. */
+const MASK = /^x{2,}$/;
+
+/**
  * The part of a description that names the merchant, for matching it against earlier purchases:
- * "SUPERINDO KEBAYORAN 0912" and "Superindo Kebayoran" read the same.
+ * "SUPERINDO KEBAYORAN 0912" and "Superindo Kebayoran" read the same, and so do "QRIS KOPI KENANGAN XXXX5512" and
+ * "Kopi Kenangan" — the payment words, masked numbers, digits and punctuation a capture carries are not the name.
  */
 export function merchantKey(description: string): string {
   return description
     .toLowerCase()
     .replace(/[^\p{L}\s]/gu, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 1)
+    .filter((w) => w.length > 1 && !PAYMENT_WORDS.has(w) && !MASK.test(w))
     .slice(0, 2)
     .join(' ');
+}
+
+/** How many of the newest purchases at one merchant a captured payment's category is read from. */
+const AGREEING = 3;
+
+/**
+ * The category a captured payment is filed under from what the same merchant was filed under before, or null.
+ *
+ * `history` is what was recorded before, newest first, each with the one category it was filed under (a purchase
+ * split across categories says nothing about any one of them, so it is left out by the caller). Only the same
+ * merchant counts (`merchantKey`), and of it the newest three: the newest one's category, when it is the only one or
+ * one of the two before it agrees — "Kopi Kenangan" filed under Cafe twice and Restaurants once last month is Cafe.
+ * When the newest disagrees with both before it, nobody can tell a change of mind from a one-off, and the row is left
+ * for the owner, as a capture arrives unattended and a wrong category is quietly wrong.
+ */
+export function capturedCategory(description: string, history: Iterable<{ description: string; categoryId: string }>): string | null {
+  const key = merchantKey(description);
+  if (!key) return null;
+  const recent: string[] = [];
+  for (const seen of history) {
+    if (merchantKey(seen.description) !== key) continue;
+    recent.push(seen.categoryId);
+    if (recent.length === AGREEING) break;
+  }
+  const [newest, ...before] = recent;
+  if (newest === undefined) return null;
+  return before.length === 0 || before.includes(newest) ? newest : null;
 }

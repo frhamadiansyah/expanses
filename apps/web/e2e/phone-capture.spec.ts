@@ -1,6 +1,7 @@
 import type { RawCapture } from '@expanses/core';
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { addTransaction } from './add-transaction';
 import { inject, line, notice, picture } from './capture';
 
 /*
@@ -71,6 +72,32 @@ test('a capture asks which account it is once, and the app remembers', async ({ 
   const second = page.getByRole('form', { name: 'Review SOTO BETAWI' });
   await expect(second.getByText('Which account is this?')).toHaveCount(0);
   await expect(second.getByRole('button', { name: 'Paid with' })).toContainText('Everyday bank');
+});
+
+test('a capture of a merchant recorded before arrives filed under its category', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday bank', balance: '50000000' });
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'Everyday bank', category: 'Restaurants', amount: '32000' });
+
+  await page.goto('/review');
+  await inject(page, [
+    notice({ id: 'note-kopi', body: 'Pembayaran QRIS Rp45.000 berhasil. Merchant: KOPI KENANGAN' }),
+    notice({ id: 'note-roti', capturedAt: '2026-09-30T10:20:00+07:00', body: 'Pembayaran Rp27.000 berhasil. Merchant: ROTI PAGI' }),
+  ]);
+
+  // The row reads as the category the shop was last recorded under, as a typed note would fill it on the Add form.
+  const kopi = page.getByTestId('draft-row').filter({ hasText: 'KOPI KENANGAN' });
+  await expect(kopi).toContainText('Restaurants');
+  await expect(kopi).not.toContainText('Choose category');
+  // A shop never recorded still asks.
+  await expect(page.getByTestId('draft-row').filter({ hasText: 'ROTI PAGI' })).toContainText('Choose category');
+
+  // Opened, it is the form's Category, and it can be changed there like any other.
+  await kopi.click();
+  const form = page.getByRole('form', { name: 'Review KOPI KENANGAN' });
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Cafe & dessert', exact: true }).click();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Cafe & dessert');
 });
 
 test('correcting the merchant teaches the source, and the next screenshot is read from it', async ({ page }) => {
