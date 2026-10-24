@@ -566,3 +566,13 @@ describe('a purchase split across workspaces', () => {
     expect(whole!.splitPart).toBeUndefined();
   });
 });
+
+describe('shortPocketName', () => {
+  it('names a currency pocket by its currency alone, and leaves any other account as it is', async () => {
+    const { shortPocketName } = await import('./list-model');
+    expect(shortPocketName('Cash · TRY')).toBe('TRY');
+    expect(shortPocketName('Valas Plus · USD')).toBe('USD');
+    expect(shortPocketName('BCA Tahapan')).toBe('BCA Tahapan');
+    expect(shortPocketName('Kas · kecil')).toBe('Kas · kecil');
+  });
+});

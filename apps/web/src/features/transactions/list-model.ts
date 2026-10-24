@@ -47,6 +47,8 @@ export interface ListRow {
    * money moved, each followed by its own digits when it has any (`sidesLast4`).
    */
   accountLabel: string;
+  /** The money accounts' whole names, searched as well as the label (a pocket's label is its currency alone). */
+  accountNames?: string[];
   cardId: string | null;
   /** The digits of the one account the row was paid from, when known; nothing on money moving between two. */
   last4: string | null;
@@ -188,7 +190,7 @@ export function buildRows(
     // paid from one account keeps its digits out of the label (`last4`), where the row shows them alone.
     const between = accountIds.length > 1;
     const idByName = new Map(money.map((e) => [e.accountName, e.accountId]));
-    const sides = c.moneyAccountNames.map((name) => ({ name, last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
+    const sides = c.moneyAccountNames.map((name) => ({ name: shortPocketName(name), last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
     const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
@@ -210,6 +212,8 @@ export function buildRows(
       parentName: parentNameOf(categoryId, byId),
       accountIds,
       accountLabel: sides.map((side) => (side.last4 ? `${side.name} ${side.last4}` : side.name)).join(' → '),
+      // The accounts' whole names, for search: a pocket's row reads "TRY" but is still found by "Cash".
+      accountNames: c.moneyAccountNames,
       cardId: tx.cardId,
       last4: between ? null : digitsOf(tx.cardId, accountIds),
       ...(sidesLast4.length > 0 ? { sidesLast4 } : {}),
@@ -288,7 +292,7 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     if (f.paid.startsWith('acct:') && !row.accountIds.includes(f.paid.slice(5))) return false;
     return matchesSearch(
       // Digits are matched against `last4` alone, so a two-sided row offers each side's.
-      { text: [row.description, row.categoryName, row.parentName, row.accountLabel, row.holderName], amountMinor: row.amountMinor, last4: row.last4 ?? row.sidesLast4?.join(' ') ?? null },
+      { text: [row.description, row.categoryName, row.parentName, row.accountLabel, ...(row.accountNames ?? []), row.holderName], amountMinor: row.amountMinor, last4: row.last4 ?? row.sidesLast4?.join(' ') ?? null },
       f.q,
     );
   });
@@ -425,4 +429,13 @@ export function totals(rows: readonly ListRow[]): { count: number; spentMinor: n
     spentMinor: counted.reduce((sum, row) => sum + row.spentMinor, 0),
     incomeMinor: counted.reduce((sum, row) => sum + row.earnedMinor, 0),
   };
+}
+
+/**
+ * A currency pocket named as its row shows it: "Cash · TRY" is "TRY" — the currency says which pocket, and the
+ * account's name only lengthened the line. Any other account keeps its name.
+ */
+export function shortPocketName(name: string): string {
+  const pocket = /^.+ · ([A-Z]{3})$/.exec(name);
+  return pocket ? pocket[1]! : name;
 }
