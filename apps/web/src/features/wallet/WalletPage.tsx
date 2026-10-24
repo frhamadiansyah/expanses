@@ -334,7 +334,7 @@ export function WalletPage() {
             </CornerButton>
           </header>
         ) : (
-          <LargeTitle title="Wallet" actions={actions} max={4} />
+          <LargeTitle title="Wallet" actions={actions} max={boxed ? 4 : 3} />
         )}
       </div>
       {/*
