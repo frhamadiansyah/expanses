@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, listPhotos, listTransactions, ownerScope, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
@@ -13,6 +13,7 @@ import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Button, Card, cx, Empty, ErrorBox } from '../../ui';
+import { InsetGroup, SwitchRow } from '../../ui/native';
 import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
@@ -105,6 +106,11 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
   // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
   const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
+  /*
+   * A credit card purchase or refund that can carry the paid-off mark — the same answer the card's statement gives
+   * before it offers Paid off — switches it here too, where a tap on the row lands. Null for everything else.
+   */
+  const paidOffMark = useQuery({ queryKey: ['paid-off-mark', ws.workspaceId, transactionId], queryFn: () => paidOffMarkOf(database, ws, transactionId) }).data ?? null;
 
   if (receipt.isSuccess && !tx) {
     return (
@@ -171,6 +177,21 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       await deleteTransaction(database, ws, transactionId);
       await invalidate();
       await navigate({ to: '/transactions' });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The paid-off mark, on or off: a balancing settlement beside the purchase, so the card still owes what it owed. */
+  async function markPaidOff(on: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      await setSettledBeforeApp(database, ws, transactionId, on);
+      // The statement and this receipt both read the mark: every query hears.
+      await invalidate();
     } catch (e) {
       setError(e);
     } finally {
@@ -250,6 +271,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           </div>
         ))}
       </Card>
+
+      {/* The statement's Paid off, where the row's tap lands: on, the purchase asks nothing of the statement. */}
+      {paidOffMark && (
+        <InsetGroup
+          wide
+          footer={paidOffMark.refund ? 'No credit to take off the statement. The card still owes what it owed.' : 'Nothing to pay for this one on the statement. The card still owes what it owed.'}
+        >
+          <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
+        </InsetGroup>
+      )}
 
       {parts.length > 0 && (
         <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5">

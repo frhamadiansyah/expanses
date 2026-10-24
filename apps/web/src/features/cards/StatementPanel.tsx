@@ -1,7 +1,8 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarArrowUp, Check, CircleCheck, CreditCard, Undo2 } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -61,6 +62,7 @@ export function StatementPanel({
 }) {
   const { database, ws } = useApp();
   const phone = usePhone();
+  const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const [back, setBack] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -75,6 +77,8 @@ export function StatementPanel({
   const [unmarking, setUnmarking] = useState<StatementLine | null>(null);
   // The purchases under Card not recorded, while the sheet that sets their card is up.
   const [assigning, setAssigning] = useState<readonly StatementLine[] | null>(null);
+  // The line whose ⋯ was tapped on a phone: the sheet listing what can be done to it.
+  const [acting, setActing] = useState<StatementLine | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
@@ -111,9 +115,16 @@ export function StatementPanel({
   /*
    * What can be marked settled before the app: a purchase there is still something to pay for, or money back (a
    * refund) whose credit was used up before the app — left standing, it would sit on the card as a credit for ever.
+   * The receipt asks the ledger the same question (`paidOffMarkOf`), so the two never offer it differently.
    */
-  const settleable = (line: StatementLine) => (line.owedMinor > 0 ? payable(line) : line.owedMinor < 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo);
+  const settleable = (line: StatementLine) => carriesPaidOffMark(line) && !line.paidOff;
   const settledWord = (line: StatementLine) => (line.owedMinor < 0 ? 'settled' : 'paid off');
+  // Billed a statement late: the bank's posting date put it on a later statement than its purchase date.
+  const lateOf = (line: StatementLine) => line.postedOn !== null && line.occurredOn < cycle.start;
+  // Whether the fix that moves a purchase to the next statement applies: the phone's icon, the table's and the ⋯ agree.
+  const billableNext = (line: StatementLine) => line.spending && line.owedMinor > 0 && !lateOf(line) && !line.instalment && !line.convertedTo;
+  // Whether Assign card applies: the account has more than one card, and this purchase names none of them.
+  const assignable = (line: StatementLine) => line.spending && plastic.length > 1 && !plastic.some((piece) => piece.id === line.cardId);
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
@@ -256,7 +267,7 @@ export function StatementPanel({
   /** The two fixes a line can take: billed a statement late, or back to the day it was bought. */
   const fixes = (line: StatementLine, late: boolean) => (
     <span className="flex shrink-0 justify-end">
-      {line.spending && line.owedMinor > 0 && !late && !line.instalment && !line.convertedTo && (
+      {billableNext(line) && (
         <GlyphButton
           label="Billed next statement"
           hint="Billed next statement: the bank posted it after the statement date"
@@ -282,7 +293,7 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    const late = line.postedOn !== null && line.occurredOn < cycle.start;
+    const late = lateOf(line);
     const extra = notes(line);
     const earned = points ? pointsOf(line) : '';
     return (
@@ -329,6 +340,8 @@ export function StatementPanel({
         </span>
         <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</span>
         {fixes(line, late)}
+        {/* The row's actions, found without a swipe: the ⋯ at its end lists what the swipe and the ✓ offer, and the receipt. */}
+        <GlyphButton label={`Actions for ${line.description}`} glyph={<Ellipsis size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
       </Line>
     );
   };
@@ -355,7 +368,7 @@ export function StatementPanel({
       </thead>
       <tbody>
         {lines.map((line) => {
-          const late = line.postedOn !== null && line.occurredOn < cycle.start;
+          const late = lateOf(line);
           const extra = notes(line);
           return (
             <tr key={line.key} data-testid="statement-line" className={cx('border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0', line.convertedTo && 'opacity-60')}>
@@ -507,6 +520,72 @@ export function StatementPanel({
           }}
           onClose={() => setAssigning(null)}
         />
+      )}
+
+      {acting && (
+        // One line's actions, each only when it applies: the swipe's mark (or its taking back, as the ✓'s sheet does),
+        // the two fixes a glyph offers, and the receipt. A choice closes the sheet, then does its work.
+        <Sheet grouped title={acting.description} onClose={() => setActing(null)}>
+          <InsetGroup wide>
+            {settleable(acting) && (
+              <ActionRow
+                label={acting.owedMinor < 0 ? 'Settled' : 'Paid off'}
+                icon={<CircleCheck size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  markPaidOff(line);
+                }}
+              />
+            )}
+            {acting.paidOff && (
+              <ActionRow
+                label={acting.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
+                icon={<CircleX size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  void run(() => setSettledBeforeApp(database, ws, line.transactionId, false));
+                }}
+              />
+            )}
+            {billableNext(acting) && (
+              <ActionRow
+                label="Bill on next statement"
+                icon={<CalendarArrowUp size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  void run(() => billOnNextStatement(database, ws, card.id, line.transactionId));
+                }}
+              />
+            )}
+            {assignable(acting) && (
+              <ActionRow
+                label="Assign card"
+                icon={<CreditCard size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  setAssigning([line]);
+                }}
+              />
+            )}
+            <ActionRow
+              label="Open receipt"
+              icon={<Receipt size={16} aria-hidden />}
+              onClick={() => {
+                const line = acting;
+                setActing(null);
+                void navigate({ to: '/transactions/$transactionId', params: { transactionId: line.transactionId } });
+              }}
+            />
+          </InsetGroup>
+        </Sheet>
       )}
 
       {unmarking && (
