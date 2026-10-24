@@ -36,7 +36,7 @@ function tx(date: string, description: string, lines: [string, number, number?][
     id: `t${seq}`, occurredOn: date, description, source: 'manual', status: 'posted', externalRef: null, originalCurrency: null, originalAmountMinor: null, mcc: null, cardId: null, goalId: null,
     createdAt: `2026-09-01T00:00:${String(seq).padStart(2, '0')}Z`,
     entries: lines.map(([accountId, amountMinor, base], i) => ({
-      id: `t${seq}e${i}`, accountId, accountName: byId.get(accountId)!.name, accountKind: byId.get(accountId)!.kind, amountMinor, currency: 'IDR', fxRateToBase: 1, amountBaseMinor: base ?? amountMinor, memo: null, spendCategoryId: null,
+      id: `t${seq}e${i}`, accountId, accountName: byId.get(accountId)!.name, accountKind: byId.get(accountId)!.kind, accountSubtype: byId.get(accountId)!.subtype, amountMinor, currency: 'IDR', fxRateToBase: 1, amountBaseMinor: base ?? amountMinor, memo: null, spendCategoryId: null,
     })),
     ...extra,
   };
@@ -371,8 +371,50 @@ describe('paidWithLook', () => {
     expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
   });
 
-  it('leaves money moving between two accounts named in full, with the card after them', () => {
-    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → CIMB Octo', last4: '1467' });
+  it('leaves money moving between two accounts named in full, the card’s digits after the account it belongs to', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → CIMB Octo 1467', last4: null });
+  });
+});
+
+describe('digits on each side of money moving between accounts', () => {
+  // A bank account's own number and a wallet's phone come in by the same map; a card's digits are the card's.
+  const digits = { bca: '0917', kantong: '5521' };
+  const rows = (...txs: TransactionView[]) => buildRows(txs, [], accounts, cards, digits);
+
+  it('puts each side’s digits after its name: a bank’s number, a wallet’s phone, a card account’s only card', () => {
+    const [topUp] = rows(tx('2026-09-12', 'Top up', [['kantong', 40_000], ['bca', -40_000]]));
+    expect(topUp).toMatchObject({ accountLabel: 'BCA Tahapan 0917 → Kantong 5521', last4: null, sidesLast4: ['0917', '5521'] });
+    const [byCard] = rows(tx('2026-09-12', 'Top up', [['kantong', 40_000], ['nusa', -40_000]]));
+    expect(byCard).toMatchObject({ accountLabel: 'Nusa Voyager Travel 4417 → Kantong 5521', sidesLast4: ['4417', '5521'] });
+  });
+
+  it('leaves a side without digits as its name alone, and a bank is never its debit card', () => {
+    const [row] = rows(tx('2026-09-12', 'Move', [['debit', 40_000], ['bca', -40_000]]));
+    expect(row).toMatchObject({ accountLabel: 'BCA Tahapan 0917 → Nusa Payroll', sidesLast4: ['0917'] });
+    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan 0917 → Nusa Payroll', last4: null });
+  });
+
+  it('gives a named card’s digits to the account it is on, and no other card’s to the other side', () => {
+    // CIMB Octo carries two cards: naming one says which; Nusa's only card is still a card, so it is not borrowed.
+    const [row] = rows(tx('2026-09-12', 'Balance transfer', [['octo', 40_000], ['nusa', -40_000]], { cardId: 'c2' }));
+    expect(row!.accountLabel).toBe('Nusa Voyager Travel → CIMB Octo 8802');
+    const [bank] = rows(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c2' }));
+    expect(bank!.accountLabel).toBe('BCA Tahapan 0917 → CIMB Octo 8802');
+  });
+
+  it('keeps a row paid from one account as before: its digits alone, none in the label', () => {
+    const [row] = rows(tx('2026-09-12', 'Mie Kuah', [['groceries', 40_000], ['bca', -40_000]]));
+    expect(row).toMatchObject({ accountLabel: 'BCA Tahapan', last4: '0917' });
+    expect(row!.sidesLast4).toBeUndefined();
+  });
+
+  it('is found by either side’s digits', () => {
+    const built = rows(tx('2026-09-12', 'Top up', [['kantong', 40_000], ['bca', -40_000]]), salary);
+    const ids = (q: string) => filterRows(built, { ...EMPTY_FILTERS, q }, accounts).map((row) => row.description);
+    expect(ids('5521')).toEqual(['Top up']);
+    // The bank's number finds the salary paid into it too: a row paid from one account shows those digits as well.
+    expect(ids('0917')).toEqual(['Top up', 'September salary']);
+    expect(ids('4417')).toEqual([]);
   });
 });
 
@@ -418,9 +460,9 @@ describe('a wallet’s phone digits on its rows', () => {
     expect(row).toMatchObject({ last4: '5521' });
   });
 
-  it('keeps both names on money moving into the wallet, without the wallet’s digits', () => {
+  it('keeps both names on money moving into the wallet, the wallet’s digits after its own', () => {
     const [row] = buildRows([topUp], [], accounts, cards, digits);
-    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan → Kantong', last4: null });
+    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan → Kantong 5521', last4: null });
   });
 
   it('finds the wallet’s rows by its digits, as a card’s are found', () => {
@@ -449,6 +491,29 @@ describe('amountExtraParts', () => {
   it('marks points taken back with a minus and estimated points with ≈, as before', () => {
     expect(amountExtraParts(plain, { points: -38, unit: 'pts', approximate: false })).toEqual([{ text: '−38 pts', tone: 'lost' }]);
     expect(amountExtraParts(plain, { points: 38, unit: 'pts', approximate: true })).toEqual([{ text: '≈ 38 pts', tone: 'earned' }]);
+  });
+
+  it('reads a transfer’s fee under the amount, muted, before a foreign amount; a row with none says nothing of it', () => {
+    expect(amountExtraParts(plain, undefined, { feeMinor: 10_000, currency: 'IDR' })).toEqual([{ text: '+Rp\u00a010.000', tone: 'foreign' }]);
+    expect(line(amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false }, { feeMinor: 10_000, currency: 'IDR' }))).toBe('+Rp\u00a010.000 · JP¥1.850 · +38 pts');
+    expect(amountExtraParts(plain, undefined, { currency: 'IDR' })).toEqual([]);
+  });
+});
+
+describe('a transfer with a fee', () => {
+  // GoPay topped up from BCA: Rp 1.000.000 lands, Rp 10.000 is charged on top and filed as spending.
+  const topUp = tx('2026-09-12', 'GoPay top-up', [['kantong', 1_000_000], ['groceries', 10_000], ['bca', -1_010_000]]);
+
+  it('names both accounts without the fee, which the row carries for the line under its amount', () => {
+    const [row] = buildRows([topUp], [], accounts, cards);
+    expect(row).toMatchObject({ type: 'transfer', amountMinor: 1_000_000, accountLabel: 'BCA Tahapan → Kantong', feeMinor: 10_000 });
+    expect(buildRows([salary], [], accounts, cards)[0]!.feeMinor).toBeUndefined();
+  });
+
+  it('still counts the fee as the day’s spending, and the transfer itself as nothing', () => {
+    const rows = buildRows([topUp], [], accounts, cards);
+    expect(rows[0]).toMatchObject({ spentMinor: 10_000, earnedMinor: 0 });
+    expect(dayTotal(rows)).toBe(-10_000);
   });
 });
 

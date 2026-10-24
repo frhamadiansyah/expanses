@@ -14,7 +14,7 @@ import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series'
 import { SPENDABLE_KINDS, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { sharedSections } from '../accounts/shared-accounts';
-import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useProgramAccounts, useWalletLast4 } from '../cards/card-queries';
+import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
 import { faceFor, tieredKey } from '../cards/debit-art/faces';
 import { PointsSection } from '../cards/PointsSection';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
@@ -94,7 +94,6 @@ export function WalletPage() {
   const profiles = useAssetProfiles().data ?? [];
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
-  const earning = useProgramAccounts().data ?? new Set<string>();
   const shared = useSharedNetWorth().data;
   const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items) : [];
   const today = isoDate();
@@ -293,8 +292,6 @@ export function WalletPage() {
     { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];
-  // Bank accounts that could carry a debit card but have no rewards yet: without these there is no way in.
-  const debitable = moneyHolders(everything).filter((a) => ['bank', 'savings'].includes(a.subtype) && !earning.has(a.id));
   /* The raised card's settings: a credit card's — or a debit card's, opened as a card — or the account's own. */
   const settings = cardId !== undefined ? ({ to: '/cards/$cardId/settings', params: { cardId } } as const) : ({ to: '/net-worth/assets/$accountId/settings', params: { accountId: openId ?? '' } } as const);
 
@@ -369,16 +366,7 @@ export function WalletPage() {
           <Outlet />
         </CardStack>
       )}
-      {!raised && debitable.length > 0 && (
-        <InsetGroup
-          header="Earning on a debit card?"
-          footer="A debit card earns on the account it spends from, so pick that account and apply its card's terms. Its card shows how it earns once it does."
-        >
-          {debitable.map((account) => (
-            <InsetRow key={account.id} title={account.name} to="/cards/$cardId" params={{ cardId: account.id }} />
-          ))}
-        </InsetGroup>
-      )}
+      {/* A bank account's debit card rewards are set up from the account's Settings (`DebitRewardsGroup`), not from here. */}
       {!raised && <PointsSection />}
       {/*
        * With separate tax IDs, the other members' shared items (joint-net-worth §8.2): listed under "Andi's, shared",

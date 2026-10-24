@@ -42,10 +42,18 @@ export interface ListRow {
   categoryName: string | null;
   parentName: string | null;
   accountIds: string[];
-  /** "BCA Tahapan", or "BCA Tahapan → BCA KrisFlyer" for money moving between two accounts. */
+  /**
+   * "BCA Tahapan", or "BCA Tahapan → GoPay 5521" for money moving between two accounts: both names in the order the
+   * money moved, each followed by its own digits when it has any (`sidesLast4`).
+   */
   accountLabel: string;
   cardId: string | null;
+  /** The digits of the one account the row was paid from, when known; nothing on money moving between two. */
   last4: string | null;
+  /** The digits named in a two-sided label, in its order: what a search by digits finds such a row by. Absent when none. */
+  sidesLast4?: string[];
+  /** A transfer's fee in the row's currency, read under its amount ("+Rp 10.000"); absent on anything else. */
+  feeMinor?: number;
   holderName: string | null;
   deleted: boolean;
   /** Marked "not my spending": still listed, faded and struck through, but out of every figure the list adds up. */
@@ -118,7 +126,10 @@ export function buildRows(
   drafts: readonly DraftRow[],
   accounts: readonly AccountRow[],
   cards: readonly CardRow[],
-  /** The last four digits of each digital wallet's phone number, by account (`listWalletLast4`). */
+  /**
+   * The digits an account shows when no card paid, by account: a digital wallet's phone number (`listWalletLast4`),
+   * a bank account's own number (`accountNumberLast4s`). Never a card's.
+   */
   walletLast4: Readonly<Record<string, string>> = {},
   /**
    * The workspace the list is read in, when it is narrowed to one: a purchase split across workspaces counts only its
@@ -131,10 +142,13 @@ export function buildRows(
   const cardById = new Map(cards.map((card) => [card.id, card]));
   /*
    * The digits a row names when it names no card: a credit card account's only card in use — Paid with offers that card
-   * as the account itself, so a purchase on it records no card — and a wallet's phone number. An account with two cards
-   * and no card named was paid "from the account", and a bank is not its debit card, so neither gets any. Only a row paid
-   * from that one account and nothing else: money moving between two names both, and digits after both would say neither.
-   * A row that names a card is that card's alone, even one this list does not know: never another card's digits.
+   * as the account itself, so a purchase on it records no card — and a wallet's phone number or a bank account's own
+   * number. An account with two cards and no card named was paid "from the account", and a bank is not its debit card,
+   * so neither gets a card's. A row paid from one account and nothing else shows those digits alone (`last4`); money
+   * moving between two names both, each followed by its own ("Mandiri Signature 4821 → GoPay 5521"), a side without
+   * any left as its name. A row that names a card is that card's alone, even one this list does not know: never
+   * another card's digits — on a two-sided row the named card's go after the account it belongs to, and the other
+   * side keeps only a number that is nobody's card.
    */
   const cardsOf = new Map<string, CardRow[]>();
   for (const card of cards) if (!card.archived) cardsOf.set(card.accountId, [...(cardsOf.get(card.accountId) ?? []), card]);
@@ -142,9 +156,15 @@ export function buildRows(
     const own = cardsOf.get(accountId) ?? [];
     return byId.get(accountId)?.subtype === 'credit_card' && own.length === 1 ? own[0]!.last4 : null;
   };
+  const ownDigits = (accountId: string) => soleCard(accountId) ?? walletLast4[accountId] ?? null;
   const digitsOf = (cardId: string | null, accountIds: readonly string[]) => {
     if (cardId) return cardById.get(cardId)?.last4 ?? null;
-    return accountIds.length === 1 ? (soleCard(accountIds[0]!) ?? walletLast4[accountIds[0]!] ?? null) : null;
+    return accountIds.length === 1 ? ownDigits(accountIds[0]!) : null;
+  };
+  const sideDigits = (accountId: string, cardId: string | null) => {
+    if (!cardId) return ownDigits(accountId);
+    const card = cardById.get(cardId);
+    return card?.accountId === accountId ? card.last4 : (walletLast4[accountId] ?? null);
   };
   const isPerson = (id: string) => ['receivable', 'payable'].includes(byId.get(id)?.subtype ?? '');
 
@@ -164,6 +184,12 @@ export function buildRows(
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
     const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
     const accountIds = [...new Set(money.map((e) => e.accountId))];
+    // Money moving between accounts: each name's own digits after it, the names in the order the money moved. A row
+    // paid from one account keeps its digits out of the label (`last4`), where the row shows them alone.
+    const between = accountIds.length > 1;
+    const idByName = new Map(money.map((e) => [e.accountName, e.accountId]));
+    const sides = c.moneyAccountNames.map((name) => ({ name, last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
+    const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
     const baseOf = (kind: 'expense' | 'income') => (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
@@ -183,9 +209,11 @@ export function buildRows(
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,
       parentName: parentNameOf(categoryId, byId),
       accountIds,
-      accountLabel: c.moneyAccountNames.join(' → ') + (c.feeMinor ? ` · fee ${formatMinor(c.feeMinor, c.currency)}` : ''),
+      accountLabel: sides.map((side) => (side.last4 ? `${side.name} ${side.last4}` : side.name)).join(' → '),
       cardId: tx.cardId,
-      last4: digitsOf(tx.cardId, accountIds),
+      last4: between ? null : digitsOf(tx.cardId, accountIds),
+      ...(sidesLast4.length > 0 ? { sidesLast4 } : {}),
+      ...(c.feeMinor ? { feeMinor: c.feeMinor } : {}),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
       excluded: tx.excluded ?? false,
@@ -259,7 +287,8 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     if (f.paid.startsWith('card:') && row.cardId !== f.paid.slice(5)) return false;
     if (f.paid.startsWith('acct:') && !row.accountIds.includes(f.paid.slice(5))) return false;
     return matchesSearch(
-      { text: [row.description, row.categoryName, row.parentName, row.accountLabel, row.holderName], amountMinor: row.amountMinor, last4: row.last4 },
+      // Digits are matched against `last4` alone, so a two-sided row offers each side's.
+      { text: [row.description, row.categoryName, row.parentName, row.accountLabel, row.holderName], amountMinor: row.amountMinor, last4: row.last4 ?? row.sidesLast4?.join(' ') ?? null },
       f.q,
     );
   });
@@ -343,31 +372,34 @@ export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; mut
 
 /**
  * How a row names what paid, on its second line. A card whose last four digits are known is those digits alone —
- * "4417", bold, says which card more surely than a long account name, and leaves the line room for the note. Money moving
- * between two accounts ("BCA Tahapan → CIMB Octo") keeps both names, with the digits after them as before.
+ * "4417" says which card more surely than a long account name, and leaves the line room for the note. Money moving
+ * between two accounts keeps both names, each side's digits already after it ("BCA Tahapan → GoPay 5521").
  */
 export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 'last4'>): { name: string; last4: string | null } {
   if (row.last4 && row.accountIds.length <= 1) return { name: '', last4: row.last4 };
   return { name: row.accountLabel, last4: row.last4 };
 }
 
-/** One piece of the line under a row's amount: what it cost in the currency it was charged in, or the points it earned. */
+/** One piece of the line under a row's amount: a transfer's fee, what it cost in the currency it was charged in, or the points it earned. */
 export interface AmountExtraPart {
   text: string;
-  /** `foreign` reads muted; points read green when earned and red when taken back. */
+  /** `foreign` reads muted — the fee too; points read green when earned and red when taken back. */
   tone: 'foreign' | 'earned' | 'lost';
 }
 
 /**
- * The one line under a row's amount: the foreign amount first, then the points ("¥1.850 · +38 pts"), either alone when
- * only one applies, and nothing when neither does. Both used to stack as lines of their own, which made a foreign
- * purchase on a card that earns three lines tall.
+ * The one line under a row's amount: a transfer's fee first ("+Rp 10.000", muted, the figure above it being what
+ * landed), then the foreign amount, then the points ("¥1.850 · +38 pts"), each alone when only it applies, and
+ * nothing when none does. The foreign amount and the points used to stack as lines of their own, which made a
+ * foreign purchase on a card that earns three lines tall.
  */
 export function amountExtraParts(
   tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
   points: PurchasePoints | undefined,
+  fee?: Pick<ListRow, 'feeMinor' | 'currency'>,
 ): AmountExtraPart[] {
   const parts: AmountExtraPart[] = [];
+  if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.currency)}`, tone: 'foreign' });
   if (tx.originalCurrency && tx.originalAmountMinor !== null) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {
     const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';

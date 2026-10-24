@@ -21,7 +21,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, Landmark, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -40,6 +40,7 @@ import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
+import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
 import { isEditable } from './draft';
 import { DayHeader } from './DayHeader';
@@ -138,7 +139,11 @@ function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLab
 }
 
 
-/** Where this device remembers whether opening balances and past purchases are shown in the list. */
+/**
+ * Where this device says whether opening balances and past purchases are in the list. Nothing on the page sets it any
+ * more — the ⋯ menu's "Show opening balances" is gone, and the list keeps them out — but the key is still read, so a
+ * device (or a test reaching an opening balance's receipt) can ask for them.
+ */
 const SHOW_OPENING_KEY = 'transactions-show-opening';
 export function TransactionsPage() {
   const { database, ws, workspaceName } = useApp();
@@ -164,27 +169,21 @@ export function TransactionsPage() {
   const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
-  // Remembered on this device: whether opening balances and past purchases are in the list. Off unless asked for.
-  const [showOpening, setShowOpeningState] = useState(() => {
+  // Whether opening balances and past purchases are in the list: off, unless this device was told otherwise.
+  const [showOpening] = useState(() => {
     try {
       return localStorage.getItem(SHOW_OPENING_KEY) === '1';
     } catch {
       return false;
     }
   });
-  const setShowOpening = (on: boolean) => {
-    setShowOpeningState(on);
-    try {
-      localStorage.setItem(SHOW_OPENING_KEY, on ? '1' : '0');
-    } catch {
-      // No storage: it holds for this visit.
-    }
-  };
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
   const [adding, setAdding] = useState(false);
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useState(false);
   const phone = usePhone();
+  // A phone's Paid with filter is a sheet (`PaidWithSheet`); a wide screen's hangs from its icon.
+  const [pickingPaid, setPickingPaid] = useState(false);
   // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
   const recategorise = useRecategorise();
   const [showFilters, setShowFilters] = useState(false);
@@ -576,17 +575,20 @@ export function TransactionsPage() {
   const creditCards = new Set(accounts.filter((account) => account.subtype === 'credit_card').map((account) => account.id));
   const chosenTxs = chosen.map((row) => row.tx!);
   const cardAccount = setCardAccount(chosenTxs, (id) => creditCards.has(id), cards);
+  /*
+   * What the list can be narrowed to, each with the digits it is known by — a card's own, else a bank account's number
+   * or a wallet's phone (the rows' `walletLast4`) — so "48" finds ···· 4821 on either screen. An account carrying two
+   * cards is a row for the account (all its cards) and one per card, by whose it is.
+   */
+  const paidChoices: PaidChoice[] = money.flatMap((account) => {
+    const own = cardsOf(account.id);
+    const whole: PaidChoice = { value: `acct:${account.id}`, name: account.name, digits: (own.length === 1 ? own[0]!.last4 : null) ?? walletLast4[account.id] ?? null };
+    if (own.length < 2) return [whole];
+    return [{ ...whole, digits: null, detail: 'all cards' }, ...own.map((card) => ({ value: `card:${card.id}`, name: card.holderName ?? account.name, digits: card.last4, detail: account.name }))];
+  });
   const paidOptions: ChipOption[] = [
-    { value: '', label: 'Any account' },
-    ...money.flatMap((account) => {
-      const own = cardsOf(account.id);
-      const whole: ChipOption = { value: `acct:${account.id}`, label: account.name, meta: own.length === 1 && own[0]!.last4 ? `···· ${own[0]!.last4}` : undefined };
-      if (own.length < 2) return [whole];
-      return [
-        { ...whole, meta: 'all cards' },
-        ...own.map((card) => ({ value: `card:${card.id}`, label: card.holderName ?? account.name, meta: card.last4 ? `···· ${card.last4}` : undefined, keywords: account.name, indent: true })),
-      ];
-    }),
+    { value: '', label: 'All' },
+    ...paidChoices.map((choice) => ({ value: choice.value, label: choice.name, meta: choice.digits ? `···· ${choice.digits}` : choice.detail, keywords: choice.detail, indent: choice.value.startsWith('card:') })),
   ];
   const categoryOptions: ChipOption[] = [
     { value: '', label: 'Any category' },
@@ -1026,9 +1028,9 @@ export function TransactionsPage() {
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
         under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
-        // One line under the amount, never two: the foreign amount, then — on a wide screen only — the points
-        // ("JP¥1.850 · +38 pts").
-        amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points)} />}
+        // One line under the amount, never two: a transfer's fee, the foreign amount, then — on a wide screen only —
+        // the points ("JP¥1.850 · +38 pts").
+        amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points, row)} />}
         trailing={
           selecting ? undefined : <>
             {trade ? (
@@ -1231,21 +1233,6 @@ export function TransactionsPage() {
                 <span className="flex-1">Select</span>
               </button>
             )}
-            {/* How the books were started rather than money that moved: out of the list unless asked for. */}
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={showOpening}
-              onClick={() => {
-                setShowFilters(false);
-                setShowOpening(!showOpening);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
-            >
-              <Landmark size={17} aria-hidden className="text-slate-500" />
-              <span className="flex-1">Show opening balances</span>
-              {showOpening && <Check size={16} aria-hidden className="text-emerald-700" />}
-            </button>
           </div>
         </>
       )}
@@ -1337,10 +1324,6 @@ export function TransactionsPage() {
               <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
               Show deleted
             </label>
-            <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
-              <input type="checkbox" checked={showOpening} onChange={(event) => setShowOpening(event.target.checked)} />
-              Show opening balances
-            </label>
             {narrowed && (
               <button type="button" onClick={clearAll} className="px-1.5 py-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
                 Clear
@@ -1418,13 +1401,11 @@ export function TransactionsPage() {
               </Empty>
             ))}
 
-          {/* What ⋯ has narrowed the list to, each with its own way out. */}
-          {((phone && paidPicked) || filters.needsCategory) && (
+          {/* What ⋯ has narrowed the list to, with its own way out. Paid with says itself on its icon (the dot), and is
+              cleared from its own list, so it has no pill here. */}
+          {filters.needsCategory && (
             <div className="flex flex-wrap gap-2" data-testid="active-filters">
-              {phone && paidPicked && (
-                <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
-              )}
-              {filters.needsCategory && <FilterChip label="Needs a category" clearLabel="Clear needs a category" onClear={hideNeedsCategory} />}
+              <FilterChip label="Needs a category" clearLabel="Clear needs a category" onClear={hideNeedsCategory} />
             </div>
           )}
           {shown.length > 0 && (
@@ -1455,19 +1436,22 @@ export function TransactionsPage() {
                   </button>
                 ))}
               </div>
-              {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. */}
+              {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. On, the icon
+                  goes dark with a dot; the same icon opens a sheet on a phone and a fixed-width searchable menu elsewhere. */}
               <ChipMenu
                 name="Paid with"
                 value={filters.paid}
                 active={Boolean(paidPicked)}
                 count={paidPicked ? 1 : 0}
-                // A wide screen's list is long enough to want a box to type in; a phone's control is a tap away.
-                searchable={!phone}
+                searchable
+                wideMenu
                 options={paidOptions}
                 onPick={(value) => setFilter('paid', value)}
+                onOpen={phone ? () => setPickingPaid(true) : undefined}
                 shown={<ListFilter size={15} aria-hidden />}
                 iconOnly
               />
+              {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
               {/* Sorting says itself with an arrow rather than a word, so the two controls read as a pair. */}
               <ChipMenu
                 name="Sort"

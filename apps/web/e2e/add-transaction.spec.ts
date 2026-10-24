@@ -1628,8 +1628,11 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
 
   const row = page.getByTestId('transaction-row').filter({ hasText: 'GoPay top-up' });
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText('BCA Tahapan → GoPay · fee Rp 10.000');
+  // The fee is under the amount, with a plus, and not said again on the account line.
+  await expect(row).toContainText('BCA Tahapan → GoPay');
+  await expect(row).not.toContainText('fee');
   await expect(row).toContainText('1.000.000');
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
 
   // Reopened, it is the transfer it was: the amount that landed, and its fee under Fees & charges.
   await row.getByRole('link').first().click();

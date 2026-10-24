@@ -58,7 +58,6 @@ import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series'
 import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
-import { useProgramAccounts } from '../cards/card-queries';
 
 /**
  * `/accounts/$accountId` — one page for every money account.
@@ -101,8 +100,6 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const goBack = useBack(parent ? `/accounts/${parent.id}` : '/wallet');
   // Opened from Wallet's stack: the raised card is the page's header, so the page leaves it a slot.
   const slot = useWalletSlot();
-  // A current or saving account earning as a debit card has that card's page too: its rewards, its rules.
-  const earning = useProgramAccounts().data?.has(account.id) ?? false;
   const [actionError, setActionError] = useState<unknown>(null);
   const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
   const [txReady, setTxReady] = useState(false);
@@ -231,8 +228,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           deposit ? <DepositTermRow key="term" accountId={account.id} /> : null,
           deposit && placedOn ? <InsetRow key="placed" title="Placed on" value={dayLabel(placedOn)} chevron={false} /> : null,
           foreign && opened ? <InsetRow key="opened" title="Opened at" value={rateLine(opened.fxRateToBase, account.currency!, ws.baseCurrency)} chevron={false} /> : null,
-          // The debit card that spends from it, where its points and earning rules are kept.
-          earning ? <InsetRow key="rewards" testId="debit-card-rewards" title="Debit card rewards" to="/cards/$cardId" params={{ cardId: account.id }} /> : null,
+          // Its debit card's rewards are a row of its Settings (`DebitRewardsGroup`), set up or earning alike.
           // Once it has pockets this is the last row of their list; before then, the last of the facts.
           takesCurrency ? <InsetRow key="currency" testId="add-currency" icon={<Plus size={16} aria-hidden />} title="Add a currency" onClick={() => setAddingCurrency(true)} /> : null,
         ]}

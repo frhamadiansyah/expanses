@@ -46,12 +46,14 @@ export function SelectBar({
   const circle = 'ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] shadow-[0_1px_3px_rgb(0_0_0/0.08)]';
   const item = 'ph-focus-inset block w-full border-t-[0.5px] border-[var(--ph-hair)] px-4 py-[11px] text-left text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
   return (
-    <div
-      role="toolbar"
-      aria-label="Selected transactions"
-      data-testid="select-bar"
-      className="fixed inset-x-0 top-0 z-40 bg-[color-mix(in_srgb,var(--ph-ground)_94%,transparent)] pt-[env(safe-area-inset-top)] backdrop-blur-md"
-    >
+    <div role="toolbar" aria-label="Selected transactions" data-testid="select-bar" className="fixed inset-x-0 top-0 z-40 pt-[env(safe-area-inset-top)]">
+      {/*
+       * The same glass the pinned title bar stands on, fading into the rows below rather than ending on a hard edge, so
+       * select mode reads as the page's own header and not as a strip laid over it. A layer of its own behind the
+       * controls, reaching the fade's 20 px under the bar: the glass is masked, and a menu hanging below a masked bar
+       * would be masked out with it.
+       */}
+      <div aria-hidden className="ph-edge-glass pointer-events-none absolute inset-x-0 top-0 -bottom-5" />
       <div className="relative mx-auto flex max-w-2xl items-center gap-3 px-4 py-2">
         <button type="button" aria-label="Done" onClick={onCancel} className={`${circle} text-[var(--ph-ink-2)]`}>
           <X size={19} aria-hidden />

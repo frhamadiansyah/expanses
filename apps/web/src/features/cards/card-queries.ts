@@ -65,6 +65,15 @@ export function issuerChoices(workspaceIssuers: readonly string[]): string[] {
  * A credit card belongs there whether or not it earns anything; a bank account only belongs there
  * once a card's terms have been applied to it, or every savings account would turn up as a card.
  */
+/** Each account's live reward programme, by the account it earns on: a credit card's, or a bank account's debit card's. */
+export function useProgramByAccount() {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['program-by-account', ws.workspaceId],
+    queryFn: async () => new Map((await listPrograms(database, ws)).map((p) => [p.cardAccountId, p])),
+  });
+}
+
 export function useProgramAccounts() {
   const { database, ws } = useApp();
   return useQuery({
