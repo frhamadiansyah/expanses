@@ -1,26 +1,21 @@
-import { formatMinor, isoDate, sumToBase } from '@expanses/core';
-import { type AccountRow, listTransactionsIn, pocketParentIds } from '@expanses/db';
+import { formatMinor, sumToBase } from '@expanses/core';
+import { listTransactionsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { Award, Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { ArrowUpDown, Award, Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { SUBTYPE_LABELS } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useBalances } from '../../lib/queries';
 import { cx, Empty, Money } from '../../ui';
-import { CardStack, CornerButton, type CornerAction, groupedFigure, heroFigure, InsetGroup, InsetRow, LargeTitle, Panel, type WalletCard } from '../../ui/native';
+import { CardStack, CornerButton, type CornerAction, heroFigure, InsetGroup, InsetRow, LargeTitle, Panel } from '../../ui/native';
 import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
-import { SPENDABLE_KINDS, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
-import { useHeldRates } from '../accounts/queries';
+import { SPENDABLE_KINDS, freeToSpend, moneySummary, pocketsOf } from '../accounts/pockets';
 import { sharedSections } from '../accounts/shared-accounts';
-import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
-import { faceFor, tieredKey } from '../cards/debit-art/faces';
-import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
-import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
-import { BALANCE_HIDDEN_KEY, bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { useSharedNetWorth } from '../networth/queries';
+import { useWalletCards } from './useWalletCards';
+import { BALANCE_HIDDEN_KEY, readBalanceHidden, writeBalanceHidden } from './wallet-model';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
 
@@ -35,9 +30,6 @@ function Screen({ children }: { children: ReactNode }) {
 
 /** How many days of history the Balance box's line is drawn over. */
 const SPARK_DAYS = 30;
-
-/** What a credit card's points are counted in, for the line beside the stack. */
-const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'points';
 
 /**
  * One share of the Balance box: a dot in the line's own colour, what it is called, and its figure on the right. The
@@ -62,7 +54,8 @@ function SpendRow({ colour, label, value, currency, separator = false }: { colou
  * At the top, the Balance box the Accounts page drew: what is left of the money kept for spending once goals have
  * had their share and the credit cards are paid, with the month behind it. The eye in the corner hides it — on this
  * device, remembered — and the stack moves up into its place. Then the cards, back to front: the bank accounts a
- * debit card spends from, cash, digital wallets, and the credit cards in front (`walletMoney`, `walletCredit`). Every
+ * debit card spends from, cash, digital wallets, and the credit cards in front (`walletMoney`, `walletCredit`) — or,
+ * once ⋯ → Reorder cards has put them in an order by hand, that order, money and credit cards mixed (`walletOrder`). Every
  * card's band carries its figure — a balance, or what a credit card owes — unmasked. Then the points programmes the
  * cards earn into, and, with separate tax IDs, the other members' shared items.
  *
@@ -83,37 +76,11 @@ export function WalletPage() {
   const router = useRouter();
   const { cardId, accountId } = useParams({ strict: false }) as { cardId?: string; accountId?: string };
   const openId = cardId ?? accountId;
-  const accounts = useAccounts();
-  const balances = useBalances();
-  const everything = accounts.data ?? [];
-  const all = balances.data ?? {};
-  const parents = pocketParentIds(everything);
+  // Wallet's cards, drawn and in order (`useWalletCards`), and the money they were read from.
+  const { accounts, balances, everything, all, book, money, credit, rates, held, today, cards: wallet, ready } = useWalletCards();
   const owed = useSetAsideViews();
-  const digits = useAccountNumberLast4().data ?? {};
-  const phones = useWalletLast4().data ?? {};
-  const tiers = useCardTiers().data ?? {};
-  const profiles = useAssetProfiles().data ?? [];
-  const identities = useCardIdentities().data ?? {};
-  const plastic = useCards().data ?? [];
   const shared = useSharedNetWorth().data;
   const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items) : [];
-  const today = isoDate();
-
-  /* What the stack holds. The money is read from the accounts kept for spending; the credit cards whatever they say. */
-  const book = spendingBook(everything);
-  const money = walletMoney(everything);
-  const credit = walletCredit(everything);
-  // Every currency the cards and the box convert: the money's, a pocket's, a card's.
-  const rates = useHeldRates([...book.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!), ...credit.map((a) => a.currency ?? ws.baseCurrency)]);
-  const held = rates.data?.rates ?? {};
-
-  /* Each credit card's points, for the line beside the stack and its catalogue art. */
-  const data = useQuery({
-    // Distinct from the card page's key: this query caches an array, that one a single CardPoints.
-    queryKey: ['card-points-list', ws.workspaceId, today, credit.map((c) => c.id).join(',')],
-    enabled: accounts.isSuccess,
-    queryFn: () => Promise.all(credit.map((card) => loadCardPoints(database, ws, card, everything, today))),
-  });
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
@@ -173,77 +140,6 @@ export function WalletPage() {
   });
   const series = flows.data && free.freeMinor !== null ? balanceSeries({ todayMinor: free.freeMinor, today, days: SPARK_DAYS, flows: flows.data }) : null;
   const crossed = series ? crossing(series) : null;
-
-  /** A money card's figure: its balance, or — for an account with pockets — what they come to here. */
-  const moneyFigure = (account: AccountRow) => {
-    if (!parents.has(account.id)) return formatMinor(all[account.id] ?? 0, account.currency!);
-    const pockets = pocketsOf(account.id, everything);
-    return groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text;
-  };
-  /*
-   * The drawn face for each money card: its bank's (the tax report's Nama institusi, read off its profile or its
-   * pockets'), else whatever its own name names — a wallet's app, a prepaid card. On a debit face the digits and holder
-   * are the account's debit card's where one is recorded, else the account number's last four and the account's name;
-   * a wallet's digits are its phone's. Money nothing is drawn for keeps the plain face with its chip of words.
-   */
-  const faceOf = (account: AccountRow) => faceFor([bankOf(account.id, everything, profiles), account.name], faceKindsOf(account.subtype));
-  const moneyCards: WalletCard[] = money.map((account) => {
-    const face = faceOf(account);
-    const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;
-    return {
-      key: account.id,
-      issuer: null,
-      name: account.name,
-      last4: face === null ? null : face.kind === 'ewallet' ? (phones[account.id] ?? null) : (debit?.last4 ?? digits[account.id] ?? phones[account.id] ?? null),
-      holderName: face?.kind === 'debit' ? (debit?.holderName ?? account.name) : undefined,
-      kind: moneyChip(account, digits[account.id]),
-      face: face ? { key: tieredKey(face, tiers[account.id]), kind: face.kind, mark: face.mark } : undefined,
-      figure: moneyFigure(account),
-      figureLabel: 'Balance',
-      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
-      to: '/accounts/$accountId' as const,
-      params: { accountId: account.id },
-      label: account.name,
-    };
-  });
-  const creditCards: WalletCard[] = (data.data ?? []).map((cp) => {
-    const own = [...plastic.filter((card) => card.accountId === cp.card.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
-    const points = cp.current?.earn.totalPoints ?? 0;
-    const value = pointsValue(points, cp.best);
-    // Every card on this account, so a supplementary card is still named where the wall can see it.
-    const named = own.filter((card) => card.last4 !== null).map((card) => `···· ${card.last4}${card.holderName ? ` ${card.holderName}` : ''}`);
-    const cycle = !cp.terms
-      ? 'Add billing date to see points'
-      : cp.current
-        ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}`
-        : 'Rewards not set up';
-    // Points are a count, not money: they keep their own unit and never go through a currency formatter.
-    const earned = cp.current && cp.program ? `${formatPoints(points)} ${unitOf(cp)}` : null;
-    const worth = value !== null && cp.best ? `≈ ${formatMinor(value, cp.best.currency)}` : null;
-    return {
-      key: cp.card.id,
-      issuer: identities[cp.card.id]?.issuer ?? null,
-      name: cp.card.name,
-      last4: own[0]?.last4 ?? null,
-      holderName: own[0]?.holderName,
-      network: cp.catalog.entry?.network,
-      look: cp.catalog.entry?.look,
-      // A PayLater line is a credit account with no catalogue look: its own name finds its drawn face.
-      face: cp.catalog.entry?.look ? undefined : faceFor([cp.card.name], ['paylater']),
-      // What the card owes, unmasked: the figure a credit card is opened to read.
-      figure: formatMinor(owedMinor(all, cp.card.id), cp.card.currency ?? ws.baseCurrency),
-      figureLabel: 'Owed',
-      // Captioned under a face in the grid, what is owed is in the owed red, as it is everywhere else.
-      figureTone: 'alarm',
-      subtitle: [...named, cycle, earned, worth].filter(Boolean).join(' · '),
-      to: '/cards/$cardId' as const,
-      params: { cardId: cp.card.id },
-      // The card's own name, so a link to it reads as the card rather than as a sentence about it.
-      label: cp.card.name,
-    };
-  });
-  const wallet = [...moneyCards, ...creditCards];
-  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess;
 
   const raised = openId !== undefined ? wallet.find((card) => card.key === openId) : undefined;
   /*
@@ -308,6 +204,8 @@ export function WalletPage() {
         { key: 'card', label: 'Credit card', to: '/debts/new' },
       ],
     },
+    // The cards put in an order by hand: one list, money and credit cards mixed, read by all three views.
+    { key: 'reorder', label: 'Reorder cards', glyph: <ArrowUpDown size={18} aria-hidden />, to: '/wallet/reorder' },
     { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];

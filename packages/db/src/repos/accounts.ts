@@ -1,5 +1,5 @@
 import { type AccountKind, currencyInfo, openingBalanceLines, uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
@@ -377,6 +377,42 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
       }
     }
     await writeAudit(tx, ws, 'rename', id, { name: trimmed });
+  });
+}
+
+/**
+ * Wallet's order (owner's "A2", 24 Oct): the cards in `accountIds` — money kept for spending and credit cards, in one
+ * mixed list — are given `sort_order` 1, 2, 3… in that order, atomically. An account left out keeps what it had (0, for
+ * one added since), and Wallet puts those after the ordered ones.
+ *
+ * Only top-level money and credit accounts: a category's `sort_order` is its place in the tree, and a pocket's its
+ * place in its account, so neither is ever a Wallet card. An id that is not one of this workspace's accounts, or is
+ * listed twice, refuses the whole order. Written through the same capture as a rename, so it goes wherever an
+ * account's own fields go; a money account is a device's own (it is never in a shared book), so today that is nowhere.
+ */
+export async function setWalletOrder(database: Database, ws: WorkspaceContext, accountIds: readonly string[]): Promise<void> {
+  const ids = [...accountIds];
+  if (new Set(ids).size !== ids.length) throw new AccountError('An account is listed twice');
+  if (ids.length === 0) return;
+  await database.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: accounts.id, name: accounts.name, kind: accounts.kind, parentId: accounts.parentId })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)));
+    if (rows.length !== ids.length) throw new AccountError('Account not found');
+    for (const row of rows) {
+      if ((row.kind !== 'asset' && row.kind !== 'liability') || row.parentId !== null) throw new AccountError(`${row.name} is not a card in Wallet`);
+    }
+    await withCapture(
+      tx,
+      ids.map((id) => ({ entity: 'category' as const, id })),
+      async () => {
+        for (const [index, id] of ids.entries()) {
+          await tx.update(accounts).set({ sortOrder: index + 1 }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+        }
+      },
+    );
+    await writeAudit(tx, ws, 'wallet_order', ids[0]!, { order: ids });
   });
 }
 
