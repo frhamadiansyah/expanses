@@ -1,6 +1,22 @@
-import type { CheckDraftRow, PreparedCheck } from '@expanses/db';
+import { type AccountRow, type CheckDraftRow, fillSameMerchant, type PreparedCheck } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canRecordAll, corrected, mayBeOnNextStatement, missingByDay, needsCategory, originalLabel, recordLabel, statementMonth, summaryOf, takenByOthers, unchosenTied } from './check-model';
+import {
+  canRecordAll,
+  corrected,
+  isTopUpRow,
+  mayBeOnNextStatement,
+  missingByDay,
+  needsCategory,
+  needsWallet,
+  originalLabel,
+  recordLabel,
+  statementMonth,
+  summaryOf,
+  takenByOthers,
+  topUpFigures,
+  unchosenTied,
+  withTopUp,
+} from './check-model';
 
 let next = 0;
 function row(patch: Partial<CheckDraftRow> & Pick<CheckDraftRow, 'outcome'>): CheckDraftRow {
@@ -205,5 +221,46 @@ describe('corrected', () => {
 
   it('keeps it when only the date is corrected', () => {
     expect(corrected(foreign, { on: '2026-05-07', amountMinor: 140_492 })).toMatchObject({ on: '2026-05-07', original: { currency: 'TRY', amountMinor: 41_200 } });
+  });
+});
+
+describe('a missing card row under Top-ups', () => {
+  const accounts = [
+    { id: 'topups', name: 'Top-ups', kind: 'expense', subtype: 'category', currency: null, systemKey: 'miscellaneous.top_ups' },
+    { id: 'groceries', name: 'Groceries', kind: 'expense', subtype: 'category', currency: null, systemKey: 'household.groceries' },
+  ] as AccountRow[];
+  const charge = () => missing({ description: 'WALLET RELOAD 7731', amountMinor: 1_010_000, categoryId: 'topups', categorySource: 'owner' });
+
+  it('is a top-up that waits for its wallet, then records with what lands and the fee making up the row', () => {
+    const r = charge();
+    expect(isTopUpRow(r, accounts)).toBe(true);
+    expect(needsWallet(r, accounts)).toBe(true);
+    expect(canRecordAll([r], {}, accounts)).toBe(false);
+    const [done] = withTopUp([r], r.index, { walletAccountId: 'gopay', feeMinor: 10_000 });
+    expect(needsWallet(done!, accounts)).toBe(false);
+    expect(canRecordAll([done!], {}, accounts)).toBe(true);
+    expect(topUpFigures(done!)).toEqual({ landsMinor: 1_000_000, feeMinor: 10_000 });
+    // The statement's figure is untouched: the card is still charged the whole row.
+    expect(done!.amountMinor).toBe(1_010_000);
+  });
+
+  it('turns back into a purchase when another category is chosen for it', () => {
+    const r = charge();
+    const [done] = withTopUp([r], r.index, { walletAccountId: 'gopay', feeMinor: 10_000 });
+    const [back] = fillSameMerchant([done!], done!.index, 'groceries');
+    expect(back).toMatchObject({ categoryId: 'groceries', topUp: null });
+    expect(isTopUpRow(back!, accounts)).toBe(false);
+    expect(canRecordAll([back!], {}, accounts)).toBe(true);
+  });
+
+  it('leaves money back under Top-ups, and a card payment, as they are', () => {
+    expect(isTopUpRow(missing({ categoryId: 'topups', direction: 'in', outcome: { row: 0, status: 'missing', as: 'refund' } }), accounts)).toBe(false);
+    expect(isTopUpRow(missing({ categoryId: 'groceries' }), accounts)).toBe(false);
+  });
+
+  it('says a wallet is still needed once every category is chosen', () => {
+    expect(recordLabel(3, 0, 1)).toBe('Record all 3 · 1 still needs a wallet');
+    expect(recordLabel(3, 1, 1)).toBe('Record all 3 · 1 still needs a category');
+    expect(recordLabel(3, 0, 0)).toBe('Record all 3');
   });
 });

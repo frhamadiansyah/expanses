@@ -59,6 +59,7 @@ export const CATEGORY_ICONS: Readonly<Record<string, string>> = {
   miscellaneous: 'circle-ellipsis', 'miscellaneous.postal_service': 'mail', 'miscellaneous.professional_fee': 'briefcase',
   'miscellaneous.fine_penalty': 'gavel', 'miscellaneous.documentation': 'file-check', 'miscellaneous.interest': 'percent',
   'miscellaneous.fees_charges': 'badge-percent', 'miscellaneous.membership_fee': 'id-card',
+  'miscellaneous.top_ups': 'wallet-cards',
   travel: 'plane', 'travel.flights': 'plane', 'travel.hotels': 'bed', 'travel.activities': 'map-pin', 'travel.transport': 'train-front',
   'travel.souvenirs': 'shopping-bag', 'travel.meals': 'utensils', 'travel.others': 'luggage',
   business: 'briefcase',

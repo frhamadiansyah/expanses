@@ -25,11 +25,11 @@ import { native } from '../../capture/native';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
-import { useCards } from '../cards/card-queries';
+import { useAccountNumberLast4, useCards, useWalletLast4 } from '../cards/card-queries';
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
-import { canRecordAll, corrected, needsCategory, recordLabel, statementMonth } from './check-model';
+import { canRecordAll, corrected, needsCategory, needsWallet, recordLabel, statementMonth, withTopUp } from './check-model';
 import { MissingRows } from './MissingRows';
 
 /** `/cards/$cardId/check?start&end&batch`: the period when the card page knows it, and lines already read (S2). */
@@ -107,6 +107,9 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   // An account carrying more than one card asks which one the statement is for, so what it records sits under that
   // card's digits rather than "Card not recorded".
   const plastics = useCards(card.id).data ?? [];
+  // A top-up row's sides as Cashflow names them: the card with its digits, the wallet with its own.
+  const walletNumbers = useWalletLast4().data;
+  const accountNumbers = useAccountNumberLast4().data;
   const [guard, setGuard] = useState(false);
   const [view, setView] = useState<'result' | CheckList>('result');
   const [error, setError] = useState<unknown>(null);
@@ -288,9 +291,10 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
 
   const missing = rows.filter((r) => r.outcome.status === 'missing');
   const gaps = missing.filter((r) => needsCategory(r) && r.categoryId === null).length;
+  const wallets = missing.filter((r) => needsWallet(r, accounts)).length;
   const asksOpen = rows.some((r) => r.outcome.status === 'ask' && decisions.ask[r.index] === undefined);
   const asksCard = plastics.length > 1 && missing.some((r) => r.outcome.status === 'missing' && r.outcome.as !== 'payment');
-  const ready = canRecordAll(rows, decisions.ask) && (!prepared.needsPreviousBalance || decisions.paidOff === true) && (!asksCard || !!decisions.cardId);
+  const ready = canRecordAll(rows, decisions.ask, accounts) && (!prepared.needsPreviousBalance || decisions.paidOff === true) && (!asksCard || !!decisions.cardId);
   const footer = (
     <div className="mt-[6px] mb-[18px]">
       {/* Older than the card's start: its purchases can be recorded as already paid off, with no summary needed. */}
@@ -319,7 +323,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         </InsetGroup>
       )}
       <Button data-testid="record-all" className="min-h-12 w-full text-[17px]" disabled={busy || !ready} onClick={() => void record()}>
-        {missing.length === 0 ? 'Finish the check' : recordLabel(missing.length, gaps)}
+        {missing.length === 0 ? 'Finish the check' : recordLabel(missing.length, gaps, wallets)}
       </Button>
       {prepared.needsPreviousBalance && !decisions.paidOff && (
         <p data-testid="needs-previous" className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">
@@ -362,9 +366,12 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         <MissingRows
           rows={rows}
           currency={currency}
-          cardName={card.name}
+          card={card}
+          cardLast4={plastics.find((plastic) => plastic.id === decisions.cardId)?.last4 ?? (plastics.length === 1 ? (plastics[0]!.last4 ?? null) : null)}
+          walletDigits={{ ...(accountNumbers ?? {}), ...(walletNumbers ?? {}) }}
           accounts={accounts}
           onPick={(index, categoryId) => setRows((was) => fillSameMerchant(was, index, categoryId))}
+          onTopUp={(index, topUp) => setRows((was) => withTopUp(was, index, topUp))}
           onCorrect={(index, patch) => setRows((was) => was.map((r) => (r.index === index ? corrected(r, patch) : r)))}
           onKind={onKind}
           footer={footer}

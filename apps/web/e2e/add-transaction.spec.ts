@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { expectWalletFigure, openAccount } from './accounts';
 import { addCap } from './budget';
-import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo, choosePayment } from './add-transaction';
+import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardPage, cardPurchases } from './card-section';
@@ -1646,9 +1646,63 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   // One group with the other details, not a box of its own above them.
   const details = edit.getByRole('region', { name: 'More details' });
   await expect(details.getByRole('button', { name: 'Fee category' }).locator('xpath=..')).toContainText('Photos');
+  // Its picker offers Top-ups under Miscellaneous like any other child: a built-in, not one made only on first need.
+  await edit.getByRole('button', { name: 'Fee category' }).click();
+  const picker = page.getByRole('dialog', { name: 'Fee category' });
+  const topUps = picker.getByRole('button', { name: 'Top-ups', exact: true });
+  await expect(topUps).toHaveCount(1);
+  await expect(topUps).toHaveAttribute('title', /^Miscellaneous\b.*Top-ups$/);
+  await picker.getByRole('button', { name: 'Fees & charges', exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
   await edit.getByRole('button', { name: 'Cancel' }).click();
 
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');
   await expectWalletFigure(page, 'BCA Tahapan', '1.010.000');
+});
+
+test('a card purchase under Top-ups grows Into and Fee, and saves as one top-up of the wallet', async ({ page }) => {
+  await openAccount(page, { subtype: 'credit_card', name: 'BCA Visa' });
+  await addAccount(page, 'GoPay', 'ewallet');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  // The charge as the card's statement prints it: what landed and the fee together.
+  await openAmount(form);
+  await fillAmount(page, form, '1010000');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Visa');
+  await expect(form.getByLabel('Into')).toHaveCount(0);
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Top-ups', exact: true }).click();
+  await form.getByLabel('Into').selectOption({ label: 'GoPay' });
+  await form.getByLabel('Fee', { exact: true }).fill('10000');
+  await form.getByLabel('Note').fill('GoPay reload');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  // One transfer in Cashflow: what landed, from the card to the wallet, the fee under it.
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'GoPay reload' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('BCA Visa → GoPay');
+  await expect(row).toContainText('1.000.000');
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'GoPay', '1.000.000');
+});
+
+test('Top-ups paid from a bank account stays an ordinary expense, with no Into or Fee', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await openAmount(form);
+  await fillAmount(page, form, '50000');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'BCA Tahapan');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Top-ups', exact: true }).click();
+  await expect(form.getByLabel('Into')).toHaveCount(0);
+  await expect(form.getByLabel('Fee', { exact: true })).toHaveCount(0);
 });

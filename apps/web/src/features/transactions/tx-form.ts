@@ -1,4 +1,5 @@
 import {
+  cardTopUpLines,
   convertMinor,
   CURRENCIES,
   currencyInfo,
@@ -18,7 +19,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
+import { cardTopsUpWallet, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -64,6 +65,11 @@ export interface FormDraft {
   /** A transfer's fee, typed in the From account's currency, and the category it is spending in. */
   fee: string;
   feeCategoryId: string;
+  /**
+   * The open book's Top-ups, which a credit card's top-up of a digital wallet names on the card's line. Filled by the
+   * screen at save, never typed; absent, the first Top-ups the accounts hold stands in.
+   */
+  topUpCategoryId?: string;
   splits: SplitRow[];
   mcc: string;
   rememberPattern: string;
@@ -772,17 +778,44 @@ function toAccountOf(draft: FormDraft, accounts: readonly AccountRow[], from: Ac
   return { id: to.id, currency: to.currency };
 }
 
+/**
+ * The Top-ups a credit card's top-up of a digital wallet names on the card's line — as the quick Top up door does
+ * (`moveMoneyIn`) — so its points are read once on the whole charge under Top-ups' MCC: never under the fee's
+ * category, which a card's rules treat as a bank charge that earns nothing. Undefined for anything else.
+ */
+function topUpsOf(draft: FormDraft, from: AccountRow, toId: string, accounts: readonly AccountRow[]): string | undefined {
+  const to = accounts.find((a) => a.id === toId);
+  if (!to || !cardTopsUpWallet(from, to)) return undefined;
+  return draft.topUpCategoryId || accounts.find((a) => a.kind === 'expense' && a.systemKey === TOP_UP_KEY.key && !a.archivedAt)?.id;
+}
+
 function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: readonly AccountRow[], amountMinor: number): PostingLine[] {
   const to = toAccountOf(draft, accounts, account);
   const currency = account.currency!;
   const feeMinor = draft.fee.trim() ? positive(draft.fee, currency, 'Fee') : 0;
+  const topUps = to.currency === currency ? topUpsOf(draft, account, to.id, accounts) : undefined;
   if (feeMinor > 0) {
     if (to.currency !== currency) throw new Error('A fee goes on a transfer within one currency');
     if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
+  }
+  // A card's top-up of a wallet: one charge of what landed and the fee, its card line under Top-ups, fee or not.
+  if (topUps) {
+    return cardTopUpLines({
+      cardAccountId: account.id,
+      walletAccountId: to.id,
+      chargedMinor: amountMinor + feeMinor,
+      feeMinor,
+      currency,
+      topUpsCategoryId: topUps,
+      feeCategoryId: draft.feeCategoryId || null,
+    });
+  }
+  if (feeMinor > 0) {
     /*
      * What left is the transfer and its fee together — the one line a statement prints, Rp 1.010.000 — what landed is
-     * the transfer alone, and the fee is spending. Paid by card, the card's line names the fee's category, so its
-     * points are read once on the whole charge, as the bank reads it, and the fee line is not counted again.
+     * the transfer alone, and the fee is spending. Paid by card (anything but a wallet's top-up, above), the card's
+     * line names the fee's category, so its points are read once on the whole charge, as the bank reads it, and the
+     * fee line is not counted again.
      */
     const card = account.subtype === 'credit_card';
     return [
@@ -971,6 +1004,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     if (peopleOn(draft).length > 0 && !draft.editing) throw new Error('A refund cannot be shared: remove the people');
   }
 
+  if (isExpenseTopUp(draft, accounts)) return expenseTopUpPost(draft, account, accounts, typed);
+
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
   const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
@@ -1029,6 +1064,60 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       ...exactField(draft, accounts, exactHundredths),
       // A split's lines may come from several workspaces: one purchase, each workspace counting its own part (0084).
       ...(splits ? { acrossBooks: true } : {}),
+    },
+  };
+}
+
+/**
+ * A purchase on a credit card filed under Top-ups: not spending but a top-up of a digital wallet, which the Expense tab
+ * grows Into and Fee rows for. Money back under Top-ups, and Top-ups paid from anything but a card, stay ordinary.
+ */
+export function isExpenseTopUp(draft: FormDraft, accounts: readonly AccountRow[]): boolean {
+  if (draft.mode !== 'expense' || isRefund(draft) || !draft.categoryId) return false;
+  const paying = accountOf(draft, accounts);
+  const category = accounts.find((a) => a.id === draft.categoryId);
+  return paying?.kind === 'liability' && paying.subtype === 'credit_card' && category?.systemKey === TOP_UP_KEY.key;
+}
+
+/** The wallets a card's top-up can go into: digital wallets in the card's currency, put-away ones left out. */
+export function topUpWallets(card: AccountRow | undefined, accounts: readonly AccountRow[]): AccountRow[] {
+  if (!card) return [];
+  return accounts.filter((a) => !a.archivedAt && a.currency === card.currency && cardTopsUpWallet(card, a));
+}
+
+/**
+ * The Expense tab's top-up as it posts: the typed amount is what the card was charged, the Fee is the part of it the
+ * wallet kept, and the lines are the ones every door builds for a card's top-up (`cardTopUpLines`). One currency —
+ * the card's — and one category, so a split, people on the bill, or a flag in another currency are refused in words.
+ */
+function expenseTopUpPost(draft: FormDraft, card: AccountRow, accounts: readonly AccountRow[], typed: string): FormPost {
+  if (draft.splits.length > 0) throw new Error('A top-up goes under Top-ups alone: remove the splits');
+  if (peopleOn(draft).length > 0 && !draft.editing) throw new Error('A top-up cannot be shared: remove the people');
+  const currency = card.currency!;
+  if (typed !== currency) throw new Error(`A top-up is charged in ${currency}, the card's own currency`);
+  const chargedMinor = positive(draft.amount, currency, 'Amount');
+  const wallet = accounts.find((a) => a.id === draft.toId);
+  if (!wallet || !cardTopsUpWallet(card, wallet)) throw new Error('Choose the wallet it went into');
+  if (wallet.currency !== currency) throw new Error(`Choose a wallet that holds ${currency}`);
+  const feeMinor = draft.fee.trim() ? positive(draft.fee, currency, 'Fee') : 0;
+  const feeCategoryId =
+    draft.feeCategoryId || accounts.find((a) => a.kind === 'expense' && a.systemKey === 'miscellaneous.fees_charges' && !a.archivedAt)?.id || null;
+  return {
+    kind: 'post',
+    input: {
+      occurredOn: draft.occurredOn,
+      description: draft.description,
+      lines: cardTopUpLines({ cardAccountId: card.id, walletAccountId: wallet.id, chargedMinor, feeMinor, currency, topUpsCategoryId: draft.categoryId, feeCategoryId }),
+      originalCurrency: null,
+      originalAmountMinor: null,
+      mcc: typedMcc(draft),
+      cardId: draft.cardId.trim() || null,
+      channel: draft.channel || null,
+      excludedFromReport: draft.excluded,
+      eventId: draft.eventId || null,
+      photoIds: draft.photoIds,
+      // Whole units, as a transfer is: what lands and the fee are what a wallet and a statement print.
+      ...exactField(draft, accounts, null),
     },
   };
 }

@@ -11,6 +11,7 @@
 import {
   type Candidate,
   type CaptureLine,
+  cardTopUpLines,
   expenseLines,
   looksLikeRefund,
   matchStatement,
@@ -35,6 +36,7 @@ import { draftTransactions } from '../schema-drafts';
 import { cardStatementSettings, type StatementLinkKind, statementChecks, statementLinks } from '../schema-statements';
 import { ensureSystemAccountTx, systemAccountId } from './accounts';
 import { ensureCategoryByKeyTx } from './categories';
+import { cardTopsUpWallet, TOP_UP_KEY } from './money-in';
 import { confirmDraftTx, listDrafts } from './drafts';
 import { guessCategoryFromHistory } from './entry';
 import { listTransactions, nativeBalancesTx, postTransactionTx, replaceTransactionTx, type TransactionView, voidTransactionTx } from './ledger';
@@ -44,7 +46,7 @@ import { postEventRecordTx, setPaidFromTx } from './shared-event-postings';
 
 export class StatementCheckError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'NO_SUCH_CARD' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY' | 'EVENT_POSTING',
+    readonly code: 'NOT_FOUND' | 'NO_SUCH_CARD' | 'NEEDS_CATEGORY' | 'ASK_UNANSWERED' | 'NO_PREVIOUS_BALANCE' | 'MIXED_CURRENCY' | 'CURRENCY' | 'EVENT_POSTING' | 'TOP_UP',
     message: string,
   ) {
     super(message);
@@ -75,6 +77,12 @@ export interface CheckDraftRow extends StatementRow {
    * money back with no purchase to go back under, or the owner.
    */
   categorySource: 'known' | 'same-merchant' | 'fee' | 'refund' | 'owner' | null;
+  /**
+   * A missing card purchase filed under Top-ups and said to be a top-up of a digital wallet: the wallet it went into
+   * and the part of the charge that was the fee (0 for none). Recorded as the one top-up every door records
+   * (`cardTopUpLines`), the card owing the row's whole amount. Absent on anything else.
+   */
+  topUp?: { walletAccountId: string; feeMinor: number } | null;
 }
 
 export interface FlaggedTransaction {
@@ -498,7 +506,8 @@ async function guessFromCard(database: Database, ws: WorkspaceContext, cardAccou
 
 /**
  * The owner chose a category for one row: it is theirs, and every unanswered row of the same merchant in this check
- * takes it too. Pure; the rows given are not changed.
+ * takes it too — the category only, never a top-up's wallet and fee, which are one row's. Pure; the rows given are not
+ * changed.
  */
 export function fillSameMerchant(rows: CheckDraftRow[], index: number, categoryId: string): CheckDraftRow[] {
   const chosen = rows.find((r) => r.index === index);
@@ -506,7 +515,8 @@ export function fillSameMerchant(rows: CheckDraftRow[], index: number, categoryI
   // By the merchant a category is chosen for: every "GRAB* …" line is Grab, whatever code follows the `*`.
   const key = categoryKeyOf(chosen.description);
   return rows.map((r) => {
-    if (r.index === index) return { ...r, categoryId, categorySource: 'owner' };
+    // Another category than the row had takes it out of being a top-up: Into and Fee went with Top-ups.
+    if (r.index === index) return r.categoryId === categoryId ? { ...r, categorySource: 'owner' } : { ...r, categoryId, categorySource: 'owner', topUp: null };
     if (r.categoryId === null && needsCategory(r.outcome) && key !== '' && categoryKeyOf(r.description) === key) {
       return { ...r, categoryId, categorySource: 'same-merchant' };
     }
@@ -812,7 +822,10 @@ export async function recordStatementCheck(
         const amount = { amountMinor: row.amountMinor, currency: card.currency };
         const isPayment = outcome.as === 'payment';
         if (isPayment && paidOff) continue;
-        const lines = isPayment
+        const topUp = outcome.as === 'purchase' && row.direction === 'out' && row.topUp ? row.topUp : null;
+        const lines = topUp
+          ? await topUpLinesTx(tx, ws, { row, topUp, cardAccountId, currency: card.currency })
+          : isPayment
           ? // The bank account it came from is asked for later; until then it is a correction, as an untracked one is.
             transferLines({ fromAccountId: correctionId, toAccountId: cardAccountId, ...amount })
           : outcome.as === 'refund'
@@ -821,7 +834,7 @@ export async function recordStatementCheck(
             : expenseLines({ categoryAccountId: row.categoryId!, paymentAccountId: cardAccountId, ...amount });
         // A foreign purchase or refund keeps its own currency and amount beside the charged lines, as one typed by
         // hand does: points and the tax report read it. A card payment has none.
-        const original = !isPayment && row.original ? { originalCurrency: row.original.currency, originalAmountMinor: row.original.amountMinor } : {};
+        const original = !isPayment && !topUp && row.original ? { originalCurrency: row.original.currency, originalAmountMinor: row.original.amountMinor } : {};
         const id = await postTransactionTx(tx, ws, {
           occurredOn: row.on,
           description: isPayment ? 'Card payment' : row.description,
@@ -928,6 +941,41 @@ export async function recordStatementCheck(
       .set({ periodStart: period.start, periodEnd: period.end, closingMinor, previousMinor, status, differenceMinor, checkedAt: now })
       .where(eq(statementChecks.id, checkId));
     return { checkId, status, differenceMinor };
+  });
+}
+
+/**
+ * A missing row recorded as a card's top-up of a wallet: the wallet checked — one of this workspace's digital wallets,
+ * in the card's currency — and the fee less than the row, then the same lines the Top up door posts, the card owing
+ * the statement's whole figure so the row still matches it.
+ */
+async function topUpLinesTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  p: { row: CheckDraftRow; topUp: { walletAccountId: string; feeMinor: number }; cardAccountId: string; currency: string },
+): Promise<PostingLine[]> {
+  const { row, topUp } = p;
+  const [wallet] = await tx
+    .select({ id: accounts.id, kind: accounts.kind, subtype: accounts.subtype, currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.id, topUp.walletAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!wallet || !cardTopsUpWallet({ kind: 'liability', subtype: 'credit_card' }, wallet)) {
+    throw new StatementCheckError('TOP_UP', `Choose the wallet “${row.description}” went into`);
+  }
+  if (wallet.currency !== p.currency) throw new StatementCheckError('CURRENCY', `Choose a wallet that holds ${p.currency} for “${row.description}”`);
+  if (!Number.isSafeInteger(topUp.feeMinor) || topUp.feeMinor < 0 || topUp.feeMinor >= row.amountMinor) {
+    throw new StatementCheckError('TOP_UP', `The fee on “${row.description}” must be less than the amount charged`);
+  }
+  const [category] = row.categoryId ? await tx.select({ key: accounts.systemKey }).from(accounts).where(eq(accounts.id, row.categoryId)) : [];
+  if (category?.key !== TOP_UP_KEY.key) throw new StatementCheckError('TOP_UP', `“${row.description}” is a top-up only under Top-ups`);
+  return cardTopUpLines({
+    cardAccountId: p.cardAccountId,
+    walletAccountId: wallet.id,
+    chargedMinor: row.amountMinor,
+    feeMinor: topUp.feeMinor,
+    currency: p.currency,
+    topUpsCategoryId: row.categoryId!,
+    feeCategoryId: topUp.feeMinor > 0 ? await categoryByKeyTx(tx, ws, FEES) : null,
   });
 }
 

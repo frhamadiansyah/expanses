@@ -48,6 +48,7 @@ export {
 export { planPosting } from './ledger/posting';
 export { compareWithinDay, type DayOrdered, type DayOrderWrite, planDayOrder } from './ledger/day-order';
 export {
+  cardTopUpLines,
   exchangeLines,
   expenseLines,
   incomeLines,

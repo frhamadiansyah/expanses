@@ -61,6 +61,40 @@ export function incomeLines(p: {
   ];
 }
 
+/**
+ * A credit card topping up a digital wallet, as the card's statement prints it: one charge of what landed and its fee
+ * together. The wallet takes what landed, the card owes the whole charge, and the fee is spending. The card's line
+ * names Top-ups (`spendCategoryId`), so its points are read once on the whole charge under Top-ups' code — never
+ * under the fee's category, which a card's rules treat as a bank charge that earns nothing — and the fee line is not
+ * counted again. One builder for every door that records one: the Top up door, the Transfer and Expense tabs, and a
+ * statement check's missing row.
+ *
+ * `chargedMinor` is the whole charge and `feeMinor` the part of it that is the fee: 0 for none, and always less than
+ * the charge, so something lands.
+ */
+export function cardTopUpLines(p: {
+  cardAccountId: string;
+  walletAccountId: string;
+  chargedMinor: number;
+  feeMinor: number;
+  currency: string;
+  topUpsCategoryId: string;
+  /** Where the fee is spent; needed only when there is one. */
+  feeCategoryId?: string | null;
+}): PostingLine[] {
+  if (!Number.isSafeInteger(p.chargedMinor) || p.chargedMinor <= 0) throw new Error('Enter the amount charged');
+  if (!Number.isSafeInteger(p.feeMinor) || p.feeMinor < 0) throw new Error('A fee cannot be below zero');
+  if (p.feeMinor >= p.chargedMinor) throw new Error('The fee must be less than the amount charged');
+  if (!p.walletAccountId) throw new Error('Choose the wallet it went into');
+  if (p.walletAccountId === p.cardAccountId) throw new Error('From and To must differ');
+  if (p.feeMinor > 0 && !p.feeCategoryId) throw new Error('Choose a category for the fee');
+  return [
+    { accountId: p.walletAccountId, amountMinor: p.chargedMinor - p.feeMinor, currency: p.currency },
+    { accountId: p.cardAccountId, amountMinor: -p.chargedMinor, currency: p.currency, spendCategoryId: p.topUpsCategoryId },
+    ...(p.feeMinor > 0 ? [{ accountId: p.feeCategoryId!, amountMinor: p.feeMinor, currency: p.currency }] : []),
+  ];
+}
+
 /** Same-currency movement, including paying a credit card statement from a bank account. */
 export function transferLines(p: {
   fromAccountId: string;

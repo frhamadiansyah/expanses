@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { expectWalletFigure, openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 import { screenshotFiles, setStatementImages, statementLines, summaryLines, twoDateLines } from './statement';
@@ -171,5 +171,56 @@ test('a statement older than the card’s start records as already paid off, wit
   await page.goto('/transactions?month=2026-08');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE PAK DIN' })).toContainText('45.000');
   await page.goto('/wallet');
-  await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
+  // The card's figure is in its face's name: the wallet's cards carry no caption of their own any more.
+  await expectWalletFigure(page, 'BCA Visa', '2.000.000');
+});
+
+test('a card row filed under Top-ups records as the top-up it was: what landed in the wallet, and the fee beside it', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25', last4: '4821' });
+  await openAccount(page, { subtype: 'ewallet', name: 'GoPay' });
+
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: /^BCA Visa/ }).first().click();
+  await cardPage(page, 'Statement');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await page.getByTestId('check-statement').click();
+  await setStatementImages(page, [statementLines([['22AUG', 'WALLET RELOAD 7731', '1,010,000']]), summaryLines([['New Balance', '1,010,000']])]);
+  await page.getByTestId('statement-files').setInputFiles(screenshotFiles(2));
+  await page.getByRole('button', { name: 'Check 2 screenshots' }).click();
+  await page.getByTestId('count-missing').click();
+
+  // Top-ups sits under Miscellaneous like any other category; picked on a card row, it asks where the money went.
+  await page.getByTestId('missing-row').getByRole('button', { name: /Choose category/ }).click();
+  await page.getByRole('dialog', { name: 'WALLET RELOAD 7731' }).getByRole('button', { name: 'Top-ups', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Top-up' });
+  await expect(sheet).toContainText(/Rp\s1\.010\.000 charged to BCA Visa 4821/);
+  await sheet.getByLabel('Into').selectOption({ label: 'GoPay' });
+  await sheet.getByLabel('Fee', { exact: true }).fill('10000');
+  const summary = sheet.getByTestId('top-up-summary');
+  await expect(summary).toContainText(/Lands in GoPay\s*Rp\s1\.000\.000/);
+  await expect(summary).toContainText(/Fee · Fees & charges\s*Rp\s10\.000/);
+  await expect(summary).toContainText(/Card charged · Top-ups\s*Rp\s1\.010\.000/);
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // The row reads as the transfer it will be, and still stands for the statement's whole 1.010.000.
+  const row = page.getByTestId('missing-row');
+  await expect(row).toContainText('Top-up');
+  await expect(row.getByTestId('top-up-sides')).toHaveText('BCA Visa 4821 → GoPay');
+  await expect(row).toContainText('1.000.000');
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(page.getByTestId('record-all')).toHaveText('Record all 1');
+  await page.getByTestId('record-all').click();
+  await expect(page.getByRole('status').filter({ hasText: 'August statement checked — ✓ Reconciled' })).toBeVisible();
+
+  // Cashflow shows one top-up: the card's digits, the wallet, what landed, and the fee under it.
+  await page.goto('/transactions?month=2026-08');
+  const recorded = page.getByTestId('transaction-row').filter({ hasText: 'WALLET RELOAD 7731' });
+  await expect(recorded).toHaveCount(1);
+  await expect(recorded).toContainText('BCA Visa 4821 → GoPay');
+  await expect(recorded).toContainText('1.000.000');
+  await expect(recorded.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'GoPay', '1.000.000');
 });

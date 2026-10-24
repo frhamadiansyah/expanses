@@ -22,6 +22,9 @@ import {
   settledBeforeAppOf,
   saveMerchantMcc,
   splitBill,
+  cardTopsUpWallet,
+  TOP_UP_KEY,
+  topUpsCategory,
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
@@ -72,7 +75,7 @@ import { PhotosSheet } from './PhotosSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, memberTransferOf, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -326,6 +329,13 @@ function CardBody({
   const [moveTo, setMoveTo] = useState<string | null>(null);
   const allBooks = useBooks().data ?? [];
   const categoryBooks = useCategoryBooks().data ?? {};
+  /*
+   * The open book's Top-ups, which a credit card's top-up of a digital wallet names on the card's line (`topUpsOf`).
+   * A book without one has it made at Save, as the quick Top up door makes it.
+   */
+  const bookTopUps =
+    accounts.find((account) => account.systemKey === TOP_UP_KEY.key && !account.archivedAt && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
+  const withTopUps = (d: FormDraft, id = bookTopUps): FormDraft => (d.mode === 'transfer' && id ? { ...d, topUpCategoryId: id } : d);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
   const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
@@ -531,7 +541,11 @@ function CardBody({
       // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
       // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
       const later = categoryLater(draft);
-      const filed = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const from = accounts.find((account) => account.id === categorised.moneyId);
+      const to = accounts.find((account) => account.id === categorised.toId);
+      const topsUp = categorised.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);
+      const filed = withTopUps(categorised, topsUp ? bookTopUps || (await topUpsCategory(database, ws)) : '');
       const post = formToPost(filed, accounts);
       let posted: string | null = null;
       if (post.kind === 'trade') {
@@ -656,6 +670,8 @@ function CardBody({
    * Off by default for every date; only a tap on the icon ticks it. A saved one reads back what it was saved as.
    */
   const payingAccount = accounts.find((account) => account.id === draft.moneyId);
+  // A card's purchase under Top-ups grows Into and Fee rows under Category, and saves as the top-up it is.
+  const expenseTopUp = isExpenseTopUp(draft, accounts);
   const cardOpening = useOpenings(payingAccount?.subtype === 'credit_card' ? [payingAccount.id] : []);
   const cardStart = payingAccount?.subtype === 'credit_card' ? (cardOpening.data?.[payingAccount.id]?.occurredOn ?? payingAccount.createdAt.slice(0, 10)) : null;
   /*
@@ -710,7 +726,7 @@ function CardBody({
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
-      else formToPost(finish ? draft : withCategoryLater(draft, CATEGORY_LATER), accounts);
+      else formToPost(withTopUps(finish ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
       return finish?.canSubmit?.(draft) ?? true;
     } catch {
       return false;
@@ -1109,6 +1125,43 @@ function CardBody({
                 caption=""
                 onClick={() => setSheet('category')}
               />
+            )}
+            {/* A card's purchase filed under Top-ups is a top-up of a wallet: where it went, and the fee in the charge. */}
+            {expenseTopUp && (
+              <>
+                <SelectFormRow
+                  icon={
+                    <RowGlyph>
+                      <ArrowDownLeft size={15} />
+                    </RowGlyph>
+                  }
+                  label="Into"
+                  caption="Into"
+                  placeholder="Into"
+                  value={draft.toId}
+                  onChange={(toId) => set({ toId })}
+                >
+                  <option value="">Choose a wallet</option>
+                  {topUpWallets(payingAccount, accounts).map((wallet) => (
+                    <option key={wallet.id} value={wallet.id}>
+                      {wallet.name}
+                    </option>
+                  ))}
+                </SelectFormRow>
+                <FieldRow
+                  icon={
+                    <RowGlyph>
+                      <Hash size={15} />
+                    </RowGlyph>
+                  }
+                  label="Fee"
+                  caption="Fee"
+                  placeholder="Fee"
+                  inputMode="decimal"
+                  value={draft.fee}
+                  onChange={(fee) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory })}
+                />
+              </>
             )}
 
             <NoteRow

@@ -3,7 +3,7 @@
  * when Record all may go, and the missing rows laid out by day as the Cashflow list draws them.
  */
 import { currencyInfo } from '@expanses/core';
-import type { CheckDraftRow, PreparedCheck } from '@expanses/db';
+import { type AccountRow, type CheckDraftRow, type PreparedCheck, TOP_UP_KEY } from '@expanses/db';
 
 export interface CheckCounts {
   matched: number;
@@ -57,9 +57,38 @@ export function summaryOf(prepared: PreparedCheck): { counts: CheckCounts; headl
   return { counts, headline: { kind: 'differs', differenceMinor: difference, likely } };
 }
 
-/** Every missing row has its category, and every ask is answered with one of its own candidates, each taken once. */
-export function canRecordAll(rows: readonly CheckDraftRow[], ask: Readonly<Record<number, string>>): boolean {
+/**
+ * A missing purchase on the card filed under Top-ups: a top-up of a digital wallet, not spending. It is recorded as
+ * one (`CheckDraftRow.topUp`) once the wallet it went into is said; money back under Top-ups stays money back.
+ */
+export function isTopUpRow(row: CheckDraftRow, accounts: readonly AccountRow[]): boolean {
+  if (row.outcome.status !== 'missing' || row.outcome.as !== 'purchase' || row.direction !== 'out' || !row.categoryId) return false;
+  return accounts.find((a) => a.id === row.categoryId)?.systemKey === TOP_UP_KEY.key;
+}
+
+/** A top-up row whose wallet is not said yet — one filled with Top-ups from the same merchant, or known from before. */
+export function needsWallet(row: CheckDraftRow, accounts: readonly AccountRow[]): boolean {
+  return isTopUpRow(row, accounts) && !row.topUp;
+}
+
+/** The row at `index` as a top-up into `walletAccountId`, `feeMinor` of its figure the fee. Pure. */
+export function withTopUp(rows: readonly CheckDraftRow[], index: number, topUp: { walletAccountId: string; feeMinor: number }): CheckDraftRow[] {
+  return rows.map((r) => (r.index === index ? { ...r, topUp } : r));
+}
+
+/** What a top-up row comes to: what lands in the wallet and the fee, which together are the row's figure. */
+export function topUpFigures(row: CheckDraftRow): { landsMinor: number; feeMinor: number } {
+  const feeMinor = row.topUp?.feeMinor ?? 0;
+  return { landsMinor: row.amountMinor - feeMinor, feeMinor };
+}
+
+/**
+ * Every missing row has its category (and a top-up its wallet), and every ask is answered with one of its own
+ * candidates, each taken once.
+ */
+export function canRecordAll(rows: readonly CheckDraftRow[], ask: Readonly<Record<number, string>>, accounts: readonly AccountRow[] = []): boolean {
   if (rows.some((r) => needsCategory(r) && r.categoryId === null)) return false;
+  if (rows.some((r) => needsWallet(r, accounts))) return false;
   const taken = new Set<string>();
   for (const r of rows) {
     if (r.outcome.status !== 'ask') continue;
@@ -151,10 +180,11 @@ export function mayBeOnNextStatement(on: string, period: { start: string; end: s
   return days >= 0 && days <= NEXT_STATEMENT_DAYS;
 }
 
-/** "Record all 9", or with what still holds it back. */
-export function recordLabel(total: number, gaps: number): string {
-  if (gaps === 0) return `Record all ${total}`;
-  return `Record all ${total} · ${gaps} still ${gaps === 1 ? 'needs' : 'need'} a category`;
+/** "Record all 9", or with what still holds it back: a category first, then a top-up's wallet. */
+export function recordLabel(total: number, gaps: number, wallets = 0): string {
+  if (gaps > 0) return `Record all ${total} · ${gaps} still ${gaps === 1 ? 'needs' : 'need'} a category`;
+  if (wallets > 0) return `Record all ${total} · ${wallets} still ${wallets === 1 ? 'needs' : 'need'} a wallet`;
+  return `Record all ${total}`;
 }
 
 /** The statement's name: the month it starts in, as "May". */
