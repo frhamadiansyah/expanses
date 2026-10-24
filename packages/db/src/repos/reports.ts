@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { attributedOn, billTablesExist } from './bill-months';
 import { bookMoneyFor, type Unconverted } from './book-currency';
+import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 
@@ -64,6 +65,9 @@ async function categoryRows(
       // What was marked "not my spending" leaves the chart, the rings and the budgets. It is still on the card,
       // still in the balance, still earning points: only this reading of it changes.
       ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+      // …and so does one workspace's part of a purchase split across workspaces, marked so on its own (0090): the
+      // other parts count, each in its own workspace.
+      ...(await partCountedWhere(database.db, transactions.id, entries.accountId)),
       // What a shared event put in this phone's books is no workspace's spending (shared events §5.1), owner-wide too.
       ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
       ...(paid ? [sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${paid})`] : []),
@@ -269,6 +273,7 @@ export async function eventSpendingBetween(
     ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
     // Same clause as `categoryRows`: the event's Spent and the category report must drop the same rows.
     ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+    ...(await partCountedWhere(database.db, transactions.id, entries.accountId)),
     // A shared event's own share is counted on the event page, never on a workspace's event line (§5.1).
     ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
   );

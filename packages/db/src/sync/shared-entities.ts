@@ -482,7 +482,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       occurredOn: ['transactions.occurred_on'],
       description: ['transactions.description'],
       channel: ['transaction_flags.channel'],
-      excluded: ['transaction_flags.excluded'],
+      // 0090: a split's part in the book is excluded on its own; that part is all that travels, so its flag is the
+      // purchase's (capture.ts `projectPurchase`, and apply writes it back to the part).
+      excluded: ['transaction_flags.excluded', 'book_transaction_splits.excluded'],
       // Both halves: the ledger writes transactions.template_id and the bill_payments row from one input.
       bill: ['transactions.template_id', 'bill_payments.template_id', 'bill_payments.bill_month'],
       money: [

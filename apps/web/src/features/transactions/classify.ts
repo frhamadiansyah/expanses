@@ -1,4 +1,4 @@
-import { isExchangeResultKey } from '@expanses/core';
+import { isExchangeResultKey, isNotCountedKey } from '@expanses/core';
 import type { TransactionView } from '@expanses/db';
 
 export type TransactionType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction';
@@ -50,7 +50,16 @@ export function classify(tx: TransactionView): Classified {
     };
   }
   if (expenses.length > 0) {
-    return { type: 'expense', amountMinor: expenses.reduce((s, e) => s + e.amountMinor, 0), currency: expenses[0]!.currency, categoryIds: expenses.map((e) => e.accountId), moneyAccountNames: names };
+    // A split part counted in no workspace (Not counted) is part of what the purchase cost, though in no category: the
+    // figure is the whole purchase, as the card was charged. A list narrowed to one workspace reads its part alone.
+    const notCounted = equity.filter((e) => isNotCountedKey(e.accountSystemKey)).reduce((s, e) => s + e.amountMinor, 0);
+    return {
+      type: 'expense',
+      amountMinor: expenses.reduce((s, e) => s + e.amountMinor, 0) + notCounted,
+      currency: expenses[0]!.currency,
+      categoryIds: expenses.map((e) => e.accountId),
+      moneyAccountNames: names,
+    };
   }
   if (incomes.length > 0) {
     return { type: 'income', amountMinor: -incomes.reduce((s, e) => s + e.amountMinor, 0), currency: incomes[0]!.currency, categoryIds: incomes.map((e) => e.accountId), moneyAccountNames: names };

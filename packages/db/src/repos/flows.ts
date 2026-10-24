@@ -12,6 +12,7 @@ import { resolvedCategoryNeeds } from './category-needs';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
+import { splitExclusionExists } from './book-splits';
 
 export interface MonthFlow {
   month: string;
@@ -142,6 +143,22 @@ export async function periodFlows(
       : [],
   );
 
+  // One workspace's part of a purchase split across workspaces, marked out of its reports on its own (0090): its
+  // category lines, by transaction. The other parts count; balances, debt and savings below never read this.
+  const excludedParts = new Set<string>(
+    (await splitExclusionExists(database.db))
+      ? (
+          await database.db.values<[string, string]>(sql`
+            SELECT s.transaction_id, c.category_account_id FROM book_transaction_splits s
+            JOIN book_categories c ON c.book_id = s.book_id
+            JOIN transactions t ON t.id = s.transaction_id
+            WHERE s.excluded = 1
+              AND t.workspace_id = ${ws.workspaceId}
+              AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`)
+        ).map(([transactionId, accountId]) => `${transactionId}:${accountId}`)
+      : [],
+  );
+
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
     const bucket = byMonth.get(month);
@@ -149,7 +166,7 @@ export async function periodFlows(
     // and is named in `missing`; which side of the ledger a row is on is still read from the owner's figure, so a
     // missing rate never turns a loan payment into something else.
     const read = (money.converts ? money.convert(row.amountMinor, row.currency, row.occurredOn) : row.amountBaseMinor) ?? 0;
-    const counted = !excludedIds.has(row.transactionId);
+    const counted = !excludedIds.has(row.transactionId) && !excludedParts.has(`${row.transactionId}:${row.accountId}`);
     if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
       if (bucket) bucket.incomeMinor += displayAmount('income', read);
     } else if (counted && row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {

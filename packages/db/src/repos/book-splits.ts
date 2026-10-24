@@ -41,11 +41,77 @@ export async function splitBooksOfMany(db: Db, transactionIds: readonly string[]
   return out;
 }
 
-/** Files a split purchase in each workspace it has a part in. */
-export async function writeSplitBooksTx(db: Db, workspaceId: string, transactionId: string, bookIds: readonly string[]): Promise<void> {
+const flagged = new WeakMap<object, true>();
+
+/** Whether this copy has the part's own Exclude from report (0090). Asked once per handle; only a yes is kept. */
+export async function splitExclusionExists(db: Db): Promise<boolean> {
+  if (flagged.get(db)) return true;
+  if (!(await bookSplitsExist(db))) return false;
+  const rows = await db.values<[string]>(sql`SELECT name FROM pragma_table_info('book_transaction_splits') WHERE name = 'excluded'`);
+  if (rows.length > 0) flagged.set(db, true);
+  return rows.length > 0;
+}
+
+/** A split purchase's part: the workspace it is in, and whether it is left out of that workspace's reports (0090). */
+export interface SplitPartFlag {
+  bookId: string;
+  excluded: boolean;
+}
+
+/** Every split purchase among these, by transaction id, with each of its parts and whether that part is left out. */
+export async function splitPartsOfMany(db: Db, transactionIds: readonly string[]): Promise<Map<string, SplitPartFlag[]>> {
+  const out = new Map<string, SplitPartFlag[]>();
+  if (transactionIds.length === 0 || !(await bookSplitsExist(db))) return out;
+  const flag = (await splitExclusionExists(db)) ? sql`excluded` : sql`0`;
+  const rows = await db.values<[string, string, number]>(
+    sql`SELECT transaction_id, book_id, ${flag} FROM book_transaction_splits WHERE transaction_id IN ${[...transactionIds]} ORDER BY rowid`,
+  );
+  for (const [transactionId, bookId, excluded] of rows) out.set(transactionId, [...(out.get(transactionId) ?? []), { bookId, excluded: Number(excluded) === 1 }]);
+  return out;
+}
+
+/** The workspaces whose part of this split purchase is left out of their reports; empty for anything else. */
+export async function excludedSplitBooksTx(db: Db, transactionId: string): Promise<Set<string>> {
+  if (!(await splitExclusionExists(db))) return new Set();
+  const rows = await db.values<[string]>(sql`SELECT book_id FROM book_transaction_splits WHERE transaction_id = ${transactionId} AND excluded = 1`);
+  return new Set(rows.map(([bookId]) => bookId));
+}
+
+/**
+ * Files a split purchase in each workspace it has a part in, each part left out of its workspace's reports when its
+ * workspace is in `excluded` (0090; a database stopped before it keeps every part counted).
+ */
+export async function writeSplitBooksTx(
+  db: Db,
+  workspaceId: string,
+  transactionId: string,
+  bookIds: readonly string[],
+  excluded: ReadonlySet<string> = new Set(),
+): Promise<void> {
+  const flags = await splitExclusionExists(db);
   for (const bookId of bookIds) {
-    await db.run(sql`INSERT INTO book_transaction_splits (transaction_id, workspace_id, book_id) VALUES (${transactionId}, ${workspaceId}, ${bookId})`);
+    if (flags) {
+      await db.run(sql`INSERT INTO book_transaction_splits (transaction_id, workspace_id, book_id, excluded)
+        VALUES (${transactionId}, ${workspaceId}, ${bookId}, ${excluded.has(bookId) ? 1 : 0})`);
+    } else {
+      await db.run(sql`INSERT INTO book_transaction_splits (transaction_id, workspace_id, book_id) VALUES (${transactionId}, ${workspaceId}, ${bookId})`);
+    }
   }
+}
+
+/**
+ * Over an entry's transaction and account: false for a category line of a split purchase's part that is left out of
+ * its workspace's reports (0090). Every reader that adds spending up takes it beside `notExcluded`, which leaves out a
+ * purchase excluded whole: the part's workspace is the one its category is filed in.
+ */
+export function partCounted(transactionId: SQLWrapper, accountId: SQLWrapper): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM book_transaction_splits xs JOIN book_categories xc ON xc.book_id = xs.book_id
+    WHERE xs.transaction_id = ${transactionId} AND xs.excluded = 1 AND xc.category_account_id = ${accountId})`;
+}
+
+/** `partCounted` where the column is there (0090); nothing to add on a database stopped before it. */
+export async function partCountedWhere(db: Db, transactionId: SQLWrapper, accountId: SQLWrapper): Promise<SQL[]> {
+  return (await splitExclusionExists(db)) ? [partCounted(transactionId, accountId)] : [];
 }
 
 /**

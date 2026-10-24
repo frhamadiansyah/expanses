@@ -1,0 +1,16 @@
+-- One part of a purchase split across workspaces (0084) left out of its workspace's reports: the chart, the budgets,
+-- the category totals, Financial health and an event's spending. The other parts count as they always did, and the
+-- card keeps the whole charge — its balance, statement, points and instalments read the card's own line, never this.
+--
+-- On a split the part is where this is said: the ledger writes transaction_flags.excluded as 0 for a split it posts and
+-- turns "exclude the whole purchase" into every part excluded. A split excluded whole before this column keeps its
+-- transaction_flags row, which every reader still honours (a purchase excluded whole is out of every workspace), and
+-- the edit form reads it as every part excluded, so the next save writes it here. Nothing is moved by this migration,
+-- which therefore needs no other table to be there (a database may take 0048 after this, out of order).
+--
+-- (A part counted in no workspace at all — "Not counted" — is no row here: it is a line on the workspace's Not counted
+-- equity account, which no report reads.)
+--
+-- Read and written by name, never through drizzle, so a database stopped before this column reads every part counted.
+-- It travels as the purchase's `excluded` field, the part in the shared workspace being the only part that travels.
+ALTER TABLE book_transaction_splits ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0;

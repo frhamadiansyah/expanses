@@ -3,7 +3,7 @@ import { eventPostingOf, listPhotos, listTransactions, ownerScope, paidOffMarkOf
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
-import { Copy, Pencil } from 'lucide-react';
+import { Copy, EyeOff, Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -146,8 +146,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   });
 
   const caption = heroCaption(tx, kind.amountMinor);
-  // One purchase split across workspaces: each part, with the workspace it is counted in.
-  const parts = splitParts(tx, accounts);
+  // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
+  const parts = splitParts(tx, accounts, book);
 
   /*
    * A phone's Edit is the Add screen, opened on this transaction: one full card for every kind of transaction,
@@ -278,21 +278,37 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       {parts.length > 0 && (
         <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5">
           <h2 id="split-parts-title" className="px-1 text-[13px] text-[var(--ph-ink-3)]">
-            Split across workspaces
+            {tx.splitBooks ? 'Split across workspaces' : 'Split'}
           </h2>
           <Card className="divide-y divide-slate-100">
-            {parts.map((part) => (
-              <div key={`${part.book.id}:${part.categoryId}`} data-testid="split-part" className="flex items-center gap-3 py-2 text-sm">
-                {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. */}
+            {parts.map((part, i) => (
+              <div
+                key={`${part.book?.id ?? 'not-counted'}:${part.categoryId}:${i}`}
+                data-testid="split-part"
+                data-excluded={part.excluded ? 'true' : undefined}
+                className="flex items-center gap-3 py-2 text-sm"
+              >
+                {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. A part
+                    Not counted has no category and no workspace: a plain mark in the icon's place. */}
                 <span className="relative shrink-0">
-                  <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
-                  <WorkspaceBadge book={part.book} corner />
+                  {part.book || part.categoryId ? (
+                    <>
+                      <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
+                      <WorkspaceBadge book={part.book} corner />
+                    </>
+                  ) : (
+                    <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                      <EyeOff size={14} />
+                    </span>
+                  )}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{part.categoryName}</span>
-                  <span className="truncate text-xs text-slate-500">{part.book.name}</span>
+                  <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
+                  <span className="truncate text-xs text-slate-500">
+                    {part.book ? [part.book.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ') : 'In no workspace and no report'}
+                  </span>
                 </span>
-                <span className="tabular text-right">{formatMinor(part.amountMinor, part.currency)}</span>
+                <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
               </div>
             ))}
           </Card>

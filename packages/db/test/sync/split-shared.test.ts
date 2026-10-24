@@ -9,6 +9,7 @@ import {
   inBook,
   listTransactions,
   nativeBalances,
+  NOT_COUNTED_LINE,
   personalBook,
   postTransaction,
   replaceTransaction,
@@ -471,5 +472,85 @@ describe('what a split with a shared workspace may be', () => {
       }),
     ).rejects.toMatchObject({ code: 'SPLIT_SHARED', message: 'A purchase paid with another member’s money stays whole in the shared workspace.' });
     expect(await headOf(h.owner.database, id)).toBe(head);
+  });
+});
+
+describe('a part of the split left out of reports (0090)', () => {
+  /** The split's parts on the owner's phone and whether each is left out, Family first. */
+  const partsOf = async (h: Home, lineage: string) => {
+    const head = (await headOf(h.owner.database, lineage))!;
+    return (await h.owner.database.db.values<[string, number]>(sql`SELECT book_id, excluded FROM book_transaction_splits WHERE transaction_id = ${head}`))
+      .map(([book, excluded]) => [book === h.family ? 'Family' : 'Business', Number(excluded)] as const)
+      .sort((x, y) => Number(y[0] === 'Family') - Number(x[0] === 'Family'));
+  };
+  const partnerExcluded = async (h: Home, lineage: string) => {
+    const head = (await headOf(h.partner.database, lineage))!;
+    return Number((await h.partner.database.db.values<[number]>(sql`SELECT excluded FROM transaction_flags WHERE transaction_id = ${head}`))[0]?.[0] ?? 0);
+  };
+
+  it('the private part left out stays the owner’s own business: the partner’s copy counts as it did', async () => {
+    const h = await household();
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), { ...market(h), acrossBooks: true, excludedParts: [h.office] });
+    await h.home.settle();
+    expect(await partsOf(h, id)).toEqual([
+      ['Family', 0],
+      ['Business', 1],
+    ]);
+    expect(await partnerExcluded(h, id)).toBe(0);
+    expect(await spent(h.partner, h.family)).toBe(FAMILY_PART);
+    expect(await spent(h.owner, h.family)).toBe(FAMILY_PART);
+    expect(await spent(h.owner, h.business)).toBe(0);
+    expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card]).toBe(-WHOLE);
+    await expectNothingPrivateSent(h);
+    await expectConverged(h);
+  });
+
+  it('the shared part left out reaches the partner so; switched back on there, it counts again on both phones', async () => {
+    const h = await household();
+    // Both parts left out on the owner's phone: only Family's flag travels.
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), { ...market(h), acrossBooks: true, excludedParts: [h.groceries, h.office] });
+    await h.home.settle();
+    expect(await partnerExcluded(h, id)).toBe(1);
+    expect(await spent(h.partner, h.family)).toBe(0);
+    await expectConverged(h);
+
+    // The partner switches Exclude from report off on their copy, as their edit form saves it.
+    const head = (await headOf(h.partner.database, id))!;
+    const rows = await h.partner.database.db.values<[string, number]>(sql`SELECT account_id, amount_minor FROM entries WHERE transaction_id = ${head} ORDER BY rowid`);
+    await replaceTransaction(h.partner.database, inBook(h.partner.ws, h.family), head, {
+      occurredOn: '2026-09-12',
+      description: 'Toko Sumber Rejeki',
+      lines: rows.map(([accountId, amountMinor]) => ({ accountId, amountMinor: Number(amountMinor), currency: 'IDR' })),
+      excludedFromReport: false,
+    });
+    await h.home.settle();
+
+    // Back on the owner's phone it is the Family part's flag that changed; Business's part stays left out, the card whole.
+    expect(await partsOf(h, id)).toEqual([
+      ['Family', 0],
+      ['Business', 1],
+    ]);
+    expect(await spent(h.owner, h.family)).toBe(FAMILY_PART);
+    expect(await spent(h.owner, h.business)).toBe(0);
+    expect(await spent(h.partner, h.family)).toBe(FAMILY_PART);
+    expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card]).toBe(-WHOLE);
+    await expectNothingPrivateSent(h);
+    await expectConverged(h);
+  });
+
+  it('a Not counted part beside the shared part is refused, and nothing is sent', async () => {
+    const h = await household();
+    await expect(
+      postTransaction(h.owner.database, inBook(h.owner.ws, h.family), {
+        ...market(h, [
+          { categoryAccountId: h.groceries, amountMinor: FAMILY_PART },
+          { categoryAccountId: NOT_COUNTED_LINE, amountMinor: PRIVATE_PART },
+        ]),
+        acrossBooks: true,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_COUNTED_SHARED' });
+    await h.home.settle();
+    expect(await listTransactions(h.partner.database, inBook(h.partner.ws, h.family))).toEqual([]);
+    expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card] ?? 0).toBe(0);
   });
 });

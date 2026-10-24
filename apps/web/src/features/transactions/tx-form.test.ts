@@ -23,6 +23,8 @@ import {
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
+  excludedPartsOf,
+  excludedWhole,
   extraRows,
   type FormDraft,
   formFromTransaction,
@@ -30,6 +32,8 @@ import {
   initialCategorySource,
   isRefund,
   KEYPAD_KEYS,
+  NOT_COUNTED,
+  NOT_COUNTED_ALONE,
   keypadAction,
   keypadKeys,
   keypadPress,
@@ -45,7 +49,10 @@ import {
   suggestedRate,
   typedCurrency,
   withCategoryLater,
+  withExcludedWhole,
+  withPartExcluded,
   withShares,
+  withSplitCategory,
 } from './tx-form';
 
 const accounts = [
@@ -1775,5 +1782,109 @@ describe('cents typed on a whole-unit currency', () => {
       expect(amountAfterDone('85000+15000', 'IDR', false, 'up')).toEqual({ text: '100000', close: true });
       expect(amountAfterDone('12500,30', 'IDR')).toEqual({ text: '12500,30', close: false });
     });
+  });
+});
+
+describe('a split part left out of reports, or Not counted (0090)', () => {
+  // Invented: Rp 4.500.000 on the card; restaurants and groceries in the open workspace, office supplies in Business.
+  const bookOf = (categoryId: string) => (({ 'cat-restaurants': 'personal', 'cat-groceries': 'personal', 'cat-office': 'business' }) as Record<string, string>)[categoryId] ?? null;
+  const rows = [
+    { categoryId: 'cat-restaurants', amount: '300000' },
+    { categoryId: 'cat-office', amount: '4000000' },
+    { categoryId: 'cat-groceries', amount: '200000' },
+  ];
+  const splitDraft = (splits: FormDraft['splits']): FormDraft => ({ ...emptyForm('ws-1'), moneyId: 'acct-card', currency: 'IDR', splits });
+
+  it('switches a part as a whole: every row of its workspace, never a Not counted row', () => {
+    const off = withPartExcluded(rows, 0, true, bookOf);
+    expect(off.map((row) => row.excluded ?? false)).toEqual([true, false, true]);
+    expect(withPartExcluded(off, 2, false, bookOf).map((row) => row.excluded ?? false)).toEqual([false, false, false]);
+    const withNotCounted = [...rows, { categoryId: NOT_COUNTED, amount: '0' }];
+    expect(withPartExcluded(withNotCounted, 3, true, bookOf)[3]!.excluded).toBeUndefined();
+  });
+
+  it('a row moved into a workspace takes its part’s switch; moved to Not counted it drops it', () => {
+    const off = withPartExcluded(rows, 1, true, bookOf);
+    expect(withSplitCategory(off, 0, 'cat-office', bookOf)[0]).toEqual({ categoryId: 'cat-office', amount: '300000', excluded: true });
+    expect(withSplitCategory(off, 1, NOT_COUNTED, bookOf)[1]).toEqual({ categoryId: NOT_COUNTED, amount: '4000000' });
+  });
+
+  it('posts each excluded part by its categories, the purchase’s own flag off', () => {
+    const post = formToPost(splitDraft(withPartExcluded(rows, 1, true, bookOf)), accounts);
+    expect(post).toMatchObject({ kind: 'post', input: { excludedFromReport: false, excludedParts: ['cat-office'], acrossBooks: true } });
+    expect(excludedPartsOf(rows)).toEqual([]);
+  });
+
+  it('posts a Not counted row as a line on the Not counted account, the card charged the whole', () => {
+    const post = formToPost(splitDraft([{ categoryId: 'cat-office', amount: '4000000' }, { categoryId: NOT_COUNTED, amount: '500000' }]), accounts);
+    expect(post).toMatchObject({
+      kind: 'post',
+      input: {
+        lines: splitExpenseLines({
+          paymentAccountId: 'acct-card',
+          currency: 'IDR',
+          splits: [
+            { categoryAccountId: 'cat-office', amountMinor: 4_000_000 },
+            { categoryAccountId: NOT_COUNTED, amountMinor: 500_000 },
+          ],
+        }),
+      },
+    });
+    expect(() => formToPost(splitDraft([{ categoryId: NOT_COUNTED, amount: '4500000' }]), accounts)).toThrow(NOT_COUNTED_ALONE);
+  });
+
+  it('a purchase that is not split posts its own flag and names no part', () => {
+    expect(formToPost({ ...draft, excluded: true }, accounts)).toMatchObject({ input: { excludedFromReport: true, excludedParts: null } });
+  });
+
+  it('reopens a split with its excluded part and its Not counted part, and saves them again', () => {
+    const tx = view({
+      splitBooks: [
+        { id: 'personal', name: 'Personal', kind: 'personal' },
+        { id: 'business', name: 'Business', kind: 'business', excluded: true },
+      ],
+      entries: [
+        paid(-4_500_000),
+        { ...spent('cat-restaurants', 300_000), bookId: 'personal' },
+        { ...spent('cat-office', 3_700_000), bookId: 'business' },
+        { accountId: 'eq-nc', accountKind: 'equity', accountName: 'Not counted', accountSystemKey: 'not_counted', amountMinor: 500_000, amountBaseMinor: 500_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    const form = formFromTransaction(tx, accounts);
+    expect(form.splits).toEqual([
+      { categoryId: 'cat-restaurants', amount: '300000' },
+      { categoryId: 'cat-office', amount: '3700000', excluded: true },
+      { categoryId: NOT_COUNTED, amount: '500000' },
+    ]);
+    expect(form.excluded).toBe(false);
+    expect(formToPost(form, accounts)).toMatchObject({ input: { excludedFromReport: false, excludedParts: ['cat-office'] } });
+  });
+
+  it('one category and a Not counted part reopen as a split, the purchase’s flag the part’s', () => {
+    const tx = view({
+      excluded: true,
+      entries: [
+        paid(-4_500_000),
+        spent('cat-office', 4_000_000),
+        { accountId: 'eq-nc', accountKind: 'equity', accountName: 'Not counted', accountSystemKey: 'not_counted', amountMinor: 500_000, amountBaseMinor: 500_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    expect(formFromTransaction(tx, accounts).splits).toEqual([
+      { categoryId: 'cat-office', amount: '4000000', excluded: true },
+      { categoryId: NOT_COUNTED, amount: '500000' },
+    ]);
+  });
+
+  it('More details’ switch on a split is read off its parts, and switches every part in a workspace', () => {
+    const withNotCounted = splitDraft([...rows, { categoryId: NOT_COUNTED, amount: '500000' }]);
+    expect(excludedWhole(withNotCounted)).toBe(false);
+    const all = withExcludedWhole(withNotCounted, true);
+    expect(all.splits.map((row) => row.excluded ?? false)).toEqual([true, true, true, false]);
+    expect(excludedWhole(all)).toBe(true);
+    // One part switched back on its row: the whole is no longer excluded, and says so.
+    expect(excludedWhole({ ...all, splits: withPartExcluded(all.splits, 1, false, bookOf) })).toBe(false);
+    expect(withExcludedWhole(all, false).splits.map((row) => row.excluded ?? false)).toEqual([false, false, false, false]);
+    // Not split: the purchase's own flag.
+    expect(excludedWhole(withExcludedWhole({ ...draft }, true))).toBe(true);
   });
 });

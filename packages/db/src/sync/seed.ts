@@ -24,6 +24,7 @@ export type SharingErrorCode =
   | 'CURRENCY'
   | 'ALREADY_SHARED'
   | 'HAS_SPLITS'
+  | 'HAS_NOT_COUNTED'
   | 'NOT_FOUND'
   | 'BAD_CODE'
   | 'INVITE_CLAIMED'
@@ -105,6 +106,23 @@ export async function assertShareableTx(tx: Tx, bookId: string): Promise<void> {
     throw new SharingError(
       'HAS_SPLITS',
       'This workspace holds a purchase split with a workspace that is already shared. A purchase can be split with one shared workspace at most: fold that split back first.',
+    );
+  }
+  // A part counted in no workspace (Not counted) has nowhere to travel: a shared workspace keeps every part of its
+  // purchases in a workspace, as the ledger keeps it once shared (`refuseNotCountedTx`).
+  if (
+    (
+      await tx.values(sql`
+        SELECT 1 FROM transactions t
+        WHERE ${filedInBook(sql`t.id`, bookId, await bookSplitsExist(tx))} AND t.status = 'posted'
+          AND EXISTS (SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id
+                      WHERE e.transaction_id = t.id AND a.kind = 'equity' AND a.system_key = 'not_counted')
+        LIMIT 1`)
+    ).length > 0
+  ) {
+    throw new SharingError(
+      'HAS_NOT_COUNTED',
+      'This workspace holds a purchase with a part marked Not counted. A shared workspace keeps every part in a workspace: put that part in a workspace and switch on its Exclude from report first.',
     );
   }
 }

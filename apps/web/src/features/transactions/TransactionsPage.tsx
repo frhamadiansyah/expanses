@@ -54,7 +54,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { amountExtraParts, billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { amountExtraParts, billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -1031,8 +1031,9 @@ export function TransactionsPage() {
               <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
-            {/* One purchase split across workspaces: narrowed to one, the row is its part; the receipt is the whole. */}
-            {tx.splitBooks && ' · ⑂ split'}
+            {/* One purchase split across workspaces, or with a part Not counted: narrowed to one workspace, the row is
+                its part; the receipt is the whole. */}
+            {(tx.splitBooks || hasNotCountedPart(tx)) && ' · ⑂ split'}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.

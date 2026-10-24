@@ -107,13 +107,20 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
     GROUP BY t.id
   `);
-  // A purchase split across workspaces names its parts' categories (0084): one query for every split on the card.
+  // A purchase split across workspaces names its parts' categories (0084): one query for every split on the card. So
+  // does one with a part counted in no workspace, which names that part "Not counted".
   const splits = await splitBooksOfMany(db, rows.map((row) => row[0]));
+  const notCounted = rows.length
+    ? await db.values<[string]>(sql`
+        SELECT DISTINCT e.transaction_id FROM entries e JOIN accounts a ON a.id = e.account_id
+        WHERE e.account_id IN (SELECT id FROM accounts WHERE kind = 'equity' AND system_key = 'not_counted') AND e.transaction_id IN ${rows.map((row) => row[0])}`)
+    : [];
+  const parted = new Set([...splits.keys(), ...notCounted.map(([id]) => id)]);
   const partNames = new Map<string, string[]>();
-  if (splits.size > 0) {
+  if (parted.size > 0) {
     const parts = await db.values<[string, string]>(sql`
       SELECT e.transaction_id, a.name FROM entries e JOIN accounts a ON a.id = e.account_id
-      WHERE e.transaction_id IN ${[...splits.keys()]} AND a.kind IN ('expense', 'income')
+      WHERE e.transaction_id IN ${[...parted]} AND (a.kind IN ('expense', 'income') OR (a.kind = 'equity' AND a.system_key = 'not_counted'))
       ORDER BY ABS(e.amount_minor) DESC, e.rowid`);
     for (const [transactionId, name] of parts) partNames.set(transactionId, [...(partNames.get(transactionId) ?? []), name]);
   }
