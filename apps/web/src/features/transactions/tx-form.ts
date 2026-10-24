@@ -9,8 +9,10 @@ import {
   exchangeLines,
   expenseLines,
   incomeLines,
+  isNotCountedKey,
   isoDate,
   minorToMajorString,
+  NOT_COUNTED_LINE,
   parseMajor,
   type PostingLine,
   refundLines,
@@ -28,8 +30,85 @@ import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
 
 export interface SplitRow {
+  /** A category, from any workspace a split may take one from — or `NOT_COUNTED`, a part in no workspace at all. */
   categoryId: string;
   amount: string;
+  /**
+   * This row's part is left out of its workspace's reports (0090). A part is a workspace's share of the purchase, so
+   * every row in one workspace says the same (`withPartExcluded`). Never on a Not counted row, which no report reads.
+   */
+  excluded?: boolean;
+}
+
+/**
+ * A split row's choice for a part counted in no workspace: "Not counted". It posts on the Not counted account, which
+ * no report reads, while the card keeps the whole charge.
+ */
+export const NOT_COUNTED = NOT_COUNTED_LINE;
+
+export const isNotCountedRow = (row: Pick<SplitRow, 'categoryId'>): boolean => row.categoryId === NOT_COUNTED;
+
+/**
+ * The rows with row `index`'s part switched to `excluded`: every row filed in the same workspace with it, since the
+ * part is that workspace's share of the purchase. `bookOf` names a category's workspace; one it cannot name (not
+ * read yet) is its own part. A Not counted row is never excluded — it is in no report to leave.
+ */
+export function withPartExcluded(splits: readonly SplitRow[], index: number, excluded: boolean, bookOf: (categoryId: string) => string | null): SplitRow[] {
+  const target = splits[index];
+  if (!target || isNotCountedRow(target)) return [...splits];
+  const book = target.categoryId ? bookOf(target.categoryId) : null;
+  return splits.map((row, i) => {
+    if (isNotCountedRow(row)) return row;
+    const same = i === index || (book !== null && row.categoryId !== '' && bookOf(row.categoryId) === book);
+    return same ? { ...row, excluded } : row;
+  });
+}
+
+/**
+ * The rows with row `index` given another category (or Not counted). A row that joins a workspace takes that workspace
+ * part's Exclude from report, so one part never reads two ways; one that leaves for Not counted drops it.
+ */
+export function withSplitCategory(splits: readonly SplitRow[], index: number, categoryId: string, bookOf: (categoryId: string) => string | null): SplitRow[] {
+  const book = categoryId && categoryId !== NOT_COUNTED ? bookOf(categoryId) : null;
+  const partner = book === null ? undefined : splits.find((row, i) => i !== index && row.categoryId && !isNotCountedRow(row) && bookOf(row.categoryId) === book);
+  return splits.map((row, i) => {
+    if (i !== index) return row;
+    const { excluded: _was, ...rest } = row;
+    void _was;
+    const excluded = categoryId === NOT_COUNTED ? false : partner ? (partner.excluded ?? false) : (row.excluded ?? false);
+    return { ...rest, categoryId, ...(excluded ? { excluded: true } : {}) };
+  });
+}
+
+/**
+ * More details' Exclude from report. On a split it is read off the rows, never kept beside them (0090): on when every
+ * part in a workspace is left out, and switching it switches every such part. So the one switch and the rows' own
+ * can never disagree. Anything else reads and writes the purchase's own flag, as ever.
+ */
+export function excludedWhole(draft: Pick<FormDraft, 'mode' | 'splits' | 'excluded'>): boolean {
+  if (draft.mode !== 'expense' || draft.splits.length === 0) return draft.excluded;
+  const counted = draft.splits.filter((row) => !isNotCountedRow(row));
+  return counted.length > 0 && counted.every((row) => row.excluded === true);
+}
+
+/** The draft with More details' Exclude from report switched: on a split, every part in a workspace with it. */
+export function withExcludedWhole(draft: FormDraft, excluded: boolean): FormDraft {
+  if (draft.mode !== 'expense' || draft.splits.length === 0) return { ...draft, excluded };
+  return {
+    ...draft,
+    excluded,
+    splits: draft.splits.map((row) => {
+      if (isNotCountedRow(row)) return row;
+      const { excluded: _was, ...rest } = row;
+      void _was;
+      return excluded ? { ...rest, excluded: true } : rest;
+    }),
+  };
+}
+
+/** The categories of the rows whose part is left out of reports: what `excludedParts` names a part by. */
+export function excludedPartsOf(splits: readonly SplitRow[]): string[] {
+  return [...new Set(splits.filter((row) => row.excluded && row.categoryId && !isNotCountedRow(row)).map((row) => row.categoryId))];
 }
 
 export interface WithRow {
@@ -628,11 +707,16 @@ function splitRowsOf(draft: FormDraft, currency: string, typed: string): { categ
   if (typed && typed !== currency) {
     throw new Error(`A split is entered in ${currency}. Change the currency back to ${currency}, or remove the split.`);
   }
+  // A Not counted part is money spent that no workspace counts; a purchase none of which counts is excluded whole.
+  if (draft.splits.length > 0 && draft.splits.every(isNotCountedRow)) throw new Error(NOT_COUNTED_ALONE);
   return draft.splits.map((row, i) => {
     if (!row.categoryId) throw new Error(`Choose a category for split ${i + 1}`);
     return { categoryAccountId: row.categoryId, amountMinor: positive(row.amount, currency, `Split ${i + 1} amount`) };
   });
 }
+
+/** Why a split of Not counted rows alone is refused, in the ledger's own words. */
+export const NOT_COUNTED_ALONE = 'A split needs at least one part in a workspace. To leave the whole purchase out, switch on Exclude from report.';
 
 /** Whether this draft spends one figure across several categories, which is where the total comes from instead. */
 const splitByCategory = (draft: FormDraft) => draft.mode === 'expense' && draft.splits.length > 0;
@@ -1056,7 +1140,10 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       mcc: onCard ? mcc : null,
       cardId: onCard ? draft.cardId.trim() || null : null,
       channel: draft.channel || null,
-      excludedFromReport: draft.excluded,
+      // A split says it part by part (0090): each workspace's part on its rows, the whole purchase never on its own,
+      // so a part switched back on is never held out by a flag the screen no longer shows. Anything else, as ever.
+      excludedFromReport: splits ? false : draft.excluded,
+      excludedParts: splits ? excludedPartsOf(draft.splits) : null,
       eventId: draft.eventId || null,
       photoIds: draft.photoIds,
       // Paid with the partner's shared item (joint net worth §7.1): the ledger passes it to the purchase's lineage.
@@ -1249,12 +1336,23 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
   if (c.type === 'expense' || c.type === 'income') {
     const payment = money[0]!;
     const category = tx.entries.filter((e) => e.accountKind === c.type);
-    if (c.type === 'expense' && category.length > 1) {
+    // A part counted in no workspace (Not counted) is a row of the split too, on the Not counted account.
+    const notCounted = c.type === 'expense' ? tx.entries.filter((e) => e.accountKind === 'equity' && isNotCountedKey(e.accountSystemKey)) : [];
+    if (c.type === 'expense' && category.length + notCounted.length > 1) {
+      // Each workspace's part left out of its reports (0090); in one workspace, the purchase's own flag is its one part's.
+      const partOff = (e: (typeof category)[number]) => (tx.excluded ?? false) || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
+      const splits: SplitRow[] = [
+        ...category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}) })),
+        ...notCounted.map((e) => ({ categoryId: NOT_COUNTED, amount: minorToMajorString(e.amountMinor, e.currency) })),
+      ];
+      const counted = splits.filter((row) => !isNotCountedRow(row));
       return withOpened({
         ...base,
+        // Every part left out is the whole purchase left out: what More details would say once the split is taken away.
+        excluded: counted.length > 0 && counted.every((row) => row.excluded),
         moneyId: payment.accountId,
         currency: settledOf(payment),
-        splits: category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency) })),
+        splits,
       }, tx, accounts);
     }
     const only = category[0]!;

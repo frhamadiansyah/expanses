@@ -549,7 +549,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     ${channelJoin}
     WHERE e.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
-      AND a.kind = 'expense'
+      -- A split part counted in no workspace (Not counted) was charged to the card all the same: it earns, under no
+      -- category, as any line a rule's category does not name.
+      AND (a.kind = 'expense' OR (a.kind = 'equity' AND a.system_key = 'not_counted'))
       ${shareLinesOut}
       AND COALESCE(p.posted_on, t.occurred_on) BETWEEN ${from} AND ${to}
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})

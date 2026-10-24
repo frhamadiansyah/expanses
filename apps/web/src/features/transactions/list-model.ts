@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -15,6 +15,24 @@ import { classify } from './classify';
  */
 export function billTagOf(tx: Pick<TransactionView, 'occurredOn' | 'billMonth'>): string | null {
   return tx.billMonth && tx.billMonth !== tx.occurredOn.slice(0, 7) ? `${monthName(tx.billMonth, 'short')} bill` : null;
+}
+
+/** A split part counted in no workspace ("Not counted"): a line on the Not counted equity account. */
+export const isNotCountedLine = (entry: Pick<TransactionEntryView, 'accountKind' | 'accountSystemKey'>): boolean =>
+  entry.accountKind === 'equity' && isNotCountedKey(entry.accountSystemKey);
+
+/** Whether a purchase has a part counted in no workspace. */
+export const hasNotCountedPart = (tx: Pick<TransactionView, 'entries'>): boolean => tx.entries.some(isNotCountedLine);
+
+/**
+ * Whether a row is out of the figures a list adds up: the whole purchase excluded, or — split across workspaces — the
+ * open workspace's part excluded on its own (0090). Read owner-wide, a split is out only when every part is.
+ */
+export function excludedHere(tx: Pick<TransactionView, 'excluded' | 'splitBooks'>, openBookId?: string): boolean {
+  if (tx.excluded) return true;
+  const books = tx.splitBooks ?? [];
+  if (books.length === 0) return false;
+  return openBookId ? books.some((book) => book.id === openBookId && book.excluded) : books.every((book) => book.excluded);
 }
 
 export type RowType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction' | 'debt';
@@ -194,8 +212,11 @@ export function buildRows(
     tx.entries.some((e) => (e.accountSystemKey ?? byId.get(e.accountId)?.systemKey) === 'balance_correction');
 
   const recorded = txs.filter((tx) => !quiet(tx)).map((whole): ListRow => {
-    // Split across workspaces: read here as this workspace's part, its other workspaces' category lines left out.
-    const splitPart = openBookId && whole.splitBooks ? whole.entries.filter((e) => e.bookId === undefined || e.bookId === openBookId) : undefined;
+    // Split across workspaces: read here as this workspace's part, its other workspaces' category lines left out — and
+    // a part counted in no workspace (Not counted) with them: it is no workspace's.
+    const parted = !!whole.splitBooks || hasNotCountedPart(whole);
+    const splitPart =
+      openBookId && parted ? whole.entries.filter((e) => (e.bookId === undefined || e.bookId === openBookId) && !isNotCountedLine(e)) : undefined;
     const tx = splitPart ? { ...whole, entries: splitPart } : whole;
     const c = classify(tx);
     // A transfer reads as one even with a fee beside it: the fee's category is in its grey line, never its title.
@@ -239,7 +260,7 @@ export function buildRows(
       ...(c.feeMinor ? { feeMinor: c.feeMinor } : {}),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
-      excluded: tx.excluded ?? false,
+      excluded: excludedHere(whole, openBookId),
       needs: [],
       refund: c.type === 'expense' && c.amountMinor < 0,
       moneyIn: type === 'debt' && money.filter((e) => !isPerson(e.accountId)).reduce((sum, e) => sum + e.amountBaseMinor, 0) > 0,

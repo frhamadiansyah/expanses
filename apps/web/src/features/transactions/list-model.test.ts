@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory } from './list-model';
+import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -564,6 +564,41 @@ describe('a purchase split across workspaces', () => {
     const [whole] = buildRows([market], [], withOffice, cards);
     expect(whole).toMatchObject({ amountMinor: 1_350_000, spentMinor: 1_350_000 });
     expect(whole!.splitPart).toBeUndefined();
+  });
+
+  it('is out of the totals in the workspace whose part is excluded, and only there (0090)', () => {
+    const off = { ...market, splitBooks: [books[0]!, { ...books[1]!, excluded: true }] };
+    const [family] = buildRows([off], [], withOffice, cards, {}, 'family');
+    const [business] = buildRows([off], [], withOffice, cards, {}, 'business');
+    expect(family!.excluded).toBe(false);
+    expect(business!.excluded).toBe(true);
+    expect(totals([family!]).spentMinor).toBe(900_000);
+    expect(totals([business!]).spentMinor).toBe(0);
+    // Read owner-wide it is out only once every part is.
+    expect(buildRows([off], [], withOffice, cards)[0]!.excluded).toBe(false);
+    expect(excludedHere({ splitBooks: books.map((book) => ({ ...book, excluded: true })) })).toBe(true);
+  });
+});
+
+describe('a purchase with a part Not counted', () => {
+  const notCounted = account('nc', 'equity', 'equity', { name: 'Not counted', systemKey: 'not_counted' });
+  const withNotCounted = [...accounts, notCounted];
+  byId.set(notCounted.id, notCounted);
+  // Invented: Rp 4.500.000 on the card at Toko Sinar Jaya, Rp 4.000.000 of it groceries, Rp 500.000 in no workspace.
+  const shop = tx('2026-09-15', 'Toko Sinar Jaya', [['groceries', 4_000_000], ['nc', 500_000], ['octo', -4_500_000]]);
+  shop.entries[1] = { ...shop.entries[1]!, accountSystemKey: 'not_counted' };
+
+  it('reads as its workspace’s part in that workspace, the Not counted part counted nowhere', () => {
+    expect(hasNotCountedPart(shop)).toBe(true);
+    const [row] = buildRows([shop], [], withNotCounted, cards, {}, 'family');
+    expect(row).toMatchObject({ type: 'expense', amountMinor: 4_000_000, spentMinor: 4_000_000, categoryName: 'Groceries', excluded: false });
+    expect(row!.splitPart!.map((e) => e.accountId)).toEqual(['groceries', 'octo']);
+    expect(totals([row!]).spentMinor).toBe(4_000_000);
+  });
+
+  it('reads as the whole charge where no workspace is open, its spending still the counted part', () => {
+    const [row] = buildRows([shop], [], withNotCounted, cards);
+    expect(row).toMatchObject({ amountMinor: 4_500_000, spentMinor: 4_000_000 });
   });
 });
 

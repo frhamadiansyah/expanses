@@ -1,4 +1,4 @@
-import { accountDisplayName, BANK_NAMED_SUBTYPES, compareWithinDay, isMcc, isSupportedCurrency, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { accountDisplayName, BANK_NAMED_SUBTYPES, compareWithinDay, isMcc, isNotCountedKey, isSupportedCurrency, NOT_COUNTED_KEY, NOT_COUNTED_LINE, planDayOrder, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, getTableColumns, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -14,11 +14,11 @@ import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, type BookKind, hasBooks } from './books';
-import { bookSplitsExist, splitBooksOfMany, splitBooksOfTx, splitHasPartIn, writeSplitBooksTx } from './book-splits';
+import { bookSplitsExist, excludedSplitBooksTx, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeSplitBooksTx } from './book-splits';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
-import { accountBanksTx, systemAccountId } from './accounts';
+import { accountBanksTx, ensureSystemAccountTx, systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -69,6 +69,8 @@ export type LedgerErrorCode =
   | 'OTHER_BOOK'
   | 'SPLIT_SHARED'
   | 'SPLIT_MOVE'
+  | 'NOT_COUNTED'
+  | 'NOT_COUNTED_SHARED'
   | 'INVALID_BILL_MONTH'
   | 'POCKET_PARENT'
   | 'OTHER_DAY'
@@ -132,6 +134,15 @@ export interface PostTransactionInput {
    * original's: an edit of a split across workspaces may stay one.
    */
   acrossBooks?: boolean;
+  /**
+   * The parts left out of their workspace's reports (0090) — the chart, the budgets, the category totals, Financial
+   * health, an event's spending — each named by a category line of the part, so a form that knows its rows and not
+   * their workspaces can say it. A part is a workspace's share of the purchase: naming one of its lines names all of
+   * them. On a purchase split across workspaces each part is its own; on one in a single workspace the one part is the
+   * whole purchase, and naming it is `excludedFromReport`. The card keeps the whole charge either way. On
+   * `replaceTransaction`, undefined carries the original's parts, workspace by workspace.
+   */
+  excludedParts?: readonly string[] | null;
   /**
    * Its place within its day, when moved there by hand (0067). A new posting leaves it null, so it lands on top of its
    * day. On `replaceTransaction`, undefined carries the original's while the date stays the same and clears it when the
@@ -242,8 +253,62 @@ async function onlyCardOfPurchaseTx(tx: Db, ws: WorkspaceContext, found: readonl
   return inUse.length === 1 ? inUse[0]![0] : null;
 }
 
+// A split part counted in no workspace ("Not counted"): `NOT_COUNTED_LINE` names its line, posted on the workspace's
+// Not counted equity account (`NOT_COUNTED_KEY`). Re-exported for the callers that build postings from this package.
+export { isNotCountedKey, NOT_COUNTED_KEY, NOT_COUNTED_LINE };
+
+/** The posting with every `NOT_COUNTED_LINE` on the Not counted account. Untouched (the same object) when none is. */
+async function withNotCountedTx(tx: Db, ws: WorkspaceContext, input: PostTransactionInput): Promise<PostTransactionInput> {
+  if (!input.lines.some((line) => line.accountId === NOT_COUNTED_LINE)) return input;
+  const id = await ensureSystemAccountTx(tx, ws, NOT_COUNTED_KEY);
+  return { ...input, lines: input.lines.map((line) => (line.accountId === NOT_COUNTED_LINE ? { ...line, accountId: id } : line)) };
+}
+
+/**
+ * A posting with a Not counted part, checked: the part is money spent (more than nothing), beside at least one part
+ * in a workspace — a purchase none of which counts anywhere is one excluded from report whole — and not in a purchase
+ * with a part in a shared workspace. A shared workspace's purchase travels to the other members as its part there with
+ * the money that paid for it; a part that belongs to no workspace has nowhere to travel and no workspace to stay in,
+ * which is what refusing it keeps true (the share is refused the same way: `assertShareableTx`).
+ */
+async function refuseNotCountedTx(
+  tx: Db,
+  found: readonly { id: string; kind: string; systemKey: string | null }[],
+  lines: readonly PostingLine[],
+  bookIds: readonly string[],
+): Promise<void> {
+  const notCounted = new Set(found.filter((account) => account.kind === 'equity' && isNotCountedKey(account.systemKey)).map((account) => account.id));
+  if (notCounted.size === 0) return;
+  if (lines.some((line) => notCounted.has(line.accountId) && line.amountMinor <= 0)) {
+    throw new LedgerError('NOT_COUNTED', 'A part that is not counted is money spent: give it an amount.');
+  }
+  const kindOf = new Map(found.map((account) => [account.id, account.kind]));
+  if (!lines.some((line) => kindOf.get(line.accountId) === 'expense')) {
+    throw new LedgerError('NOT_COUNTED', 'A split needs at least one part in a workspace. To leave the whole purchase out, switch on Exclude from report.');
+  }
+  if (bookIds.length > 0 && (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length > 0) {
+    if ((await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id IN ${[...bookIds]} LIMIT 1`)).length > 0) {
+      throw new LedgerError(
+        'NOT_COUNTED_SHARED',
+        'A purchase with a part in a shared workspace keeps every part in a workspace. Put that part in a workspace that is not shared and switch on its Exclude from report.',
+      );
+    }
+  }
+}
+
+/** The workspaces whose part `excludedParts` names: each named line's workspace, among those the purchase is filed in. */
+async function excludedBooksOf(tx: Db, named: readonly string[] | null | undefined, bookIds: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const categoryId of new Set(named ?? [])) {
+    const bookId = await bookOfCategory(tx, categoryId);
+    if (bookId && bookIds.includes(bookId)) out.add(bookId);
+  }
+  return out;
+}
+
 /** Posts inside an open transaction. Throws PostingError or LedgerError without writing on invalid input. */
-export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
+export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: PostTransactionInput): Promise<string> {
+  const input = await withNotCountedTx(tx, ws, given);
   if (!DATE.test(input.occurredOn)) {
     throw new LedgerError('INVALID_DATE', `occurredOn must be YYYY-MM-DD, got "${input.occurredOn}"`);
   }
@@ -270,7 +335,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
-        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind, name: accounts.name, subtype: accounts.subtype })
+        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind, name: accounts.name, subtype: accounts.subtype, systemKey: accounts.systemKey })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)))
     : [];
@@ -307,7 +372,15 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // Split across workspaces, it belongs to each book it has a part in instead (0084).
   const bookIds = (await hasBooks(tx)) ? await booksOfCategories(tx, found, input.acrossBooks) : [];
   if (bookIds.length > 1) await refuseSplitTx(tx, bookIds, found, input.replacesTransactionId ?? null);
+  await refuseNotCountedTx(tx, found, input.lines, bookIds);
   const bookId = bookIds.length === 1 ? bookIds[0] : undefined;
+  // Which parts are left out of their workspace's reports (0090). Split across workspaces, each part says it for itself
+  // and "the whole purchase" is every part, so the purchase's own flag stays off; in one workspace the one part is the
+  // whole purchase, and a named part is the purchase's own flag.
+  const categoryIds = new Set(found.filter((account) => account.kind === 'expense' || account.kind === 'income').map((account) => account.id));
+  const namedParts = (input.excludedParts ?? []).filter((id) => categoryIds.has(id));
+  const excludedBooks = bookIds.length > 1 ? (input.excludedFromReport ? new Set(bookIds) : await excludedBooksOf(tx, namedParts, bookIds)) : new Set<string>();
+  const excludedWhole = bookIds.length > 1 ? false : Boolean(input.excludedFromReport) || namedParts.length > 0;
 
   const id = input.id ?? uuidv7();
   await tx.insert(transactions).values({
@@ -350,7 +423,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     })),
   );
   if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
-  else if (bookIds.length > 1) await writeSplitBooksTx(tx, ws.workspaceId, id, bookIds);
+  else if (bookIds.length > 1) await writeSplitBooksTx(tx, ws.workspaceId, id, bookIds, excludedBooks);
   // A payment against a bill says which month's bill it settles, which is not always the month it was paid in.
   if (input.templateId && (await billTablesExist(tx))) {
     const [bill] = await tx
@@ -368,7 +441,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   }
   // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
-  if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
+  if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, { ...input, excludedFromReport: excludedWhole });
   if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
   // Withdrawal rate §6: a foreign money account this touches is recalculated at the end of the db transaction, from
   // this date — before capture reads the figures, so a shared purchase goes out at the withdrawal rate (R9). Every
@@ -641,6 +714,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
   // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
   const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
+  // Which of a split's parts were left out of their workspace's reports (0090): carried workspace by workspace, as the
+  // lines of the correction that are still in each such workspace.
+  const carriedParts = input.excludedParts === undefined ? await linesInBooksTx(tx, input.lines, await excludedSplitBooksTx(tx, id)) : undefined;
   // Read before the void. An edit carries the saved answer by the difference, never by undoing and redoing it (rulings
   // I1, I2): an edit that does not mention it (a category re-file), or gives the same one again (an edit form), keeps
   // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
@@ -687,6 +763,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.billMonth === undefined && settles ? { billMonth: settles.billMonth } : {}),
     ...(input.channel === undefined ? { channel: extras?.channel ?? null } : {}),
     ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
+    ...(carriedParts !== undefined ? { excludedParts: carriedParts } : {}),
     // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
     ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
     // A correction keeps its place in its day; moved to another day it goes to the top of that one.
@@ -726,6 +803,17 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   } else if (settlement) await voidTransactionTx(tx, ws, settlement);
   else if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
   return replacement;
+}
+
+/** The lines' accounts that are categories filed in one of these workspaces: how a carried part is named again. */
+async function linesInBooksTx(tx: Db, lines: readonly PostingLine[], bookIds: ReadonlySet<string>): Promise<string[]> {
+  if (bookIds.size === 0) return [];
+  const out: string[] = [];
+  for (const accountId of new Set(lines.map((line) => line.accountId))) {
+    const bookId = await bookOfCategory(tx, accountId);
+    if (bookId && bookIds.has(bookId)) out.push(accountId);
+  }
+  return out;
 }
 
 /**
@@ -872,6 +960,11 @@ export interface SplitBook {
   id: string;
   name: string;
   kind: BookKind;
+  /**
+   * This part is left out of the workspace's reports (0090): out of its chart, budgets and totals, while the card keeps
+   * the whole charge. Absent (counted) on a view built by hand, and on a database stopped before 0090.
+   */
+  excluded?: boolean;
 }
 
 export interface TransactionView {
@@ -1033,7 +1126,8 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   const extras = (await extrasTablesExist(database.db)) ? await extrasFor(database.db, ws, txs.map((t) => t.id)) : undefined;
 
   // A purchase split across workspaces: which workspace each of its category lines is in, and the workspaces' names.
-  const splits = await splitBooksOfMany(database.db, txs.map((t) => t.id));
+  const parts = await splitPartsOfMany(database.db, txs.map((t) => t.id));
+  const splits = new Map([...parts].map(([transactionId, list]) => [transactionId, list.map((part) => part.bookId)]));
   const splitBooks = splits.size > 0 ? await splitBooksNamed(database, ws, rows.filter((row) => splits.has(row.transactionId)).map((row) => row.accountId)) : null;
 
   // An account at a bank is named with its bank, as every list of accounts names it ("Mandiri Xpresi").
@@ -1069,7 +1163,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     photoCount: extras?.get(t.id)?.photoCount ?? 0,
     dayOrder: t.dayOrder === null ? null : Number(t.dayOrder),
     exactHundredths: t.exactHundredths === null ? null : Number(t.exactHundredths),
-    ...(splits.has(t.id) && splitBooks ? { splitBooks: splitBooks.books.filter((book) => splits.get(t.id)!.includes(book.id)) } : {}),
+    ...(splits.has(t.id) && splitBooks
+      ? {
+          splitBooks: splitBooks.books
+            .filter((book) => splits.get(t.id)!.includes(book.id))
+            .map((book) => ({ ...book, excluded: parts.get(t.id)!.some((part) => part.bookId === book.id && part.excluded) })),
+        }
+      : {}),
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));
