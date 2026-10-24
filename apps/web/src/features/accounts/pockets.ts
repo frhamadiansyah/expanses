@@ -1,5 +1,6 @@
 import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
 import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds, spendingSwitchOn } from '@expanses/db';
+import { keptForSpending } from '../../lib/account-types';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -120,6 +121,19 @@ export function spendingBook(accounts: readonly AccountRow[]): AccountRow[] {
   const switchedOn = accounts.filter((a) => a.kind !== 'asset' || spendingSwitchOn(a, a.parentId === null ? null : byId.get(a.parentId)));
   const parents = pocketParentIds(accounts);
   return switchedOn.filter((a) => !parents.has(a.id) || pocketsOf(a.id, accounts).length === 0 || pocketsOf(a.id, switchedOn).length > 0);
+}
+
+/**
+ * Whether money is for spending as Wallet reads it, to show on its "For spending" switch: `keptForSpending`, and for
+ * an account with pockets, at least one open pocket kept for spending too. An account whose pockets are all switched
+ * off has left Wallet as one switched off has (`spendingBook`), so its own switch reads off — and switching it on
+ * puts every pocket back (`setAccountForSpending`).
+ *
+ * Read from the rows, never written: the account's own switch stays as stored, so a pocket can still tell an account
+ * kept as savings (its switch cannot be changed) from one whose pockets are merely all off (each can be switched on).
+ */
+export function spendsFrom(account: AccountRow, accounts: readonly AccountRow[]): boolean {
+  return keptForSpending(account) && spendingBook(accounts).some((row) => row.id === account.id);
 }
 
 /** An account's open pockets that are kept for spending: the ones its card in Wallet and the Balance box count. */

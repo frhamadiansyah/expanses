@@ -128,3 +128,41 @@ async function expectWalletFigureOn(page: Page, figure: string) {
   await page.goto('/wallet');
   await expectWalletFigure(page, CASH.name, figure);
 }
+
+/**
+ * Every pocket switched off one by one: the account has nothing left to spend, so it leaves Wallet and its own switch
+ * reads off. Switched on, both pockets are spent from again.
+ */
+export async function everyPocketOff(page: Page) {
+  page.on('dialog', (dialog) => void dialog.accept());
+  await mockRates(page, { TRY: 480 });
+  await openWithPockets(page, CASH);
+
+  for (const currency of ['TRY', 'IDR']) {
+    const pocket = await openPocketSettings(page, currency);
+    await expect(pocket).toBeChecked();
+    await pocket.click();
+    await expect(pocket).not.toBeChecked();
+  }
+  await page.goto('/wallet');
+  await expect(walletCard(page, CASH.name)).toHaveCount(0);
+
+  // The account's own Settings, reached from Assets now that it has no card: off, and it can be switched.
+  await openAssets(page);
+  await page.getByRole('link', { name: new RegExp(`^${CASH.name}`) }).first().click();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await openSettings(page);
+  const account = page.getByLabel('For spending');
+  await expect(account).not.toBeChecked();
+  await expect(account).toBeEnabled();
+  await expect(page.getByText('Every pocket is kept as savings.', { exact: false })).toBeVisible();
+  await account.click();
+  await expect(account).toBeChecked();
+
+  // Both pockets are on again: in Paid with, on their own switches, and the card counts both.
+  const sheet = await paidWithSheet(page);
+  await expect(sheet.getByRole('button', { name: `${CASH.name} · IDR`, exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: `${CASH.name} · TRY`, exact: true })).toBeVisible();
+  for (const currency of ['TRY', 'IDR']) await expect(await openPocketSettings(page, currency)).toBeChecked();
+  await expectWalletFigureOn(page, '2.480.000');
+}
