@@ -5,13 +5,17 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { CreditCard } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { native } from '../../capture/native';
+import { APP_STATEMENT_PREFIX, takeOfferedStatement } from '../../capture/statements';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { cycleBack } from '../cards/statement-dates';
 import { holdStatementBatch } from './batch';
 
-/** `/statement/shared?batch=<id>`: the batch the share sheet wrote, named by its `cicis://statement/<id>` link. */
+/**
+ * `/statement/shared?batch=<id>`: the batch the share sheet wrote, named by its `cicis://statement/<id>` link, or one
+ * the app read itself (`capture/statements.ts`).
+ */
 export function sharedStatementSearch(search: Record<string, unknown>): { batch?: string } {
   return { batch: typeof search.batch === 'string' ? search.batch : undefined };
 }
@@ -24,7 +28,10 @@ const taken = new Map<string, Promise<CaptureLine[][]>>();
 function takeBatch(batchId: string): Promise<CaptureLine[][]> {
   let lines = taken.get(batchId);
   if (!lines) {
-    lines = native.takeStatementBatch({ batchId }).then(({ images }) => images.map((image) => image.lines));
+    // Read in the app (Choose from Photos, one shared statement page): held in memory, not in the App Group.
+    lines = batchId.startsWith(APP_STATEMENT_PREFIX)
+      ? Promise.resolve(takeOfferedStatement(batchId) ?? [])
+      : native.takeStatementBatch({ batchId }).then(({ images }) => images.map((image) => image.lines));
     taken.set(batchId, lines);
   }
   return lines;

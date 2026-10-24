@@ -1,8 +1,9 @@
-import type { RawCapture } from '@expanses/core';
+import type { CaptureLine, RawCapture } from '@expanses/core';
 import { createDatabase, createWorkspace, listDrafts, migrate } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
-import { drainCaptures, drainNow, lastDrain, scanReceipt, type CaptureBridge } from './drain';
+import { drainCaptures, drainNow, lastDrain, pickPhotos, scanReceipt, type CaptureBridge } from './drain';
+import { nextWaitingStatement, takeOfferedStatement } from './statements';
 import { reportLine } from '../features/capture/CaptureSettingsPage';
 
 async function setup() {
@@ -24,8 +25,8 @@ const notification: RawCapture = {
   imageFile: null,
 };
 
-/** A bridge that hands over what the test says, has no camera of its own, and writes down what it was told. */
-const bridge = (captures: RawCapture[], photographed: RawCapture | null = null) => {
+/** A bridge that hands over what the test says, has no camera or library of its own, and writes down what it was told. */
+const bridge = (captures: RawCapture[], photographed: RawCapture | null = null, picked: RawCapture[] = []) => {
   const acked: string[][] = [];
   const deleted: string[] = [];
   const stand: CaptureBridge = {
@@ -34,6 +35,7 @@ const bridge = (captures: RawCapture[], photographed: RawCapture | null = null) 
       acked.push(ids);
     },
     scanReceipt: async () => ({ capture: photographed }),
+    pickPhotos: async () => ({ captures: picked }),
     deleteCaptureImage: async ({ file }) => {
       deleted.push(file);
     },
@@ -288,6 +290,126 @@ describe('a receipt photographed in the app', () => {
     try {
       expect(counts(await scanReceipt(database, ws, bridge([], null), '2026-09-30'))).toEqual({ drafts: 0, merged: 0, skipped: 0 });
       expect(await listDrafts(database, ws)).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+});
+
+/*
+ * Invented statement rows, as Vision reads them: date, description and amount, each its own line on one height. No
+ * figure, shop or date here is from a real statement.
+ */
+const statementPage = (rows: readonly (readonly [string, string, string])[]): CaptureLine[] =>
+  rows.flatMap(([on, description, amount], i) => {
+    const y = 0.12 + i * 0.05;
+    const at = (text: string, x: number, w: number): CaptureLine => ({ text, box: [x, y, w, 0.02], height: 0.02 });
+    return [at(on, 0.05, 0.1), at(description, 0.25, 0.5), at(amount, 0.85, 0.12)];
+  });
+
+const STATEMENT_PAGE = statementPage([
+  ['03SEP', 'KEDAI LANGIT SORE', '61,500'],
+  ['07SEP', 'TOKO ALAT TULIS RIANG', '23,750'],
+  ['11SEP', 'BENGKEL SEPEDA MAJU', '142,000'],
+]);
+
+/** A picture from the library, read on the phone and kept as the camera's is. */
+const chosen = (id: string, over: Partial<RawCapture> = {}): RawCapture => ({
+  ...notification,
+  id,
+  kind: 'shared-image',
+  app: null,
+  title: null,
+  imageFile: `captures/${id}.jpg`,
+  ...over,
+});
+
+describe('pictures chosen from Photos', () => {
+  it('makes one receipt a draft, its picture kept', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([], null, [chosen('lib-1')]);
+      const { result, statement } = await pickPhotos(database, ws, phone, '2026-09-30');
+
+      expect(statement).toBeNull();
+      expect(counts(result)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ source: 'photo', amountMinor: 38_000 });
+      expect(phone.deleted).not.toContain('captures/lib-1.jpg');
+    } finally {
+      close();
+    }
+  });
+
+  it('sends one statement page to the card picker, keeping its lines and letting its picture go', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([], null, [chosen('lib-2', { body: null, lines: STATEMENT_PAGE })]);
+      const { result, statement } = await pickPhotos(database, ws, phone, '2026-09-30');
+
+      expect(counts(result)).toEqual({ drafts: 0, merged: 0, skipped: 0 });
+      expect(await listDrafts(database, ws)).toEqual([]);
+      expect(phone.deleted).toContain('captures/lib-2.jpg');
+      expect(takeOfferedStatement(statement!)).toEqual([STATEMENT_PAGE]);
+      // The picker opens its own at once: nothing is left for Review to hand on.
+      expect(nextWaitingStatement()).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it('sends two or more pictures to the card picker as one statement, whatever is on them', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([], null, [chosen('lib-3'), chosen('lib-4')]);
+      const { statement } = await pickPhotos(database, ws, phone, '2026-09-30');
+
+      expect(await listDrafts(database, ws)).toEqual([]);
+      expect(phone.deleted).toEqual(expect.arrayContaining(['captures/lib-3.jpg', 'captures/lib-4.jpg']));
+      expect(takeOfferedStatement(statement!)).toHaveLength(2);
+    } finally {
+      close();
+    }
+  });
+
+  it('changes nothing when the library was closed without a picture', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const { result, statement } = await pickPhotos(database, ws, bridge([], null, []), '2026-09-30');
+      expect(statement).toBeNull();
+      expect(counts(result)).toEqual({ drafts: 0, merged: 0, skipped: 0 });
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('one screenshot shared from Photos', () => {
+  it('is a draft when it is a payment, and a statement waiting for its card when it is a statement page', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([chosen('share-1'), chosen('share-2', { body: null, lines: STATEMENT_PAGE })]);
+      const result = await drainCaptures(database, ws, phone, '2026-09-30');
+
+      expect(counts(result)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      // Both leave the holding area; only the statement's picture goes.
+      expect(phone.acked).toEqual([['share-1', 'share-2']]);
+      expect(phone.deleted).toContain('captures/share-2.jpg');
+      expect(phone.deleted).not.toContain('captures/share-1.jpg');
+      const waiting = nextWaitingStatement();
+      expect(waiting).not.toBeNull();
+      expect(takeOfferedStatement(waiting!)).toEqual([STATEMENT_PAGE]);
+      expect(nextWaitingStatement()).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it('leaves a screen scanner capture to the queue, statement-shaped or not: only the share sheet is checked', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const phone = bridge([chosen('shot-9', { kind: 'screen', body: null, lines: STATEMENT_PAGE })]);
+      await drainCaptures(database, ws, phone, '2026-09-30');
+      expect(nextWaitingStatement()).toBeNull();
     } finally {
       close();
     }

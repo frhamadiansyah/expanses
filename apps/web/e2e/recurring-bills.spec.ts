@@ -144,7 +144,7 @@ test('a bill that is out is paid from its row, and the month is settled', async 
 
   await page.goto('/transactions');
   await page.getByTestId('recurring-card').click();
-  await expect(page).toHaveURL(/\/bills$/);
+  await expect(page).toHaveURL(/\/bills\?from=cashflow$/);
   await expect(page.getByTestId('bills-summary')).toContainText('Still to pay in');
   await expect(page.getByTestId('bills-summary')).toContainText('150.000');
   await expect(page.getByTestId('bills-legend')).toContainText('150.000');

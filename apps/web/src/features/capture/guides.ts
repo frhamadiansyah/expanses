@@ -61,11 +61,12 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
   {
     key: 'receipt',
     title: 'Scan a receipt',
-    blurb: 'Photograph a paper receipt and keep it with the purchase.',
+    blurb: 'Photograph a paper receipt, or choose a picture already taken, and keep it with the purchase.',
     steps: [
-      'From the add-transaction button (+), choose “Scan a receipt”.',
+      'On Review, tap the camera button: “Take photo” for a receipt in hand, “Choose from Photos” for a picture already taken.',
       'Photograph the receipt: flat, in the light, with the total inside the frame.',
-      'Check the draft: the total is read, and “Keep photo” is already on for a photographed receipt.',
+      'From Photos, one receipt or payment screen becomes a draft. Two or more screenshots, or one screenshot of a statement page, go to the statement check, which asks which card they belong to.',
+      'Check the draft: the total is read, and “Keep photo” is already on for a photographed or chosen picture.',
     ],
   },
 ];

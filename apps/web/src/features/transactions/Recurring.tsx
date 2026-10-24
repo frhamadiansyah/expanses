@@ -39,7 +39,7 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
 
   return (
     // A row, not a card: it shares a box with the queue's line (`WaitingBox`), above the history rather than in it.
-    <Link to="/bills" className="flex w-full items-center gap-3 py-3 text-left" data-testid="recurring-card">
+    <Link to="/bills" search={{ from: 'cashflow' }} className="flex w-full items-center gap-3 py-3 text-left" data-testid="recurring-card">
       {/* The circle is the kit's own grey, the same one the queue's row wears: neither of these lines is a
           warning, so neither borrows the alarm's amber to say "there is something here". The glyph is a bell —
           the month reminding you what is already spoken for — where the screen behind it is a page of bills. */}

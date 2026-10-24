@@ -25,6 +25,7 @@ import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
 import { SourcePage } from '../features/capture/SourcePage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
+import { fromSearch } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
@@ -199,9 +200,9 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage, validateSearch: budgetSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget/edit', component: EditBudgetsPage, validateSearch: budgetSearch }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: RecurringPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: RecurringPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage, validateSearch: eventSearch }),
@@ -388,7 +389,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),

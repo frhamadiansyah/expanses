@@ -37,6 +37,8 @@ declare global {
     ) => Promise<{ drafts: number; merged: number; skipped: number }>;
     /** Picture bytes the injected captures' `imageFile` names resolve to. E2E builds only. */
     __captureImages?: Record<string, { base64: string; mime: string }>;
+    /** What "Choose from Photos" hands back, one pick per call, in order: the pictures read, and their bytes. E2E builds only. */
+    __photoPicks?: { captures: RawCapture[]; images?: Record<string, { base64: string; mime: string }> }[];
     /** Readings `recognizeImage` hands back, one list per call, in order. E2E builds only. */
     __statementLines?: CaptureLine[][];
   }
