@@ -78,7 +78,7 @@ export function DraftSheet({
                 onAnswer: onAnswerSource,
               }
             : undefined,
-        header: <CaptureStrip draft={draft} source={source} keepPhoto={keepPhoto} onKeepPhoto={setKeepPhoto} onView={onView} onUnmerge={onUnmerge} />,
+        header: <CaptureStrip draft={draft} source={source} keepPhoto={keepPhoto} onKeepPhoto={setKeepPhoto} onView={onView} />,
         footer: (
           <button
             type="button"
@@ -96,8 +96,8 @@ export function DraftSheet({
 /**
  * Where the draft came from, above the form: one row that names what it was — an SMS, a screenshot, a photo — in the
  * glyph circle the form's own rows use, and opens the plain view of it. The words and the picture are that view's to
- * show, not this row's. A draft that is more than one sighting says so on a row of its own, with Unmerge at its end;
- * a picture keeps its Keep photo switch under them.
+ * show, not this row's. A draft folded from several sightings of one payment is still the one row: the app's match is
+ * taken as it stands. A picture keeps its Keep photo switch under it.
  */
 function CaptureStrip({
   draft,
@@ -105,14 +105,12 @@ function CaptureStrip({
   keepPhoto,
   onKeepPhoto,
   onView,
-  onUnmerge,
 }: {
   draft: DraftRow;
   source: CaptureSource | null;
   keepPhoto: boolean;
   onKeepPhoto: (keep: boolean) => void;
   onView: () => void;
-  onUnmerge: () => void;
 }) {
   const view = captureRowView(draft, source);
   // Only a capture has a strip: a statement row has no picture and no words of its own to show.
@@ -147,17 +145,6 @@ function CaptureStrip({
         </button>
       ) : (
         <div className="flex w-full items-center gap-[10px] pl-[10px]">{face}</div>
-      )}
-      {view.merged && (
-        <div className="flex w-full items-center gap-[10px] pl-[10px]">
-          <RowLead />
-          <span className={ROW_BODY}>
-            <span className="min-w-0 flex-1 truncate text-[15px] leading-5 text-[var(--ph-ink-2)]">{view.merged}</span>
-            <button type="button" onClick={onUnmerge} className="ph-focus shrink-0 text-[15px] font-semibold text-[var(--ph-tint)]">
-              Unmerge
-            </button>
-          </span>
-        </div>
       )}
       {draft.imageFile && (
         <SwitchRow
