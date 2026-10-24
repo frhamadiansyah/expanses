@@ -38,9 +38,6 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   expect(front.y).toBeGreaterThan(back.y);
   // A covered card's band carries what it owes; its points are on the line beside the stack.
   await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*Rp\s*0/);
-  // The facts sit to the right of the stack.
-  const facts = (await wall.getByTestId('wallet-facts').boundingBox())!;
-  expect(facts.x).toBeGreaterThanOrEqual(front.x + front.width);
 
   // Tapping the covered card opens THAT card, raised at the same width, with its page's actions.
   await wall.getByRole('link', { name: /^Alpha Card, / }).click();

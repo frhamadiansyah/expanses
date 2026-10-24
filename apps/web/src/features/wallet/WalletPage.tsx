@@ -2,7 +2,7 @@ import { formatMinor, isoDate, sumToBase } from '@expanses/core';
 import { type AccountRow, listTransactionsIn, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { Eye, EyeOff, LayoutGrid, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { Eye, EyeOff, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
@@ -118,6 +118,9 @@ export function WalletPage() {
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
+  // The pile is the cards and nothing else: the Balance box and its eye belong to the grid and the carousel, whose
+  // faces print no figure of their own.
+  const boxed = view !== 'stack';
   const [hidden, setHidden] = useState(() => readBalanceHidden());
   const toggleBalance = () =>
     setHidden((was) => {
@@ -160,7 +163,7 @@ export function WalletPage() {
   const flows = useQuery({
     queryKey: ['wallet-flows', ws.workspaceId, today, countedIds.join(',')],
     // Read only while the box is on screen: an open card's page and a hidden box draw no line.
-    enabled: accounts.isSuccess && openId === undefined && !hidden,
+    enabled: accounts.isSuccess && openId === undefined && boxed && !hidden,
     queryFn: async () => {
       const { transactions } = await listTransactionsIn(database, ws, { from: daysBefore(today, SPARK_DAYS), to: today });
       const ids = new Set(countedIds);
@@ -281,17 +284,20 @@ export function WalletPage() {
   }
 
   /*
-   * The corners: the eye, the View menu beside it — the pile, a grid or one card at a time, the one in force ticked —
+   * The corners: the eye (grid and carousel only), the View button beside it — a tap steps pile, grid, one at a time —
    * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
    * which wait behind the ⋯.
    */
   const actions: CornerAction[] = [
-    { key: 'balance', label: hidden ? 'Show balance' : 'Hide balance', glyph: hidden ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />, run: toggleBalance, pressed: hidden },
+    ...(boxed
+      ? [{ key: 'balance', label: hidden ? 'Show balance' : 'Hide balance', glyph: hidden ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />, run: toggleBalance, pressed: hidden } satisfies CornerAction]
+      : []),
+    // One tap steps to the next view — pile, grid, one at a time, and round again; the glyph is the view in force.
     {
       key: 'view',
-      label: 'View',
-      glyph: <LayoutGrid size={20} aria-hidden />,
-      menu: WALLET_VIEWS.map((each) => ({ key: each, label: WALLET_VIEW_LABELS[each], checked: view === each, run: () => changeWalletView(each) })),
+      label: `View: ${WALLET_VIEW_LABELS[view]}`,
+      glyph: view === 'stack' ? <Layers size={20} aria-hidden /> : view === 'grid' ? <LayoutGrid size={20} aria-hidden /> : <GalleryHorizontal size={20} aria-hidden />,
+      run: () => changeWalletView(WALLET_VIEWS[(WALLET_VIEWS.indexOf(view) + 1) % WALLET_VIEWS.length]!),
     },
     {
       key: 'add',
@@ -335,7 +341,7 @@ export function WalletPage() {
        * Balance, and the two numbers it is made of, as one block: the figure, the month behind it, and the rows that
        * are its legend. The goals are already subtracted in the first row. Hidden with the eye, the stack moves up.
        */}
-      {!raised && !hidden && accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
+      {!raised && boxed && !hidden && accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
           <Panel className="space-y-3" testId="wallet-balance">
             <div>

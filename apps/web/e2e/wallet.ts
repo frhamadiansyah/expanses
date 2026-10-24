@@ -11,6 +11,17 @@ import { openAssets } from './drawers';
  * choice is still there after a reload.
  */
 
+/** Picks a Wallet view from the View corner; the pile shows no Balance box, so a journey that reads it picks the grid first. */
+export async function pickView(page: Page, name: 'Stack' | 'Grid' | 'Carousel') {
+  // One tap steps Stack → Grid → Carousel → Stack; the button's name says which is in force.
+  const view = page.getByRole('button', { name: /^View: / });
+  for (let taps = 0; taps < 3; taps++) {
+    if ((await view.getAttribute('aria-label')) === `View: ${name}`) return;
+    await view.click();
+  }
+  await expect(view).toHaveAccessibleName(`View: ${name}`);
+}
+
 /** Opens the add form wherever this width keeps it: the Transactions page's button, or the phone's tab bar. */
 async function openAdd(page: Page) {
   await page.goto('/transactions');
@@ -23,9 +34,11 @@ export async function forSpendingOff(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '3000000' });
   await openAccount(page, { subtype: 'savings', name: 'Rainy day', balance: '5000000' });
 
-  // Both are cards to begin with, and the Balance counts both.
+  // Both are cards to begin with, and the Balance counts both (the box is the grid's; the pile shows none).
   await page.goto('/wallet');
   await expect(walletCard(page, 'Everyday')).toBeVisible();
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  await pickView(page, 'Grid');
   await expect(page.getByTestId('wallet-balance')).toContainText('8.000.000');
 
   // Opened from its card, the account's ⚙ is in Wallet's bar; the switch is in its Settings.
@@ -77,23 +90,17 @@ export async function walletViews(page: Page) {
   await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const faces = wall.getByTestId('wallet-card');
-  const view = page.getByRole('button', { name: 'View', exact: true });
-  const choose = async (name: string) => {
+  const view = page.getByRole('button', { name: /^View: / });
+  // No menu: each tap steps to the next view, and the button is named for the one in force.
+  const ticked = async (name: string) => expect(view).toHaveAccessibleName(`View: ${name}`);
+  const choose = async (name: 'Stack' | 'Grid' | 'Carousel') => {
     await view.click();
-    const menu = page.getByRole('menu', { name: 'View' });
-    await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
-    await menu.getByRole('menuitemradio', { name }).click();
-    await expect(menu).toHaveCount(0);
-  };
-  const ticked = async (name: string) => {
-    await view.click();
-    await expect(page.getByRole('menu', { name: 'View' }).getByRole('menuitemradio', { name })).toHaveAttribute('aria-checked', 'true');
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('menu', { name: 'View' })).toHaveCount(0);
+    await ticked(name);
   };
 
-  // The stack to begin with, ticked as such.
-  await expect(wall.getByTestId('wallet-facts')).toBeVisible();
+  // The stack to begin with, named as such: the pile alone, no row of facts under it.
+  await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
+  await expect(wall.getByTestId('wallet-facts')).toHaveCount(0);
   await ticked('Stack');
 
   // Grid: two whole faces side by side — one y, two x — each captioned with its name and its balance.
@@ -157,7 +164,7 @@ export async function walletViews(page: Page) {
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('wallet-carousel')).toBeVisible();
 
-  // Stack: the pile is back, back to front, with the front card's facts under it.
+  // Stack: the pile is back, back to front.
   await choose('Stack');
   await expect(page.getByTestId('wallet-carousel')).toHaveCount(0);
   await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
@@ -165,7 +172,7 @@ export async function walletViews(page: Page) {
   expect(Math.round(back.x)).toBe(Math.round(front.x));
   expect(front.y).toBeGreaterThan(back.y);
   expect(front.y).toBeLessThan(back.y + back.height);
-  await expect(wall.getByTestId('wallet-facts')).toContainText('Pocket cash');
+  await expect(wall.getByTestId('wallet-facts')).toHaveCount(0);
   await page.reload();
   await expect(wall.locator('[data-place="slot"]')).toHaveCount(2);
 }
@@ -174,13 +181,20 @@ export async function eyeHidesBalance(page: Page) {
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '250000' });
   await page.goto('/wallet');
   const box = page.getByTestId('wallet-balance');
+  // The pile is the cards alone: no Balance box over it, and no eye to hide one with.
+  await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="slot"]')).toHaveCount(1);
+  await expect(box).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
+
+  // The grid prints no figure on a face, so it has the box, and the eye.
+  await pickView(page, 'Grid');
   await expect(box).toBeVisible();
   const card = page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card').first();
   const shownAt = (await card.boundingBox())!.y;
 
   await page.getByRole('button', { name: 'Hide balance' }).click();
   await expect(box).toHaveCount(0);
-  // The stack moves up into the box's place.
+  // The grid moves up into the box's place.
   await expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(shownAt);
   // Card figures are never masked.
   await expect(walletCard(page, 'Pocket cash')).toHaveAccessibleName(/250\.000/);
@@ -195,4 +209,9 @@ export async function eyeHidesBalance(page: Page) {
   await page.reload();
   await expect(box).toBeVisible();
   await expect(page.getByRole('button', { name: 'Hide balance' })).toBeVisible();
+
+  // Back to the pile: box and eye both gone, the hidden choice kept for the grid.
+  await pickView(page, 'Stack');
+  await expect(box).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /balance$/ })).toHaveCount(0);
 }

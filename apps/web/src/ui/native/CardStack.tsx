@@ -186,11 +186,10 @@ export function CardStack({
   useEscape(() => onClose?.(), isRaised);
 
   // The facts describe the card in front: the last card, whole at the bottom of the pile.
-  const described = isRaised ? undefined : cards[layout.front];
 
   return (
     <div className={className}>
-      <section aria-label={label} className={cx(!isRaised && 'md:flex md:items-start md:gap-6 md:pb-5')}>
+      <section aria-label={label} className={cx(!isRaised && 'md:pb-5')}>
         <div ref={shelf} className={cx(!isRaised && 'md:w-[380px] md:max-w-full md:shrink-0')}>
           <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
             {layout.cards.map((placed, index) => {
@@ -265,21 +264,6 @@ export function CardStack({
             })}
           </div>
         </div>
-        {/*
-         * The front card's face is its art, so its figure sits beside the stack on a desktop and under it on a
-         * phone: one grouped row, the kit's own shape, so every card's figure reads without a tap.
-         */}
-        {described && (
-          <InsetGroup className="mt-[10px] md:mt-0 md:min-w-0 md:flex-1">
-            <InsetRow
-              testId="wallet-facts"
-              title={described.name}
-              subtitle={[described.figureLabel, described.subtitle].filter(Boolean).join(' · ')}
-              value={described.figure}
-              valueTone="ink"
-            />
-          </InsetGroup>
-        )}
       </section>
       {isRaised && (
         <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown }}>

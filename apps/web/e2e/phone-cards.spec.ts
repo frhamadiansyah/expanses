@@ -101,9 +101,6 @@ test('the stack overlaps real cards of one width, each band carrying what it owe
   // Every card is one link named by the card and its figure.
   for (const name of NAMES) await expect(wall.getByRole('link', { name: new RegExp(`^${name}, Rp\\s*0$`) })).toHaveCount(1);
 
-  // The front card's facts are one grouped row under the stack, its points among them.
-  await expect(wall.getByTestId('wallet-facts')).toContainText('Gamma Card');
-  await expect(wall.getByTestId('wallet-facts')).toContainText(/\d+ points/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   expect(crashes).toEqual([]);
 });

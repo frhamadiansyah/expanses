@@ -1,3 +1,4 @@
+import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
 import { addGoal, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
@@ -74,6 +75,7 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // And the list now says so in the account's own terms: the tile is what is left to spend once the goals have had
   // their share, and the working under it names the goal money rather than dropping it silently.
   await page.goto('/wallet');
+  await pickView(page, 'Grid');
   await expect(page.getByTestId('wallet-balance')).toContainText('Balance');
   // The tile's first line is what the rows below already show: money that can be moved, less what goals claimed it.
   // Nothing under it says so in words any more — the account's own page takes a promise apart goal by goal — and the
