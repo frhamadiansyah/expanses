@@ -103,6 +103,7 @@ function Ring({
   onOpen,
   onAsk,
   onFold,
+  onBack,
 }: {
   nodes: readonly CategoryTreeNode[];
   totalMinor: number;
@@ -134,6 +135,8 @@ function Ring({
   /** Unfolds the rows. Given together with onFold, the pair is how the chart opens and closes the list. */
   onAsk?: () => void;
   onFold?: () => void;
+  /** A category's ring: the middle is the way back to the month's. */
+  onBack?: () => void;
 }) {
   // One tap on the chart, whichever way the list is at the time.
   const fold = showRows ? onFold : onAsk;
@@ -161,6 +164,7 @@ function Ring({
       label={middleLabel}
       under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
       onPick={fold ? undefined : onOpen ? (key) => { const node = byId.get(key); if (node) onOpen(node); } : undefined}
+      onBack={onBack}
     />
   );
   // A div rather than a button: the deck inside it scrolls sideways, which a button's content will not do on iOS.
@@ -242,6 +246,7 @@ export function SpendingReport({
   kind,
   onKind,
   onPick,
+  onBack,
   onMonth,
   alsoMissing = [],
   paidAccountId,
@@ -252,6 +257,8 @@ export function SpendingReport({
   kind: 'expense' | 'income';
   onKind: (kind: 'expense' | 'income') => void;
   onPick?: (id: string) => void;
+  /** Leaves the category being looked at. Its ring's middle is the button; nothing else on the page moves. */
+  onBack?: () => void;
   /** Given, the chart carries the month itself: the arrows step through them. */
   onMonth?: (month: string) => void;
   /** What the list below could not convert either. The chart says it once for the whole screen. */
@@ -329,8 +336,16 @@ export function SpendingReport({
   /** How many transactions sit under a category, its children included. */
   const countIn = (node: CategoryTreeNode): number => (countById.get(node.id) ?? 0) + node.children.reduce((sum, child) => sum + countIn(child), 0);
   const transactions = tree.reduce((sum, node) => sum + countIn(node), 0) + setGroups.flatMap((g) => g.tree).reduce((sum, node) => sum + countIn(node), 0);
-  /** The category being looked at, when the page is showing one. Its children make the ring. */
-  const open = categoryId ? (findNode(tree, categoryId) ?? null) : null;
+  /**
+   * The category being looked at, when the page is showing one. Its children make the ring. A category with nothing
+   * in this period is not in the tree, but it is still the one being looked at: the ring is drawn empty around its
+   * name, so the way back out of it stays where it is rather than going with the month.
+   */
+  const openAccount = categoryId ? accounts.find((a) => a.id === categoryId) : undefined;
+  const open = categoryId
+    ? (findNode([tree, ...setGroups.map((group) => group.tree)].flat(), categoryId) ??
+      (openAccount ? { id: openAccount.id, name: openAccount.name, ownMinor: 0, totalMinor: 0, children: [] } : null))
+    : null;
 
   /** The month arrows and the money-out/in switch. A month with nothing in it still needs the way back. */
   const header = (
@@ -385,6 +400,7 @@ export function SpendingReport({
     <div className="space-y-4" data-testid="spending-report">
       <Unconverted missing={missing} currency={currency} />
       {open ? (
+        // The same card as the month's, header and all: the ring sits where it sat, and the month is still stepped from here.
         <Ring
           nodes={open.ownMinor > 0 ? [...open.children, { id: open.id, name: `${open.name} (general)`, ownMinor: open.ownMinor, totalMinor: open.ownMinor, children: [] }] : open.children}
           totalMinor={open.totalMinor}
@@ -393,7 +409,9 @@ export function SpendingReport({
           currency={currency}
           transactions={countIn(open)}
           showRows
+          header={header}
           colourOf={(_, index) => shade(chartColour(open.id, chosen), index, Math.max(2, open.children.length))}
+          onBack={onBack}
         />
       ) : (
         <>

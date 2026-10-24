@@ -21,7 +21,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, ChevronDown, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -202,7 +202,7 @@ export function TransactionsPage() {
   });
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   // Money out or money in: the chart shows one at a time, and the categories under it follow.
-  const [kind, setKind] = useState<'expense' | 'income'>('expense');
+  const [kindChosen, setKind] = useState<'expense' | 'income'>('expense');
   // Photographing a receipt is one more way in to the queue; it lands on Review, where the draft it made waits.
   const scan = useScanReceipt();
   function chooseGrouping(next: 'date' | 'category') {
@@ -272,6 +272,8 @@ export function TransactionsPage() {
   const singleMonth = period?.kind === 'month';
   const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
   const inCategory = scope !== undefined && (scope.kind === 'expense' || scope.kind === 'income');
+  // A category opened on the chart is on one side of the ledger, and the chart shows that side while it is open.
+  const kind: 'expense' | 'income' = inCategory ? (scope.kind as 'expense' | 'income') : kindChosen;
   /** A category and everything under it: opening Property must show the rent booked to its child. */
   const scopeIds = (() => {
     if (!scope) return undefined;
@@ -1138,7 +1140,8 @@ export function TransactionsPage() {
        * the header, so the list and the chart below never move.
        */}
       <LargeTitle
-        title={inCategory ? scope!.name : 'Cashflow'}
+        // The title stays whatever the page is called: a category opened on the chart is named in the ring's middle, not here.
+        title="Cashflow"
         oneLine
         max={3}
         field={phone && showSearch ? searchField : undefined}
@@ -1237,12 +1240,6 @@ export function TransactionsPage() {
         </>
       )}
       {choosingWorkspace && <WorkspaceSheet onClose={() => setChoosingWorkspace(false)} />}
-      {inCategory && (
-        <button type="button" onClick={() => setSearch({ account: undefined })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
-          <ChevronLeft size={16} aria-hidden />
-          All transactions
-        </button>
-      )}
       {adding && (
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
           <TransactionCard onDone={() => setAdding(false)} />
@@ -1356,9 +1353,15 @@ export function TransactionsPage() {
         <SpendingReport
           month={month}
           kind={kind}
-          onKind={setKind}
+          // Turning the chart to the other side of the ledger while inside a category leaves the category: the ring
+          // and the list under it would otherwise read different things.
+          onKind={(next) => {
+            setKind(next);
+            if (inCategory && next !== kind) setSearch({ account: undefined });
+          }}
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
           onPick={(id) => setSearch({ account: id })}
+          onBack={() => setSearch({ account: undefined })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
           paidAccountId={paidAccountId}

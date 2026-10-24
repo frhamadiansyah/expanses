@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
 import { openAccount } from './accounts';
 import { addTransaction, addForm } from './add-transaction';
@@ -113,13 +113,18 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(addForm(page).getByLabel('Note')).toBeVisible();
 });
 
-test('the month’s chart leads the list, and a category opens as its own screen', async ({ page }) => {
+/** Where an element sits down the page, whatever the page has been scrolled to. */
+const pageY = (target: Locator) => target.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+
+test('the month’s chart leads the list, and a category opens inside the ring', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '9000000' });
 
   await page.goto('/transactions');
   await settle(page);
-  // The tab bar's + opens the form as a sheet over whatever screen you are on.
+  // The tab bar's + opens the form as a sheet over whatever screen you are on. Two categories, one of them under a
+  // parent: the ring has a category to open, and the list has a row to leave out once it is open.
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '100000' });
 
   // The chart sits above the list, on the same page: no view to switch to.
   const chart = page.getByTestId('spending-report');
@@ -141,11 +146,47 @@ test('the month’s chart leads the list, and a category opens as its own screen
   await chart.getByTestId('hide-categories').click();
   await expect(chart.getByTestId('report-row')).toHaveCount(0);
   await chart.getByTestId('see-categories').click();
-  await chart.getByTestId('report-row').first().click();
-  await expect(page.getByRole('button', { name: 'All transactions' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'All transactions' }).click();
-  await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
+  // Opening a category changes the ring and the list, and nothing else: the title stays what it was, no line is pushed
+  // in above the chart, and the chart and the ring inside it are where they were. The way back is the ring's middle.
+  const title = page.getByRole('heading', { name: 'Cashflow' });
+  const ring = chart.locator('svg[role="img"]').first();
+  const back = chart.getByRole('button', { name: 'All categories' });
+  const row = (text: string) => page.getByTestId('transaction-row').filter({ hasText: text });
+  await expect(back).toHaveCount(0);
+  const chartAt = await pageY(chart);
+  const ringAt = await pageY(ring);
+  await chart.getByTestId('report-row').filter({ hasText: 'Household' }).click();
+  await expect(back).toContainText('Household');
+  await expect(back).toContainText('Rp 250.000');
+  await expect(page).toHaveURL(/account=/);
+  await expect(title).toBeVisible();
+  await expect(page.getByRole('button', { name: 'All transactions' })).toHaveCount(0);
+  await expect(chart.getByTestId('report-row').filter({ hasText: 'Groceries' })).toBeVisible();
+  await expect(row('Superindo')).toBeVisible();
+  await expect(row('Warung Steak')).toHaveCount(0);
+  expect(Math.abs((await pageY(chart)) - chartAt)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await pageY(ring)) - ringAt)).toBeLessThanOrEqual(1);
+
+  // The month is still stepped from the chart inside a category, and the category is kept while it is.
+  await expect(chart.getByTestId('chart-month')).toHaveText(thisMonth ?? '');
+  await chart.getByRole('button', { name: 'Earlier period' }).click();
+  await expect(chart.getByTestId('chart-month')).not.toHaveText(thisMonth ?? '');
+  await expect(page).toHaveURL(/account=/);
+  await expect(back).toContainText('Household');
+  await chart.getByRole('button', { name: 'Later period' }).click({ force: true });
+  await expect(chart.getByTestId('chart-month')).toHaveText(thisMonth ?? '');
+  await expect(back).toContainText('Rp 250.000');
+
+  // The middle leads back to every category, and again nothing else moves.
+  await back.click();
+  await expect(back).toHaveCount(0);
+  await expect(page).not.toHaveURL(/account=/);
+  await expect(chart.locator('[data-testid="see-categories"], [data-testid="hide-categories"]')).toBeVisible();
+  await expect(row('Warung Steak')).toBeVisible();
+  await expect(title).toBeVisible();
+  expect(Math.abs((await pageY(chart)) - chartAt)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await pageY(ring)) - ringAt)).toBeLessThanOrEqual(1);
 });
 
 test('no screen scrolls sideways at phone width', async ({ page }) => {
