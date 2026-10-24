@@ -108,6 +108,12 @@ export function StatementPanel({
   };
   // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here.
   const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo;
+  /*
+   * What can be marked settled before the app: a purchase there is still something to pay for, or money back (a
+   * refund) whose credit was used up before the app — left standing, it would sit on the card as a credit for ever.
+   */
+  const settleable = (line: StatementLine) => (line.owedMinor > 0 ? payable(line) : line.owedMinor < 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo);
+  const settledWord = (line: StatementLine) => (line.owedMinor < 0 ? 'settled' : 'paid off');
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
@@ -201,8 +207,8 @@ export function StatementPanel({
       // Paid off before the app: nothing to pay, so the Add form's ✓ in the box's place. A tap offers to take it back.
       <button
         type="button"
-        aria-label={`${line.description}, already paid off`}
-        title="Already paid off"
+        aria-label={`${line.description}, already ${settledWord(line)}`}
+        title={line.owedMinor < 0 ? 'Already settled' : 'Already paid off'}
         data-testid="statement-paid-off"
         disabled={busy}
         onClick={() => setUnmarking(line)}
@@ -285,17 +291,18 @@ export function StatementPanel({
         tight
         testId="statement-line"
         className={cx('flex items-center gap-[6px]', line.convertedTo && 'opacity-60')}
-        // A purchase there is still something to pay for can be marked paid off before the app with a left swipe.
+        // A purchase there is still something to pay for can be marked paid off before the app with a left swipe;
+        // a refund whose credit was used before the app is marked settled the same way.
         leftAction={
-          payable(line) ? (
+          settleable(line) ? (
             <button
               type="button"
               disabled={busy}
               onClick={() => markPaidOff(line)}
-              aria-label={`Mark ${line.description} already paid off`}
+              aria-label={`Mark ${line.description} already ${settledWord(line)}`}
               className="w-[88px] bg-[var(--ph-tint)] text-[14px] leading-[18px] font-semibold text-white"
             >
-              Paid off
+              {line.owedMinor < 0 ? 'Settled' : 'Paid off'}
             </button>
           ) : undefined
         }
@@ -379,10 +386,10 @@ export function StatementPanel({
               <td className="pr-[4px] align-middle">
                 <span className="flex justify-end">
                   {/* A mouse has no swipe: the phone's left-swipe Paid off sits with the fixes. */}
-                  {payable(line) && (
+                  {settleable(line) && (
                     <GlyphButton
-                      label={`Mark ${line.description} already paid off`}
-                      hint="Already paid off before the app: nothing to pay"
+                      label={`Mark ${line.description} already ${settledWord(line)}`}
+                      hint={line.owedMinor < 0 ? 'Credit used up before the app: nothing to take off the bill' : 'Already paid off before the app: nothing to pay'}
                       glyph={<CircleCheck size={17} aria-hidden />}
                       disabled={busy}
                       onClick={() => markPaidOff(line)}
@@ -503,9 +510,9 @@ export function StatementPanel({
       )}
 
       {unmarking && (
-        <Sheet grouped title="Already paid off" onClose={() => setUnmarking(null)}>
+        <Sheet grouped title={unmarking.owedMinor < 0 ? 'Already settled' : 'Already paid off'} onClose={() => setUnmarking(null)}>
           <p className="px-[14px] pb-[10px] text-center text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-            {unmarking.description} · {money(unmarking.owedMinor)} is recorded as paid off before the app.
+            {unmarking.description} · {money(Math.abs(unmarking.owedMinor))} is recorded as {settledWord(unmarking)} before the app.
           </p>
           <button
             type="button"
@@ -518,7 +525,7 @@ export function StatementPanel({
             }}
             className="ph-focus w-full rounded-[11px] bg-[var(--ph-surface)] py-[13px] text-[17px] text-[var(--ph-alarm)]"
           >
-            Not paid off
+            {unmarking.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
           </button>
         </Sheet>
       )}

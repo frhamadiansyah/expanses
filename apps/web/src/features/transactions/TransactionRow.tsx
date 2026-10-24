@@ -290,7 +290,7 @@ export function PaidWith({ row }: { row: ListRow }) {
   return (
     <>
       {name}
-      {last4 && <span className="tabular text-slate-600">{name ? ' ' : ''}{last4}</span>}
+      {last4 && <span className="tabular">{name ? ' ' : ''}{last4}</span>}
     </>
   );
 }

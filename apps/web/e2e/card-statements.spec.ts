@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -244,4 +244,38 @@ test('purchases under Card not recorded are set to one card at once with Assign 
   await expect(supplementary.getByTestId('statement-line')).toHaveCount(2);
   await expect(supplementary).toContainText('Superindo');
   await expect(supplementary).toContainText('Ranch Market');
+});
+
+test('money back on the card can be marked settled before the app, so it does not sit as a credit', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Hotel Mulia', '2000000', TODAY);
+  // A refund of part of it, typed minus-first, lands back on the card.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await fillAmount(page, form, '-500000');
+  await form.getByRole('button', { name: /^Into/ }).click();
+  await choosePayment(page, 'BCA Visa', 'Into');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Hotel Mulia refund');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  await openStatement(page);
+  const refund = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia refund' });
+  await expect(refund).toBeVisible();
+  // Money back is not something to pay, so it has no Pay box; it can be marked settled the way a purchase is paid off.
+  await expect(page.getByLabel('Pay Hotel Mulia refund')).toBeHidden();
+  await refund.getByRole('button', { name: 'Mark Hotel Mulia refund already settled' }).click();
+  await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
+  // No balancing line is drawn: the two lines are the purchase and the refund.
+  await expect(page.getByTestId('statement-line')).toHaveCount(2);
+
+  // Taken back from its ✓.
+  await refund.getByTestId('statement-paid-off').click();
+  await expect(page.getByRole('dialog', { name: 'Already settled' })).toBeVisible();
+  await page.getByTestId('statement-not-paid-off').click();
+  await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
+  await expect(refund.getByRole('button', { name: 'Mark Hotel Mulia refund already settled' })).toBeVisible();
 });
