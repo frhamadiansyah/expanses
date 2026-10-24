@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { balanceOnGridOnly, forSpendingOff, walletViews } from './wallet';
+import { balanceOnGridOnly, forSpendingOff, walletReorder, walletViews } from './wallet';
 
 /** The same Wallet journeys as `wallet.spec.ts`, at a phone's width with its tab bar. */
 test('an account switched off For spending leaves Wallet and Paid with, and stays on Assets and in a transfer’s To', async ({ page }) => {
@@ -13,6 +13,10 @@ test('the Balance box is always over the grid and nowhere else, with no eye', as
 
 test('View lays the cards out as a grid with captions or a carousel with the shown card’s Recent, remembers the choice, and Stack puts the pile back', async ({ page }) => {
   await walletViews(page);
+});
+
+test('Reorder cards puts a credit card in front of the money in all three views, keeps it over a reload, and ‹ keeps nothing', async ({ page }) => {
+  await walletReorder(page);
 });
 
 test('the ⋯ menu opens where it can be seen with the page scrolled down, not only at the top', async ({ page }) => {

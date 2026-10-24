@@ -31,6 +31,24 @@ export function walletCredit(accounts: readonly AccountRow[]): AccountRow[] {
 }
 
 /**
+ * Every Wallet card, in the order all three views draw them — the stack top to bottom, the grid left to right, the
+ * carousel first to last.
+ *
+ * Until the cards have been put in an order by hand (Reorder cards), it is the default: the money (`walletMoney`),
+ * then the credit cards (`walletCredit`). Once any card carries a place (`sortOrder` above 0), the cards are one
+ * mixed list in that order — a credit card may stand in front of a bank account — and a card still at 0, added since,
+ * goes after them, the ones at 0 in the default order among themselves.
+ */
+export function walletOrder(accounts: readonly AccountRow[]): AccountRow[] {
+  const cards = [...walletMoney(accounts), ...walletCredit(accounts)];
+  if (!cards.some((card) => card.sortOrder > 0)) return cards;
+  const placed = cards.filter((card) => card.sortOrder > 0);
+  const unplaced = cards.filter((card) => card.sortOrder <= 0);
+  // A stable sort: two cards at one place (written on two devices, say) keep the default order between them.
+  return [...placed.map((card, index) => ({ card, index })).sort((a, b) => a.card.sortOrder - b.card.sortOrder || a.index - b.index).map(({ card }) => card), ...unplaced];
+}
+
+/**
  * The words on a money card's chip: what it is. A current or saving account is the debit card that spends from it —
  * named by the account number's last four digits when they were given, and plainly an account when they were not.
  */

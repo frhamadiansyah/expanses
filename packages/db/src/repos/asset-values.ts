@@ -89,7 +89,8 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     .select()
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), hidePlaceholders ? notPlaceholder(accounts.id) : undefined))
-    .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+    // Placed accounts (Reorder cards) first, the never-placed (0) after them by name, as on Wallet.
+    .orderBy(sql`case when ${accounts.sortOrder} = 0 and ${accounts.parentId} is null then 1 else 0 end`, asc(accounts.sortOrder), asc(accounts.name));
   // A pocket parent holds nothing, so it is no asset: net worth, the tax report, idle cash and goals all read here.
   // Archived rows are read too, so a parent whose pockets are all archived is still recognised.
   const parents = pocketParentIds(rows);
@@ -388,7 +389,8 @@ export async function sheetInputsAt(
     .select({ id: accounts.id, name: accounts.name, currency: accounts.currency, subtype: accounts.subtype })
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)))
-    .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+    // Placed accounts (Reorder cards) first, the never-placed (0) after them by name, as on Wallet.
+    .orderBy(sql`case when ${accounts.sortOrder} = 0 and ${accounts.parentId} is null then 1 else 0 end`, asc(accounts.sortOrder), asc(accounts.name));
   const balances = await nativeBalances(database, ws, date);
 
   const installments = await installmentTotals(database, ws, date);

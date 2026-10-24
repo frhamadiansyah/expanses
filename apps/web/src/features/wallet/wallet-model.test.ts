@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { faceFor } from '../cards/debit-art/faces';
-import { bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
 
 const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -35,6 +35,41 @@ describe('the cards Wallet holds', () => {
 
   it('holds credit cards only of what is owed: a loan and a person are read on Net worth', () => {
     expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
+  });
+});
+
+describe('the order Wallet draws its cards in', () => {
+  const book = [
+    row('gopay', 'ewallet'),
+    row('everyday', 'bank'),
+    row('wise', 'bank'),
+    row('wise-usd', 'bank', { parentId: 'wise', currency: 'USD' }),
+    row('closed', 'bank', { archivedAt: '2026-01-01' }),
+    row('blue', 'credit_card', { kind: 'liability' }),
+    row('gold', 'credit_card', { kind: 'liability' }),
+  ];
+  const ids = (rows: readonly AccountRow[]) => walletOrder(rows).map((a) => a.id);
+  const placed = (places: Record<string, number>) => book.map((a) => (a.id in places ? { ...a, sortOrder: places[a.id]! } : a));
+
+  it('is the default until any card has a place: money first, then the credit cards', () => {
+    expect(ids(book)).toEqual(['everyday', 'wise', 'gopay', 'blue', 'gold']);
+    expect(ids(book)).toEqual([...walletMoney(book), ...walletCredit(book)].map((a) => a.id));
+  });
+
+  it('is one mixed list once the cards are put in order: a credit card may lead', () => {
+    expect(ids(placed({ gold: 1, gopay: 2, everyday: 3, blue: 4, wise: 5 }))).toEqual(['gold', 'gopay', 'everyday', 'blue', 'wise']);
+  });
+
+  it('puts a card added since (still at 0) at the end, the newcomers in the default order', () => {
+    // gopay and blue came after the order was saved: blue is a credit card, so after gopay, as by default.
+    expect(ids(placed({ gold: 1, wise: 2, everyday: 3 }))).toEqual(['gold', 'wise', 'everyday', 'gopay', 'blue']);
+  });
+
+  it('never holds a pocket, nor an archived account, whatever place they carry', () => {
+    const order = ids(placed({ 'wise-usd': 1, closed: 2, blue: 3 }));
+    expect(order).not.toContain('wise-usd');
+    expect(order).not.toContain('closed');
+    expect(order).toEqual(['blue', 'everyday', 'wise', 'gopay', 'gold']);
   });
 });
 

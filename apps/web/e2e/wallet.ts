@@ -208,3 +208,104 @@ export async function balanceOnGridOnly(page: Page) {
   await expect(box).toHaveCount(0);
   await noEye();
 }
+
+/**
+ * Reorder cards (owner's "A2"): ⋯ → Reorder cards lists every Wallet card as one mixed list. A credit card moved to the
+ * top with Move up — the keyboard's and a screen reader's way, the drag's twin — leads all three views once Done
+ * keeps it: the pile's first card, the grid's top-left face, the carousel's first card. The order outlives a reload,
+ * and ‹ leaves without keeping what was moved.
+ */
+export async function walletReorder(page: Page) {
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '3000000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Pocket app', balance: '150000' });
+  await openAccount(page, { subtype: 'credit_card', name: 'Blue Card', balance: '500000', last4: '4242' });
+  await page.goto('/wallet');
+  const wall = page.getByRole('region', { name: 'Cards' });
+  const faces = wall.getByTestId('wallet-card');
+  /** The card at `index`, by the name its link (or, off-centre in the carousel, its button) reads. */
+  const nameAt = (index: number) => faces.nth(index).locator('a, button').first();
+  const order = async (names: readonly string[]) => {
+    await expect(faces).toHaveCount(names.length);
+    for (const [index, name] of names.entries()) await expect(nameAt(index)).toHaveAccessibleName(new RegExp(`^${name}`));
+  };
+
+  // By default the money comes first and the credit card after it.
+  await pickView(page, 'Stack');
+  await order(['Everyday', 'Pocket app', 'Blue Card']);
+
+  const openReorder = async () => {
+    await page.getByRole('button', { name: 'More' }).first().click();
+    await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Reorder cards' }).click();
+    await expect(page).toHaveURL(/\/wallet\/reorder$/);
+    await expect(page.getByRole('heading', { name: 'Reorder cards' })).toBeVisible();
+  };
+  const rows = page.getByTestId('reorder-row');
+  /** Moves a card one place with its Move button, reached from the keyboard. */
+  const move = async (name: string, way: 'up' | 'down') => {
+    const button = page.getByRole('button', { name: `Move ${name} ${way}` });
+    await button.focus();
+    await page.keyboard.press('Enter');
+  };
+
+  // Every card, in Wallet's order, each with its face, what it is and its digits, and a handle to drag it by.
+  await openReorder();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText('Everyday');
+  await expect(rows.nth(1)).toContainText('Pocket app');
+  await expect(rows.nth(2)).toContainText('Blue Card');
+  await expect(rows.nth(2)).toContainText('Credit card');
+  await expect(rows.nth(2)).toContainText('4242');
+  await expect(rows.nth(2).getByTestId('card-face')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reorder Blue Card' })).toBeVisible();
+  // The top card cannot go up, nor the bottom one down.
+  await expect(page.getByRole('button', { name: 'Move Everyday up' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Move Blue Card down' })).toBeDisabled();
+
+  // The credit card to the top, in front of the bank account: one mixed list. Done keeps it and goes back to Wallet.
+  await move('Blue Card', 'up');
+  await expect(rows.nth(1)).toContainText('Blue Card');
+  await move('Blue Card', 'up');
+  await expect(rows.nth(0)).toContainText('Blue Card');
+  await expect(rows.nth(1)).toContainText('Everyday');
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page).toHaveURL(/\/wallet$/);
+
+  // Stack: the credit card is the pile's first card.
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+
+  // Grid: it is the top-left face, the bank account beside it.
+  await pickView(page, 'Grid');
+  await expect(page.getByTestId('wallet-grid')).toBeVisible();
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+  const [first, second] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
+  expect(Math.abs(first.y - second.y)).toBeLessThan(2);
+  expect(first.x).toBeLessThan(second.x);
+  await expect(page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card').nth(0).getByTestId('card-face')).toContainText('Blue Card');
+
+  // Carousel: it is the first card shown.
+  await pickView(page, 'Carousel');
+  await expect(page.getByTestId('wallet-carousel')).toBeVisible();
+  await expect(faces.nth(0)).toHaveAttribute('data-current', '');
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+  await expect(page.getByTestId('wallet-dot').nth(0)).toHaveAccessibleName('Blue Card');
+  await expect(wall.getByTestId('wallet-facts')).toContainText('Blue Card');
+
+  // Kept: a reload draws the same order.
+  await page.reload();
+  await expect(page.getByTestId('wallet-carousel')).toBeVisible();
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+  await pickView(page, 'Stack');
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+
+  // ‹ leaves without keeping what was moved.
+  await openReorder();
+  await expect(rows.nth(0)).toContainText('Blue Card');
+  await move('Pocket app', 'up');
+  await expect(rows.nth(1)).toContainText('Pocket app');
+  await page.getByRole('button', { name: 'Wallet', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await order(['Blue Card', 'Everyday', 'Pocket app']);
+  await openReorder();
+  await expect(rows.nth(1)).toContainText('Everyday');
+  await expect(rows.nth(2)).toContainText('Pocket app');
+}
