@@ -50,6 +50,7 @@ export function MoreDetails({
   omit = [],
   opensSharedEvent = true,
   onPhotos,
+  lead,
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
@@ -64,6 +65,8 @@ export function MoreDetails({
   opensSharedEvent?: boolean;
   /** Pictures just attached under Photos, for the form to read a receipt off. */
   onPhotos?: (files: readonly File[]) => void;
+  /** A row of the caller's own drawn first in the same group — a transfer's Fee category — so it reads as one of these. */
+  lead?: ReactNode;
 }) {
   const { ws } = useApp();
   const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
@@ -101,6 +104,7 @@ export function MoreDetails({
   return (
     <>
       <FormRows>
+        {lead}
         {rows.includes('event') && <FormRow icon={glyph(<Plane size={15} />)} label="Event" value={eventName} onClick={() => setSheet('event')} />}
         {rows.includes('event') && moving ? (
           <p className="px-[16px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="moves-hint">

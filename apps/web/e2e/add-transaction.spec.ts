@@ -1643,6 +1643,9 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   // Its category is under Add more details.
   await edit.getByRole('button', { name: 'Add more details' }).click();
   await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
+  // One group with the other details, not a box of its own above them.
+  const details = edit.getByRole('region', { name: 'More details' });
+  await expect(details.getByRole('button', { name: 'Fee category' }).locator('xpath=..')).toContainText('Photos');
   await edit.getByRole('button', { name: 'Cancel' }).click();
 
   await page.goto('/wallet');

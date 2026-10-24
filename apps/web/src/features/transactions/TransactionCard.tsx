@@ -1237,24 +1237,26 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          {offersFee && draft.fee.trim() !== '' && (
-            <FormRows>
-              <FormRow
-                lead="value"
-                icon={
-                  <RowGlyph>
-                    <Shapes size={15} />
-                  </RowGlyph>
-                }
-                label="Fee category"
-                placeholder="Fee category"
-                value={byId.get(draft.feeCategoryId)?.name ?? ''}
-                caption="Fee category"
-                onClick={() => setSheet('feeCategory')}
-              />
-            </FormRows>
-          )}
-          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
+          {/* The fee's category is one of the details, in their group rather than a box of its own above them. */}
+          <MoreDetails
+            lead={
+              offersFee && draft.fee.trim() !== '' ? (
+                <FormRow
+                  lead="value"
+                  icon={
+                    <RowGlyph>
+                      <Shapes size={15} />
+                    </RowGlyph>
+                  }
+                  label="Fee category"
+                  placeholder="Fee category"
+                  value={byId.get(draft.feeCategoryId)?.name ?? ''}
+                  caption="Fee category"
+                  onClick={() => setSheet('feeCategory')}
+                />
+              ) : undefined
+            }
+            draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
       {/*
