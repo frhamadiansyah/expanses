@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createAccount, listTransactions, nativeBalances, postTransaction, replaceTransaction, setSettledBeforeApp, settledBeforeAppOf, voidTransaction } from '../src/index';
+import { createAccount, listTransactions, nativeBalances, paidOffMarkOf, postTransaction, replaceTransaction, setSettledBeforeApp, settledBeforeAppOf, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 async function card() {
@@ -70,5 +70,30 @@ describe('a card purchase already paid off before the app', () => {
       ],
     });
     await expect(setSettledBeforeApp(t.database, t.ws, id, true)).rejects.toThrow(/credit card/);
+  });
+
+  it('tells a receipt whether the mark can be carried, which word fits, and whether it stands', async () => {
+    const t = await card();
+    const dinner = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000) });
+    expect(await paidOffMarkOf(t.database, t.ws, dinner)).toEqual({ refund: false, settled: false });
+    await setSettledBeforeApp(t.database, t.ws, dinner, true);
+    expect(await paidOffMarkOf(t.database, t.ws, dinner)).toEqual({ refund: false, settled: true });
+    // Money back on the card is settled rather than paid off.
+    const refund = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-14', description: 'Dinner refund', lines: t.lines(-200_000) });
+    expect(await paidOffMarkOf(t.database, t.ws, refund)).toEqual({ refund: true, settled: false });
+    // The balancing settlement itself, a cash purchase and a transaction not here carry no mark.
+    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Settled before the app')!;
+    expect(await paidOffMarkOf(t.database, t.ws, settlement.id)).toBeNull();
+    const cash = await createAccount(t.database, t.ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const snack = await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-03-12',
+      description: 'Snack',
+      lines: [
+        { accountId: t.dining.id, amountMinor: 20_000, currency: 'IDR' },
+        { accountId: cash.id, amountMinor: -20_000, currency: 'IDR' },
+      ],
+    });
+    expect(await paidOffMarkOf(t.database, t.ws, snack)).toBeNull();
+    expect(await paidOffMarkOf(t.database, t.ws, 'nowhere')).toBeNull();
   });
 });

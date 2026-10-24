@@ -195,6 +195,40 @@ export async function cardStatementLines(database: Database, ws: WorkspaceContex
 }
 
 /**
+ * Whether a line can carry the paid-off mark (`setSettledBeforeApp`), or already does: a purchase there is still
+ * something to pay for, or money back (a refund) whose credit was used up — left standing, it would sit on the card as
+ * a credit for ever. Never a payment, a purchase a recorded payment settled, an instalment row or a purchase converted
+ * to a plan. One answer for the statement's swipe, its ⋯ and the receipt's switch.
+ */
+export function carriesPaidOffMark(line: StatementLine): boolean {
+  return line.spending && line.owedMinor !== 0 && !line.paidBy && !line.instalment && !line.convertedTo;
+}
+
+/** The receipt's question about one transaction: a refund rather than a purchase, and whether the mark stands. */
+export interface PaidOffMark {
+  refund: boolean;
+  settled: boolean;
+}
+
+/**
+ * What the receipt of one transaction can say about the paid-off mark: null unless it is a posted credit card purchase
+ * or refund in this workspace that can carry the mark (`carriesPaidOffMark`), otherwise which word fits and whether
+ * the mark stands.
+ */
+export async function paidOffMarkOf(database: Database, ws: WorkspaceContext, transactionId: string): Promise<PaidOffMark | null> {
+  // The card the transaction touched: the one account its statement is read from.
+  const [row] = await database.db.values<[string]>(sql`
+    SELECT e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id
+    WHERE e.transaction_id = ${transactionId} AND e.workspace_id = ${ws.workspaceId}
+      AND a.kind = 'liability' AND a.subtype = 'credit_card' AND e.amount_minor != 0
+    LIMIT 1`);
+  if (!row) return null;
+  const line = (await cardStatementLines(database, ws, row[0])).find((candidate) => candidate.transactionId === transactionId && !candidate.instalment);
+  if (!line || !carriesPaidOffMark(line)) return null;
+  return { refund: line.owedMinor < 0, settled: line.paidOff };
+}
+
+/**
  * One statement of a card: what was owed before it, what it charged and credited, what it closed at,
  * and — once the statement date has passed — what has been paid since and what is left.
  */
