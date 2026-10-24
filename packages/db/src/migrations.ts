@@ -86,6 +86,7 @@ import pointProgrammes from '../migrations/0085_point_programmes.sql?raw';
 import accountForSpending from '../migrations/0086_account_for_spending.sql?raw';
 import accountCardTier from '../migrations/0087_account_card_tier.sql?raw';
 import programmeTier from '../migrations/0088_programme_tier.sql?raw';
+import electronicMoney from '../migrations/0089_electronic_money.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -182,6 +183,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 86, name: 'account_for_spending', sql: accountForSpending },
   { version: 87, name: 'account_card_tier', sql: accountCardTier },
   { version: 88, name: 'programme_tier', sql: programmeTier },
+  { version: 89, name: 'electronic_money', sql: electronicMoney },
 ];
 
 /** The highest version this build of the app knows how to produce. */

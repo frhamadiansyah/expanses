@@ -1,4 +1,4 @@
-import { bankMatches, takesPockets, brokerMatches, cashItem, walletMatches, CURRENCIES, groupTypedAmount, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { bankMatches, takesPockets, brokerMatches, cashItem, emoneyMatches, walletMatches, CURRENCIES, groupTypedAmount, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { NUMBERED_SUBTYPES, openCashAccount, openPocketedAccount, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
 import { last4Field, readAccountNumberLast4, readWalletLast4 } from '../accounts/wallet-last4';
 import { openOnce } from './open-once';
@@ -558,6 +558,9 @@ export function CashAccountForm({
           item === 'ewallet' ? (
             // A wallet is called by its app, so the apps a rupiah workspace knows are offered over the keyboard as it is typed.
             <SuggestRow label="Name" stripLabel="Wallets" value={name} onChange={setName} placeholder="Account name" offers={(typed) => (ws.baseCurrency === 'IDR' ? walletMatches(typed) : [])} />
+          ) : item === 'emoney' ? (
+            // A chip card is called by its card, and a rupiah workspace's cards are offered as a wallet's apps are.
+            <SuggestRow label="Name" stripLabel="Cards" value={name} onChange={setName} placeholder="Card name" offers={(typed) => (ws.baseCurrency === 'IDR' ? emoneyMatches(typed) : [])} />
           ) : (
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" required />
           )

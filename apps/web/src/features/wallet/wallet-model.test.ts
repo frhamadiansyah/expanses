@@ -81,6 +81,20 @@ describe('the order Wallet draws its cards in', () => {
   });
 });
 
+describe('electronic money in Wallet', () => {
+  it('is a card beside the wallets, after cash', () => {
+    const book = [row('flazz', 'emoney'), row('gopay', 'ewallet'), row('cash', 'cash'), row('everyday', 'bank'), row('cheque', 'other_cash')];
+    expect(walletMoney(book).map((a) => a.id)).toEqual(['everyday', 'cash', 'flazz', 'gopay', 'cheque']);
+  });
+
+  it('is only ever drawn as a prepaid card — never a wallet app, never a bank’s debit card', () => {
+    expect(faceKindsOf('emoney')).toEqual(['emoney']);
+    expect(faceFor(['Flazz'], faceKindsOf('emoney'))?.key).toBe('flazz');
+    expect(faceFor(['Bank Central Asia', 'Flazz'], faceKindsOf('emoney'))?.key).toBe('flazz');
+    expect(faceFor(['GoPay'], faceKindsOf('emoney'))).toBeNull();
+  });
+});
+
 describe('a money card’s chip', () => {
   it('names a bank account as a debit card by its number, or as an account without one', () => {
     expect(moneyChip({ subtype: 'bank' }, '1102')).toBe('Debit ···· 1102');
@@ -88,6 +102,7 @@ describe('a money card’s chip', () => {
     expect(moneyChip({ subtype: 'bank' }, null)).toBe('Account');
     expect(moneyChip({ subtype: 'cash' })).toBe('Cash');
     expect(moneyChip({ subtype: 'ewallet' })).toBe('E-wallet');
+    expect(moneyChip({ subtype: 'emoney' })).toBe('E-money');
     expect(moneyChip({ subtype: 'other_cash' })).toBe('Account');
   });
 });

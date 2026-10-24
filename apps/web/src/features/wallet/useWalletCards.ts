@@ -8,7 +8,7 @@ import { groupedFigure, type WalletCard } from '../../ui/native';
 import { parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
-import { faceFor, tieredKey } from '../cards/debit-art/faces';
+import { faceFor, prepaidFaceOf, tieredKey } from '../cards/debit-art/faces';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles } from '../networth/queries';
@@ -65,11 +65,15 @@ export function useWalletCards() {
   };
   /*
    * The drawn face for each money card: its bank's (the tax report's Nama institusi, read off its profile or its
-   * pockets'), else whatever its own name names — a wallet's app, a prepaid card. On a debit face the digits and holder
-   * are the account's debit card's where one is recorded, else the account number's last four and the account's name;
-   * a wallet's digits are its phone's. Money nothing is drawn for keeps the plain face with its chip of words.
+   * pockets'), else whatever its own name names — a wallet's app, a prepaid card. Electronic money whose name names no
+   * card is drawn as the card its bank issues (`prepaidFaceOf`). On a debit face the digits and holder are the account's
+   * debit card's where one is recorded, else the account number's last four and the account's name; a wallet's digits
+   * are its phone's. Money nothing is drawn for keeps the plain face with its chip of words ("E-money").
    */
-  const faceOf = (account: AccountRow) => faceFor([bankOf(account.id, everything, profiles), account.name], faceKindsOf(account.subtype));
+  const faceOf = (account: AccountRow) => {
+    const bank = bankOf(account.id, everything, profiles);
+    return faceFor([bank, account.name], faceKindsOf(account.subtype)) ?? (account.subtype === 'emoney' ? prepaidFaceOf(bank) : null);
+  };
   const moneyCards: WalletCard[] = money.map((account) => {
     const face = faceOf(account);
     const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;

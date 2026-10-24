@@ -121,19 +121,19 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
 });
 
 test('a BMW dealer purchase earns 1 TREATS Point per Rp 3.333', async ({ page }) => {
-  await addCard(page, 'BMW Card');
-  await applyCatalogue(page, 'BMW Card', 'bmw', 'BMW Maybank Kartu Kredit');
-  await buy(page, { card: 'BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous', amount: '3333000' });
-  await openCardPage(page, 'BMW Card');
+  await addCard(page, 'Maybank BMW Card');
+  await applyCatalogue(page, 'Maybank BMW Card', 'bmw', 'BMW Maybank Kartu Kredit');
+  await buy(page, { card: 'Maybank BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous', amount: '3333000' });
+  await openCardPage(page, 'Maybank BMW Card');
   await cardPage(page, 'Points');
   await expect(thisCycle(page)).toContainText(/At BMW dealers\s*Rp\s3\.333\.000 → 1\.000 points/);
 });
 
 test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports extra', async ({ page }) => {
-  await addCard(page, 'MU Card');
-  await applyCatalogue(page, 'MU Card', 'manchester', 'Maybank Kartu Kredit Manchester United');
-  await buy(page, { card: 'MU Card', description: 'SEPATU KITA', category: 'Clothing', amount: '200000', mcc: '5661' });
-  await openCardPage(page, 'MU Card');
+  await addCard(page, 'Maybank MU Card');
+  await applyCatalogue(page, 'Maybank MU Card', 'manchester', 'Maybank Kartu Kredit Manchester United');
+  await buy(page, { card: 'Maybank MU Card', description: 'SEPATU KITA', category: 'Clothing', amount: '200000', mcc: '5661' });
+  await openCardPage(page, 'Maybank MU Card');
   await cardPage(page, 'Points');
   await expect(thisCycle(page)).toContainText(/3x at sports merchants\s*Rp\s200\.000 → 20 points/);
   await cardPointsPage(page, 'Purchases');
@@ -141,11 +141,11 @@ test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports
 });
 
 test('a BCA statement total that differs lists likely causes', async ({ page }) => {
-  await addCard(page, 'KF Signature');
-  await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
-  await buy(page, { card: 'KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving', amount: '1350000', on: lastCycleDate() });
+  await addCard(page, 'BCA KF Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await buy(page, { card: 'BCA KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving', amount: '1350000', on: lastCycleDate() });
 
-  await openCardPage(page, 'KF Signature');
+  await openCardPage(page, 'BCA KF Signature');
   await cardPage(page, 'Points');
   await cardPointsPage(page, 'Points the statement shows');
   const check = page.locator('section', { has: page.getByRole('heading', { name: /^Check against statement:/ }) });

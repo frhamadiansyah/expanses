@@ -35,7 +35,7 @@ const MAX_MONTHS = 12;
    that list in two. Money that reaches a savings pot or a broker is money put away; money in a wallet, a
    current account or a pocket is spending money, and a top-up is not saving. */
 const SAVINGS_SUBTYPES = ['savings', 'fund', 'time_deposit'];
-const SPENDING_SUBTYPES = ['cash', 'bank', 'ewallet', 'other_cash'];
+const SPENDING_SUBTYPES = ['cash', 'bank', 'ewallet', 'emoney', 'other_cash'];
 
 function monthsBetween(from: string, to: string): string[] {
   const months: string[] = [];

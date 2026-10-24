@@ -7,7 +7,7 @@ import type { FaceKind } from '../cards/debit-art/faces';
  * Which cards Wallet holds, and in what order: everything money is spent from or owed on.
  *
  * Money first, as it is spent — the bank accounts a debit card draws on (current and saving accounts alike), then
- * cash, then digital wallets, then any other cash equivalent — and the credit cards last, so the card in front is the
+ * cash, then digital wallets and electronic money cards, then any other cash equivalent — and the credit cards last, so the card in front is the
  * one most often reached for. Within a kind, the order the ledger lists accounts in.
  *
  * Only money kept for spending is here. An account switched off "For spending" is savings: it stays on Net worth's
@@ -15,7 +15,7 @@ import type { FaceKind } from '../cards/debit-art/faces';
  * never be paid from — a deposit, a broker's cash — and nor are money lent to a person, a loan or money owed to a
  * person: each of those is read on Net worth (Receivables under Assets; Loans and Payables under Liabilities).
  */
-const MONEY_RANK: Record<string, number> = { bank: 0, savings: 0, cash: 1, ewallet: 2, other_cash: 3 };
+const MONEY_RANK: Record<string, number> = { bank: 0, savings: 0, cash: 1, ewallet: 2, emoney: 2, other_cash: 3 };
 
 /**
  * The money cards: one per account kept for spending, an account with pockets once (its pockets are never cards) —
@@ -60,14 +60,16 @@ export function walletOrder(accounts: readonly AccountRow[]): AccountRow[] {
 export function moneyChip(account: Pick<AccountRow, 'subtype'>, numberLast4?: string | null): string {
   if (account.subtype === 'cash') return 'Cash';
   if (account.subtype === 'ewallet') return 'E-wallet';
+  if (account.subtype === 'emoney') return 'E-money';
   if ((account.subtype === 'bank' || account.subtype === 'savings') && numberLast4) return `Debit ···· ${numberLast4}`;
   return 'Account';
 }
 
 /**
  * Which drawn faces money of each kind may be given. A bank account is only ever a bank's debit card: "Dana darurat"
- * is savings, not the DANA wallet. A digital wallet is its app, or a prepaid card recorded as one; cash and other cash
- * equivalents can be a prepaid card. Nothing here is ever a PayLater line, which is a credit account.
+ * is savings, not the DANA wallet. A digital wallet is its app, or a prepaid card recorded as one (before electronic
+ * money was a kind of its own); electronic money is a prepaid card and nothing else; cash and other cash equivalents
+ * can be a prepaid card. Nothing here is ever a PayLater line, which is a credit account.
  */
 export function faceKindsOf(subtype: string): readonly FaceKind[] {
   switch (subtype) {
@@ -76,6 +78,7 @@ export function faceKindsOf(subtype: string): readonly FaceKind[] {
       return ['debit'];
     case 'ewallet':
       return ['ewallet', 'emoney'];
+    case 'emoney':
     case 'cash':
     case 'other_cash':
       return ['emoney'];

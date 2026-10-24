@@ -45,6 +45,7 @@ import {
   Lightbulb,
   Lock,
   type LucideIcon,
+  Nfc,
   Package,
   PieChart,
   PiggyBank,
@@ -116,6 +117,7 @@ const CASH_TILES: Record<MoneyAccountSubtype, LucideIcon> = {
   savings: PiggyBank,
   time_deposit: Lock,
   ewallet: Smartphone,
+  emoney: Nfc,
   fund: TrendingUp,
   other_cash: Wallet,
 };
@@ -292,7 +294,8 @@ export type FieldKey = 'balance' | 'bank' | 'currency' | 'matures' | 'rate' | 'u
 
 /**
  * Money held at a bank or a broker: the accounts worth asking which institution for, because the tax report
- * wants the institution's name on their kas row. Cash in a pocket and an e-money balance have no institution.
+ * wants the institution's name on their kas row. Cash in a pocket, a wallet and a chip card are asked none: each is
+ * called by its product, which says whose it is.
  */
 const AT_AN_INSTITUTION: readonly MoneyAccountSubtype[] = ['bank', 'savings', 'fund'];
 

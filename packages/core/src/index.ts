@@ -377,10 +377,11 @@ export {
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
 export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
+export { accountDisplayName, BANK_NAMED_SUBTYPES, shortBankName } from './assets/account-name';
 export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
 export { goldBrandMatches, INDONESIAN_GOLD_BRANDS, WORLD_GOLD_BRANDS, type GoldMaker } from './assets/gold-brands';
 export { fundPlaceMatches, INDONESIAN_FUND_APPS, type FundPlace } from './assets/fund-places';
-export { INDONESIAN_WALLETS, type IndonesianWallet, walletMatches } from './coretax/wallets';
+export { emoneyMatches, INDONESIAN_EMONEY_CARDS, INDONESIAN_WALLETS, type IndonesianWallet, walletMatches } from './coretax/wallets';
 export {
   type ConverterHeader,
   ConverterError,

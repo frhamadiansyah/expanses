@@ -25,3 +25,20 @@ export const INDONESIAN_WALLETS: readonly IndonesianWallet[] = [
 export function walletMatches(typed: string, limit = 3): IndonesianWallet[] {
   return namedMatches(INDONESIAN_WALLETS, typed, limit);
 }
+
+/**
+ * Electronic money cards in Indonesia — prepaid chip cards tapped at a gate or a till — offered while one's name is
+ * typed, as the wallets are. `also` is the bank that issues it, which finds it too.
+ */
+export const INDONESIAN_EMONEY_CARDS: readonly IndonesianWallet[] = [
+  { name: 'Flazz', also: ['BCA'] },
+  { name: 'e-money', also: ['Mandiri'] },
+  { name: 'Brizzi', also: ['BRI'] },
+  { name: 'TapCash', also: ['BNI'] },
+  { name: 'JakCard', also: ['Bank DKI'] },
+];
+
+/** The electronic money cards a typed name offers: matched as the wallets are, at most `limit`. */
+export function emoneyMatches(typed: string, limit = 3): IndonesianWallet[] {
+  return namedMatches(INDONESIAN_EMONEY_CARDS, typed, limit);
+}

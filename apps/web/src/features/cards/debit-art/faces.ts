@@ -155,6 +155,19 @@ export function faceFor(texts: readonly (string | null | undefined)[], kinds?: r
   return null;
 }
 
+/** The prepaid chip card each bank with one drawn issues, by the bank's debit face: BCA's Flazz, Mandiri's e-money. */
+const PREPAID_OF_BANK: Readonly<Record<string, string>> = { bca: 'flazz', mandiri: 'emoney', bri: 'brizzi', bni: 'tapcash' };
+
+/**
+ * The face of the chip card a bank issues, for an electronic money account whose own name names no card ("Kartu
+ * kantor" at BCA is drawn as a Flazz). Null for a bank with no card drawn, or none named.
+ */
+export function prepaidFaceOf(bank: string | null | undefined): Face | null {
+  const key = PREPAID_OF_BANK[faceNamed(bank, ['debit'])?.key ?? ''];
+  const app = APP_FACES.find((face) => face.key === key);
+  return app ? { key: app.key, kind: app.kind, mark: app.mark } : null;
+}
+
 /** The art key for a face at a tier: the tier's own, or the face's when the tier is unset or not one the bank has. */
 export function tieredKey(face: Face, tier: string | null | undefined): string {
   return face.tiers?.find((t) => t.id === tier)?.key ?? face.key;
