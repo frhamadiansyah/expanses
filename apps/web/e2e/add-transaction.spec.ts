@@ -1646,6 +1646,15 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   // One group with the other details, not a box of its own above them.
   const details = edit.getByRole('region', { name: 'More details' });
   await expect(details.getByRole('button', { name: 'Fee category' }).locator('xpath=..')).toContainText('Photos');
+  // Its picker offers Top-ups under Miscellaneous like any other child: a built-in, not one made only on first need.
+  await edit.getByRole('button', { name: 'Fee category' }).click();
+  const picker = page.getByRole('dialog', { name: 'Fee category' });
+  const topUps = picker.getByRole('button', { name: 'Top-ups', exact: true });
+  await expect(topUps).toHaveCount(1);
+  await expect(topUps).toHaveAttribute('title', /^Miscellaneous\b.*Top-ups$/);
+  await picker.getByRole('button', { name: 'Fees & charges', exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
   await edit.getByRole('button', { name: 'Cancel' }).click();
 
   await page.goto('/wallet');

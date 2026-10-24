@@ -9,6 +9,8 @@ const accounts = [
   { id: 'wise', name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' },
   { id: 'bank', name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' },
   { id: 'fees', name: 'Fees & charges', kind: 'expense', subtype: 'category', currency: null, systemKey: 'miscellaneous.fees_charges' },
+  { id: 'topups', name: 'Top-ups', kind: 'expense', subtype: 'category', currency: null, systemKey: 'miscellaneous.top_ups' },
+  { id: 'dining', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null, systemKey: 'food_beverage.restaurants' },
   { id: 'gold', name: 'Antam gold', kind: 'asset', subtype: 'investment', currency: 'IDR' },
 ] as AccountRow[];
 
@@ -28,8 +30,9 @@ describe('a transfer with a fee', () => {
     if (post.kind !== 'post') return;
     expect(post.input.lines).toEqual([
       { accountId: 'gopay', amountMinor: 1_000_000, currency: 'IDR' },
-      // Paid by card: the card's line names the fee's category, so points read the whole Rp 1.010.000 once.
-      { accountId: 'card', amountMinor: -1_010_000, currency: 'IDR', spendCategoryId: 'fees' },
+      // A card's top-up of a wallet: the card's line names Top-ups, so points read the whole Rp 1.010.000 once, under
+      // Top-ups' MCC — never under Fees & charges, which a card's rules treat as a bank charge that earns nothing.
+      { accountId: 'card', amountMinor: -1_010_000, currency: 'IDR', spendCategoryId: 'topups' },
       { accountId: 'fees', amountMinor: 10_000, currency: 'IDR' },
     ]);
   });
@@ -40,13 +43,64 @@ describe('a transfer with a fee', () => {
     expect(post.input.lines[1]).toEqual({ accountId: 'bank', amountMinor: -1_010_000, currency: 'IDR' });
   });
 
+  it('balances a card top-up with a fee: the card owes what landed and the fee together', () => {
+    const post = formToPost(topUp, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines.reduce((sum, line) => sum + line.amountMinor, 0)).toBe(0);
+    expect(post.input.lines[2]).toEqual({ accountId: 'fees', amountMinor: 10_000, currency: 'IDR' });
+  });
+
+  it('names Top-ups on the card line of a top-up with no fee, so its points still read', () => {
+    const post = formToPost({ ...topUp, fee: '', feeCategoryId: '' }, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines).toEqual([
+      { accountId: 'gopay', amountMinor: 1_000_000, currency: 'IDR' },
+      { accountId: 'card', amountMinor: -1_000_000, currency: 'IDR', spendCategoryId: 'topups' },
+    ]);
+  });
+
+  it("takes the open book's Top-ups the screen hands it over the first one the accounts hold", () => {
+    const post = formToPost({ ...topUp, topUpCategoryId: 'topups-business' }, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines[1]).toEqual({ accountId: 'card', amountMinor: -1_010_000, currency: 'IDR', spendCategoryId: 'topups-business' });
+  });
+
+  it("keeps the fee's category on a card paying anything but a wallet", () => {
+    const post = formToPost({ ...topUp, toId: 'bank' }, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines).toEqual([
+      { accountId: 'bank', amountMinor: 1_000_000, currency: 'IDR' },
+      { accountId: 'card', amountMinor: -1_010_000, currency: 'IDR', spendCategoryId: 'fees' },
+      { accountId: 'fees', amountMinor: 10_000, currency: 'IDR' },
+    ]);
+    // And a fee filed somewhere else by hand stays where it was put.
+    const chosen = formToPost({ ...topUp, toId: 'bank', feeCategoryId: 'dining' }, accounts);
+    if (chosen.kind !== 'post') throw new Error('expected a post');
+    expect(chosen.input.lines[1]).toMatchObject({ spendCategoryId: 'dining' });
+  });
+
+  it('names nothing on a card paying a bank with no fee, or a bank topping up a wallet', () => {
+    const toBank = formToPost({ ...topUp, toId: 'bank', fee: '', feeCategoryId: '' }, accounts);
+    if (toBank.kind !== 'post') throw new Error('expected a post');
+    expect(toBank.input.lines.every((line) => !('spendCategoryId' in line))).toBe(true);
+    const fromBank = formToPost({ ...topUp, moneyId: 'bank', fee: '', feeCategoryId: '' }, accounts);
+    if (fromBank.kind !== 'post') throw new Error('expected a post');
+    expect(fromBank.input.lines.every((line) => !('spendCategoryId' in line))).toBe(true);
+  });
+
+  it('falls back to the fee category when the workspace has no Top-ups at all', () => {
+    const post = formToPost(topUp, accounts.filter((a) => a.id !== 'topups'));
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines[1]).toMatchObject({ spendCategoryId: 'fees' });
+  });
+
   it('refuses a fee without a category, and a fee across two currencies', () => {
     expect(() => formToPost({ ...topUp, feeCategoryId: '' }, accounts)).toThrow('Choose a category for the fee');
     expect(() => formToPost({ ...topUp, toId: 'wise', toAmount: '60' }, accounts)).toThrow('A fee goes on a transfer within one currency');
   });
 
   it('reads back as a transfer of what landed, with its fee — never as Rp 10.000 of spending', () => {
-    const saved = view([entry('gopay', 1_000_000), entry('card', -1_010_000, { spendCategoryId: 'fees' }), entry('fees', 10_000)]);
+    const saved = view([entry('gopay', 1_000_000), entry('card', -1_010_000, { spendCategoryId: 'topups' }), entry('fees', 10_000)]);
     expect(classify(saved)).toMatchObject({ type: 'transfer', amountMinor: 1_000_000, feeMinor: 10_000 });
     expect(formFromTransaction(saved, accounts)).toMatchObject({ mode: 'transfer', moneyId: 'card', toId: 'gopay', amount: '1000000', fee: '10000', feeCategoryId: 'fees' });
   });

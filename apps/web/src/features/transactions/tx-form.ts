@@ -18,7 +18,7 @@ import {
   transferLines,
   yourShare,
 } from '@expanses/core';
-import { NetWorthError, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
+import { cardTopsUpWallet, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -64,6 +64,11 @@ export interface FormDraft {
   /** A transfer's fee, typed in the From account's currency, and the category it is spending in. */
   fee: string;
   feeCategoryId: string;
+  /**
+   * The open book's Top-ups, which a credit card's top-up of a digital wallet names on the card's line. Filled by the
+   * screen at save, never typed; absent, the first Top-ups the accounts hold stands in.
+   */
+  topUpCategoryId?: string;
   splits: SplitRow[];
   mcc: string;
   rememberPattern: string;
@@ -772,26 +777,44 @@ function toAccountOf(draft: FormDraft, accounts: readonly AccountRow[], from: Ac
   return { id: to.id, currency: to.currency };
 }
 
+/**
+ * The Top-ups a credit card's top-up of a digital wallet names on the card's line — as the quick Top up door does
+ * (`moveMoneyIn`) — so its points are read once on the whole charge under Top-ups' MCC: never under the fee's
+ * category, which a card's rules treat as a bank charge that earns nothing. Undefined for anything else.
+ */
+function topUpsOf(draft: FormDraft, from: AccountRow, toId: string, accounts: readonly AccountRow[]): string | undefined {
+  const to = accounts.find((a) => a.id === toId);
+  if (!to || !cardTopsUpWallet(from, to)) return undefined;
+  return draft.topUpCategoryId || accounts.find((a) => a.kind === 'expense' && a.systemKey === TOP_UP_KEY.key && !a.archivedAt)?.id;
+}
+
 function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: readonly AccountRow[], amountMinor: number): PostingLine[] {
   const to = toAccountOf(draft, accounts, account);
   const currency = account.currency!;
   const feeMinor = draft.fee.trim() ? positive(draft.fee, currency, 'Fee') : 0;
+  const topUps = to.currency === currency ? topUpsOf(draft, account, to.id, accounts) : undefined;
   if (feeMinor > 0) {
     if (to.currency !== currency) throw new Error('A fee goes on a transfer within one currency');
     if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
     /*
      * What left is the transfer and its fee together — the one line a statement prints, Rp 1.010.000 — what landed is
-     * the transfer alone, and the fee is spending. Paid by card, the card's line names the fee's category, so its
-     * points are read once on the whole charge, as the bank reads it, and the fee line is not counted again.
+     * the transfer alone, and the fee is spending. Paid by card, the card's line names a category, so its points are
+     * read once on the whole charge, as the bank reads it, and the fee line is not counted again: Top-ups for a
+     * wallet's top-up, the fee's own category for anything else.
      */
     const card = account.subtype === 'credit_card';
+    const spendCategoryId = topUps ?? (card ? draft.feeCategoryId : undefined);
     return [
       { accountId: to.id, amountMinor, currency },
-      { accountId: account.id, amountMinor: -(amountMinor + feeMinor), currency, ...(card ? { spendCategoryId: draft.feeCategoryId } : {}) },
+      { accountId: account.id, amountMinor: -(amountMinor + feeMinor), currency, ...(spendCategoryId ? { spendCategoryId } : {}) },
       { accountId: draft.feeCategoryId, amountMinor: feeMinor, currency },
     ];
   }
-  if (to.currency === currency) return transferLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, currency });
+  if (to.currency === currency) {
+    const lines = transferLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, currency });
+    // A card's top-up of a wallet with no fee still earns, on the card's line, under Top-ups.
+    return topUps ? lines.map((line) => (line.accountId === account.id ? { ...line, spendCategoryId: topUps } : line)) : lines;
+  }
   const exchange = accounts.find((a) => a.systemKey === 'currency_exchange');
   if (!exchange) throw new Error('Currency exchange account missing');
   // Non-null: both accounts have a currency and they differ, which is exactly when `receivedField` answers.

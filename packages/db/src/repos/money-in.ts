@@ -1,9 +1,9 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cards } from '../schema-cards';
-import { SPENDABLE_SUBTYPES } from './accounts';
+import { type AccountRow, SPENDABLE_SUBTYPES } from './accounts';
 import { categoryIdsByKeyTx, ensureCategoryByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
 
@@ -22,10 +22,29 @@ export const MONEY_IN_FEE_KEY = 'miscellaneous.fees_charges';
 
 /**
  * What a card's top-up of a wallet is, to its points: not a fee (Fees & charges never earns) but a charge of its own,
- * whose MCC is set once on that category — 5999 or 6540, whatever the issuer prints. Made under Miscellaneous on first
- * need. Nothing is ever filed under it: it only names the card's line.
+ * whose MCC is set once on that category — 5999 or 6540, whatever the issuer prints. A default child of Miscellaneous,
+ * offered to file under like any other; a book without one (put away, or from before it was a default) gets it made
+ * there on first need.
  */
 export const TOP_UP_KEY = { key: 'miscellaneous.top_ups', name: 'Top-ups' };
+
+/**
+ * A credit card topping up a digital wallet — the one way a card's money moves anywhere but to a purchase. Its card
+ * line names Top-ups, whichever door records it: this one, or the Transfer tab.
+ */
+export function cardTopsUpWallet(from: Pick<AccountRow, 'kind' | 'subtype'>, to: Pick<AccountRow, 'kind' | 'subtype'>): boolean {
+  return from.kind === 'liability' && from.subtype === 'credit_card' && to.kind === 'asset' && to.subtype === 'ewallet';
+}
+
+/** The open book's Top-ups, made under its Miscellaneous the first time a book without one needs it. */
+export function ensureTopUpsCategoryTx(tx: Db, ws: WorkspaceContext): Promise<string> {
+  return ensureCategoryByKeyTx(tx, ws, { ...TOP_UP_KEY, kind: 'expense', parentKey: 'miscellaneous' });
+}
+
+/** `ensureTopUpsCategoryTx` in a transaction of its own, for a screen's save. */
+export function topUpsCategory(database: Database, ws: WorkspaceContext): Promise<string> {
+  return database.transaction((tx) => ensureTopUpsCategoryTx(tx, ws));
+}
 
 export interface MoneyInInput {
   /** Cash for a withdrawal, a digital wallet for a top-up. */
@@ -72,7 +91,7 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
     if (!to || !from) throw new MoneyInError('NOT_FOUND', 'That account is not in this workspace');
     if (to.kind !== 'asset' || (to.subtype !== 'cash' && to.subtype !== 'ewallet')) throw new MoneyInError('NOT_ALLOWED', `${to.name} is not cash or a wallet`);
     const card = from.kind === 'liability' && from.subtype === 'credit_card';
-    if (from.id === to.id || !((from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype)) || (card && to.subtype === 'ewallet'))) {
+    if (from.id === to.id || !((from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype)) || cardTopsUpWallet(from, to))) {
       throw new MoneyInError('NOT_ALLOWED', `Money cannot come into ${to.name} from ${from.name}`);
     }
     if (from.currency !== to.currency || !to.currency) throw new MoneyInError('CURRENCY', `${from.name} and ${to.name} hold different currencies`);
@@ -97,7 +116,7 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
        * The card's line names Top-ups, so its points are read once on the whole charge, as the bank reads it — never
        * under the fee's category, which a card's rules treat as a bank charge that earns nothing.
        */
-      const topUps = await ensureCategoryByKeyTx(tx, ws, { ...TOP_UP_KEY, kind: 'expense', parentKey: 'miscellaneous' });
+      const topUps = await ensureTopUpsCategoryTx(tx, ws);
       const feeCategory = input.feeMinor > 0 ? (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY] : undefined;
       if (input.feeMinor > 0 && !feeCategory) throw new MoneyInError('NOT_FOUND', 'This workspace has no Fees & charges category');
       const transferId = await postTransactionTx(tx, ws, {
