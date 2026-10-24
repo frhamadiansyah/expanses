@@ -1,6 +1,6 @@
 import type { BundledMerchant } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { bundledRows } from './merchant-rows';
+import { bundledRows, merchantOutcome, mineRows } from './merchant-rows';
 
 const bundled: BundledMerchant[] = [
   { pattern: 'mcdonald', mcc: '5814', name: "McDonald's", basis: 'typical' },
@@ -22,5 +22,59 @@ describe('bundledRows', () => {
     expect(bundledRows(bundled, [], 'mcd').map((r) => r.pattern)).toEqual(['mcdonald']);
     expect(bundledRows(bundled, [], '5814').map((r) => r.pattern)).toEqual(['kfc', 'mcdonald']);
     expect(bundledRows(bundled, [], 'fuel')).toEqual([]);
+  });
+});
+
+describe('mineRows', () => {
+  const memory = [
+    { id: 'a', pattern: 'warung bunda', mcc: '5812' },
+    { id: 'b', pattern: 'pertamina', mcc: null },
+    { id: 'c', pattern: 'bengkel', mcc: '7538' },
+  ];
+
+  it("names an entry after the typical merchant sharing its text, else its own text, sorted by name", () => {
+    expect(mineRows(memory, bundled, '').map((r) => [r.name, r.typical?.pattern ?? null])).toEqual([
+      ['bengkel', null],
+      ['Pertamina', 'pertamina'],
+      ['warung bunda', null],
+    ]);
+  });
+
+  it('searches the name, the matched text and the code', () => {
+    expect(mineRows(memory, bundled, 'Perta').map((r) => r.entry.id)).toEqual(['b']);
+    expect(mineRows(memory, bundled, '7538').map((r) => r.entry.id)).toEqual(['c']);
+    expect(mineRows(memory, bundled, 'warung 5812').map((r) => r.entry.id)).toEqual(['a']);
+    expect(mineRows(memory, bundled, 'kfc')).toEqual([]);
+  });
+});
+
+describe('merchantOutcome', () => {
+  it('cannot save without a name, or with a code that is not four digits', () => {
+    expect(merchantOutcome({ pattern: '  ', mcc: '5814', useTypical: true }, bundled)).toBeNull();
+    expect(merchantOutcome({ pattern: 'warung', mcc: '58', useTypical: true }, bundled)).toBeNull();
+  });
+
+  it('needs a code for a merchant with no typical one, and keeps the text as the repository will', () => {
+    expect(merchantOutcome({ pattern: 'warung', mcc: '', useTypical: true }, bundled)).toBeNull();
+    expect(merchantOutcome({ pattern: '  Warung   Bunda ', mcc: '5812', useTypical: false }, bundled)).toEqual({
+      kind: 'save',
+      entry: { id: undefined, pattern: 'warung bunda', mcc: '5812' },
+    });
+  });
+
+  it('switch off ignores the typical code, whatever code is typed', () => {
+    expect(merchantOutcome({ pattern: 'KFC', mcc: '5814', useTypical: false }, bundled)).toEqual({ kind: 'save', entry: { id: undefined, pattern: 'kfc', mcc: null } });
+    expect(merchantOutcome({ id: 'x', pattern: 'kfc', mcc: '', useTypical: false }, bundled)).toEqual({ kind: 'save', entry: { id: 'x', pattern: 'kfc', mcc: null } });
+  });
+
+  it('switch on with the typical code needs no entry: nothing new, and an existing one is forgotten', () => {
+    expect(merchantOutcome({ pattern: 'kfc', mcc: '5814', useTypical: true }, bundled)).toEqual({ kind: 'none' });
+    expect(merchantOutcome({ pattern: 'kfc', mcc: '', useTypical: true }, bundled)).toEqual({ kind: 'none' });
+    expect(merchantOutcome({ id: 'x', pattern: 'kfc', mcc: '5814', useTypical: true }, bundled)).toEqual({ kind: 'forget', id: 'x' });
+  });
+
+  it('a different code on a typical merchant makes it the owner’s', () => {
+    expect(merchantOutcome({ pattern: 'kfc', mcc: '5812', useTypical: true }, bundled)).toEqual({ kind: 'save', entry: { id: undefined, pattern: 'kfc', mcc: '5812' } });
+    expect(merchantOutcome({ id: 'x', pattern: 'kfc', mcc: '5812', useTypical: true }, bundled)).toEqual({ kind: 'save', entry: { id: 'x', pattern: 'kfc', mcc: '5812' } });
   });
 });

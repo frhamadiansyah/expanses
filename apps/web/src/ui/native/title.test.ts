@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backLabel, type CornerAction, LARGE_TITLE_FITS, planCornerActions, titleSteps } from './title';
+import { type CornerAction, LARGE_TITLE_FITS, planCornerActions, titleSteps } from './title';
 
 const search: CornerAction = { key: 'search', label: 'Search' };
 const add: CornerAction = { key: 'add', label: 'Add a transaction' };
@@ -29,12 +29,6 @@ describe('planCornerActions', () => {
 
   it('lets a wider screen hold more corners before it reaches for a menu', () => {
     expect(planCornerActions([search, add, select], 3)).toEqual({ inline: [search, add, select], overflow: [] });
-  });
-});
-
-describe('backLabel', () => {
-  it('names where back goes, not the word “Back”, and keeps the chevron with the name', () => {
-    expect(backLabel('All cards')).toBe('‹ All cards');
   });
 });
 

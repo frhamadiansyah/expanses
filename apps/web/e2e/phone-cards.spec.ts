@@ -30,7 +30,7 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
   }
 
   await page.goto('/cards/merchants');
-  await expect(page.getByRole('heading', { name: 'Merchants & MCCs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Merchants', exact: true })).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);
   const wideMerchants = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(wideMerchants).toBe(false);
@@ -133,7 +133,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(raised).toHaveCount(1);
   await expect(raised.getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
   // No title drawn and no back link: the card is the header, with ✕ on the left and ⚙ on the right.
-  await expect(page.getByRole('link', { name: 'Wallet', exact: true }).filter({ hasText: '‹' })).toHaveCount(0);
+  await expect(page.getByRole('main').getByRole('link', { name: 'Wallet', exact: true }).filter({ hasNotText: /\w/ })).toHaveCount(0);
   const bar = page.locator('header').filter({ has: page.getByRole('heading', { name: 'Alpha Card', exact: true }) });
   const [closeBox, gearBox] = [(await bar.getByRole('button', { name: 'Close', exact: true }).boundingBox())!, (await bar.getByRole('link', { name: 'Settings' }).boundingBox())!];
   expect(closeBox.x).toBeLessThan(gearBox.x);

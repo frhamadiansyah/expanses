@@ -72,16 +72,6 @@ export function planCornerActions(actions: readonly CornerAction[], max = CORNER
 }
 
 /**
- * The line above a large title: `‹ Name`, naming where back goes.
- *
- * It names the destination rather than saying "Back", because on a screen reached from two places "Back" is the
- * one thing it cannot tell you.
- */
-export function backLabel(destination: string): string {
-  return `‹ ${destination}`;
-}
-
-/**
  * How many characters a 30 px large title holds on one line of a 390 pt phone, gutters taken off.
  *
  * Measured, not guessed: the 358 px column holds about twenty of the app's own letters.

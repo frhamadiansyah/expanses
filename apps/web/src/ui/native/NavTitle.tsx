@@ -5,14 +5,14 @@ import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../index';
-import { backLabel, type CornerAction, planCornerActions, titleSteps } from './title';
+import { type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
 import { CompactBar, PinnedTitleBar, useScrolledPast } from './CompactBar';
 
 /**
  * Primitive 3: the large title, and the corner buttons beside it.
  *
- * 30 px / 600, the back destination named above it, and actions as circular 44 pt buttons — never a dark
+ * 30 px / 600, the way back as a round ‹ in the corner row above it, and actions as circular 44 pt buttons — never a dark
  * rectangle, never an underlined text link. The two things the app does today in place of this are exactly the
  * two things this refuses to draw.
  *
@@ -215,7 +215,10 @@ export function LargeTitle({
   oneLine = false,
 }: {
   title: string;
-  /** What back goes to, named: `‹ All cards`. A screen reached from two places cannot just say "Back". */
+  /**
+   * What back goes to, named — `All cards` — for a screen reader: the way back is drawn as the round ‹ at the left of
+   * the corner row, with the big title on the line under it. A screen reached from two places cannot just say "Back".
+   */
   back?: string;
   onBack?: () => void;
   /** Where back goes. Given a route it is drawn as a link, so the way out can be opened in a tab of its own. */
@@ -259,71 +262,88 @@ export function LargeTitle({
   // The field is drawn once: in the pinned bar while the page is scrolled past the title, in the title row otherwise.
   // Drawn in the title row while that row is off the screen, focusing it scrolled the whole page back to the top.
   const fieldIn = (copy: boolean) => (field && (copy ? folded : !folded) ? field : null);
+  const heading = (copy: boolean) => (
+    <>
+      <h1
+        title={oneLine ? title : undefined}
+        className={cx(
+          // Semibold, the weight Cashflow's title has always carried: a page's name is not a figure, and the
+          // screen whose title people see most should not be the only one that draws it this way.
+          'font-semibold tracking-tight text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
+          steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
+          oneLine && 'truncate',
+        )}
+      >
+        {title}
+      </h1>
+      {!copy && subtitle && <p className="mt-[2px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}
+    </>
+  );
+  const corners = (plan.inline.length > 0 || plan.overflow.length > 0) && (
+    <div className="flex shrink-0 items-center gap-[8px]">
+      {plan.inline.map((action) =>
+        action.menu ? (
+          <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+        ) : (
+          <CornerButton
+            key={action.key}
+            label={action.label}
+            to={action.to}
+            params={action.params}
+            search={action.search}
+            onClick={action.to ? undefined : () => action.run?.()}
+            destructive={action.destructive}
+            disabled={action.disabled}
+            pressed={action.pressed}
+            expanded={action.expanded}
+          >
+            {action.glyph}
+          </CornerButton>
+        ),
+      )}
+      {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+    </div>
+  );
   /*
-   * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
-   * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
-   */
-  /*
-   * The way back is drawn in the page's own ink, not the tint: it is chrome, not an action, and a column of green
-   * back links down the phone's history read as an accent shouting on every screen. The tint stays where it says
-   * something — a selection, progress, the receipt for something saved.
+   * A corner's 44 px of height whether or not the screen has corners, so the row is the same height on every
+   * screen. Without it a title alone is 36, a title with one corner button 44 — and the 8 px difference walks
+   * everything below the bar up and down as you move between screens or between one screen's own tabs.
+   * `items-start` keeps the title itself where it was: the row grows downwards, under the name.
    */
   const titleRow = (copy: boolean) => (
     <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
-      <div className="min-w-0 flex-1">
-        {fieldIn(copy) ?? (
-          <>
-            <h1
-              title={oneLine ? title : undefined}
-              className={cx(
-                // Semibold, the weight Cashflow's title has always carried: a page's name is not a figure, and the
-                // screen whose title people see most should not be the only one that draws it this way.
-                'font-semibold tracking-tight text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
-                steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
-                oneLine && 'truncate',
-              )}
-            >
-              {title}
-            </h1>
-            {!copy && subtitle && <p className="mt-[2px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}
-          </>
-        )}
-      </div>
-      {!fieldIn(copy) && (plan.inline.length > 0 || plan.overflow.length > 0) && (
-        <div className="flex shrink-0 items-center gap-[8px]">
-          {plan.inline.map((action) =>
-            action.menu ? (
-              <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
-            ) : (
-            <CornerButton
-              key={action.key}
-              label={action.label}
-              to={action.to}
-              params={action.params}
-              search={action.search}
-              onClick={action.to ? undefined : () => action.run?.()}
-              destructive={action.destructive}
-              disabled={action.disabled}
-              pressed={action.pressed}
-              expanded={action.expanded}
-            >
-              {action.glyph}
-            </CornerButton>
-            ),
-          )}
-          {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
-        </div>
-      )}
+      <div className="min-w-0 flex-1">{fieldIn(copy) ?? heading(copy)}</div>
+      {!fieldIn(copy) && corners}
     </div>
   );
-  const backShell =
-    'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-ink)]';
+  /*
+   * A screen with a way back draws it as the round ‹ — the corner's own circle, in the page's ink, at the left of the
+   * corner row, its actions at the right — and the big title on the line under that row. The destination is named for
+   * a screen reader only: a word beside the chevron read as a second title over the first. A field opened here takes
+   * the whole row, the ‹ and the title with it, and its own ✕ is the way out of it.
+   */
+  const backRow = field ? (
+    <div className="flex items-center" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
+      <div className="min-w-0 flex-1">{field}</div>
+    </div>
+  ) : (
+    <>
+      <div className="flex items-center justify-between gap-3" style={{ paddingTop: 8 }}>
+        <CornerButton label={back ?? ''} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
+          <ChevronLeft size={22} aria-hidden />
+        </CornerButton>
+        {corners}
+      </div>
+      <div className="mt-[6px] min-w-0">{heading(false)}</div>
+    </>
+  );
   /*
    * A field opened at the top of a phone's page stays on top while the page scrolls under it: the title row itself
    * sticks, on the pinned bar's glass, so the field is never moved and keeps the keyboard and what was typed. The
    * glass is a layer behind it and the safe area is given back with a negative margin, so nothing moves at rest.
+   * A screen with a way back never folds while its field is open, so its field sticks the same way.
    */
-  const sticky = !!field && phone && pinned && !folded;
+  const sticky = !!field && phone && !folded;
   return (
     <header
       ref={head}
@@ -347,23 +367,7 @@ export function LargeTitle({
             overflow={plan.overflow}
           />
         ))}
-      {back &&
-        (backTo ? (
-          <Link to={backTo} params={backParams} search={backSearch} aria-label={back} className={backShell}>
-            {backLabel(back)}
-          </Link>
-        ) : (
-          <button type="button" onClick={onBack} className={backShell}>
-            {backLabel(back)}
-          </button>
-        ))}
-      {/*
-       * A corner's 44 px of height whether or not the screen has corners, so the row is the same height on every
-       * screen. Without it a title alone is 36, a title with one corner button 44 — and the 8 px difference walks
-       * everything below the bar up and down as you move between screens or between one screen's own tabs.
-       * `items-start` keeps the title itself where it was: the row grows downwards, under the name.
-       */}
-      {titleRow(false)}
+      {back ? backRow : titleRow(false)}
     </header>
   );
 }
