@@ -22,6 +22,7 @@ import { WalletPhoneGroup } from '../accounts/WalletPhoneGroup';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
 import { useOpenings } from '../accounts/queries';
+import { spendsFrom } from '../accounts/pockets';
 import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
 import { AcquiredRow } from './AssetRows';
 import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
@@ -35,7 +36,8 @@ const cashCodeFor = (subtype: string | undefined): string | null => (subtype && 
  * What "For spending" means, under its switch: for an account, what off does; for a pocket, the same said of its
  * currency; and for a pocket under an account kept as savings, why its switch cannot be changed.
  */
-function spendingFooter(account: Pick<AccountRow, 'currency'>, parent: Pick<AccountRow, 'name' | 'kind' | 'subtype' | 'forSpending'> | null): string {
+function spendingFooter(account: Pick<AccountRow, 'currency'>, parent: Pick<AccountRow, 'name' | 'kind' | 'subtype' | 'forSpending'> | null, pocketsAllOff = false): string {
+  if (pocketsAllOff) return 'Every pocket is kept as savings. On puts all of them back for spending.';
   if (parent === null) return 'Off: kept as savings. Not offered under Paid with and not counted in the spending balance; money can still be moved in and out.';
   if (!keptForSpending(parent)) return `${parent.name} is kept as savings, so all its pockets are too. Switch it on for spending in its own Settings to choose pocket by pocket.`;
   return `Off: the ${account.currency} is kept as savings. Not offered under Paid with and not counted in Wallet's balance; money can still be moved in and out.`;
@@ -105,7 +107,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const heldAt = link?.brokerAccountId ? (accounts.data ?? []).find((row) => row.id === link.brokerAccountId) : undefined;
   const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'the Institution on its page';
   // Money kept for spending was a card in Wallet; anything else — savings put aside included — is listed on Assets.
-  const list = () => navigate(money && account && keptForSpending(account) ? { to: '/wallet' } : { to: '/net-worth/assets' });
+  const list = () => navigate(money && account && spendsFrom(account, accounts.data ?? []) ? { to: '/wallet' } : { to: '/net-worth/assets' });
 
   async function leaveBy(ask: string, act: () => Promise<void>) {
     if (!window.confirm(ask)) return;
@@ -235,13 +237,15 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
        * spending balance; off, it is kept as savings and read on Assets alone. An account has the switch, and so does
        * each of its pockets — the lira left in cash after a trip, kept while the rupiah is still spent. A pocket counts
        * only while its account does too (`keptForSpending`), so under an account kept as savings its switch is shown
-       * off and cannot be changed. Saves as it is switched, as every row here does.
+       * off and cannot be changed. An account whose pockets are all switched off reads off too, as Wallet reads it
+       * (`spendsFrom`); switched on, every pocket comes back. Saves as it is switched, as every row here does.
        */}
       {account && account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && (
-        <InsetGroup footer={spendingFooter(account, spendingParent)}>
+        <InsetGroup footer={spendingFooter(account, spendingParent, keptForSpending(account) && !spendsFrom(account, accounts.data ?? []))}>
           <SwitchRow
             label="For spending"
-            checked={keptForSpending(account, spendingParent)}
+            // As Wallet reads it: an account whose pockets are all switched off reads off (`spendsFrom`).
+            checked={spendsFrom(account, accounts.data ?? [])}
             disabled={spendingParent !== null && !keptForSpending(spendingParent)}
             onChange={(on) =>
               void (async () => {

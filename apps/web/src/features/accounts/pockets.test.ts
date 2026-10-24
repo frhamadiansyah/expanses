@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -327,6 +327,21 @@ describe('a pocket kept as savings', () => {
     // An archived pocket still on is not money to spend: the account still leaves.
     const archived = row('cash-eur', { parentId: 'cash', currency: 'EUR', archivedAt: '2026-01-01' });
     expect(spendingBook([cash, idrOff, lira, archived, everyday]).map((a) => a.id)).not.toContain('cash');
+  });
+
+  it('reads the account off on its own switch once every open pocket is off, and on while one is on', () => {
+    expect(spendsFrom(cash, [cash, idr, lira, everyday])).toBe(true);
+    const idrOff = { ...idr, forSpending: 0 };
+    expect(spendsFrom(cash, [cash, idrOff, lira, everyday])).toBe(false);
+    // Its stored switch is untouched: still on, which is what lets each pocket be switched on again by itself.
+    expect(cash.forSpending).toBe(1);
+    // A pocket reads as itself; an account with no pockets, as its own switch.
+    expect(spendsFrom(idr, [cash, idr, lira])).toBe(true);
+    expect(spendsFrom(lira, [cash, idr, lira])).toBe(false);
+    expect(spendsFrom(everyday, [everyday])).toBe(true);
+    expect(spendsFrom({ ...everyday, forSpending: 0 }, [{ ...everyday, forSpending: 0 }])).toBe(false);
+    // Never money that cannot be spent from, whatever is under it.
+    expect(spendsFrom(row('deposit', { subtype: 'time_deposit' }), [row('deposit', { subtype: 'time_deposit' })])).toBe(false);
   });
 
   it('reads a pocket off under an account switched off, whatever the pocket says', () => {
