@@ -207,7 +207,8 @@ export async function openCard(page: Page, o: NewCard) {
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
   await nameCardByHand(page, o.name);
-  if (o.bank || (o.currency && o.currency !== 'IDR') || o.statementDay || o.dueDay) await page.getByRole('button', { name: 'Add more details' }).click();
+  // An extra may fill any of the form's labels, the folded ones among them, so it gets the details open too.
+  if (o.bank || (o.currency && o.currency !== 'IDR') || o.statementDay || o.dueDay || o.extra) await page.getByRole('button', { name: 'Add more details' }).click();
   if (o.bank) await page.getByLabel('Bank').selectOption({ label: o.bank });
   if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);
