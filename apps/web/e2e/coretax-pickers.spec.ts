@@ -29,7 +29,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Name', { exact: true }).fill('Deposito BCA 6 bulan');
   await page.getByLabel('Current balance', { exact: true }).fill('100000000');
   // Every money account is asked which currency it holds, a deposit included: money abroad is ordinary.
-  await expect(page.getByLabel('Currency', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Currency: IDR', exact: true })).toBeVisible();
   await page.getByLabel('Matures on').fill('2027-03-01');
   await page.getByLabel('Interest rate').fill('6,25');
   await page.getByRole('button', { name: 'Add account' }).click();

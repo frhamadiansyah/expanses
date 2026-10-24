@@ -894,9 +894,7 @@ test('Split by category and With refuse each other in words, before Save', async
 test('a missing rate is asked for under Add more details, and the save then goes through', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // No balance, so nothing stores a USD→IDR rate on the way in: the save is the first thing to want one.
-  await addAccount(page, 'Wise USD', 'bank', async () => {
-    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
-  });
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();

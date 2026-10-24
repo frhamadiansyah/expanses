@@ -214,8 +214,8 @@ function RateField({ label, value, onChange }: { label: string; value: string; o
  * the left, where a label would be, and the amount at the right, as the amount row of a transaction reads; a currency
  * other than the workspace's puts its opening rate before the amount behind a hairline.
  *
- * The plain account's balance is a row like the ones above it instead: "Current balance" on the left, and the code,
- * still typed to change it, just before the amount it is the currency of. With the label taking the left, a rate
+ * The plain account's balance is a row like the ones above it instead: "Current balance" on the left, and the
+ * currency's symbol, once a figure is typed, a space before it — a tap on the symbol picks another. With the label taking the left, a rate
  * beside them no longer fits a phone's width, so a foreign balance asks its opening rate on a row of its own under it.
  *
  * Both the plain balance and each pocket are one of these, so turning Multi-currency on only turns one row into several.
@@ -275,16 +275,26 @@ function MoneyRow({
                 {CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency}
               </button>
             )}
-            <input
-              id={amountId}
-              aria-label={amountLabel}
-              value={balance}
-              onChange={(e) => onBalance(groupTypedAmount(e.target.value, currency))}
-              inputMode="decimal"
-              placeholder="Amount"
-              style={{ width: amountWidth(balance) }}
-              className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
-            />
+            {/*
+             * As wide as what it shows, an unseen copy of the text setting the width (as Add asset's amount rows do):
+             * a width in `ch` runs wider than a figure grouped with dots, and the gap opened between symbol and figure.
+             */}
+            <span className="inline-grid min-w-0">
+              <span aria-hidden className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre text-[17px] leading-[22px] tabular md:text-[15px] md:leading-[20px]">
+                {balance || 'Amount'}
+              </span>
+              <input
+                id={amountId}
+                aria-label={amountLabel}
+                value={balance}
+                onChange={(e) => onBalance(groupTypedAmount(e.target.value, currency))}
+                inputMode="decimal"
+                placeholder="Amount"
+                // One character wide on its own, so the unseen copy alone decides the width (an input is 20 by default).
+                size={1}
+                className="ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
+              />
+            </span>
           </span>
         </div>
         {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={base} onPick={onCurrency} onClose={() => setPicking(false)} />}
