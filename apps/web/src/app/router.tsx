@@ -31,6 +31,7 @@ import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPage
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { WalletPage } from '../features/wallet/WalletPage';
+import { WalletReorderPage } from '../features/wallet/WalletReorderPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
 import { PointsPage } from '../features/cards/PointsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
@@ -261,6 +262,9 @@ const routeTree = rootRoute.addChildren([
       },
     }),
   ]),
+  // Wallet's cards put in an order by hand, opened from its ⋯: a page of its own over the wallet, as Points is.
+  // Nothing in the wallet's layout is a pattern under `/wallet`, so the static path is never read as a card.
+  createRoute({ getParentRoute: () => rootRoute, path: '/wallet/reorder', component: WalletReorderPage }),
   // A card's pages, each pushed from its summary with ‹ back to it: the statement, this statement's points with the
   // purchases and the statement's own figure under them, and the settings with the card product, the earning rules
   // and the spend bonuses under them. Static last segments, so none is read as the wallet's `$cardId`.
