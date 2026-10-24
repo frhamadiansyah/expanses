@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { CardStack, InsetGroup, InsetRow, PushedTitle, SCREEN, type WalletCard } from '../../ui/native';
+import { useProgrammeTiers } from './card-queries';
+import { programmeFaceRef } from './programme-art/programmes';
 import { balanceText, earnersLine, expiryNote } from './programme-text';
 import { AddProgrammeSheet } from './ProgrammeSheets';
 
@@ -15,6 +17,9 @@ import { AddProgrammeSheet } from './ProgrammeSheets';
  * into, or one only conversions fill. The face names who earns into it and, in its band, the balance in its own unit;
  * what of it expires soon is said on the face too. Tapping a face opens the programme's page, whose ‹ comes back here.
  * ＋ in the corner adds a programme no card earns into yet.
+ *
+ * A programme whose name is one of the drawn membership cards' (programme-art) is drawn as that card at its Card tier,
+ * art and name alone; any other keeps the plain face, with who earns into it on its chip of words.
  *
  * Each programme's ledger is brought up to date before it is shown, as opening it would, so the figure here is the
  * one its page shows.
@@ -31,6 +36,7 @@ export function PointsPage() {
       return listProgrammeSummaries(database, ws, today);
     },
   });
+  const tiers = useProgrammeTiers();
   const rows = summaries.data ?? [];
   const cards: WalletCard[] = rows.map(({ programme, earners, balance }) => {
     const note = expiryNote(balance);
@@ -42,6 +48,7 @@ export function PointsPage() {
       name: programme.name,
       last4: null,
       kind: note ? `${earning} · ${note}` : earning,
+      face: programmeFaceRef(programme.name, tiers.data?.[programme.id]),
       figure,
       figureLabel: '',
       to: '/cards/points/$programmeId',

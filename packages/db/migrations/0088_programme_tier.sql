@@ -1,0 +1,13 @@
+-- "Card tier" of a points programme: which of its membership cards the Points page draws it as.
+--
+-- Points draws a programme whose name it knows — KrisFlyer, Asia Miles, Marriott Bonvoy, ALL Accor, GarudaMiles, JAL
+-- Mileage Bank, Privilege Club, ANA Mileage Club — as that programme's membership card, and most of them issue it in
+-- tiers that look nothing alike (KrisFlyer's Elite Silver and Elite Gold, Bonvoy's Silver to Ambassador Elite…), so the
+-- programme says which, and its face follows. Null, the default, is the programme's first tier. The value is the
+-- tier's own short word ('gold', 'ambassador'), read by the app against the programme's list; a word the programme has
+-- no card for draws the first.
+--
+-- A look, not a fact about the balance, kept the way 0087's card_tier is: read and written by name, never through the
+-- drizzle table, so a database stopped before this column reads and writes programmes as it did. point_programmes does
+-- not travel between devices (it is in no SHARED_ENTITIES row), so neither does this.
+ALTER TABLE point_programmes ADD COLUMN tier TEXT;

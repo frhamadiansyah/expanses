@@ -27,5 +27,24 @@ Keys in `cards.json`:
 Logo marks are left out (bank emblems, Visa/Mastercard). Faces that lean on a brand's own shape, drawn at the owner's
 request "as similar as you can": jago, dbs, seabank, allo, krom, shopeepay, gopay, dana, bcaprio's gold oval.
 
+## Membership cards (approved 24 Oct 2026)
+
+`membership/` — one finished SVG (340 × 214) per points programme and tier: the source of truth for the faces the
+Points page draws. `apps/web/scripts/programme-art.mjs` keeps each drawing's `art` and `brand` layers (the programme's
+name and tier word, top-left, final as drawn), drops its `print` layer (the placeholder MEMBER NAME and noughts — the app
+keeps no member's name or number) with every definition only the print used, and writes
+`apps/web/src/features/cards/programme-art/faces.generated.ts`, a lazy chunk. Which programme gets which card, by its
+name, and the tiers each family has, are in `programme-art/programmes.ts`; the tier a programme is drawn at is its Card
+tier (migration 0088), chosen in its Settings. Redraw here, then run the script.
+
+- ALL Accor: `accor`, `accor-silver`, `accor-gold`, `accor-platinum` (Classic, Silver, Gold, Platinum)
+- ANA Mileage Club: `ana`
+- KrisFlyer: `krisflyer`, `krisflyer-silver`, `krisflyer-gold` (KrisFlyer, Elite Silver, Elite Gold)
+- Asia Miles: `asiamiles`, `asiamiles-silver`, `asiamiles-gold`, `asiamiles-diamond` (Green, Silver, Gold, Diamond)
+- Marriott Bonvoy: `bonvoy`, `bonvoy-silver`, `-gold`, `-platinum`, `-titanium`, `-ambassador` (Member to Ambassador Elite)
+- GarudaMiles: `garudamiles`, `garudamiles-silver`, `-gold`, `-platinum` (Blue, Silver, Gold, Platinum)
+- JAL Mileage Bank: `jmb`, `jmb-crystal`, `jmb-sapphire`, `jmb-diamond`
+- Qatar Privilege Club: `privilegeclub`, `privilegeclub-silver`, `-gold`, `-platinum` (Burgundy, Silver, Gold, Platinum)
+
 `credit-later/` — before/after redraws of eight catalogue credit cards (they keep their network mark and their name
 top-right). Not approved yet; the owner will look at them later.

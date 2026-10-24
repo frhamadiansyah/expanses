@@ -12,7 +12,9 @@ import { INDONESIAN_BANKS } from '@expanses/core';
  * What a face carries follows its kind, as a real one does: a debit card its chip and contactless mark, a prepaid card
  * the contactless mark alone, a wallet and a PayLater line neither — and a PayLater line no number, since there is none.
  */
-export type FaceKind = 'debit' | 'emoney' | 'ewallet' | 'paylater';
+export type FaceKind = 'debit' | 'emoney' | 'ewallet' | 'paylater' | 'membership';
+// 'membership' is a points programme's card (programme-art), found by programmeFaceRef, never by a name here: it is
+// whole as drawn — brand and all — with no chip, contactless mark, network or digits laid over it.
 
 /** One of a bank's debit card tiers: its short word (what the account keeps), its label, and the face drawn for it. */
 export interface FaceTier {

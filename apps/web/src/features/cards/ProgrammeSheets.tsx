@@ -9,6 +9,7 @@ import {
   recordRedemption,
   type RedemptionOptionRow,
   setProgramExpiry,
+  setProgrammeTier,
   updateProgramme,
 } from '@expanses/db';
 import { useState } from 'react';
@@ -18,6 +19,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { formatPoints } from './format-points';
+import { programmeFamily, programmeTier } from './programme-art/programmes';
 import { conversionEstimate, parsePoints, partnerFor } from './programme-text';
 
 /*
@@ -116,8 +118,26 @@ export function AddProgrammeSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** A programme's settings: its name, unit and expiry, and putting it away. */
-export function ProgrammeSettingsSheet({ programme, earning, onClose, onArchived }: { programme: ProgrammeRow; earning: number; onClose: () => void; onArchived: () => void }) {
+/**
+ * A programme's settings: its name, unit and expiry, its card tier, and putting it away.
+ *
+ * Card tier is offered only for a programme whose name finds a drawn membership card with more than one tier, and its
+ * list follows the name as it is typed. The first tier is the default and is kept as nothing chosen; a programme whose
+ * name no longer finds a family keeps whatever tier it had, unused.
+ */
+export function ProgrammeSettingsSheet({
+  programme,
+  tier,
+  earning,
+  onClose,
+  onArchived,
+}: {
+  programme: ProgrammeRow;
+  tier: string | null;
+  earning: number;
+  onClose: () => void;
+  onArchived: () => void;
+}) {
   const { database, ws } = useApp();
   const { error, busy, save } = useSave(onClose);
   const archive = useSave(onArchived);
@@ -125,6 +145,10 @@ export function ProgrammeSettingsSheet({ programme, earning, onClose, onArchived
   const [unit, setUnit] = useState<ProgrammeUnit>(programme.unit);
   const [policy, setPolicy] = useState<ExpiryPolicy>(programme.expiryPolicy);
   const [months, setMonths] = useState(String(programme.expiryMonths ?? 24));
+  const [tierId, setTierId] = useState(tier);
+  const family = programmeFamily(name);
+  const tiers = family && family.tiers.length > 1 ? family.tiers : null;
+  const chosen = family && tiers ? programmeTier(family, tierId) : null;
   return (
     <Sheet
       grouped
@@ -137,11 +161,26 @@ export function ProgrammeSettingsSheet({ programme, earning, onClose, onArchived
           void save(async () => {
             await updateProgramme(database, ws, programme.id, { name, unit });
             await setProgramExpiry(database, ws, programme.id, policy, monthsOf(policy, months));
+            if (family && chosen) {
+              const word = chosen.id === family.tiers[0]!.id ? null : chosen.id;
+              if (word !== tier) await setProgrammeTier(database, ws, programme.id, word);
+            }
           }),
       }}
     >
       <ErrorBox error={error ?? archive.error} />
       <ProgrammeFields name={name} setName={setName} unit={unit} setUnit={setUnit} policy={policy} setPolicy={setPolicy} months={months} setMonths={setMonths} />
+      {tiers && chosen && (
+        <InsetGroup header="Membership card" footer="Which of the programme's cards is drawn for it on the Points page.">
+          <SelectRow label="Card tier" value={chosen.id} onChange={(e) => setTierId(e.target.value)}>
+            {tiers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </SelectRow>
+        </InsetGroup>
+      )}
       <InsetGroup footer={earning > 0 ? 'A card still earns into this programme. Choose another programme for that card before archiving this one.' : 'Archiving keeps its history and takes it off the Cards page.'}>
         <DestructiveRow
           label="Archive programme"

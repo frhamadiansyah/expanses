@@ -1,5 +1,5 @@
 import { type Balance, balanceOf, consumeFifo, cycleFor, type ExpiryPolicy, expiresOn as expiryDateFor, LedgerError, type TransferPartner, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
@@ -148,6 +148,47 @@ export async function archiveProgramme(database: Database, ws: WorkspaceContext,
       throw new PointsError('A card still earns into this programme. Choose another programme for that card first.');
     }
     await tx.update(pointProgrammes).set({ archivedAt: new Date().toISOString() }).where(and(eq(pointProgrammes.id, programmeId), eq(pointProgrammes.workspaceId, ws.workspaceId)));
+  });
+}
+
+/*
+ * tier (0088) is read and written by name, as accounts.card_tier (0087) is: a database stopped before it has no such
+ * column, and there no programme has a tier. Asked once per handle, and only a yes is kept.
+ */
+const tierColumn = new WeakMap<object, boolean>();
+async function tierColumnExists(tx: Db): Promise<boolean> {
+  if (tierColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('point_programmes') WHERE name = 'tier'`);
+  if (rows.length > 0) tierColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/**
+ * A tier is the programme's short word for it: 'gold', 'ambassador' — letters alone. Which words a programme has is
+ * the app's to know (its membership cards); a word it has no card for is kept and drawn as the programme's first tier.
+ */
+const TIER_WORD = /^[a-z]{2,24}$/;
+
+/** Each programme's card tier (0088), by programme id: only the live programmes that have one are listed. */
+export async function listProgrammeTiers(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  if (!(await tierColumnExists(database.db))) return {};
+  const rows = await database.db.values<[string, string]>(
+    sql`SELECT id, tier FROM point_programmes WHERE workspace_id = ${ws.workspaceId} AND tier IS NOT NULL AND archived_at IS NULL`,
+  );
+  return Object.fromEntries(rows);
+}
+
+/**
+ * Which of its membership cards a programme is drawn as on the Points page (0088): the tier's short word, or null for
+ * the programme's first. A word that is not a short lowercase word is refused, not stored.
+ */
+export async function setProgrammeTier(database: Database, ws: WorkspaceContext, programmeId: string, tier: string | null): Promise<void> {
+  const word = tier?.trim() || null;
+  if (word !== null && !TIER_WORD.test(word)) throw new PointsError('A card tier is a short word, like gold');
+  await database.transaction(async (tx) => {
+    await requireProgramme(tx, ws, programmeId);
+    if (!(await tierColumnExists(tx))) throw new PointsError('This database cannot keep that yet');
+    await tx.run(sql`UPDATE point_programmes SET tier = ${word} WHERE id = ${programmeId} AND workspace_id = ${ws.workspaceId}`);
   });
 }
 

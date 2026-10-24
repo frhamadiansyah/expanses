@@ -5,6 +5,7 @@ import {
   getProgramme,
   listPrograms,
   listProgrammes,
+  listProgrammeTiers,
   listRedemptionOptions,
   type ProgrammeRow,
   type RedemptionOptionRow,
@@ -63,6 +64,8 @@ export function ProgrammePage() {
         history: await programmeHistory(database, ws, programmeId),
         partners: await programmePartners(database, ws, programmeId),
         others: (await listProgrammes(database, ws)).filter((other) => other.id !== programmeId),
+        // Which of its membership cards Points draws it as (0088), for its Settings.
+        tier: (await listProgrammeTiers(database, ws))[programmeId] ?? null,
         // Which earning cards follow the catalogue: changing a value of theirs makes them customised, so it asks first.
         linked: new Set((await listPrograms(database, ws)).filter((program) => program.catalogStatus === 'linked').map((program) => program.id)),
       };
@@ -71,7 +74,7 @@ export function ProgrammePage() {
 
   if (data.isSuccess && data.data === null) return <Empty>Programme not found.</Empty>;
   if (!data.data) return <p className="text-sm text-slate-500">Loading…</p>;
-  const { programme, earners, options, balance, history, partners, others, linked } = data.data;
+  const { programme, earners, options, balance, history, partners, others, linked, tier } = data.data;
   const unit = programme.unit;
   const note = expiryNote(balance);
 
@@ -178,6 +181,7 @@ export function ProgrammePage() {
       {sheet === 'settings' && (
         <ProgrammeSettingsSheet
           programme={programme}
+          tier={tier}
           earning={earners.length}
           onClose={() => setSheet(null)}
           onArchived={() => void navigate({ to: '/wallet' })}

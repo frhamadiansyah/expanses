@@ -3,6 +3,7 @@ import { type ReactNode, useId } from 'react';
 import { cx } from '../../ui';
 import { type FaceRef, holderLine } from './debit-art/faces';
 import { useFaceArt } from './debit-art/use-face-art';
+import { useProgrammeArt } from './programme-art/use-programme-art';
 
 /** A hue per issuer, so a card with no catalogue design still shares its bank's colour. */
 function issuerHue(issuer: string | null): number | null {
@@ -749,6 +750,11 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
  * contactless mark, a prepaid e-money card the contactless mark alone, a wallet or a PayLater line neither — and a
  * PayLater line no number. The holder's line names what a wallet or a prepaid card is ("E-WALLET", "E-MONEY").
  *
+ * A points programme's membership card (`face` of kind `membership`, from programme-art) is drawn whole as it was
+ * approved — its ground, and its programme's name and tier top-left — with nothing laid over it: no chip, contactless
+ * mark, network or digits, and nothing on the holder's line, since no member's name or number is kept. Covered in a
+ * pile, its band prints the programme's name and figure in the drawing's place, so the drawing's own name is left out.
+ *
  * Money nothing is drawn for is drawn by the app outright (`kind`): never a brand's logo, only the account's name in
  * type, a colour worked out from that name the way a bank's is, and a chip of words saying what it is ("Debit ····
  * 1102", "Cash"). No network mark, no plastic chip, no digits line: it is a card in Wallet, not a picture of a piece
@@ -801,14 +807,16 @@ export function CardFace({
   const md = size === 'md';
   const portrait = look?.orientation === 'portrait';
   const faced = face !== undefined && face !== null;
+  const membership = faced && face.kind === 'membership';
   // The face's art arrives a moment after the first face asks for it; until then the card is its bank's plain colour.
-  const art = useFaceArt(faced ? face.key : undefined);
+  const art = useFaceArt(faced && !membership ? face.key : undefined);
+  const memberArt = useProgrammeArt(membership ? face.key : undefined);
   // A drawn money card takes its colour from its own name, as a bank card takes its bank's.
   const drawn = kind !== undefined && !faced;
   const hue = issuerHue(faced ? face.mark : drawn ? name : issuer);
   const plain = hue === null ? 'linear-gradient(135deg, hsl(215 20% 42%), hsl(222 30% 20%))' : `linear-gradient(135deg, hsl(${hue} 55% 40%), hsl(${(hue + 35) % 360} 60% 18%))`;
   const background = faced
-    ? art
+    ? art || memberArt
       ? 'transparent'
       : plain
     : look
@@ -816,10 +824,11 @@ export function CardFace({
         ? look.colours[0]
         : `linear-gradient(${look.angle ?? 135}deg, ${look.colours.join(', ')})`
       : plain;
-  const dark = faced ? art?.ink === 'dark' : look?.ink === 'dark';
+  const dark = membership ? memberArt?.ink === 'dark' : faced ? art?.ink === 'dark' : look?.ink === 'dark';
   // The bank is printed on its own, so "BCA KrisFlyer" names the card as "KrisFlyer".
   const product = issuer && name.toLowerCase().startsWith(`${issuer.toLowerCase()} `) ? name.slice(issuer.length + 1) : name;
-  const bank = faced ? face.mark : drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
+  // A membership card's band names the programme alone: its mark is the drawing's, top-left, not printed again.
+  const bank = membership ? null : faced ? face.mark : drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
   const cardName = drawn || faced ? name : (look?.wordmark ?? product);
   /* What a drawn face carries, by what it is; a credit card carries everything its catalogue look says. */
   const chip = faced ? (face.kind === 'debit' ? (art?.chip ?? 'silver') : null) : look?.chip === 'none' ? null : look?.chip === 'silver' ? 'silver' : 'gold';
@@ -850,6 +859,20 @@ export function CardFace({
       )}
       style={{ background, textShadow: dark ? undefined : '0 1px 2px rgb(0 0 0 / 0.35)' }}
     >
+      {membership && memberArt && (
+        /*
+         * The membership card as drawn, ids prefixed with this face's as debit art's are (two programmes of one family
+         * draw the same art on one page). Under a band the drawing's own name and tier are left out for the band's.
+         */
+        <svg
+          aria-hidden
+          data-testid="programme-art"
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox="0 0 340 214"
+          preserveAspectRatio="none"
+          dangerouslySetInnerHTML={{ __html: `<defs>${memberArt.defs}</defs>${memberArt.under}${band !== undefined ? '' : memberArt.brand}${memberArt.over}`.replace(/(id="|url\(#)/g, `$1${id}`) }}
+        />
+      )}
       {faced && art && (
         /*
          * The drawing, in the card's own coordinates, stretched to the face: its gradients' ids are prefixed with this
@@ -864,7 +887,8 @@ export function CardFace({
         />
       )}
       {look?.motif ? <Motif look={look} id={id} /> : look ? <Pattern look={look} /> : null}
-      <Surface finish={look?.finish ?? 'plain'} id={id} />
+      {/* A membership drawing carries its own sheen and edge; until it lands the plain face takes the usual surface. */}
+      {!(membership && memberArt) && <Surface finish={look?.finish ?? 'plain'} id={id} />}
       {band !== undefined && (
         <div data-testid="card-band" className="absolute flex items-baseline justify-between gap-3" style={{ top: inset - 3, left: inset - 2, right: inset - 2 }}>
           <div className="flex min-w-0 items-baseline gap-[0.45em] truncate">
@@ -888,7 +912,12 @@ export function CardFace({
           </div>
         </>
       )}
-      {!hidden && !drawn && (
+      {!hidden && membership && figure !== undefined && (
+        <div className="absolute flex justify-end" style={{ top: inset - 2, left: inset, right: inset }}>
+          <FaceFigure figure={figure} md={md} />
+        </div>
+      )}
+      {!hidden && !drawn && !membership && (
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
             {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
