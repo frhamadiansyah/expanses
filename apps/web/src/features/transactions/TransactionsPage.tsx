@@ -65,6 +65,7 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
+import { useDeferredDeletes } from './deferred-delete';
 import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
@@ -294,7 +295,13 @@ export function TransactionsPage() {
   // A workspace reads its list in its own currency: the day's total and the month's line say so too. An account's
   // history is owner-wide, so it answers in the owner's currency, as the bank statement beside it does.
   const listCurrency = list.data?.currency ?? ws.baseCurrency;
-  const recorded = list.data?.transactions ?? [];
+  /*
+   * A swipe's Delete acts at once and offers Undo; the delete itself waits until the toast has gone (`deferred-delete.ts`),
+   * so Undo puts back exactly what was there. Until then the row is drawn as gone.
+   */
+  const swipeDeletes = useDeferredDeletes((id) => deleteTransaction(database, ws, id), invalidate, setError);
+  const deleting = swipeDeletes.pending();
+  const recorded = (list.data?.transactions ?? []).filter((tx) => !deleting.has(tx.id));
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
   const badgeOf = badges.of;
@@ -994,9 +1001,9 @@ export function TransactionsPage() {
         // `TransactionRow` draws the swipe layer only on a phone — and keeps its editor in place.
         onEdit={clickable ? toEdit : undefined}
         onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
-        onDelete={clickable ? () => void run(tx.id, () => deleteTransaction(database, ws, tx.id)) : undefined}
-        // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
-        // write it already asked for is going out.
+        // One tap or a long swipe deletes at once, with Undo on the toast: the delete is written when the toast goes.
+        onDelete={clickable ? () => void swipeDeletes.begin(tx.id, tx.description ? `Deleted ${tx.description}` : 'Deleted') : undefined}
+        // Dead while a write for this row is going out.
         busy={busy === tx.id}
         // Select mode: the tick, where this row can take one; the row's every other gesture waits until it is over.
         select={selecting ? { selected: selected.has(tx.id), onToggle: taggable(row) ? () => toggle(tx.id) : undefined } : undefined}
@@ -1548,6 +1555,9 @@ export function TransactionsPage() {
 
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
+
+      {/* A swipe's delete, still to be written: Undo takes it back, the toast going by writes it. */}
+      {swipeDeletes.shown() && <UndoToast text={swipeDeletes.shown()!.text} onUndo={swipeDeletes.undo} onDone={swipeDeletes.expire} />}
 
       {selecting && (
         <>

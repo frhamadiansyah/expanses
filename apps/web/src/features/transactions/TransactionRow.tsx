@@ -77,7 +77,7 @@ export function TransactionRow({
   onEdit?: (row: ListRow) => void;
   /** What the swipe's Duplicate calls. No Duplicate is offered when this is absent. */
   onDuplicate?: (row: ListRow) => void;
-  /** What the swipe's Delete calls, once it has been asked twice. No Delete is offered when this is absent. */
+  /** What the swipe's Delete calls — a tap or a long swipe, at once; the list offers Undo. No Delete is offered when this is absent. */
   onDelete?: (row: ListRow) => void;
   /** Tapping the category circle. Absent on a row that may not be re-filed, which leaves a plain circle. */
   onRecategorise?: (row: ListRow) => void;
@@ -251,10 +251,8 @@ export function TransactionRow({
           actions={[
             ...(onDuplicate ? [{ label: 'Duplicate', icon: Copy, tone: 'neutral' as const, title: `Duplicate ${row.description}`, onPress: () => onDuplicate(row) }] : []),
             ...(onEdit ? [{ label: 'Edit', icon: Pencil, tone: 'primary' as const, title: `Edit ${row.description}`, onPress: () => onEdit(row) }] : []),
-            // The app's one two-tap delete, asked through the same `useTwoTap` as the receipt's: armed, it reads "Delete?".
-            ...(onDelete
-              ? [{ label: 'Delete', confirm: 'Delete?', icon: Trash2, tone: 'destructive' as const, title: `Delete ${row.description}`, disabled: busy, onPress: () => onDelete(row) }]
-              : []),
+            // Destructive: one tap, or a long swipe, deletes at once — the list's Undo toast is the way back.
+            ...(onDelete ? [{ label: 'Delete', icon: Trash2, tone: 'destructive' as const, title: `Delete ${row.description}`, disabled: busy, onPress: () => onDelete(row) }] : []),
           ]}
         >
           {(suppressClick) => face({ suppressClick })}

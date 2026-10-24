@@ -4,9 +4,9 @@ import { useTwoTap } from '../../ui/two-tap';
 /**
  * How one way in draws the question — the words and the classes, never the guards.
  *
- * The guards are the same three everywhere, which is the whole point of this file. The swipe's Delete is a round
- * `SwipeRow` action now (`confirm: 'Delete?'`), and asks through the very same `useTwoTap`: "Click again to delete"
- * does not fit under a circle, so the swipe asks "Delete?" and means exactly the same thing.
+ * The guards are the same three everywhere, which is the whole point of this file. The phone's swipe no longer asks
+ * twice (owner, 25 Oct): its Delete acts at once and the list's Undo toast is the way back, holding the delete until
+ * the toast has gone (`deferred-delete.ts`).
  */
 const LOOKS = {
   /** A button among buttons: the receipt's actions. */
@@ -24,9 +24,8 @@ export type TwoTapLook = keyof typeof LOOKS;
 /**
  * Deleting asks twice, in place — the same two taps the list and the table already ask for.
  *
- * The receipt draws it, and the phone's **swipe** asks through the same `useTwoTap` it is built on — they have
- * to ask the same question: a second copy is a second chance for one way in to delete on a single tap. The
- * swipe was that second copy, and it did exactly that — it kept `armed` in the row around it, one level above
+ * The receipt draws it, through `useTwoTap`. A second copy is a second chance for one way in to delete on a single
+ * tap. The old swipe was that second copy, and it did exactly that — it kept `armed` in the row around it, one level above
  * the button, so arming outlived the gesture that made it. Tap Delete, tap the row's face to close it, swipe it
  * open again, and the button was still reading "Delete?": one tap, and the transaction was gone.
  *

@@ -106,3 +106,24 @@ input[list]::-webkit-calendar-picker-indicator,
 input[list]::-webkit-list-button {
   display: none !important;
 }
+
+/*
+ * A long swipe's destructive bar snapping out from its circle's place as the drag crosses the line (SwipeRow). With
+ * reduced motion it simply appears: the same behaviour, no stretch.
+ */
+@keyframes swipe-snap {
+  from {
+    clip-path: inset(0 0 0 70% round 999px);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 999px);
+  }
+}
+.swipe-snap {
+  animation: swipe-snap 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .swipe-snap {
+    animation: none;
+  }
+}

@@ -15,7 +15,7 @@ import {
 } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, Camera, Images, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow } from '../../app/from-search';
 import { usePhone } from '../../app/use-phone';
@@ -88,7 +88,13 @@ export function ReviewPage() {
   /** The full-screen picture, and the field it was opened at — null means "the picture as a whole". */
   const [viewing, setViewing] = useState<{ draft: DraftRow; focus: 'amount' | 'name' | 'date' | null } | null>(null);
   /** What the phone just did, and the way back — the bills list's own toast, for the same reason. */
-  const [toast, setToast] = useState<{ text: string; undo: () => Promise<void> } | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo: () => Promise<void>; expire?: () => Promise<void> } | null>(null);
+  /*
+   * What the toast does when it goes without Undo — a discarded capture's picture is dropped only then, so Undo brings
+   * the draft back whole. Kept in a ref as well, so leaving the page (or a new toast) still does it.
+   */
+  const expiring = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => () => void expiring.current?.(), []);
 
   async function run(id: string, work: () => Promise<unknown>) {
     setError(null);
@@ -117,11 +123,14 @@ export function ReviewPage() {
   }
 
   /** Says what the phone just did, with the way back on the toast. */
-  function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null) {
+  function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null, expire?: () => Promise<void>) {
     setEditing(null);
+    void expiring.current?.();
+    expiring.current = expire ?? null;
     setToast({
       text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}`,
       undo: () => undo(draft, transactionId),
+      expire,
     });
   }
 
@@ -208,9 +217,13 @@ export function ReviewPage() {
   async function discard(draft: DraftRow, undoable = false) {
     await run(draft.id, async () => {
       await dismissDraft(database, ws, draft.id);
-      // The capture's own copy of the picture goes with the resolution; nothing kept it.
-      if (draft.imageFile) await native.deleteCaptureImage({ file: draft.imageFile }).catch(() => undefined);
-      if (undoable) resolved(draft, 'discarded', null);
+      // The capture's own copy of the picture goes with the resolution; nothing kept it. With Undo on offer it waits
+      // for the toast to go, so Undo puts the draft back with its picture.
+      const dropPicture = async () => {
+        if (draft.imageFile) await native.deleteCaptureImage({ file: draft.imageFile }).catch(() => undefined);
+      };
+      if (undoable) resolved(draft, 'discarded', null, dropPicture);
+      else await dropPicture();
     });
   }
 
@@ -274,11 +287,16 @@ export function ReviewPage() {
           onUndo={() =>
             void run('undo', async () => {
               const takeBack = toast.undo;
+              expiring.current = null;
               setToast(null);
               await takeBack();
             })
           }
-          onDone={() => setToast(null)}
+          onDone={() => {
+            expiring.current = null;
+            void toast.expire?.();
+            setToast(null);
+          }}
         />
       )}
     </>
