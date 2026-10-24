@@ -764,6 +764,7 @@ export function CardFace({
   size = 'md',
   behind = false,
   band,
+  figure,
   kind,
   face,
   className,
@@ -783,6 +784,12 @@ export function CardFace({
    * print, and nothing further down. Implies `behind` for everything below the band.
    */
   band?: string;
+  /**
+   * The card's figure printed on the whole face, top-right in the card's own print — a balance, or what a credit card
+   * owes — for a layout that shows every face whole (Wallet's grid) and so needs no caption under it. A credit card's
+   * name then moves beside its bank, as the stack's band prints it.
+   */
+  figure?: string;
   /** What a money card is, as the words on its chip: drawn by the app from its name rather than a card product. */
   kind?: string;
   /** The drawn face of the account's bank or app, when it has one: then `kind` is not drawn, the card is. */
@@ -870,11 +877,9 @@ export function CardFace({
       {!hidden && drawn && (
         <>
           {/* The name, large, where a bank's mark would be; what it is, on a chip of words at the foot. */}
-          <div
-            className={cx('absolute truncate leading-tight font-bold tracking-tight', md ? (name.length > 18 ? 'text-[15px]' : 'text-[18px]') : 'text-[10px]')}
-            style={{ top: inset - 2, left: inset, right: inset }}
-          >
-            {name}
+          <div className="absolute flex items-baseline justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
+            <div className={cx('min-w-0 truncate leading-tight font-bold tracking-tight', md ? (name.length > 18 ? 'text-[15px]' : 'text-[18px]') : 'text-[10px]')}>{name}</div>
+            {figure !== undefined && <FaceFigure figure={figure} md={md} />}
           </div>
           <div className="absolute" style={{ bottom: inset - 2, left: inset }}>
             <span data-testid="card-kind" className={cx('tabular inline-block rounded-full bg-black/20 font-semibold whitespace-nowrap', md ? 'px-[9px] py-[2px] text-[11px]' : 'px-[5px] text-[7px]')}>
@@ -889,8 +894,10 @@ export function CardFace({
             {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
             <div className="min-w-0 truncate font-bold tracking-wide" style={faced && art?.bank ? { color: art.bank, textShadow: 'none' } : undefined}>
               {bank}
+              {figure !== undefined && !faced && <span className="ml-[0.45em] text-[10.5px] font-semibold tracking-tight opacity-90">{cardName}</span>}
             </div>
-            {!faced && (
+            {figure !== undefined && <FaceFigure figure={figure} md={md} />}
+            {!faced && figure === undefined && (
               <div
                 className={cx(
                   'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
@@ -925,6 +932,15 @@ export function CardFace({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** A face's own figure, top-right: bold, tabular, the size of the card's name so a whole small face still reads it. */
+function FaceFigure({ figure, md }: { figure: string; md: boolean }) {
+  return (
+    <div data-testid="face-figure" className={cx('tabular shrink-0 leading-tight font-bold whitespace-nowrap', md ? 'text-[15px]' : 'text-[10px]')}>
+      {figure}
     </div>
   );
 }

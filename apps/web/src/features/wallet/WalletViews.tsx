@@ -62,7 +62,8 @@ export function WalletGrid({ cards }: { cards: readonly WalletCard[] }) {
           cards.map((card) => (
             <div key={card.key} className="min-w-0">
               <div data-testid="wallet-card" className="relative" style={{ width: cell, height, borderRadius: radiusFor(scale) }}>
-                <WalletFace card={card} band={false} scale={scale} />
+                {/* The face prints its own name and figure, so the grid needs no caption under it. */}
+                <WalletFace card={card} band={false} scale={scale} figure />
                 {/* The tap is the whole face; a link, as in the stack, so a desktop keeps its new tab. */}
                 {card.to && (
                   <Link
@@ -75,12 +76,6 @@ export function WalletGrid({ cards }: { cards: readonly WalletCard[] }) {
                     onClick={() => window.scrollTo(0, 0)}
                   />
                 )}
-              </div>
-              <div data-testid="wallet-caption" className="mt-[6px] flex items-baseline justify-between gap-[8px] px-[2px]">
-                <span className="min-w-0 truncate text-[13px] leading-[17px] font-medium text-[var(--ph-ink)]">{card.name}</span>
-                <span className={cx('tabular min-w-0 truncate text-[13px] leading-[17px] font-medium', card.figureTone === 'alarm' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]')}>
-                  {card.figure}
-                </span>
               </div>
             </div>
           ))}

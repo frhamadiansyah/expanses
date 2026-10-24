@@ -110,11 +110,12 @@ export async function walletViews(page: Page) {
   expect(Math.abs(left.y - right.y)).toBeLessThan(2);
   expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
   expect(Math.round(left.width)).toBe(Math.round(right.width));
-  const captions = page.getByTestId('wallet-caption');
-  await expect(captions.nth(0)).toContainText('Everyday');
-  await expect(captions.nth(0)).toContainText('3.000.000');
-  await expect(captions.nth(1)).toContainText('Pocket cash');
-  await expect(captions.nth(1)).toContainText('250.000');
+  // No caption under a face: the face prints its own name and, top-right, its figure.
+  await expect(page.getByTestId('wallet-caption')).toHaveCount(0);
+  await expect(faces.nth(0).getByTestId('card-face')).toContainText('Everyday');
+  await expect(faces.nth(0).getByTestId('face-figure')).toContainText('3.000.000');
+  await expect(faces.nth(1).getByTestId('card-face')).toContainText('Pocket cash');
+  await expect(faces.nth(1).getByTestId('face-figure')).toContainText('250.000');
   // The face is the card's art, as in the stack.
   await expect(faces.nth(1).getByTestId('card-face')).toBeVisible();
 

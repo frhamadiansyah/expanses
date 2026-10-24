@@ -279,7 +279,7 @@ export function CardStack({
  * One card's art, drawn at 240 and scaled to the stack's card width, whole or as its top band. Wallet's grid and
  * carousel draw the same art through this, so a card is one drawing however the cards are laid out.
  */
-export function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: number }) {
+export function Face({ card, band, scale, figure = false }: { card: WalletCard; band: boolean; scale: number; figure?: boolean }) {
   return (
     <span
       className="pointer-events-none absolute top-0 left-0 block origin-top-left overflow-hidden"
@@ -296,6 +296,7 @@ export function Face({ card, band, scale }: { card: WalletCard; band: boolean; s
         face={card.face}
         size="md"
         band={band ? card.figure : undefined}
+        figure={figure ? card.figure : undefined}
       />
     </span>
   );
