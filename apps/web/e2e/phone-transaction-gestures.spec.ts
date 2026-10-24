@@ -142,14 +142,13 @@ const editForm = (page: Page) => page.getByRole('form', { name: 'Edit a transact
 
 /**
  * Editing on a phone is the Add screen again, whichever way it is reached — the receipt's Edit and the row's swipe
- * open the very same full card, on its own route — so a correction is never a second screen to learn. The rarer
- * things done to a transaction are the receipt's own: This was a purchase and Delete stand under its Edit.
+ * open the very same full card, on its own route — so a correction is never a second screen to learn. The receipt's
+ * Edit is the round button in its corner; Delete stands alone under the receipt, and This was a purchase is gone.
  */
 test('Edit — from the receipt or from the swipe — opens the Add screen on the transaction', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
-  // Something to convert into, so the receipt can offer "This was a purchase" at all: a conversion with nothing
-  // to convert into is a form whose Save can never be pressed.
+  // Something to convert into, so the receipt would once have offered "This was a purchase": it no longer does.
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await fillDay(page, 'Bought', '2026-03-09');
@@ -163,12 +162,13 @@ test('Edit — from the receipt or from the swipe — opens the Add screen on th
   await page.goto('/transactions');
   await record(page, 'Warung Steak', 'Restaurants', '120000');
 
-  // In from the receipt, where the rarer actions live.
+  // In from the receipt.
   await face(page, 'Warung Steak', 'Restaurants').click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
-  await expect(page.getByRole('button', { name: 'This was a purchase', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete this transaction', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'This was a purchase', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/edit$/);
   // The full card, on this transaction: the note it is already carrying proves which one was opened. No sheet.
   await expect(editForm(page).getByLabel('Note')).toHaveValue('Warung Steak');
@@ -177,7 +177,7 @@ test('Edit — from the receipt or from the swipe — opens the Add screen on th
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
 
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const form = editForm(page);
   await form.getByLabel('Note').fill('Warung Steak Tebet');
   // The card's own extras, as on Add: Event and Photos are there.

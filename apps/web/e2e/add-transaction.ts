@@ -40,6 +40,18 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
   await option.click();
 }
 
+/**
+ * Buy or sell, as a person opens it now: Net worth's corner, onto the Add screen's trade rows. The Add form's tabs no
+ * longer offer it.
+ */
+export async function openBuyOrSell(page: Page): Promise<Locator> {
+  await page.goto('/net-worth');
+  await page.getByRole('link', { name: 'Buy or sell' }).first().click();
+  const form = page.getByRole('form', { name: 'Buy or sell' });
+  await expect(form.getByLabel('What was bought or sold')).toBeVisible();
+  return form;
+}
+
 export const addForm = (page: Page): Locator =>
   page.getByRole('dialog', { name: 'Add a transaction' }).or(page.getByRole('form', { name: 'Add a transaction' }));
 
@@ -137,9 +149,7 @@ export async function addPurchase(
   },
 ) {
   const sell = trade.mode === 'sell';
-  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = addForm(page);
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('What was bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
@@ -155,6 +165,8 @@ export async function addPurchase(
   if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
+  // Saved, Buy or sell goes back to Net worth; callers read on from Cashflow, where the Add form used to leave them.
+  await page.goto('/transactions');
 }
 
 /**

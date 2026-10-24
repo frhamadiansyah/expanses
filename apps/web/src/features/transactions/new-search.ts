@@ -8,7 +8,8 @@
  * it to each other — never where the payment is filed). Nothing given, the form opens as the tab bar's ＋ opens it.
  */
 export interface NewTransactionSearch {
-  mode?: 'expense' | 'income' | 'transfer';
+  /** `trade` is Net worth's Buy or sell corner: the trade rows on their own, with no tabs above them. */
+  mode?: 'expense' | 'income' | 'transfer' | 'trade';
   account?: string;
   to?: string;
   event?: string;
@@ -36,7 +37,7 @@ const carried = (search: Record<string, unknown>): Partial<NewTransactionSearch>
 });
 
 export const newTransactionSearch = (search: Record<string, unknown>): NewTransactionSearch => ({
-  ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' ? { mode: search.mode } : {}),
+  ...(search.mode === 'expense' || search.mode === 'income' || search.mode === 'transfer' || search.mode === 'trade' ? { mode: search.mode } : {}),
   ...(text(search.account) ? { account: text(search.account) } : {}),
   ...(text(search.to) ? { to: text(search.to) } : {}),
   ...(text(search.event) ? { event: text(search.event) } : {}),

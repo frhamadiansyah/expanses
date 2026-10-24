@@ -784,7 +784,7 @@ function CardBody({
     { key: 'expense', label: 'Expense' },
     { key: 'income', label: 'Income' },
     { key: 'transfer', label: 'Transfer' },
-    ...(choices.buys.length > 0 && !finish ? [{ key: 'trade', label: 'Buy / sell' }] : []),
+    // Buy / sell is not a tab any more (owner, 24 Oct): it opens from Net worth's corner, as `mode: 'trade'` with no tabs.
   ];
   const chooseMode = (value: FormMode) => {
     if (value === draft.mode) return;
@@ -798,12 +798,24 @@ function CardBody({
       if (!prefilled) categorySource.current = null;
       return set({ mode: value, categoryId: '', splits: [], ...flag });
     }
-    const first = choices.buys[0]!;
+    startTrade();
+  };
+  /** The trade rows, opened on the first holding there is to buy — as the Buy / sell tab opened them. */
+  function startTrade() {
+    const first = choices.buys[0];
+    if (!first) return;
     set({
       mode: 'trade',
       purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
     });
-  };
+  }
+  /*
+   * Opened as a trade (Net worth's Buy or sell): the holdings are read after the draft is built, so the first one is
+   * chosen once they arrive, exactly as choosing the tab chose it.
+   */
+  useEffect(() => {
+    if (draft.mode === 'trade' && !draft.purchase.accountId && !initial) startTrade();
+  }, [draft.mode, choices.buys]);
 
   /*
    * B2's Note and Date rows (`CardRows`, shared with a shared event's card). Note is still today's Description — the same field, typed in place — drawn as the
@@ -1412,7 +1424,7 @@ function CardBody({
               : undefined
           }
           onClose={() => setSheet(null)}
-          footer="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
+          footer="Buying a fund, shares or gold? Use Buy or sell on Net worth, so units are counted."
           adding={
             initial
               ? undefined

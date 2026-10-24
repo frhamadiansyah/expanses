@@ -13,7 +13,7 @@ import {
   unmerge,
   voidTransaction,
 } from '@expanses/db';
-import { Check, Camera, X } from 'lucide-react';
+import { Check, Camera, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
@@ -36,6 +36,7 @@ import { corrections, draftPatch } from './draft-form';
 import type { FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
+import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 
 /**
  * Captured spending, waiting to be confirmed.
@@ -206,16 +207,11 @@ export function ReviewPage() {
   }
 
   /** What stands behind a row dragged left: Discard, undoable from the toast. */
-  const discardButton = (draft: DraftRow) => (
-    <button
-      type="button"
-      aria-label={`Discard ${draft.description}`}
-      onClick={() => void discard(draft, true)}
-      className="w-[76px] bg-[var(--ph-ink-3)] text-[15px] font-semibold text-white"
-    >
-      Discard
-    </button>
-  );
+  const discardActions = (draft: DraftRow): SwipeAction[] => [
+    { label: 'Discard', name: `Discard ${draft.description}`, icon: Trash2, tone: 'destructive', onPress: () => void discard(draft, true) },
+  ];
+  /** What the ground under a right drag shows: letting go past the threshold records the draft. */
+  const recordHint: SwipeHint = { label: 'Record', icon: Check };
 
   const list = drafts.data ?? [];
   const editingDraft = list.find((draft) => draft.id === editing) ?? null;
@@ -328,7 +324,8 @@ export function ReviewPage() {
           busy={busy}
           onOpen={(draft) => setEditing(draft.id)}
           onSwipeRight={swipeRecord}
-          discardAction={discardButton}
+          discardActions={discardActions}
+          recordHint={recordHint}
         />
       )}
 
@@ -339,7 +336,7 @@ export function ReviewPage() {
           /* A row opens the sheet on a phone, and the sheet holds what the row had no width for. A desktop reads
              the very same fields as columns and has nowhere to open. */
           detail={{ kind: 'screen', open: (draft) => setEditing(draft.id) }}
-          rowSwipe={(draft) => ({ onSwipeRight: () => swipeRecord(draft), rightHint: 'Record', leftAction: discardButton(draft) })}
+          rowSwipe={(draft) => ({ onSwipeRight: () => swipeRecord(draft), rightHint: recordHint, leftActions: discardActions(draft) })}
           shape={{
             key: (draft) => draft.id,
             title: (draft) => {

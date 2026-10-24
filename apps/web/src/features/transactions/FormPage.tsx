@@ -49,6 +49,7 @@ export function NewTransactionRoute() {
     ? null
     : eventOpening({ event, item }, events.data ?? [], (plan.data?.lines ?? []).flatMap((line) => line.items));
   const buying = opening?.item ?? null;
+  const trading = !opening && mode === 'trade';
 
   /*
    * "Buy it now": the payment is also the item, so Save ties the two together with the id it posted. The payment it
@@ -127,10 +128,12 @@ export function NewTransactionRoute() {
       ) : (
         <TransactionCard
           full
-          title={buying ? `Buy ${buying.name}` : 'New transaction'}
-          label="Add a transaction"
+          title={buying ? `Buy ${buying.name}` : trading ? 'Buy or sell' : 'New transaction'}
+          label={trading ? 'Buy or sell' : 'Add a transaction'}
           // Spending into an event is spending: Expense, whatever the address asked.
           mode={opening ? 'expense' : mode}
+          // Net worth's Buy or sell corner: the trade rows alone, since the Add form's tabs no longer offer them.
+          fixedMode={trading}
           seed={{
             moneyId: account,
             toId: to,

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPurchase } from './add-transaction';
+import { addPurchase, openBuyOrSell, saveButton } from './add-transaction';
 import { expectBalance } from './deposit-maturity';
 import { addHoldingFlow } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
@@ -71,10 +71,7 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
 test('the Buy / sell tab also asks which goal paid for the rupiah that left, on a USD buy', async ({ page }) => {
   await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
   await addUsdStock(page);
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › AAPL · Stockbit' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
@@ -84,7 +81,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
   await page.getByRole('button', { name: 'No — borrowing from it' }).click();
-  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await page.goto('/goals');
   await expect((await goalCard(page, 'Emergency fund')).getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();

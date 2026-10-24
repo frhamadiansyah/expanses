@@ -44,12 +44,12 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Hotel Mulia', paidWith: 'BCA Visa', category: 'Groceries', amount: '2000000' });
 
-  // The receipt carries the switch, off, with what switching it on means said under it.
+  // The receipt carries the switch, off, and nothing written under it (owner, 24 Oct).
   await openReceipt(page, 'Hotel Mulia', 'Groceries');
   const receiptUrl = page.url();
   const paidOff = page.getByRole('checkbox', { name: 'Paid off', exact: true });
   await expect(paidOff).not.toBeChecked();
-  await expect(page.getByText('Nothing to pay for this one on the statement. The card still owes what it owed.')).toBeVisible();
+  await expect(page.getByText(/Nothing to pay for this one on the statement/)).toHaveCount(0);
   await paidOff.click();
   await expect(paidOff).toBeChecked();
 
@@ -112,12 +112,12 @@ test('money back on the card reads Settled on its receipt and in its ⋯', async
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  // Money back is settled rather than paid off, and the footer says what the switch does to a credit.
+  // Money back is settled rather than paid off, with no footer under the switch either.
   await openReceipt(page, 'Hotel Mulia refund', 'Groceries');
   const settled = page.getByRole('checkbox', { name: 'Settled', exact: true });
   await expect(settled).not.toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Paid off', exact: true })).toHaveCount(0);
-  await expect(page.getByText('No credit to take off the statement. The card still owes what it owed.')).toBeVisible();
+  await expect(page.getByText(/No credit to take off the statement/)).toHaveCount(0);
 
   await openStatement(page);
   const refund = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia refund' });

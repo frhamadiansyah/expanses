@@ -12,20 +12,18 @@ import { Sheet } from '../../app/Sheet';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
-import { Button, Card, cx, Empty, ErrorBox } from '../../ui';
+import { Card, cx, Empty, ErrorBox } from '../../ui';
 import { InsetGroup, SwitchRow } from '../../ui/native';
 import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
 import { useEvents } from '../events/queries';
 import { useGoals } from '../goals/queries';
-import { useAssetValues } from '../networth/queries';
 import { usePurchasePayers } from '../sharing/queries';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
-import { ConvertForm } from './ConvertForm';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
@@ -60,11 +58,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   // Removed cards too: a purchase made on one still names it, by its digits.
   const cards = useCardsWithArchived().data ?? [];
   const goals = useGoals().data ?? [];
-  const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market' || row.mode === 'amount');
   const today = isoDate();
 
   const [editing, setEditing] = useState(false);
-  const [converting, setConverting] = useState(false);
   const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -274,10 +270,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
 
       {/* The statement's Paid off, where the row's tap lands: on, the purchase asks nothing of the statement. */}
       {paidOffMark && (
-        <InsetGroup
-          wide
-          footer={paidOffMark.refund ? 'No credit to take off the statement. The card still owes what it owed.' : 'Nothing to pay for this one on the statement. The card still owes what it owed.'}
-        >
+        <InsetGroup wide>
           <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
         </InsetGroup>
       )}
@@ -341,23 +334,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
               Holding
             </Link>
           ) : (
-            <>
-              {tx.status === 'posted' && kind.type === 'expense' && holdings.length > 0 && !fromEvent && (
-                <button type="button" onClick={() => setConverting(true)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100">
-                  This was a purchase
-                </button>
-              )}
-              {changeable && (
-                <>
-                  <Button variant="ghost" className="min-h-11" onClick={edit}>
-                    Edit
-                  </Button>
-                  {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. A shared
-                      event's transaction is deleted on the event, with its record, never here. */}
-                  {fromEvent ? null : <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />}
-                </>
-              )}
-            </>
+            /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
+               event's transaction is deleted on the event, with its record, never here. */
+            changeable && !fromEvent && <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
           )}
         </div>
       )}
@@ -376,17 +355,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       {editing && (
         <Sheet grouped title="Edit transaction" onClose={() => void afterEdit()}>
           <TransactionCard initial={tx} onDone={() => void afterEdit()} />
-        </Sheet>
-      )}
-
-      {converting && (
-        <Sheet title="This was a purchase" onClose={() => setConverting(false)}>
-          <ConvertForm
-            tx={tx}
-            holdings={holdings.map((holding) => ({ accountId: holding.accountId, name: holding.name }))}
-            goals={goals.map((goal) => ({ id: goal.id, name: goal.name }))}
-            onDone={() => setConverting(false)}
-          />
         </Sheet>
       )}
     </div>

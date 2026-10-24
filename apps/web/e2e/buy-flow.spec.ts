@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, openBuyOrSell, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -41,15 +41,14 @@ test('records a purchase from the transaction window, and it never counts as spe
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addGold(page);
 
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
+  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  await page.goto('/transactions');
 
   // The purchase shows as a purchase, not as spending.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
@@ -69,16 +68,15 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '0');
   await addGold(page);
 
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA KrisFlyer (IDR)' });
   await form.getByLabel('MCC').fill('5944');
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
+  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // The card now owes the purchase, and the bank was never touched.
@@ -100,7 +98,7 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
   const toList = page.getByRole('dialog', { name: 'To', exact: true });
   await expect(toList).toBeVisible();
   await expect(toList).not.toContainText('Antam gold bars');
-  await expect(toList.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  await expect(toList.getByText(/Use Buy or sell on Net worth, so units are counted/)).toBeVisible();
   await toList.getByRole('button', { name: 'Close' }).click();
 });
 
@@ -164,17 +162,16 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
 
   // One lot of 100 shares at Rp 9.889,81 leaves Rp 1.011.019 behind.
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const buying = page.getByRole('dialog', { name: 'Add a transaction' });
-  await buying.getByRole('radio', { name: 'Buy / sell' }).click();
+  const buying = await openBuyOrSell(page);
   await buying.getByLabel('What was bought or sold').selectOption({ label: 'Investments › BBRI · Stockbit' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
   await buying.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
-  await buying.getByRole('button', { name: 'Save' }).click();
+  await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
+  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  await page.goto('/transactions');
   await expect(page.getByText('Bought 100 BBRI')).toBeVisible();
 
   // The leftover Rp 1.011.019 is still set aside for University, so none of it is idle: RDN holds 1.011.019 and promises
@@ -255,8 +252,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // navigation passes on a page that has not drawn yet, whatever the page would eventually have shown.
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Holding', exact: true })).toBeVisible();
-  // Both ways in: the round button in the header and the one in the footer are gated separately, and a trade
-  // that lost only one of the two guards would still be editable from the other.
+  // The round button in the header is the receipt's one Edit; the footer's is gone, and must not come back for a trade.
   await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
@@ -327,10 +323,7 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addGold(page);
 
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -340,8 +333,10 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
+  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  await page.goto('/transactions');
 
   await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();

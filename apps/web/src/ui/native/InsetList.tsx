@@ -2,7 +2,7 @@ import { Link, type LinkProps } from '@tanstack/react-router';
 import { Info } from 'lucide-react';
 import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
 import { cx } from '../index';
-import { SwipeRow } from '../SwipeRow';
+import { type SwipeAction, type SwipeHint, SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
 import { GROUP_GAP, GROUP_RADIUS, NESTED_ICON, nestedPad, ROW_ICON, ROW_ICON_GAP, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
@@ -167,14 +167,14 @@ export interface InsetRowProps extends GroupChild {
   onClick?: () => void;
   /**
    * The row's gestures, for a list that has them: a right drag past the threshold calls this, and a left drag
-   * reveals `leftAction` behind the row's left edge — the same `SwipeRow` the bills list pays a bill with. A tap
+   * reveals `leftActions` behind the row's left edge — the same `SwipeRow` the bills list pays a bill with. A tap
    * stays a tap: the drag that ends on a row never also opens it.
    */
   onSwipeRight?: () => void;
-  /** What the layer under a right swipe says while the drag is under way — "Record", "Pay". */
-  rightHint?: ReactNode;
-  /** The action behind the left edge, revealed by a left drag. The caller owns it, so it can be a real button. */
-  leftAction?: ReactNode;
+  /** What the ground under a right swipe shows while the drag is under way — "Record", "Pay" — round, as every swipe is. */
+  rightHint?: SwipeHint;
+  /** The round actions behind the left edge, revealed by a left drag. */
+  leftActions?: readonly SwipeAction[];
   to?: LinkProps['to'];
   /**
    * The route's own parameters and search, handed to the link.
@@ -242,7 +242,7 @@ export function InsetRow({
   onClick,
   onSwipeRight,
   rightHint,
-  leftAction,
+  leftActions,
   to,
   params,
   search,
@@ -302,7 +302,7 @@ export function InsetRow({
       style={{ height: 0.5, left: destructive ? 0 : depth === 0 ? plan.separatorInset : nestedPad(depth) + (icon ? NESTED_ICON + ROW_ICON_GAP : 0), right: ROW_PAD_X }}
     />
   ) : null;
-  const slides = !disabled && (onSwipeRight !== undefined || leftAction !== undefined);
+  const slides = !disabled && (onSwipeRight !== undefined || (leftActions?.length ?? 0) > 0);
 
   /** The row itself. `suppress` answers true when the gesture that just ended was a drag and not a tap. */
   const row = (suppress: () => boolean = () => false, named: string | null = testId ?? null) => {
@@ -363,7 +363,7 @@ export function InsetRow({
      * The test id moves out here with the gestures, so a locator scoped to the row reaches the action behind it as
      * well as what is written on the row's face — which is `SwipeRow`'s own reason for carrying one.
      */
-    <SwipeRow enabled testId={testId} onSwipeRight={onSwipeRight} rightHint={rightHint} leftAction={leftAction}>
+    <SwipeRow enabled testId={testId} onSwipeRight={onSwipeRight} rightHint={rightHint} actions={leftActions}>
       {(suppressClick) => row(suppressClick, null)}
     </SwipeRow>
   );

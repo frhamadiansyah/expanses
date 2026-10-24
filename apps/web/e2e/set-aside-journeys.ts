@@ -46,7 +46,7 @@ async function openReceipt(page: Page, what: string) {
 /** The edit from the receipt: the phone's Add screen on the transaction, or the desktop's card in a sheet. */
 async function openEdit(page: Page, what: string) {
   await openReceipt(page, what);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Edit transaction' }).or(page.getByRole('form', { name: 'Edit a transaction' }));
   await expect(form).toBeVisible();
   return form;

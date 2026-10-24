@@ -4,7 +4,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset, fillDay } from './add-asset';
-import { addTransaction, closeDetails, shareWith, choosePayment } from './add-transaction';
+import { addTransaction, closeDetails, shareWith, choosePayment, openBuyOrSell, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { openAsset } from './asset-page';
 
@@ -92,15 +92,14 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
+  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // Cash down 3,98 M, gold up 3,98 M: buying something changes nothing about what you are worth.
@@ -165,7 +164,7 @@ test('an edit from the receipt lands on the list, because the edit replaces the 
   await spend(page, 'Superindo', '500000');
   await openReceipt(page, 'Superindo');
 
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
   await expect(page.getByRole('dialog', { name: 'Edit transaction' })).toBeVisible();
   await page.getByLabel('Amount', { exact: true }).fill('575000');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -174,9 +173,12 @@ test('an edit from the receipt lands on the list, because the edit replaces the 
   await expect(page.locator('li', { hasText: 'Superindo' }).last()).toContainText('575.000');
 });
 
-/** The purchase a receipt can still turn into a holding, which is the third of the three actions it offers. */
-test('a purchase becomes a holding from the receipt', async ({ page }) => {
-  page.on('dialog', (dialog) => void dialog.accept());
+/**
+ * The receipt no longer offers "This was a purchase" (owner, 24 Oct): it was one line too many under a receipt. The
+ * desktop list's editor still turns an expense into a purchase (`buy-flow.spec.ts`). A holding exists here, so the
+ * receipt would have offered it.
+ */
+test('the receipt does not offer This was a purchase', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   await openNewAsset(page, 'Gold bullion');
@@ -193,16 +195,12 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
   await openReceipt(page, 'UBS Gold Store');
-  await page.getByRole('button', { name: 'This was a purchase' }).click();
-  await expect(page.getByRole('dialog', { name: 'This was a purchase' })).toBeVisible();
-  await page.getByLabel('Units, shares or grams').fill('2');
-  await page.getByRole('button', { name: 'Save as a purchase' }).click();
-  // The sheet closes on success only, so waiting for it to go is waiting for the write to land.
-  await expect(page.getByRole('dialog', { name: 'This was a purchase' })).toBeHidden();
-
-  // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
-  await openAsset(page, 'Antam gold bars');
-  await expect(page.getByTestId('asset-grid')).toContainText('12 g');
+  // Anchored on what the receipt does draw, so the counts below are read off a page that has finished drawing.
+  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'This was a purchase' })).toHaveCount(0);
+  // Edit is the round button in the corner alone, no second one under the receipt.
+  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
 });
 
 /**
