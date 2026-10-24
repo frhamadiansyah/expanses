@@ -4,10 +4,15 @@ import { cx } from './index';
 import { useTwoTap } from './two-tap';
 
 const PAY_AT = 70;
-/** Each round action's share of the revealed room: a 52 pt circle and the air either side of it, as Mail spaces them. */
-const SLOT = 64;
+/** Each round action's share of the revealed room: a 34 pt circle and the air either side of it. */
+const SLOT = 48;
 /** The air at the open edge, so the last circle never touches the screen's side. */
 const EDGE = 8;
+/**
+ * The circle: 34 pt, or less on a row too short to leave 8 pt of air above and below it. A row is rarely taller than
+ * ~52 pt, so the action carries no word under its circle — the icon says it, and the button's name says it aloud.
+ */
+const CIRCLE = { height: 'min(34px, calc(100% - 16px))', minHeight: 24 } as const;
 
 /** Destructive is the alarm red, primary the app's tint, neutral the grey Mail gives More. */
 export type SwipeTone = 'destructive' | 'primary' | 'neutral';
@@ -18,18 +23,21 @@ const TONE: Record<SwipeTone, string> = {
   neutral: 'bg-[#8e8e93]',
 };
 
-/** One action behind a row's left edge: a filled circle with a white icon, and its word in small grey under it. */
+/** One action behind a row's left edge: a filled circle with a white icon. */
 export interface SwipeAction {
-  /** The word under the circle. It is the button's accessible name unless `name` says more. */
+  /** What the action is called: the button's accessible name unless `name` says more. Not drawn. */
   label: string;
   icon: LucideIcon;
   tone: SwipeTone;
   onPress: () => void;
-  /** The accessible name, when the word alone would not say which row it acts on ("Skip Netflix"). */
+  /** The accessible name, when the label alone would not say which row it acts on ("Skip Netflix"). */
   name?: string;
   title?: string;
   disabled?: boolean;
-  /** Asked twice: what the word reads once the first tap has armed it ("Delete?"). The second tap calls `onPress`. */
+  /**
+   * Asked twice: what the action reads once the first tap has armed it ("Delete?"). Armed, the circle widens into a
+   * pill across the revealed room with these words on it, as Mail's confirm does; the second tap calls `onPress`.
+   */
   confirm?: string;
 }
 
@@ -40,20 +48,12 @@ export interface SwipeHint {
   tone?: SwipeTone;
 }
 
-/** The circle and its word: the face every swipe in the app shows, whichever way it was dragged. */
-function RoundFace({ icon: Icon, tone, label }: { icon: LucideIcon; tone: SwipeTone; label: string }) {
+/** The circle: the face every swipe in the app shows, whichever way it was dragged. */
+function RoundFace({ icon: Icon, tone }: { icon: LucideIcon; tone: SwipeTone }) {
   return (
-    <>
-      <span
-        aria-hidden
-        className={cx('flex aspect-square shrink-0 items-center justify-center rounded-full text-white', TONE[tone])}
-        // As large as Mail's 52 pt, or as large as a short row leaves room for under its word.
-        style={{ height: 'min(52px, calc(100% - 16px))', minHeight: 28 }}
-      >
-        <Icon size={22} strokeWidth={2} />
-      </span>
-      <span className="text-[11px] leading-[12px] font-medium whitespace-nowrap text-[var(--ph-ink-3)]">{label}</span>
-    </>
+    <span aria-hidden className={cx('flex aspect-square shrink-0 items-center justify-center rounded-full text-white', TONE[tone])} style={CIRCLE}>
+      <Icon size={18} strokeWidth={2.25} />
+    </span>
   );
 }
 
@@ -66,14 +66,27 @@ function RoundAction({ action }: { action: SwipeAction }) {
       type="button"
       disabled={action.disabled}
       title={action.title}
-      // An armed question is named by what it asks, as it was when the word was the whole button.
-      aria-label={armed ? undefined : action.name}
+      // Named by its label, or by what it asks once armed — "Delete", then "Delete?" — as when the word was the button.
+      aria-label={armed ? action.confirm : (action.name ?? action.label)}
       onBlur={action.confirm ? twoTap.onBlur : undefined}
       onClick={action.confirm ? twoTap.onClick : action.onPress}
-      className="flex h-full flex-col items-center justify-center gap-[2px] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900"
-      style={{ width: SLOT }}
+      className={cx(
+        'flex h-full items-center justify-center disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900',
+        // Armed, it covers the whole revealed room, over the actions beside it: the question is the only thing left.
+        armed && 'absolute inset-y-0 right-0 left-0 z-10 bg-[var(--ph-surface)] px-[6px]',
+      )}
+      style={armed ? undefined : { width: SLOT }}
     >
-      <RoundFace icon={action.icon} tone={action.tone} label={armed ? action.confirm! : action.label} />
+      {armed ? (
+        <span
+          className={cx('flex w-full items-center justify-center rounded-full text-[15px] font-semibold whitespace-nowrap text-white', TONE[action.tone])}
+          style={CIRCLE}
+        >
+          {action.confirm}
+        </span>
+      ) : (
+        <RoundFace icon={action.icon} tone={action.tone} />
+      )}
     </button>
   );
 }
@@ -82,9 +95,9 @@ function RoundAction({ action }: { action: SwipeAction }) {
  * A row that slides: right past a threshold calls onSwipeRight, left reveals the actions behind it. A tap is a tap —
  * the row's own button handles it — and a drag never also counts as a tap.
  *
- * Every swipe in the app draws the same way, as iOS Mail does: round filled buttons with a white icon and a small
- * grey word, standing on the page's ground rather than a coloured slab, while the row slides over them as a card
- * with rounded edges. Callers describe their actions; none draws its own.
+ * Every swipe in the app draws the same way, as iOS Mail does: round filled buttons with a white icon, with air above
+ * and below, on the row's own surface rather than a coloured slab, while the row slides flat off to the side. Callers
+ * describe their actions; none draws its own.
  */
 export function SwipeRow({
   children,
@@ -126,21 +139,21 @@ export function SwipeRow({
     // scoped to the row reaches the buttons behind it as well as what is written on its face.
     <div data-testid={testId} className={cx('relative overflow-hidden', className)}>
       {x !== 0 && (
-        <div className="absolute inset-0 flex items-stretch justify-between bg-[var(--ph-ground)]">
+        <div className="absolute inset-0 flex items-stretch justify-between bg-[var(--ph-surface)]">
           <div className="flex items-stretch" style={{ paddingLeft: EDGE }}>
             {x > 0 && rightHint && (
-              <span className="flex h-full flex-col items-center justify-center gap-[2px]" style={{ width: SLOT }}>
-                <RoundFace icon={rightHint.icon} tone={rightHint.tone ?? 'primary'} label={rightHint.label} />
+              <span className="flex h-full items-center justify-center" style={{ width: SLOT }}>
+                <RoundFace icon={rightHint.icon} tone={rightHint.tone ?? 'primary'} />
               </span>
             )}
           </div>
-          <div className="flex items-stretch" style={{ paddingRight: EDGE }}>
+          <div className="relative flex items-stretch" style={{ paddingRight: EDGE }}>
             {x < 0 && shown.map((action) => <RoundAction key={action.label} action={action} />)}
           </div>
         </div>
       )}
       <div
-        className={cx('relative bg-white', !dragging && 'transition-transform duration-150', x !== 0 && 'overflow-hidden rounded-[12px]')}
+        className={cx('relative bg-white', !dragging && 'transition-transform duration-150')}
         style={{ transform: `translateX(${x}px)`, touchAction: 'pan-y' }}
         onPointerDown={(e) => {
           dragged.current = false;
