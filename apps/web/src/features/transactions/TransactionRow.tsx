@@ -1,6 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
-import { Check } from 'lucide-react';
+import { Check, Undo2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -102,10 +102,23 @@ export function TransactionRow({
   const { sign, plus, muted } = amountLook(row);
   const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
-  const circle = iconMark ? (
+  // Money back wears a small return arrow on its category's circle, where a shared row wears its workspace: the
+  // category stays the category, and the green plus beside it says the rest. A workspace mark takes the corner first.
+  const mark =
+    iconMark ??
+    (row.refund ? (
+      <span
+        className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-white ring-2 ring-[var(--ph-surface)]"
+        title="Refund"
+      >
+        <Undo2 size={9} strokeWidth={3} aria-hidden />
+        <span className="sr-only">Refund</span>
+      </span>
+    ) : undefined);
+  const circle = mark ? (
     <span className="relative inline-flex">
       <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
-      {iconMark}
+      {mark}
     </span>
   ) : (
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
@@ -194,7 +207,6 @@ export function TransactionRow({
           {label ?? (row.categoryName || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
           {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
           {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
-          {row.refund && <span className="ml-2 rounded bg-[var(--ph-tint-panel)] px-1.5 text-xs font-normal text-[var(--ph-tint-ink)]">Refund</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
