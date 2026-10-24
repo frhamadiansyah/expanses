@@ -2,6 +2,7 @@ import { Link, type LinkProps } from '@tanstack/react-router';
 import { ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
+import { usePhone } from '../../app/use-phone';
 import { cx } from '../index';
 import { backLabel, type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
@@ -214,10 +215,17 @@ export function LargeTitle({
   const plan = planCornerActions(actions, max);
   const steps = oneLine && titleSteps(title);
   const head = useRef<HTMLElement>(null);
+  const phone = usePhone();
   // A section's own title (no way back) is pinned as it is; one with a way back folds into the small bar.
   const pinned = !back;
-  // A pinned title stays pinned while a field is open in it, so searching from far down the page searches there.
-  const folded = useScrolledPast(head, pinned || !field, pinned);
+  /*
+   * A pinned title stays pinned while a field is open in it, so searching from far down the page searches there — and
+   * on a phone the field goes into the pinned bar the moment it opens, not once the page has moved. Moved from the
+   * title row to the bar at the first pixel of scrolling, the field was unmounted and mounted again: the keyboard
+   * dropped, the page jumped back under the title, and the list could not be scrolled while searching. The bar at
+   * the top of an unscrolled page is a copy of the title row in its own place, so nothing looks different.
+   */
+  const folded = useScrolledPast(head, pinned || !field, pinned, pinned && !!field && phone);
   // The field is drawn once: in the pinned bar while the page is scrolled past the title, in the title row otherwise.
   // Drawn in the title row while that row is off the screen, focusing it scrolled the whole page back to the top.
   const fieldIn = (copy: boolean) => (field && (copy ? folded : !folded) ? field : null);

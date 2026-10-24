@@ -256,7 +256,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
           ) : handlers.paidByOther?.(tx) ? null : (
             <>
               {row.accountLabel}
-              {row.last4 && <span className="tabular ml-1 text-xs font-semibold">{row.last4}</span>}
+              {row.last4 && <span className="tabular ml-1 text-xs">{row.last4}</span>}
             </>
           )}
         </span>

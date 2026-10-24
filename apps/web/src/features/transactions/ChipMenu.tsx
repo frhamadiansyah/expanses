@@ -15,12 +15,12 @@ export interface ChipOption {
 }
 
 /**
- * The number an icon-only filter carries in its corner, or null for none: shown only while the filter is on, so the
- * dark icon and its count are the one sign that the list and the chart above it are narrowed (statement check S11).
+ * Whether an icon-only filter carries the dot in its corner: only while the filter is on, so the dark icon and its dot
+ * are the one sign that the list and the chart above it are narrowed (statement check S11). It used to be the count
+ * of filters on; one icon is one filter, so the number said nothing the dot does not.
  */
-export function chipBadge(p: { active: boolean; iconOnly: boolean; count?: number }): string | null {
-  if (!p.active || !p.iconOnly || !p.count || p.count < 1) return null;
-  return String(p.count);
+export function chipDot(p: { active: boolean; iconOnly: boolean; count?: number }): boolean {
+  return p.active && p.iconOnly && (p.count ?? 0) >= 1;
 }
 
 /**
@@ -37,6 +37,8 @@ export function ChipMenu({
   shown,
   iconOnly = false,
   count,
+  wideMenu = false,
+  onOpen,
 }: {
   /** What the chip filters, shown when nothing is picked and read by screen readers either way. */
   name: string;
@@ -51,12 +53,16 @@ export function ChipMenu({
   /** Draws the chip as its icon alone: no name, no chevron. */
   iconOnly?: boolean;
   /**
-   * How many filters this icon has on. Given and above zero, an active icon is drawn dark with the count in its
-   * corner. Left out, as the Sort icon leaves it, the chip keeps the white pill: sorting does not narrow anything.
+   * How many filters this icon has on. Given and above zero, an active icon is drawn dark with a dot in its corner.
+   * Left out, as the Sort icon leaves it, the chip keeps the white pill: sorting does not narrow anything.
    */
   count?: number;
+  /** An icon's menu at a fixed width with its names cut short, rather than as wide as its longest: a list long enough to search. */
+  wideMenu?: boolean;
+  /** A chip that opens something of its own in the menu's place — a phone's sheet. The button is the same; the menu never shows. */
+  onOpen?: () => void;
 }) {
-  const badge = chipBadge({ active, iconOnly, count });
+  const dot = chipDot({ active, iconOnly, count });
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
@@ -116,6 +122,7 @@ export function ChipMenu({
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => {
+            if (onOpen) return onOpen();
             setOpen((was) => !was);
             setQuery('');
             setIndex(Math.max(0, options.findIndex((option) => option.value === value)));
@@ -124,7 +131,7 @@ export function ChipMenu({
             'inline-flex max-w-64 items-center gap-1.5 rounded-md text-sm',
             // An icon sits beside a heading, so it is sized to the heading rather than to a row of named chips.
             iconOnly ? 'h-7 w-7 justify-center' : 'h-7 px-2.5',
-            badge ? 'relative bg-slate-900 text-white shadow-sm' : active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
+            dot ? 'relative bg-slate-900 text-white shadow-sm' : active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
           )}
         >
           {/* Named in text rather than aria-label, so a form's own "Category" field keeps its label to itself. */}
@@ -137,22 +144,21 @@ export function ChipMenu({
             name
           )}
           {!iconOnly && <ChevronDown size={14} aria-hidden />}
-          {badge && (
-            // The count is drawn, not read: the chip's name already says what it filters, and a screen reader's list
+          {dot && (
+            // The dot is drawn, not read: the chip's name already says what it filters, and a screen reader's list
             // of options says which one is chosen.
-            <span aria-hidden className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-slate-200">
-              {badge}
-            </span>
+            <span aria-hidden data-testid="filter-on" className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--ph-tint)] ring-2 ring-slate-200" />
           )}
         </button>
       </div>
-      {open && (
+      {open && !onOpen && (
         <div
           className={cx(
             // A chip at the right edge hangs its menu from that edge, or the menu runs off the screen.
             'absolute z-20 mt-1 max-w-[calc(100vw-2rem)] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200',
-            // An icon's menu is only as wide as its longest choice; a named chip keeps room to search in.
-            iconOnly ? 'right-0 w-max min-w-40' : 'left-0 w-72',
+            // An icon's menu is only as wide as its longest choice — or a fixed width, names cut short, when it is a
+            // long list with a search; a named chip keeps room to search in.
+            iconOnly ? (wideMenu ? 'right-0 w-[260px]' : 'right-0 w-max min-w-40') : 'left-0 w-72',
           )}
         >
           {searchable && (

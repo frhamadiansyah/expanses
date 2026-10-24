@@ -282,14 +282,15 @@ export function TransactionRow({
 
 /**
  * What paid, as a row's second line names it: "4417" alone for a card whose digits are known, the account's name
- * otherwise, and both names of a transfer with the digits after them (`paidWithLook`).
+ * otherwise, and both names of a transfer with each side's digits after it (`paidWithLook`). The digits read in the
+ * line's own weight — tabular, so they line up, but no bolder than the note beside them.
  */
 export function PaidWith({ row }: { row: ListRow }) {
   const { name, last4 } = paidWithLook(row);
   return (
     <>
       {name}
-      {last4 && <span className="tabular font-semibold text-slate-600">{name ? ' ' : ''}{last4}</span>}
+      {last4 && <span className="tabular text-slate-600">{name ? ' ' : ''}{last4}</span>}
     </>
   );
 }
@@ -310,9 +311,9 @@ export function DraftSubtitle({ row }: { row: ListRow }) {
 }
 
 /**
- * The one line under a row's amount (`amountExtraParts`): the foreign amount, muted, then the points in their colour.
- * Always one line: when the row's right side is out of room the points are cut short with an ellipsis — the foreign
- * figure, being money, never is — and the whole line is the element's title.
+ * The one line under a row's amount (`amountExtraParts`): a transfer's fee and the foreign amount, muted, then the
+ * points in their colour. Always one line: when the row's right side is out of room the points are cut short with an
+ * ellipsis — the fee and the foreign figure, being money, never are — and the whole line is the element's title.
  */
 export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
   if (parts.length === 0) return null;
@@ -320,7 +321,8 @@ export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
     <span data-testid="amount-extra" title={parts.map((part) => part.text).join(' · ')} className="tabular flex justify-end whitespace-nowrap text-xs">
       {parts.map((part, i) => (
         <span
-          key={part.tone}
+          // By place, not tone: a fee and a foreign amount are both muted.
+          key={`${part.tone}-${i}`}
           className={cx(
             part.tone === 'foreign' ? 'shrink-0 text-slate-500' : 'min-w-0 truncate',
             part.tone === 'lost' && 'text-red-700',

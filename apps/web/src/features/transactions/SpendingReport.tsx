@@ -16,7 +16,6 @@ import { CapLine, ShareLine } from './CategoryLines';
 import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
-import { MoneyFlowBox } from './MoneyFlow';
 import { TrendBars, TrendUnder, useSpendingTrend } from './SpendingTrend';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
 import { useOpenBook } from '../workspaces/queries';
@@ -448,8 +447,8 @@ export function SpendingReport({
               </div>
             </Card>
           ))}
-          {/* Where the period's money came from, what it passed through and where it went — and what was kept. */}
-          <MoneyFlowBox month={month} onPick={onPick} />
+          {/* The Money flow box (`MoneyFlowBox`, where the period's money came from and went) is set aside for now: not
+              mounted, and nothing leads to its screen, but kept with its tests until its drawing is settled. */}
         </>
       )}
     </div>

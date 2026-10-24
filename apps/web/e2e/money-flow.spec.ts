@@ -9,6 +9,9 @@ import { recordMonth } from './money-flow';
  * filtered to it, and the › opens the same drawing on a screen of its own.
  */
 
+// The box is set aside for now (2026-10-24): not mounted on Cashflow, and nothing leads to /transactions/flow.
+test.skip(true, 'The Money flow box is set aside: not mounted on Cashflow, nothing leads to its screen.');
+
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });

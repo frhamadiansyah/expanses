@@ -15,8 +15,11 @@ const BAR = 44;
  * Off inside a sheet — a sheet scrolls in a box of its own, and a bar over the whole screen would sit on top of
  * it — and off on a wide screen, where the title is a header rather than the header.
  */
-export function useScrolledPast(ref: RefObject<HTMLElement | null>, enabled = true, pinned = false): boolean {
-  const [past, setPast] = useState(false);
+export function useScrolledPast(ref: RefObject<HTMLElement | null>, enabled = true, pinned = false, held = false): boolean {
+  const [observed, setPast] = useState(false);
+  // Held: counted as past from the start, whatever the page's position — a pinned title with a field open in it
+  // keeps the field in the bar the whole time (see `LargeTitle`), so it is never moved there once the page scrolls.
+  const past = held || observed;
   useEffect(() => {
     const el = ref.current;
     if (!enabled || !el || typeof IntersectionObserver === 'undefined') return;
