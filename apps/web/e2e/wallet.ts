@@ -280,7 +280,7 @@ export async function walletReorder(page: Page) {
   const [first, second] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
   expect(Math.abs(first.y - second.y)).toBeLessThan(2);
   expect(first.x).toBeLessThan(second.x);
-  await expect(page.getByTestId('wallet-caption').nth(0)).toContainText('Blue Card');
+  await expect(page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card').nth(0).getByTestId('card-face')).toContainText('Blue Card');
 
   // Carousel: it is the first card shown.
   await pickView(page, 'Carousel');
