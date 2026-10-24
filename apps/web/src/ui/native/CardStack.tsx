@@ -7,7 +7,7 @@ import { CardFace } from '../../features/cards/CardFace';
 import type { FaceRef } from '../../features/cards/debit-art/faces';
 import { cx } from '../index';
 import { arriveFrom, flightKeyframes, flyInto, leaveFrom, MOVE_MS, PILE_LAG_MS, PILE_STAGGER_MS, type Pose, poseFrom, poseTransform, reducedMotion, springProgress } from './card-motion';
-import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, PILE_PEEK, type StackedCard, stackLayout } from './card-stack';
+import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, PILE_FLOOR_DESKTOP, PILE_FLOOR_PHONE, PILE_PEEK, pileHeight, type StackedCard, stackLayout } from './card-stack';
 import { InsetGroup, InsetRow } from './InsetList';
 import { WalletSlotContext } from './wallet-slot';
 
@@ -202,7 +202,7 @@ export function CardStack({
           if (Math.abs(start.x - rest.x) < 0.5 && Math.abs(start.y - rest.y) < 0.5 && Math.abs(start.scale - rest.scale) < 0.002) return;
           /*
            * The card that was tapped, or put back, leads; the rest follow a beat behind it, the nearest first, as
-           * Wallet's pile does. A card on its way to or from the pile is drawn throughout: it rests out of sight.
+           * Wallet's pile does.
            */
           const lead = placed.key === raisedKey || placed.key === was;
           const rank = lead ? 0 : Math.min(order.length - 1 - order.indexOf(placed.key), 5);
@@ -266,6 +266,15 @@ export function CardStack({
     };
   }, []);
 
+  /*
+   * The pile stands on the tab bar (on a desktop, a margin) above the home indicator: its top line is the pile's
+   * height above that, so the front card shows `PILE_PEEK` of itself and the cards behind it their stepped edges.
+   */
+  const others = isRaised ? keys.length - 1 : 0;
+  const pile = pileHeight(others);
+  const floor = phone ? PILE_FLOOR_PHONE : PILE_FLOOR_DESKTOP;
+  const pileTop = `100vh - env(safe-area-inset-bottom, 0px) - ${floor + pile}px`;
+
   // Escape puts the raised card back, as the ✕ does.
   useEscape(() => onClose?.(), isRaised);
 
@@ -300,9 +309,9 @@ export function CardStack({
               const hit = 'ph-focus-inset absolute top-0 left-0 block w-full text-left';
               /*
                * Every card is drawn whole, at one width; the card after it is laid over it, so what shows is its top
-               * band. While another card is open the rest wait in their pile below the bottom of the screen, inert —
-               * out of sight, out of the tab order and out of the accessibility tree — and come back up into their
-               * slots. A pile that rests out of sight is not drawn there at all.
+               * band. While another card is open the rest wait in their pile at the foot of the screen, their edges
+               * peeking, inert — out of the tab order and out of the accessibility tree — and come back up into their
+               * slots. Under the pile's own z-order the tab bar stays on top of it.
                */
               const hidden = placed.place === 'hidden';
               const pose = poseTransform(restPose(placed, layout.cardWidth));
@@ -310,10 +319,17 @@ export function CardStack({
                 ? {
                     position: 'fixed',
                     left: column?.left ?? 16,
-                    top: `calc(100vh - ${PILE_PEEK}px + ${placed.pile?.top ?? 0}px)`,
-                    zIndex: 1 + index,
+                    top: `calc(${pileTop} + ${placed.pile?.top ?? 0}px)`,
+                    // Back to front as in the stack, and always under the tab bar (z 20), however many cards there are.
+                    zIndex: Math.min(1 + index, 18),
                     opacity: PILE_PEEK > 0 ? undefined : 0,
                     transform: pose === 'none' ? undefined : pose,
+                    /*
+                     * Landed, each card in the pile is cut off at the pile's floor — its strip and no more — so nothing
+                     * of it shows round or through the tab bar; in flight it is whole. The cut leaves room above for
+                     * the seam it casts. Measured before the card's own scale, which draws it.
+                     */
+                    clipPath: flight || !placed.pile ? undefined : `inset(-12px -12px ${Math.max(0, layout.cardHeight - (pile - placed.pile.top) / placed.pile.scale)}px -12px)`,
                   }
                 : { position: 'absolute', left: 0, top: placed.top, zIndex: placed.place === 'raised' ? 15 : placed.zIndex };
               const frame: CSSProperties = { ...box, width: layout.cardWidth, height: layout.cardHeight, borderRadius: radius, transformOrigin: '0 0', pointerEvents: 'none' };
@@ -369,13 +385,30 @@ export function CardStack({
                 </Fragment>
               );
             })}
+            {isRaised && others > 0 && PILE_PEEK > 0 && (
+              /*
+               * The peeking pile is one control, as in Wallet: a tap on it puts the open card back with the rest.
+               * Laid over the pile's edges, above the cards and under the tab bar.
+               */
+              <button
+                type="button"
+                aria-label="All cards"
+                data-testid="wallet-pile"
+                onClick={() => onClose?.()}
+                className="ph-focus-inset block"
+                style={{ position: 'fixed', left: column?.left ?? 16, top: `calc(${pileTop})`, width: layout.cardWidth, height: pile, zIndex: 19, borderRadius: `${radius}px ${radius}px 0 0` }}
+              />
+            )}
           </div>
         </div>
       </section>
       {isRaised && (
         <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown }}>
           {/* The page comes up under the raised card once it has all but landed, as a pass's details do in Wallet. */}
-          <div className="ph-card-page-in">{children}</div>
+          {/* It leaves room at its foot for the pile, so its last rows scroll clear of it. */}
+          <div className="ph-card-page-in" style={pile > 0 && PILE_PEEK > 0 ? { paddingBottom: pile + 8 } : undefined}>
+            {children}
+          </div>
         </WalletSlotContext.Provider>
       )}
     </div>

@@ -144,10 +144,20 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   const top = (await raised.boundingBox())!;
   expect(Math.abs(top.width - inStack.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(top.x - inStack.x)).toBeLessThanOrEqual(1);
-  // The others are gone: out of sight and out of reach, by pointer, keyboard or screen reader.
+  // The others drop into Wallet's pile at the foot of the screen: their top edges peek, stepped, above the tab bar,
+  // and none of them is a link any more — out of reach of the keyboard and a screen reader.
   const hidden = wall.locator('[data-place="hidden"]');
   await expect(hidden).toHaveCount(2);
-  for (const at of [0, 1]) await expect(hidden.nth(at)).not.toBeInViewport();
+  await expect(wall).not.toHaveAttribute('data-moving');
+  const viewport = page.viewportSize()!;
+  const tabBar = (await page.getByRole('navigation', { name: 'Main' }).boundingBox())!;
+  const piled = await Promise.all([0, 1].map(async (at) => (await hidden.nth(at).boundingBox())!));
+  for (const box of piled) {
+    expect(box.y).toBeGreaterThan(viewport.height - 160);
+    expect(box.y).toBeLessThan(tabBar.y);
+  }
+  // Back to front, as in the stack: the rear card's edge above the front one's.
+  expect(piled[0]!.y).toBeLessThan(piled[1]!.y);
   await expect(wall.getByRole('link')).toHaveCount(0);
   await expect(page.getByText('Beta Card, 0 points')).toHaveCount(0);
 
@@ -192,6 +202,13 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await wall.getByRole('link', { name: /^Beta Card, / }).click();
   await expect(page.getByRole('heading', { name: 'Beta Card', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/\/wallet$/);
+  expect(await order()).toEqual(before);
+
+  // A tap on the peeking pile puts the open card back, as in Wallet.
+  await wall.getByRole('link', { name: /^Gamma Card, / }).click();
+  await expect(page.getByRole('heading', { name: 'Gamma Card', exact: true })).toBeFocused();
+  await wall.getByTestId('wallet-pile').click();
   await expect(page).toHaveURL(/\/wallet$/);
   expect(await order()).toEqual(before);
 
