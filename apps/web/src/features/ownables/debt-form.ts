@@ -172,7 +172,7 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
 /** What the card form asks for, as typed. The chosen catalogue entry is passed beside it, not held in here. */
 export interface NewCardDraft {
   name: string;
-  /** The bank, when the card is typed by hand. A catalogue card is told its bank by the entry. */
+  /** The bank, when the card is typed by hand — the one its name leads with. A catalogue card is told its bank by the entry. */
   issuer: string;
   last4: string;
   owed: string;
@@ -198,6 +198,55 @@ export interface NewCardPlan {
    * in beside them, until they are saved.
    */
   terms: { statementDay: number; dueDay: number } | null;
+}
+
+/**
+ * The bank a hand-typed card's name already says: "Mandiri Signature" is Mandiri's, "BCA Everyday" is BCA's.
+ *
+ * A name is matched by its leading words, whole and in any case, against the banks the Bank row would offer — so
+ * "Bcaxyz" names no bank, and of two that both lead the name ("CIMB" and "CIMB Niaga") the longer one wins, being
+ * the more exact. Null when no bank leads the name: the card is then filed under none until its Settings say one.
+ */
+export function issuerInName(name: string, issuers: readonly string[]): string | null {
+  const words = name.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let found: string | null = null;
+  let length = 0;
+  for (const issuer of issuers) {
+    const bankWords = issuer.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (bankWords.length === 0 || bankWords.length <= length || bankWords.length > words.length) continue;
+    if (bankWords.every((word, i) => words[i] === word)) {
+      found = issuer;
+      length = bankWords.length;
+    }
+  }
+  return found;
+}
+
+/**
+ * A name typed for a card the catalogue does not carry, as the bank-and-name row shows it: the bank its leading
+ * words name, and the rest as the card's own name — "Mandiri Signature" is Mandiri, Signature. A name that is the
+ * bank and nothing more keeps itself whole, since a card is never left without a name; no bank leaves it whole too.
+ */
+export function splitCardName(typed: string, issuers: readonly string[]): { bank: string; name: string } {
+  const whole = typed.trim().replace(/\s+/g, ' ');
+  const bank = issuerInName(whole, issuers);
+  if (!bank) return { bank: '', name: whole };
+  const rest = whole.split(' ').slice(bank.trim().split(/\s+/).length).join(' ');
+  return { bank, name: rest || whole };
+}
+
+/**
+ * The account name a bank-and-name row saves: the two read together, "Mandiri" and "Signature" as "Mandiri
+ * Signature" — the name the card was searched for, and the one every list shows. A name that already starts with
+ * its bank is not given it twice, and no bank leaves the name as typed.
+ */
+export function cardAccountName(bank: string, name: string): string {
+  const b = bank.trim();
+  const n = name.trim();
+  if (!b || !n) return n;
+  const lower = n.toLowerCase();
+  const lead = b.toLowerCase();
+  return lower === lead || lower.startsWith(`${lead} `) ? n : `${b} ${n}`;
 }
 
 /** A day of the month `card_terms` will accept. `saveCardTerms` takes 1-31; this says so before anything is written. */

@@ -68,8 +68,8 @@ export function CardSearch({
           <InsetGroup
             footer={
               <>
-                {groups.length === 0 && `Nothing in the catalogue matches “${typed}”. `}A card not in the catalogue keeps the name as typed: its bank and currency are among the
-                form's details, and its earn rules are set up on the card's page.
+                {groups.length === 0 && `Nothing in the catalogue matches “${typed}”. `}A card not in the catalogue keeps the name as typed, and its earn rules
+                are set up on the card's page.
               </>
             }
           >

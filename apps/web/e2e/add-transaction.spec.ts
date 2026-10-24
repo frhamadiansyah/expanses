@@ -101,7 +101,7 @@ test('an income category picked on Expense moves the form to Income, and keeps t
 
 test('Paid with names each card by its digits, and choosing one sets the account and the card together', async ({ page }) => {
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
-    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Bank', { exact: true }).fill('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
   });
   // A second card on the same account: one statement, two sets of digits.
@@ -145,7 +145,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
 
 test('a card whose primary was removed and a primary and a supplementary added again offers just those two', async ({ page }) => {
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
-    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Bank', { exact: true }).fill('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
   });
   await page.goto('/wallet');
@@ -177,7 +177,7 @@ test('a card whose primary was removed and a primary and a supplementary added a
 
 test('a purchase on the account’s only card keeps that card once it is removed, and reads it as a removed card', async ({ page }) => {
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', async () => {
-    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Bank', { exact: true }).fill('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
   });
   // One card, so Paid with offers the account as one row; the purchase is saved on that card all the same.
@@ -521,9 +521,9 @@ test('the charged row follows an amount typed a digit at a time, and that figure
 test('a shared bill keeps the card it was charged on, and what the merchant charged', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Bank', { exact: true }).fill('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   // A second card on the same account, so "which card" has a wrong answer available to be caught at.
   await page.goto('/wallet');
@@ -642,7 +642,7 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
@@ -745,7 +745,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'Wise Card', 'credit_card', async () => {
     await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
 
   await page.goto('/transactions');
@@ -937,7 +937,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
  */
 test('a bill split equally between three people leaves each of them owing their share', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
 
   await page.goto('/transactions');
@@ -1035,7 +1035,7 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
  */
 test('a photograph attached to a purchase is on its receipt, and ✕ takes it off again', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
 
   await page.goto('/transactions');
@@ -1218,9 +1218,9 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // No rate server: the figures below are the ones typed, never ones fetched behind the test's back.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Bank', { exact: true }).fill('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   // A second card on the same account, so "which card" is a real question with a wrong answer available.
   await page.goto('/wallet');
@@ -1330,7 +1330,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
 test('a split by category refuses a foreign amount in words, and the way out works', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
 
   await page.goto('/transactions');
@@ -1386,7 +1386,7 @@ test('a split by category refuses a foreign amount in words, and the way out wor
  */
 test('an excluded purchase leaves the chart and the budget, keeps the statement and the points, and says so', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
@@ -1516,7 +1516,7 @@ test('the keyboard alone records a purchase, and evaluating is not saving', asyn
  */
 test('an event, a photograph and the exclusion survive one save together', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   await addEvent(page, 'Lebaran');
 
@@ -1559,7 +1559,7 @@ test('an event, a photograph and the exclusion survive one save together', async
  */
 test('an edit that turns a purchase into income drops the card’s facts and keeps the rest', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Owed now').fill('0');
+    await page.getByLabel('Current balance').fill('0');
   });
   // Real terms, so the Points tab has a scheme to list the purchase against — and so the MCC is readable there.
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');

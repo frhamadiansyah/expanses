@@ -1,6 +1,6 @@
 import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { emptyDebtItemDraft, emptyNewCardDraft, type NewCardDraft, planNewCard, planNewDebt } from './debt-form';
+import { cardAccountName, emptyDebtItemDraft, emptyNewCardDraft, issuerInName, type NewCardDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
 
 const draft = (id: string, patch: Record<string, string>) => ({ ...emptyDebtItemDraft(id, '2026-09-18'), ...patch });
 
@@ -127,5 +127,57 @@ describe('planning a card before anything is written', () => {
     expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25', dueDay: '40' }), plain, 'IDR')).toThrow('The due date is a day of the month, 1 to 31');
     expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: 'soon', dueDay: '12' }), plain, 'IDR')).toThrow('The billing date is a day of the month, 1 to 31');
     expect(() => planNewCard(card({ name: 'Kartu lama', owed: 'lots' }), null, 'IDR')).toThrow('The amount must be a number');
+  });
+});
+
+describe('the bank a hand-typed card name already says', () => {
+  const banks = ['BCA', 'BNI', 'CIMB', 'CIMB Niaga', 'Mandiri', 'blu by BCA Digital'];
+
+  it('is the bank its leading words name, whatever their case', () => {
+    expect(issuerInName('Mandiri Signature', banks)).toBe('Mandiri');
+    expect(issuerInName('bca everyday', banks)).toBe('BCA');
+    expect(issuerInName('  BCA  ', banks)).toBe('BCA');
+    // Of two banks that both lead the name, the longer is the more exact.
+    expect(issuerInName('CIMB Niaga World', banks)).toBe('CIMB Niaga');
+    expect(issuerInName('CIMB Octo', banks)).toBe('CIMB');
+    expect(issuerInName('Blu by BCA Digital card', banks)).toBe('blu by BCA Digital');
+  });
+
+  it('is nothing when no bank leads the name — a bank later in it, or part of a word, is not one', () => {
+    expect(issuerInName('Travel card', banks)).toBeNull();
+    expect(issuerInName('Bcaxyz Gold', banks)).toBeNull();
+    expect(issuerInName('My BCA card', banks)).toBeNull();
+    expect(issuerInName('', banks)).toBeNull();
+    expect(issuerInName('Mandiri', [])).toBeNull();
+  });
+});
+
+describe('a hand-typed card name on the bank-and-name row, and back', () => {
+  const banks = ['BCA', 'CIMB Niaga', 'Mandiri'];
+
+  it('splits off the bank its name leads with, and keeps the rest as the card’s own name', () => {
+    expect(splitCardName('Mandiri Signature', banks)).toEqual({ bank: 'Mandiri', name: 'Signature' });
+    expect(splitCardName('  cimb   niaga World Mastercard ', banks)).toEqual({ bank: 'CIMB Niaga', name: 'World Mastercard' });
+    // The bank alone is still the card's name; no bank leaves the name whole.
+    expect(splitCardName('BCA', banks)).toEqual({ bank: 'BCA', name: 'BCA' });
+    expect(splitCardName('Travel card', banks)).toEqual({ bank: '', name: 'Travel card' });
+    expect(splitCardName('Bcaxyz Gold', banks)).toEqual({ bank: '', name: 'Bcaxyz Gold' });
+  });
+
+  it('saves the two read together, never naming the bank twice', () => {
+    expect(cardAccountName('Mandiri', 'Signature')).toBe('Mandiri Signature');
+    expect(cardAccountName('Mandiri', 'Mandiri Signature')).toBe('Mandiri Signature');
+    expect(cardAccountName('BCA', 'BCA')).toBe('BCA');
+    expect(cardAccountName('', 'Travel card')).toBe('Travel card');
+    expect(cardAccountName(' UOB ', ' PRVI ')).toBe('UOB PRVI');
+    // No name is no name, whatever the bank: the plan refuses it in words.
+    expect(cardAccountName('BCA', '  ')).toBe('');
+  });
+
+  it('round-trips: what was searched for is what is saved', () => {
+    for (const typed of ['Mandiri Signature', 'CIMB Niaga World', 'Travel card', 'BCA']) {
+      const { bank, name } = splitCardName(typed, banks);
+      expect(cardAccountName(bank, name)).toBe(typed);
+    }
   });
 });

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { cardPage } from './card-section';
-import { nameCardByHand, pickCatalogueCard } from './accounts';
+import { nameCardByHand, openCard, pickCatalogueCard } from './accounts';
 import { openDrawers } from './drawers';
 
 /**
@@ -50,20 +50,21 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
 
-  // Picking the product is the whole of the setup: it names the card and links it to the entry.
+  // Picking the product is the whole of the setup: it fills the bank and the name, and links the card to the entry.
   await pickCatalogueCard(page, 'bca', 'BCA UnionPay');
-  await expect(page.getByRole('button', { name: 'Card, BCA UnionPay' })).toContainText('BCA · IDR');
+  await expect(page.getByLabel('Bank', { exact: true })).toHaveValue('BCA');
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('UnionPay');
   // The dates are details, and given here the terms are made at once — with the published fee written onto them.
   await page.getByRole('button', { name: 'Add more details' }).click();
-  // A catalogue card already knows its bank and currency, so the details ask only the dates.
-  await expect(page.getByLabel('Bank')).toHaveCount(0);
+  // A catalogue card already knows its currency, so the details ask only the dates.
   await expect(page.getByLabel('Currency', { exact: true })).toHaveCount(0);
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Add card' }).click();
 
   await expect(page).toHaveURL(/\/cards\//);
-  await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
+  // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
+  await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
   await cardPage(page, 'Settings');
@@ -75,7 +76,8 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   await page.getByRole('button', { name: 'Credit card' }).click();
   await pickCatalogueCard(page, 'unionpay', 'BCA UnionPay');
   await page.getByRole('button', { name: 'Add card' }).click();
-  await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
+  // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
+  await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
 
   // Its rules are in already, so the dates are not step 1 of anything: one row offers to add them.
   const dates = page.getByTestId('card-setup');
@@ -89,6 +91,8 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
+  // Saved once the step's own words stand down: the dates were all this card's setup still asked for.
+  await expect(page.getByText('Start with the billing date.', { exact: false })).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
@@ -121,4 +125,21 @@ test('a card that earns by level is refused until the level is chosen, and nothi
   // Nothing was opened, so the same button finishes the job once the level is given.
   await page.goto('/wallet');
   await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
+});
+
+test('a card filed under no bank is given one on its Settings, and its face follows', async ({ page }) => {
+  // Typed with its bank half left empty: the form asks nothing more about the bank.
+  await openCard(page, { name: 'Kartu Kita', last4: '5521' });
+  await cardPage(page, 'Settings');
+  const institution = page.getByLabel('Institution', { exact: true });
+  await expect(institution).toHaveValue('');
+  await institution.fill('Bank Mega');
+  // Kept as it is left, as a holding's Institution row is.
+  await institution.blur();
+  await expect(page.getByTestId('card-face').first()).toContainText('Bank Mega');
+
+  // Kept: after a reload the row shows it, to be changed, and the face still reads it.
+  await page.reload();
+  await expect(page.getByLabel('Institution', { exact: true })).toHaveValue('Bank Mega');
+  await expect(page.getByTestId('card-face').first()).toContainText('Bank Mega');
 });

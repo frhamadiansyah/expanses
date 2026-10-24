@@ -45,7 +45,7 @@ export interface EmbeddedForm {
  * at the right. Typing the bank in a rupiah workspace offers Indonesia's banks over the keyboard, the way the currency
  * field offers codes; anything else typed is kept as typed. The bank is only the tax report's, so it stays optional.
  */
-function BankNameRow({
+export function BankNameRow({
   bank,
   onBank,
   name,

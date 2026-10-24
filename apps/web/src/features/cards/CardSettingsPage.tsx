@@ -1,5 +1,5 @@
 import { formatMinor, parseMajor } from '@expanses/core';
-import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
+import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { Check, Trash2 } from 'lucide-react';
@@ -13,6 +13,9 @@ import { owedMinor } from '../networth/debt-rows';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardFace } from './CardFace';
+import { issuerChoices, useWorkspaceIssuers } from './card-queries';
+import { issuerMatches } from './issuer-match';
+import { SuggestRow } from '../ownables/CashAccountForm';
 import { CardScreen, type CardPage, type Run, useCardAction, useCardPage } from './card-page';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
@@ -168,6 +171,9 @@ export function CardSettingsPage() {
   const [loadedTerms, setLoadedTerms] = useState<string | null>(null);
   // Whether this visit began with setup unfinished: its last step's rules stay open once it is done, to add more.
   const [settingUp, setSettingUp] = useState(false);
+  // The bank behind a credit card, which its face and the tax report's list of debts read: set or put right here.
+  const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
+  const [institution, setInstitution] = useState<string | null>(null);
   const catalog = useCatalogChoice(page, run, { onFixedStatementDay: (day) => setStatementDay((typed) => typed || String(day)) });
   const fallback = `/cards/${cardId}` as const;
   if (!page) {
@@ -207,6 +213,15 @@ export function CardSettingsPage() {
     void run(() => renameAccount(database, ws, card.id, name));
   };
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
+  /*
+   * Typed, with the banks already known offered over the keyboard, and kept as it is left — the way a holding's
+   * Institution row is. Emptied, the card is filed under no bank. The face is drawn from it, so it follows at once.
+   */
+  const saveInstitution = (typed: string) => {
+    const next = typed.trim() || null;
+    if (next === issuer) return setInstitution(null);
+    void run(() => saveCardIdentity(database, ws, { accountId: card.id, issuer: next })).then((saved) => saved && setInstitution(null));
+  };
   // The name is kept as it is left; terms typed and not saved yet are saved by the ✓ on the way back.
   const done = async () => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -287,6 +302,17 @@ export function CardSettingsPage() {
 
       <InsetGroup>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={leave} placeholder="Name" />
+        {!isDebit && (
+          <SuggestRow
+            label="Institution"
+            stripLabel="Institutions"
+            value={institution ?? issuer ?? ''}
+            onChange={setInstitution}
+            onCommit={saveInstitution}
+            placeholder="Not set"
+            offers={(typed) => issuerMatches(typed, banks)}
+          />
+        )}
         <InsetRow title="Card product" subtitle={product} to="/cards/$cardId/settings/product" params={{ cardId: card.id }} />
       </InsetGroup>
 
