@@ -1,7 +1,6 @@
 import type { CaptureSource, DraftRow, SetAsideChoice } from '@expanses/db';
-import { Camera } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Chevron, FormRows, ROW_BODY, RowGlyph, RowLead, SwitchRow } from '../transactions/FormRow';
+import { Chevron, FormRows, ROW_BODY, RowGlyph, RowLead } from '../transactions/FormRow';
 import { TransactionCard } from '../transactions/TransactionCard';
 import type { FormDraft } from '../transactions/tx-form';
 import { CAPTURE_TYPES } from './capture-type';
@@ -15,8 +14,9 @@ import { canRecord, formFromDraft } from './draft-form';
  * and a date box — so finishing a capture was a second form to learn. It now opens on the very card that adds a
  * transaction, filled in from what was read: the same tabs, the same Paid with, Amount, Category, Note and ‹ day ›,
  * and ✓ in the corner records it. What is particular to a capture stands around that card: what it came from above
- * (one tap from the plain view of it, with Keep photo under a picture), the one question only the owner can answer
- * on the account row itself, and Discard at the foot.
+ * (one tap from the plain view of it), the one question only the owner can answer on the account row itself, and
+ * Discard at the foot. Whether the picture stays with the purchase is not asked: the camera's is kept, any other is
+ * not (`keepsPicture`).
  *
  * The draft is the caller's to write: `onRecord` gets the form as it stands, and the caller writes it back onto the
  * draft and confirms it, teaching the source from whatever was corrected on the way.
@@ -41,15 +41,13 @@ export function DraftSheet({
   /** Opens the plain view: the picture, or a message's own words. */
   onView: () => void;
   /** Writes the form back onto the draft and confirms it. A throw is shown on the card. */
-  onRecord: (form: FormDraft, opts: { setAside: SetAsideChoice | null; keepPhoto: boolean }) => Promise<void>;
+  onRecord: (form: FormDraft, opts: { setAside: SetAsideChoice | null }) => Promise<void>;
   onDiscard: () => void;
   onClose: () => void;
 }) {
   // The form is filled once, from the draft as it opened: later writes to the row (an answered source) are the
   // form's own choices already, and refilling it would throw away what has been typed since.
   const [prefill] = useState(() => formFromDraft(draft));
-  // A photographed receipt is kept with the purchase unless the owner says no; a screenshot is not kept unless asked.
-  const [keepPhoto, setKeepPhoto] = useState(draft.source === 'photo');
   const ask = asksForSourceAccount(draft, source);
   // Opened from partway down the queue: the form starts at its top, as a screen of its own does.
   useEffect(() => {
@@ -67,7 +65,7 @@ export function DraftSheet({
         prefill,
         saveLabel: 'Record',
         canSubmit: (form) => canRecord(form, draft),
-        onSubmit: (form, setAside) => onRecord(form, { setAside, keepPhoto }),
+        onSubmit: (form, setAside) => onRecord(form, { setAside }),
         accountAsk:
           ask && source
             ? {
@@ -78,7 +76,7 @@ export function DraftSheet({
                 onAnswer: onAnswerSource,
               }
             : undefined,
-        header: <CaptureStrip draft={draft} source={source} keepPhoto={keepPhoto} onKeepPhoto={setKeepPhoto} onView={onView} />,
+        header: <CaptureStrip draft={draft} source={source} onView={onView} />,
         footer: (
           <button
             type="button"
@@ -97,21 +95,9 @@ export function DraftSheet({
  * Where the draft came from, above the form: one row that names what it was — an SMS, a screenshot, a photo — in the
  * glyph circle the form's own rows use, and opens the plain view of it. The words and the picture are that view's to
  * show, not this row's. A draft folded from several sightings of one payment is still the one row: the app's match is
- * taken as it stands. A picture keeps its Keep photo switch under it.
+ * taken as it stands.
  */
-function CaptureStrip({
-  draft,
-  source,
-  keepPhoto,
-  onKeepPhoto,
-  onView,
-}: {
-  draft: DraftRow;
-  source: CaptureSource | null;
-  keepPhoto: boolean;
-  onKeepPhoto: (keep: boolean) => void;
-  onView: () => void;
-}) {
+function CaptureStrip({ draft, source, onView }: { draft: DraftRow; source: CaptureSource | null; onView: () => void }) {
   const view = captureRowView(draft, source);
   // Only a capture has a strip: a statement row has no picture and no words of its own to show.
   if (!view.type) return null;
@@ -145,18 +131,6 @@ function CaptureStrip({
         </button>
       ) : (
         <div className="flex w-full items-center gap-[10px] pl-[10px]">{face}</div>
-      )}
-      {draft.imageFile && (
-        <SwitchRow
-          icon={
-            <RowGlyph>
-              <Camera size={15} />
-            </RowGlyph>
-          }
-          label="Keep photo"
-          checked={keepPhoto}
-          onChange={onKeepPhoto}
-        />
       )}
     </FormRows>
   );

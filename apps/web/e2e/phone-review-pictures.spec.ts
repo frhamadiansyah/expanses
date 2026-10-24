@@ -62,6 +62,54 @@ test('one receipt from Photos becomes a draft in Review', async ({ page }) => {
   await expect(page.getByTestId('draft-row')).toContainText('38.000');
 });
 
+/*
+ * Whether the picture stays with the purchase is not asked. A receipt photographed with the app's camera is kept on
+ * the transaction's receipt — the camera names its pictures `captures/camera-<id>`, which the browser cannot take, so
+ * the capture is handed over as the camera would have handed it — and a picture chosen from Photos is let go once
+ * recorded, since Photos still has it.
+ */
+test('a receipt photographed in the app is kept on its receipt; one chosen from Photos is not', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-09-30T12:00:00+07:00'));
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
+  await page.goto('/review');
+  const photographed = screen({
+    id: 'cam-1',
+    kind: 'photo',
+    capturedAt: '2026-09-30T09:00:00+07:00',
+    imageFile: 'captures/camera-cam-1.png',
+    lines: [line('WARUNG SINAR PAGI', 0.04), line('Jl. Kenanga 7', 0.08), line('Total Rp41.500', 0.5, 0.04)],
+  });
+  await inject(page, [photographed], picture('captures/camera-cam-1.png'));
+  await willPick(page, [chosen('lib-3', { capturedAt: '2026-09-30T09:30:00+07:00', lines: [line('KEDAI EMBUN PAGI', 0.04), line('Total Rp27.250', 0.5, 0.04)] })]);
+  await (await openCameraMenu(page)).getByRole('menuitem', { name: 'Choose from Photos' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(2);
+
+  for (const [figure, note] of [
+    ['41.500', 'Sinar Pagi'],
+    ['27.250', 'Kedai Embun'],
+  ] as const) {
+    await page.getByTestId('draft-row').filter({ hasText: figure }).click();
+    const form = page.getByRole('form', { name: /^Review / });
+    await expect(page.getByRole('switch', { name: 'Keep photo' })).toHaveCount(0);
+    await form.getByLabel('Note').fill(note);
+    await form.getByRole('button', { name: 'Which account is this?' }).click();
+    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
+    await form.getByRole('button', { name: 'Category' }).click();
+    await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+    await page.getByRole('button', { name: 'Record', exact: true }).click();
+    await expect(page.getByText(`Recorded ${note}`)).toBeVisible();
+  }
+
+  await page.goto('/transactions');
+  await page.getByTestId('transaction-row').filter({ hasText: 'Sinar Pagi' }).getByRole('button', { name: /^Groceries/ }).click();
+  await expect(page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Sinar Pagi' })).toHaveCount(1);
+
+  await page.goto('/transactions');
+  await page.getByTestId('transaction-row').filter({ hasText: 'Kedai Embun' }).getByRole('button', { name: /^Groceries/ }).click();
+  await expect(page.getByTestId('receipt-hero')).toContainText('27.250');
+  await expect(page.getByTestId('photo-strip')).toHaveCount(0);
+});
+
 test('one statement page from Photos goes to the statement check, asking which card', async ({ page }) => {
   await openCard(page, { name: 'Kartu Biru' });
   await page.goto('/review');
