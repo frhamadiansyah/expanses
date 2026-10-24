@@ -5,7 +5,7 @@ import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
 import type { MoneyAccountSubtype, PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow, PaidWithItem } from '@expanses/db';
 import { Sheet, SheetSearchButton } from '../../app/Sheet';
-import { NewCardForm } from '../ownables/AddDebtPage';
+import { type FormStep, NewCardForm } from '../ownables/AddDebtPage';
 import { CashAccountForm } from '../ownables/CashAccountForm';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
@@ -243,6 +243,8 @@ export function PaymentSheet({
   const adding: PaymentTab = tabbed ? tab : 'accounts';
   // New account / New credit card: a step this sheet moves to, not a sheet stacked on it, and not a page away.
   const [making, setMaking] = useState<PaymentTab | null>(null);
+  // The card form's own step — its search for the card — is one more step of this sheet, never a sheet on top of it.
+  const [inner, setInner] = useState<FormStep | null>(null);
   const [kind, setKind] = useState<MoneyAccountSubtype>(() => addable?.kinds[0] ?? 'bank');
   const [canSave, setCanSave] = useState(false);
   const formId = useId();
@@ -362,39 +364,46 @@ export function PaymentSheet({
     />
   );
 
-  const stepBack = () => setMaking(null);
+  const stepBack = () => {
+    setInner(null);
+    setMaking(null);
+  };
   const added = (accountId: string) => {
     addable?.onAdded(accountId);
     onClose();
   };
   // The form is the sheet's step; the header's ✓ submits it by id, so the browser still checks what it requires.
-  const embedded = { formId, onCanSave: setCanSave };
+  const embedded = { formId, onCanSave: setCanSave, onStep: setInner };
 
   // One sheet for the list and for the step, so moving between them keeps whatever detent it was left at.
   return (
     <Sheet
       grouped
       tall
-      title={making === 'cards' ? 'New credit card' : making ? 'New account' : title}
-      onClose={making ? stepBack : onClose}
-      {...(making
-        ? {
-            back: { label: title, run: stepBack },
-            confirm: { label: 'Save', disabled: !canSave, run: () => (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit() },
-          }
-        : {
-            closeHidden: finding,
-            heading: !tabbed && finding ? searchField : undefined,
-            action: (
-              <SheetSearchButton
-                open={finding}
-                onClick={() => {
-                  if (finding) setSearch('');
-                  setFinding((was) => !was);
-                }}
-              />
-            ),
-          })}
+      title={inner ? inner.title : making === 'cards' ? 'New credit card' : making ? 'New account' : title}
+      onClose={inner ? inner.back : making ? stepBack : onClose}
+      // A search brings the keyboard, so its step stands at the large detent.
+      expanded={inner !== null}
+      {...(inner
+        ? { back: { label: 'New credit card', run: inner.back } }
+        : making
+          ? {
+              back: { label: title, run: stepBack },
+              confirm: { label: 'Save', disabled: !canSave, run: () => (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit() },
+            }
+          : {
+              closeHidden: finding,
+              heading: !tabbed && finding ? searchField : undefined,
+              action: (
+                <SheetSearchButton
+                  open={finding}
+                  onClick={() => {
+                    if (finding) setSearch('');
+                    setFinding((was) => !was);
+                  }}
+                />
+              ),
+            })}
     >
       {making === 'cards' ? (
         <NewCardForm embedded={embedded} onCreated={added} />

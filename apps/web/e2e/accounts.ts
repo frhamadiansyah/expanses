@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
 import { setCurrency } from './currency-field';
 import { todayIn } from './today';
@@ -181,13 +181,33 @@ export interface NewCard {
 }
 
 /**
- * Opens a card by hand through the debt picker — "Not listed — type the name", which is the door the old inline
- * form's Type=credit_card was. It lands on the card's own page, where the app takes a new card next.
+ * The new card form's Card row, answered with a name the catalogue does not carry: the search, then its last row.
+ * `scope` is where the form is drawn — the page, or the Paid with sheet whose step the search is.
+ */
+export async function nameCardByHand(page: Page, name: string, scope: Page | Locator = page) {
+  await scope.getByRole('button', { name: /^Card(,|$)/ }).click();
+  await page.getByLabel('Search cards').fill(name);
+  await page.getByRole('button', { name: `Use “${name}” as the name` }).click();
+}
+
+/** The new card form's Card row, answered from the catalogue: the search narrowed by `query`, then the product. */
+export async function pickCatalogueCard(page: Page, query: string, product: string, scope: Page | Locator = page) {
+  await scope.getByRole('button', { name: /^Card(,|$)/ }).click();
+  await page.getByLabel('Search cards').fill(query);
+  await page.getByRole('button', { name: product, exact: true }).click();
+}
+
+/**
+ * Opens a card by hand through the debt picker — the Card row's search, and "Use “…” as the name" for a card the
+ * catalogue does not carry, which is the door the old inline form's Type=credit_card was. Its bank, currency and
+ * dates are the form's details, opened only when the walk gives one. It lands on the card's own page, where the
+ * app takes a new card next.
  */
 export async function openCard(page: Page, o: NewCard) {
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
-  await page.getByLabel('Name', { exact: true }).fill(o.name);
+  await nameCardByHand(page, o.name);
+  if (o.bank || (o.currency && o.currency !== 'IDR') || o.statementDay || o.dueDay) await page.getByRole('button', { name: 'Add more details' }).click();
   if (o.bank) await page.getByLabel('Bank').selectOption({ label: o.bank });
   if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);

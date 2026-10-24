@@ -1,4 +1,4 @@
-import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
+import { formatMinor, parseMajor } from '@expanses/core';
 import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -19,6 +19,7 @@ import { CatalogPicker } from './CatalogPicker';
 import { EarnRulesEditor } from './CardRulesPages';
 import { balanceText } from './programme-text';
 import { ColumnGroup, GlyphButton, Line, Step, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
+import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
 import { formatPoints } from './useCardPoints';
 
@@ -27,17 +28,6 @@ const productRoute = getRouteApi('/cards/$cardId/settings/product');
 
 const UNIT_LABELS: Record<RewardProgramRow['unit'], string> = { points: 'Points', miles: 'Miles', cashback: 'Cashback' };
 const ANCHOR_LABELS: Record<RewardProgramRow['cycleAnchor'], string> = { statement: 'Each statement cycle', calendar: 'Each calendar month' };
-
-/** The terms form's fields as the saved terms read: what it starts from, and what tells it apart once typed in. */
-function termsFields(page: CardPage) {
-  const { cp, currency } = page;
-  return {
-    statementDay: cp.terms ? String(cp.terms.statementDay) : '',
-    dueDay: cp.terms ? String(cp.terms.dueDay) : '',
-    limit: cp.terms?.creditLimitMinor != null ? minorToMajorString(cp.terms.creditLimitMinor, currency) : '',
-    fee: cp.terms?.annualFeeMinor != null ? minorToMajorString(cp.terms.annualFeeMinor, currency) : '',
-  };
-}
 
 /**
  * Step 2 of setup, and the card product page of a card with no rewards yet: the catalogue to choose the card from,
@@ -191,8 +181,9 @@ export function CardSettingsPage() {
   if (step !== null && !settingUp) setSettingUp(true);
 
   // The fields read the saved card again whenever it changes underneath them — a catalogue applied writes the
-  // published annual fee onto the terms, and a form still showing the old ones would save that emptiness back.
-  const saved = termsFields(page);
+  // published annual fee onto the terms, and a form still showing the old ones would save that emptiness back. A
+  // catalogue card opened without its dates has no terms for that fee yet, so the form offers it beside them.
+  const saved = termsFields(cp.terms, cp.catalog.snapshot ?? cp.catalog.entry, today, currency);
   const termsKey = `${card.id}:${JSON.stringify(saved)}`;
   if (loadedTerms !== termsKey) {
     setLoadedTerms(termsKey);
@@ -223,9 +214,14 @@ export function CardSettingsPage() {
     window.setTimeout(goBack, 0);
   };
 
+  /*
+   * A card opened from the catalogue without its dates has its product and its rules already: the dates are all its
+   * setup still asks for, so they come first with no step number over them and no catalogue to choose from again.
+   */
+  const onlyDates = step === 1 && cp.program !== undefined;
   const termsBlock = !isDebit && (
     <>
-      {step === 1 && <Step>Step 1 of 3</Step>}
+      {step === 1 && !onlyDates && <Step>Step 1 of 3</Step>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -268,6 +264,7 @@ export function CardSettingsPage() {
       {step === 1 && (
         <>
           {termsBlock}
+          {!onlyDates && (
           <CatalogPicker
             header="Is this card in the catalogue?"
             today={today}
@@ -276,6 +273,7 @@ export function CardSettingsPage() {
             debit={isDebit}
             applyHint="Save the card terms above, then use these terms in the next step."
           />
+          )}
         </>
       )}
       {step === 2 && (

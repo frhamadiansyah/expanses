@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { cardPage } from './card-section';
+import { nameCardByHand, pickCatalogueCard } from './accounts';
 import { openDrawers } from './drawers';
 
 /**
@@ -50,8 +51,13 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await page.getByRole('button', { name: 'Credit card' }).click();
 
   // Picking the product is the whole of the setup: it names the card and links it to the entry.
-  await page.getByLabel('Which card').selectOption({ label: 'BCA UnionPay' });
-  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('BCA UnionPay');
+  await pickCatalogueCard(page, 'bca', 'BCA UnionPay');
+  await expect(page.getByRole('button', { name: 'Card, BCA UnionPay' })).toContainText('BCA · IDR');
+  // The dates are details, and given here the terms are made at once — with the published fee written onto them.
+  await page.getByRole('button', { name: 'Add more details' }).click();
+  // A catalogue card already knows its bank and currency, so the details ask only the dates.
+  await expect(page.getByLabel('Bank')).toHaveCount(0);
+  await expect(page.getByLabel('Currency', { exact: true })).toHaveCount(0);
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -64,21 +70,55 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
 });
 
+test('a catalogue card opens without its dates, and the fee is saved once they are given on its page', async ({ page }) => {
+  await page.goto('/debts/new');
+  await page.getByRole('button', { name: 'Credit card' }).click();
+  await pickCatalogueCard(page, 'unionpay', 'BCA UnionPay');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
+
+  // Its rules are in already, so the dates are not step 1 of anything: one row offers to add them.
+  const dates = page.getByTestId('card-setup');
+  await expect(dates).toContainText('Billing and due dates');
+  await expect(dates).toContainText('Add');
+  await dates.click();
+  await expect(page.getByText('Step 1 of 3')).toHaveCount(0);
+  await expect(page.getByText('Is this card in the catalogue?')).toHaveCount(0);
+  // The published fee waits beside the empty days, and is saved with them.
+  await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Billing date')).toHaveValue('25');
+  await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
+});
+
+test('one date without the other is refused, and nothing is opened meanwhile', async ({ page }) => {
+  await page.goto('/debts/new');
+  await page.getByRole('button', { name: 'Credit card' }).click();
+  await nameCardByHand(page, 'Kartu Setengah');
+  await page.getByRole('button', { name: 'Add more details' }).click();
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByRole('button', { name: 'Add card' }).click();
+
+  await expect(page.getByText('Give both the billing date and the due date, or leave both for later')).toBeVisible();
+  await expect(page).toHaveURL(/\/debts\/new$/);
+  await page.goto('/wallet');
+  await expect(page.getByText('Kartu Setengah')).toHaveCount(0);
+});
+
 test('a card that earns by level is refused until the level is chosen, and nothing is opened meanwhile', async ({ page }) => {
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
 
-  await page.getByLabel('Which card').selectOption({ label: 'Jenius Platinum' });
-  await page.getByLabel('Billing date').fill('25');
-  await page.getByLabel('Due date').fill('12');
+  await pickCatalogueCard(page, 'jenius', 'Jenius Platinum');
+  await expect(page.getByLabel(/ level$/)).toBeVisible();
   await page.getByRole('button', { name: 'Add card' }).click();
 
   await expect(page.getByText(/Choose the level before adding it/)).toBeVisible();
   await expect(page).toHaveURL(/\/debts\/new$/);
   // Nothing was opened, so the same button finishes the job once the level is given.
-  await page.goto('/wallet');
-  await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
-
   await page.goto('/wallet');
   await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
 });

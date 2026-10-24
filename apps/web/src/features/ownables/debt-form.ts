@@ -192,7 +192,11 @@ export interface NewCardPlan {
   openingBalanceMinor: number;
   /** The level to apply the entry at, when it publishes any. */
   memberLevel: string | null;
-  /** The billing cycle, or null when neither day was given — which only a card typed by hand may do. */
+  /**
+   * The billing cycle, or null when neither day was given. A card from the catalogue may leave both for later too:
+   * its earn rules do not wait for them, and the card's own page asks for the days, with the published fee filled
+   * in beside them, until they are saved.
+   */
   terms: { statementDay: number; dueDay: number } | null;
 }
 
@@ -233,10 +237,16 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
     }
   }
 
-  const someDay = draft.statementDay.trim() !== '' || draft.dueDay.trim() !== '';
-  // The published fee is kept on the card's terms, and the terms need both days, so a catalogue card is asked.
-  if (entry && !someDay) throw new Error('A card from the catalogue needs its billing date and due date: that is where its fee and its cycle are kept');
-  const terms = someDay ? { statementDay: dayOfMonth(draft.statementDay, 'billing date'), dueDay: dayOfMonth(draft.dueDay, 'due date') } : null;
+  /*
+   * Both days or neither: the terms are what a cycle is counted from, and half of them counts nothing. Neither is
+   * fine for any card — it opens without terms, and its page asks for them. Some issuers close every cardholder's
+   * statement on the same day, so for those cards a due date alone is enough: the billing date is the issuer's.
+   */
+  const fixedDay = entry?.program.fixedStatementDay;
+  const statementDay = draft.statementDay.trim() || (fixedDay && draft.dueDay.trim() !== '' ? String(fixedDay) : '');
+  const someDay = statementDay !== '' || draft.dueDay.trim() !== '';
+  if (someDay && (statementDay === '' || draft.dueDay.trim() === '')) throw new Error('Give both the billing date and the due date, or leave both for later');
+  const terms = someDay ? { statementDay: dayOfMonth(statementDay, 'billing date'), dueDay: dayOfMonth(draft.dueDay, 'due date') } : null;
 
   return {
     name,
