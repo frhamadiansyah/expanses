@@ -2,7 +2,7 @@ import { formatMinor, isoDate, sumToBase } from '@expanses/core';
 import { type AccountRow, listTransactionsIn, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { Eye, EyeOff, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { Eye, EyeOff, LayoutGrid, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
@@ -22,6 +22,8 @@ import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
 import { BALANCE_HIDDEN_KEY, bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, writeBalanceHidden } from './wallet-model';
+import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
+import { WalletCarousel, WalletGrid } from './WalletViews';
 
 /** The ground a native screen is laid on, and the column a desktop reads it in. */
 function Screen({ children }: { children: ReactNode }) {
@@ -114,6 +116,8 @@ export function WalletPage() {
     queryFn: () => Promise.all(credit.map((card) => loadCardPoints(database, ws, card, everything, today))),
   });
 
+  // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
+  const view = useWalletView();
   const [hidden, setHidden] = useState(() => readBalanceHidden());
   const toggleBalance = () =>
     setHidden((was) => {
@@ -228,6 +232,8 @@ export function WalletPage() {
       // What the card owes, unmasked: the figure a credit card is opened to read.
       figure: formatMinor(owedMinor(all, cp.card.id), cp.card.currency ?? ws.baseCurrency),
       figureLabel: 'Owed',
+      // Captioned under a face in the grid, what is owed is in the owed red, as it is everywhere else.
+      figureTone: 'alarm',
       subtitle: [...named, cycle, earned, worth].filter(Boolean).join(' · '),
       to: '/cards/$cardId' as const,
       params: { cardId: cp.card.id },
@@ -275,11 +281,18 @@ export function WalletPage() {
   }
 
   /*
-   * The corners: the eye, then ＋ — money to spend from, or a credit card, each through its own door — and the card
-   * tools the Cards tab had, which wait behind the ⋯ on a phone.
+   * The corners: the eye, the View menu beside it — the pile, a grid or one card at a time, the one in force ticked —
+   * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
+   * which wait behind the ⋯.
    */
   const actions: CornerAction[] = [
     { key: 'balance', label: hidden ? 'Show balance' : 'Hide balance', glyph: hidden ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />, run: toggleBalance, pressed: hidden },
+    {
+      key: 'view',
+      label: 'View',
+      glyph: <LayoutGrid size={20} aria-hidden />,
+      menu: WALLET_VIEWS.map((each) => ({ key: each, label: WALLET_VIEW_LABELS[each], checked: view === each, run: () => changeWalletView(each) })),
+    },
     {
       key: 'add',
       label: 'Add',
@@ -315,7 +328,7 @@ export function WalletPage() {
             </CornerButton>
           </header>
         ) : (
-          <LargeTitle title="Wallet" actions={actions} max={3} />
+          <LargeTitle title="Wallet" actions={actions} max={4} />
         )}
       </div>
       {/*
@@ -355,7 +368,12 @@ export function WalletPage() {
           .
         </Empty>
       )}
-      {ready && wallet.length > 0 && (
+      {/*
+       * The cards, laid out as this device chose. An open card is always the stack's raised card over its page,
+       * whichever layout it was opened from: the grid and the carousel are ways of reading the cards at rest, and
+       * come back as soon as the card is put down.
+       */}
+      {ready && wallet.length > 0 && (raised || view === 'stack') && (
         <CardStack
           label="Cards"
           cards={wallet}
@@ -366,6 +384,8 @@ export function WalletPage() {
           <Outlet />
         </CardStack>
       )}
+      {ready && wallet.length > 0 && !raised && view === 'grid' && <WalletGrid cards={wallet} />}
+      {ready && wallet.length > 0 && !raised && view === 'carousel' && <WalletCarousel cards={wallet} accounts={everything} />}
       {/* A bank account's debit card rewards are set up from the account's Settings (`DebitRewardsGroup`), not from here. */}
       {!raised && <PointsSection />}
       {/*

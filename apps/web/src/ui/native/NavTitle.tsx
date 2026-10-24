@@ -1,5 +1,5 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { ChevronLeft, MoreHorizontal } from 'lucide-react';
+import { Check, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
@@ -102,6 +102,8 @@ function MenuLine({ action }: { action: CornerAction }) {
         <span className="block">{action.label}</span>
         {action.detail && <span className="block max-w-[240px] text-[12.5px] leading-[16px] whitespace-normal text-[var(--ph-ink-3)]">{action.detail}</span>}
       </span>
+      {/* The tick of a choice in force, trailing, as a native menu ticks the one of several that is on. */}
+      {action.checked !== undefined && <Check size={16} aria-hidden className={cx('shrink-0', action.checked ? 'text-[var(--ph-ink)]' : 'invisible')} />}
     </>
   );
 }
@@ -149,7 +151,9 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                 <button
                   key={action.key}
                   type="button"
-                  role="menuitem"
+                  // A choice between several is a radio line, and says which one is in force.
+                  role={action.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                  aria-checked={action.checked}
                   disabled={action.disabled}
                   aria-disabled={action.disabled}
                   onClick={() => {
