@@ -28,6 +28,8 @@ async function settledBox(page: Page, row: Locator) {
 
 /** Pointer down, a drag to the left, up — the gesture, not a click. */
 async function swipeLeft(page: Page, row: Locator) {
+  // The row can sit under the floating tab bar; a drag there lands on the bar.
+  await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const box = await settledBox(page, row);
   const y = box.y + box.height / 2;
   const from = box.x + box.width - 12;
@@ -35,6 +37,18 @@ async function swipeLeft(page: Page, row: Locator) {
   await page.mouse.down();
   for (let step = 1; step <= 10; step += 1) await page.mouse.move(from - (160 * step) / 10, y);
   await page.mouse.up();
+}
+
+/** Mail's long swipe: most of the row's width, held a moment past the line, then let go — or not, when `release` is false. */
+async function longSwipeLeft(page: Page, row: Locator, release = true) {
+  await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const box = await settledBox(page, row);
+  const y = box.y + box.height / 2;
+  const from = box.x + box.width - 8;
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 15; step += 1) await page.mouse.move(from - (box.width * 0.85 * step) / 15, y);
+  if (release) await page.mouse.up();
 }
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -65,36 +79,24 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
   await expect(steak.getByRole('button', { name: 'Delete' })).toHaveCount(0);
   await swipeLeft(page, steak);
   await expect(steak.getByRole('button', { name: 'Edit' })).toBeVisible();
+  // One tap deletes — no second question (owner, 25 Oct). The row goes at once and the toast offers Undo.
   await steak.getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(steak.getByRole('button', { name: 'Delete?' })).toBeVisible();
-  // Asked twice, and one press writes nothing. Waited out rather than asserted at once: a delete that did
-  // happen takes a moment to land, and looking straight away would pass whether or not it was on its way.
-  await page.waitForTimeout(800);
+  await expect(row(page, 'Warung Steak')).toHaveCount(0);
+  await expect(toast(page)).toContainText('Deleted Warung Steak');
+  // Undo puts it back exactly: the delete was never written, so the figure and the category are as they were.
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(row(page, 'Warung Steak')).toHaveCount(1);
+  await expect(row(page, 'Warung Steak')).toContainText('120.000');
+  await expect(row(page, 'Warung Steak')).toContainText('Restaurants');
+  await page.reload();
   await expect(row(page, 'Warung Steak')).toHaveCount(1);
 
-  // §2's "still asks twice" holds across the gesture, not only within it. Armed, then walked away from: a tap
-  // on a row left open closes it and does nothing else, and the next swipe has to ask from the start. It did
-  // not — `armed` was kept in the row *around* the button, so it outlived the swipe that set it and the second
-  // swipe opened reading "Delete?". One tap then voided the transaction, with no second question anywhere.
-  // Three buttons stand open (Duplicate, Edit, Delete) and the face slides left, so only its right end is on screen.
-  // That end is still the face: a tap on it closes the row and does nothing else.
-  const openFace = face(page, 'Warung Steak', 'Restaurants');
-  const openBox = (await openFace.boundingBox())!;
-  await openFace.click({ position: { x: openBox.width - 6, y: openBox.height / 2 } });
-  await expect(steak.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  // The row slides shut over 150ms; swiping into that animation drags a row that is still moving.
+  // Deleted again and left alone: once the toast has gone by itself, the delete is written.
   await page.waitForTimeout(400);
   await swipeLeft(page, steak);
-  await expect(steak.getByRole('button', { name: 'Delete?' })).toHaveCount(0);
-  await expect(steak.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
-  // Still there, so the reopened row really did refuse to delete on that swipe's first tap.
-  await page.waitForTimeout(400);
-  await expect(row(page, 'Warung Steak')).toHaveCount(1);
-
   await steak.getByRole('button', { name: 'Delete', exact: true }).click();
-  await steak.getByRole('button', { name: 'Delete?' }).click();
-  await expect(page.getByText('Warung Steak')).toHaveCount(0);
-  // And the second press did write: the database says so once it is read back.
+  await expect(toast(page)).toContainText('Deleted Warung Steak');
+  await expect(toast(page)).toHaveCount(0, { timeout: 10_000 });
   await page.reload();
   await expect(row(page, 'Superindo')).toHaveCount(1);
   await expect(row(page, 'Warung Steak')).toHaveCount(0);
@@ -107,6 +109,48 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
   await expect(row(page, 'Superindo')).toContainText('Restaurants');
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(row(page, 'Superindo')).toContainText('Groceries');
+});
+
+/**
+ * Mail's long swipe: dragged most of the way across, the Delete circle stretches into a bar, and letting go deletes —
+ * with the same Undo a tap gives. A drag that stops short of the line only opens the row.
+ */
+test('a long swipe left deletes at once, and Undo brings it back whole', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await record(page, 'Warung Steak', 'Restaurants', '120000');
+  await record(page, 'Superindo', 'Groceries', '250000');
+  const steak = row(page, 'Warung Steak');
+
+  // Short of the line: it opens, as any swipe does, and nothing is deleted.
+  await swipeLeft(page, steak);
+  await expect(steak.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
+  await expect(steak.getByTestId('swipe-full')).toHaveCount(0);
+  // A tap on the face's end still on screen closes it again.
+  const openFace = face(page, 'Warung Steak', 'Restaurants');
+  const openBox = (await openFace.boundingBox())!;
+  await openFace.click({ position: { x: openBox.width - 6, y: openBox.height / 2 } });
+  await page.waitForTimeout(400);
+
+  // Past it, still held: the bar stands where the circles were.
+  await longSwipeLeft(page, steak, false);
+  await expect(steak.getByTestId('swipe-full')).toBeVisible();
+  await expect(steak.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await page.mouse.up();
+  await expect(row(page, 'Warung Steak')).toHaveCount(0);
+  await expect(toast(page)).toContainText('Deleted Warung Steak');
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(row(page, 'Warung Steak')).toHaveCount(1);
+  await expect(row(page, 'Warung Steak')).toContainText('120.000');
+
+  // Long-swiped again and left: written once the toast goes.
+  await page.waitForTimeout(400);
+  await longSwipeLeft(page, steak);
+  await expect(row(page, 'Warung Steak')).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0, { timeout: 10_000 });
+  await page.reload();
+  await expect(row(page, 'Superindo')).toHaveCount(1);
+  await expect(row(page, 'Warung Steak')).toHaveCount(0);
 });
 
 /**

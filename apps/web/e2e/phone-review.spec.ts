@@ -116,6 +116,22 @@ test('a swipe left discards, and the toast brings it back', async ({ page }) => 
   await expect(toast(page)).toContainText('Discarded APOTEK K24');
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
+
+  // Mail's long swipe: most of the way across, let go, and it is discarded at once — the same toast, the same Undo.
+  await page.waitForTimeout(400);
+  const back = row(page, 'APOTEK K24');
+  const box = (await back.boundingBox())!;
+  const y = box.y + box.height / 2;
+  const from = box.x + box.width - 8;
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 15; step += 1) await page.mouse.move(from - (box.width * 0.85 * step) / 15, y);
+  await expect(back.getByTestId('swipe-full')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(toast(page)).toContainText('Discarded APOTEK K24');
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(2);
 });
 
 test('a swipe on a capture with no category opens the form rather than recording it', async ({ page }) => {

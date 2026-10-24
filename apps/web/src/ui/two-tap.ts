@@ -3,9 +3,9 @@ import { useState } from 'react';
 /**
  * Asking twice, in place: the first tap arms, the second confirms, and walking away (blur) disarms.
  *
- * The one mechanism behind both ways a delete is asked for — the receipt's `TwoTapDelete` and a swipe's round
- * action — so neither can drift into deleting on a single tap. The state lives in the component that draws the
- * button, so it dies with it: a swiped row draws its actions only while open, and closing it forgets the arming.
+ * The mechanism behind the receipt's `TwoTapDelete`, kept apart so a second way of asking cannot drift into
+ * deleting on a single tap. The state lives in the component that draws the button, so it dies with it. (A swipe's
+ * Delete does not ask: it acts, and its list's Undo toast holds the delete back until the toast has gone.)
  */
 export function useTwoTap(onConfirm: () => void) {
   const [armed, setArmed] = useState(false);
