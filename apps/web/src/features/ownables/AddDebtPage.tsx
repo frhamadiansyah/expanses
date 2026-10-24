@@ -481,7 +481,7 @@ function CardRow({
       onBlur={(event) => isName(event.target) && window.setTimeout(() => setTypingName(false), STRIP_GRACE_MS)}
     >
       <div className="min-w-0 flex-1">
-        <BankNameRow {...row} position={position} />
+        <BankNameRow {...row} namePlaceholder="Card name" position={position} />
       </div>
       <button
         type="button"

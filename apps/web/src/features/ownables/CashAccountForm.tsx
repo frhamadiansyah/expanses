@@ -52,8 +52,17 @@ export function BankNameRow({
   name,
   onName,
   offersBanks,
+  namePlaceholder = 'Account name',
   position,
-}: GroupChild & { bank: string; onBank: (bank: string) => void; name: string; onName: (name: string) => void; offersBanks: boolean }) {
+}: GroupChild & {
+  bank: string;
+  onBank: (bank: string) => void;
+  name: string;
+  onName: (name: string) => void;
+  offersBanks: boolean;
+  /** What the empty name half asks for: an account's name here, a card's on the new credit card form. */
+  namePlaceholder?: string;
+}) {
   const [typing, setTyping] = useState(false);
   const offered = typing && offersBanks ? bankMatches(bank) : [];
   return (
@@ -92,7 +101,7 @@ export function BankNameRow({
           aria-label="Name"
           value={name}
           onChange={(e) => onName(e.target.value)}
-          placeholder="Account name"
+          placeholder={namePlaceholder}
           required
           className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
