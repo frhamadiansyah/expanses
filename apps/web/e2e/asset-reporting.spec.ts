@@ -50,11 +50,11 @@ test('the tax report uses the code you chose, not the one the preset guessed', a
 
   await openSettings(page);
   // DJP tells you to pick what matches: DPLK can be savings, setara kas, or an investment code.
-  await page.getByRole('button', { name: /^Code/ }).click();
+  await page.getByRole('button', { name: /^Tax code/ }).click();
   await page.getByRole('textbox', { name: 'Code', exact: true }).fill('0109');
   await expect(page.getByText('Setara kas lainnya')).toBeVisible();
   await page.getByRole('button', { name: 'Save code' }).click();
-  await expect(page.getByRole('button', { name: /^Code/ })).toContainText('0109');
+  await expect(page.getByRole('button', { name: /^Tax code/ })).toContainText('0109');
 
   await startReport(page);
   await expect(page.getByText('0109').first()).toBeVisible();

@@ -147,7 +147,7 @@ export function AssetSettings({
       hint={errorHint(errors.reportable)}
     />,
     // The number alone; what it stands for is in the sheet it opens.
-    <PickerRow key="code" label="Code" value={code === '' ? 'Not chosen' : code} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
+    <PickerRow key="code" label="Tax code" value={code === '' ? 'Not chosen' : code} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
   ];
   // The last row of the Tax report box: how its income is taxed is a question of the report, not of the plan.
   const incomeTax = (
