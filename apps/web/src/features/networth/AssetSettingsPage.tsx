@@ -15,6 +15,7 @@ import { CouponGroup } from './CouponGroup';
 import { SameFundGroup } from './SameFundGroup';
 import { PricesGroup } from './PricesGroup';
 import { MonthlyPlanGroup } from './MonthlyPlanGroup';
+import { SettingsNameRow } from '../accounts/SettingsNameRow';
 import { AccountSettingsBox } from '../accounts/AccountSettingsBox';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -177,6 +178,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
+          nameRow={account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined}
           beforeTax={money && account ? <AccountSettingsBox account={account} onError={setError} /> : undefined}
           afterName={acquired ? <AcquiredRow value={acquired} onChange={saveAcquired} /> : undefined}
           // The tax report's own questions, here rather than on an Edit screen of their own (a money account's stay below).
@@ -193,6 +195,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
                     fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
                     lead={lead}
                     tail={tail}
+                    hide={account?.subtype === 'bank' || account?.subtype === 'savings' ? ['acct', 'inst'] : undefined}
                   />
                 )
               : undefined

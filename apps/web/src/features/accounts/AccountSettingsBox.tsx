@@ -6,10 +6,11 @@ import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { errorHint } from '../networth/AssetSettings';
-import { useAssetProfiles } from '../networth/queries';
+import { useAssetProfile, useAssetProfiles } from '../networth/queries';
 import { useAccountNumberLast4, useCardTiers, useProgramByAccount, useWalletLast4 } from '../cards/card-queries';
 import { faceFor } from '../cards/debit-art/faces';
 import { bankOf } from '../wallet/wallet-model';
+import { setKasField } from './kas-fields';
 import { spendsFrom } from './pockets';
 import { last4Field, readAccountNumberLast4, readWalletLast4 } from './wallet-last4';
 
@@ -25,6 +26,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   const navigate = useNavigate();
   const accounts = useAccounts();
   const profiles = useAssetProfiles();
+  const profile = useAssetProfile(account.id);
   const bankDigits = useAccountNumberLast4();
   const phoneDigits = useWalletLast4();
   const tiers = useCardTiers();
@@ -73,6 +75,42 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
     );
   };
 
+  /**
+   * A bank account's number, as much of it as is typed: the whole number goes to the tax report's Nomor Akun, and its
+   * last four digits to the rows and alerts. Only four typed is kept as four, and emptied removes both.
+   */
+  const numberRow = (saved: string | null, whole: string) => {
+    const shown = typed.number ?? (whole || saved || '');
+    const reading = readAccountNumberLast4(shown);
+    return (
+      <TextRow
+        key={`number-${saved ?? ''}-${whole}`}
+        label="Account number"
+        info="Optional. The last 4 digits are enough to tell accounts apart and to file bank alerts under this one; the full number is only needed for the tax report."
+        value={shown}
+        inputMode="numeric"
+        autoComplete="off"
+        onChange={(e) => {
+          setTyped({ number: e.target.value.replace(/[^\d\s-]/g, '') });
+          setProblem(null);
+        }}
+        onBlur={() => {
+          if (!reading.ok) return setProblem(reading.error);
+          const next = shown.trim();
+          if (reading.last4 === saved && next === (whole || saved || '')) return;
+          run(async () => {
+            await setAccountNumberLast4(database, ws, account.id, reading.last4);
+            // Written over what is saved now, as the tax report's own rows are; an account with no profile gets one.
+            await setKasField(database, ws, account, 'acct', next);
+          });
+        }}
+        placeholder="None"
+        className="tabular"
+        hint={problem ? errorHint(problem) : undefined}
+      />
+    );
+  };
+
   const rows = [];
   if (account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype)) {
     rows.push(
@@ -86,7 +124,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
       />,
     );
   }
-  if (bank && bankDigits.data) rows.push(digitsRow(bankDigits.data[account.id] ?? null, readAccountNumberLast4, (last4) => setAccountNumberLast4(database, ws, account.id, last4)));
+  if (bank && bankDigits.data && !profile.isPending) rows.push(numberRow(bankDigits.data[account.id] ?? null, profile.data?.coretaxFields.acct ?? ''));
   if (wallet && phoneDigits.data) rows.push(digitsRow(phoneDigits.data[account.id] ?? null, readWalletLast4, (last4) => setWalletLast4(database, ws, account.id, last4)));
 
   // Which of its bank's debit cards it is drawn as: only a bank whose cards come in tiers that look nothing alike.

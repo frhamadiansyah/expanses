@@ -28,5 +28,16 @@ test('a bank account named by the end of its number shows it on its transactions
   await page.goto('/wallet');
   await walletCard(page, 'BCA Tahapan').click();
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByLabel('Last 4 digits', { exact: true })).toHaveValue('4321');
+  const number = page.getByLabel('Account number', { exact: true });
+  await expect(number).toHaveValue('4321');
+  // The whole number can be typed here: the rows keep its last four, and the tax report's own rows do not ask again.
+  await number.fill('1234 5678 9012');
+  await number.press('Tab');
+  await page.waitForTimeout(800);
+  await expect(page.getByText('Account holder')).toHaveCount(1);
+  await expect(page.getByLabel('Account number', { exact: true })).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByLabel('Account number', { exact: true })).toHaveValue('1234 5678 9012');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('9012');
 });

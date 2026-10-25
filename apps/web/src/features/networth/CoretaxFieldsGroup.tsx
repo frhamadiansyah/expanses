@@ -36,6 +36,7 @@ export function CoretaxFieldsGroup({
   fallbacks = {},
   lead = [],
   tail = [],
+  hide = [],
 }: {
   profile: AssetProfileRow;
   section: CoretaxSection;
@@ -48,6 +49,8 @@ export function CoretaxFieldsGroup({
   lead?: ReactElement[];
   /** Rows that close the box after the fields. */
   tail?: ReactElement[];
+  /** Fields asked for elsewhere on the page (a bank account's number): not drawn, and never written from here. */
+  hide?: readonly string[];
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -65,7 +68,8 @@ export function CoretaxFieldsGroup({
       // Written over what is saved now, not what this screen was drawn from: another row saved a moment ago (when it
       // was acquired, a field just left) would otherwise be put back.
       const current = (await getAssetProfile(database, ws, profile.accountId)) ?? profile;
-      const next = fieldsToSave(current.coretaxFields, fields, wrong);
+      const typed = Object.fromEntries(Object.entries(fields).filter(([key]) => !hide.includes(key)));
+      const next = fieldsToSave(current.coretaxFields, typed, wrong);
       if (JSON.stringify(next) === JSON.stringify(current.coretaxFields)) return setSaved(`${label} saved`);
       await saveAssetProfile(database, ws, {
         accountId: current.accountId,
@@ -97,7 +101,7 @@ export function CoretaxFieldsGroup({
     </span>
     <InsetGroup header={lead.length > 0 ? 'Tax report' : 'Tax report details'}>
       {lead}
-      {CORETAX_SECTIONS[section].fields.map((field, i, all) => {
+      {CORETAX_SECTIONS[section].fields.filter((field) => !hide.includes(field.key)).map((field, i, all) => {
         const problem = problems.find((item) => item.key === field.key);
         return (
           <TextRow
