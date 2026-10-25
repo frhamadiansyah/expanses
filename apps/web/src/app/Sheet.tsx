@@ -1,4 +1,5 @@
 import { Check, ChevronLeft, Plus, Search, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useKeyboardInset } from '../ui/native/KeyboardStrip';
 import { type Detent, landing } from './sheet-detents';
@@ -164,7 +165,10 @@ export function Sheet({
     // Once, for as long as this sheet is on screen: the count is of sheets, not of renders.
   }, []);
 
-  return (
+  // Drawn into the body, not where the sheet is used: a page with a transformed ancestor (a card's page coming up, a
+  // sliding column) would otherwise become the containing block of this fixed overlay, and the sheet would stop short
+  // of the screen's edges.
+  return createPortal(
     <div
       className="fixed inset-x-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
       // A sheet as tall as its rows, with the keyboard up: the overlay is the part of the page showing above the keyboard
@@ -255,7 +259,8 @@ export function Sheet({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

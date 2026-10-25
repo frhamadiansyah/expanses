@@ -263,7 +263,12 @@
 }
 
 .ph-card-page-in {
-  animation: ph-card-page-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms both;
+  /*
+   * `backwards`, not `both`: held after it ends, the animation keeps the page a transformed element, and a transformed
+   * ancestor becomes the containing block of every fixed child in WebKit — a sheet opened on the page then drew inside
+   * the page's own box (a margin at each side, its foot above the tab bar) instead of over the whole screen.
+   */
+  animation: ph-card-page-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms backwards;
 }
 
 /* The bar over an open card — ✕ and ⚙ — fading in where the large title was, rather than standing in for it at once. */
@@ -273,7 +278,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ph-card-page-in {
-    animation: ph-fade-in 160ms ease-out both;
+    animation: ph-fade-in 160ms ease-out backwards;
   }
 }
 
