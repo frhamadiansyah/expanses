@@ -1,6 +1,27 @@
 import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { categoryNameForKey, searchCatalog } from './catalog-picker';
+import { categoryNameForKey, debitEntries, rewardsLabel, searchCatalog } from './catalog-picker';
+
+describe('debitEntries', () => {
+  it('keeps only debit cards', () => {
+    const debit = debitEntries(CATALOG);
+    expect(debit.length).toBeGreaterThan(0);
+    expect(debit.every((entry) => entry.cardType === 'debit')).toBe(true);
+    expect(debit.length).toBeLessThan(CATALOG.length);
+  });
+});
+
+describe('rewardsLabel', () => {
+  const entry = debitEntries(CATALOG)[0]!;
+  it('says Not set up without a programme', () => {
+    expect(rewardsLabel(undefined, CATALOG)).toBe('Not set up');
+  });
+  it('names the linked catalogue programme, else the programme, else Earning', () => {
+    expect(rewardsLabel({ name: 'Old name', catalogEntryId: entry.id }, CATALOG)).toBe(entry.program.name);
+    expect(rewardsLabel({ name: 'Own', catalogEntryId: null }, CATALOG)).toBe('Own');
+    expect(rewardsLabel({ name: '', catalogEntryId: null }, CATALOG)).toBe('Earning');
+  });
+});
 
 describe('searchCatalog', () => {
   it('matches every query word against bank and card name, in any order and case', () => {

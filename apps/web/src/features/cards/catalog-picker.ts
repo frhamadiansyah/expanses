@@ -19,6 +19,19 @@ const CATEGORY_NAMES = new Map<string, string>(
   ]),
 );
 
+/** The debit cards a bank account can take its rewards from. */
+export const debitEntries = (entries: readonly CatalogEntry[]): CatalogEntry[] => entries.filter((entry) => entry.cardType === 'debit');
+
+/**
+ * What the Card rewards row on a bank account says: the linked catalogue card's programme, else the programme's own
+ * name, else "Earning" for one with no name, and "Not set up" when the account has none.
+ */
+export function rewardsLabel(program: { name: string; catalogEntryId: string | null } | undefined, entries: readonly CatalogEntry[]): string {
+  if (!program) return 'Not set up';
+  const entry = program.catalogEntryId ? entries.find((candidate) => candidate.id === program.catalogEntryId) : undefined;
+  return entry?.program.name || program.name || 'Earning';
+}
+
 export const categoryNameForKey = (key: string) => CATEGORY_NAMES.get(key) ?? key;
 
 /** Levels the entry publishes, in the order the bank lists them. Empty when earning does not depend on standing. */
