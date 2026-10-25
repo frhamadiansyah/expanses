@@ -185,13 +185,14 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
             // profile (a broker made from Add holding) still shows its kas row: saving a field gives it the profile
             // Add account would have.
             money || profile.data?.coretaxSection
-              ? (lead) => (
+              ? (lead, tail) => (
                   <CoretaxFieldsGroup
                     key={`fields-${accountId}`}
                     profile={profile.data ?? { ...profileDefaults('cash'), coretaxSection: 'kas', coretaxCode: cashCodeFor(account?.subtype), accountId, workspaceId: ws.workspaceId, updatedAt: '' }}
                     section={profile.data?.coretaxSection ?? 'kas'}
                     fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
                     lead={lead}
+                    tail={tail}
                   />
                 )
               : undefined

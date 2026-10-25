@@ -66,7 +66,7 @@ export function AssetSettings({
   beforeTax?: ReactNode;
   /** The tax report's own questions for it, under the Tax report group. */
   /** The report's questions for this asset, given the Tax report rows to open their box with; left out, the rows stand alone. */
-  taxFields?: (lead: ReactElement[]) => ReactNode;
+  taxFields?: (lead: ReactElement[], tail: ReactElement[]) => ReactNode;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -126,6 +126,27 @@ export function AssetSettings({
     // The number alone; what it stands for is in the sheet it opens.
     <PickerRow key="code" label="Code" value={code === '' ? 'Not chosen' : code} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
   ];
+  // The last row of the Tax report box: how its income is taxed is a question of the report, not of the plan.
+  const incomeTax = (
+        <SelectRow
+          key="income-tax"
+          label="Income tax"
+          // "Not set" is an answer the row prints, so it has a value of its own rather than the empty one a prompt has.
+          value={taxTreatment ?? 'unset'}
+          onChange={(e) =>
+            void save('treatment', () => setAssetReporting(database, ws, accountId, { taxTreatment: e.target.value === 'unset' ? null : (e.target.value as Treatment) }))
+          }
+          info="Final: reported, but not added to taxable income, as with a government bond coupon. Not a tax object: no tax at all. Ordinary: added to taxable income, as with a holding abroad. A reinvested dividend is marked on the payment itself."
+          hint={errorHint(errors.treatment)}
+        >
+          <option value="unset">Not set</option>
+          {(Object.keys(TAX_TREATMENT_LABELS) as Treatment[]).map((key) => (
+            <option key={key} value={key}>
+              {TAX_TREATMENT_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+  );
   return (
     <>
       <InsetGroup>
@@ -169,31 +190,14 @@ export function AssetSettings({
             hint={errorHint(errors.lots)}
           />
         )}
-        <SelectRow
-          label="Income tax"
-          // "Not set" is an answer the row prints, so it has a value of its own rather than the empty one a prompt has.
-          value={taxTreatment ?? 'unset'}
-          onChange={(e) =>
-            void save('treatment', () => setAssetReporting(database, ws, accountId, { taxTreatment: e.target.value === 'unset' ? null : (e.target.value as Treatment) }))
-          }
-          info="Final: reported, but not added to taxable income, as with a government bond coupon. Not a tax object: no tax at all. Ordinary: added to taxable income, as with a holding abroad. A reinvested dividend is marked on the payment itself."
-          hint={errorHint(errors.treatment)}
-        >
-          <option value="unset">Not set</option>
-          {(Object.keys(TAX_TREATMENT_LABELS) as Treatment[]).map((key) => (
-            <option key={key} value={key}>
-              {TAX_TREATMENT_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
       </InsetGroup>
 
       {beforeTax}
 
       {taxFields && reportable ? (
-        taxFields(taxRows)
+        taxFields(taxRows, [incomeTax])
       ) : (
-        <InsetGroup header="Tax report">{taxRows}</InsetGroup>
+        <InsetGroup header="Tax report">{[...taxRows, incomeTax]}</InsetGroup>
       )}
 
       {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}

@@ -35,6 +35,7 @@ export function CoretaxFieldsGroup({
   section,
   fallbacks = {},
   lead = [],
+  tail = [],
 }: {
   profile: AssetProfileRow;
   section: CoretaxSection;
@@ -45,6 +46,8 @@ export function CoretaxFieldsGroup({
   fallbacks?: Record<string, { value: string; from: string }>;
   /** Rows that open the box before the fields: the asset's own Tax report rows, so the whole report is one box. */
   lead?: ReactElement[];
+  /** Rows that close the box after the fields. */
+  tail?: ReactElement[];
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -115,6 +118,7 @@ export function CoretaxFieldsGroup({
           />
         );
       })}
+      {tail}
     </InsetGroup>
     </>
   );
