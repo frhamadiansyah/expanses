@@ -1,9 +1,10 @@
 import { type AccountRow, setAccountCardTier, setAccountForSpending, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { errorHint } from '../networth/AssetSettings';
 import { useAssetProfiles } from '../networth/queries';
 import { useAccountNumberLast4, useCardTiers, useProgramByAccount, useWalletLast4 } from '../cards/card-queries';
@@ -21,6 +22,7 @@ import { last4Field, readAccountNumberLast4, readWalletLast4 } from './wallet-la
 export function AccountSettingsBox({ account, onError }: { account: AccountRow; onError: (error: unknown) => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const navigate = useNavigate();
   const accounts = useAccounts();
   const profiles = useAssetProfiles();
   const bankDigits = useAccountNumberLast4();
@@ -111,7 +113,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   // Whether its debit card earns rewards: the way to the card's page, where they are set up and kept.
   if (bank && account.parentId === null && programs.data) {
     const program = programs.data.get(account.id);
-    rows.push(<InsetRow key="rewards" testId="debit-card-rewards" title="Debit card rewards" value={program ? program.name || 'Earning' : 'Not set up'} to="/cards/$cardId" params={{ cardId: account.id }} />);
+    rows.push(<PickerRow key="rewards" label="Card rewards" value={program ? program.name || 'Earning' : 'Not set up'} onOpen={() => void navigate({ to: '/cards/$cardId', params: { cardId: account.id } })} />);
   }
 
   return rows.length === 0 ? null : <InsetGroup>{rows}</InsetGroup>;

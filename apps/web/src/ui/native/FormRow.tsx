@@ -328,9 +328,12 @@ export function DestructiveRow({
   onClick,
   position,
   muted = false,
+  calm = false,
 }: GroupChild & {
   label: string;
   onClick: () => void;
+  /** Drawn in the ordinary ink, not the alarm's: a way out that loses nothing, such as Archive. */
+  calm?: boolean;
   /** Not available yet: drawn grey, and still pressed, so the press can say why rather than a line always under it. */
   muted?: boolean;
 }) {
@@ -340,7 +343,7 @@ export function DestructiveRow({
       <button
         type="button"
         onClick={onClick}
-        className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-alarm)]')}
+        className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted ? 'text-[var(--ph-ink-3)]' : calm ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-alarm)]')}
         style={shell(false)}
       >
         {label}

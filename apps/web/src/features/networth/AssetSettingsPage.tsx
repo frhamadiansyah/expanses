@@ -239,6 +239,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           <InsetGroup>
             <DestructiveRow
               label="Archive"
+              calm
               // Not yet: grey, and a press says why, as Delete's press asks first.
               muted={!archivable}
               onClick={() =>

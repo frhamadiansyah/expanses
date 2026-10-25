@@ -22,7 +22,7 @@ test('Reorder cards puts a credit card in front of the money in all three views,
  * A bank account's debit card rewards are reached from the account's Settings, not from a group on Wallet: the row says
  * "Not set up" until the account has a programme, and opens the account as a card, where one is set up.
  */
-test('Debit card rewards is a row of a bank account’s Settings, not a group on Wallet', async ({ page }) => {
+test('Card rewards is a row of a bank account’s Settings, not a group on Wallet', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '3000000' });
   await page.goto('/wallet');
   await expect(walletCard(page, 'Everyday')).toBeVisible();
@@ -32,11 +32,11 @@ test('Debit card rewards is a row of a bank account’s Settings, not a group on
   await expect(page).toHaveURL(/\/accounts\/([^/]+)$/);
   const accountId = /\/accounts\/([^/]+)$/.exec(page.url())![1]!;
   // Not on the account's page itself any more…
-  await expect(page.getByTestId('debit-card-rewards')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Card rewards/ })).toHaveCount(0);
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   // …but in its Settings, saying it is not set up yet, and opening the account as a card.
-  const row = page.getByTestId('debit-card-rewards');
-  await expect(row).toContainText('Debit card rewards');
+  const row = page.getByRole('button', { name: /Card rewards/ });
+  await expect(row).toContainText('Card rewards');
   await expect(row).toContainText('Not set up');
   await row.click();
   await expect(page).toHaveURL(new RegExp(`/cards/${accountId}$`));
