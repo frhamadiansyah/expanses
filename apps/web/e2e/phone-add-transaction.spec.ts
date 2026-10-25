@@ -541,17 +541,19 @@ test('a field focused in a sheet sits above the keyboard, the amount as much as 
       [KEYBOARD, up] as const,
     );
   const top = await page.evaluate(() => window.innerHeight);
+  const bottom = async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height;
   const balance = step.getByLabel('Current balance', { exact: true });
   for (const field of [step.getByLabel('Name', { exact: true }), balance]) {
     await field.focus();
     await keyboard(true);
-    await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeLessThanOrEqual(top - KEYBOARD + 1);
-    const box = (await field.boundingBox())!;
-    expect(box.y).toBeGreaterThanOrEqual((await step.boundingBox())!.y);
-    expect(box.y + box.height).toBeLessThanOrEqual(top - KEYBOARD);
+    // The sheet keeps reaching the bottom of the screen, under the keyboard, as an iOS sheet does: no band of the
+    // page behind shows between the two. The field itself is what is raised above the keys.
+    await expect.poll(async () => { const box = (await field.boundingBox())!; return box.y + box.height; }).toBeLessThanOrEqual(top - KEYBOARD);
+    expect(await bottom()).toBeGreaterThan(top - 2);
+    expect((await field.boundingBox())!.y).toBeGreaterThanOrEqual((await step.boundingBox())!.y);
     await field.blur();
     await keyboard(false);
-    await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeGreaterThan(top - 2);
+    await expect.poll(bottom).toBeGreaterThan(top - 2);
   }
 
   // The currency is no field the keyboard is raised for: it is the symbol beside the typed figure, on the same row
@@ -559,10 +561,8 @@ test('a field focused in a sheet sits above the keyboard, the amount as much as 
   await balance.focus();
   await balance.pressSequentially('250000');
   await keyboard(true);
-  await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeLessThanOrEqual(top - KEYBOARD + 1);
   const symbol = step.getByRole('button', { name: 'Currency: IDR', exact: true });
-  const box = (await symbol.boundingBox())!;
-  expect(box.y + box.height).toBeLessThanOrEqual(top - KEYBOARD);
+  await expect.poll(async () => { const box = (await symbol.boundingBox())!; return box.y + box.height; }).toBeLessThanOrEqual(top - KEYBOARD);
   await symbol.click();
   await expect(page.getByRole('dialog', { name: 'Currency' })).toBeVisible();
 });

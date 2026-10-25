@@ -120,9 +120,9 @@ export function Sheet({
    * currency code was one: a field one code wide that selects its own text as it takes the focus, beside an amount
    * field on the same row that WebKit did reveal.
    *
-   * So the sheet stands on the keyboard itself, by however much of the window the keyboard still covers — what
-   * WebKit already scrolled is not counted twice, since the inset is read from where the window was left — and a
-   * field focused in it is scrolled into the sheet's own view. Every field in a sheet then behaves the same, whatever
+   * So the sheet's rows make room under them by however much of the window the keyboard still covers — what WebKit
+   * already scrolled is not counted twice, since the inset is read from where the window was left — and a field
+   * focused in it is scrolled into the sheet's own view. Every field in a sheet then behaves the same, whatever
    * kind of field it is. On a desktop there is no keyboard, the inset is zero, and nothing here moves.
    */
   const keyboard = useKeyboardInset();
@@ -162,8 +162,6 @@ export function Sheet({
   return (
     <div
       className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
-      // The sheet rests on the keyboard's top edge rather than on the bottom of the window the keyboard covers.
-      style={keyboard > 0 ? { paddingBottom: keyboard } : undefined}
       onPointerDown={(e) => {
         scrimDown.current = e.target === e.currentTarget;
       }}
@@ -184,11 +182,15 @@ export function Sheet({
         onFocus={(event) => reveal(event.target)}
         className={`${detents ? (dragged === null ? 'transition-[height] duration-300 ease-out' : '') : tall ? 'h-[85dvh] md:h-[80dvh]' : ''} ${detents ? '' : 'max-h-[85dvh]'} w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
         style={{
-          paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
-          ...(detents ? { height: dragged ?? (detent === 'large' ? '92dvh' : '50dvh') } : {}),
-          // Standing on the keyboard, the sheet is no taller than what is left above it, under the status bar: a
-          // large detent would otherwise push its own header off the top. Its rows scroll inside it meanwhile.
-          ...(keyboard > 0 ? { maxHeight: 'calc(100% - env(safe-area-inset-top))' } : {}),
+          /*
+           * The sheet keeps its place and its height when the keyboard comes, as an iOS sheet does: the keyboard rises
+           * over its lower part, and the rows make room under them by the keyboard's height, so the last field can be
+           * scrolled above it. Lifting the whole sheet onto the keyboard instead left a band of the page behind showing
+           * between the two whenever the measured keyboard ran taller than the one drawn.
+           */
+          paddingBottom: keyboard > 0 ? `calc(1rem + ${keyboard}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
+          // With the keyboard up a sheet with detents stands at large, so what it holds has room above the keys.
+          ...(detents ? { height: dragged ?? (detent === 'large' || keyboard > 0 ? '92dvh' : '50dvh') } : {}),
         }}
         data-detent={detents ? detent : undefined}
       >
