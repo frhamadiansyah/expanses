@@ -258,13 +258,14 @@ export function WalletPage() {
       )}
       {/*
        * The cards, laid out as this device chose. An open card is always the stack's raised card over its page,
-       * whichever layout it was opened from: the grid and the carousel are ways of reading the cards at rest, and
+       * alone when it was opened from the grid or the carousel: the grid and the carousel are ways of reading the cards at rest, and
        * come back as soon as the card is put down.
        */}
       {ready && wallet.length > 0 && (raised || view === 'stack') && (
         <CardStack
           label="Cards"
-          cards={wallet}
+          // Opened from the grid or the carousel, the card stands alone: the pile above its page was clutter there.
+          cards={raised && view !== 'stack' ? [raised] : wallet}
           raised={raised?.key ?? null}
           onClose={close}
           onOpen={(key) => void navigate({ to: '/accounts/$accountId', params: { accountId: key } })}
