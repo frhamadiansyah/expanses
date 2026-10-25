@@ -230,10 +230,6 @@ export function MerchantsPage() {
       )}
       {query && own.length === 0 && typical.length === 0 && <Empty>No merchant matches that.</Empty>}
 
-      <p className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-        Points follow the merchant's code (MCC). A merchant here sets it for every purchase that names it.
-      </p>
-
       {opened && (
         <MerchantSheet
           // A new key for each merchant opened, so the sheet's fields start from that merchant and nothing else.

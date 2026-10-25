@@ -198,10 +198,29 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
 /**
  * A screen's title block: where back goes, the title, and at most two corner buttons.
  *
+ * A screen with a way back is a subpage, and every subpage reads one way: the round ‹, its name in the middle of the
+ * same row and its corners at the right — `PushedTitle`, as Points and a bill already draw it — with any subtitle
+ * under that row. Only a section's own top level keeps the large title.
+ */
+export function LargeTitle(props: Parameters<typeof SectionTitle>[0]) {
+  const { title, back, onBack, backTo, backParams, backSearch, actions, max, field, subtitle } = props;
+  // An open search spans the whole row, as Cashflow's does: no way back beside it, ✕ closes it.
+  if (!back || field) return <SectionTitle {...props} />;
+  return (
+    <>
+      <PushedTitle title={title} back={back} onBack={onBack} backTo={backTo} backParams={backParams} backSearch={backSearch} actions={actions} max={max} />
+      {subtitle && <p className="-mt-[6px] mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}
+    </>
+  );
+}
+
+/**
+ * A section's title block: the title large in the page's own ink, and at most two corner buttons.
+ *
  * On a wide screen the title steps down — 30 px is a phone's answer to having no room for chrome, and a 1440 px
  * window has room, so the desktop gets a title that sits in a header rather than one that is the header.
  */
-export function LargeTitle({
+function SectionTitle({
   title,
   back,
   onBack,
