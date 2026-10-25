@@ -48,11 +48,11 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await settle(page);
   await addTransaction(page, { description: 'Mothercare', paidWith: 'BCA Tahapan', category: 'Food and beverage', amount: '4150000' });
 
-  // The way to an event on a phone: the account sheet, where every screen the tab bar cannot hold lives.
+  // The way to an event on a phone: the Account page, where every screen the tab bar cannot hold lives.
   await page.goto('/');
   await settle(page);
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Account' }).getByRole('link', { name: /^Events/ }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: /^Events/ }).click();
   await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
 
   // The round ＋, not the worded button: on a phone the header gives the title its room and puts the action in a ring.

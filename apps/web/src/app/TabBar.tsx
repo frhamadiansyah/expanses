@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
-import { Plus, UserRound } from 'lucide-react';
-import { cx } from '../ui';
-import { TABS } from './nav';
+import { Plus } from 'lucide-react';
+import { ACCOUNT_TAB, TABS } from './nav';
 
 /**
  * The phone's tab bar: a capsule floating over the page rather than a strip welded to its foot.
@@ -10,7 +9,7 @@ import { TABS } from './nav';
  * wears a filled pill behind its icon. The + is a filled circle in the app's green: recording a purchase is the
  * commonest thing done here, so the thumb finds it without looking, and everything else on the bar stays quiet.
  */
-export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; onAccount: () => void; accountOpen: boolean }) {
+export function TabBar({ onAdd }: { onAdd: () => void }) {
   /*
    * The shell's own chrome, in the app's own colours: the capsule is the kit's surface at 80%, so a phone on a
    * black page gets a black bar and the same bar it always had on a white one. `--ph-fill` behind the tab you are
@@ -42,9 +41,9 @@ export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; o
             <tab.icon size={24} strokeWidth={1.9} aria-hidden />
           </Link>
         ))}
-        <button type="button" onClick={onAccount} aria-expanded={accountOpen} aria-label="Account" className={cx(cell, accountOpen && here)}>
-          <UserRound size={24} strokeWidth={1.9} aria-hidden />
-        </button>
+        <Link to={ACCOUNT_TAB.to} className={cell} aria-label={ACCOUNT_TAB.label} activeProps={{ className: here, 'aria-current': 'page' }}>
+          <ACCOUNT_TAB.icon size={24} strokeWidth={1.9} aria-hidden />
+        </Link>
       </nav>
     </div>
   );

@@ -80,7 +80,8 @@ import { BrokerPage } from '../features/investments/BrokerPage';
 import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
-import { SettingsPage } from '../features/workspaces/SettingsPage';
+import { WorkspacePage } from '../features/workspaces/WorkspacePage';
+import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { Layout } from './Layout';
@@ -392,7 +393,16 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
+  // Settings was the page of workspaces; they live on the Account page now, so an old link lands there.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/settings',
+    beforeLoad: () => {
+      throw redirect({ to: '/account', replace: true });
+    },
+  }),
   // Household sharing: where a `cicis://join/<code>` link lands, in the shell and on the web alike (spec §11). The code is
   // the fragment, `/join#<code>`: half of it is the invite's secret, and a fragment is never sent to a server.
   createRoute({ getParentRoute: () => rootRoute, path: '/join', component: JoinPage }),

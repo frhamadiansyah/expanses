@@ -6,6 +6,7 @@ import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
+import { openWorkspacePage } from './workspace-page';
 
 /*
  * Household sharing, end to end (spec §11, §13 `sharing.spec.ts`): two people, each in their own browser — two
@@ -50,10 +51,9 @@ async function eventually(page: Page, check: () => Promise<void>) {
   }).toPass({ timeout: 30_000, intervals: [500, 1_000, 2_000] });
 }
 
-/** Settings → Workspaces → the workspace, in the phone's sheet or the desktop's panel. */
+/** Account → the workspace's ›: its own page. */
 async function openWorkspaceSettings(page: Page, name: string) {
-  await page.goto('/settings');
-  await page.getByTestId('settings-workspace-row').filter({ hasText: name }).click();
+  await openWorkspacePage(page, name);
 }
 
 async function openSwitcher(page: Page, phone: boolean) {
@@ -137,7 +137,7 @@ test('two people share a workspace: join, record on both, correct each other, re
   // Named Home, so the joiner's own Personal and the shared one never read alike.
   await openWorkspaceSettings(page, 'Personal');
   await page.getByLabel('Name', { exact: true }).fill('Home');
-  // The ✓ in the title bar: the sheet's on a phone, the Settings title's on a wide screen.
+  // The ✓ in the workspace page's title bar.
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByText('Now called Home.')).toBeVisible();
 
@@ -276,7 +276,7 @@ test('a workspace in another currency than yours cannot be shared, and says why'
 async function shareAndJoin(page: Page, dewi: Page) {
   await openWorkspaceSettings(page, 'Personal');
   await page.getByLabel('Name', { exact: true }).fill('Home');
-  // The ✓ in the title bar: the sheet's on a phone, the Settings title's on a wide screen.
+  // The ✓ in the workspace page's title bar.
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByText('Now called Home.')).toBeVisible();
   await page.getByRole('button', { name: /Share this workspace/ }).click();

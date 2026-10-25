@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addForm, addTransaction, saveButton, chooseTo } from './add-transaction';
+import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
  * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
@@ -60,26 +61,19 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   await expect(picker.getByRole('button', { name: 'Realized Gains', exact: true })).toHaveCount(1);
 });
 
-/**
- * On a phone a workspace's settings rise in a sheet, and its name is saved by the sheet's own ✓ — the bar every
- * sheet that saves carries — rather than by a row under the field.
- */
-test('a workspace is renamed from its sheet’s ✓ in Settings', async ({ page }) => {
-  await page.goto('/settings');
-  await page.getByTestId('settings-workspace-row').filter({ hasText: 'Personal' }).click();
-  await expect(page.getByRole('dialog', { name: 'Personal' })).toBeVisible();
-  // Not found by its name: the sheet is titled with the workspace's name, which is what is about to change.
-  const sheet = page.getByRole('dialog');
-  const save = sheet.getByRole('button', { name: 'Save name' });
+/** A workspace is renamed from its own page, by the ✓ in the title bar rather than by a row under the field. */
+test('a workspace is renamed from its page’s ✓', async ({ page }) => {
+  await openWorkspacePage(page, 'Personal');
+  const save = page.getByRole('button', { name: 'Save name', exact: true });
   await expect(save).toBeDisabled();
-  await sheet.getByLabel('Name', { exact: true }).fill('');
+  await page.getByLabel('Name', { exact: true }).fill('');
   await expect(save).toBeDisabled();
-  await sheet.getByLabel('Name', { exact: true }).fill('Home');
+  await page.getByLabel('Name', { exact: true }).fill('Home');
   await save.click();
-  await expect(sheet.getByText('Now called Home.')).toBeVisible();
+  await expect(page.getByText('Now called Home.')).toBeVisible();
   await expect(save).toBeDisabled();
-  await sheet.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByTestId('settings-workspace-row')).toContainText('Home');
+  await page.goto('/account');
+  await expect(workspaceLine(page, 'Home')).toBeVisible();
 });
 
 /** One account of each kind, so there is somewhere to move money from and somewhere for it to land. */

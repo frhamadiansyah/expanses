@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
+import { MORE_GROUPS, REACHABLE, SETTINGS_ITEMS, TABS } from '../src/app/nav';
 import { openAccount } from './accounts';
 import { addTransaction, addForm } from './add-transaction';
 import { setBudget } from './budget';
@@ -17,24 +17,32 @@ test('the tab bar carries the three places, the add button and the account', asy
   const bar = page.getByRole('navigation', { name: 'Main' });
   for (const tab of TABS) await expect(bar.getByRole('link', { name: tab.label })).toBeVisible();
   await expect(bar.getByRole('button', { name: 'Add a transaction' })).toBeVisible();
-  await expect(bar.getByRole('button', { name: 'Account' })).toBeVisible();
+  await expect(bar.getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/account');
   // The ten-item bar is gone: nothing else hides in there.
-  await expect(bar.getByRole('link')).toHaveCount(TABS.length);
+  await expect(bar.getByRole('link')).toHaveCount(TABS.length + 1);
 });
 
-test('every screen is reachable on a phone, through a tab or through More', async ({ page }) => {
+test('every screen is reachable on a phone, through a tab or through the Account page', async ({ page }) => {
   await page.goto('/');
   await settle(page);
   const bar = page.getByRole('navigation', { name: 'Main' });
   const reachable = new Set<string>();
   for (const tab of TABS) reachable.add(await bar.getByRole('link', { name: tab.label }).getAttribute('href') ?? '');
 
-  await bar.getByRole('button', { name: 'Account' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Account' });
+  await bar.getByRole('link', { name: 'Account' }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  reachable.add('/account');
+  // Capture is drawn on the phone app only; the browser does not offer it, and its address still works.
+  for (const item of SETTINGS_ITEMS.filter((each) => each.to !== '/settings/capture')) {
+    const link = page.getByRole('link', { name: new RegExp(`^${item.label}`) });
+    await expect(link).toBeVisible();
+    reachable.add((await link.getAttribute('href')) ?? '');
+  }
+  reachable.add('/settings/capture');
   for (const group of MORE_GROUPS) {
     for (const item of group.items) {
       // Backup and Review carry a note in their name ("Backup · today"), so match on the label alone.
-      const link = sheet.getByRole('link', { name: new RegExp(`^${item.label}`) });
+      const link = page.getByRole('link', { name: new RegExp(`^${item.label}`) });
       await expect(link).toBeVisible();
       reachable.add((await link.getAttribute('href')) ?? '');
     }
@@ -42,19 +50,16 @@ test('every screen is reachable on a phone, through a tab or through More', asyn
   for (const route of REACHABLE) expect(reachable).toContain(route);
 });
 
-test('the account sheet opens a screen that had no phone route before, and closing it comes back', async ({ page }) => {
+test('the Account page is a main page: no way back, and a screen opened from it comes back to it', async ({ page }) => {
   await page.goto('/');
   await settle(page);
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Account' }).getByRole('link', { name: 'Tax report' }).click();
+  const bar = page.getByRole('navigation', { name: 'Main' });
+  await bar.getByRole('link', { name: 'Account' }).click();
+  await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Account', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Account', exact: true })).toHaveCount(1);
+  await page.getByRole('link', { name: 'Tax report' }).click();
   await expect(page.getByRole('heading', { name: /tax/i }).first()).toBeVisible();
-  await expect(page.getByRole('dialog', { name: 'Account' })).toHaveCount(0);
-
-  // And the sheet itself closes without going anywhere.
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Account' })).toBeVisible();
-  await page.getByRole('dialog', { name: 'Account' }).getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('dialog', { name: 'Account' })).toHaveCount(0);
   await expect(page).toHaveURL(/\/tax-report$/);
 });
 
