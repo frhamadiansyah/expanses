@@ -45,7 +45,6 @@ import { SetAsidePanel } from '../networth/SetAsidePanel';
 import { useAssetProfiles, useAssetValues, useDepositAutomation, usePositions } from '../networth/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { buildRows } from '../transactions/list-model';
-import { TransactionCard } from '../transactions/TransactionCard';
 import { TransactionRow } from '../transactions/TransactionRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { AddCurrencyForm } from './AddPocketPage';
@@ -101,8 +100,6 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   // Opened from Wallet's stack: the raised card is the page's header, so the page leaves it a slot.
   const slot = useWalletSlot();
   const [actionError, setActionError] = useState<unknown>(null);
-  const [newTx, setNewTx] = useState<NewTxDraft | null>(null);
-  const [txReady, setTxReady] = useState(false);
   const [addingCurrency, setAddingCurrency] = useState(false);
   const [currencyReady, setCurrencyReady] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
@@ -204,7 +201,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       {deposit ? (
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
-        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, { newTx: setNewTx, moneyIn: setMovingIn, adjust: () => setAdjusting(true) })} />
+        <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, { // Spend, Receive and Transfer open the Add screen itself with this account filled in, as ＋ opens it: one place to add.
+    newTx: (draft) => void navigate({ to: '/transactions/new', search: { mode: draft.mode, ...(draft.account ? { account: draft.account } : {}), ...(draft.to ? { to: draft.to } : {}) } }), moneyIn: setMovingIn, adjust: () => setAdjusting(true) })} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
@@ -277,24 +275,6 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit() }}
         >
           <MoneyInForm into={account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
-        </Sheet>
-      )}
-      {newTx && (
-        <Sheet
-          grouped
-          tall
-          title={NEW_TX_TITLE[newTx.mode]}
-          onClose={() => setNewTx(null)}
-          // ✕ and ✓ in the header, as every other sheet that makes something: no Save bar floating at the foot.
-          confirm={{ label: 'Save', disabled: !txReady, run: () => (document.getElementById(NEW_TX_FORM) as HTMLFormElement | null)?.requestSubmit() }}
-        >
-          <TransactionCard
-            fixedMode
-            headerSave={{ formId: NEW_TX_FORM, onReady: setTxReady }}
-            mode={newTx.mode}
-            seed={{ moneyId: newTx.account, toId: newTx.to }}
-            onDone={() => setNewTx(null)}
-          />
         </Sheet>
       )}
     </div>
@@ -396,11 +376,9 @@ function CurrencyFlag({ currency }: { currency: string }) {
 }
 
 /** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
-const NEW_TX_FORM = 'account-new-transaction';
 const ADD_CURRENCY_FORM = 'account-add-currency';
 const ADJUST_FORM = 'account-adjust-balance';
 const MONEY_IN_FORM = 'account-money-in';
-const NEW_TX_TITLE: Record<NewTxDraft['mode'], string> = { expense: 'New expense', income: 'New income', transfer: 'New transfer' };
 
 /** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */
 interface NewTxDraft {
