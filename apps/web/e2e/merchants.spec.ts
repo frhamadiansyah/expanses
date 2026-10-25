@@ -12,11 +12,22 @@ test('a merchant added from + shows in Mine, both lists stay tables on a desktop
   // + opens the New merchant sheet; ✓ saves.
   await page.getByRole('button', { name: 'New merchant' }).click();
   const sheet = page.getByRole('dialog', { name: 'New merchant' });
-  await sheet.getByLabel('Name in purchases').fill('Warung Bunda');
-  await sheet.getByLabel('MCC', { exact: true }).fill('5814');
+  await sheet.getByLabel('Merchant', { exact: true }).fill('Warung Bunda');
+  // No helper line under the fields.
+  await expect(sheet.getByText(/whole words|purchases? match/)).toHaveCount(0);
+  // MCC is one row, "Choose" until a code is picked; it opens a step that finds one by name.
+  const mccRow = sheet.getByRole('button', { name: /^MCC/ });
+  await expect(mccRow).toHaveText(/^MCC\s*Choose/);
+  await mccRow.click();
+  const step = page.getByRole('dialog', { name: 'MCC' });
+  await step.getByRole('textbox', { name: 'Find an MCC' }).fill('fast food');
+  await step.getByRole('button', { name: /Fast Food Restaurants/ }).click();
+  await expect(sheet.getByRole('button', { name: /^MCC/ })).toContainText('5814');
+  await expect(sheet.getByRole('button', { name: /^MCC/ })).toContainText('Fast Food Restaurants');
   await sheet.getByRole('button', { name: 'Save merchant' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByText(/^Saved\./)).toBeVisible();
+  // A save says nothing on the page: the row is the answer.
+  await expect(page.getByText(/^Saved\./)).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'warung bunda', exact: true })).toBeVisible();
 
   // Search takes the title's row and filters both lists, here by the code.
@@ -34,7 +45,7 @@ test('a merchant added from + shows in Mine, both lists stay tables on a desktop
   const edit = page.getByRole('dialog');
   await expect(edit.getByLabel('Use typical code')).toBeChecked();
   await edit.getByLabel('Use typical code').uncheck({ force: true });
-  await expect(edit.getByLabel('MCC', { exact: true })).toHaveCount(0);
+  await expect(edit.getByRole('button', { name: /^MCC/ })).toHaveCount(0);
   await edit.getByRole('button', { name: 'Save changes' }).click();
   await expect(edit).toHaveCount(0);
   const ignored = page.getByRole('row').filter({ hasText: 'Ignored: the typical MCC is not used' });

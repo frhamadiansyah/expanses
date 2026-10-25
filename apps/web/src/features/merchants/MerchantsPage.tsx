@@ -1,6 +1,6 @@
 import { MERCHANTS } from '@expanses/catalog';
 import { mccName } from '@expanses/core';
-import { archiveMerchantMcc, countMatchingPurchases, countPurchasesByPattern, listMerchantMccs, type MerchantMccRow, saveMerchantMcc } from '@expanses/db';
+import { archiveMerchantMcc, countPurchasesByPattern, listMerchantMccs, type MerchantMccRow, saveMerchantMcc } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -21,7 +21,7 @@ import {
   SwitchRow,
   TextRow,
 } from '../../ui/native';
-import { MccPicker } from './MccPicker';
+import { MccRow, MccSearch } from './MccPicker';
 import { type BundledRow, bundledRows, merchantOutcome, type MineRow, mineRows, normalisePattern, patternAsName, typicalFor } from './merchant-rows';
 
 const describeMcc = (mcc: string | null) => (mcc === null ? 'Ignored: the typical MCC is not used' : `${mcc} ${mccName(mcc) ?? ''}`.trim());
@@ -57,7 +57,8 @@ function Screen({ children }: { children: ReactNode }) {
 /**
  * Merchant memory and the bundled merchant list: which MCC a purchase gets from its description.
  *
- * The owner's merchants first, the researched typical codes under them, one footer line; search and + in the corners.
+ * The owner's merchants first, the researched typical codes under them; search and + in the corners. A save says
+ * nothing: the row it lands in is the answer.
  * Adding and changing a merchant both happen in one sheet, so adding is never confused with searching.
  */
 export function MerchantsPage() {
@@ -66,7 +67,6 @@ export function MerchantsPage() {
   const [opened, setOpened] = useState<Opened | null>(null);
   const [searching, setSearching] = useState(false);
   const [search, setSearch] = useState('');
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   const memory = useQuery({
@@ -80,12 +80,9 @@ export function MerchantsPage() {
 
   async function save(entry: { id?: string; pattern: string; mcc: string | null }) {
     setError(null);
-    setMessage(null);
     try {
-      const count = await countMatchingPurchases(database, ws, entry.pattern);
       await saveMerchantMcc(database, ws, entry);
       await invalidate();
-      setMessage(`Saved. Estimates update for ${purchasesText(count)}, including past cycles.`);
       return true;
     } catch (e) {
       setError(e);
@@ -97,7 +94,6 @@ export function MerchantsPage() {
   async function forget(row: Pick<MerchantMccRow, 'id' | 'pattern'>, ask = true) {
     if (ask && !window.confirm(`Forget ${row.pattern}? Purchases go back to the typical or category MCC.`)) return false;
     setError(null);
-    setMessage(null);
     try {
       await archiveMerchantMcc(database, ws, row.id);
       await invalidate();
@@ -188,7 +184,6 @@ export function MerchantsPage() {
     <Screen>
       <LargeTitle title="Merchants" back="Wallet" backTo="/wallet" actions={actions} field={searching ? searchField : undefined} />
       <ErrorBox error={error} />
-      {message && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{message}</p>}
 
       {memory.isSuccess && mine.length === 0 && !query ? (
         <InsetGroup header="Mine">
@@ -247,6 +242,9 @@ export function MerchantsPage() {
 /**
  * New merchant (+) and a merchant opened from either list: the name a purchase is matched on, its code, and — where
  * a typical code exists for that name — whether it is used. ✓ saves; the owner's own merchant can be forgotten.
+ *
+ * The MCC row opens a step inside the same sheet — ‹ back to the merchant — to find a code by name or digits. The
+ * form stays mounted underneath while the step is up, so nothing typed is lost and no field takes the focus again.
  */
 function MerchantSheet({
   opened,
@@ -259,19 +257,14 @@ function MerchantSheet({
   onSave: (entry: { id?: string; pattern: string; mcc: string | null }) => Promise<unknown>;
   onForget: (row: { id: string; pattern: string }, ask: boolean) => Promise<unknown>;
 }) {
-  const { database, ws } = useApp();
   const [pattern, setPattern] = useState(opened.pattern);
   const [mcc, setMcc] = useState(opened.mcc);
   const [useTypical, setUseTypical] = useState(opened.useTypical);
   const [busy, setBusy] = useState(false);
+  const [finding, setFinding] = useState(false);
   const typical = typicalFor(MERCHANTS.merchants, pattern);
   const outcome = merchantOutcome({ id: opened.id, pattern, mcc, useTypical }, MERCHANTS.merchants);
   const normalised = normalisePattern(pattern);
-  const matches = useQuery({
-    queryKey: ['merchant-matches', ws.workspaceId, normalised],
-    queryFn: () => countMatchingPurchases(database, ws, normalised),
-    enabled: opened.id !== undefined || opened.pattern !== '',
-  });
   const ignored = typical !== null && !useTypical;
 
   async function confirm() {
@@ -286,39 +279,39 @@ function MerchantSheet({
     }
   }
 
-  const footer =
-    opened.pattern === '' || matches.data === undefined
-      ? "Matched as whole words in a purchase's description."
-      : `${purchasesText(matches.data)} match${matches.data === 1 ? 'es' : ''}.`;
-
   return (
     <Sheet
       grouped
-      title={opened.title}
+      title={finding ? 'MCC' : opened.title}
       onClose={onClose}
-      confirm={{ label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
+      back={finding ? { label: opened.title, run: () => setFinding(false) } : undefined}
+      confirm={finding ? undefined : { label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
+      tall={finding}
+      expanded={finding}
     >
+      {finding && (
+        <MccSearch
+          value={mcc}
+          onPick={(code) => {
+            setMcc(code);
+            setFinding(false);
+          }}
+        />
+      )}
       <form
+        hidden={finding}
         onSubmit={(event) => {
           event.preventDefault();
           void confirm();
         }}
       >
-        <InsetGroup footer={footer}>
-          <TextRow
-            label="Name in purchases"
-            value={pattern}
-            onChange={(e) => setPattern(e.target.value)}
-            placeholder="Merchant name"
-            autoFocus={opened.pattern === ''}
-            autoComplete="off"
-            required
-          />
+        <InsetGroup>
+          <TextRow label="Merchant" value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder="Name" autoFocus={opened.pattern === ''} autoComplete="off" required />
+          {/* Ignored, the merchant has no code of its own to choose, so the row steps aside. */}
+          {!ignored && <MccRow value={mcc} onOpen={() => setFinding(true)} />}
         </InsetGroup>
-        {/* Ignored, the merchant has no code of its own to choose, so the picker steps aside. */}
-        {!ignored && <MccPicker label="MCC" value={mcc} onChange={setMcc} native />}
         {typical && (
-          <InsetGroup footer={ignored ? "Ignored: purchases keep their category's own code." : `Typical code ${codeAndKind(typical.mcc)}.`}>
+          <InsetGroup>
             <SwitchRow label="Use typical code" checked={useTypical} onChange={setUseTypical} />
           </InsetGroup>
         )}

@@ -52,6 +52,8 @@ export function PickerRow({
   position,
   hint,
   disabled = false,
+  detail,
+  detailTone,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
@@ -60,15 +62,28 @@ export function PickerRow({
   hint?: ReactNode;
   /** Greyed and inert: the answer still reads, but nothing opens — a code while the thing is kept off the report. */
   disabled?: boolean;
+  /** A second, smaller line under the answer, in the quiet ink: what a code stands for. Only drawn under an answer. */
+  detail?: ReactNode;
+  /** The detail's ink, when it warns rather than explains. */
+  detailTone?: Tone;
 }) {
   const plan = planFormRow('picker', value, placeholder);
+  const answer = <span className={cx('truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>;
+  const twoLines = Boolean(detail) && !plan.placeholder;
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(false)}>
+      <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(twoLines)}>
         <span className={LABEL}>{label}</span>
         <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
-          <span className={cx('truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
+          {twoLines ? (
+            <span className="flex min-w-0 flex-col items-end">
+              {answer}
+              <span className={cx('mt-[2px] max-w-full truncate text-right text-[12.5px] leading-[16px]', toneClass(detailTone ?? 'ink-3'))}>{detail}</span>
+            </span>
+          ) : (
+            answer
+          )}
           {plan.chevron && (
             <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
               {'›'}
