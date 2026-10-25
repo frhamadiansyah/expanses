@@ -189,6 +189,9 @@ export function Sheet({
            * between the two whenever the measured keyboard ran taller than the one drawn.
            */
           paddingBottom: keyboard > 0 ? `calc(1rem + ${keyboard}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
+          // A sheet that is only as tall as its rows ends above the keyboard's own top bar, which is see-through: with the
+          // keyboard up its colour is cast a screen's height further down, so no page shows between the two.
+          ...(!detents && keyboard > 0 ? { boxShadow: `0 100dvh 0 0 var(${grouped ? '--ph-ground' : '--ph-surface'})` } : {}),
           // With the keyboard up a sheet with detents stands at large, so what it holds has room above the keys.
           ...(detents ? { height: dragged ?? (detent === 'large' || keyboard > 0 ? '92dvh' : '50dvh') } : {}),
         }}
