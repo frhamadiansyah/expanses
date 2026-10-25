@@ -2,15 +2,15 @@ import { isoDate } from '@expanses/core';
 import { type EventRow, saveEvent, type SharedEventSummary } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CalendarRange, Plus } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   type GroupChild,
   InsetGroup,
-  InsetRow,
   LargeTitle,
   ProgressBar,
   ROW_ICON,
@@ -19,7 +19,6 @@ import {
   rowHeight,
   SCREEN,
   SelectRow,
-  SubmitRow,
   TextRow,
 } from '../../ui/native';
 import { useCategorySets } from '../categories/set-queries';
@@ -186,8 +185,7 @@ export function EventsPage() {
   // The most recent first: last month's trip is what is looked back on, not the one from years ago.
   const past = all.filter((event) => eventStatus(event, today) === 'Done').reverse();
 
-  async function addEvent(submitted: FormEvent) {
-    submitted.preventDefault();
+  async function addEvent() {
     setError(null);
     try {
       const id = await saveEvent(database, ws, {
@@ -214,9 +212,16 @@ export function EventsPage() {
       />
       <ErrorBox error={error ?? events.error} />
 
+      {/* A sheet over the list, as every other thing made from a list is: ✕ and ✓ in its header, the page behind it untouched. */}
       {adding && (
-        <form onSubmit={addEvent}>
-          <InsetGroup header="New event">
+        <Sheet
+          grouped
+          tall
+          title="New event"
+          onClose={() => setAdding(false)}
+          confirm={{ label: 'Save event', disabled: name.trim() === '', run: () => void addEvent() }}
+        >
+          <InsetGroup>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
             <SelectRow label="Categories" hint="A set keeps an event's categories out of the monthly tree." value={setId} onChange={(e) => setSetId(e.target.value)}>
               <option value="">The monthly categories</option>
@@ -229,14 +234,11 @@ export function EventsPage() {
             <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
             <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
           </InsetGroup>
-          <InsetGroup>
-            <SubmitRow label="Save event" />
-            <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Cancel</span>} label="Cancel" onClick={() => setAdding(false)} chevron={false} />
-          </InsetGroup>
-        </form>
+          <ErrorBox error={error} />
+        </Sheet>
       )}
 
-      {events.isSuccess && all.length === 0 && !adding && (
+      {events.isSuccess && all.length === 0 && (
         <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>
       )}
 
