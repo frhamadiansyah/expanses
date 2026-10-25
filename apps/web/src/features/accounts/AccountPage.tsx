@@ -10,8 +10,8 @@ import {
   ChevronRight,
   Plus,
   Repeat,
-  Scale,
   Settings,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
@@ -358,7 +358,7 @@ function actionsFor(
   if (!SPENDABLE_SUBTYPES.includes(account.subtype)) return [];
   const spend = newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id });
   const receive = newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id });
-  const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <Scale size={20} aria-hidden />, run: open.adjust });
+  const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <SlidersHorizontal size={20} aria-hidden />, run: open.adjust });
   if (account.subtype === 'cash') {
     return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Count cash')];
   }
