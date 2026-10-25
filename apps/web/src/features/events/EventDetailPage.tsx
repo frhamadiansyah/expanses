@@ -92,7 +92,7 @@ function SharedEventWaiting({ name, loading, error }: { name: string; loading: b
   );
 }
 
-/** The shared page with its ⋯ menu wired: People, Done or Reopen, Leave (shared events §6). */
+/** The shared page with its ⋯ menu wired: People, Categories, Done or Reopen, Leave (shared events §6). */
 function SharedEventScreen({ view }: { view: SharedEventView }) {
   const { database, ws, sync } = useApp();
   const invalidate = useInvalidateAll();
@@ -109,6 +109,7 @@ function SharedEventScreen({ view }: { view: SharedEventView }) {
   };
   const menu = sharedEventMenu(view, {
     people: () => void navigate({ to: '/events/$eventId/people', params: { eventId: view.eventId } }),
+    categories: () => void navigate({ to: '/events/$eventId/categories', params: { eventId: view.eventId } }),
     done: (finished) => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, finished)),
     leave: () => {
       if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
