@@ -15,7 +15,7 @@ async function addFromTemplate(page: Page, template: string, amount?: string) {
     await cost.clear();
     await cost.pressSequentially(amount);
   }
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, template)).toBeVisible();
 }
 

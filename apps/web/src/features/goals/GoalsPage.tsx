@@ -1,17 +1,15 @@
-import { formatMinor, fundingOrder, type GoalClass, goalClass, type GoalKind, isoDate } from '@expanses/core';
-import type { GoalRow } from '@expanses/db';
+import { formatMinor, fundingOrder, type GoalClass, goalClass, isoDate } from '@expanses/core';
+import { useNavigate } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { FigureRow, InfoButton, UseBar } from '../budget/budget-rows';
 import { bareFigure } from '../networth/debt-rows';
-import { GoalForm } from './GoalForm';
 import { InfoHeader } from './InfoHeader';
-import { type GoalCard, goalCard, GOAL_KIND_MARKS, GOAL_TEMPLATES, goalsTotals, onTrackLine } from './goal-cards';
-import { useEarmarks, useGoalPlans } from './queries';
+import { type GoalCard, goalCard, GOAL_KIND_MARKS, goalsTotals, onTrackLine } from './goal-cards';
+import { useGoalPlans } from './queries';
 
 /** The page's two sections, in funding order: what is saved reaches the compulsory goals first. */
 const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
@@ -76,11 +74,7 @@ export function GoalsPage() {
   const { ws } = useApp();
   const today = isoDate();
   const summary = useGoalPlans(today);
-  const earmarks = useEarmarks();
-  const [editing, setEditing] = useState<GoalRow | null>(null);
-  const [adding, setAdding] = useState<GoalKind | null>(null);
-  // The templates are not a section of the page: the + opens them, and one opens the form it already carries.
-  const [choosing, setChoosing] = useState(false);
+  const navigate = useNavigate();
 
   const plans = summary.data?.plans ?? [];
   // The page's order is the funding order: compulsory goals first, each section in its own rank order.
@@ -92,45 +86,12 @@ export function GoalsPage() {
   const currency = ws.baseCurrency;
 
   /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
-  const actions: CornerAction[] =
-    adding || editing || choosing
-      ? []
-      : [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => setChoosing(true) }];
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => void navigate({ to: '/goals/new' }) }];
 
   return (
     <div className={SCREEN}>
       <LargeTitle title="Goals" actions={actions} />
       <ErrorBox error={summary.error} />
-
-      {/* The templates, where the + is: a grouped list of rows with chevrons, and one opens the form. */}
-      {choosing && (
-        <Sheet title="Add a goal" onClose={() => setChoosing(false)} grouped>
-          <InsetGroup>
-            {GOAL_TEMPLATES.map((template) => (
-              <InsetRow
-                key={template.kind}
-                title={template.label}
-                onClick={() => {
-                  setChoosing(false);
-                  setAdding(template.kind);
-                }}
-              />
-            ))}
-          </InsetGroup>
-        </Sheet>
-      )}
-
-      {(adding || editing) && (
-        <GoalForm
-          goal={editing ?? undefined}
-          startKind={adding ?? undefined}
-          earmarks={earmarks.data ?? []}
-          onDone={() => {
-            setAdding(null);
-            setEditing(null);
-          }}
-        />
-      )}
 
       {summary.data && cards.length > 0 && (
         <>
@@ -172,7 +133,7 @@ export function GoalsPage() {
         </>
       )}
 
-      {cards.length === 0 && !adding && summary.isSuccess && <Empty>No goals yet.</Empty>}
+      {cards.length === 0 && summary.isSuccess && <Empty>No goals yet.</Empty>}
 
       {SECTIONS.map((section) => {
         const inSection = ordered.map((plan, index) => ({ plan, card: cards[index]! })).filter(({ plan }) => goalClass(plan.goal.kind) === section.key);

@@ -1,12 +1,13 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
- * The + opens the template list, and a template opens the form it used to open by itself: the "Start from a
- * template" section that sat on the page is a sheet behind the action now.
+ * The + opens the New goal page, and the kind is a row on it: choosing one re-applies that kind's template, so the
+ * page is left on the same fields the template list used to open.
  */
 export async function openGoalForm(page: Page, template: string) {
   await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByRole('dialog', { name: 'Add a goal' }).getByRole('button', { name: template, exact: true }).click();
+  await expect(page.getByTestId('goal-form')).toBeVisible();
+  await page.getByLabel('Kind', { exact: true }).selectOption({ label: template });
 }
 
 /**
@@ -16,7 +17,7 @@ export async function openGoalForm(page: Page, template: string) {
 export async function openWorking(page: Page) {
   await workingSettled(page);
   await editGoal(page);
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await page.getByRole('button', { name: 'Calculator' }).click();
 }
 
 /**

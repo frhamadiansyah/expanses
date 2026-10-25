@@ -57,7 +57,7 @@ async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
   await openGoalForm(page, template);
   if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   // The save lands as a row on the list; the goal's own page is opened from it, where the working is opened next.
   await expect(goalRow(page, template)).toBeVisible();
   await goalCard(page, template);

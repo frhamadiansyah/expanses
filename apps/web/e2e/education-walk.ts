@@ -15,7 +15,7 @@ export async function addEducationGoal(page: Page) {
   await page.goto('/goals');
   await openGoalForm(page, 'Education');
   await typeInto(page, "Cost in today's money (IDR)", '1000000');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   // The save lands as a row on the list, and every step after this reads the goal's own page: its working, its
   // stages, its figures — so the goal is opened here, once.
   await goalCard(page, 'Education');

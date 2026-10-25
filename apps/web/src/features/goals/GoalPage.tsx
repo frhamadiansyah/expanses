@@ -6,12 +6,11 @@ import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
 import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { UseBar } from '../budget/budget-rows';
 import { FundingRow } from './funding';
-import { GoalForm } from './GoalForm';
+import { SetAsideSheet } from './SetAside';
 import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
 import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
@@ -100,7 +99,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // A history line's key is its draw's id, so a borrow can be asked whether the goal was whole when it was taken.
   const wholeBorrows = new Set((useDraws().data ?? []).filter((draw) => draw.intent === 'borrow' && draw.wasWhole).map((draw) => draw.id));
   const calculators = useGoalCalculators();
-  const [editing, setEditing] = useState(false);
   const [settingAside, setSettingAside] = useState(false);
   // The one sheet open from the round actions or the ⋯, if any.
   const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
@@ -161,7 +159,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const held = setAsideOf(earmarks.data ?? [], goalId).length > 0;
   const others = plans.filter((row) => row.goalId !== goalId);
   const menu: CornerAction[] = [
-    { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, run: () => setEditing(true) },
+    { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, run: () => void navigate({ to: '/goals/$goalId/edit', params: { goalId } }) },
     ...(held ? [{ key: 'take-back', label: 'Take back', glyph: <HandCoins size={18} aria-hidden />, run: () => setOpen('take-back') }] : []),
     ...(others.length > 0 && (held || hasPurchase)
       ? [{ key: 'move', label: 'Move to another goal', glyph: <ArrowRightLeft size={18} aria-hidden />, run: () => setOpen('move') }]
@@ -203,12 +201,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <PushedTitle title={card.name} back="Goals" onBack={goBack} actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
-      {editing && <GoalForm goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setEditing(false)} />}
-      {settingAside && (
-        <Sheet title="Set aside" onClose={() => setSettingAside(false)}>
-          <GoalForm part="set-aside" goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />
-        </Sheet>
-      )}
+      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />}
 
       {open === 'use' && <UseSheet plan={plan} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
       {open === 'monthly' && <MonthlySheet plan={plan} onClose={() => setOpen(null)} />}

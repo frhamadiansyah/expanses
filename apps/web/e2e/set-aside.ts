@@ -18,6 +18,8 @@ export const goalRow = (page: Page, name: string) => page.getByTestId('goal-row'
  * is still being written would throw the goal away. The row is waited for where the page already stands.
  */
 export async function goalCard(page: Page, name: string) {
+  // A form page saving: leaving before the ✓ has landed would drop the save, so wait for the page to close.
+  if (/\/goals\/(new|[^/]+\/edit)$/.test(page.url())) await expect(page).not.toHaveURL(/\/(new|edit)$/);
   if (!/\/goals$/.test(page.url())) await page.goto('/goals');
   await goalRow(page, name).click();
   await expect(page).toHaveURL(/\/goals\/[^/]+$/);
@@ -70,27 +72,41 @@ export async function addMoneyAccount(page: Page, name: string, subtype: string,
 export async function addGoal(page: Page, name: string, amount: string, dueOn = '2027-12-31') {
   await page.goto('/goals');
   await openGoalForm(page, 'Holiday');
-  await page.getByLabel('What kind of goal').selectOption('holiday');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().pressSequentially(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, name)).toBeVisible();
 }
 
-/** Through the goal page's round Set aside, whose sheet holds the goal form's set-aside boxes and nothing else. */
+/** Adds an account as a row of Money set aside, through the Add an account row and its sheet; the row's amount is focused. */
+export async function addSetAsideRow(page: Page, account: string) {
+  await page.getByRole('button', { name: 'Add an account' }).click();
+  await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
+  await expect(page.getByLabel(account, { exact: true })).toBeFocused();
+}
+
+/** The account's name without its currency, which the old boxes carried in brackets and a row does not. */
+export const accountOf = (box: string) => box.replace(/ \(.*\)$/, '');
+
+/** Through the goal page's round Set aside, whose sheet holds the goal form's set-aside rows and nothing else. */
 export async function setAside(page: Page, goal: string, box: string, amount: string) {
   const card = await goalCard(page, goal);
   await card.getByRole('button', { name: 'Set aside', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Set aside' });
-  const input = sheet.getByLabel(box);
+  const account = accountOf(box);
+  if ((await sheet.getByLabel(account, { exact: true }).count()) === 0) {
+    await sheet.getByRole('button', { name: 'Add an account' }).click();
+    await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
+  }
+  const input = sheet.getByLabel(account, { exact: true });
   await input.clear();
   await input.pressSequentially(amount);
   await sheet.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   // Saved, not merely pressed: the sheet closes once the save lands. Navigating away before that loses it.
   await expect(sheet).toHaveCount(0);
-  await expect(card.getByTestId('goal-link').filter({ hasText: box.replace(/ \(.*\)$/, '') }).first()).toBeVisible();
+  await expect(card.getByTestId('goal-link').filter({ hasText: account }).first()).toBeVisible();
 }
 
 /** The record's account: Jenius Rp 42.500.000, Emergency fund Rp 30.000.000 (first), Umrah Rp 7.500.000 — Rp 5.000.000 free. */

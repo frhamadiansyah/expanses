@@ -1,7 +1,7 @@
 import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
-import { addGoal, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -199,8 +199,9 @@ test('the goal form says what is free for this goal, and how short a bigger figu
   const umrah = await goalCard(page, 'Umrah 2027');
   await editGoal(umrah);
   // 5.000.000 free on Jenius plus Umrah's own 7.500.000 there, which the save replaces: 12.500.000.
+  await page.getByRole('button', { name: 'About Jenius' }).click();
   await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();
-  const box = page.getByLabel('Jenius (IDR)');
+  const box = page.getByLabel('Jenius', { exact: true });
   await box.clear();
   await box.pressSequentially('12500001');
   await expect(page.getByText(/^That leaves Jenius Rp.1 short$/)).toBeVisible();
@@ -260,6 +261,8 @@ test('the goal form\'s hint reads today\'s balance, as the question does: money 
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   await editGoal(umrah);
+  await addSetAsideRow(page, 'BCA');
+  await page.getByRole('button', { name: 'About BCA' }).click();
   // 10.000.000 today; counting the 5.000.000 dated next month would say 15.000.000, a figure the question never uses.
   await expect(page.getByText(/^Rp.10\.000\.000 free for this goal$/)).toBeVisible();
   await expect(page.getByText(/15\.000\.000 free for this goal/)).toHaveCount(0);
