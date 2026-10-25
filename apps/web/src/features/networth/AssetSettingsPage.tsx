@@ -1,4 +1,4 @@
-import { CASH_ITEMS, cashItem, isoDate, type MoneyAccountSubtype } from '@expanses/core';
+import { CASH_ITEMS, cashItem, formatMinor, isoDate, type MoneyAccountSubtype } from '@expanses/core';
 import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, PushedTitle, SCREEN, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, PickerRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
 import { typedNameOf } from '../../lib/account-name';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
@@ -23,6 +23,7 @@ import { useOpenings } from '../accounts/queries';
 import { spendsFrom } from '../accounts/pockets';
 import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
 import { AcquiredRow } from './AssetRows';
+import { ValueSheet } from './AssetSheets';
 import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
 
 /** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
@@ -55,6 +56,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const acquiredDates = useAcquiredDates();
   const openings = useOpenings([accountId]);
   const [error, setError] = useState<unknown>(null);
+  const [valuing, setValuing] = useState(false);
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
@@ -180,7 +182,15 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
           nameRow={account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined}
           beforeTax={money && account ? <AccountSettingsBox account={account} onError={setError} /> : undefined}
-          afterName={acquired ? <AcquiredRow value={acquired} onChange={saveAcquired} /> : undefined}
+          afterName={
+            acquired
+              ? [
+                  <AcquiredRow key="acquired" value={acquired} onChange={saveAcquired} />,
+                  // The one thing done to an estimated asset, now that its page has no button for it.
+                  <PickerRow key="value" label="Value" value={formatMinor(value.valueMinor, value.currency)} onOpen={() => setValuing(true)} />,
+                ]
+              : undefined
+          }
           // The tax report's own questions, here rather than on an Edit screen of their own (a money account's stay below).
           taxFields={
             // Only while it is reported: off, the report asks nothing of it. A money account opened before it had a
@@ -237,6 +247,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           section={profile.data?.coretaxSection ?? 'kas'}
         />
       )}
+
+      {valuing && value && <ValueSheet accountId={accountId} currency={value.currency} onClose={() => setValuing(false)} />}
 
       {(value || parentMoney) && (
         <>

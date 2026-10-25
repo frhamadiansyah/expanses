@@ -349,9 +349,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             : []),
           { key: 'value', label: 'Value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) },
         ]
-    : estimated
-      ? [{ key: 'value', label: 'Value', glyph: <SquarePen size={20} aria-hidden />, run: () => setSheet({ kind: 'value' }) }]
-      : [];
+    // A thing valued by an estimate (land, a house, a car) has one button only, so it has none: its value is updated
+    // from its Settings.
+    : [];
 
   /*
    * Arrived with something to do (`?do=buy` and the rest): the same sheet the round button opens, once the holding is

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { backFromSettings, openAccount, openValueSheet } from './accounts';
 import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 
 test('by thumb: gold’s grid and purchases, and a laptop valued again from its sheet', async ({ page }) => {
@@ -15,10 +15,11 @@ test('by thumb: gold’s grid and purchases, and a laptop valued again from its 
   await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');
   await openAsset(page, 'Laptop');
   await expect(page.getByTestId('asset-gain')).toHaveAttribute('data-tone', 'loss');
-  await page.getByRole('button', { name: 'Value', exact: true }).tap();
+  await openValueSheet(page);
   await expect(page.getByLabel('Value (IDR)')).toHaveValue('');
   await page.getByLabel('Value (IDR)').fill('12000000');
   await page.getByRole('button', { name: 'Save value' }).tap();
+  await backFromSettings(page);
   await expect(page.getByTestId('asset-gain')).toHaveText('−Rp 10.000.000 · −45,5%');
   await expect(page.getByTestId('asset-history-row').first()).toContainText('Estimated value');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

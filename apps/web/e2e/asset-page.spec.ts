@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fillDay, openNewAsset } from './add-asset';
 import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
-import { openAccount } from './accounts';
+import { backFromSettings, openAccount, openValueSheet } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -77,7 +77,7 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await expect(page.getByTestId('asset-grid')).toContainText('Original costRp');
   await expect(page.getByTestId('asset-grid')).toContainText('Acquired12 Mar 2019');
 
-  await page.getByRole('button', { name: 'Value', exact: true }).click();
+  await openValueSheet(page);
   const value = page.getByLabel('Value (IDR)');
   await expect(value).toHaveValue('');
   // Every typed value is an estimate: the sheet no longer asks where it came from.
@@ -85,6 +85,7 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await value.fill('1480000000');
   await page.getByLabel('Note').fill('Bank appraisal');
   await page.getByRole('button', { name: 'Save value' }).click();
+  await backFromSettings(page);
 
   await expect(page.getByText('Rp 1.480.000.000').first()).toBeVisible();
   await expect(page.getByText(/· estimate, \d{1,2} \w{3} \d{4} · \+Rp\s330\.000\.000 · \+28,7%/)).toBeVisible();
@@ -98,7 +99,7 @@ test('a house takes a new value from a sheet that opens empty, and its history s
   await expect(rows.last()).toContainText('12 Mar 2019');
 
   // Opened again, it is empty again.
-  await page.getByRole('button', { name: 'Value', exact: true }).click();
+  await openValueSheet(page);
   await expect(page.getByLabel('Value (IDR)')).toHaveValue('');
   await expect(page.getByLabel('Note')).toHaveValue('');
 });

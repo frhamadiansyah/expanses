@@ -276,3 +276,17 @@ export async function openSettings(page: Page) {
   await more.click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
 }
+
+/**
+ * An estimated asset (land, a house, a car) has no Value button on its page: its value is a row of its Settings. Opens
+ * Settings, opens the row's sheet and returns with the sheet open, for the caller to type in; ‹ comes back after.
+ */
+export async function openValueSheet(page: Page) {
+  await openSettings(page);
+  await page.getByRole('button', { name: /^Value/ }).click();
+}
+
+/** Leaves Settings for the page it was opened from, once the sheet is closed. */
+export async function backFromSettings(page: Page) {
+  await page.getByRole('main').getByRole('link', { name: 'Save', exact: true }).or(page.getByRole('button', { name: 'Save', exact: true })).first().click();
+}
