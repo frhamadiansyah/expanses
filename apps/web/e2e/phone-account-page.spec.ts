@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, showBalance } from './accounts';
 
 import { addForm } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
@@ -40,6 +40,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(count.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await count.getByRole('button', { name: 'Save' }).tap();
   await expect(count).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('887.500');
   await expect(page.getByTestId('account-recent-row').first()).toContainText('Counted cash');
 
@@ -57,6 +58,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await topUp.getByLabel('Amount', { exact: true }).fill('150000');
   await topUp.getByRole('button', { name: 'Save' }).tap();
   await expect(topUp).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('150.000');
 
   await page.goto('/wallet');

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { personRow } from './people';
-import { expectWalletFigure, openAccount, openSettings, walletCard } from './accounts';
+import { expectWalletFigure, openAccount, openSettings, walletCard, showBalance } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
@@ -218,6 +218,7 @@ test('an account without pockets opened at the pockets routes says it has none (
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pockets', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '100' }] });
   await walletCard(page, 'Two Pockets').click();
+  await showBalance(page);
   await expect(page.getByText('2 currencies')).toBeVisible();
   // A pocket is an account with no pockets of its own: its id on the accounts route is its own page — the figure
   // it holds and the rows behind it — rather than a Rp 0 parent with nothing under it.

@@ -326,3 +326,11 @@ html[data-compact-bar] .ph-status-glass {
     animation: none;
   }
 }
+
+/*
+ * The raised card's tap target (the flip) lies under a sheet the page opens, since the page's own layer sits below the
+ * card: while any dialog is open the card is not a target, so a tap on the sheet's ✓ lands on the ✓.
+ */
+body:has([role='dialog']) .ph-under-dialog {
+  pointer-events: none !important;
+}

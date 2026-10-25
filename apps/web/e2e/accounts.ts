@@ -97,6 +97,23 @@ export async function openWalletAccount(page: Page, name: string) {
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
 }
 
+/**
+ * The balance of an account opened from Wallet is on the back of its raised card: a tap turns the card over. Turns it
+ * to the balance when it is not there already, so a journey that reads the balance can call this wherever it is.
+ */
+export async function showBalance(page: Page) {
+  const turn = page.getByRole('button', { name: /, show balance$/ });
+  if ((await turn.count()) > 0) await turn.click();
+  await expect(page.getByTestId('balance-card')).toBeVisible();
+}
+
+/** Turns the raised card back to its face, when it shows the balance. */
+export async function showCard(page: Page) {
+  const turn = page.getByRole('button', { name: /, show card$/ });
+  if ((await turn.count()) > 0) await turn.click();
+  await expect(page.getByTestId('balance-card')).toBeHidden();
+}
+
 /** Opens a money account through the picker and leaves Wallet showing its card (or Assets, for money never spent from). */
 export async function openAccount(page: Page, o: NewAccount) {
   // A card and a loan used to be two more values in the old form's Type column. Each has its own door now, and a

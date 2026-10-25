@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, showBalance } from './accounts';
 import { addForm } from './add-transaction';
 import { openAssets } from './drawers';
 
@@ -43,6 +43,7 @@ export async function forSpendingOff(page: Page) {
   // Opened from its card, the account's ⚙ is in Wallet's bar; the switch is in its Settings.
   await walletCard(page, 'Rainy day').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('5.000.000');
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   const forSpending = page.getByLabel('For spending');
@@ -121,6 +122,7 @@ export async function walletViews(page: Page) {
   // A face opens the same page the stack opens, under the raised card; ✕ comes back to the grid.
   await walletCard(page, 'Everyday').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('3.000.000');
   await expect(wall.locator('[data-place="raised"]')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
@@ -168,6 +170,7 @@ export async function walletViews(page: Page) {
   // The centred card opens its page.
   await walletCard(page, 'Pocket cash').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('250.000');
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('wallet-carousel')).toBeVisible();

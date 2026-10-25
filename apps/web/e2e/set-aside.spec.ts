@@ -1,3 +1,4 @@
+import { showBalance } from './accounts';
 import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
@@ -63,6 +64,7 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
 
   await openAccountPage(page, 'Jenius');
   // The bank's figure leads, and is the bank's: 42.500.000 − 6.800.000.
+  await showBalance(page);
   await expect(page.getByText(/35\.700\.000/).first()).toBeVisible();
   // Under it, the split: 37.500.000 still set aside, so free is 35.700.000 − 37.500.000 = −1.800.000, in alarm.
   await expect(page.getByText(/^Rp.37\.500\.000$/).first()).toBeVisible();

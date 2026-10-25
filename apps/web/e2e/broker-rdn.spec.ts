@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, openSettings } from './accounts';
+import { openAccount, openSettings, showBalance } from './accounts';
 import { openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
@@ -27,5 +27,6 @@ test('a broker opened from Add holding names its RDN bank in its Settings, and i
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^Stockbit/ }).first().click();
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
 });

@@ -53,6 +53,7 @@ import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { BalanceCard } from './BalanceCard';
+import { BalanceHero } from './BalanceHero';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
@@ -178,23 +179,17 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       ) : pockets ? (
         <ParentCard pockets={pockets} typeLabel={typeLabel} inst={inst} held={held} />
       ) : (
-        <BalanceCard
+        <BalanceHero
           label="Balance"
           minor={minor}
           currency={account.currency!}
           series={series}
           testId="balance-card"
           corner={<CurrencyFlag currency={account.currency!} />}
-          caption={
-            <>
-              <span className="block">
-                {/* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
-                    is the flag in the corner, so the line names only where the money is and what kind of account. */}
-                {account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
-              </span>
-              {foreign && <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} />}
-            </>
-          }
+          /* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
+             is the flag in the corner, so the line names only where the money is and what kind of account. */
+          caption={account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
+          foreign={foreign ? <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} /> : undefined}
         />
       )}
 
@@ -417,7 +412,7 @@ function ParentCard({ pockets, typeLabel, inst, held }: { pockets: AccountRow[];
         )
       : null;
   return (
-    <BalanceCard
+    <BalanceHero
       label="Balance, all pockets"
       minor={total.totalMinor}
       currency={ws.baseCurrency}

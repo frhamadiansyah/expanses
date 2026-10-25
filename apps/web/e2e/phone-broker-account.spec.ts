@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { showBalance } from './accounts';
 import { openDrawers } from './drawers';
 
 test('by thumb: the broker and the RDN bank are picked from what the keyboard offers', async ({ page }) => {
@@ -18,6 +19,7 @@ test('by thumb: the broker and the RDN bank are picked from what the keyboard of
   await page.goto('/net-worth/assets');
   await openDrawers(page);
   await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().tap();
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

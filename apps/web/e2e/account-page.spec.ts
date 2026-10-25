@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openWalletAccount } from './accounts';
+import { openAccount, openWalletAccount, showBalance } from './accounts';
 import { addForm, addTransaction, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
@@ -27,6 +27,7 @@ test('a current account: its actions, its last rows, its ⚙ and a way to add a 
 
   await openMoney(page, 'Bank One Everyday');
   // The line names where the money is and what kind of account; the currency is the flag in the corner.
+  await showBalance(page);
   await expect(page.getByText('Bank One · Current account', { exact: true })).toBeVisible();
   await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
   const actions = page.getByRole('group', { name: 'Actions' }).getByRole('button');
@@ -60,7 +61,9 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
 
   // The same name, now an account with pockets: the rupiah it held (with the groceries behind it) and the dollars.
+  await showBalance(page);
   await expect(page.getByText('Balance, all pockets')).toBeVisible();
+  await showBalance(page);
   await expect(page.getByText('2 currencies')).toBeVisible();
   await expect(page.getByTestId('pocket-IDR')).toContainText('12.255.000');
   await expect(page.getByTestId('pocket-USD')).toContainText('500');
@@ -107,6 +110,7 @@ test('cash takes a second currency like a bank account: it becomes one with pock
   await page.getByLabel('Opening TRY').pressSequentially('1000');
   await page.getByLabel('Rate: IDR per 1 TRY', { exact: true }).pressSequentially('480');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
+  await showBalance(page);
   await expect(page.getByText('2 currencies')).toBeVisible();
   await expect(page.getByTestId('pocket-IDR')).toContainText('300.000');
   await expect(page.getByTestId('pocket-TRY')).toContainText('1.000');
@@ -149,6 +153,7 @@ test('cash is withdrawn into and counted: a short count is unrecorded spending, 
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
 
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('887.500');
   await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Counted cash');
   await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Unrecorded spending');
@@ -168,6 +173,7 @@ test('Withdraw brings cash in from a current account, with its ATM fee as spendi
   await sheet.getByLabel('ATM fee').fill('7500');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('500.000');
   await page.goto('/transactions');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 7.500');
@@ -183,6 +189,7 @@ test('a current account adjusted as just a correction moves its balance and noth
   await expect(sheet.getByRole('radio', { name: /Just a correction/ })).toBeChecked();
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('12.480.000');
   await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Balance correction');
 
@@ -206,6 +213,7 @@ test('a wallet is topped up from a card, with a fee; the ordinary transfer still
   await sheet.getByLabel('Top-up fee').fill('1500');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('500.000');
 
   // The card owes the amount and the fee.
@@ -269,35 +277,32 @@ test('a deposit reads as its maturity, and its one action is Break early', async
   await expect(page.getByRole('dialog', { name: 'Deposit terms' })).toBeVisible();
 });
 
-test('cash and a current account draw the balance as one card with the month behind it, read a day at a time', async ({ page }) => {
+test('cash and a current account draw the balance as one card with the month behind it', async ({ page }) => {
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   for (const name of ['Pocket cash', 'Everyday']) {
     await openMoney(page, name);
     const card = page.getByTestId('balance-card');
     await expect(card).toContainText('Balance');
+    await showBalance(page);
     await expect(card).toContainText('30 days ago');
     await expect(card).toContainText('today');
     // The year's chart is gone: the card's month is the page's one line.
     await expect(page.getByText('Last 12 months')).toHaveCount(0);
   }
-  const line = page.getByTestId('balance-line');
-  const box = (await line.boundingBox())!;
-  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
-  await line.click({ position: { x: box.width - 4, y: box.height / 2 } });
-  const reading = page.getByTestId('net-worth-reading');
-  await expect(reading).toContainText('12.500.000');
-  await expect(reading).toContainText(/\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}/);
-  await line.press('Escape');
-  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
+  // On the back of a raised card the line is not read a day at a time: a tap anywhere on the card turns it back over
+  // (the day-by-day reading is the asset page's, `asset-page.spec.ts`).
+  await expect(page.getByTestId('balance-line')).toHaveCount(0);
 });
 
 test('an account with pockets lists them, and a pocket opens its own page with the parent as the way back', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Valas Plus', bank: 'Bank One', shown: 'Bank One Valas Plus', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
   await openMoney(page, 'Bank One Valas Plus');
+  await showBalance(page);
   await expect(page.getByText('Balance, all pockets')).toBeVisible();
   await expect(page.getByText('Bank One · Saving account · 2 currencies')).toBeVisible();
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('30 days ago');
   // Each pocket is its own row under the actions: its flag, its code and its amount, with no name repeated under it.
   await expect(page.getByTestId('pocket-USD')).toContainText('USD');
