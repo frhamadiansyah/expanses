@@ -34,7 +34,13 @@ test('an expense saved with its category left for later waits under Uncategorise
   await expect(waiting).toContainText('1 needs a category');
   // Tapping the line lists all of them.
   await waiting.click();
-  await expect(page.getByTestId('active-filters')).toContainText('Needs a category');
+  // No pill is added: the line itself carries a ✕ in place of its ›, and the ✕ puts the list back to all.
+  await expect(waiting).toHaveAttribute('data-active', 'true');
+  await expect(page.getByTestId('active-filters')).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row')).toHaveCount(1);
+  await waiting.getByRole('button', { name: 'Clear needs a category' }).click();
+  await expect(waiting).not.toHaveAttribute('data-active', 'true');
+  await waiting.click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(1);
 
   // The row wears the amber question and says what it is filed under.
@@ -50,7 +56,6 @@ test('an expense saved with its category left for later waits under Uncategorise
   await expect(page.getByRole('status').filter({ hasText: 'Moved to Restaurants' })).toBeVisible();
   // None left: the line goes, and so do the filter and the All period it opened.
   await expect(page.getByTestId('needs-category-card')).toHaveCount(0);
-  await expect(page.getByTestId('active-filters')).toHaveCount(0);
   await expect(row(page, 'Mystery stall')).toHaveCount(0);
 });
 

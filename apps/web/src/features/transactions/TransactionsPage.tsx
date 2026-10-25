@@ -1382,7 +1382,7 @@ export function TransactionsPage() {
         <WaitingBox
           today={today}
           drafts={pending}
-          needsCategory={{ count: needCategoryCount, onShow: showNeedsCategory }}
+          needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         />
       )}
       {view === 'table' ? (
@@ -1412,13 +1412,6 @@ export function TransactionsPage() {
               </Empty>
             ))}
 
-          {/* What ⋯ has narrowed the list to, with its own way out. Paid with says itself on its icon (the dot), and is
-              cleared from its own list, so it has no pill here. */}
-          {filters.needsCategory && (
-            <div className="flex flex-wrap gap-2" data-testid="active-filters">
-              <FilterChip label="Needs a category" clearLabel="Clear needs a category" onClear={hideNeedsCategory} />
-            </div>
-          )}
           {shown.length > 0 && (
             <div className="flex items-center justify-end gap-2">
               {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}

@@ -19,13 +19,13 @@ export function WaitingBox({
   today: string;
   drafts: readonly DraftRow[];
   /** How many shown transactions wait under Uncategorised, and what tapping the line does. */
-  needsCategory?: { count: number; onShow: () => void };
+  needsCategory?: { count: number; active: boolean; onShow: () => void; onClear: () => void };
 }) {
   return (
     <Card className="divide-y divide-slate-100 py-1 empty:hidden">
       <Recurring today={today} />
       <NotRecorded drafts={drafts} />
-      {needsCategory && <NeedsCategory count={needsCategory.count} onShow={needsCategory.onShow} />}
+      {needsCategory && <NeedsCategory count={needsCategory.count} active={needsCategory.active} onShow={needsCategory.onShow} onClear={needsCategory.onClear} />}
     </Card>
   );
 }
