@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openWalletAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addForm, addTransaction, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
 import { setCurrency } from './currency-field';
@@ -73,10 +73,11 @@ test('Spend on an account with pockets opens paid with the pocket in the workspa
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '300.00', rate: '16250' }, { currency: 'IDR', balance: '5000000' }] });
   await openMoney(page, 'Valas Plus');
   await page.getByRole('button', { name: 'Spend', exact: true }).click();
-  // A sheet over the account, named for what it adds, with no tabs to change it.
-  const sheet = page.getByRole('dialog', { name: 'New expense' });
-  await expect(sheet.getByRole('radio', { name: 'Income', exact: true })).toHaveCount(0);
-  await expect(sheet.getByRole('button', { name: 'Paid with' })).toContainText('Valas Plus · IDR');
+  // The Add screen itself, as ＋ opens it, with the account filled in: its tabs are there, Expense on.
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
+  const form = addForm(page);
+  await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
+  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Valas Plus · IDR');
 });
 
 test('Spend opens a new transaction already paid with the account', async ({ page }) => {
@@ -84,10 +85,14 @@ test('Spend opens a new transaction already paid with the account', async ({ pag
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openMoney(page, 'Everyday');
   await page.getByRole('button', { name: 'Spend', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'New expense' });
-  await expect(sheet.getByRole('radio', { name: 'Expense', exact: true })).toHaveCount(0);
-  await expect(sheet.getByRole('button', { name: 'Paid with' })).toContainText('Everyday');
-  await expect(page.getByRole('heading', { name: 'Everyday' })).toBeVisible();
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense.*account=/);
+  const form = addForm(page);
+  await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
+  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
+  // Back from the Add screen is the account's page.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await expect(page.getByRole('group', { name: 'Actions' })).toBeVisible();
 });
 
 test('cash takes a second currency like a bank account: it becomes one with pockets, the lira beside the rupiah', async ({ page }) => {
@@ -212,7 +217,9 @@ test('a wallet is topped up from a card, with a fee; the ordinary transfer still
   // The ordinary Transfer: its From and To list money you hold, never the card.
   await openMoney(page, 'Everyday');
   await page.getByRole('button', { name: 'Transfer', exact: true }).click();
-  const transfer = page.getByRole('dialog', { name: 'New transfer' });
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=transfer/);
+  const transfer = addForm(page);
+  await expect(transfer.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   for (const side of [/^To/, /^From/]) {
     await transfer.getByRole('button', { name: side }).click();
     const list = page.getByRole('dialog', { name: /^(To|From)$/ });
@@ -229,7 +236,9 @@ test('an RDN is topped up from a current account: Top up opens a transfer into i
   await expect(page.getByRole('button', { name: 'Withdraw', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Top up', exact: true }).click();
-  const form = page.getByRole('dialog', { name: 'New transfer' });
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=transfer.*to=/);
+  const form = addForm(page);
+  await expect(form.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(form.getByRole('button', { name: /^To/ })).toContainText('Broker cash');
 });
 
@@ -308,20 +317,21 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 
-test('an expense added from an account is saved by the sheet’s ✓ and shows in its Recent', async ({ page }) => {
+test('an expense added from an account is saved by the Add screen’s ✓, goes back to the account and shows in its Recent', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openMoney(page, 'Everyday');
   await page.getByRole('button', { name: 'Spend', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'New expense' });
-  // No Save bar at the foot: ✕ and ✓ in the header, the ✓ dimmed until the expense would save.
-  const save = sheet.getByRole('button', { name: 'Save' });
+  const form = addForm(page);
+  // ✓ in the bar, dimmed until the expense would save.
+  const save = saveButton(form);
   await expect(save).toBeDisabled();
-  await sheet.getByLabel('Amount', { exact: true }).fill('45000');
-  await sheet.getByRole('button', { name: /^Category/ }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('45000');
+  await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
-  await sheet.getByLabel('Note').fill('Market');
+  await form.getByLabel('Note').fill('Market');
   await expect(save).toBeEnabled();
   await save.click();
-  await expect(sheet).toHaveCount(0);
+  // Saved, the app is back on the account's page, where the new row leads its Recent.
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByTestId('account-recent')).toContainText('Market');
 });
