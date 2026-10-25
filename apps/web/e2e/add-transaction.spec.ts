@@ -258,7 +258,7 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(page.getByTestId('goal-row').filter({ hasText: name }).first()).toBeVisible();
 }
 

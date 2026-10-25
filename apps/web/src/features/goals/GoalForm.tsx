@@ -1,13 +1,18 @@
 import { bandHint, type GoalKind, isoDate, minorToMajorString, monthsUntil, parseMajor, returnBandFor } from '@expanses/core';
-import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, saveGoal } from '@expanses/db';
+import { type GoalRow, saveGoal } from '@expanses/db';
+import { useParams } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { useInvalidateAll } from '../../lib/queries';
+import { ErrorBox } from '../../ui';
+import { type CornerAction, DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { Calculator, calculatorKindOf } from './Calculator';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
-import { useSetAsideViews } from './queries';
+import { canSaveGoal } from './goal-form-model';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
+import { useEarmarks, useGoalPlans } from './queries';
+import { SetAsideGroup, useSetAside } from './SetAside';
 
 interface StageDraft {
   id?: string;
@@ -32,29 +37,46 @@ function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   };
 }
 
+/** /goals/new: a goal not saved yet. */
+export function NewGoalRoute() {
+  const earmarks = useEarmarks();
+  if (!earmarks.isSuccess) return <div className={SCREEN} />;
+  return <GoalForm earmarks={earmarks.data} />;
+}
+
+/** /goals/$goalId/edit: a saved goal's fields, once the goal and what is set aside for it have loaded. */
+export function EditGoalRoute() {
+  const { goalId } = useParams({ from: '/goals/$goalId/edit' });
+  const summary = useGoalPlans(isoDate());
+  const earmarks = useEarmarks();
+  const goBack = useBack('/goals');
+  if (!summary.data || !earmarks.isSuccess) return <div className={SCREEN} />;
+  const goal = summary.data.plans.find((plan) => plan.goalId === goalId)?.goal;
+  if (!goal) {
+    return (
+      <div className={SCREEN}>
+        <PushedTitle title="Goal not here" back="Goals" onBack={goBack} />
+        <InsetGroup>
+          <InsetRow title="Back to Goals" to="/goals" />
+        </InsetGroup>
+      </div>
+    );
+  }
+  return <GoalForm key={goal.id} goal={goal} earmarks={earmarks.data} />;
+}
+
 /**
- * A goal's fields. With `part="set-aside"` (a saved goal's Set aside) it shows only the money set aside from each
- * account, and saving changes only that: the goal itself is not written again.
+ * A goal's page of fields, in the kit Add account is made of: a pushed page with ‹ at the left and ✓ at the right,
+ * rows grouped, an ⓘ for every explanation. A new goal opens on a kind; choosing another kind re-applies that kind's
+ * template (name, growth, return, first payment) while the goal is new.
  */
-export function GoalForm({
-  goal,
-  startKind,
-  earmarks,
-  onDone,
-  part = 'all',
-}: {
-  goal?: GoalRow;
-  startKind?: GoalKind;
-  earmarks: EarmarkRow[];
-  onDone: () => void;
-  part?: 'all' | 'set-aside';
-}) {
+export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startKind?: GoalKind; earmarks: Parameters<typeof useSetAside>[1] }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const accounts = useAccounts();
+  const goBack = useBack('/goals');
   const today = isoDate();
 
-  const starting = goal ? undefined : templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!;
+  const starting = goal ? undefined : (templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!);
   const [kind, setKind] = useState<GoalKind>(goal?.kind ?? starting!.kind);
   const [name, setName] = useState(goal?.name ?? starting!.label);
   const [growth, setGrowth] = useState(String((goal?.growthBps ?? starting!.growthBps) / 100));
@@ -76,49 +98,13 @@ export function GoalForm({
         }))
       : [draftFromTemplate(starting!, today)],
   );
-  // Only what has been typed. What each box *opens* with is read at render, from the earmark and the
-  // account's own currency — which is not known here: `accounts` may still be loading when this runs once.
-  const [setAside, setSetAside] = useState<Record<string, string>>({});
+  const setAside = useSetAside(goal, earmarks);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   // The working opens in place of the fields: the goal's own page one step in, and Cancel brings the fields back.
   const [working, setWorking] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
-  const savingsAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
-
-  /**
-   * A set-aside is in the account's own money, so the box is labelled, read and written in that currency.
-   *
-   * The label already said "(USD)" while the parse said `ws.baseCurrency`, so typing `100,03` into a dollar
-   * box met `IDR allows 0 decimal places` and a foreign set-aside could not be entered on this form at all.
-   */
-  const currencyOf = (account: { currency: string | null }) => account.currency ?? ws.baseCurrency;
-  const earmarkOf = (accountId: string) => earmarks.find((earmark) => earmark.goalId === goal?.id && earmark.accountId === accountId);
-  const setAsideText = (account: { id: string; currency: string | null }) => {
-    const typed = setAside[account.id];
-    if (typed !== undefined) return typed;
-    const earmark = earmarkOf(account.id);
-    return earmark ? minorToMajorString(earmark.amountMinor, currencyOf(account)) : '';
-  };
-
-  const views = useSetAsideViews().data ?? {};
-  // Today's balance, the one the views and the question read: a future-dated entry is not money here yet (ruling M4).
-  const balances = useBalances(isoDate()).data ?? {};
-  /** The box's hint, from the readers' own figures: what is free for this goal there, or how short the typed figure leaves it. */
-  const hintFor = (account: { id: string; name: string; currency: string | null }) => {
-    const currency = currencyOf(account);
-    const room = roomFor(views[account.id]?.freeMinor ?? null, balances[account.id] ?? 0, earmarkOf(account.id)?.amountMinor ?? 0);
-    let typed: number | null = null;
-    try {
-      const text = setAside[account.id];
-      if (text !== undefined && text.trim() !== '') typed = parseMajor(text, currency);
-    } catch {
-      typed = null;
-    }
-    const hint = setAsideHint(room, typed, account.name, currency);
-    return hint.warn ? <span className="text-[var(--ph-warn)]">{hint.text}</span> : hint.text;
-  };
 
   function pickKind(next: GoalKind) {
     setKind(next);
@@ -137,41 +123,35 @@ export function GoalForm({
     if (index === 0 && patch.dueOn && DATE.test(patch.dueOn) && !returnTyped) setExpectedReturn(String(prefilledReturnBps(kind, patch.dueOn, today) / 100));
   };
   const firstDue = stages[0]?.dueOn && DATE.test(stages[0].dueOn) ? stages[0].dueOn : today;
-  const returnHint = kind === 'emergency' || kind === 'retirement' ? 'What the money funding it should earn.' : bandHint(returnBandFor(monthsUntil(today, firstDue)));
+  const returnInfo = kind === 'emergency' || kind === 'retirement' ? 'What the money funding it should earn.' : bandHint(returnBandFor(monthsUntil(today, firstDue)));
+  const canSave = !busy && canSaveGoal(name, stages);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
+    if (!canSave) return;
     setError(null);
     setBusy(true);
     try {
-      // Set aside alone leaves the goal as it is: only the boxes below are saved.
-      const goalId =
-        part === 'set-aside' && goal
-          ? goal.id
-          : await saveGoal(database, ws, {
-            id: goal?.id,
-            name,
-            kind,
-            growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
-            returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
-            standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, ws.baseCurrency),
-            standingNote: standingNote.trim() || null,
-            stages: stages.map((stage) => ({
-              id: stage.id,
-              name: stage.name,
-              targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, ws.baseCurrency),
-              targetMonths: stage.usesMonths ? Number(stage.months) : null,
-              dueOn: stage.dueOn,
-              paidOn: stage.paidOn,
-            })),
-          });
-      for (const account of savingsAccounts) {
-        const typed = setAsideText(account).trim();
-        if (typed === '' || Number(typed.replace(/[^\d]/g, '')) === 0) await removeEarmark(database, ws, goalId, account.id);
-        else await saveEarmark(database, ws, { goalId, accountId: account.id, amountMinor: parseMajor(typed, currencyOf(account)) });
-      }
+      const goalId = await saveGoal(database, ws, {
+        id: goal?.id,
+        name,
+        kind,
+        growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
+        returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
+        standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, ws.baseCurrency),
+        standingNote: standingNote.trim() || null,
+        stages: stages.map((stage) => ({
+          id: stage.id,
+          name: stage.name,
+          targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, ws.baseCurrency),
+          targetMonths: stage.usesMonths ? Number(stage.months) : null,
+          dueOn: stage.dueOn,
+          paidOn: stage.paidOn,
+        })),
+      });
+      await setAside.write(goalId);
       await invalidate();
-      onDone();
+      goBack();
     } catch (e) {
       setError(e);
     } finally {
@@ -181,140 +161,106 @@ export function GoalForm({
 
   // One page: the working replaces the fields while it is open, and Cancel hands them back with their edits.
   if (working && goal) {
-    return <Calculator goal={goal} onDone={onDone} onCancel={() => setWorking(false)} />;
-  }
-
-  const setAsideFields = (
-    <div className="grid gap-3 md:grid-cols-2">
-      {savingsAccounts.map((account) => (
-        <Field key={account.id} label={`${account.name} (${currencyOf(account)})`} hint={hintFor(account)}>
-          <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
-        </Field>
-      ))}
-    </div>
-  );
-
-  if (part === 'set-aside' && goal) {
     return (
-      <form onSubmit={submit} className="space-y-4">
-        {savingsAccounts.length > 0 ? setAsideFields : <p className="text-sm text-[var(--ph-ink-3)]">No savings, cash or deposit account to set money aside in.</p>}
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy || savingsAccounts.length === 0}>
-            Save
-          </Button>
-          <Button type="button" variant="secondary" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-      </form>
+      <div className={SCREEN}>
+        <Calculator goal={goal} onDone={goBack} onCancel={() => setWorking(false)} />
+      </div>
     );
   }
 
+  const save: CornerAction = { key: 'save', label: 'Save goal', glyph: <Check size={22} aria-hidden />, run: () => void submit(), disabled: !canSave };
+
   return (
-    <Card>
-      <form onSubmit={submit} className="space-y-4">
+    <div className={SCREEN} data-testid="goal-form">
+      <PushedTitle title={goal ? goal.name : 'New goal'} back="Goals" onBack={goBack} actions={[save]} />
+      <ErrorBox error={error} />
+      <form onSubmit={submit}>
+        <InsetGroup>
+          <SelectRow label="Kind" info={template?.hint} value={kind} onChange={(e) => pickKind(e.target.value as GoalKind)} disabled={!!goal}>
+            {GOAL_TEMPLATES.map((row) => (
+              <option key={row.kind} value={row.kind}>
+                {row.label}
+              </option>
+            ))}
+            <option value="other">{GOAL_KIND_LABELS.other}</option>
+          </SelectRow>
+          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Goal name" required />
+        </InsetGroup>
+
+        {stages.map((stage, index) => (
+          <InsetGroup key={stage.id ?? index} header={index === 0 ? 'Payments' : `Payment ${index + 1}`} info={index === 0 ? 'Add a payment for each one the scheme asks for.' : undefined}>
+            {[
+              <TextRow key="what" label="What" value={stage.name} onChange={(e) => setStage(index, { name: e.target.value })} placeholder="What this payment is" required />,
+              stage.usesMonths ? (
+                <TextRow key="amount" label="Months of outgoings" value={stage.months} onChange={(e) => setStage(index, { months: e.target.value })} inputMode="numeric" placeholder="Months" />
+              ) : (
+                <TextRow
+                  key="amount"
+                  label={`Cost in today's money (${ws.baseCurrency})`}
+                  value={stage.amount}
+                  onChange={(e) => setStage(index, { amount: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="Amount"
+                  required
+                />
+              ),
+              <TextRow key="due" label="Needed by" type="date" value={stage.dueOn} onChange={(e) => setStage(index, { dueOn: e.target.value })} />,
+              ...(stages.length > 1
+                ? [<DestructiveRow key="remove" label="Remove this payment" onClick={() => setStages((rows) => rows.filter((_, i) => i !== index))} />]
+                : []),
+            ]}
+          </InsetGroup>
+        ))}
+        <InsetGroup>
+          <InsetRow
+            label="Add a payment"
+            title={<span className="text-[var(--ph-tint)]">＋ Add a payment</span>}
+            chevron={false}
+            onClick={() => setStages((rows) => [...rows, { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null }])}
+          />
+        </InsetGroup>
+
+        <InsetGroup header="Growth">
+          <TextRow label="Cost growth a year" info="How fast this gets more expensive." suffix="%" value={growth} onChange={(e) => setGrowth(e.target.value)} inputMode="decimal" />
+          <TextRow
+            label="Expected return a year"
+            info={returnInfo}
+            suffix="%"
+            value={expectedReturn}
+            onChange={(e) => {
+              setExpectedReturn(e.target.value);
+              setReturnTyped(true);
+            }}
+            inputMode="decimal"
+          />
+        </InsetGroup>
+
+        <InsetGroup header="Already moving">
+          <TextRow
+            label="Standing amount each month"
+            info={`A transfer already made for this goal, outside monthly buys. In ${ws.baseCurrency}.`}
+            value={standing}
+            onChange={(e) => setStanding(e.target.value)}
+            inputMode="decimal"
+            placeholder="Optional"
+          />
+          <TextRow label="What that transfer is" value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />
+        </InsetGroup>
+
+        <SetAsideGroup state={setAside} />
+
         {/* For the goals whose amount is worked out rather than typed: the working is part of editing them. */}
         {goal && calculatorKindOf(kind) && (
-          <div className="space-y-1">
-            <Button type="button" variant="secondary" onClick={() => setWorking(true)}>
-              Work out the amount
-            </Button>
-            <p className="text-xs text-slate-500">The household, the levels or the retirement figures behind the amount. The goal follows the working.</p>
-          </div>
-        )}
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="What kind of goal" hint={template?.hint}>
-            <Select value={kind} onChange={(e) => pickKind(e.target.value as GoalKind)} disabled={!!goal}>
-              {GOAL_TEMPLATES.map((row) => (
-                <option key={row.kind} value={row.kind}>
-                  {row.label}
-                </option>
-              ))}
-              <option value="other">{GOAL_KIND_LABELS.other}</option>
-            </Select>
-          </Field>
-          <Field label="Name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
-          </Field>
-          <Field label="Cost growth a year (%)" hint="How fast this gets more expensive.">
-            <Input value={growth} onChange={(e) => setGrowth(e.target.value)} inputMode="decimal" />
-          </Field>
-          <Field label="Expected return a year (%)" hint={returnHint}>
-            <Input
-              value={expectedReturn}
-              onChange={(e) => {
-                setExpectedReturn(e.target.value);
-                setReturnTyped(true);
-              }}
-              inputMode="decimal"
+          <InsetGroup>
+            <InsetRow
+              label="Calculator"
+              title={<span className="block w-full text-center">Calculator</span>}
+              chevron={false}
+              onClick={() => setWorking(true)}
             />
-          </Field>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-sm font-semibold">Payments</h3>
-            <span className="text-xs text-slate-500">Add a stage for each payment the scheme asks for.</span>
-          </div>
-          {stages.map((stage, index) => (
-            <div key={index} className="grid gap-2 md:grid-cols-[1.4fr_1fr_1fr_auto]">
-              <Field label="What this payment is">
-                <Input value={stage.name} onChange={(e) => setStage(index, { name: e.target.value })} required />
-              </Field>
-              {stage.usesMonths ? (
-                <Field label="Months of outgoings">
-                  <Input value={stage.months} onChange={(e) => setStage(index, { months: e.target.value })} inputMode="numeric" />
-                </Field>
-              ) : (
-                <Field label={`Cost in today's money (${ws.baseCurrency})`}>
-                  <Input value={stage.amount} onChange={(e) => setStage(index, { amount: e.target.value })} inputMode="decimal" required />
-                </Field>
-              )}
-              <Field label="Needed by">
-                <Input type="date" value={stage.dueOn} onChange={(e) => setStage(index, { dueOn: e.target.value })} />
-              </Field>
-              <div className="flex items-end pb-1">
-                {stages.length > 1 && (
-                  <Button type="button" variant="ghost" onClick={() => setStages((rows) => rows.filter((_, i) => i !== index))}>
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-          <Button type="button" variant="secondary" onClick={() => setStages((rows) => [...rows, { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null }])}>
-            Add a payment
-          </Button>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label={`Standing amount each month (${ws.baseCurrency})`} hint="A transfer already made for this goal, outside monthly buys.">
-            <Input value={standing} onChange={(e) => setStanding(e.target.value)} inputMode="decimal" />
-          </Field>
-          <Field label="What that transfer is">
-            <Input value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />
-          </Field>
-        </div>
-
-        {savingsAccounts.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">Money set aside</h3>
-            <p className="text-xs text-slate-500">From savings, cash or a deposit. Holdings are tagged on each purchase instead.</p>
-            {setAsideFields}
-          </div>
+          </InsetGroup>
         )}
-
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            {goal ? 'Save goal' : 'Add goal'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
       </form>
-    </Card>
+    </div>
   );
 }

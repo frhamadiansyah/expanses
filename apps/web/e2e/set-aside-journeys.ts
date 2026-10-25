@@ -312,7 +312,7 @@ export const JOURNEYS: Journey[] = [
       await page.goto('/goals');
       await openGoalForm(page, 'Emergency fund');
       await page.getByLabel('Name', { exact: true }).fill('Emergency fund');
-      await page.getByRole('button', { name: 'Add goal' }).last().click();
+      await page.getByRole('button', { name: 'Save goal' }).last().click();
       await expect(goalRow(page, 'Emergency fund')).toBeVisible();
       await setAside(page, 'Emergency fund', 'Jenius (IDR)', '30000000');
 

@@ -15,7 +15,7 @@ test('two answers prefill the months, say why, and size the goal on a month of s
 
   await page.goto('/goals');
   await openGoalForm(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   // The goal's own page carries its fields and its working; the save lands as a row on the list.
   await goalCard(page, 'Emergency fund');
   await openWorking(page);

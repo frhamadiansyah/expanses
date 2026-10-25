@@ -3,7 +3,7 @@ import { openAccount } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { editGoal, openGoalForm, openWorking, workingSettled } from './goals';
 import { openDrawers } from './drawers';
-import { goalCard, goalRow } from './set-aside';
+import { addSetAsideRow, goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 import { openShortTrade, openTradeDetails, openTradeRow, recordShortTrade } from './trades';
 
@@ -44,7 +44,7 @@ async function addGoal(page: Page, kind: string, name: string, amount: string, d
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, name)).toBeVisible();
 }
 
@@ -137,7 +137,7 @@ test('a template button opens that template, not the first one', async ({ page }
   await page.goto('/goals');
   await openGoalForm(page, 'Hajj or umrah');
 
-  await expect(page.getByLabel('What kind of goal')).toHaveValue('hajj');
+  await expect(page.getByLabel('Kind', { exact: true })).toHaveValue('hajj');
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hajj or umrah');
 });
 
@@ -149,11 +149,12 @@ test('a new goal’s return follows when it is needed, until one is typed', asyn
   };
   await page.goto('/goals');
   await openGoalForm(page, 'Holiday');
-  const expectedReturn = page.getByLabel('Expected return a year (%)');
+  const expectedReturn = page.getByLabel('Expected return a year', { exact: true });
   await expect(expectedReturn).toHaveValue('4');
 
   await page.getByLabel('Needed by').first().fill(yearsAhead(4));
   await expect(expectedReturn).toHaveValue('6');
+  await page.getByRole('button', { name: 'About Expected return a year' }).click();
   await expect(page.getByText(/^6% · 3 to 5 years/)).toBeVisible();
 
   await expectedReturn.fill('');
@@ -170,16 +171,16 @@ test('only a new goal’s first payment moves its return: not a later payment, n
   };
   await page.goto('/goals');
   await openGoalForm(page, 'Holiday');
-  const expectedReturn = page.getByLabel('Expected return a year (%)');
+  const expectedReturn = page.getByLabel('Expected return a year', { exact: true });
   await expect(expectedReturn).toHaveValue('4');
   await page.getByLabel(/Cost in today's money/).first().fill('10000000');
 
   await page.getByRole('button', { name: 'Add a payment' }).click();
-  await page.getByLabel('What this payment is').nth(1).fill('Balance');
+  await page.getByLabel('What', { exact: true }).nth(1).fill('Balance');
   await page.getByLabel(/Cost in today's money/).nth(1).fill('5000000');
   await page.getByLabel('Needed by').nth(1).fill(yearsAhead(8));
   await expect(expectedReturn).toHaveValue('4');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Holiday')).toBeVisible();
 
   await editGoal(await goalCard(page, 'Holiday'));
@@ -194,8 +195,8 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');
-  await page.getByLabel('Expected return a year (%)').fill('9');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByLabel('Expected return a year', { exact: true }).fill('9');
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
   const retirement = await goalCard(page, 'Retirement');
@@ -213,7 +214,7 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   await expect(page.getByText('Worked out from these figures')).toBeVisible();
   await workingSettled(page);
   await editGoal(retirement);
-  await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('9');
+  await expect(page.getByLabel('Expected return a year', { exact: true })).toHaveValue('9');
 });
 
 test('works out a retirement target from your own figures', async ({ page }) => {
@@ -222,7 +223,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
   await goalCard(page, 'Retirement');
@@ -252,7 +253,7 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
   const retirement = await goalCard(page, 'Retirement');
@@ -289,7 +290,8 @@ test('money set aside on a foreign account is typed, saved and read back in that
   const goal = await goalCard(page, 'University for Aisyah');
   await editGoal(goal);
   // The box says USD, so an amount with cents is what belongs in it.
-  const box = page.getByLabel('Wise USD (USD)');
+  await addSetAsideRow(page, 'Wise USD');
+  const box = page.getByLabel('Wise USD', { exact: true });
   await box.fill('100,03');
   await page.getByRole('button', { name: 'Save goal' }).click();
 
@@ -304,5 +306,5 @@ test('money set aside on a foreign account is typed, saved and read back in that
 
   // And the form opens on the figure it stored, in the same currency it asked for.
   await editGoal(goal);
-  await expect(page.getByLabel('Wise USD (USD)')).toHaveValue('100.03');
+  await expect(page.getByLabel('Wise USD', { exact: true })).toHaveValue('100.03');
 });

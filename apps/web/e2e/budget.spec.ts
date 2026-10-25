@@ -125,7 +125,7 @@ test('a goal is listed on the plan with what it needs a month', async ({ page })
   await page.getByLabel('Name', { exact: true }).fill('School fees');
   await page.getByLabel(/Cost in today's money/).first().fill('120000000');
   await page.getByLabel('Needed by').first().fill('2030-06-30');
-  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(page.getByTestId('goal-row').filter({ hasText: 'School fees' }).first()).toBeVisible();
 
   await page.goto('/budget');
