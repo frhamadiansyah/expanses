@@ -41,6 +41,7 @@ export function AssetSettings({
   coretaxCode: currentCode,
   taxTreatment,
   afterName,
+  beforeTax,
   taxFields,
 }: {
   accountId: string;
@@ -61,6 +62,8 @@ export function AssetSettings({
   taxTreatment: Treatment | null;
   /** A row under Name: an asset's Acquired, which used to wait on an Edit screen of its own. */
   afterName?: ReactNode;
+  /** A box between the thing's own settings and the Tax report: a money account's spending, digits and card. */
+  beforeTax?: ReactNode;
   /** The tax report's own questions for it, under the Tax report group. */
   /** The report's questions for this asset, given the Tax report rows to open their box with; left out, the rows stand alone. */
   taxFields?: (lead: ReactElement[]) => ReactNode;
@@ -184,6 +187,8 @@ export function AssetSettings({
           ))}
         </SelectRow>
       </InsetGroup>
+
+      {beforeTax}
 
       {taxFields && reportable ? (
         taxFields(taxRows)

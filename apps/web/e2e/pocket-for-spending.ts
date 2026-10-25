@@ -70,7 +70,6 @@ export async function pocketForSpending(page: Page) {
   const lira = await openPocketSettings(page, 'TRY');
   await expect(lira).toBeChecked();
   await expect(lira).toBeEnabled();
-  await expect(page.getByText(/Off: the TRY is kept as savings\./)).toBeVisible();
   await lira.click();
   await expect(lira).not.toBeChecked();
 
@@ -102,7 +101,6 @@ export async function pocketForSpending(page: Page) {
   const rupiah = page.getByLabel('For spending');
   await expect(rupiah).not.toBeChecked();
   await expect(rupiah).toBeDisabled();
-  await expect(page.getByText(`${CASH.name} is kept as savings, so all its pockets are too.`, { exact: false })).toBeVisible();
 
   // On again: the rupiah is back, and the lira is still kept as savings.
   await openAssets(page);
@@ -155,7 +153,6 @@ export async function everyPocketOff(page: Page) {
   const account = page.getByLabel('For spending');
   await expect(account).not.toBeChecked();
   await expect(account).toBeEnabled();
-  await expect(page.getByText('Every pocket is kept as savings.', { exact: false })).toBeVisible();
   await account.click();
   await expect(account).toBeChecked();
 

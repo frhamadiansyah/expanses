@@ -17,6 +17,9 @@ let open = 0;
  * Escape goes through `useEscape`, which answers the innermost thing open and nothing else: a keypad inside
  * this sheet takes the press, and the sheet keeps the draft it is holding.
  */
+/** How far a sheet's panel runs on below the keyboard's top, under the keys and their bar. */
+const BELOW_KEYBOARD = 160;
+
 export function Sheet({
   title,
   onClose,
@@ -126,6 +129,8 @@ export function Sheet({
    * kind of field it is. On a desktop there is no keyboard, the inset is zero, and nothing here moves.
    */
   const keyboard = useKeyboardInset();
+  const view = typeof window === 'undefined' ? null : window.visualViewport;
+  const riding = !detents && keyboard > 0 && view !== null && window.innerWidth < 768;
   const reveal = (field: Element | null) => {
     if (keyboard === 0 || !(field instanceof HTMLElement) || field === panel.current || !panel.current?.contains(field)) return;
     // `nearest` moves the sheet's list only as far as the field needs; the stylesheet's scroll margin keeps it clear
@@ -161,7 +166,11 @@ export function Sheet({
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
+      className="fixed inset-x-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center"
+      // A sheet as tall as its rows, with the keyboard up: the overlay is the part of the page showing above the keyboard
+      // (the window may have been scrolled to reveal the field, which a fixed box does not follow) and runs on below it
+      // by BELOW_KEYBOARD, which the panel fills, so its colour reaches under the keyboard's own top bar and no page shows.
+      style={riding ? { top: view!.offsetTop, height: view!.height + BELOW_KEYBOARD } : { top: 0, bottom: 0 }}
       onPointerDown={(e) => {
         scrimDown.current = e.target === e.currentTarget;
       }}
@@ -188,10 +197,7 @@ export function Sheet({
            * scrolled above it. Lifting the whole sheet onto the keyboard instead left a band of the page behind showing
            * between the two whenever the measured keyboard ran taller than the one drawn.
            */
-          paddingBottom: keyboard > 0 ? `calc(1rem + ${keyboard}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
-          // A sheet that is only as tall as its rows ends above the keyboard's own top bar, which is see-through: with the
-          // keyboard up its colour is cast a screen's height further down, so no page shows between the two.
-          ...(!detents && keyboard > 0 ? { boxShadow: `0 100dvh 0 0 var(${grouped ? '--ph-ground' : '--ph-surface'})` } : {}),
+          paddingBottom: riding ? `calc(1rem + ${BELOW_KEYBOARD}px)` : keyboard > 0 ? `calc(1rem + ${keyboard}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
           // With the keyboard up a sheet with detents stands at large, so what it holds has room above the keys.
           ...(detents ? { height: dragged ?? (detent === 'large' || keyboard > 0 ? '92dvh' : '50dvh') } : {}),
         }}

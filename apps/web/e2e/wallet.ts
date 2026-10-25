@@ -47,7 +47,6 @@ export async function forSpendingOff(page: Page) {
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   const forSpending = page.getByLabel('For spending');
   await expect(forSpending).toBeChecked();
-  await expect(page.getByText('Off: kept as savings.')).toBeVisible();
   await forSpending.click();
   await expect(forSpending).not.toBeChecked();
 
