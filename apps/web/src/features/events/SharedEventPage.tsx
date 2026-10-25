@@ -31,7 +31,7 @@ const TABS: readonly Segment[] = [
  * on every phone whatever its person may do.
  *
  * Done locks every write but Reopen; an event this phone's person is no longer in (left, or removed) is kept to read,
- * with a notice in place of every action (I5). `error` is the menu's, drawn under the title as other screens draw it.
+ * with a notice at the top of Balances and no action anywhere (I5). `error` is the menu's, drawn under the title as other screens draw it.
  */
 export function SharedEventPage({ view, menu = [], error = null }: { view: SharedEventView; menu?: CornerAction[]; error?: unknown }) {
   const navigate = useNavigate();
@@ -69,11 +69,6 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
       <PushedTitle title={view.name} back="Events" backTo="/events" actions={actions} />
       <p className="-mt-[8px] mb-[14px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{`${eventDates(view)} · ${view.currency}`}</p>
       <ErrorBox error={error} />
-      {readOnly ? (
-        <InsetGroup>
-          <InsetRow title={readOnlyLine(view)} chevron={false} testId="shared-event-read-only" />
-        </InsetGroup>
-      ) : null}
       {locked ? null : <FinishSharing view={view} />}
       {waiting && !readOnly ? (
         <InsetGroup>
@@ -162,6 +157,11 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
       ) : null}
       {tab === 'balances' ? (
         <>
+          {readOnly ? (
+            <InsetGroup>
+              <InsetRow title={readOnlyLine(view)} chevron={false} testId="shared-event-read-only" />
+            </InsetGroup>
+          ) : null}
           <Panel header="Net balance" testId="shared-balance-bars">
             <div className="flex flex-col gap-[10px]">
               {bars.map((bar) => (
