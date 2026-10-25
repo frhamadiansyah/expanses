@@ -286,7 +286,7 @@ function MerchantSheet({
       onClose={onClose}
       back={finding ? { label: opened.title, run: () => setFinding(false) } : undefined}
       confirm={finding ? undefined : { label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
-      // Half height to begin with, and tall while the name is typed, as Paid with is while it is searched.
+      // No autofocus: a new merchant opens at half height too. Half height to begin with, and tall while the name is typed, as Paid with is while it is searched.
       tall
       expanded={finding}
     >
@@ -307,7 +307,7 @@ function MerchantSheet({
         }}
       >
         <InsetGroup>
-          <TextRow label="Merchant" value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder="Name" autoFocus={opened.pattern === ''} autoComplete="off" required />
+          <TextRow label="Merchant" value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder="Name" autoComplete="off" required />
           {/* Ignored, the merchant has no code of its own to choose, so the row steps aside. */}
           {!ignored && <MccRow value={mcc} onOpen={() => setFinding(true)} />}
         </InsetGroup>
