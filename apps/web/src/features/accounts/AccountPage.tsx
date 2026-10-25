@@ -56,7 +56,7 @@ import { BalanceCard } from './BalanceCard';
 import { BalanceHero } from './BalanceHero';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentTotal, pocketsOf } from './pockets';
-import { LINE_DAYS, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
+import { LINE_DAYS, RECENT_LIMIT, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 
 /**
@@ -468,7 +468,11 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
   const navigate = useNavigate();
   const accounts = useAccounts();
   const recent = useRecentTransactions(accountIds);
-  const rows = buildRows(recent.data ?? [], [], accounts.data ?? [], []);
+  // An opening balance (each pocket's included) is how the account was started, not something that happened to it: it
+  // stays out of Recent, as it stays out of the list.
+  const rows = buildRows(recent.data ?? [], [], accounts.data ?? [], [])
+    .filter((row) => row.type !== 'opening')
+    .slice(0, RECENT_LIMIT);
   return (
     <Panel header="Recent" testId="account-recent">
       <ErrorBox error={recent.error} />

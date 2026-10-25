@@ -34,7 +34,9 @@ export function useRecentTransactions(accountIds: readonly string[]) {
   return useQuery({
     queryKey: ['account-recent', ws.workspaceId, ids.join(',')],
     enabled: ids.length > 0,
-    queryFn: () => listTransactions(database, ownerScope(ws), { accountIds: ids, limit: RECENT_LIMIT }),
+    // More than are shown: the opening balance rows (how the books were started, a row per pocket) are left out of Recent
+    // and must not use up its places.
+    queryFn: () => listTransactions(database, ownerScope(ws), { accountIds: ids, limit: RECENT_LIMIT * 6 }),
   });
 }
 

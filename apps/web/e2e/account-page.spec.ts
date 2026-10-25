@@ -103,7 +103,8 @@ test('cash takes a second currency like a bank account: it becomes one with pock
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openMoney(page, 'Pocket cash');
   await expect(page.getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
-  await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
+  // The opening balance is how the account was started: it is not listed under Recent.
+  await expect(page.getByTestId('account-recent')).not.toContainText('Opening balance');
   // The last row of the account's facts: the corner holds only its ⚙.
   await page.getByTestId('add-currency').click();
   await setCurrency(page.getByLabel('Currency', { exact: true }), 'TRY');
@@ -312,7 +313,8 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Move', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);
   await expect(page.getByTestId('pocket-add')).toHaveText(/Add a currency/);
-  await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
+  // The opening balance is how the account was started: it is not listed under Recent.
+  await expect(page.getByTestId('account-recent')).not.toContainText('Opening balance');
   await page.getByTestId('pocket-USD').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Bank One Valas Plus · USD' })).toBeVisible();
