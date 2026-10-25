@@ -45,6 +45,8 @@ export function SettingsNameRow({ accountId, position }: GroupChild & { accountI
 
   return (
     <div
+      // Enter finishes the half being typed in, as it does in every other row here.
+      onKeyDown={(e) => e.key === 'Enter' && e.target instanceof HTMLInputElement && e.target.blur()}
       onBlur={(e) => {
         // Focus moving between the two halves is not leaving the row.
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) save();

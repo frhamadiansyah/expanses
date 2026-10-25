@@ -211,11 +211,8 @@ export function IncomePage() {
           {view.payers.length > 0 && (
             <InsetGroup
               header="Who pays it"
-              footer={
-                view.unknown.length > 0
-                  ? `No dividend history for ${view.unknown.join(', ')} yet, so it is not counted.`
-                  : "Each stock's dividends and each bond's coupons over the last 12 months, at what is held now."
-              }
+              // Only a warning is said here: a holding with no dividend history is left out of the share.
+              footer={view.unknown.length > 0 ? `No dividend history for ${view.unknown.join(', ')} yet, so it is not counted.` : undefined}
             >
               <div style={{ padding: '12px 16px 4px' }}>
                 <ShareBar

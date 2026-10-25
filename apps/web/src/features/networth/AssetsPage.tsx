@@ -1,5 +1,6 @@
 import { CASH_ITEMS, isoDate } from '@expanses/core';
-import { Percent, Plus } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowLeftRight, Percent, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -176,10 +177,10 @@ export function AssetsPage() {
   // What each holding is a share of, so a stock kept at two brokers is listed once.
   const links = useHoldingLinks();
   const securities = useSecurities();
-  // The buys and sells recorded this year, for the All trades row's count; null until read, and no row before any trade.
+  // Any buy or sell recorded: the All trades line closes the section only once there is one to read.
   const trades = useTrades();
-  const thisYear = isoDate().slice(0, 4);
-  const tradesThisYear = trades.data && trades.data.length > 0 ? trades.data.filter((trade) => (trade.kind === 'buy' || trade.kind === 'sell') && trade.occurredOn.startsWith(thisYear)).length : null;
+  const hasTrades = Boolean(trades.data && trades.data.length > 0);
+  const navigate = useNavigate();
   const traded = new Set((trades.data ?? []).map((trade) => trade.accountId));
   const [showSold, setShowSold] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
@@ -309,8 +310,17 @@ export function AssetsPage() {
             opened={active === group.group}
             // Every buy and sell, read on a page of its own: a row closing the section the trades are in.
             after={
-              tradesThisYear !== null && group.group === tradesHome ? (
-                <InsetRow title="All trades" subtitle={`${tradesThisYear} this year`} to="/net-worth/investments/trades" testId="all-trades" />
+              hasTrades && group.group === tradesHome ? (
+                // Drawn as the kinds above it are drawn — the same glyph circle, 15 px medium name and ›, no second line — so it
+                // reads as one more line of the section rather than a row of another size.
+                <Drawer
+                  icon={<ArrowLeftRight size={16} aria-hidden />}
+                  label="All trades"
+                  open={false}
+                  separator
+                  testId="all-trades"
+                  onToggle={() => void navigate({ to: '/net-worth/investments/trades' })}
+                />
               ) : undefined
             }
           />

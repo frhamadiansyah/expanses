@@ -37,9 +37,10 @@ test('Income keeps to dividends; All trades, off Assets, reads the year’s real
   await expect(page.getByText('Income this year')).toHaveCount(0);
   await expect(page.getByTestId('trade-history')).toHaveCount(0);
 
-  // All trades is the row closing Assets' Investments, with this year's count.
+  // All trades is the line closing Assets' Investments, drawn as the kinds above it, with no count under it.
   await page.goto('/net-worth/assets');
-  await expect(page.getByTestId('all-trades')).toContainText('2 this year');
+  await expect(page.getByTestId('all-trades')).toContainText('All trades');
+  await expect(page.getByTestId('all-trades')).not.toContainText('this year');
   await page.getByTestId('all-trades').click();
   await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
   await expect(page.getByRole('heading', { name: 'All trades' })).toBeVisible();
