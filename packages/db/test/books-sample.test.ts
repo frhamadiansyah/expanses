@@ -1,4 +1,5 @@
 import { addMonths, isoDate, monthOf, monthRange } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { budgetSheetFor, categoryTotalsBetween, checkLedgerIntegrity, inBook, listPrograms, listTransactions, nativeBalances, personalBook, programBalance } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
@@ -42,6 +43,9 @@ describe('one book changes nothing', () => {
 
     const bookTxIds = (await listTransactions(database, book, { limit: 5000 })).map((t) => t.id);
     expect(bookTxIds.length).toBeGreaterThan(0);
-    expect(bookTxIds).toEqual((await listTransactions(database, ws, { limit: 5000 })).map((t) => t.id));
+    // The sample's shared event posts what Maya paid or took in as ledger transactions the Personal book does not hold.
+    const sharedEventTx = new Set((await database.db.values<[string]>(sql`SELECT transaction_id FROM event_postings WHERE transaction_id IS NOT NULL`)).map(([id]) => id));
+    expect(sharedEventTx.size).toBeGreaterThan(0);
+    expect(bookTxIds).toEqual((await listTransactions(database, ws, { limit: 5000 })).map((t) => t.id).filter((id) => !sharedEventTx.has(id)));
   }, 60_000);
 });
