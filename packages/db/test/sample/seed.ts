@@ -20,6 +20,10 @@ import {
   listSetCategories,
   openCashAccount,
   openDebtBalance,
+  openEventBookTx,
+  ownerScope,
+  recordSettlement,
+  recordSharedExpense,
   openPocketedAccount,
   payCardPurchases,
   postTransaction,
@@ -50,6 +54,7 @@ import {
   upsertSecurityPrice,
   type WorkspaceContext,
 } from '../../src/index';
+import { shareBookForTest } from '../sync/sync-helpers';
 
 /**
  * A believable household to click around in: three months of a salaried life in Jakarta, paid by bank,
@@ -508,6 +513,43 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     await tagTransaction(database, ws, id, baby);
     await linkEventItem(database, ws, babyItems.get(item)!, id);
     if (done) await setEventItemDone(database, ws, babyItems.get(item)!, true);
+  }
+
+  // ---- A week away with friends, shared: four people, two with the app, in baht, ongoing, one settle-up so far ----
+  // Shared events need the sharing tables (0069) and the writes lean on later schema, so an older schema leaves it out.
+  if (has(90)) {
+    const ownerWs = ownerScope(ws);
+    await upsertRate(database, { fromCurrency: 'THB', toCurrency: 'IDR', onDate: held, rate: 480, source: 'manual', sourceDate: held });
+    const baht = await createAccount(database, ownerWs, { name: 'Baht cash', kind: 'asset', subtype: 'cash', currency: 'THB' });
+    const sharedStart = addDays(today, -4);
+    const sharedEnd = addDays(today, 3);
+    const sharedEvent = await saveEvent(database, ownerWs, { name: 'Lake house week', startsOn: sharedStart, endsOn: sharedEnd });
+    await shareBookForTest(database, 'sample-lake-book', 'p-maya');
+    const people: [string, string, string | null][] = [['p-maya', 'Maya', 'p-maya'], ['p-dimas', 'Dimas', 'p-dimas'], ['p-lestari', 'Lestari', null], ['p-yoga', 'Yoga', null]];
+    await database.execScript(`
+      INSERT INTO shared_events (book_id, name, starts_on, ends_on, currency, finished_at) VALUES ('sample-lake-book', 'Lake house week', '${sharedStart}', '${sharedEnd}', 'THB', NULL);
+      INSERT INTO event_categories (book_id, id, name, icon, sort_order, archived_at) VALUES
+        ('sample-lake-book', 'cat-stay', 'Stay', NULL, 0, NULL),
+        ('sample-lake-book', 'cat-food', 'Food', NULL, 1, NULL),
+        ('sample-lake-book', 'cat-boats', 'Boats and rides', NULL, 2, NULL);
+      ${people.map(([id, name, member]) => `INSERT INTO event_people (book_id, id, name, member_id, removed_at) VALUES ('sample-lake-book', '${id}', '${name}', ${member ? `'${member}'` : 'NULL'}, NULL);`).join('\n')}
+    `);
+    await database.transaction((tx) => openEventBookTx(tx, ownerWs, { bookId: 'sample-lake-book', eventId: sharedEvent, name: 'Lake house week', currency: 'THB' }));
+    const all = ['p-maya', 'p-dimas', 'p-lestari', 'p-yoga'];
+    const lake = (occurredOn: string, amountMinor: number, payerPersonId: string, split: Parameters<typeof recordSharedExpense>[3]['split'], categoryId: string, note: string) =>
+      recordSharedExpense(database, ownerWs, sharedEvent, { occurredOn, amountMinor, currency: 'THB', rateToEvent: '1', payerPersonId, paidFrom: payerPersonId === 'p-maya' ? { accountId: baht.id, chargedMinor: null } : null, split, categoryId, note });
+    await lake(sharedStart, 1_260_000, 'p-yoga', { mode: 'equal', people: all }, 'cat-stay', 'Lake house, whole week');
+    await lake(addDays(sharedStart, 1), 184_000, 'p-maya', { mode: 'equal', people: all }, 'cat-food', 'Market and grill night');
+    await lake(addDays(sharedStart, 2), 96_000, 'p-lestari', { mode: 'equal', people: ['p-maya', 'p-lestari', 'p-yoga'] }, 'cat-food', 'Noodle breakfast');
+    await lake(addDays(sharedStart, 2), 150_000, 'p-maya', { mode: 'amounts', shares: [{ personId: 'p-maya', minor: 30_000 }, { personId: 'p-dimas', minor: 50_000 }, { personId: 'p-lestari', minor: 70_000 }] }, 'cat-boats', 'Longtail boat, two trips');
+    await lake(addDays(sharedStart, 3), 72_000, 'p-yoga', { mode: 'equal', people: ['p-maya', 'p-dimas', 'p-yoga'] }, 'cat-boats', 'Bike hire');
+    await lake(addDays(sharedStart, 3), 128_000, 'p-lestari', { mode: 'equal', people: all }, 'cat-food', 'Seafood by the pier');
+    // Dimas has the app, so his payment is a record from his phone, not one written here (the app refuses it).
+    await database.execScript(`
+      INSERT INTO event_expenses (book_id, id, occurred_on, amount_minor, currency, rate_to_event, payer_person_id, payer_member_id, voided_at) VALUES ('sample-lake-book', 'sample-lake-dimas', '${addDays(sharedStart, 1)}', 88000, 'THB', '1', 'p-dimas', 'p-dimas', NULL);
+      INSERT INTO event_expense_details (book_id, id, note, category_id, split_mode, split_json, recorded_by, updated_by) VALUES ('sample-lake-book', 'sample-lake-dimas', 'Groceries for the week', 'cat-food', 'equal', '["p-maya","p-dimas","p-lestari","p-yoga"]', 'p-dimas', NULL);
+    `);
+    await recordSettlement(database, ownerWs, sharedEvent, { occurredOn: addDays(today, -1), fromPersonId: 'p-lestari', toPersonId: 'p-maya', amountMinor: 120_000, account: { accountId: baht.id, amountMinor: null } });
   }
 
   // ---- A phone on 12 months at 0% ----
