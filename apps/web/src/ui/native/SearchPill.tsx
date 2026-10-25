@@ -1,4 +1,5 @@
 import { Search, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 /**
  * The search field a screen draws in its own title row: a pill with the magnifier, the field, and a way out.
@@ -24,12 +25,15 @@ export function SearchPill({
   /** The segmented control's own 32 px, for a field that takes a tab row's place in a sheet and must not change it. */
   compact?: boolean;
 }) {
+  const field = useRef<HTMLInputElement>(null);
+  // Ready to type in as soon as it is asked for, but without the browser scrolling the page to wherever the field
+  // happens to be: a page opened far down must stay where it is while the field appears in the bar.
+  useEffect(() => field.current?.focus({ preventScroll: true }), []);
   return (
     <div className={`flex items-center rounded-full bg-[var(--ph-corner)] ${compact ? 'h-8 gap-2 px-3' : 'h-11 gap-2.5 px-4'}`}>
       <Search size={compact ? 15 : 18} className="shrink-0 text-[var(--ph-ink-3)]" aria-hidden />
       <input
-        // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
-        autoFocus
+        ref={field}
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
