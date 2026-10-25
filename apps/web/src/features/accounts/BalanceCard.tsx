@@ -44,7 +44,7 @@ export function BalanceCard({ testId, ...props }: BalanceCardProps) {
 /**
  * What the card holds, without its surface: the card itself draws it on a Panel, and the back of a Wallet card (the
  * account page's flip) draws it on the card's own white. `plot` shortens the line for a surface with less room, and
- * `readable` is off there so a tap anywhere on the card turns it back over.
+ * `readable` is on there too: only a small button turns the card back over.
  */
 export function BalanceBody({
   label,

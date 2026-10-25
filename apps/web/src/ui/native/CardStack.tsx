@@ -1,5 +1,6 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
+import { RotateCw } from 'lucide-react';
 import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
@@ -375,7 +376,27 @@ export function CardStack({
                     {placed.place === 'raised' ? (
                       flippable ? (
                         // A page with a back: the raised card turns over to it, and back to the card.
-                        <button type="button" aria-label={`${name}, ${flipped ? 'show card' : 'show balance'}`} aria-pressed={flipped} className={cx(hit, 'ph-under-dialog')} style={style} onClick={() => setFlipped((was) => !was)} />
+                        flipped ? (
+                          // The balance side is read by touch (its line), so only a small button turns it over: the rest of the card is the page's.
+                          <button
+                            type="button"
+                            aria-label={`${name}, show card`}
+                            aria-pressed
+                            className="ph-focus ph-under-dialog absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink)]"
+                            style={{ pointerEvents: 'auto' }}
+                            onClick={() => setFlipped(false)}
+                          >
+                            <RotateCw size={15} aria-hidden />
+                          </button>
+                        ) : (
+                          <>
+                            <button type="button" aria-label={`${name}, show balance`} aria-pressed={false} className={cx(hit, 'ph-under-dialog')} style={style} onClick={() => setFlipped(true)} />
+                            {/* The same small mark as the back's, so the card reads as one that turns. */}
+                            <span aria-hidden className="pointer-events-none absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/25 text-white">
+                              <RotateCw size={15} />
+                            </span>
+                          </>
+                        )
                       ) : (
                         // The raised card is the page's header; tapping it closes it, as in Wallet.
                         <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />

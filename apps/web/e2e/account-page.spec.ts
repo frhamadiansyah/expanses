@@ -290,9 +290,8 @@ test('cash and a current account draw the balance as one card with the month beh
     // The year's chart is gone: the card's month is the page's one line.
     await expect(page.getByText('Last 12 months')).toHaveCount(0);
   }
-  // On the back of a raised card the line is not read a day at a time: a tap anywhere on the card turns it back over
-  // (the day-by-day reading is the asset page's, `asset-page.spec.ts`).
-  await expect(page.getByTestId('balance-line')).toHaveCount(0);
+  // The back's line is read by touch like the asset page's: only the small button in the corner turns the card over.
+  await expect(page.getByTestId('balance-line')).toHaveCount(1);
 });
 
 test('an account with pockets lists them, and a pocket opens its own page with the parent as the way back', async ({ page }) => {

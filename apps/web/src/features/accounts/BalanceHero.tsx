@@ -35,7 +35,7 @@ export function BalanceHero({ foreign, ...props }: BalanceCardProps & { foreign?
     );
   }
   if (!slot.backHost) return null;
-  const { testId, caption, children, ...rest } = props;
+  const { testId, caption, children, corner, ...rest } = props;
   // The account line, and the foreign-money line under it where the page has one and the card has room for it.
   const layout = backLayout(slot.height, foreign ? 2 : 1);
   return createPortal(
@@ -46,7 +46,9 @@ export function BalanceHero({ foreign, ...props }: BalanceCardProps & { foreign?
     >
       <BalanceBody
         {...rest}
-        className="space-y-2"
+        // The flip button has the card's corner, so the flag stands beside it, and the figure leaves room for both.
+        className="space-y-2 [&_[data-testid=card-figure]]:pr-[84px]"
+        corner={corner ? <span className="mr-10 block">{corner}</span> : undefined}
         caption={
           <>
             <span className="block">{caption}</span>
@@ -55,7 +57,6 @@ export function BalanceHero({ foreign, ...props }: BalanceCardProps & { foreign?
         }
         series={layout.spark === null ? null : rest.series}
         plot={layout.spark ?? undefined}
-        readable={false}
       >
         {children}
       </BalanceBody>

@@ -52,6 +52,8 @@ test('the card is the hero; a tap turns it to the balance and a second tap back'
   await page.getByRole('button', { name: /, show balance$/ }).focus();
   await page.keyboard.press('Enter');
   await expect(back).toBeVisible();
+  // The small button on the back is the one to turn it over.
+  await page.getByRole('button', { name: /, show card$/ }).focus();
   await page.keyboard.press('Space');
   await expect(back).toBeHidden();
 });
