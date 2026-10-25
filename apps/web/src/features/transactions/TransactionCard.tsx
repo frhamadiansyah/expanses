@@ -53,7 +53,7 @@ import { useActiveNetWorthGroup, usePaidWithItems } from '../sharing/net-worth-q
 import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
-import { AmountRow } from './AmountRow';
+import { AmountRow, FeeRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
 import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { DateRow, NoteRow } from './CardRows';
@@ -628,32 +628,25 @@ function CardBody({
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
   /*
-   * A transfer's fee: within one currency (the From account's), and not on a transfer for a goal. Its category starts
-   * on the workspace's built-in Fees & charges, the one a fee the app knows of is filed under.
+   * A transfer's fee: within one currency (the From account's), a transfer for a goal included — the fee is spending
+   * beside the move, never counted toward the goal. Its category starts on the workspace's built-in Fees & charges, the
+   * one a fee the app knows of is filed under.
    */
   const feeFrom = accounts.find((account) => account.id === draft.moneyId);
   const feeTo = accounts.find((account) => account.id === draft.toId);
   const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
-  const offersFee = draft.mode === 'transfer' && !draft.goalId && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
+  const offersFee = draft.mode === 'transfer' && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   /*
-   * A transfer's second figure, on the Amount row beside what left (option A): what arrived, between two currencies —
-   * required, in the To account's — or, within one, its fee. The fee's category is under Add more details.
+   * A transfer's second figure, on the Amount row beside what left: what arrived, between two currencies — required, in
+   * the To account's. Within one currency the Amount row is the amount alone, and the fee is its own row under it.
    */
   const transferSecond =
-    draft.mode !== 'transfer'
-      ? null
-      : received
-        ? { field: received, code: received.currency, placeholder: 'Received', onChange: (toAmount: string) => set({ toAmount }) }
-        : offersFee
-          ? {
-              field: { which: 'fee' as const, label: `Fee in ${feeCurrency}`, value: draft.fee, currency: feeCurrency },
-              code: 'FEE',
-              placeholder: 'Fee',
-              onChange: (fee: string) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory }),
-            }
-          : null;
+    draft.mode === 'transfer' && received
+      ? { field: received, code: received.currency, placeholder: 'Received', onChange: (toAmount: string) => set({ toAmount }) }
+      : null;
+  const setFee = (fee: string) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory });
   // Photos live on the Amount row's camera for a purchase, new or saved: its receipt. Income, a transfer and a buy or
   // sell keep them under Add more details.
   const photosOnAmount = draft.mode === 'expense' && offered.includes('photos');
@@ -1109,6 +1102,15 @@ function CardBody({
               {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
               {...(transferSecond ? { second: transferSecond } : {})}
             />
+            {/* A transfer's fee (option A): its category on the left, the figure on the right, under the Amount. */}
+            {offersFee && (
+              <FeeRow
+                field={{ which: 'fee', label: `Fee in ${feeCurrency}`, value: draft.fee, currency: feeCurrency }}
+                onChange={setFee}
+                category={byId.get(draft.feeCategoryId || defaultFeeCategory)?.name ?? ''}
+                onCategory={() => setSheet('feeCategory')}
+              />
+            )}
             {/* Withdrawal rate §7: what this foreign spend comes to at what the money cost. */}
             {draft.mode === 'expense' && <WithdrawalLine draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
@@ -1168,7 +1170,7 @@ function CardBody({
                   placeholder="Fee"
                   inputMode="decimal"
                   value={draft.fee}
-                  onChange={(fee) => set({ fee, feeCategoryId: latest.current.feeCategoryId || defaultFeeCategory })}
+                  onChange={setFee}
                 />
               </>
             )}
@@ -1244,32 +1246,6 @@ function CardBody({
         </FormRows>
       )}
 
-      {/*
-        §3.5's second card. For goal is offered only while adding — `formToPost` refuses to tag an edit, and a
-        row that cannot be honoured is worse than no row. Received amount appears only when the two accounts
-        settle in different currencies, because that is the only time the figure that lands is not the figure
-        that left; `exchangeLines` reads it in the To account's own currency, which is what the label names.
-      */}
-      {draft.mode === 'transfer' && !initial && goals.length > 0 && (
-        <FormRows>
-          {!initial && goals.length > 0 && (
-            <FormRow
-              lead="value"
-              icon={
-                <RowGlyph>
-                  <Target size={15} />
-                </RowGlyph>
-              }
-              label="For goal"
-              value={goals.find((goal) => goal.id === draft.goalId)?.name ?? ''}
-              caption="For goal"
-              onClick={() => setSheet('goal')}
-            />
-          )}
-
-        </FormRows>
-      )}
-
       {/* Withdrawal rate §7, R15: the Rate against the market, and out of foreign cash its cost and gain or loss. */}
       {draft.mode === 'transfer' && crossCurrency && <TransferRates draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
@@ -1299,22 +1275,24 @@ function CardBody({
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
       {detailsOpen && (
         <section aria-label="More details">
-          {/* The fee's category is one of the details, in their group rather than a box of its own above them. */}
+          {/*
+            A transfer's For goal is one of the details, first in their group. Offered only while adding — `formToPost`
+            refuses to tag an edit, and a row that cannot be honoured is worse than no row.
+          */}
           <MoreDetails
             lead={
-              offersFee && draft.fee.trim() !== '' ? (
+              draft.mode === 'transfer' && !initial && goals.length > 0 ? (
                 <FormRow
                   lead="value"
                   icon={
                     <RowGlyph>
-                      <Shapes size={15} />
+                      <Target size={15} />
                     </RowGlyph>
                   }
-                  label="Fee category"
-                  placeholder="Fee category"
-                  value={byId.get(draft.feeCategoryId)?.name ?? ''}
-                  caption="Fee category"
-                  onClick={() => setSheet('feeCategory')}
+                  label="For goal"
+                  value={goals.find((goal) => goal.id === draft.goalId)?.name ?? ''}
+                  caption="For goal"
+                  onClick={() => setSheet('goal')}
                 />
               ) : undefined
             }

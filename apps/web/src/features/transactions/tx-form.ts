@@ -16,7 +16,7 @@ import {
   refundLines,
   type RoundDirection,
   splitExpenseLines,
-  transferLines,
+  transferWithFeeLines,
   yourShare,
 } from '@expanses/core';
 import { cardTopsUpWallet, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
@@ -810,21 +810,11 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
       feeCategoryId: draft.feeCategoryId || null,
     });
   }
-  if (feeMinor > 0) {
-    /*
-     * What left is the transfer and its fee together — the one line a statement prints, Rp 1.010.000 — what landed is
-     * the transfer alone, and the fee is spending. Paid by card (anything but a wallet's top-up, above), the card's
-     * line names the fee's category, so its points are read once on the whole charge, as the bank reads it, and the
-     * fee line is not counted again.
-     */
-    const card = account.subtype === 'credit_card';
-    return [
-      { accountId: to.id, amountMinor, currency },
-      { accountId: account.id, amountMinor: -(amountMinor + feeMinor), currency, ...(card ? { spendCategoryId: draft.feeCategoryId } : {}) },
-      { accountId: draft.feeCategoryId, amountMinor: feeMinor, currency },
-    ];
+  // What left is the transfer and its fee together, what landed the transfer alone, the fee spending — the core kit's
+  // one builder, which a transfer for a goal posts through too (`recordTaggedTransfer`).
+  if (to.currency === currency) {
+    return transferWithFeeLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, feeMinor, currency, feeCategoryId: draft.feeCategoryId || null, fromIsCard: account.subtype === 'credit_card' });
   }
-  if (to.currency === currency) return transferLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, currency });
   const exchange = accounts.find((a) => a.systemKey === 'currency_exchange');
   if (!exchange) throw new Error('Currency exchange account missing');
   // Non-null: both accounts have a currency and they differ, which is exactly when `receivedField` answers.
@@ -937,8 +927,13 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     // posts, so the two can never come apart again the way they did when this branch read it alone.
     const { amountMinor } = amounts(draft, account, typed, null);
     if (draft.goalId && !draft.editing) {
-      if (draft.fee.trim()) throw new Error('A transfer for a goal takes no fee here: record the fee as its own expense');
       const to = toAccountOf(draft, accounts, account);
+      // A fee rides along as on any transfer — spending beside the move, never counted toward the goal.
+      const feeMinor = draft.fee.trim() ? positive(draft.fee, account.currency, 'Fee') : 0;
+      if (feeMinor > 0) {
+        if (to.currency !== account.currency) throw new Error('A fee goes on a transfer within one currency');
+        if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
+      }
       return {
         kind: 'transfer-goal',
         input: {
@@ -956,6 +951,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
             return received ? positive(received.value, received.currency, 'Received amount') : null;
           })(),
           goalId: draft.goalId,
+          ...(feeMinor > 0 ? { feeMinor, feeCategoryId: draft.feeCategoryId } : {}),
           // §4: Photos and Exclude from report appear "always". Tagging the transfer to a goal cannot be what
           // throws them away — the untagged branch below carries the same three facts.
           excludedFromReport: draft.excluded,

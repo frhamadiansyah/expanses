@@ -1,4 +1,4 @@
-import { exchangeLines } from '@expanses/core';
+import { exchangeLines, transferWithFeeLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -27,6 +27,13 @@ export interface TaggedTransferInput {
   toAmountMinor?: number | null;
   /** Null moves the money without attaching it to anything. */
   goalId: string | null;
+  /**
+   * A fee charged beside the move, in the source's currency, within one currency only. Posted in the same transaction
+   * as a plain transfer's fee is (`transferWithFeeLines`): the source pays the transfer and the fee, the destination
+   * takes the transfer alone, and the fee is spending under `feeCategoryId`. Never counted toward the goal.
+   */
+  feeMinor?: number;
+  feeCategoryId?: string | null;
   ratesToBase?: Record<string, number>;
   /** Leaves the chart, the budgets and the category totals; balances, statements and net worth keep it. */
   excludedFromReport?: boolean;
@@ -63,7 +70,7 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
     if (input.goalId) await assertGoal(tx, ws, input.goalId);
 
     const [from] = await tx
-      .select({ currency: accounts.currency })
+      .select({ currency: accounts.currency, subtype: accounts.subtype })
       .from(accounts)
       .where(and(eq(accounts.id, input.fromAccountId), eq(accounts.workspaceId, ws.workspaceId)));
     const [to] = await tx
@@ -84,6 +91,16 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       throw new AssetError(`Enter what landed in the destination account, in ${toCurrency}`);
     }
     const landedMinor = crossCurrency ? input.toAmountMinor! : input.amountMinor;
+    const feeMinor = input.feeMinor ?? 0;
+    if (feeMinor > 0) {
+      if (crossCurrency) throw new AssetError('A fee goes on a transfer within one currency');
+      if (!input.feeCategoryId) throw new AssetError('Choose a category for the fee');
+      const [fee] = await tx
+        .select({ kind: accounts.kind })
+        .from(accounts)
+        .where(and(eq(accounts.id, input.feeCategoryId), eq(accounts.workspaceId, ws.workspaceId)));
+      if (fee?.kind !== 'expense') throw new AssetError('Choose a category for the fee');
+    }
     const lines = crossCurrency
       ? exchangeLines({
           fromAccountId: input.fromAccountId,
@@ -94,10 +111,15 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
           toCurrency,
           exchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
         })
-      : [
-          { accountId: input.toAccountId, amountMinor: landedMinor, currency: toCurrency },
-          { accountId: input.fromAccountId, amountMinor: -input.amountMinor, currency: fromCurrency },
-        ];
+      : transferWithFeeLines({
+          fromAccountId: input.fromAccountId,
+          toAccountId: input.toAccountId,
+          amountMinor: input.amountMinor,
+          feeMinor,
+          currency: fromCurrency,
+          feeCategoryId: input.feeCategoryId ?? null,
+          fromIsCard: from?.subtype === 'credit_card',
+        });
 
     const transactionId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,

@@ -57,6 +57,7 @@ export {
   refundLines,
   splitExpenseLines,
   transferLines,
+  transferWithFeeLines,
 } from './ledger/lines';
 export { displayAmount, netWorth, type NetWorthAccount, type NetWorthResult } from './ledger/balances';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';

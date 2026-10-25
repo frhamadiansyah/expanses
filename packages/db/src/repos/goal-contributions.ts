@@ -54,7 +54,8 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
   for (const row of changes) events.push({ goalId: row.goalId, kind: 'earmark', occurredOn: row.occurredOn, amountMinor: row.deltaMinor, accountId: row.accountId });
 
   // A tagged transfer is the only thing that writes a goal onto a transaction. What arrived is the line on one of your
-  // own accounts: a cross-currency transfer also credits the exchange account, which is the same money counted again.
+  // own accounts: a cross-currency transfer also credits the exchange account, which is the same money counted again,
+  // and a fee beside the move is spending under a category — never money that reached the goal.
   const arrivals = await database.db
     .select({ goalId: transactions.goalId, accountId: entries.accountId, occurredOn: transactions.occurredOn, amountBaseMinor: entries.amountBaseMinor })
     .from(entries)
@@ -68,6 +69,7 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
         sql`${transactions.goalId} is not null`,
         sql`${entries.amountBaseMinor} > 0`,
         isNull(accounts.systemKey),
+        inArray(accounts.kind, ['asset', 'liability']),
       ),
     );
   for (const row of arrivals) if (row.goalId) events.push({ goalId: row.goalId, kind: 'transfer', occurredOn: row.occurredOn, amountMinor: row.amountBaseMinor, accountId: row.accountId });
