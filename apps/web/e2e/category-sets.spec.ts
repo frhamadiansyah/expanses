@@ -90,9 +90,12 @@ test('a set category can be renamed, and archiving it leaves the set', async ({ 
 test('an event can be called done, and put back', async ({ page }) => {
   await addEvent(page, 'Lebaran', 'Holiday');
 
-  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Mark as done', exact: true }).click();
-  await expect(page.getByTestId('event-sheet')).toContainText('Done');
+  // The page no longer prints a Done chip: the menu says it (Reopen), and the list below.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Reopen', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // Done moves it under Past on the list, not out of the workspace.
   await page.goto('/events');
@@ -102,9 +105,11 @@ test('an event can be called done, and put back', async ({ page }) => {
 
   // Reopening puts it back among what is still running.
   await past.getByTestId('event-row').click();
-  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Reopen', exact: true }).click();
-  await expect(page.getByTestId('event-sheet')).toContainText('Now');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Mark as done', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.goto('/events');
   const current = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Now and next' }) });
   await expect(current.getByTestId('event-row')).toContainText('Lebaran');
@@ -143,7 +148,6 @@ test('an event records its spending in its own categories, from its own page', a
   await addWallet(page);
   await addEvent(page, 'Rumah Bintaro', 'Renovation');
 
-  await expect(page.getByText('draws on Renovation')).toBeVisible();
   // Add spending opens the Add screen with the event set, and its Category then offers the set in place of the
   // monthly tree — which is the only way Flooring & Tiles can be chosen at all.
   await recordIntoEvent(page, { description: 'Keramik lantai', category: 'Flooring & Tiles', amount: '7500000' });

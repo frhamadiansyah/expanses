@@ -52,7 +52,8 @@ test('Add spending opens the Add screen with the event filled in, and saving lan
   await addEvent(page, 'Newborn');
   const event = page.url();
 
-  await page.getByRole('button', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add spending' }).click();
   await expect(page).toHaveURL(/\/transactions\/new\?event=/);
   const form = addForm(page);
   await expect(form.getByRole('radio', { name: 'Expense' })).toBeChecked();
@@ -79,7 +80,8 @@ test("a note typed into an event's spending does not fill in a category the even
   await addTransaction(page, { description: 'Indomaret Bintaro', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '85000' });
   await addEvent(page, 'Rumah Bintaro', 'Renovation');
 
-  await page.getByRole('button', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add spending' }).click();
   const form = addForm(page);
   const category = form.getByRole('button', { name: /^Category/ });
   await form.getByLabel('Note').fill('Indomaret Bintaro');
@@ -800,7 +802,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   const sheet = page.getByTestId('event-sheet');
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Mark as unplanned', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'See the whole plan' })).toHaveCount(0);
@@ -808,7 +810,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   await expect(sheet).toContainText('Nothing spent on it yet.');
 
   // Its item waited: turned back on, the plan is as it was.
-  await page.getByRole('button', { name: 'Event settings' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Mark as planned', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
 });

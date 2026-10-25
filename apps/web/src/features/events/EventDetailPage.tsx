@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, setEventPlanOff, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus, Settings } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
@@ -28,7 +28,7 @@ import { Donut } from '../transactions/Donut';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { EventNameBox } from './EventNameBox';
-import { eventDates, eventStatus, StatusChip } from './EventsPage';
+import { eventDates } from './EventsPage';
 import { EditEventForm } from './EditEventForm';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
@@ -124,7 +124,6 @@ function TaggableRow({ position, ...row }: GroupChild & InsetRowProps) {
   return <InsetRow {...row} position={position} />;
 }
 
-const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00`) - Date.parse(`${from}T00:00:00`)) / 86_400_000) + 1;
 
 /** One figure under the ring: what it is on the left, what it is worth on the right. */
 function Figure({ label, children }: { label: string; children: ReactNode }) {
@@ -209,7 +208,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     const workspace = workspaceOf(id);
     return workspace ? `${nameOf(id)} · ${workspace}` : nameOf(id);
   };
-  const setName = sets.find((row) => row.id === event?.setId)?.name ?? null;
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -366,10 +364,12 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
    */
   const settings: CornerAction = {
     key: 'settings',
-    label: 'Event settings',
-    glyph: <Settings size={19} aria-hidden />,
+    label: 'More',
+    glyph: <MoreHorizontal size={20} aria-hidden />,
     menu: event
       ? [
+          // Add spending is the first line here, not a ＋ of its own in the bar.
+          { key: 'add', label: 'Add spending', run: addSpending.run },
           { key: 'edit', label: 'Edit event', run: () => setEditing(true) },
           { key: 'share', label: 'Share this event', run: onShare },
           {
@@ -405,7 +405,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <PushedTitle title={event ? eventDates(event) : 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
+      <PushedTitle title={event ? eventDates(event) : 'Event'} back="All events" backTo="/events" actions={[settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}
@@ -413,18 +413,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
       {event && (
         <Panel testId="event-sheet">
           <EventNameBox name={event.name} />
-          <div className="flex flex-col items-center gap-0.5 pt-1">
-            {/* The event's length used to be the gauge's third figure; it belongs with the dates, and the gauge's
-                third place goes to what is still to buy — a figure only the plan has. */}
-            <span className="text-[13px] font-semibold text-[var(--ph-ink)]">
-              {dayCount(event.startsOn, event.endsOn)} {dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}
-            </span>
-            <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--ph-ink-3)]">
-              <StatusChip status={eventStatus(event, today)} />
-              {setName && `draws on ${setName}`}
-            </span>
-          </div>
-
           {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
             <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">

@@ -388,7 +388,8 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
 
   // Add spending is the Add screen with the event set, so it asks the question the Add screen always asks.
-  await page.getByRole('button', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add spending' }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, 'Jenius');

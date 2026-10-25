@@ -1,7 +1,7 @@
 import type { NamedPayment, SharedEventView, SharedSettlementView } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { formatMinor } from '@expanses/core';
-import { CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
+import { CircleEllipsis, HandCoins, MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS } from '../categories/CategoryIcon';
@@ -52,13 +52,8 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   const actions: CornerAction[] = readOnly
     ? [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }]
     : [
-        {
-          key: 'add',
-          label: 'Add spending',
-          glyph: <Plus size={22} aria-hidden />,
-          run: () => void navigate(addSpendingTarget(view.eventId)),
-          disabled: locked,
-        },
+        // Add spending is the first line of the ⋯ menu, not a ＋ of its own in the bar.
+        { key: 'add', label: 'Add spending', run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked },
         ...menu,
       ];
   // Settle up is offered on a payment this person pays or receives, or one between two people without the app — §3's

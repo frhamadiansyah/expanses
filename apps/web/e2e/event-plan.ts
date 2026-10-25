@@ -232,7 +232,8 @@ export async function recordIntoEvent(
   tx: { description: string; amount: string; category?: string; paidWith?: string },
 ) {
   const event = page.url();
-  await page.getByRole('button', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add spending' }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, tx.paidWith ?? 'BCA Tahapan');
