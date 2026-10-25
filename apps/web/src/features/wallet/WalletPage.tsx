@@ -190,7 +190,7 @@ export function WalletPage() {
     },
     // The cards put in an order by hand: one list, money and credit cards mixed, read by all three views.
     { key: 'reorder', label: 'Reorder cards', glyph: <ArrowUpDown size={18} aria-hidden />, to: '/wallet/reorder' },
-    { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
+    { key: 'merchants', label: 'Merchants', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];
   /* The raised card's settings: a credit card's — or a debit card's, opened as a card — or the account's own. */

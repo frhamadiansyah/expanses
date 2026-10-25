@@ -1,7 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
-import { bookSplitsExist } from '../repos/book-splits';
+import { bookSplitsExist, splitExclusionExists } from '../repos/book-splits';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
@@ -1018,6 +1018,15 @@ async function travellingPartTx(tx: Db, transactionId: string): Promise<Readonly
   return new Set(rows.map(([id]) => id));
 }
 
+/** Whether the part of a split that travels (`bookOfTransaction`) is left out of its workspace's reports (0090). */
+async function travellingPartExcludedTx(tx: Db, transactionId: string): Promise<boolean> {
+  if (!(await splitExclusionExists(tx))) return false;
+  const bookId = await bookOfTransaction(tx, transactionId);
+  if (!bookId) return false;
+  const rows = await tx.values(sql`SELECT 1 FROM book_transaction_splits WHERE transaction_id = ${transactionId} AND book_id = ${bookId} AND excluded = 1`);
+  return rows.length > 0;
+}
+
 /**
  * Why a purchase split across workspaces may not be filed as it stands, in words a screen shows; null when it may
  * (household sharing). At most one of its workspaces may be shared, or have been with its share still here: the
@@ -1093,6 +1102,9 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
   // Split across workspaces (0084): only the part in the book it travels in goes, never the other parts, their
   // categories, or the whole charge — the original-currency figure and the one typed with cents are the whole's.
   const part = await travellingPartTx(tx, transactionId);
+  // That part's own Exclude from report (0090) is the purchase's: the ledger keeps a split's own flag off, so a split
+  // excluded whole is every part excluded, and an older split excluded whole still reads as it did.
+  const partExcluded = part ? await travellingPartExcludedTx(tx, transactionId) : false;
   const lines: PurchaseMoney['lines'] = [];
   const moneySide: { accountId: string; name: string; placeholderMember: string | null }[] = [];
   for (const [accountId, amountMinor, currency, amountBaseMinor, memo, kind, name, placeholderMember] of entryRows) {
@@ -1150,7 +1162,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     occurredOn,
     description,
     channel: (flags?.[0] ?? null) as PurchaseFields['channel'],
-    excluded: Number(flags?.[1] ?? 0),
+    excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded ? 1 : 0,
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
     bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
     money: {

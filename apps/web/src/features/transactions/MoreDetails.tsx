@@ -17,7 +17,7 @@ import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { moveHint } from './shared-move';
 import { WithSheet, withSummary } from './WithSheet';
-import { type ExtraRow, extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
+import { excludedWhole, type ExtraRow, extraRowRefusal, extraRows, type FormDraft, postingCurrency, withExcludedWhole } from './tx-form';
 
 /** B3's lead glyph for an extra: a Lucide glyph where the mockup draws an emoji. */
 // The circle every row of the add form leads with, so the extras line up with the card above them.
@@ -127,8 +127,9 @@ export function MoreDetails({
             icon={glyph(<EyeOff size={15} />)}
             label="Exclude from report"
             info="Out of the chart and the budgets. Still counted in balances, statements, points and net worth."
-            checked={draft.excluded}
-            onChange={(excluded) => set({ excluded })}
+            // On a split, read off its parts and switching them all (0090); each part has its own on the Split sheet.
+            checked={excludedWhole(draft)}
+            onChange={(excluded) => onChange(withExcludedWhole(draft, excluded))}
           />
         )}
       </FormRows>

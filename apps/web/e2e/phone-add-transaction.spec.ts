@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { nameCardByHand, openAccount } from './accounts';
 import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { todayIn } from './today';
 import { setChannel } from './split-row';
@@ -438,14 +438,17 @@ test('Paid with adds an account as a step of its own sheet, and the transaction 
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
 });
 
-test('New account offers currencies over the keyboard, not in a floating bubble', async ({ page }) => {
+test('New account offers a pocket’s currencies over the keyboard, not in a floating bubble', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   await addForm(page).getByRole('button', { name: 'Paid with' }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
-  const currency = step.getByLabel('Currency', { exact: true });
+  // The plain balance's currency is its symbol, picked from a list; a pocket's code is still typed.
+  await step.getByLabel('Type').selectOption('bank');
+  await step.getByLabel('Multi-currency', { exact: true }).check();
+  const currency = step.getByLabel('Pocket 2', { exact: true });
   await currency.fill('JP');
   // The phone's field carries no browser list, whose iOS bubble floated over the sheet's title.
   await expect(currency).not.toHaveAttribute('list');
@@ -456,7 +459,7 @@ test('New account offers currencies over the keyboard, not in a floating bubble'
   await expect(strip).toHaveCount(0);
 });
 
-test('New account asks no day: one Current balance row, its code just before its amount, for every kind', async ({ page }) => {
+test('New account asks no day: one Current balance row, its symbol just before its amount, for every kind', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -464,34 +467,49 @@ test('New account asks no day: one Current balance row, its code just before its
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
   const type = step.getByLabel('Type');
+  const balance = step.getByLabel('Current balance', { exact: true });
+  const symbol = step.getByRole('button', { name: /^Currency: [A-Z]{3}$/ });
   const kinds = await type.locator('option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
   expect(kinds.length).toBeGreaterThan(1);
   for (const kind of kinds) {
     await type.selectOption(kind);
     await expect(step.getByLabel('Balance as of')).toHaveCount(0);
     await expect(step.getByText('Current balance', { exact: true })).toBeVisible();
-    // Read left to right on the one row: the label, then the code, then the amount.
+    // No figure, no symbol: the empty row reads as its prompt alone.
+    await balance.fill('');
+    await expect(symbol).toHaveCount(0);
+    // Grouped as it is typed, the symbol a space before it: "Rp 1.000.000".
+    await balance.pressSequentially('1000000');
+    await expect(balance).toHaveValue('1.000.000');
+    await expect(step.getByRole('button', { name: 'Currency: IDR', exact: true })).toHaveText('Rp');
+    // Read left to right on the one row: the label, then the symbol, then the amount.
     const label = (await step.getByText('Current balance', { exact: true }).boundingBox())!;
-    const code = (await step.getByLabel('Currency', { exact: true }).boundingBox())!;
-    const amount = (await step.getByLabel('Current balance', { exact: true }).boundingBox())!;
+    const code = (await symbol.boundingBox())!;
+    const amount = (await balance.boundingBox())!;
     expect(Math.abs(code.y + code.height / 2 - (amount.y + amount.height / 2))).toBeLessThan(4);
     expect(label.x + label.width).toBeLessThan(code.x);
     expect(code.x + code.width).toBeLessThanOrEqual(amount.x);
+    // Only a deposit asks where its money comes from; any other account simply holds what it holds.
+    await expect(step.getByLabel('Where the money comes from')).toHaveCount(kind === 'time_deposit' ? 1 : 0);
   }
 
-  // The code is still typed to change it, and a foreign one asks its opening rate on a row of its own under it.
+  // A tap on the symbol opens the currency list, and a foreign one asks its opening rate on a row of its own under it.
   await type.selectOption(kinds[0]!);
   await step.getByLabel('Name', { exact: true }).fill('Wise');
-  await step.getByLabel('Currency', { exact: true }).fill('USD');
+  await symbol.click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^USD / }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Currency' })).toHaveCount(0);
+  await expect(step.getByRole('button', { name: 'Currency: USD', exact: true })).toHaveText('$');
   const rateField = step.getByLabel('Rate: IDR per 1 USD', { exact: true });
   await expect(rateField).toBeVisible();
   await expect(rateField).toHaveAttribute('placeholder', 'IDR per 1 USD');
   const rate = (await rateField.boundingBox())!;
-  const code = (await step.getByLabel('Currency', { exact: true }).boundingBox())!;
+  const code = (await symbol.boundingBox())!;
   expect(rate.y).toBeGreaterThan(code.y + code.height);
   // Nothing on the row runs past the sheet's edge at a phone's width, a long figure and a rate both typed.
   await step.getByLabel('Rate: IDR per 1 USD', { exact: true }).fill('16350');
-  await step.getByLabel('Current balance', { exact: true }).fill('1000000.00');
+  await balance.fill('1000000,00');
+  await expect(balance).toHaveValue('1.000.000,00');
   const sheet = (await step.boundingBox())!;
   const amount = (await step.getByLabel('Current balance', { exact: true }).boundingBox())!;
   expect(amount.x + amount.width).toBeLessThanOrEqual(sheet.x + sheet.width);
@@ -503,7 +521,7 @@ test('New account asks no day: one Current balance row, its code just before its
  * it stands on the keyboard and reveals whichever field has the focus — not WebKit's own scrolling, which only a
  * device or the Simulator shows.
  */
-test('a field focused in a sheet sits above the keyboard, the currency code as much as the name or the amount', async ({ page }) => {
+test('a field focused in a sheet sits above the keyboard, the amount as much as the name, its symbol with it', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -523,7 +541,8 @@ test('a field focused in a sheet sits above the keyboard, the currency code as m
       [KEYBOARD, up] as const,
     );
   const top = await page.evaluate(() => window.innerHeight);
-  for (const field of [step.getByLabel('Name', { exact: true }), step.getByLabel('Current balance', { exact: true }), step.getByLabel('Currency', { exact: true })]) {
+  const balance = step.getByLabel('Current balance', { exact: true });
+  for (const field of [step.getByLabel('Name', { exact: true }), balance]) {
     await field.focus();
     await keyboard(true);
     await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeLessThanOrEqual(top - KEYBOARD + 1);
@@ -534,6 +553,18 @@ test('a field focused in a sheet sits above the keyboard, the currency code as m
     await keyboard(false);
     await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeGreaterThan(top - 2);
   }
+
+  // The currency is no field the keyboard is raised for: it is the symbol beside the typed figure, on the same row
+  // above the keyboard, and a tap on it opens the currency list.
+  await balance.focus();
+  await balance.pressSequentially('250000');
+  await keyboard(true);
+  await expect.poll(async () => (await step.boundingBox())!.y + (await step.boundingBox())!.height).toBeLessThanOrEqual(top - KEYBOARD + 1);
+  const symbol = step.getByRole('button', { name: 'Currency: IDR', exact: true });
+  const box = (await symbol.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(top - KEYBOARD);
+  await symbol.click();
+  await expect(page.getByRole('dialog', { name: 'Currency' })).toBeVisible();
 });
 
 test('‹ out of New account returns to the list, and makes nothing', async ({ page }) => {
@@ -692,17 +723,68 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
   await expect(step).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(step.getByRole('button', { name: 'Add card' })).toHaveCount(0);
-  await step.getByLabel('Name', { exact: true }).fill('UOB PRVI');
+  // A card the catalogue does not carry, named from ⌕'s last row: the bank it leads with goes to the bank half.
+  await nameCardByHand(page, 'UOB PRVI', step);
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveValue('UOB');
+  await expect(step.getByLabel('Name', { exact: true })).toHaveValue('PRVI');
+  // The details ask its currency, and never a bank: the row has one.
+  await step.getByRole('button', { name: 'Add more details' }).click();
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveCount(1);
+  await expect(step.getByLabel('Currency', { exact: true })).toBeVisible();
   await step.getByLabel('Last 4 digits').fill('3310');
   await step.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
+  // Saved as its bank and its own name — UOB, PRVI — and shown by both, the bank once.
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
   // Picked as the card row is: the sheet opens on Credit cards with it marked.
   await form.getByRole('button', { name: 'Paid with' }).click();
   await expect(sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.getByRole('button', { name: /^UOB PRVI/ })).toHaveAttribute('aria-current', 'true');
+});
+
+test('Paid with › Add credit card › the catalogue over the keyboard › a card saves with only its last 4 digits', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await sheet.getByRole('button', { name: 'Add credit card' }).click();
+
+  const step = page.getByRole('dialog', { name: 'New credit card' });
+  // The quick form: the New account form's bank-and-name row, the digits and the balance; the rest folded away.
+  await expect(step.getByLabel('Bank', { exact: true })).toBeVisible();
+  await expect(step.getByLabel('Name', { exact: true })).toBeVisible();
+  await expect(step.getByLabel('Current balance')).toBeVisible();
+  await expect(step.getByLabel('Billing date')).toHaveCount(0);
+  await expect(step.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+
+  // The name typed offers the catalogue's cards over the keyboard, across every bank while none is chosen.
+  await step.getByLabel('Name', { exact: true }).pressSequentially('union');
+  const strip = page.getByRole('listbox', { name: 'Catalogue cards' });
+  await strip.getByRole('option', { name: 'BCA UnionPay' }).click();
+  // Picked: the bank half filled in, the name without it, and the keyboard's field still the name.
+  await expect(step.getByLabel('Bank', { exact: true })).toHaveValue('BCA');
+  await expect(step.getByLabel('Name', { exact: true })).toHaveValue('UnionPay');
+  // No words under the group, whichever card it is.
+  await expect(step.getByText(/verified|catalogue|keeps its statement/)).toHaveCount(0);
+  await step.getByLabel('Last 4 digits').fill('4821');
+  await step.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA UnionPay');
+
+  // Opened with no dates: the card's page offers to add them, and its settings offer the published fee beside them.
+  await page.goto('/wallet');
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^BCA UnionPay(,|$)/ }).click();
+  const dates = page.getByTestId('card-setup');
+  await expect(dates).toContainText('Billing and due dates');
+  await dates.click();
+  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
+  await expect(page.getByLabel('Billing date')).toHaveValue('');
 });
 
 test('Note offers past notes over the keyboard, and a pick brings its category', async ({ page }) => {

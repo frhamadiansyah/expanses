@@ -3,15 +3,17 @@ import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, listCat
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
+import { shownAccounts } from './account-name';
 import { frankfurterFetcher } from './fx-client';
 
 const fetcher = frankfurterFetcher();
 
+/** Every account, each `name` the one a screen shows ("Mandiri Xpresi") and `typedName` the stored one (`shownAccounts`). */
 export function useAccounts() {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['accounts', ws.workspaceId],
-    queryFn: () => listAccounts(database, ws, { includeArchived: true }),
+    queryFn: async () => shownAccounts(await listAccounts(database, ws, { includeArchived: true })),
   });
 }
 
@@ -35,12 +37,12 @@ export function useAccountsFor(tx: { id: string; entries: readonly { accountId: 
     // refreshed (a Paid with Add row returns to the form with the new account, which a key of its own may not hold yet).
     queryKey: tx ? ['accounts', ws.workspaceId, 'for', tx.id, ids.join(',')] : ['accounts', ws.workspaceId],
     queryFn: async () => {
-      const listed = await listAccounts(database, ws, { includeArchived: true });
+      const listed = shownAccounts(await listAccounts(database, ws, { includeArchived: true }));
       if (!tx) return listed;
       const known = new Set(listed.map((account) => account.id));
       const wanted = new Set(ids.filter((id) => !known.has(id)));
       if (wanted.size === 0) return listed;
-      const all = await listAccounts(database, ws, { includeArchived: true, includePlaceholders: true });
+      const all = shownAccounts(await listAccounts(database, ws, { includeArchived: true, includePlaceholders: true }));
       return [...listed, ...all.filter((account) => wanted.has(account.id))];
     },
   });

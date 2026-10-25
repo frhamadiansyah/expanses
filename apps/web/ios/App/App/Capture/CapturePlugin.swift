@@ -1,4 +1,5 @@
 import Capacitor
+import Photos
 import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
@@ -29,6 +30,11 @@ public class CapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// The most pictures one pick takes: the share sheet's own limit, so both doors take the same statements.
     private static let mostPhotos = 20
+
+    /// What the camera puts before a picture's id (`captures/camera-<id>.jpg`), and no other door does. The web layer
+    /// keeps exactly these pictures with the purchase they are recorded as (`keep-picture.ts`, kept in step with this);
+    /// a picture that was already in Photos — chosen, shared, or a screenshot — is let go once its draft is dealt with.
+    static let cameraPrefix = "camera-"
 
     /// Everything the shortcuts and the share sheet left behind, in the order it arrived. Nothing is removed: the
     /// web layer calls `ackCaptures` once it has stored them.
@@ -236,9 +242,10 @@ extension CapturePlugin: UIImagePickerControllerDelegate, UINavigationController
                 let id = UUID().uuidString
                 var imageFile: String?
                 if let data = image.jpegData(compressionQuality: 0.9) {
-                    let file = "captures/\(id).jpg"
+                    let file = "captures/\(Self.cameraPrefix)\(id).jpg"
                     try HoldingArea.store(imageData: data, at: file)
                     imageFile = file
+                    Self.saveToPhotos(jpeg: data)
                 }
                 let capture = RawCapture(
                     id: id,
@@ -251,6 +258,20 @@ extension CapturePlugin: UIImagePickerControllerDelegate, UINavigationController
             } catch {
                 call.reject("The picture could not be read", nil, error)
             }
+        }
+    }
+}
+
+extension CapturePlugin {
+    /// A receipt photographed in the app goes into Photos too, as a picture from the phone's own camera would: the
+    /// same upright JPEG the app keeps. The app asks only to add (`.addOnly`), never to see the library. Refused, or
+    /// failing, nothing is said and nothing changes in the app: its own copy is kept with the purchase all the same.
+    static func saveToPhotos(jpeg: Data) {
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else { return }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetCreationRequest.forAsset().addResource(with: .photo, data: jpeg, options: nil)
+            }, completionHandler: nil)
         }
     }
 }

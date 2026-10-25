@@ -275,12 +275,12 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
 });
 
 test('a purchase paid by card reaches the points engine with the MCC and category it was given', async ({ page }) => {
-  await addAccount(page, 'KF Signature', 'credit_card', 'Amount owed now', '0');
+  await addAccount(page, 'BCA KF Signature', 'credit_card', 'Amount owed now', '0');
   await addGold(page);
 
   // A card with real terms, so there is a points scheme for the purchase to be measured against.
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -295,13 +295,13 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
     what: 'Antam gold bars',
     amount: '1350000',
     units: '1',
-    paidWith: 'KF Signature (IDR)',
+    paidWith: 'BCA KF Signature (IDR)',
     pointsCategory: 'Shopping (general)',
     mcc: '5944',
   });
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPage(page, 'Points');
   await cardPointsPage(page, 'Purchases');
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.

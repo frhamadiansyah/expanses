@@ -2,18 +2,24 @@ import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { Search } from 'lucide-react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, SelectRow, TAP, TextRow } from '../../ui/native';
+import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
-import { memberLevelsOf, searchCatalog } from '../cards/catalog-picker';
+import { memberLevelsOf } from '../cards/catalog-picker';
+import { detailsToggleLabel } from '../transactions/tx-form';
+import { catalogueOffers, entryOnRow } from './card-row';
+import { CardSearch } from './CardSearch';
 import { fieldsFor, handOverRows } from './catalogue-view';
-import { type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt } from './debt-form';
+import { cardAccountName, type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
-import type { EmbeddedForm } from './CashAccountForm';
+import { BankNameRow, type EmbeddedForm } from './CashAccountForm';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
 /**
@@ -175,30 +181,33 @@ function DebtItemForm({ item }: { item: string }) {
   );
 }
 
-/** The bank a card can be given when the catalogue has never heard of it. Mirrors the Accounts page's own sentinel. */
-const OTHER = '__other';
+/** A step the card form moves to inside whatever holds it: what the holder's header says, and how it comes back. */
+export interface FormStep {
+  title: string;
+  back: () => void;
+}
 
-/**
- * Every bundled credit card, grouped by the bank that issues it, so a dropdown reads the way a wallet does:
- * banks in order, and each bank's products in order under it.
- */
-function byIssuer(entries: readonly CatalogEntry[]): [string, CatalogEntry[]][] {
-  const groups = new Map<string, CatalogEntry[]>();
-  for (const entry of entries) groups.set(entry.bank, [...(groups.get(entry.bank) ?? []), entry]);
-  return [...groups].map(([bank, list]): [string, CatalogEntry[]] => [bank, [...list].sort((a, b) => a.name.localeCompare(b.name))]).sort(([a], [b]) => a.localeCompare(b));
+/** The card form drawn in a sheet: the sheet's own ✓, and its header given over to the form's search step. */
+export interface CardFormEmbedding extends EmbeddedForm {
+  /** Told when the form moves to its search and back (null), so the sheet's header follows: ‹ and the step's title. */
+  onStep?: (step: FormStep | null) => void;
 }
 
 /**
- * The card form, reached from the debt picker.
+ * The card form, reached from the debt picker and from Paid with's Add credit card.
  *
- * Naming the card is the whole of the setup: the catalogue knows which bank issued it, what it earns, what the
- * bank publishes as its annual fee, and how the plastic is drawn — so picking the product from the list fills all
- * of that in, and the card's own page is where any of it is corrected. "Not listed" keeps the manual path the
- * Accounts page has always had: a name, a bank and the last four digits.
+ * Naming the card is the whole of the setup, on the New account form's own bank-and-name row: the bank where the
+ * label would be, the card's name typed at the right. As the name is typed the catalogue's cards are offered over
+ * the keyboard — that bank's, or any bank's while none is chosen — and picking one links it: the catalogue knows
+ * what it earns, what the bank publishes as its annual fee and how the plastic is drawn. A name typed and not
+ * picked is a card of its own. ⌕ at the row's end opens the whole catalogue as a search, for a screen with no
+ * keyboard to carry the offers and for a card whose name is easier found than typed. The bank is saved as the
+ * card's issuer and the name without the bank's words, so the two compose again wherever the card is named.
  *
- * A card from the catalogue is asked for its billing and due dates, because the published fee is kept with the
- * card's terms and the terms are what a cycle is counted from. A card typed by hand may leave both for later,
- * exactly as it may on the Accounts page.
+ * The billing and due dates are details too, for every card: a card opens without them, and its own page asks for
+ * them until they are given — with the published fee beside them for a card from the catalogue, since the fee is
+ * kept on the terms the dates make. Last 4 digits and the current balance stay in sight: the digits are how a
+ * statement or an alert names the card, and the balance — what it owes today — is the one figure it is opened at.
  */
 export function NewCardForm({
   onCreated,
@@ -207,7 +216,7 @@ export function NewCardForm({
   /** Where saving goes instead of the card's own page, given the card account just made. */
   onCreated?: (accountId: string) => void;
   /** Drawn in a sheet: no heading line and no button — the sheet's ✓ saves it (see `CashAccountForm`). */
-  embedded?: EmbeddedForm;
+  embedded?: CardFormEmbedding;
 }) {
   const { database, ws } = useApp();
   const household = useShareOnAdd();
@@ -215,11 +224,10 @@ export function NewCardForm({
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const today = isoDate();
-  const [query, setQuery] = useState('');
   const [entryId, setEntryId] = useState('');
   const [name, setName] = useState('');
-  const [issuer, setIssuer] = useState('');
-  const [otherIssuer, setOtherIssuer] = useState('');
+  // The bank half of the row: the card's issuer, a catalogue card's own bank once one is picked.
+  const [bank, setBank] = useState('');
   // A hand-typed card in another currency is ordinary, and the figure is read in whichever currency is chosen.
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [manualRate, setManualRate] = useState('');
@@ -228,31 +236,63 @@ export function NewCardForm({
   const [memberLevel, setMemberLevel] = useState('');
   const [statementDay, setStatementDay] = useState('');
   const [dueDay, setDueDay] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const canSave = !busy && name.trim() !== '';
   const onCanSave = embedded?.onCanSave;
   useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
+  // In a sheet the search is the sheet's next step, so its header follows the form there and back.
+  const onStep = embedded?.onStep;
+  useEffect(() => {
+    if (!onStep) return;
+    onStep(searching ? { title: 'Find a card', back: () => setSearching(false) } : null);
+    return () => onStep(null);
+  }, [onStep, searching]);
 
-  const credit = CATALOG.filter((entry) => entry.cardType !== 'debit');
-  const matches = searchCatalog(credit, query);
+  const credit = CATALOG.filter((candidate) => candidate.cardType !== 'debit');
   const entry = credit.find((candidate) => candidate.id === entryId) ?? null;
-  // The card already chosen stays in the list however the search is narrowed afterwards: a select whose value is
-  // not among its options draws blank, and the form would go on applying an entry the screen no longer names.
-  const options = entry && !matches.includes(entry) ? [entry, ...matches] : matches;
   const levels = entry ? memberLevelsOf(entry) : [];
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
   const foreign = currency !== ws.baseCurrency;
-
-  /** Picking a product names the card. Some issuers close every cardholder's statement on the same day. */
-  function choose(id: string) {
-    setEntryId(id);
+  const fixedDay = entry?.program.fixedStatementDay;
+  /** A product picked from the catalogue — offered over the keyboard or found by ⌕ — fills both halves of the row. */
+  function pick(picked: CatalogEntry) {
+    const row = entryOnRow(picked);
+    setEntryId(picked.id);
+    setBank(row.bank);
+    setName(row.name);
     setMemberLevel('');
-    const picked = credit.find((candidate) => candidate.id === id);
-    if (!picked) return;
-    setName(picked.name);
-    if (picked.program.fixedStatementDay) setStatementDay(String(picked.program.fixedStatementDay));
+    setSearching(false);
+  }
+
+  /** Changing either half of a picked card's row makes it a card of its own: the product is no longer the one named. */
+  const unlink = () => {
+    setEntryId('');
+    setMemberLevel('');
+  };
+  const typeBank = (typed: string) => {
+    if (entry && typed.trim() !== bank.trim()) unlink();
+    setBank(typed);
+  };
+  const typeCardName = (typed: string) => {
+    if (entry && typed.trim() !== name.trim()) unlink();
+    setName(typed);
+  };
+
+  /**
+   * A card the catalogue does not carry: the words searched for, split the way the bank-and-name row reads them —
+   * a leading bank's name in the bank's place, still editable, and the rest as the card's own name.
+   */
+  function typeName(typed: string) {
+    const split = splitCardName(typed, banks);
+    setEntryId('');
+    setBank(split.bank);
+    setName(split.name);
+    setMemberLevel('');
+    setSearching(false);
   }
 
   async function submit(event: FormEvent) {
@@ -263,7 +303,7 @@ export function NewCardForm({
       // Everything that can be refused is refused before the account exists: a card opened and then turned away
       // cannot be finished, since pressing the button again either opens a second one or hits the duplicate check.
       const plan = planNewCard(
-        { name, issuer: issuer === OTHER ? otherIssuer : issuer, last4, owed, memberLevel, statementDay, dueDay },
+        { name, issuer: bank, last4, owed, memberLevel, statementDay, dueDay },
         entry,
         ws.baseCurrency,
         currency,
@@ -288,7 +328,8 @@ export function NewCardForm({
         openedOn: today,
         openingRateToBase,
       });
-      // The terms row has to exist before the catalogue can write the published fee onto it.
+      // The terms row has to exist before the catalogue can write the published fee onto it. With no dates there is
+      // no row: the earn rules are applied all the same, and the card's page offers the fee beside the dates it asks for.
       if (plan.terms) {
         await saveCardTerms(database, ws, { accountId: account.id, ...plan.terms, creditLimitMinor: null, annualFeeMinor: null });
       }
@@ -306,89 +347,161 @@ export function NewCardForm({
     }
   }
 
+  const search = <CardSearch entries={credit} chosenId={entry?.id ?? null} initialQuery={entry ? '' : cardAccountName(bank, name)} onPick={pick} onTyped={typeName} />;
+  // Inside a sheet the search takes the form's place, as the sheet's own step; the form's answers wait in state.
+  if (searching && onStep) return search;
+
   return (
-    /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
-    <form ref={form} id={embedded?.formId} onSubmit={submit}>
-      <ErrorBox error={error} />
-      <InsetGroup
-        header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}
-        footer={
-          <>
-            A card keeps its statement, bill, points and instalments.{' '}
-            {entry
-              ? `Its earn rules and the ${entry.bank} published annual fee are filled in from the catalogue, verified ${entry.verifiedOn}. Both can be corrected on the card's own page.`
-              : 'Not in the list is fine: name it directly and set up what it earns on the card’s own page.'}
-          </>
-        }
-      >
-        <TextRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Bank or card name" />
-        <SelectRow label="Which card" value={entryId} onChange={(e) => choose(e.target.value)}>
-          <option value="">Not listed — type the name</option>
-          {byIssuer(options).map(([bank, entries]) => (
-            <optgroup key={bank} label={bank}>
-              {entries.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
+    <>
+      {/* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */}
+      <form ref={form} id={embedded?.formId} onSubmit={submit}>
+        <ErrorBox error={error} />
+        <InsetGroup header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}>
+          {/* One row for which card it is, the New account form's own: the bank, then the name, offered the catalogue. */}
+          <CardRow
+            bank={bank}
+            onBank={typeBank}
+            name={name}
+            onName={typeCardName}
+            offersBanks={ws.baseCurrency === 'IDR'}
+            // A card already picked is answered; editing either half unlinks it, and the offers come back.
+            offers={entry ? [] : catalogueOffers(credit, bank, name)}
+            onPick={pick}
+            onSearch={() => setSearching(true)}
+          />
+          {levels.length > 0 && (
+            <SelectRow label={`${entry?.program.name} level`} value={memberLevel} onChange={(e) => setMemberLevel(e.target.value)}>
+              <option value="">Choose a level</option>
+              {levels.map((level) => (
+                <option key={level.key} value={level.key}>
+                  {level.name} — {level.condition}
                 </option>
               ))}
-            </optgroup>
-          ))}
-        </SelectRow>
-        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Card name" required />
-        {/* Applying a catalogue entry fills the bank in, so it is only asked for when the card is typed by hand. */}
-        {!entry && (
-          <SelectRow label="Bank" value={issuer} onChange={(e) => setIssuer(e.target.value)}>
-            <option value="">Not saying</option>
-            {banks.map((bank) => (
-              <option key={bank} value={bank}>
-                {bank}
-              </option>
-            ))}
-            <option value={OTHER}>Other…</option>
-          </SelectRow>
-        )}
-        {!entry && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank name" />}
-        {!entry && (
-          <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
-              </option>
-            ))}
-          </SelectRow>
-        )}
-        {levels.length > 0 && (
-          <SelectRow label={`${entry?.program.name} level`} value={memberLevel} onChange={(e) => setMemberLevel(e.target.value)}>
-            <option value="">Choose a level</option>
-            {levels.map((level) => (
-              <option key={level.key} value={level.key}>
-                {level.name} — {level.condition}
-              </option>
-            ))}
-          </SelectRow>
-        )}
-        <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
-        <TextRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
-        {!entry && foreign && (
-          <TextRow
-            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
-            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
-            value={manualRate}
-            onChange={(e) => setManualRate(e.target.value)}
-            inputMode="decimal"
-          />
-        )}
-        {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
-        <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
-        <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" required={Boolean(entry)} />
-      </InsetGroup>
-      {household.element}
-      {!embedded && (
-        <InsetGroup>
-          {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-          <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+            </SelectRow>
+          )}
+          <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
+          <TextRow label="Current balance" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
         </InsetGroup>
+        {/*
+          The rest is the fold's, as on the transaction form: a catalogue card already knows its currency, so only a
+          card typed by hand is asked it, and the dates can wait for the card's page.
+        */}
+        {detailsOpen && (
+          <InsetGroup>
+            {!entry && (
+              <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </SelectRow>
+            )}
+            {!entry && foreign && (
+              <TextRow
+                label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+                hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+                value={manualRate}
+                onChange={(e) => setManualRate(e.target.value)}
+                inputMode="decimal"
+              />
+            )}
+            {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
+            <TextRow
+              label="Billing date"
+              hint={fixedDay && !statementDay.trim() ? `Every statement of this card closes on day ${fixedDay}.` : undefined}
+              value={statementDay}
+              onChange={(e) => setStatementDay(e.target.value)}
+              inputMode="numeric"
+              placeholder="Day of month"
+            />
+            <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" />
+          </InsetGroup>
+        )}
+        <button
+          type="button"
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((open) => !open)}
+          className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
+        >
+          {detailsToggleLabel(detailsOpen)}
+        </button>
+        {household.element}
+        {!embedded && (
+          <InsetGroup>
+            {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+            <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+          </InsetGroup>
+        )}
+      </form>
+      {/* On its own page the search opens over the form, outside it, so Enter in the search never saves the card. */}
+      {searching && (
+        <Sheet title="Find a card" grouped tall expanded onClose={() => setSearching(false)}>
+          {search}
+        </Sheet>
       )}
-    </form>
+    </>
+  );
+}
+
+/** How long the cards over the keyboard outlast the name field's focus: long enough for the tap that took it to land. */
+const STRIP_GRACE_MS = 300;
+
+/**
+ * The card's row: the New account form's bank-and-name row as it is, the catalogue's cards over the keyboard while
+ * its name is typed — the same strip the bank's offers ride — and ⌕ after it, which opens the whole catalogue as a
+ * search. The strip is a phone's only (a desktop has no keyboard for it to ride), so ⌕ is how a wider screen, and
+ * anyone who would rather look than type, reaches a listed card. The row is a group's child, so the separator the
+ * group gives it is handed on to the bank row.
+ */
+function CardRow({
+  offers,
+  onPick,
+  onSearch,
+  position,
+  ...row
+}: GroupChild & {
+  bank: string;
+  onBank: (bank: string) => void;
+  name: string;
+  onName: (name: string) => void;
+  offersBanks: boolean;
+  /** The catalogue cards to offer for what is typed now. */
+  offers: readonly CatalogEntry[];
+  onPick: (entry: CatalogEntry) => void;
+  onSearch: () => void;
+}) {
+  // Which half is being typed in, read off the field that has the focus: the bank row offers banks, this the cards.
+  const [typingName, setTypingName] = useState(false);
+  const isName = (target: EventTarget) => target instanceof HTMLInputElement && target.getAttribute('aria-label') === 'Name';
+  return (
+    <div
+      className="flex items-center"
+      onFocus={(event) => isName(event.target) && setTypingName(true)}
+      onBlur={(event) => isName(event.target) && window.setTimeout(() => setTypingName(false), STRIP_GRACE_MS)}
+    >
+      <div className="min-w-0 flex-1">
+        <BankNameRow {...row} namePlaceholder="Card name" position={position} />
+      </div>
+      <button
+        type="button"
+        onClick={onSearch}
+        aria-label="Find in the catalogue"
+        className="ph-focus-inset flex shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
+        style={{ width: TAP, height: TAP }}
+      >
+        <Search size={17} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
+      </button>
+      <KeyboardStrip
+        label="Catalogue cards"
+        cells={(typingName ? offers : []).map((entry) => ({
+          key: entry.id,
+          label: entry.name,
+          title: entryOnRow(entry).name,
+          detail: entry.bank,
+          onPick: () => onPick(entry),
+        }))}
+      />
+    </div>
   );
 }

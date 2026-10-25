@@ -1,11 +1,12 @@
-import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
-import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
+import { formatMinor, parseMajor } from '@expanses/core';
+import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { Check, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
+import { typedNameOf } from '../../lib/account-name';
 import { useBalances } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
@@ -13,12 +14,16 @@ import { owedMinor } from '../networth/debt-rows';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardFace } from './CardFace';
+import { issuerChoices, useWorkspaceIssuers } from './card-queries';
+import { issuerMatches } from './issuer-match';
+import { SuggestRow } from '../ownables/CashAccountForm';
 import { CardScreen, type CardPage, type Run, useCardAction, useCardPage } from './card-page';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
 import { EarnRulesEditor } from './CardRulesPages';
 import { balanceText } from './programme-text';
 import { ColumnGroup, GlyphButton, Line, Step, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
+import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
 import { formatPoints } from './useCardPoints';
 
@@ -27,17 +32,6 @@ const productRoute = getRouteApi('/cards/$cardId/settings/product');
 
 const UNIT_LABELS: Record<RewardProgramRow['unit'], string> = { points: 'Points', miles: 'Miles', cashback: 'Cashback' };
 const ANCHOR_LABELS: Record<RewardProgramRow['cycleAnchor'], string> = { statement: 'Each statement cycle', calendar: 'Each calendar month' };
-
-/** The terms form's fields as the saved terms read: what it starts from, and what tells it apart once typed in. */
-function termsFields(page: CardPage) {
-  const { cp, currency } = page;
-  return {
-    statementDay: cp.terms ? String(cp.terms.statementDay) : '',
-    dueDay: cp.terms ? String(cp.terms.dueDay) : '',
-    limit: cp.terms?.creditLimitMinor != null ? minorToMajorString(cp.terms.creditLimitMinor, currency) : '',
-    fee: cp.terms?.annualFeeMinor != null ? minorToMajorString(cp.terms.annualFeeMinor, currency) : '',
-  };
-}
 
 /**
  * Step 2 of setup, and the card product page of a card with no rewards yet: the catalogue to choose the card from,
@@ -178,6 +172,9 @@ export function CardSettingsPage() {
   const [loadedTerms, setLoadedTerms] = useState<string | null>(null);
   // Whether this visit began with setup unfinished: its last step's rules stay open once it is done, to add more.
   const [settingUp, setSettingUp] = useState(false);
+  // The bank behind a credit card, which its face and the tax report's list of debts read: set or put right here.
+  const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
+  const [institution, setInstitution] = useState<string | null>(null);
   const catalog = useCatalogChoice(page, run, { onFixedStatementDay: (day) => setStatementDay((typed) => typed || String(day)) });
   const fallback = `/cards/${cardId}` as const;
   if (!page) {
@@ -191,8 +188,9 @@ export function CardSettingsPage() {
   if (step !== null && !settingUp) setSettingUp(true);
 
   // The fields read the saved card again whenever it changes underneath them — a catalogue applied writes the
-  // published annual fee onto the terms, and a form still showing the old ones would save that emptiness back.
-  const saved = termsFields(page);
+  // published annual fee onto the terms, and a form still showing the old ones would save that emptiness back. A
+  // catalogue card opened without its dates has no terms for that fee yet, so the form offers it beside them.
+  const saved = termsFields(cp.terms, cp.catalog.snapshot ?? cp.catalog.entry, today, currency);
   const termsKey = `${card.id}:${JSON.stringify(saved)}`;
   if (loadedTerms !== termsKey) {
     setLoadedTerms(termsKey);
@@ -201,9 +199,10 @@ export function CardSettingsPage() {
     setLimit(saved.limit);
     setFee(saved.fee);
   }
-  if (loadedName !== `${card.id}:${card.name}`) {
-    setLoadedName(`${card.id}:${card.name}`);
-    setName(card.name);
+  // The name as typed: its issuer, shown in front of it everywhere else, is the Institution row's.
+  if (loadedName !== `${card.id}:${typedNameOf(card)}`) {
+    setLoadedName(`${card.id}:${typedNameOf(card)}`);
+    setName(typedNameOf(card));
   }
 
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
@@ -212,10 +211,19 @@ export function CardSettingsPage() {
   const saveTerms = () =>
     run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee) }));
   const saveName = () => {
-    if (!name.trim() || name.trim() === card.name) return;
+    if (!name.trim() || name.trim() === typedNameOf(card)) return;
     void run(() => renameAccount(database, ws, card.id, name));
   };
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
+  /*
+   * Typed, with the banks already known offered over the keyboard, and kept as it is left — the way a holding's
+   * Institution row is. Emptied, the card is filed under no bank. The face is drawn from it, so it follows at once.
+   */
+  const saveInstitution = (typed: string) => {
+    const next = typed.trim() || null;
+    if (next === issuer) return setInstitution(null);
+    void run(() => saveCardIdentity(database, ws, { accountId: card.id, issuer: next })).then((saved) => saved && setInstitution(null));
+  };
   // The name is kept as it is left; terms typed and not saved yet are saved by the ✓ on the way back.
   const done = async () => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -223,9 +231,14 @@ export function CardSettingsPage() {
     window.setTimeout(goBack, 0);
   };
 
+  /*
+   * A card opened from the catalogue without its dates has its product and its rules already: the dates are all its
+   * setup still asks for, so they come first with no step number over them and no catalogue to choose from again.
+   */
+  const onlyDates = step === 1 && cp.program !== undefined;
   const termsBlock = !isDebit && (
     <>
-      {step === 1 && <Step>Step 1 of 3</Step>}
+      {step === 1 && !onlyDates && <Step>Step 1 of 3</Step>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -268,6 +281,7 @@ export function CardSettingsPage() {
       {step === 1 && (
         <>
           {termsBlock}
+          {!onlyDates && (
           <CatalogPicker
             header="Is this card in the catalogue?"
             today={today}
@@ -276,6 +290,7 @@ export function CardSettingsPage() {
             debit={isDebit}
             applyHint="Save the card terms above, then use these terms in the next step."
           />
+          )}
         </>
       )}
       {step === 2 && (
@@ -289,6 +304,17 @@ export function CardSettingsPage() {
 
       <InsetGroup>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={leave} placeholder="Name" />
+        {!isDebit && (
+          <SuggestRow
+            label="Institution"
+            stripLabel="Institutions"
+            value={institution ?? issuer ?? ''}
+            onChange={setInstitution}
+            onCommit={saveInstitution}
+            placeholder="Not set"
+            offers={(typed) => issuerMatches(typed, banks)}
+          />
+        )}
         <InsetRow title="Card product" subtitle={product} to="/cards/$cardId/settings/product" params={{ cardId: card.id }} />
       </InsetGroup>
 

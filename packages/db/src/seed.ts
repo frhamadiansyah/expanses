@@ -4,6 +4,10 @@ export const SYSTEM_ACCOUNTS = [
   // The other side of a balance fixed to what was counted, when the difference is not spending or income. Added after
   // workspaces existed, so it is also made on first use (`ensureSystemAccountTx`) rather than only here.
   { key: 'balance_correction', name: 'Balance corrections' },
+  // The other side of a split part counted in no workspace ("Not counted"): money the card was charged that is no
+  // workspace's spending. Equity, so no report — which reads income and expense lines only — can ever count it, while
+  // the card keeps the whole charge. Made on first use (`ensureSystemAccountTx`), as Balance corrections is.
+  { key: 'not_counted', name: 'Not counted' },
 ] as const;
 
 export type SystemAccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'];

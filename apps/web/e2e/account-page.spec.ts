@@ -20,11 +20,12 @@ async function openHeld(page: Page, name: string) {
 }
 
 test('a current account: its actions, its last rows, its ⚙ and a way to add a currency', async ({ page }) => {
-  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000', extra: (p) => p.getByLabel('Bank', { exact: true }).pressSequentially('Bank One') });
+  // Shown everywhere with its bank in front of the name typed.
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', shown: 'Bank One Everyday', balance: '12500000', extra: (p) => p.getByLabel('Bank', { exact: true }).pressSequentially('Bank One') });
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Groceries run', paidWith: 'Everyday', category: 'Groceries', amount: '245000' });
+  await addTransaction(page, { description: 'Groceries run', paidWith: 'Bank One Everyday', category: 'Groceries', amount: '245000' });
 
-  await openMoney(page, 'Everyday');
+  await openMoney(page, 'Bank One Everyday');
   // The line names where the money is and what kind of account; the currency is the flag in the corner.
   await expect(page.getByText('Bank One · Current account', { exact: true })).toBeVisible();
   await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
@@ -284,8 +285,8 @@ test('cash and a current account draw the balance as one card with the month beh
 
 test('an account with pockets lists them, and a pocket opens its own page with the parent as the way back', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
-  await openWithPockets(page, { name: 'Valas Plus', bank: 'Bank One', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
-  await openMoney(page, 'Valas Plus');
+  await openWithPockets(page, { name: 'Valas Plus', bank: 'Bank One', shown: 'Bank One Valas Plus', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
+  await openMoney(page, 'Bank One Valas Plus');
   await expect(page.getByText('Balance, all pockets')).toBeVisible();
   await expect(page.getByText('Bank One · Saving account · 2 currencies')).toBeVisible();
   await expect(page.getByTestId('balance-card')).toContainText('30 days ago');
@@ -301,9 +302,9 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByTestId('account-recent')).toContainText('Opening balance');
   await page.getByTestId('pocket-USD').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
-  await expect(page.getByRole('heading', { name: 'Valas Plus · USD' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bank One Valas Plus · USD' })).toBeVisible();
   await expect(page.getByText('Opened at')).toBeVisible();
-  await page.getByRole('button', { name: 'Valas Plus', exact: true }).click();
+  await page.getByRole('button', { name: 'Bank One Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 

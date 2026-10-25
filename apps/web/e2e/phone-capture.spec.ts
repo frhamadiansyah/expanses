@@ -149,7 +149,8 @@ test('a screenshot opens as the plain picture, with nothing drawn over it', asyn
   const box = page.getByRole('button', { name: 'Screenshot · what was read from TOKO KOPI' });
   await expect(box).toHaveText('Screenshot›');
   await expect(box.locator('[data-capture-type="screenshot"]')).toHaveCount(1);
-  await expect(page.getByRole('switch', { name: 'Keep photo' })).toBeVisible();
+  // Whether the picture stays is not asked: only the app's camera's photo is kept, and a screenshot is not.
+  await expect(page.getByRole('switch', { name: 'Keep photo' })).toHaveCount(0);
   await box.click();
 
   const viewer = page.getByRole('dialog', { name: 'What was read from TOKO KOPI' });

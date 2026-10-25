@@ -1,4 +1,4 @@
-import { type AccountKind, currencyInfo, openingBalanceLines, uuidv7 } from '@expanses/core';
+import { type AccountKind, BANK_NAMED_SUBTYPES, currencyInfo, openingBalanceLines, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -21,6 +21,20 @@ export type AccountRow = typeof accounts.$inferSelect & {
    * (`spendingSwitchOn`), so every list that offers pockets reads it off the row it offers.
    */
   forSpending?: number;
+  /**
+   * The bank an account at a bank is called by with its name ("Mandiri" in "Mandiri Xpresi"): the tax report's Nama
+   * institusi as stored, for a current or saving account and a time deposit, and a credit card's issuer
+   * (`BANK_NAMED_SUBTYPES`); null for anything else, and for one with no bank named. An account with pockets keeps its bank on its pockets' profiles, so
+   * the account and every pocket read the first pocket's that names one. Filled by `listAccounts`, as `forSpending` is;
+   * a screen prints it through `accountDisplayName` and never stores it in a name.
+   */
+  bank?: string | null;
+  /**
+   * The name as typed, where `name` has been replaced by the name a screen shows (`accountDisplayName`) — the app's
+   * account lists do that, so every row prints "Mandiri Xpresi". Anything that writes a name back reads this one.
+   * Absent on a row straight from the database, whose `name` is the typed one.
+   */
+  typedName?: string;
 };
 
 /** One row's "For spending" switch as stored: 0 off, anything else (1, or none at all) on. */
@@ -46,7 +60,7 @@ export class AccountError extends Error {
 
 export const BALANCE_SUBTYPES = {
   // 'event_balance' is a shared event's trip balance (shared events §5): made by the event, never offered by a picker.
-  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable', 'event_balance'],
+  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'emoney', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable', 'event_balance'],
   liability: ['credit_card', 'loan', 'payable'],
 } as const satisfies Record<'asset' | 'liability', readonly AccountSubtype[]>;
 
@@ -62,7 +76,7 @@ export const BALANCE_SUBTYPES = {
  * A time deposit is in neither list: it holds money it cannot be paid from, and the money leaves by a transfer
  * when it matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'ewallet', 'other_cash'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'ewallet', 'emoney', 'other_cash'];
 
 /**
  * Money the ledger can move that nobody can spend: cash at a broker, which a buy is paid from and which is moved out
@@ -153,9 +167,63 @@ export async function listAccounts(
     .then(async (rows) => {
       const off = await spendingOffIdsTx(database.db, ws);
       const own = (id: string) => ({ forSpending: off.has(id) ? 0 : 1 });
+      const banks = await accountBanksTx(database.db, rows.filter((row) => row.kind !== 'income' && row.kind !== 'expense' && BANK_NAMED_SUBTYPES.includes(row.subtype)).map((row) => row.id));
       // A pocket reads the answer, its own switch and its account's together, so a pay-from list needs no parent.
-      return rows.map((row) => ({ ...row, forSpending: spendingSwitchOn(own(row.id), row.parentId ? own(row.parentId) : null) ? 1 : 0 }));
+      return rows.map((row) => ({
+        ...row,
+        forSpending: spendingSwitchOn(own(row.id), row.parentId ? own(row.parentId) : null) ? 1 : 0,
+        bank: banks.get(row.id) ?? null,
+      }));
     });
+}
+
+/**
+ * The bank each bank-held account among `ids` is shown with (see `AccountRow.bank`), by account id; an account of any
+ * other kind, or with no bank named, is not in the map. A credit card's is its issuer (card_identity). A money
+ * account and its pockets read one bank: the account's own profile's Nama institusi, else its first pocket's that
+ * names one — so "Mandiri Xpresi" and "Mandiri Xpresi · USD" never disagree.
+ */
+export async function accountBanksTx(tx: Db, ids: readonly string[]): Promise<Map<string, string>> {
+  const banks = new Map<string, string>();
+  if (ids.length === 0) return banks;
+  const listOf = (values: readonly string[]) => sql.join(values.map((value) => sql`${value}`), sql`, `);
+  const rows = await tx.values<[string, string | null, string, string]>(sql`SELECT id, parent_id, kind, subtype FROM accounts WHERE id IN (${listOf([...new Set(ids)])})`);
+  const cards = rows.filter(([, , kind, subtype]) => kind === 'liability' && subtype === 'credit_card').map(([id]) => id);
+  if (cards.length > 0) {
+    const issuers = await tx.values<[string, string | null]>(sql`SELECT account_id, issuer FROM card_identity WHERE account_id IN (${listOf(cards)})`);
+    for (const [id, issuer] of issuers) if (issuer?.trim()) banks.set(id, issuer.trim());
+  }
+  const held = rows.filter(([, , kind, subtype]) => kind === 'asset' && subtype !== 'credit_card' && BANK_NAMED_SUBTYPES.includes(subtype));
+  const groups = [...new Set(held.map(([id, parentId]) => parentId ?? id))];
+  if (groups.length === 0) return banks;
+  // The accounts' own profiles and their pockets', pockets in their account's order.
+  const named = await tx.values<[string, string | null, string]>(
+    sql`SELECT a.id, a.parent_id, p.coretax_fields_json FROM accounts a JOIN asset_profiles p ON p.account_id = a.id
+        WHERE a.id IN (${listOf(groups)}) OR a.parent_id IN (${listOf(groups)})
+        ORDER BY a.sort_order, a.id`,
+  );
+  const instOf = (json: string): string | null => {
+    try {
+      const inst = (JSON.parse(json) as { inst?: unknown }).inst;
+      return typeof inst === 'string' && inst.trim() ? inst.trim() : null;
+    } catch {
+      return null; // a profile whose fields cannot be read names no bank
+    }
+  };
+  const own = new Map<string, string>();
+  const fromPocket = new Map<string, string>();
+  for (const [id, parentId, json] of named) {
+    const inst = instOf(json);
+    if (!inst) continue;
+    if (parentId === null) own.set(id, inst);
+    else if (!fromPocket.has(parentId)) fromPocket.set(parentId, inst);
+  }
+  for (const [id, parentId] of held) {
+    const group = parentId ?? id;
+    const bank = own.get(group) ?? fromPocket.get(group);
+    if (bank) banks.set(id, bank);
+  }
+  return banks;
 }
 
 /*

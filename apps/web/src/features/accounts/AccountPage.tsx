@@ -362,7 +362,7 @@ function actionsFor(
   if (account.subtype === 'cash') {
     return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Count cash')];
   }
-  if (account.subtype === 'ewallet') {
+  if (account.subtype === 'ewallet' || account.subtype === 'emoney') {
     return [spend, { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') }, receive, adjust('Adjust')];
   }
   return [spend, receive, newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id }), adjust('Adjust')];

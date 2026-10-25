@@ -1,6 +1,6 @@
 import { INDONESIAN_BANKS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { faceFor, faceNamed, holderLine, TIERS, tieredKey } from './faces';
+import { faceFor, faceNamed, holderLine, prepaidFaceOf, TIERS, tieredKey } from './faces';
 import { FACES } from './faces.generated';
 
 describe('faceNamed: the face a bank or app name finds', () => {
@@ -124,6 +124,21 @@ describe('tiers', () => {
     expect(FACES.mandiri!.bank).toBe('#173f86');
     expect(FACES.ovo!.chip).toBeUndefined();
     expect(FACES.maybank!.ink).toBe('dark');
+  });
+});
+
+describe('prepaidFaceOf: the chip card a bank issues', () => {
+  it('draws electronic money by its bank when its own name names no card', () => {
+    expect(prepaidFaceOf('Bank Central Asia')).toEqual({ key: 'flazz', kind: 'emoney', mark: 'Flazz' });
+    expect(prepaidFaceOf('Mandiri')?.key).toBe('emoney');
+    expect(prepaidFaceOf('BRI')?.key).toBe('brizzi');
+    expect(prepaidFaceOf('Bank Negara Indonesia')?.key).toBe('tapcash');
+  });
+
+  it('draws nothing for a bank with no card drawn, or no bank', () => {
+    expect(prepaidFaceOf('Bank Jago')).toBeNull();
+    expect(prepaidFaceOf('BCA Digital')).toBeNull();
+    expect(prepaidFaceOf(null)).toBeNull();
   });
 });
 

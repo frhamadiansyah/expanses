@@ -392,10 +392,52 @@ describe('a purchase split across workspaces', () => {
   });
 
   it('lists each part with the workspace it is counted in, in the workspaces’ order', () => {
-    expect(splitParts(market, withParts).map((part) => [part.categoryName, part.book.name, part.amountMinor])).toEqual([
-      ['Groceries', 'Family', 900_000],
-      ['Office supplies', 'Business', 450_000],
+    expect(splitParts(market, withParts).map((part) => [part.categoryName, part.book?.name, part.amountMinor, part.excluded])).toEqual([
+      ['Groceries', 'Family', 900_000, false],
+      ['Office supplies', 'Business', 450_000, false],
     ]);
     expect(splitParts(dinner(), withParts)).toEqual([]);
+  });
+
+  it('marks the part left out of its workspace’s reports, and only that one (0090)', () => {
+    const off = { ...market, splitBooks: [family, { ...business, excluded: true }] };
+    expect(splitParts(off, withParts).map((part) => [part.categoryName, part.excluded])).toEqual([
+      ['Groceries', false],
+      ['Office supplies', true],
+    ]);
+    // The card line is still the whole charge.
+    expect(said(receiptLines({ tx: off, accounts: withParts, cards: [card], currency: 'IDR', points: null, owed: [] }))).toEqual([
+      ['Charged on BCA KrisFlyer ···· 1467', 'Rp 1.350.000'],
+    ]);
+  });
+});
+
+describe('a purchase with a part Not counted', () => {
+  const business = { id: 'business', name: 'Business', kind: 'business' as const };
+  const withParts = [...accounts, { id: 'cat-office', name: 'Office supplies', kind: 'expense', subtype: 'category', currency: null }] as AccountRow[];
+  // Invented: Rp 4.500.000 at Toko Sinar Jaya, Rp 4.000.000 office supplies for Business, Rp 500.000 in no workspace.
+  const shop = dinner({
+    description: 'Toko Sinar Jaya',
+    entries: [
+      { accountId: 'acct-card', accountKind: 'liability', amountMinor: -4_500_000, amountBaseMinor: -4_500_000, currency: 'IDR' },
+      { accountId: 'cat-office', accountName: 'Office supplies', accountKind: 'expense', amountMinor: 4_000_000, amountBaseMinor: 4_000_000, currency: 'IDR' },
+      { accountId: 'eq-not-counted', accountName: 'Not counted', accountKind: 'equity', accountSystemKey: 'not_counted', amountMinor: 500_000, amountBaseMinor: 500_000, currency: 'IDR' },
+    ] as TransactionView['entries'],
+  });
+
+  it('says the whole charge on the card, the hero the whole purchase', () => {
+    expect(said(receiptLines({ tx: shop, accounts: withParts, cards: [card], currency: 'IDR', points: null, owed: [] }))).toEqual([
+      ['Charged on BCA KrisFlyer ···· 1467', 'Rp 4.500.000'],
+    ]);
+    expect(heroCaption(shop, 4_500_000)).toBeNull();
+  });
+
+  it('lists the workspace’s part, then the part in no workspace', () => {
+    expect(splitParts(shop, withParts, business).map((part) => [part.categoryName, part.book?.name ?? null, part.amountMinor, part.excluded])).toEqual([
+      ['Office supplies', 'Business', 4_000_000, false],
+      ['Not counted', null, 500_000, false],
+    ]);
+    // The workspace's part excluded is the purchase's own flag, in one workspace.
+    expect(splitParts({ ...shop, excluded: true }, withParts, business).map((part) => part.excluded)).toEqual([true, false]);
   });
 });

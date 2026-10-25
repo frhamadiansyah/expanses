@@ -3,13 +3,14 @@ import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { X } from 'lucide-react';
+import { SwitchRow } from './FormRow';
 import { CategoryOptions } from '../cards/options';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useSharedBooks } from '../sharing/queries';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
-import { type FormDraft, splitCentsRefusal, type SplitRow, splitTotalMinor } from './tx-form';
+import { excludedWhole, type FormDraft, isNotCountedRow, NOT_COUNTED, splitCentsRefusal, type SplitRow, splitTotalMinor, withPartExcluded, withSplitCategory } from './tx-form';
 
 /**
  * "None", or "2 splits · Total Rp 85.000" — what the Split row says without being opened.
@@ -88,6 +89,8 @@ export function SplitSheet({
   const splits = draft.splits;
   const refusal = splitCentsRefusal(splits, currency);
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
+  // Excluded whole (More details' switch): a part added now is excluded with the rest.
+  const whole = excludedWhole(draft);
   /*
    * A line's category may come from another workspace: the purchase is then split across workspaces, each counting its
    * own part, while the card keeps the one charge. Offered after the open workspace's own, under each workspace's name,
@@ -98,48 +101,80 @@ export function SplitSheet({
   const sharedBooks = useSharedBooks().data ?? [];
   const shared = new Set(sharedBooks.map((book) => book.bookId));
   const readOnly = new Set(sharedBooks.filter((book) => book.state === 'unshared').map((book) => book.bookId));
-  const others = otherWorkspaces(accounts, useBooks().data ?? [], ws.bookId, categoryBooks, membership, shared, readOnly);
+  const books = useBooks().data ?? [];
+  const others = otherWorkspaces(accounts, books, ws.bookId, categoryBooks, membership, shared, readOnly);
   const workspaceOf = (categoryId: string) => others.find((other) => other.book.id === categoryBooks[categoryId])?.book ?? null;
+  const bookOf = (categoryId: string) => categoryBooks[categoryId] ?? null;
+  /*
+   * A part in no workspace — "Not counted" — is in no report at all, the card keeping the whole charge. Not offered from
+   * a shared workspace: its purchases keep every part in a workspace (the ledger refuses it the same way).
+   */
+  const notCountedOffered = !(ws.bookId && shared.has(ws.bookId));
+  // The workspace a row's part is counted in, by name, for its switch: the open one's own categories included.
+  const partName = (categoryId: string) => books.find((book) => book.id === bookOf(categoryId))?.name ?? null;
   return (
     <Sheet grouped title="Split" onClose={onClose}>
       {/* B3a: one card, a row per split — category, figure, ✕ — and + Split with the running total as its last row. */}
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
         {splits.map((row, i) => (
-          <div key={i} className="flex min-h-12 items-center gap-2 pl-[13px]">
-            <select
-              aria-label={`Split ${i + 1} category`}
-              value={row.categoryId}
-              onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, categoryId: e.target.value } : r)))}
-              className="ph-focus-inset min-w-0 flex-1 appearance-none truncate bg-transparent py-2 text-base text-[var(--ph-ink)] md:text-[15px]"
-            >
-              <CategoryOptions accounts={accounts as AccountRow[]} kind="expense" parentSuffix="(general)" />
-              {others.map((other) => (
-                <optgroup key={other.book.id} label={other.book.name}>
-                  {other.options.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <WorkspaceBadge book={row.categoryId ? workspaceOf(row.categoryId) : null} />
-            <input
-              aria-label={`Split ${i + 1} amount`}
-              value={row.amount}
-              inputMode="decimal"
-              placeholder="Amount"
-              onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
-              className="ph-focus-inset tabular w-28 shrink-0 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
-            />
-            <button
-              type="button"
-              onClick={() => setSplits(splits.filter((_, j) => j !== i))}
-              aria-label={`Remove split ${i + 1}`}
-              className="ph-focus-inset flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
-            >
-              <X size={16} aria-hidden />
-            </button>
+          <div key={i} data-testid="split-row">
+            <div className="flex min-h-12 items-center gap-2 pl-[13px]">
+              <select
+                aria-label={`Split ${i + 1} category`}
+                value={row.categoryId}
+                onChange={(e) => setSplits(withSplitCategory(splits, i, e.target.value, bookOf))}
+                className="ph-focus-inset min-w-0 flex-1 appearance-none truncate bg-transparent py-2 text-base text-[var(--ph-ink)] md:text-[15px]"
+              >
+                <CategoryOptions accounts={accounts as AccountRow[]} kind="expense" parentSuffix="(general)" />
+                {others.map((other) => (
+                  <optgroup key={other.book.id} label={other.book.name}>
+                    {other.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                {/* In no workspace at all: after every workspace's categories, as the last choice there is. */}
+                {(notCountedOffered || isNotCountedRow(row)) && (
+                  <optgroup label="No workspace">
+                    <option value={NOT_COUNTED}>Not counted</option>
+                  </optgroup>
+                )}
+              </select>
+              <WorkspaceBadge book={row.categoryId && !isNotCountedRow(row) ? workspaceOf(row.categoryId) : null} />
+              <input
+                aria-label={`Split ${i + 1} amount`}
+                value={row.amount}
+                inputMode="decimal"
+                placeholder="Amount"
+                onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
+                className="ph-focus-inset tabular w-28 shrink-0 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
+              />
+              <button
+                type="button"
+                onClick={() => setSplits(splits.filter((_, j) => j !== i))}
+                aria-label={`Remove split ${i + 1}`}
+                className="ph-focus-inset flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+            {/* The part's own Exclude from report (0090), under the row it belongs to: a workspace's part only — a part Not
+                counted is in no report to leave. Rows in one workspace are one part, and switch together. */}
+            {row.categoryId && !isNotCountedRow(row) && (
+              <SwitchRow
+                label="Exclude from report"
+                info={`Out of ${partName(row.categoryId) ?? 'the workspace'}’s chart and budgets. Still counted in the card’s balance, statement and points.`}
+                checked={row.excluded ?? false}
+                onChange={(excluded) => setSplits(withPartExcluded(splits, i, excluded, bookOf))}
+              />
+            )}
+            {isNotCountedRow(row) && (
+              <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                In no workspace and no report. Still counted in the card’s balance, statement and points.
+              </p>
+            )}
           </div>
         ))}
         <div className="flex min-h-12 items-center gap-3 pr-[13px]">
@@ -147,7 +182,13 @@ export function SplitSheet({
             type="button"
             onClick={() =>
               setSplits(
-                splits.length ? [...splits, { categoryId: '', amount: '' }] : [{ categoryId: draft.categoryId, amount: draft.amount }, { categoryId: '', amount: '' }],
+                splits.length
+                  ? [...splits, { categoryId: '', amount: '', ...(whole ? { excluded: true } : {}) }]
+                  : // A purchase excluded whole stays so as it is split: each part says it now.
+                    [
+                      { categoryId: draft.categoryId, amount: draft.amount, ...(whole ? { excluded: true } : {}) },
+                      { categoryId: '', amount: '', ...(whole ? { excluded: true } : {}) },
+                    ],
               )
             }
             className="ph-focus-inset min-h-12 px-[13px] text-[15px] font-medium text-[var(--ph-tint)]"

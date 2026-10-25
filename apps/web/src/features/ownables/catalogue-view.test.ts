@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ASSET_TILES, choiceForCode, codeChoices, fieldsFor, personCodeChoices, type PickerRow, pickerRows } from './catalogue-view';
 
 describe('the rows a picker draws', () => {
-  it('shows the seven money accounts, and never a code', () => {
+  it('shows the eight money accounts, and never a code', () => {
     const rows = pickerRows({ flow: 'account', query: '' });
     expect(rows.map((row) => row.label)).toEqual([
       'Cash',
@@ -11,6 +11,7 @@ describe('the rows a picker draws', () => {
       'Saving account',
       'Time deposit',
       'Digital wallet',
+      'Electronic money',
       'Fund account',
       'Other cash equivalents',
     ]);
@@ -55,12 +56,13 @@ describe('what a form asks for', () => {
   it('asks a deposit when it matures and at what rate, and asks a wallet nothing but its balance', () => {
     expect(fieldsFor('account', 'time_deposit')).toEqual(['balance', 'bank', 'currency', 'matures', 'rate']);
     expect(fieldsFor('account', 'ewallet')).toEqual(['balance', 'currency']);
+    expect(fieldsFor('account', 'emoney')).toEqual(['balance', 'currency']);
     expect(fieldsFor('account', 'bank')).toEqual(['balance', 'bank', 'currency']);
   });
 
   /** A wallet in dollars, cash in euros and a deposit in Singapore are ordinary; none may take the base currency silently. */
   it('asks every kind of money account which currency it holds', () => {
-    for (const item of ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'fund', 'other_cash']) {
+    for (const item of ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'emoney', 'fund', 'other_cash']) {
       expect(fieldsFor('account', item), item).toContain('currency');
     }
   });
@@ -98,11 +100,12 @@ describe('changing the code afterwards', () => {
       'Saving account',
       'Time deposit',
       'Digital wallet',
+      'Electronic money',
       'Fund account',
       'Other cash equivalents',
     ]);
-    // Two items are 0102 and two are 0109, so a value of its own is what keeps them apart in a select.
-    expect(new Set(groups[0]!.choices.map((choice) => choice.value)).size).toBe(7);
+    // Two items each are 0102, 0105 and 0109, so a value of its own is what keeps them apart in a select.
+    expect(new Set(groups[0]!.choices.map((choice) => choice.value)).size).toBe(8);
     expect(groups[1]!.choices.map((choice) => choice.code)).toEqual(['0103', '0106', '0107', '0108']);
     expect(choiceForCode(groups, '0102')?.label).toBe('Current account');
     expect(choiceForCode(groups, '0104')?.label).toBe('Time deposit');

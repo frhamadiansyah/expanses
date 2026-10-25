@@ -1,6 +1,7 @@
 import { formatMinor, monthName } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
 import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
+import { isNotCountedLine } from './list-model';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
 
@@ -112,7 +113,8 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const payer = input.payer ?? null;
   // One purchase split across workspaces: the whole charge, on the account it was charged to, is the line the bank
   // prints; its parts follow on the receipt, each in its own workspace.
-  const across = !!tx.splitBooks && !payer && !!left[0];
+  // So is one with a part counted in no workspace (Not counted): the charge is more than any workspace counts.
+  const across = (!!tx.splitBooks || tx.entries.some(isNotCountedLine)) && !payer && !!left[0];
   if (across && paid) {
     lines.push({ label: `Charged on ${accountText(paid.accountId)}`, value: formatMinor(Math.abs(paid.amountMinor), currency) });
   } else if (payer) {
@@ -157,29 +159,44 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
 
 /** One part of a purchase split across workspaces, as the receipt lists it. */
 export interface SplitPart {
+  /** The category, or '' for a part counted in no workspace. */
   categoryId: string;
+  /** The category's name, or "Not counted". */
   categoryName: string;
-  book: SplitBook;
+  /** The workspace the part is counted in; null for a part Not counted, which is in none. */
+  book: SplitBook | null;
   amountMinor: number;
   currency: string;
+  /** Left out of its workspace's reports (0090): the chart and budgets there, not the card. */
+  excluded: boolean;
 }
 
 /**
- * The parts of a purchase split across workspaces, in the order its workspaces are listed, largest first within one:
- * each category line, the workspace it is filed in and what it came to. Empty for anything else.
+ * The parts of a split purchase, in the order its workspaces are listed, largest first within one: each category line,
+ * the workspace it is filed in, what it came to and whether that part is left out of the workspace's reports — then
+ * any part counted in no workspace ("Not counted"). Across workspaces each line names its own; in one workspace with a
+ * part Not counted, `book` (the workspace the purchase is filed in) names them all and the purchase's own flag is
+ * theirs. Empty for anything else, where there are no parts to tell apart.
  */
-export function splitParts(tx: TransactionView, accounts: readonly AccountRow[]): SplitPart[] {
-  const books = tx.splitBooks ?? [];
-  return books.flatMap((book) =>
-    tx.entries
-      .filter((entry) => entry.bookId === book.id && (entry.accountKind === 'expense' || entry.accountKind === 'income'))
-      .sort((a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor))
-      .map((entry) => ({
-        categoryId: entry.accountId,
-        categoryName: accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountName,
-        book,
-        amountMinor: entry.accountKind === 'expense' ? entry.amountMinor : -entry.amountMinor,
-        currency: entry.currency,
-      })),
-  );
+export function splitParts(tx: TransactionView, accounts: readonly AccountRow[], book: SplitBook | null = null): SplitPart[] {
+  const notCounted = tx.entries.filter(isNotCountedLine);
+  if (!tx.splitBooks && notCounted.length === 0) return [];
+  const books: SplitBook[] = tx.splitBooks ?? (book ? [{ ...book, excluded: tx.excluded ?? false }] : []);
+  const categoryLine = (entry: TransactionView['entries'][number]) => entry.accountKind === 'expense' || entry.accountKind === 'income';
+  const part = (entry: TransactionView['entries'][number], of: SplitBook | null): SplitPart => ({
+    categoryId: entry.accountId,
+    categoryName: accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountName,
+    book: of,
+    amountMinor: entry.accountKind === 'income' ? -entry.amountMinor : entry.amountMinor,
+    currency: entry.currency,
+    excluded: (tx.excluded ?? false) || (of?.excluded ?? false),
+  });
+  const largestFirst = (a: { amountMinor: number }, b: { amountMinor: number }) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor);
+  const filed = tx.splitBooks
+    ? books.flatMap((one) => tx.entries.filter((entry) => entry.bookId === one.id && categoryLine(entry)).sort(largestFirst).map((entry) => part(entry, one)))
+    : tx.entries.filter(categoryLine).sort(largestFirst).map((entry) => part(entry, books[0] ?? null));
+  return [
+    ...filed,
+    ...notCounted.sort(largestFirst).map((entry) => ({ ...part(entry, null), categoryId: '', categoryName: 'Not counted', excluded: false })),
+  ];
 }

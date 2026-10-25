@@ -172,7 +172,7 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
 /** What the card form asks for, as typed. The chosen catalogue entry is passed beside it, not held in here. */
 export interface NewCardDraft {
   name: string;
-  /** The bank, when the card is typed by hand. A catalogue card is told its bank by the entry. */
+  /** The bank, when the card is typed by hand — the one its name leads with. A catalogue card is told its bank by the entry. */
   issuer: string;
   last4: string;
   owed: string;
@@ -192,8 +192,61 @@ export interface NewCardPlan {
   openingBalanceMinor: number;
   /** The level to apply the entry at, when it publishes any. */
   memberLevel: string | null;
-  /** The billing cycle, or null when neither day was given — which only a card typed by hand may do. */
+  /**
+   * The billing cycle, or null when neither day was given. A card from the catalogue may leave both for later too:
+   * its earn rules do not wait for them, and the card's own page asks for the days, with the published fee filled
+   * in beside them, until they are saved.
+   */
   terms: { statementDay: number; dueDay: number } | null;
+}
+
+/**
+ * The bank a hand-typed card's name already says: "Mandiri Signature" is Mandiri's, "BCA Everyday" is BCA's.
+ *
+ * A name is matched by its leading words, whole and in any case, against the banks the Bank row would offer — so
+ * "Bcaxyz" names no bank, and of two that both lead the name ("CIMB" and "CIMB Niaga") the longer one wins, being
+ * the more exact. Null when no bank leads the name: the card is then filed under none until its Settings say one.
+ */
+export function issuerInName(name: string, issuers: readonly string[]): string | null {
+  const words = name.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let found: string | null = null;
+  let length = 0;
+  for (const issuer of issuers) {
+    const bankWords = issuer.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (bankWords.length === 0 || bankWords.length <= length || bankWords.length > words.length) continue;
+    if (bankWords.every((word, i) => words[i] === word)) {
+      found = issuer;
+      length = bankWords.length;
+    }
+  }
+  return found;
+}
+
+/**
+ * A name typed for a card the catalogue does not carry, as the bank-and-name row shows it: the bank its leading
+ * words name, and the rest as the card's own name — "Mandiri Signature" is Mandiri, Signature. A name that is the
+ * bank and nothing more keeps itself whole, since a card is never left without a name; no bank leaves it whole too.
+ */
+export function splitCardName(typed: string, issuers: readonly string[]): { bank: string; name: string } {
+  const whole = typed.trim().replace(/\s+/g, ' ');
+  const bank = issuerInName(whole, issuers);
+  if (!bank) return { bank: '', name: whole };
+  const rest = whole.split(' ').slice(bank.trim().split(/\s+/).length).join(' ');
+  return { bank, name: rest || whole };
+}
+
+/**
+ * The account name a bank-and-name row saves: the two read together, "Mandiri" and "Signature" as "Mandiri
+ * Signature" — the name the card was searched for, and the one every list shows. A name that already starts with
+ * its bank is not given it twice, and no bank leaves the name as typed.
+ */
+export function cardAccountName(bank: string, name: string): string {
+  const b = bank.trim();
+  const n = name.trim();
+  if (!b || !n) return n;
+  const lower = n.toLowerCase();
+  const lead = b.toLowerCase();
+  return lower === lead || lower.startsWith(`${lead} `) ? n : `${b} ${n}`;
 }
 
 /** A day of the month `card_terms` will accept. `saveCardTerms` takes 1-31; this says so before anything is written. */
@@ -233,10 +286,16 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
     }
   }
 
-  const someDay = draft.statementDay.trim() !== '' || draft.dueDay.trim() !== '';
-  // The published fee is kept on the card's terms, and the terms need both days, so a catalogue card is asked.
-  if (entry && !someDay) throw new Error('A card from the catalogue needs its billing date and due date: that is where its fee and its cycle are kept');
-  const terms = someDay ? { statementDay: dayOfMonth(draft.statementDay, 'billing date'), dueDay: dayOfMonth(draft.dueDay, 'due date') } : null;
+  /*
+   * Both days or neither: the terms are what a cycle is counted from, and half of them counts nothing. Neither is
+   * fine for any card — it opens without terms, and its page asks for them. Some issuers close every cardholder's
+   * statement on the same day, so for those cards a due date alone is enough: the billing date is the issuer's.
+   */
+  const fixedDay = entry?.program.fixedStatementDay;
+  const statementDay = draft.statementDay.trim() || (fixedDay && draft.dueDay.trim() !== '' ? String(fixedDay) : '');
+  const someDay = statementDay !== '' || draft.dueDay.trim() !== '';
+  if (someDay && (statementDay === '' || draft.dueDay.trim() === '')) throw new Error('Give both the billing date and the due date, or leave both for later');
+  const terms = someDay ? { statementDay: dayOfMonth(statementDay, 'billing date'), dueDay: dayOfMonth(draft.dueDay, 'due date') } : null;
 
   return {
     name,

@@ -8,6 +8,7 @@ import {
   receivedItems,
   sharingDetail,
   assetValuesAt,
+  listAccounts,
   netWorthSeries,
   periodFlows,
   sheetInputsAt,
@@ -31,6 +32,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { withShownNames } from '../../lib/account-name';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
 import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
@@ -38,7 +40,14 @@ import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, t
 export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
-  return useQuery({ queryKey: ['asset-values', ws.workspaceId, onDate], queryFn: () => assetValuesAt(database, ws, onDate) });
+  return useQuery({
+    queryKey: ['asset-values', ws.workspaceId, onDate],
+    // An account at a bank is listed by the name every screen shows it by ("Mandiri Xpresi"); `typedName` is what is stored.
+    queryFn: async () => {
+      const [values, accounts] = await Promise.all([assetValuesAt(database, ws, onDate), listAccounts(database, ws, { includeArchived: true })]);
+      return withShownNames(values, accounts);
+    },
+  });
 }
 
 export function useIdleCash(date?: string) {

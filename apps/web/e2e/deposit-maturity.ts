@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { expectWalletFigure, walletCard } from './accounts';
 import { openDrawers } from './drawers';
-import { setCurrency } from './currency-field';
+import { setBalanceCurrency } from './currency-field';
 
 export type Choice = 'principal' | 'principal_interest' | 'close';
 export interface Combo {
@@ -81,8 +81,9 @@ export async function addMoneyAccount(
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: o.kind }).click();
   await typeInto(page, 'Name', o.name);
+  // The currency is the symbol before the balance: picked first, so the figure is typed in it.
+  if (o.currency !== 'IDR') await setBalanceCurrency(page, o.currency);
   await typeInto(page, 'Current balance', o.balance);
-  if (o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.fx) await typeInto(page, `Rate: IDR per 1 ${o.currency}`, o.fx);
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures); // a date input only takes a whole date
   if (o.rate) await typeInto(page, 'Interest rate', o.rate);

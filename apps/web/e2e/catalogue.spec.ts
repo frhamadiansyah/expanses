@@ -65,11 +65,11 @@ async function buy(page: Page, p: { card: string; description: string; category:
 const thisCycle = (page: Page) => page.locator('section', { has: page.getByRole('heading', { name: /^This cycle:/ }) });
 
 test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with full progress', async ({ page }) => {
-  await addCard(page, 'KF Signature');
-  await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
-  await buy(page, { card: 'KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
+  await addCard(page, 'BCA KF Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await buy(page, { card: 'BCA KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
-  await openCardPage(page, 'KF Signature');
+  await openCardPage(page, 'BCA KF Signature');
   // On the summary, the bonus this statement is working toward has been reached: no tier left to show.
   await expect(page.getByTestId('this-statement-points')).toContainText('+2.555 miles');
   await cardPage(page, 'Points');
@@ -83,12 +83,12 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
 });
 
 test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({ page }) => {
-  await addCard(page, 'UnionPay');
-  await applyCatalogue(page, 'UnionPay', 'unionpay', 'BCA UnionPay');
-  await buy(page, { card: 'UnionPay', description: 'Din Tai Fung Orchard', category: 'Restaurants', amount: '540000', original: ['SGD', '45,20'] });
+  await addCard(page, 'BCA UnionPay Card');
+  await applyCatalogue(page, 'BCA UnionPay Card', 'unionpay', 'BCA UnionPay');
+  await buy(page, { card: 'BCA UnionPay Card', description: 'Din Tai Fung Orchard', category: 'Restaurants', amount: '540000', original: ['SGD', '45,20'] });
   await expect(page.getByText(/SGD\s45,20/)).toBeVisible();
 
-  await openCardPage(page, 'UnionPay');
+  await openCardPage(page, 'BCA UnionPay Card');
   await cardPage(page, 'Points');
   const cycle = thisCycle(page);
   // 54 base points plus 54 for spending in SGD; 100 of them transfer in steps of 20 to 50 KrisFlyer miles.
@@ -98,8 +98,8 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
 });
 
 test('editing a catalogue rule makes the card customised', async ({ page }) => {
-  await addCard(page, 'KF Infinite');
-  await applyCatalogue(page, 'KF Infinite', 'infinite', 'BCA Singapore Airlines KrisFlyer Visa Infinite');
+  await addCard(page, 'BCA KF Infinite');
+  await applyCatalogue(page, 'BCA KF Infinite', 'infinite', 'BCA Singapore Airlines KrisFlyer Visa Infinite');
   await cardSettingsPage(page, 'Earning rules');
   const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
   await rules.getByRole('button', { name: 'Edit' }).first().click();
@@ -112,10 +112,10 @@ test('editing a catalogue rule makes the card customised', async ({ page }) => {
 });
 
 test('comparing in KrisFlyer ranks UnionPay converted miles above Signature miles', async ({ page }) => {
-  await addCard(page, 'UnionPay');
-  await applyCatalogue(page, 'UnionPay', 'unionpay', 'BCA UnionPay');
-  await addCard(page, 'KF Signature');
-  await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await addCard(page, 'BCA UnionPay Card');
+  await applyCatalogue(page, 'BCA UnionPay Card', 'unionpay', 'BCA UnionPay');
+  await addCard(page, 'BCA KF Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
   await page.goto('/recommend');
   await page.getByLabel('Amount (IDR)').fill('540000');
@@ -126,10 +126,10 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await page.getByRole('button', { name: 'Compare cards' }).click();
 
   const best = page.locator('section', { hasText: 'Best' });
-  await expect(best).toContainText('UnionPay');
+  await expect(best).toContainText('BCA UnionPay Card');
   await expect(best).toContainText('108 pts');
   await expect(best).toContainText('≈ 54 KrisFlyer');
-  await expect(page.locator('section', { hasText: 'KF Signature' })).toContainText('≈ 40 KrisFlyer');
+  await expect(page.locator('section', { hasText: 'BCA KF Signature' })).toContainText('≈ 40 KrisFlyer');
 });
 
 test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns the transport rate', async ({ page }) => {

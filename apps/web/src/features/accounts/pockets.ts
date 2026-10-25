@@ -1,5 +1,6 @@
 import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
 import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds, spendingSwitchOn } from '@expanses/db';
+import { typedNameOf } from '../../lib/account-name';
 import { keptForSpending } from '../../lib/account-types';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
@@ -94,7 +95,7 @@ export const bankRateText = (rate: number | null, from: string, to: string, loca
 /** "1 pocket", "3 pockets". */
 export const pocketCount = (n: number) => `${n} ${n === 1 ? 'pocket' : 'pockets'}`;
 
-export const moveDescription = (parent: AccountRow, from: AccountRow, to: AccountRow) => `${parent.name}: ${from.currency} → ${to.currency}`;
+export const moveDescription = (parent: AccountRow, from: AccountRow, to: AccountRow) => `${typedNameOf(parent)}: ${from.currency} → ${to.currency}`;
 
 export const currencyName = (code: string) => currencyInfo(code).name;
 

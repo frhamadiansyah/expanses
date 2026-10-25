@@ -337,7 +337,7 @@ export const JOURNEYS: Journey[] = [
   {
     title: '10 · a dollar account: posted, edited and deleted, every figure in cents on it',
     run: async (page) => {
-      await addMoneyAccount(page, 'Wise USD', 'bank', '500.03', 'USD', '16000');
+      await addMoneyAccount(page, 'Wise USD', 'bank', '500,03', 'USD', '16000');
       await addGoal(page, 'Education', '10000000');
       await setAside(page, 'Education', 'Wise USD (USD)', '100.03');
       // US$400,00 free. The keypad has no decimal key, so the phone goes over by a dollar and the desktop by a cent.

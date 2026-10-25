@@ -1,6 +1,6 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
-import { setCurrency } from './currency-field';
+import { setBalanceCurrency, setCurrency } from './currency-field';
 import { todayIn } from './today';
 
 /**
@@ -40,6 +40,7 @@ const MONEY_KIND: Record<string, string> = {
   savings: 'Saving account',
   time_deposit: 'Time deposit',
   ewallet: 'Digital wallet',
+  emoney: 'Electronic money',
   fund: 'Fund account',
   other_cash: 'Other cash equivalents',
 };
@@ -70,6 +71,8 @@ export interface NewAccount {
   last4?: string;
   /** Anything else the caller's walk has to fill before saving, in the form's own labels. */
   extra?: (page: Page) => Promise<void>;
+  /** The name the account is shown by when a bank typed in `extra` goes in front of it ("Mandiri Xpresi"); `name` else. */
+  shown?: string;
 }
 
 /**
@@ -126,7 +129,8 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
   } else {
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.name);
   }
-  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
+  // The currency is the symbol before the balance, picked before the figure is typed so the figure is read in it.
+  if (o.currency && o.currency !== 'IDR') await setBalanceCurrency(page, o.currency);
   if (o.balance) await page.getByLabel('Current balance', { exact: true }).pressSequentially(o.balance);
   if (o.from) await page.getByLabel('Where the money comes from').selectOption({ label: o.from });
   if (o.matures) await page.getByLabel('Matures on').fill(o.matures);
@@ -145,12 +149,12 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
     await expect(page).toHaveURL(/\/net-worth\/assets$/);
     /* The asset list folds its rows into a drawer per kind, and opens with them closed. */
     await openDrawers(page);
-    await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
+    await expect(page.getByRole('link', { name: new RegExp(`^${o.shown ?? o.name}`) })).toBeVisible();
     return;
   }
   /* Money kept for spending is a card on Wallet, where the form lands once the write is done. */
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(walletCard(page, o.name)).toBeVisible();
+  await expect(walletCard(page, o.shown ?? o.name)).toBeVisible();
 }
 
 export interface NewCard {
@@ -181,17 +185,39 @@ export interface NewCard {
 }
 
 /**
- * Opens a card by hand through the debt picker — "Not listed — type the name", which is the door the old inline
- * form's Type=credit_card was. It lands on the card's own page, where the app takes a new card next.
+ * The new card form's ⌕ search, answered with a name the catalogue does not carry: its last row, which splits a
+ * leading bank off into the row's bank half. `scope` is where the form is drawn — the page, or the Paid with sheet
+ * whose step the search is.
+ */
+export async function nameCardByHand(page: Page, name: string, scope: Page | Locator = page) {
+  await scope.getByRole('button', { name: 'Find in the catalogue' }).click();
+  await page.getByLabel('Search cards').fill(name);
+  await page.getByRole('button', { name: `Use “${name}” as the name` }).click();
+}
+
+/** The new card form's ⌕ search, answered from the catalogue: the search narrowed by `query`, then the product. */
+export async function pickCatalogueCard(page: Page, query: string, product: string, scope: Page | Locator = page) {
+  await scope.getByRole('button', { name: 'Find in the catalogue' }).click();
+  await page.getByLabel('Search cards').fill(query);
+  await page.getByRole('button', { name: product, exact: true }).click();
+}
+
+/**
+ * Opens a card by hand through the debt picker, typed on the bank-and-name row as the door the old inline form's
+ * Type=credit_card was: the name in the name half, as given, and the bank in the bank half when the walk names one.
+ * Currency and dates are the form's details, opened only when the walk gives one. It lands on the card's own page,
+ * where the app takes a new card next.
  */
 export async function openCard(page: Page, o: NewCard) {
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
-  if (o.bank) await page.getByLabel('Bank').selectOption({ label: o.bank });
+  if (o.bank) await page.getByLabel('Bank', { exact: true }).fill(o.bank);
+  // An extra may fill any of the form's labels, the folded ones among them, so it gets the details open too.
+  if ((o.currency && o.currency !== 'IDR') || o.statementDay || o.dueDay || o.extra) await page.getByRole('button', { name: 'Add more details' }).click();
   if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);
-  if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
+  if (o.owed) await page.getByLabel('Current balance').fill(o.owed);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
   if (o.statementDay) await page.getByLabel('Billing date').fill(o.statementDay);
   if (o.dueDay) await page.getByLabel('Due date').fill(o.dueDay);
