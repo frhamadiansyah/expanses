@@ -286,7 +286,8 @@ function MerchantSheet({
       onClose={onClose}
       back={finding ? { label: opened.title, run: () => setFinding(false) } : undefined}
       confirm={finding ? undefined : { label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
-      tall={finding}
+      // Medium until the keyboard comes, then as tall as Paid with stands, whose foot reaches the keyboard (seen on the simulator).
+      tall
       expanded={finding}
     >
       {finding && (
