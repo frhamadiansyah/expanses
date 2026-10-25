@@ -7,12 +7,13 @@ test('Merchants on a phone: round ‹, search in the title row, + and a row both
   const title = page.getByRole('heading', { name: 'Merchants', exact: true });
   await expect(title).toBeVisible();
 
-  // The way back is the round ‹ at the left of the corner row, with no word beside it; the big title is under that row.
+  // The way back is the round ‹ at the left, with no word beside it, and the name centred in the same row — as Points and a bill read.
   const back = page.getByRole('main').getByRole('link', { name: 'Wallet', exact: true }).filter({ hasNotText: /\w/ });
   await expect(back).toBeVisible();
   const [backBox, titleBox, plusBox] = [(await back.boundingBox())!, (await title.boundingBox())!, (await page.getByRole('button', { name: 'New merchant' }).boundingBox())!];
   expect(backBox.width).toBeGreaterThanOrEqual(44);
-  expect(titleBox.y).toBeGreaterThanOrEqual(backBox.y + backBox.height);
+  expect(titleBox.y).toBeLessThan(backBox.y + backBox.height);
+  expect(titleBox.y + titleBox.height).toBeGreaterThan(backBox.y);
   expect(Math.abs(plusBox.y - backBox.y)).toBeLessThanOrEqual(1);
   await expect(page.getByText('‹ Wallet')).toHaveCount(0);
   // No form is open on the page itself.
