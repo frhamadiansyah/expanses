@@ -286,9 +286,11 @@ function MerchantSheet({
       onClose={onClose}
       back={finding ? { label: opened.title, run: () => setFinding(false) } : undefined}
       confirm={finding ? undefined : { label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
-      // Medium until the keyboard comes, then as tall as Paid with stands, whose foot reaches the keyboard (seen on the simulator).
+      // Tall from the start: at half height the keyboard covers the name field, and iOS then pans the whole page up to reveal
+      // it, taking the sheet with it (seen in the owner's recording). Where the field is above the keyboard from the first moment
+      // there is nothing for it to pan.
       tall
-      expanded={finding}
+      expanded
     >
       {finding && (
         <MccSearch

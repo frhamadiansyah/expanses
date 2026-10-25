@@ -80,6 +80,17 @@ export function Sheet({
     useEffect(() => {
     if (expanded) setDetent('large');
   }, [expanded]);
+  /*
+   * A medium sheet that holds a field to type in opens at large: at half height the keyboard covers the field, and iOS
+   * then pans the whole page up to show it, carrying the sheet away with it. A field already above the keyboard has
+   * nothing to pan for. Only fields that bring the keyboard count (not dates, switches or choices).
+   */
+  useEffect(() => {
+    if (!detents) return;
+    if (panel.current?.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=date]):not([type=time]):not([type=range]):not([type=file]):not([type=button]), textarea')) setDetent('large');
+    // Once, as the sheet opens: later steps inside it are the caller's to place through `expanded`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const px = (d: Detent) => (d === 'large' ? window.innerHeight * 0.92 : window.innerHeight * 0.5);
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!detents) return;
