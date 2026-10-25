@@ -112,6 +112,30 @@ export function AssetSettings({
   const groups = planGroupChoices(assetKind, subtype, current);
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
 
+  // Group and Description sit together under the name: where it counts in the plan, and what it is called on the report.
+  const groupRow = (
+        <SelectRow
+          key="group"
+          label="Group"
+          value={current}
+          onChange={(e) => void save('group', () => setAssetGroup(database, ws, accountId, e.target.value as PlanGroup))}
+          info={
+            subtype === 'fund'
+              ? 'Broker cash set to Investments is money meant to be invested, not an emergency buffer.'
+              : 'Which part of the plan this counts toward: money to hand, what is invested, what is owed, or what is lived with.'
+          }
+          hint={errorHint(errors.group)}
+        >
+          {groups.map((key) => (
+            <option key={key} value={key}>
+              {PLAN_GROUP_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+  );
+  const descriptionRow = (
+    <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />
+  );
   // The report's own rows, opening one Tax report box with the questions the report asks of this asset under them.
   const taxRows = [
     <SwitchRow
@@ -122,7 +146,6 @@ export function AssetSettings({
       info="Turn it off for money that is held but not reported yet, such as a pension balance that counts only once it is paid out. It still counts toward net worth."
       hint={errorHint(errors.reportable)}
     />,
-    <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />,
     // The number alone; what it stands for is in the sheet it opens.
     <PickerRow key="code" label="Code" value={code === '' ? 'Not chosen' : code} onOpen={() => setSheet('code')} disabled={!reportable} hint={errorHint(errors.code)} />,
   ];
@@ -160,23 +183,6 @@ export function AssetSettings({
           hint={errorHint(errors.name)}
         />
         {afterName}
-        <SelectRow
-          label="Group"
-          value={current}
-          onChange={(e) => void save('group', () => setAssetGroup(database, ws, accountId, e.target.value as PlanGroup))}
-          info={
-            subtype === 'fund'
-              ? 'Broker cash set to Investments is money meant to be invested, not an emergency buffer.'
-              : 'Which part of the plan this counts toward: money to hand, what is invested, what is owed, or what is lived with.'
-          }
-          hint={errorHint(errors.group)}
-        >
-          {groups.map((key) => (
-            <option key={key} value={key}>
-              {PLAN_GROUP_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
         {showLotSize && (
           <TextRow
             label="Shares in a lot"
@@ -190,6 +196,8 @@ export function AssetSettings({
             hint={errorHint(errors.lots)}
           />
         )}
+        {groupRow}
+        {descriptionRow}
       </InsetGroup>
 
       {beforeTax}
