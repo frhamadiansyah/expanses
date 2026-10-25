@@ -2,6 +2,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
 import { openSplit } from './split-row';
+import { openWorkspacePage } from './workspace-page';
 
 /*
  * A purchase split between a workspace shared with a household and a private one (0084, household sharing): Fandri
@@ -48,8 +49,7 @@ async function openWorkspace(page: Page, name: string) {
 
 /** Fandri renames Personal to Home and shares it; Dewi joins by the link. */
 async function shareHome(page: Page, dewi: Page) {
-  await page.goto('/settings');
-  await page.getByTestId('settings-workspace-row').filter({ hasText: 'Personal' }).click();
+  await openWorkspacePage(page, 'Personal');
   await page.getByLabel('Name', { exact: true }).fill('Home');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByText('Now called Home.')).toBeVisible();

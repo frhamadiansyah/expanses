@@ -119,7 +119,7 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
           Join a workspace
         </button>
         <Link
-          to="/settings"
+          to="/account"
           onClick={onClose}
           className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-sm text-slate-600 hover:bg-slate-50"
         >

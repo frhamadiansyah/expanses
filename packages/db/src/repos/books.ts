@@ -276,6 +276,31 @@ export async function renameBook(database: Database, ws: WorkspaceContext, bookI
   );
 }
 
+/**
+ * Changes what kind a workspace is among Personal, Business and Family. The kind is a label (its letter colour, and
+ * what a new workspace starts with), so nothing the workspace holds is rewritten. A shared workspace keeps the kind
+ * it was shared as, and 'shared' is not a kind to choose. The only Personal workspace stays Personal: it is where
+ * categories and expected income fall back to.
+ */
+export async function setBookKind(database: Database, ws: WorkspaceContext, bookId: string, kind: BookKind): Promise<void> {
+  if (kind === 'shared' || !KINDS.includes(kind)) throw new BookError('BAD_KIND', `${kind} is not a kind a workspace can be changed to`);
+  const book = await bookOf(database, ws, bookId);
+  if (book.kind === kind) return;
+  if (book.kind === 'shared' || (await isBookShared(database, bookId))) throw new BookError('SHARED', 'A shared workspace keeps the kind it was shared as');
+  if (book.kind === 'personal') {
+    const personals = await database.db
+      .select({ id: books.id })
+      .from(books)
+      .where(and(eq(books.workspaceId, ws.workspaceId), eq(books.kind, 'personal'), isNull(books.archivedAt)));
+    if (personals.filter((row) => row.id !== bookId).length === 0) {
+      throw new BookError('PERSONAL_BOOK', 'Personal is where categories and expected income fall back to, so it stays');
+    }
+  }
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () => tx.update(books).set({ kind }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)))),
+  );
+}
+
 export async function archiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
   const book = await bookOf(database, ws, bookId);
   if (book.kind === 'personal') throw new BookError('PERSONAL_BOOK', 'Personal is where categories and expected income fall back to, so it stays');

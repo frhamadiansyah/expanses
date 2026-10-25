@@ -10,7 +10,7 @@ export function DeveloperSettingsPage() {
   const foreign = useEntitlement('foreign_securities');
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Developer" back="Settings" backTo="/settings" />
+      <LargeTitle title="Developer" back="Account" backTo="/account" />
       <InsetGroup
         header="Previews"
         footer="On this device only. Turning it off keeps every holding already added from the list; search just stops finding new US tickers."

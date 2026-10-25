@@ -100,7 +100,7 @@ export function CaptureSettingsPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Capture" back="Settings" backTo="/settings" />
+      <LargeTitle title="Capture" back="Account" backTo="/account" />
       <ErrorBox error={error ?? scan.error ?? sources.error} />
 
       {CAPTURE_GUIDES.map((guide) => {

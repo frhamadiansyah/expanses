@@ -13,7 +13,6 @@ import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { cx } from '../ui';
 import { useApp } from './context';
-import { AccountSheet } from './AccountSheet';
 import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
 import { useYahooClosesAtStart } from '../features/prices/yahoo';
@@ -37,7 +36,7 @@ const MORE = [
   { to: '/recommend', label: 'Which card?' },
   { to: '/import', label: 'Import CSV' },
   { to: '/backup', label: 'Backup' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/account', label: 'Account' },
 ] as const;
 
 /**
@@ -62,7 +61,6 @@ function ReviewLink() {
 
 export function Layout() {
   const { workspaceName, ws, database } = useApp();
-  const [more, setMore] = useState(false);
   const navigate = useNavigate();
   // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
   // reaches it from more places than a phone does, never fewer.
@@ -182,8 +180,7 @@ export function Layout() {
         <>
           {/* Adding is a screen of its own, drawn the way every other subpage is: the form is long enough to scroll,
               and a sheet over the page it was opened from left two screens half-visible at once. */}
-          <TabBar onAdd={() => void navigate({ to: '/transactions/new' })} onAccount={() => setMore(true)} accountOpen={more} />
-          {more && <AccountSheet onClose={() => setMore(false)} />}
+          <TabBar onAdd={() => void navigate({ to: '/transactions/new' })} />
         </>
       )}
     </div>

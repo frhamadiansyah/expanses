@@ -9,11 +9,12 @@ import {
   CreditCard,
   FileSpreadsheet,
   PiggyBank,
-  Settings,
+  Smartphone,
   Sparkles,
   TrendingUp,
   Store,
   Tags,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,7 +33,7 @@ export interface NavGroup {
  * The phone's tab bar. Four places and, between them, the button that records a purchase — an action
  * rather than a place, because a purchase is recorded where it happens.
  *
- * The fourth place is the account sheet, which holds everything else, so its route is not listed here.
+ * The fourth place is the Account page, which holds everything else; it is `ACCOUNT_TAB`, drawn last on the bar.
  */
 export const TABS: readonly NavItem[] = [
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
@@ -41,19 +42,21 @@ export const TABS: readonly NavItem[] = [
   { to: '/wallet', label: 'Wallet', icon: CreditCard },
 ] as const;
 
+/** The bar's last place: the Account page, a main page of its own. */
+export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: UserRound };
+
 /**
- * The account sheet: everything the bar cannot hold, grouped the way it is looked for. Backup leads —
- * on a phone it is the only safety net, so it is the first thing in the first group.
+ * The Settings group of the Account page. Backup leads the safe-keeping: on a phone it is the only safety net.
+ * Capture is drawn on the phone app only (it reads that phone's notifications and screenshots).
  */
+export const SETTINGS_ITEMS: readonly NavItem[] = [
+  { to: '/settings/capture', label: 'Capture', icon: Smartphone },
+  { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
+  { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
+] as const;
+
+/** The rest of the Account page, grouped the way it is looked for. */
 export const MORE_GROUPS: readonly NavGroup[] = [
-  {
-    title: 'Keep it safe',
-    items: [
-      { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
-      { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
-      { to: '/settings', label: 'Settings', icon: Settings },
-    ],
-  },
   {
     title: 'Money',
     items: [
@@ -61,7 +64,7 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/bills', label: 'Recurring', icon: Bell },
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
-      // No "Add a debt" here. This sheet is a list of places, and a debt is added from the screens that list debts:
+      // No "Add a debt" here. This page is a list of places, and a debt is added from the screens that list debts:
       // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
       // open a form where every other line opens a screen.
       { to: '/categories', label: 'Categories', icon: Tags },
@@ -85,4 +88,4 @@ export const MORE_GROUPS: readonly NavGroup[] = [
 ] as const;
 
 /** Every route a person can reach from the shell, so a test can prove none has been stranded. */
-export const REACHABLE: readonly string[] = [...TABS.map((t) => t.to), ...MORE_GROUPS.flatMap((g) => g.items.map((i) => i.to))];
+export const REACHABLE: readonly string[] = [...TABS.map((t) => t.to), ACCOUNT_TAB.to, ...SETTINGS_ITEMS.map((i) => i.to), ...MORE_GROUPS.flatMap((g) => g.items.map((i) => i.to))];
