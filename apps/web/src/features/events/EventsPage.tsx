@@ -105,7 +105,8 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
             <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{event.name}</span>
             <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
               <span className="truncate">{eventDates(event)}</span>
-              <StatusChip status={eventStatus(event, today)} />
+              {/* Done is the Past header's to say; only an event still ahead or running wears a chip. */}
+              {eventStatus(event, today) !== 'Done' && <StatusChip status={eventStatus(event, today)} />}
             </span>
             {shared && (
               <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="event-shared-with">
@@ -119,7 +120,8 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
                 <span className="truncate">{sharedWithText(shared.sharedWith)}</span>
               </span>
             )}
-            {line && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
+            {/* "No plan · 3 purchases" says nothing the figure at the right does not: only a plan has a line of its own. */}
+            {line && of !== null && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
             {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{line.backLine}</span>}
