@@ -1,5 +1,5 @@
 import { type AccountRow, setAccountCardTier, setAccountForSpending, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { CATALOG } from '@expanses/catalog';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
@@ -8,6 +8,8 @@ import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/n
 import { errorHint } from '../networth/AssetSettings';
 import { useAssetProfile, useAssetProfiles } from '../networth/queries';
 import { useAccountNumberLast4, useCardTiers, useProgramByAccount, useWalletLast4 } from '../cards/card-queries';
+import { CardRewardsSheet } from '../cards/CardRewardsSheet';
+import { rewardsLabel } from '../cards/catalog-picker';
 import { faceFor } from '../cards/debit-art/faces';
 import { bankOf } from '../wallet/wallet-model';
 import { setKasField } from './kas-fields';
@@ -23,7 +25,6 @@ import { last4Field, readAccountNumberLast4, readWalletLast4 } from './wallet-la
 export function AccountSettingsBox({ account, onError }: { account: AccountRow; onError: (error: unknown) => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const navigate = useNavigate();
   const accounts = useAccounts();
   const profiles = useAssetProfiles();
   const profile = useAssetProfile(account.id);
@@ -33,6 +34,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   const programs = useProgramByAccount();
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [rewardsOpen, setRewardsOpen] = useState(false);
 
   const all = accounts.data ?? [];
   const bank = account.subtype === 'bank' || account.subtype === 'savings';
@@ -148,11 +150,19 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
     );
   }
 
-  // Whether its debit card earns rewards: the way to the card's page, where they are set up and kept.
+  // Whether its debit card earns rewards: a sheet to pick the card from the catalogue, with the way to its page inside.
   if (bank && account.parentId === null && programs.data) {
     const program = programs.data.get(account.id);
-    rows.push(<PickerRow key="rewards" label="Card rewards" value={program ? program.name || 'Earning' : 'Not set up'} onOpen={() => void navigate({ to: '/cards/$cardId', params: { cardId: account.id } })} />);
+    rows.push(<PickerRow key="rewards" label="Card rewards" value={rewardsLabel(program, CATALOG)} onOpen={() => setRewardsOpen(true)} />);
   }
 
-  return rows.length === 0 ? null : <InsetGroup>{rows}</InsetGroup>;
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <InsetGroup>{rows}</InsetGroup>
+      {rewardsOpen && (
+        <CardRewardsSheet account={account} program={programs.data?.get(account.id)} onDone={invalidate} onClose={() => setRewardsOpen(false)} onError={onError} />
+      )}
+    </>
+  );
 }
