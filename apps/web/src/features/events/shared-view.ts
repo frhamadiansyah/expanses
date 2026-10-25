@@ -10,8 +10,89 @@ import { keptForSpending } from '../../lib/account-types';
 
 export const possessive = (name: string): string => (name.endsWith('s') ? `${name}'` : `${name}'s`);
 
-export function headerLine(view: SharedEventView): string {
-  return `Spent ${formatMinor(view.spentMinor, view.currency)} · ${possessive(view.myName)} share ${formatMinor(view.myShareMinor, view.currency)}`;
+/** The line under the total in the ring: this person's own part of it, by name. */
+export function shareLine(view: Pick<SharedEventView, 'myName' | 'myShareMinor' | 'currency'>): string {
+  return `${possessive(view.myName)} share ${formatMinor(view.myShareMinor, view.currency)}`;
+}
+
+/** Whether a record is added up in the figures: not deleted, and readable (I2). */
+const counted = (e: SharedExpenseView): boolean => !e.voided && !e.unreadable;
+
+export interface SpendingSlice {
+  /** The event category's id, or `none` for spending filed under no category. */
+  key: string;
+  label: string;
+  totalMinor: number;
+}
+
+/** The ring's slices: the event's spending by event category in the event currency, largest first; no category is "Other". */
+export function spendingSlices(view: Pick<SharedEventView, 'expenses' | 'categories'>): SpendingSlice[] {
+  const names = new Map(view.categories.map((c) => [c.categoryId, c.name]));
+  const totals = new Map<string, SpendingSlice>();
+  for (const e of view.expenses) {
+    if (!counted(e) || e.eventAmountMinor <= 0) continue;
+    const key = e.categoryId ?? 'none';
+    const slice = totals.get(key) ?? { key, label: e.categoryId ? (names.get(e.categoryId) ?? e.categoryName ?? 'Other') : 'Other', totalMinor: 0 };
+    slice.totalMinor += e.eventAmountMinor;
+    totals.set(key, slice);
+  }
+  return [...totals.values()].sort((a, b) => b.totalMinor - a.totalMinor);
+}
+
+export type DayItem = { kind: 'expense'; expense: SharedExpenseView } | { kind: 'settlement'; settlement: SharedSettlementView };
+
+export interface DayGroup {
+  date: string;
+  /** What was spent that day in the event currency (settle-ups are not spending). */
+  spentMinor: number;
+  items: DayItem[];
+}
+
+/** The page's records grouped by day, newest day first; in a day, the spending first and then the settle-ups. */
+export function dayGroups(view: Pick<SharedEventView, 'expenses' | 'settlements'>): DayGroup[] {
+  const days = new Map<string, DayGroup>();
+  const day = (date: string): DayGroup => {
+    const group = days.get(date) ?? { date, spentMinor: 0, items: [] };
+    days.set(date, group);
+    return group;
+  };
+  for (const expense of view.expenses) {
+    const group = day(expense.occurredOn);
+    group.items.push({ kind: 'expense', expense });
+    if (counted(expense)) group.spentMinor += expense.eventAmountMinor;
+  }
+  for (const settlement of view.settlements) day(settlement.occurredOn).items.push({ kind: 'settlement', settlement });
+  return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+export interface BalanceBar {
+  personId: string;
+  name: string;
+  hasApp: boolean;
+  balanceMinor: number;
+  /** The bar's length as a share of the track, 0 to 100, scaled to the largest balance. */
+  percent: number;
+  tone: 'ahead' | 'owing' | 'settled';
+}
+
+/** Each person's net balance as a bar scaled to the largest: ahead (owed) or owing, people who left left out. */
+export function balanceBars(view: Pick<SharedEventView, 'people'>): BalanceBar[] {
+  const people = view.people.filter((p) => !p.removed);
+  const largest = Math.max(0, ...people.map((p) => Math.abs(p.balanceMinor)));
+  return people.map((p) => ({
+    personId: p.personId,
+    name: p.name,
+    hasApp: p.hasApp,
+    balanceMinor: p.balanceMinor,
+    percent: largest > 0 ? Math.round((Math.abs(p.balanceMinor) / largest) * 100) : 0,
+    tone: p.balanceMinor > 0 ? 'ahead' : p.balanceMinor < 0 ? 'owing' : 'settled',
+  }));
+}
+
+/** A balance with its sign: "+฿2.100", "−฿900", or "Settled". */
+export function signedBalance(balanceMinor: number, currency: string): string {
+  if (balanceMinor === 0) return 'Settled';
+  return `${balanceMinor > 0 ? '+' : '−'}${formatMinor(Math.abs(balanceMinor), currency)}`;
 }
 
 /** "Shared with 2 people"; right after sharing with no names yet there is nobody to count, and it says so. */
@@ -46,11 +127,12 @@ function postingFlags(posting: SharedExpenseView['posting'], view: SharedEventVi
 export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title: string; detail: string; amount: string; share: string | null; flags: string[] } {
   return {
     title: e.note ?? e.categoryName ?? 'Shared spending',
-    detail: [`${e.payerName} paid`, e.categoryName, e.splitText].filter(Boolean).join(' · '),
+    // The category is the row's glyph and the ring's slice, so the words are who paid and how it was split.
+    detail: [`${e.payerName} paid`, e.splitText].filter(Boolean).join(' · '),
     // An unreadable record counts in no figure, so its amount is not shown either (no ₺0 that reads as a real figure):
     // the row says what is wrong, and a tap opens the card for whoever may fix it (I2).
     amount: e.unreadable ? '' : formatMinor(e.amountMinor, e.currency),
-    share: e.myShareMinor > 0 ? `${possessive(view.myName)} share ${formatMinor(e.myShareMinor, e.currency)}` : null,
+    share: e.myShareMinor > 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
     flags: [e.unreadable ? `Needs fixing: ${e.unreadable}` : null, e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
   };
 }

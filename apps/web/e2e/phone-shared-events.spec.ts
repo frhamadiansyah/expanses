@@ -65,13 +65,25 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await openTrip(rina);
   await corner(rina, 'Add spending');
   await recordSharedSpend(rina, { note: 'Fish dinner', amount: '90', currency: 'EUR', paidWith: 'Euro wallet' });
-  await expect(rina.getByTestId('shared-event-header')).toContainText(/Spent .*2[.,]835.*Rina's share .*945/);
+  // The page is a private event's: the tabs sit above the chart panel, whose middle says the total and Rina's own share.
+  const total = rina.getByTestId('shared-event-total');
+  await expect(total).toContainText(/Total spent/);
+  await expect(total).toContainText(/2[.,]835/);
+  await expect(total).toContainText(/Rina's share .*945/);
+  const tabsBox = (await rina.getByTestId('shared-event-tabs').boundingBox())!;
+  const totalBox = (await total.boundingBox())!;
+  expect(tabsBox.y + tabsBox.height).toBeLessThanOrEqual(totalBox.y);
+  await expect(rina.getByTestId('shared-event-header')).toHaveCount(0);
+  // The record sits in its day, with who paid and the share beneath its amount.
+  await expect(rina.getByTestId('shared-event-day').filter({ has: spendingRow(rina, 'Fish dinner') })).toBeVisible();
   await expect(spendingRow(rina, 'Fish dinner')).toContainText('Rina paid');
+  await expect(spendingRow(rina, 'Fish dinner')).toContainText(/share .*30/);
 
   // Andi sees it, paid by Rina, with his share — and cannot change what Rina paid (D8).
   await openTrip(andi);
   await eventually(andi, () => expect(spendingRow(andi, 'Fish dinner')).toContainText('Rina paid', { timeout: 1_000 }));
-  await expect(spendingRow(andi, 'Fish dinner')).toContainText("Andi's share");
+  await expect(spendingRow(andi, 'Fish dinner')).toContainText('share');
+  await expect(andi.getByTestId('shared-event-total')).toContainText("Andi's share");
   await spendingRow(andi, 'Fish dinner').click();
   const locked = sharedCard(andi);
   await expect(locked.getByLabel('Amount', { exact: true })).toBeDisabled();
@@ -93,6 +105,13 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
 
   // Balances: Budi owes ₺945, Andi ₺645, both to Rina; the same list on both phones (D6).
   await showBalances(rina);
+  // The panel holds each person's net balance as a bar: Rina ahead, Budi and Andi owing.
+  const bars = rina.getByTestId('shared-balance-row');
+  await expect(bars).toHaveCount(3);
+  await expect(bars.filter({ hasText: 'Rina' })).toContainText(/\+/);
+  await expect(bars.filter({ hasText: 'Budi' })).toContainText(/−.*945/);
+  await expect(bars.filter({ hasText: 'Budi' })).toContainText('Without the app');
+  await expect(rina.getByRole('heading', { name: 'To settle up' })).toBeVisible();
   const rinaPayments = rina.getByTestId('shared-payment-row');
   await expect(rinaPayments).toHaveCount(2);
   await expect(rinaPayments.nth(0)).toContainText(/Budi pays Rina .*945/);
@@ -109,7 +128,11 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await settle.getByLabel('Paid from').selectOption({ label: 'Andi Bank · IDR' });
   await expect(settle.getByLabel('In IDR')).not.toHaveValue('');
   await settle.getByRole('button', { name: 'Record', exact: true }).click();
-  await expect(andi.getByTestId('shared-balance-row').filter({ hasText: 'Andi is settled' })).toBeVisible({ timeout: 30_000 });
+  await expect(andi.getByTestId('shared-balance-row').filter({ hasText: 'Andi' })).toContainText('Settled', { timeout: 30_000 });
+
+  // The Plan tab opens the plan in place of the chart.
+  await andi.getByRole('radio', { name: 'Plan' }).click();
+  await expect(andi.getByRole('form', { name: 'Add to the plan' })).toBeVisible();
 
   // Rina takes the settle-up into her books, into her rupiah bank (R6).
   await openTrip(rina);

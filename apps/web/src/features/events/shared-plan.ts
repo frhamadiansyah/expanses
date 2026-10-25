@@ -53,3 +53,13 @@ export function itemChanges(
   const already = item.purchases.find((part) => part.transactionId === draft.expenseId);
   return { save, add: already && already.shareMinor === shareMinor ? null : { expenseId: draft.expenseId, shareMinor } };
 }
+
+/** The plan card's figures: what the list adds up to, what the event spent, what is left of the plan, and how far along it is (0 to 100). */
+export function planSummary(items: readonly Pick<SharedPlanItem, 'estimateMinor'>[], spentMinor: number): { plannedMinor: number; leftMinor: number; percent: number } {
+  const plannedMinor = items.reduce((sum, item) => sum + item.estimateMinor, 0);
+  return {
+    plannedMinor,
+    leftMinor: Math.max(0, plannedMinor - spentMinor),
+    percent: plannedMinor > 0 ? Math.min(100, Math.round((Math.max(0, spentMinor) / plannedMinor) * 100)) : 0,
+  };
+}

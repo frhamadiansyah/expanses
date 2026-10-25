@@ -1,10 +1,14 @@
 import { formatMinor } from '@expanses/core';
-import type { AccountRow, SharedEventView } from '@expanses/db';
+import type { AccountRow, SharedEventView, SharedExpenseView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
   balanceLine,
   expenseRow,
-  headerLine,
+  balanceBars,
+  dayGroups,
+  shareLine,
+  signedBalance,
+  spendingSlices,
   mineToSettle,
   moneyAccounts,
   pageLocks,
@@ -43,7 +47,7 @@ const expense = {
 
 describe('shared event words', () => {
   it('reads the header as what was spent and this person’s share', () => {
-    expect(headerLine(view())).toBe(`Spent ${formatMinor(1_260_000, 'TRY')} · Rina's share ${formatMinor(420_000, 'TRY')}`);
+    expect(shareLine(view())).toBe(`Rina's share ${formatMinor(420_000, 'TRY')}`);
     expect(possessive('Andis')).toBe("Andis'");
   });
 
@@ -53,12 +57,12 @@ describe('shared event words', () => {
     expect(sharedWithText(0)).toBe('Shared, nobody else in it yet');
   });
 
-  it('writes a spending row in its own currency, with who paid, the category, the split, the share and its flags', () => {
+  it('writes a spending row in its own currency, with who paid, the split, the share and its flags', () => {
     expect(expenseRow(expense, view())).toEqual({
       title: 'Fish dinner',
-      detail: 'Andi paid · Dinners · Equal · 3 people',
+      detail: 'Andi paid · Equal · 3 people',
       amount: formatMinor(9_000, 'EUR'),
-      share: `Rina's share ${formatMinor(3_000, 'EUR')}`,
+      share: `share ${formatMinor(3_000, 'EUR')}`,
       flags: ['Not sent yet', 'Changed by Andi'],
     });
     expect(expenseRow({ ...expense, myShareMinor: 0, unsent: false, voided: true, posting: { transactionId: null, unposted: 'choose-account', changedByName: null, accountCurrency: null } }, view()).flags).toEqual([
@@ -138,5 +142,64 @@ describe('shared event words', () => {
       { accountId: 'bank', recordIds: ['s1', 's2'] },
     ]);
     expect(() => takeOverBatches(rows, {}, '')).toThrow('Choose an account for Fish dinner');
+  });
+});
+
+describe('the ring, the days and the bars of a shared event', () => {
+  const e = (over: Record<string, unknown>) => ({ ...expense, unsent: false, posting: null, ...over }) as unknown as SharedExpenseView;
+  const categories = [
+    { categoryId: 'c-stay', name: 'Stay', icon: null, archived: false },
+    { categoryId: 'c-food', name: 'Food', icon: null, archived: false },
+  ];
+
+  it('slices spending by event category, largest first, with no category as Other and deleted or unreadable left out', () => {
+    const slices = spendingSlices({
+      categories,
+      expenses: [
+        e({ expenseId: '1', categoryId: 'c-food', eventAmountMinor: 100 }),
+        e({ expenseId: '2', categoryId: 'c-stay', eventAmountMinor: 500 }),
+        e({ expenseId: '3', categoryId: 'c-food', eventAmountMinor: 250 }),
+        e({ expenseId: '4', categoryId: null, categoryName: null, eventAmountMinor: 40 }),
+        e({ expenseId: '5', categoryId: 'c-stay', eventAmountMinor: 900, voided: true }),
+        e({ expenseId: '6', categoryId: 'c-stay', eventAmountMinor: 900, unreadable: 'bad split' }),
+      ],
+    });
+    expect(slices).toEqual([
+      { key: 'c-stay', label: 'Stay', totalMinor: 500 },
+      { key: 'c-food', label: 'Food', totalMinor: 350 },
+      { key: 'none', label: 'Other', totalMinor: 40 },
+    ]);
+    expect(spendingSlices({ categories, expenses: [] })).toEqual([]);
+  });
+
+  it('groups records by day, newest first, with the day spending and settle-ups after the spending', () => {
+    const s = { settlementId: 's', occurredOn: '2026-10-07', fromPersonId: 'a', fromName: 'Lestari', toPersonId: 'b', toName: 'Maya', amountMinor: 10, voided: false, unsent: false, mine: true, posting: null };
+    const days = dayGroups({
+      expenses: [e({ expenseId: '1', occurredOn: '2026-10-06', eventAmountMinor: 100 }), e({ expenseId: '2', occurredOn: '2026-10-07', eventAmountMinor: 30 }), e({ expenseId: '3', occurredOn: '2026-10-07', eventAmountMinor: 70, voided: true })],
+      settlements: [s],
+    });
+    expect(days.map((d) => d.date)).toEqual(['2026-10-07', '2026-10-06']);
+    expect(days[0]!.spentMinor).toBe(30);
+    expect(days[0]!.items.map((i) => i.kind)).toEqual(['expense', 'expense', 'settlement']);
+    expect(days[1]!.spentMinor).toBe(100);
+  });
+
+  it('scales the balance bars to the largest, tones them, and leaves out people who left', () => {
+    const p = (personId: string, balanceMinor: number, removed = false) => ({ personId, name: personId, initials: 'x', hasApp: true, isMe: false, removed, balanceMinor });
+    const bars = balanceBars({ people: [p('maya', 2_100), p('yoga', 2_650), p('dimas', -900), p('lestari', -1_950), p('gone', 99_999, true), p('even', 0)] });
+    expect(bars.map((b) => [b.personId, b.percent, b.tone])).toEqual([
+      ['maya', 79, 'ahead'],
+      ['yoga', 100, 'ahead'],
+      ['dimas', 34, 'owing'],
+      ['lestari', 74, 'owing'],
+      ['even', 0, 'settled'],
+    ]);
+    expect(balanceBars({ people: [p('a', 0)] })[0]!.percent).toBe(0);
+  });
+
+  it('signs a balance', () => {
+    expect(signedBalance(900, 'THB')).toBe(`+${formatMinor(900, 'THB')}`);
+    expect(signedBalance(-900, 'THB')).toBe(`−${formatMinor(900, 'THB')}`);
+    expect(signedBalance(0, 'THB')).toBe('Settled');
   });
 });
