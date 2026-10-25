@@ -63,6 +63,21 @@ export interface SyncServiceOptions {
   intervalMs?: number;
 }
 
+/**
+ * Development only: the sample (`/load-sample`, src/db/dev-sample.ts) is a database written whole, whose shared book has no
+ * device or epoch key here — so the restore check (§8.7) would turn it to "no longer in the event", as it does a restored
+ * backup. Once the sample has been loaded in this browser, its shared books are left as they were seeded and not synced.
+ * In a production build `import.meta.env.DEV` is false and this is gone.
+ */
+function devSampleLoaded(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return window.localStorage.getItem('expanses.dev-sample-loaded') === '1';
+  } catch {
+    return false;
+  }
+}
+
 const IDLE: BookSyncStatus = { lastSyncedAt: null, failing: false, running: false, groupFailing: false };
 
 /** The ms of an hlc: its first 12 hex digits (spec §6.1). */
@@ -147,6 +162,7 @@ export class SyncService {
    */
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
+      if (devSampleLoaded()) return;
       const books = await listSharedBooks(this.database);
       if (books.length === 0) return;
       const engine = await this.engine();
@@ -175,7 +191,7 @@ export class SyncService {
 
   /** Brings the schedulers in line with `shared_books`: one per active book, none for any other. */
   async refresh(): Promise<void> {
-    const active = new Set((await listSharedBooks(this.database)).filter((book) => book.state === 'active').map((book) => book.bookId));
+    const active = new Set((await listSharedBooks(this.database)).filter((book) => book.state === 'active' && !devSampleLoaded()).map((book) => book.bookId));
     for (const [bookId, scheduler] of this.schedulers) {
       if (!active.has(bookId)) {
         scheduler.stop();
