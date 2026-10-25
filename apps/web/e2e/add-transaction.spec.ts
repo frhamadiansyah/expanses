@@ -1638,12 +1638,13 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await expect(edit.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(edit.getByLabel(/^Fee in /)).toHaveValue('10000');
-  // Its category is under Add more details.
+  // The Amount row is the amount alone; the fee is its own row under it, its category on the left.
+  const feeRow = edit.getByTestId('fee-row');
+  await expect(feeRow.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
+  await expect(feeRow.getByLabel(/^Fee in /)).toHaveValue('10000');
+  // Not under Add more details any more.
   await edit.getByRole('button', { name: 'Add more details' }).click();
-  await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
-  // One group with the other details, not a box of its own above them.
-  const details = edit.getByRole('region', { name: 'More details' });
-  await expect(details.getByRole('button', { name: 'Fee category' }).locator('xpath=..')).toContainText('Photos');
+  await expect(edit.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Fee category' })).toHaveCount(0);
   // Its picker offers Top-ups under Miscellaneous like any other child: a built-in, not one made only on first need.
   await edit.getByRole('button', { name: 'Fee category' }).click();
   const picker = page.getByRole('dialog', { name: 'Fee category' });

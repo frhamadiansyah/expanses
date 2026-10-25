@@ -1,4 +1,4 @@
-import { Camera, Globe, X } from 'lucide-react';
+import { Camera, Globe, Percent, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
@@ -7,7 +7,7 @@ import { usePhone } from '../../app/use-phone';
 import { useIsBookShared, useStoredRates } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CurrencySheet } from './CurrencySheet';
-import { ROW_BODY_FLUSH, RowLead } from './FormRow';
+import { Chevron, ROW_BODY_FLUSH, RowGlyph, RowLead } from './FormRow';
 import { Keypad } from './Keypad';
 import {
   amountAfterEnter,
@@ -90,8 +90,11 @@ function MoneyField({
   refund = false,
   disabled = false,
   typing = false,
+  end = false,
 }: {
   field: MoneyFieldSpec;
+  /** The figure sits at the row's end, as a value on the right of a row does: the fee beside its category. */
+  end?: boolean;
   /** The dock is typing into this figure: a phone draws a text cursor after it, as any field being typed in has. */
   typing?: boolean;
   /** Drawn, not typed into: a figure that is someone else's to change (shared events D8). */
@@ -123,7 +126,7 @@ function MoneyField({
        * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
-      <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch text-left')}>
+      <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
         <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
         {typing && <span aria-hidden data-testid="typing-mark" className="ph-caret" />}
       </button>
@@ -149,7 +152,7 @@ function MoneyField({
         if (!submit) e.preventDefault();
       }}
       placeholder={placeholder}
-      className={cx(className, 'border-0 bg-transparent p-0 placeholder:text-[var(--ph-ink-3)] focus:outline-none')}
+      className={cx(className, 'border-0 bg-transparent p-0 placeholder:text-[var(--ph-ink-3)] focus:outline-none', end && 'text-right')}
     />
   );
 }
@@ -197,8 +200,9 @@ export function AmountRow({
    */
   photos?: { count: number; open: () => void };
   /**
-   * A second figure beside the amount that is not "Charged in …": a transfer's received amount between two currencies,
-   * or its fee within one. Its code is printed before it ("IDR", "FEE"), and the dock types into it as into a charge.
+   * A second figure beside the amount that is not "Charged in …": a transfer's received amount between two currencies.
+   * Its code is printed before it ("IDR"), and the dock types into it as into a charge. A transfer's fee within one
+   * currency is a row of its own (`FeeRow`), beside the category it is spent in.
    */
   second?: { field: MoneyFieldSpec; code: string; placeholder: string; onChange: (value: string) => void };
 }) {
@@ -323,8 +327,7 @@ export function AmountRow({
               what it is showing, and the figure is what a money field shows. */}
           {/* Two figures share the row in halves, the rule between them at its middle: a nine-digit amount and a seven-digit fee each fit their half. */}
           <span className={cx(codeGroup, 'relative transition-opacity', other ? 'flex-1 basis-0' : 'flex-1', fadeUnlessTyping('amount'))}>
-            {/* Beside a fee the flag already names the one currency both are in, so the code would only take room. */}
-            {named && second?.field.which !== 'fee' && (
+            {named && (
               <span aria-hidden className={codeClass}>
                 {fields.amount.currency}
               </span>
@@ -430,6 +433,71 @@ export function AmountRow({
           refund={open.which === 'amount' ? refundable : !second && refund}
           onClose={() => setKeypad(null)}
         />
+      )}
+    </>
+  );
+}
+
+/**
+ * A transfer's fee, one row under its Amount (option A): the category the fee is spent in on the left — a tap opens its
+ * picker — and the fee itself on the right, grey "Fee" until one is typed. The figure is a money field like the
+ * amount's, read and grouped by the same evaluator, and on a phone it opens the same dock.
+ */
+export function FeeRow({
+  field,
+  onChange,
+  category,
+  onCategory,
+}: {
+  /** The fee, in the From account's currency. */
+  field: MoneyFieldSpec;
+  onChange: (value: string) => void;
+  /** The fee category's name, or empty while there is none to name. */
+  category: string;
+  onCategory: () => void;
+}) {
+  const phone = usePhone();
+  const [keypad, setKeypad] = useState(false);
+  const typed = field.value.trim() !== '';
+  return (
+    <>
+      <div className={cx('flex items-center gap-[10px] pl-[10px]', keypad && 'relative z-40 bg-[var(--ph-surface)]')} data-testid="fee-row">
+        <RowLead>
+          <RowGlyph>
+            <Percent size={15} />
+          </RowGlyph>
+        </RowLead>
+        <span className={cx(ROW_BODY_FLUSH, 'gap-[10px]')}>
+          <button
+            type="button"
+            aria-label="Fee category"
+            onClick={() => {
+              setKeypad(false);
+              onCategory();
+            }}
+            className="ph-focus-inset flex min-w-0 flex-1 items-center gap-[6px] self-stretch text-left"
+          >
+            <span className={cx('min-w-0 truncate text-[17px] leading-[22px] md:text-[15px] md:leading-5', typed ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)]')}>
+              {category || 'Fee category'}
+            </span>
+            <Chevron />
+          </button>
+          <span className="flex w-[42%] min-w-0 shrink-0 items-center self-stretch">
+            <MoneyField
+              field={field}
+              phone={phone}
+              end
+              onChange={onChange}
+              onKeypad={() => setKeypad((open) => !open)}
+              typing={keypad}
+              placeholder="Fee"
+              className="min-w-0 flex-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] tabular ph-focus-inset"
+            />
+          </span>
+        </span>
+      </div>
+      {keypad && (
+        <Keypad value={field.value} currency={field.currency} label={field.label} onChange={onChange} onClose={() => setKeypad(false)} />
       )}
     </>
   );

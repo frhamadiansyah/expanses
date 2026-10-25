@@ -88,7 +88,8 @@ export function doorOfForm(draft: FormDraft, post: FormPost, accounts: readonly 
     case 'transfer-goal':
       return open({
         accountId: post.input.fromAccountId,
-        outflowMinor: post.input.amountMinor,
+        // What leaves the account: the transfer and any fee beside it, as the plain transfer's lines read.
+        outflowMinor: post.input.amountMinor + (post.input.feeMinor ?? 0),
         ownGoalId: post.input.goalId && canHold(post.input.toAccountId) ? post.input.goalId : null,
         intents: BORROW_ONLY,
         toAccountId: post.input.toAccountId,

@@ -20,8 +20,10 @@ export async function chooseTo(form: Locator, account: string) {
   await form.page().getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: account.replace(/ \([A-Z]{3}\)$/, ''), exact: true }).click();
 }
 
-/** A transfer's For goal, the same way: the row, then the goal. */
+/** A transfer's For goal, the same way: under Add more details, the row, then the goal. */
 export async function chooseGoal(form: Locator, goal: string) {
+  const more = form.getByRole('button', { name: 'Add more details' });
+  if ((await more.count()) > 0) await more.click();
   await form.getByRole('button', { name: /^For goal/ }).click();
   await form.page().getByRole('dialog', { name: 'For goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
 }
@@ -116,7 +118,7 @@ export async function addTransfer(
   await form.getByLabel('Note').fill(tx.note ?? 'Transfer');
   if (tx.goal) await chooseGoal(form, tx.goal);
   if (tx.receivedAmount) await form.getByLabel(/^Received amount/).fill(tx.receivedAmount);
-  // The fee is the Amount row's second figure on a transfer within one currency.
+  // The fee is its own row under the Amount, beside its category, on a transfer within one currency.
   if (tx.fee) await form.getByLabel(/^Fee in /).fill(tx.fee);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -214,7 +216,9 @@ export async function closeDetails(more: Locator, sheet: Locator) {
  * later read back out of the blob URL on the receipt.
  */
 export async function attachPhoto(page: Page, form: Locator, file: { name: string; mimeType: string; buffer: Buffer }) {
-  await form.getByRole('button', { name: 'Add more details' }).click();
+  // Already open when a transfer's For goal was chosen there.
+  const open = form.getByRole('button', { name: 'Add more details' });
+  if ((await open.count()) > 0) await open.click();
   const more = page.getByRole('region', { name: 'More details' });
   // Photos are the Amount row's camera now (Buy / sell keeps its row under Add more details).
   const camera = form.getByTestId('amount-photos');
