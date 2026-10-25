@@ -1,5 +1,5 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, fundPlaceMatches, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
-import { type AssetValueRow, couponOn, deleteTrade, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
+import { type AssetValueRow, couponOn, deleteTrade, deleteValuation, type ValuationWithNote, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
@@ -96,6 +96,8 @@ function NewBrokerSheet({ onSave, onClose }: { onSave: (name: string) => void; o
 type Sheet =
   | { kind: 'price' }
   | { kind: 'value' }
+  | { kind: 'estimate'; valuation: ValuationWithNote }
+  | { kind: 'edit-value'; valuation: ValuationWithNote }
   | { kind: 'listed-source' }
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
   | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
@@ -390,6 +392,21 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     }
   }
 
+  /** Takes one estimate back after asking; the value falls back to the one before it, else the original cost. */
+  async function removeValuation(row: ValuationWithNote) {
+    if (!window.confirm('Delete this value? The one before it counts again, else the original cost.')) return;
+    setError(null);
+    try {
+      await deleteValuation(database, ws, row.id);
+      await invalidate();
+      setSheet(null);
+      setNotice('Removed.');
+    } catch (e) {
+      setSheet(null);
+      setError(e);
+    }
+  }
+
   /** Changes a switch from either of its funds: the sheet opens on the fund the money left, both sides in it. */
   async function editSwitch(row: TradeRow) {
     setError(null);
@@ -416,7 +433,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   ];
 
 
-  const lines: { key: string; line: TradeLine; row: TradeRow | null }[] = priced
+  const lines: { key: string; line: TradeLine; row: TradeRow | null; valuation?: ValuationWithNote }[] = priced
     ? [...(trades.data ?? [])].reverse().map((row) => ({
         key: row.id,
         row,
@@ -453,6 +470,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ...(valuations.data ?? []).map((row) => ({
             key: row.id,
             row: null,
+            valuation: row,
             line: {
               title: BASIS_LABELS[row.basis] ?? row.basis,
               subtitle: [dayLabel(row.asOf), row.note].filter(Boolean).join(' · '),
@@ -565,11 +583,11 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             ) : undefined
           }
         >
-          {shown.map(({ key, line: l, row }) => (
+          {shown.map(({ key, line: l, row, valuation }) => (
             <HistoryRow
               key={key}
               line={l}
-              onMore={row ? () => setSheet({ kind: 'row', trade: row, title: l.title }) : undefined}
+              onMore={row ? () => setSheet({ kind: 'row', trade: row, title: l.title }) : valuation ? () => setSheet({ kind: 'estimate', valuation }) : undefined}
             />
           ))}
         </InsetGroup>
@@ -745,6 +763,15 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         />
       )}
       {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'edit-value' && <ValueSheet accountId={accountId} currency={currency} editing={sheet.valuation} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'estimate' && (
+        <TradeActionsSheet
+          title={`${BASIS_LABELS[sheet.valuation.basis] ?? sheet.valuation.basis} · ${dayLabel(sheet.valuation.asOf)}`}
+          onEdit={() => setSheet({ kind: 'edit-value', valuation: sheet.valuation })}
+          onDelete={() => void removeValuation(sheet.valuation)}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet?.kind === 'trade' && (
         <TradeSheet title={sheet.title} holding={holding} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
       )}

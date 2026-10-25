@@ -1,12 +1,13 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { entries, transactions } from '../schema';
+import { openingBalanceLines } from '@expanses/core';
+import { accounts, entries, transactions } from '../schema';
 import { assetAcquired, assetProfiles } from '../schema-assets';
 import { markAccountDirtyTx } from '../sync/capture';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { replaceTransactionTx } from './ledger';
+import { postTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
 
 export type AcquiredPrecision = 'year' | 'month' | 'day';
 
@@ -113,6 +114,76 @@ export async function changeAcquired(database: Database, ws: WorkspaceContext, a
       description: opening.description,
       lines: lines.map((line) => ({ accountId: line.accountId, amountMinor: line.amountMinor, currency: line.currency, memo: line.memo, amountBaseMinor: line.amountBaseMinor })),
       ratesToBase,
+    });
+  });
+}
+
+/**
+ * Changes what an asset valued by its owner cost, from its Settings: the original cost is the asset's opening entry,
+ * so that entry is the one changed (replaced, as every edit is), at the day and the rate it was posted at. Every
+ * figure that reads the cost (the gain, the history's last row, the net worth before the first estimate, the tax
+ * report's cost) reads that entry, so none is kept twice.
+ *
+ * Zero takes the cost away: the asset may be added with no cost, so it may be left with none, and the entry is
+ * voided. An asset with no entry yet is given one, on the day it was acquired (else 1 January of its acquired year,
+ * else today); in a foreign currency that needs `rateToBase`, as the add form's opening does.
+ */
+export async function changeOriginalCost(
+  database: Database,
+  ws: WorkspaceContext,
+  accountId: string,
+  costMinor: number,
+  today: string,
+  rateToBase?: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(costMinor) || costMinor < 0) throw new AssetError('A cost cannot be negative');
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Asset');
+    const [account] = await tx.select({ currency: accounts.currency, name: accounts.name }).from(accounts).where(eq(accounts.id, accountId));
+    if (!account?.currency) throw new AssetError('Asset not found');
+    markAccountDirtyTx(tx, accountId);
+    const opening = await openingOfTx(tx, ws, accountId);
+    const equityId = await systemAccountId(tx, ws, 'opening_balance');
+    if (opening) {
+      const lines = await tx
+        .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
+        .from(entries)
+        .where(and(eq(entries.transactionId, opening.id), eq(entries.workspaceId, ws.workspaceId)));
+      const own = lines.find((line) => line.accountId === accountId);
+      if (own && own.amountMinor === costMinor) return;
+      if (costMinor === 0) {
+        await voidTransactionTx(tx, ws, opening.id);
+        return;
+      }
+      const rate = account.currency !== ws.baseCurrency ? own?.fxRateToBase : undefined;
+      await replaceTransactionTx(tx, ws, opening.id, {
+        occurredOn: opening.occurredOn,
+        description: opening.description,
+        lines: openingBalanceLines({ accountId, kind: 'asset', balanceMinor: costMinor, currency: account.currency, equityAccountId: equityId }),
+        ratesToBase: rate ? { [account.currency]: rate } : {},
+      });
+      return;
+    }
+    if (costMinor === 0) return;
+    if (account.currency !== ws.baseCurrency && !rateToBase) throw new AssetError('A rate to the base currency is needed for a cost in another currency');
+    let on = today;
+    let dated = false;
+    if (await tableExists(tx)) {
+      const [row] = await tx.select({ on: assetAcquired.acquiredOn }).from(assetAcquired).where(eq(assetAcquired.accountId, accountId));
+      if (row) {
+        on = row.on;
+        dated = true;
+      }
+    }
+    if (!dated) {
+      const [profile] = await tx.select({ year: assetProfiles.acquiredYear }).from(assetProfiles).where(eq(assetProfiles.accountId, accountId));
+      if (profile?.year) on = `${profile.year}-01-01`;
+    }
+    await postTransactionTx(tx, ws, {
+      occurredOn: on,
+      description: `Opening balance: ${account.name}`,
+      lines: openingBalanceLines({ accountId, kind: 'asset', balanceMinor: costMinor, currency: account.currency, equityAccountId: equityId }),
+      ratesToBase: rateToBase && account.currency !== ws.baseCurrency ? { [account.currency]: rateToBase } : {},
     });
   });
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { backFromSettings, openAccount, openValueSheet } from './accounts';
-import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
+import { addEstimated, addPriced, changeCostAndEstimates, openAsset, priceSaid, typePrice } from './asset-page';
 
 test('by thumb: gold’s grid and purchases, and a laptop valued again from its sheet', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
@@ -47,4 +47,11 @@ test('by thumb: Assets divides its total into boxes, and a tapped box shows that
   await expect(groups).toHaveCount(2);
   // Let go, the drawers are shut again: the whole list is a handful of kinds.
   await expect(page.getByRole('link', { name: /Laptop/ })).toHaveCount(0);
+});
+
+test('by thumb: an estimated asset’s original cost and estimates are changed', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+  await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');
+  await openAsset(page, 'Laptop');
+  await changeCostAndEstimates(page);
 });

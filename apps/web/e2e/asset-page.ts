@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openNewAsset, fillDay } from './add-asset';
+import { backFromSettings, openSettings, openValueSheet } from './accounts';
 import { openDrawers } from './drawers';
 
 /** A priced thing through Add asset, one purchase line per [bought on, how much, total cost]. */
@@ -50,4 +51,50 @@ export async function priceSaid(page: Page, label: string) {
   const about = page.getByTestId('asset-grid').getByRole('button', { name: `About ${label}` });
   if ((await about.getAttribute('aria-expanded')) !== 'true') await about.click();
   return page.getByTestId('price-said');
+}
+
+/**
+ * An estimated asset's original cost and estimates changed from where they are kept: the cost in Settings, each
+ * estimate from its ⋮ in the value history. Starts on the asset's page (a laptop bought for 22.000.000, worth 14.000.000).
+ */
+export async function changeCostAndEstimates(page: Page) {
+  const rows = page.getByTestId('asset-history-row');
+  const gain = page.getByTestId('asset-gain');
+  await expect(gain).toHaveText('−Rp 8.000.000 · −36,4%');
+
+  // The cost is a row of Settings, saved as it is left; the gain and the history's last row follow.
+  await openSettings(page);
+  const cost = page.getByRole('textbox', { name: 'Original cost' });
+  await expect(cost).toHaveValue('22.000.000');
+  await cost.fill('20000000');
+  await cost.press('Tab');
+  await backFromSettings(page);
+  await expect(gain).toHaveText('−Rp 6.000.000 · −30,0%');
+  await expect(rows.last()).toContainText('Original cost');
+  await expect(rows.last()).toContainText('Rp 20.000.000');
+
+  // A second estimate, then change it from its row.
+  await openValueSheet(page);
+  await page.getByLabel('Value (IDR)').fill('12000000');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await backFromSettings(page);
+  await expect(gain).toHaveText('−Rp 8.000.000 · −40,0%');
+  await expect(rows).toHaveCount(3);
+
+  await rows.first().getByRole('button', { name: /^More for Estimated value/ }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Edit value' })).toBeVisible();
+  await expect(page.getByLabel('Value (IDR)')).toHaveValue('12.000.000');
+  await page.getByLabel('Value (IDR)').fill('16000000');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(gain).toHaveText('−Rp 4.000.000 · −20,0%');
+  await expect(rows).toHaveCount(3);
+
+  // Deleting the latest brings the one before it back.
+  await rows.first().getByRole('button', { name: /^More for Estimated value/ }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(gain).toHaveText('−Rp 6.000.000 · −30,0%');
+  await expect(rows).toHaveCount(2);
+  // The original cost row has no ⋮: it is changed in Settings.
+  await expect(rows.last().getByRole('button')).toHaveCount(0);
 }

@@ -1,5 +1,5 @@
-import { formatMinor, formatPriceMicro, formatUnits, type GoldPriceChoice, isoDate, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
-import { recordValuation, type TradeRow, upsertPrice } from '@expanses/db';
+import { formatMinor, formatPriceMicro, formatUnits, type GoldPriceChoice, groupTypedAmount, isoDate, minorToMajorString, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
+import { editValuation, recordValuation, type TradeRow, upsertPrice, type ValuationWithNote } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -100,14 +100,15 @@ export function PriceSheet({
 
 /**
  * A new value for a thing that has no market price: always the owner's estimate, whatever it was read from. It opens
- * empty every time, dated today, which can be changed for a letter that came last week.
+ * empty every time, dated today, which can be changed for a letter that came last week. Given an estimate to change
+ * it opens on that one, and saving changes it rather than adding another.
  */
-export function ValueSheet({ accountId, currency, onClose }: { accountId: string; currency: string; onClose: () => void }) {
+export function ValueSheet({ accountId, currency, editing, onClose }: { accountId: string; currency: string; editing?: ValuationWithNote; onClose: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const [value, setValue] = useState('');
-  const [asOf, setAsOf] = useState(isoDate());
-  const [note, setNote] = useState('');
+  const [value, setValue] = useState(editing ? groupTypedAmount(minorToMajorString(editing.valueMinor, currency), currency) : '');
+  const [asOf, setAsOf] = useState(editing?.asOf ?? isoDate());
+  const [note, setNote] = useState(editing?.note ?? '');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -115,7 +116,9 @@ export function ValueSheet({ accountId, currency, onClose }: { accountId: string
     setError(null);
     setBusy(true);
     try {
-      await recordValuation(database, ws, { accountId, asOf, valueMinor: parseMajor(value, currency), basis: 'estimate', note: note.trim() || null });
+      const valueMinor = parseMajor(value, currency);
+      if (editing) await editValuation(database, ws, editing.id, { asOf, valueMinor, note: note.trim() || null });
+      else await recordValuation(database, ws, { accountId, asOf, valueMinor, basis: 'estimate', note: note.trim() || null });
       await invalidate();
       onClose();
     } catch (e) {
@@ -126,7 +129,7 @@ export function ValueSheet({ accountId, currency, onClose }: { accountId: string
   }
 
   return (
-    <Sheet grouped title="Update value" onClose={onClose} confirm={{ label: 'Save value', disabled: busy || value.trim() === '', run: () => void save() }}>
+    <Sheet grouped title={editing ? 'Edit value' : 'Update value'} onClose={onClose} confirm={{ label: 'Save value', disabled: busy || value.trim() === '', run: () => void save() }}>
       <InsetGroup>
         <TextRow label={`Value (${currency})`} value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="Amount" />
         <TextRow label="Date" type="date" value={asOf} max={isoDate()} onChange={(e) => setAsOf(e.target.value)} />

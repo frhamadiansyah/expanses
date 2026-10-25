@@ -1,10 +1,11 @@
-import { CASH_ITEMS, cashItem, formatMinor, isoDate, type MoneyAccountSubtype } from '@expanses/core';
-import { archiveAccount, changeAcquired, deleteUnusedAccount, profileDefaults, renameAccount, taxTreatmentOf } from '@expanses/db';
+import { CASH_ITEMS, cashItem, formatMinor, groupTypedAmount, isoDate, minorToMajorString, type MoneyAccountSubtype, parseMajor } from '@expanses/core';
+import { archiveAccount, changeAcquired, changeOriginalCost, deleteUnusedAccount, profileDefaults, renameAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll, useAccounts } from '../../lib/queries';
+import { useInvalidateAll, useAccounts, useResolveRates } from '../../lib/queries';
+import { openingRateFor } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, PickerRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
 import { typedNameOf } from '../../lib/account-name';
@@ -22,7 +23,7 @@ import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
 import { useOpenings } from '../accounts/queries';
 import { spendsFrom } from '../accounts/pockets';
 import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
-import { AcquiredRow } from './AssetRows';
+import { AcquiredRow, MoneyRow } from './AssetRows';
 import { ValueSheet } from './AssetSheets';
 import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
 
@@ -48,6 +49,7 @@ export function AssetSettingsRoute() {
 export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
   const navigate = useNavigate();
   const values = useAssetValues();
   const profile = useAssetProfile(accountId);
@@ -57,6 +59,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const openings = useOpenings([accountId]);
   const [error, setError] = useState<unknown>(null);
   const [valuing, setValuing] = useState(false);
+  // The original cost as typed while the row is being edited; null shows what is stored.
+  const [costDraft, setCostDraft] = useState<string | null>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
@@ -91,6 +95,30 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         setError(e);
       }
     })();
+  const storedCost = value && value.costMinor > 0 ? groupTypedAmount(minorToMajorString(value.costMinor, value.currency), value.currency) : '';
+  // Saved when the row is left, as every row here is; an unchanged or unreadable figure writes nothing.
+  const saveCost = () => {
+    if (costDraft === null || !value) return;
+    const typed = costDraft;
+    setCostDraft(null);
+    if (typed === storedCost) return;
+    void (async () => {
+      setError(null);
+      try {
+        const minor = typed.trim() === '' ? 0 : parseMajor(typed, value.currency);
+        // A cost with no opening yet in another currency is given the rate of the day, as Add asset gives its opening.
+        let rate: number | undefined;
+        if (minor > 0 && value.currency !== ws.baseCurrency && openings.data?.[accountId] === undefined) {
+          const day = acquired && acquired.year ? acquiredOn(acquired, isoDate()).on : isoDate();
+          rate = await openingRateFor({ database, ws, currency: value.currency, openedOn: day, openingBalanceMinor: minor, typed: '', resolveRates });
+        }
+        await changeOriginalCost(database, ws, accountId, minor, isoDate(), rate);
+        await invalidate();
+      } catch (e) {
+        setError(e);
+      }
+    })();
+  };
   // Where it is held, when that is an account: the tax report's Nama institusi unless another name is typed.
   const link = (links.data ?? []).find((row) => row.accountId === accountId);
   const heldAt = link?.brokerAccountId ? (accounts.data ?? []).find((row) => row.id === link.brokerAccountId) : undefined;
@@ -186,6 +214,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
             acquired
               ? [
                   <AcquiredRow key="acquired" value={acquired} onChange={saveAcquired} />,
+                  <MoneyRow key="cost" label="Original cost" value={costDraft ?? storedCost} onChange={setCostDraft} onBlur={saveCost} currency={value.currency} placeholder="Amount" />,
                   // The one thing done to an estimated asset, now that its page has no button for it.
                   <PickerRow key="value" label="Value" value={formatMinor(value.valueMinor, value.currency)} onOpen={() => setValuing(true)} />,
                 ]

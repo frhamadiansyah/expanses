@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { fillDay, openNewAsset } from './add-asset';
-import { addEstimated, addPriced, openAsset, priceSaid, typePrice } from './asset-page';
+import { addEstimated, addPriced, changeCostAndEstimates, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
 import { backFromSettings, openAccount, openValueSheet } from './accounts';
 
@@ -266,4 +266,10 @@ test('the cost row changes currency from its symbol, and asks a rate', async ({ 
   await expect(page.getByLabel(/^Current value currency/)).toHaveCount(0);
   await page.getByLabel('Current value', { exact: true }).fill('12000');
   await expect(page.getByLabel('Current value currency: USD')).toHaveText('$');
+});
+
+test('an estimated asset’s original cost is changed in Settings, and each estimate is edited or deleted from its row', async ({ page }) => {
+  await addEstimated(page, 'Electronics', 'Laptop', '2024-01-05', '22000000', '14000000');
+  await openAsset(page, 'Laptop');
+  await changeCostAndEstimates(page);
 });
