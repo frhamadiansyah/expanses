@@ -49,13 +49,16 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   const waiting = waitingLine(view);
   // Read-only, there is nothing to add and the menu is People alone: it stays behind a ⋯ rather than becoming a corner
   // button of its own, which would be a circle with no glyph (a corner button never carries a word).
-  const actions: CornerAction[] = readOnly
-    ? [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }]
-    : [
-        // Add spending is the first line of the ⋯ menu, not a ＋ of its own in the bar.
-        { key: 'add', label: 'Add spending', run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked },
-        ...menu,
-      ];
+  // Everything is one ⋯: a corner button never carries a word, so Add spending (a line of the menu, not a ＋ of its own)
+  // goes inside it rather than standing in the bar as a circle with no glyph.
+  const actions: CornerAction[] = [
+    {
+      key: 'more',
+      label: 'More',
+      glyph: <MoreHorizontal size={20} aria-hidden />,
+      menu: readOnly ? menu : [{ key: 'add', label: 'Add spending', run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked }, ...menu],
+    },
+  ];
   // Settle up is offered on a payment this person pays or receives, or one between two people without the app — §3's
   // writer rule for settlements, which the repository enforces again.
   const slices = spendingSlices(view);
