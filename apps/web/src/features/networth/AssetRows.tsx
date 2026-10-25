@@ -157,11 +157,14 @@ export function MoneyRow({
   base,
   onCurrency,
   placeholder,
+  onBlur,
   position,
 }: GroupChild & {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  /** Called when the figure is left, for a row that saves as it is changed. */
+  onBlur?: () => void;
   currency: string;
   /** The workspace's currency, offered first in the list. */
   base?: string;
@@ -210,6 +213,7 @@ export function MoneyRow({
               }}
               inputMode="decimal"
               placeholder={prompt}
+              onBlur={onBlur}
               // One character wide on its own, so the unseen copy alone decides the width (an input is 20 by default).
               size={1}
               className={cx(FIELD, 'col-start-1 row-start-1 w-full min-w-0 text-right tabular')}

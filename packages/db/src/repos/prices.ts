@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { goldPriceChoices, prices, valuations } from '../schema-assets';
 import { markAccountDirtyTx } from '../sync/capture';
 import { AssetError, assertAccountInWorkspace } from './assets';
+import { nativeBalancesTx } from './ledger';
 import { securityPrices } from '../schema-securities';
 import { securityOfHolding, upsertSecurityPriceTx } from './securities';
 
@@ -138,4 +139,45 @@ export async function listValuations(database: Database, ws: WorkspaceContext, a
     .where(and(eq(valuations.accountId, accountId), eq(valuations.workspaceId, ws.workspaceId)))
     .orderBy(desc(valuations.asOf), desc(valuations.createdAt));
   return rows.map((row) => ({ id: row.id, asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, note: row.note }));
+}
+
+/**
+ * Changes one estimate: its value, day and note (its basis stays). It is the same row, not a second one, so the asset's
+ * value, gain and series follow from it.
+ */
+export async function editValuation(
+  database: Database,
+  ws: WorkspaceContext,
+  id: string,
+  input: { asOf: string; valueMinor: number; note?: string | null },
+): Promise<void> {
+  if (!Number.isSafeInteger(input.valueMinor) || input.valueMinor < 0) throw new AssetError('A value cannot be negative');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.asOf)) throw new AssetError('A date is YYYY-MM-DD');
+  await database.transaction(async (tx) => {
+    const [row] = await tx.select({ accountId: valuations.accountId }).from(valuations).where(and(eq(valuations.id, id), eq(valuations.workspaceId, ws.workspaceId)));
+    if (!row) throw new AssetError('That estimate is not in this workspace');
+    markAccountDirtyTx(tx, row.accountId);
+    await tx
+      .update(valuations)
+      .set({ asOf: input.asOf, valueMinor: input.valueMinor, note: input.note?.trim() || null })
+      .where(and(eq(valuations.id, id), eq(valuations.workspaceId, ws.workspaceId)));
+  });
+}
+
+/**
+ * Takes one estimate back. The asset's value falls back to the estimate before it, else its original cost. The last
+ * estimate of an asset with no cost is kept: deleting it would leave the asset worth nothing.
+ */
+export async function deleteValuation(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    const [row] = await tx.select({ accountId: valuations.accountId }).from(valuations).where(and(eq(valuations.id, id), eq(valuations.workspaceId, ws.workspaceId)));
+    if (!row) throw new AssetError('That estimate is not in this workspace');
+    const rest = await tx.select({ id: valuations.id }).from(valuations).where(and(eq(valuations.accountId, row.accountId), eq(valuations.workspaceId, ws.workspaceId)));
+    if (rest.length === 1) {
+      const cost = (await nativeBalancesTx(tx, ws))[row.accountId] ?? 0;
+      if (cost <= 0) throw new AssetError('The only value of an asset with no original cost cannot be deleted');
+    }
+    markAccountDirtyTx(tx, row.accountId);
+    await tx.delete(valuations).where(and(eq(valuations.id, id), eq(valuations.workspaceId, ws.workspaceId)));
+  });
 }
