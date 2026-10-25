@@ -195,6 +195,27 @@ export function Sheet({
 
   useEscape(onClose);
 
+  /*
+   * While a sheet is open the page is not to move: the sheet is fixed to the layout viewport, so a page iOS has panned
+   * up (to reveal a field it thinks the keyboard covers) carries the sheet up with it and away from its fields. The
+   * pan is put back as soon as it is seen.
+   */
+  useEffect(() => {
+    const view = window.visualViewport;
+    if (!view || !IOS) return;
+    const settle = () => {
+      if (view.offsetTop > 0 || window.scrollY > 0) window.scrollTo(0, 0);
+    };
+    view.addEventListener('scroll', settle);
+    view.addEventListener('resize', settle);
+    window.addEventListener('scroll', settle);
+    return () => {
+      view.removeEventListener('scroll', settle);
+      view.removeEventListener('resize', settle);
+      window.removeEventListener('scroll', settle);
+    };
+  }, []);
+
   useEffect(() => {
     // The page behind must not scroll while a sheet is over it. Counted, so two sheets open at once
     // cannot leave the page locked when only one of them closes.
