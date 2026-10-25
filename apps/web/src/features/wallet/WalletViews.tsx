@@ -7,7 +7,7 @@ import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { arriveFrom, CARD_W, DESKTOP_CARD_W, flyInto, InsetGroup, InsetRow, leaveFrom, Panel, reducedMotion, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
 import { pocketsOf } from '../accounts/pockets';
-import { useRecentTransactions } from '../accounts/queries';
+import { RECENT_LIMIT, useRecentTransactions } from '../accounts/queries';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow } from '../transactions/TransactionRow';
 
@@ -243,7 +243,10 @@ function Recent({ card, accounts }: { card: WalletCard; accounts: readonly Accou
   const known = useAccounts();
   const pockets = pocketsOf(card.key, accounts);
   const recent = useRecentTransactions(pockets.length > 0 ? pockets.map((pocket) => pocket.id) : [card.key]);
-  const rows = buildRows(recent.data ?? [], [], known.data ?? [], []);
+  // An opening balance is how the account was started, not something that happened to it: as on the account page, it stays out.
+  const rows = buildRows(recent.data ?? [], [], known.data ?? [], [])
+    .filter((row) => row.type !== 'opening')
+    .slice(0, RECENT_LIMIT);
   return (
     <Panel header="Recent" testId="wallet-recent" className="mt-4">
       <ErrorBox error={recent.error} />

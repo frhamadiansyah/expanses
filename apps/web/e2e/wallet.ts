@@ -135,7 +135,7 @@ export async function walletViews(page: Page) {
   await expect(faces).toHaveCount(2);
   await ticked('Grid');
 
-  // Carousel: a dot per card, and the first card's Recent — its opening balance — under it.
+  // Carousel: a dot per card, and the first card's Recent under it (an opening balance is not listed).
   await choose('Carousel');
   await expect(page.getByTestId('wallet-carousel')).toBeVisible();
   await expect(page.getByTestId('wallet-grid')).toHaveCount(0);
@@ -152,8 +152,8 @@ export async function walletViews(page: Page) {
   await expect(page.getByTestId('wallet-dot').nth(0)).toHaveAttribute('aria-current', 'true');
   await expect(wall.getByTestId('wallet-facts')).toContainText('Everyday');
   const recent = page.getByTestId('wallet-recent');
-  await expect(recent.getByTestId('wallet-recent-row')).toHaveCount(1);
-  await expect(recent).toContainText('3.000.000');
+  await expect(recent.getByTestId('wallet-recent-row')).toHaveCount(0);
+  await expect(recent).toContainText('No transactions yet');
   // The next card peeks: it starts to the right of the shown one, inside the screen.
   const [shown, next] = [(await faces.nth(0).boundingBox())!, (await faces.nth(1).boundingBox())!];
   expect(next.x).toBeGreaterThan(shown.x + shown.width);
@@ -163,10 +163,7 @@ export async function walletViews(page: Page) {
   await faces.nth(1).evaluate((node) => node.scrollIntoView({ inline: 'center', block: 'nearest' }));
   await expect(page.getByTestId('wallet-dot').nth(1)).toHaveAttribute('aria-current', 'true');
   await expect(wall.getByTestId('wallet-facts')).toContainText('Pocket cash');
-  await expect(recent).toContainText('250.000');
-  await expect(recent).not.toContainText('3.000.000');
-  // See all opens the list filtered to that account.
-  await expect(recent.getByRole('link', { name: 'See all' })).toHaveAttribute('href', /\/transactions\?account=/);
+  await expect(recent).toContainText('No transactions yet');
   // The centred card opens its page.
   await walletCard(page, 'Pocket cash').click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
