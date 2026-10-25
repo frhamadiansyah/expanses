@@ -65,6 +65,23 @@ export function dayGroups(view: Pick<SharedEventView, 'expenses' | 'settlements'
   return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
+/**
+ * The day groups narrowed to one category of the ring (`none` is spending with no category): its expenses only, deleted
+ * ones included as they are in the full list, no settle-up (it has no category), the day's total recounted from what is
+ * left, and days left empty dropped. `null` picks nothing and returns the groups as they are.
+ */
+export function pickedDays(days: readonly DayGroup[], picked: string | null): DayGroup[] {
+  if (picked === null) return [...days];
+  const out: DayGroup[] = [];
+  for (const day of days) {
+    const items = day.items.filter((item) => item.kind === 'expense' && (item.expense.categoryId ?? 'none') === picked);
+    if (items.length === 0) continue;
+    const spentMinor = items.reduce((sum, item) => (item.kind === 'expense' && counted(item.expense) ? sum + item.expense.eventAmountMinor : sum), 0);
+    out.push({ date: day.date, spentMinor, items });
+  }
+  return out;
+}
+
 export interface BalanceBar {
   personId: string;
   name: string;

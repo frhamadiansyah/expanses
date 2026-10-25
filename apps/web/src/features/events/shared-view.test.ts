@@ -6,6 +6,7 @@ import {
   expenseRow,
   balanceBars,
   dayGroups,
+  pickedDays,
   shareLine,
   signedBalance,
   spendingSlices,
@@ -182,6 +183,27 @@ describe('the ring, the days and the bars of a shared event', () => {
     expect(days[0]!.spentMinor).toBe(30);
     expect(days[0]!.items.map((i) => i.kind)).toEqual(['expense', 'expense', 'settlement']);
     expect(days[1]!.spentMinor).toBe(100);
+  });
+
+  it('narrows the days to a picked category, none included, dropping settle-ups and empty days and recounting the totals', () => {
+    const s = { settlementId: 's', occurredOn: '2026-10-07', fromPersonId: 'a', fromName: 'Lestari', toPersonId: 'b', toName: 'Maya', amountMinor: 10, voided: false, unsent: false, mine: true, posting: null };
+    const days = dayGroups({
+      expenses: [
+        e({ expenseId: '1', occurredOn: '2026-10-06', categoryId: 'c-food', eventAmountMinor: 100 }),
+        e({ expenseId: '2', occurredOn: '2026-10-07', categoryId: 'c-food', eventAmountMinor: 30 }),
+        e({ expenseId: '3', occurredOn: '2026-10-07', categoryId: 'c-stay', eventAmountMinor: 70 }),
+        e({ expenseId: '4', occurredOn: '2026-10-07', categoryId: null, categoryName: null, eventAmountMinor: 5 }),
+      ],
+      settlements: [s],
+    });
+    expect(pickedDays(days, null)).toEqual(days);
+    const food = pickedDays(days, 'c-food');
+    expect(food.map((d) => [d.date, d.spentMinor, d.items.length])).toEqual([['2026-10-07', 30, 1], ['2026-10-06', 100, 1]]);
+    const stay = pickedDays(days, 'c-stay');
+    expect(stay.map((d) => [d.date, d.spentMinor])).toEqual([['2026-10-07', 70]]);
+    const none = pickedDays(days, 'none');
+    expect(none.map((d) => [d.date, d.spentMinor])).toEqual([['2026-10-07', 5]]);
+    expect(none[0]!.items.every((i) => i.kind === 'expense')).toBe(true);
   });
 
   it('scales the balance bars to the largest, tones them, and leaves out people who left', () => {

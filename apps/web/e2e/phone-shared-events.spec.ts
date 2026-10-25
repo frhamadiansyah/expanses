@@ -103,6 +103,22 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await openTrip(rina);
   await eventually(rina, () => expect(spendingRow(rina, 'Boat')).toContainText('Andi paid', { timeout: 1_000 }));
 
+  // The ring is the switch for its own rows: one tap shows the categories (uncategorised spending is Other, in the event
+  // currency), picking one narrows the day lists to it, picking it again or folding the ring restores them.
+  await rina.getByTestId('see-categories').click();
+  const categoryRows = rina.getByTestId('event-category-row');
+  await expect(categoryRows).toHaveCount(1);
+  await expect(categoryRows.first()).toContainText('Other');
+  await expect(categoryRows.first()).toContainText('100%');
+  await categoryRows.first().click();
+  await expect(categoryRows.first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(spendingRow(rina, 'Boat')).toBeVisible();
+  await categoryRows.first().click();
+  await expect(categoryRows.first()).toHaveAttribute('aria-pressed', 'false');
+  await rina.getByTestId('hide-categories').click();
+  await expect(categoryRows).toHaveCount(0);
+  await expect(spendingRow(rina, 'Fish dinner')).toBeVisible();
+
   // Balances: Budi owes ₺945, Andi ₺645, both to Rina; the same list on both phones (D6).
   await showBalances(rina);
   // The panel holds each person's net balance as a bar: Rina ahead, Budi and Andi owing.
