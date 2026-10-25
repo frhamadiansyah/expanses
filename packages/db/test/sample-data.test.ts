@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { isoDate } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkLedgerIntegrity, listDrafts, listEvents, listTransactions, ownerScope, sharedEventSummaries, sharedEventView } from '../src/index';
+import { checkLedgerIntegrity, sharedEventPlan, listDrafts, listEvents, listTransactions, ownerScope, sharedEventSummaries, sharedEventView } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 import { seedSampleData } from './sample/seed';
 
@@ -34,6 +34,13 @@ describe('sample data', () => {
     expect(view!.expenses).toHaveLength(7);
     expect(view!.settlements).toHaveLength(1);
     expect(view!.payments.length).toBeGreaterThan(0);
+    // The categories wear the Travel set's icons, and the plan has seven items: three bought, two paid in part, two still to buy.
+    expect(view!.categories.map((c) => [c.name, c.icon])).toEqual([['Stay', 'bed'], ['Food', 'utensils'], ['Boats and rides', 'ship']]);
+    const items = ((await sharedEventPlan(database, ownerScope(ws), lake!.id))?.lines ?? []).flatMap((line) => line.items);
+    expect(items).toHaveLength(7);
+    expect(items.filter((i) => i.bought)).toHaveLength(3);
+    expect(items.filter((i) => !i.bought && i.purchaseCount > 0)).toHaveLength(2);
+    expect(items.filter((i) => i.purchaseCount === 0)).toHaveLength(2);
     if (process.env.SAMPLE_OUT) writeFileSync(process.env.SAMPLE_OUT, await database.exportBytes());
   }, 60_000);
 });

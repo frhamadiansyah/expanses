@@ -1,4 +1,4 @@
-import { balances, expenseInEvent, fewestPayments, sharesOf, type SplitInput, type SuggestedPayment, toEvent } from '@expanses/core';
+import { balances, eventCategoryIcon, expenseInEvent, fewestPayments, sharesOf, type SplitInput, type SuggestedPayment, toEvent } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -176,7 +176,7 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
   const postings = await postingsTx(db, book.bookId, names);
   const categories = (
     await db.values<[string, string, string | null, string | null]>(sql`SELECT id, name, icon, archived_at FROM event_categories WHERE book_id = ${book.bookId} ORDER BY sort_order, name`)
-  ).map(([categoryId, name, icon, archivedAt]) => ({ categoryId, name, icon, archived: archivedAt !== null }));
+  ).map(([categoryId, name, icon, archivedAt]) => ({ categoryId, name, icon: icon ?? eventCategoryIcon(name), archived: archivedAt !== null }));
   const categoryName = new Map(categories.map((c) => [c.categoryId, c.name]));
   let spentMinor = 0;
   let myShareMinor = 0;

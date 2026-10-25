@@ -1,4 +1,4 @@
-import { balances, convertMinor, expenseInEvent, isRateString, isSupportedCurrency, MoneyError, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
+import { balances, convertMinor, eventCategoryIcon, expenseInEvent, isRateString, isSupportedCurrency, MoneyError, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
 import { type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -481,7 +481,7 @@ export async function saveEventCategory(database: Database, ws: WorkspaceContext
     await withCapture(tx, { entity: 'event_category', id, bookId: book.bookId }, () =>
       tx.run(sql`
         INSERT INTO event_categories (book_id, id, name, icon, sort_order, archived_at)
-        VALUES (${book.bookId}, ${id}, ${name}, ${input.icon ?? null}, (SELECT coalesce(max(sort_order), 0) + 1 FROM event_categories WHERE book_id = ${book.bookId}), NULL)
+        VALUES (${book.bookId}, ${id}, ${name}, ${input.icon === undefined ? eventCategoryIcon(name) : input.icon}, (SELECT coalesce(max(sort_order), 0) + 1 FROM event_categories WHERE book_id = ${book.bookId}), NULL)
         ON CONFLICT (book_id, id) DO UPDATE SET name = excluded.name, icon = excluded.icon`),
     );
     await followEventOpTx(tx, book.bookId, 'event_category', id, null);

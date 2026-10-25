@@ -329,7 +329,8 @@ export async function followEventOpTx(tx: Tx, bookId: string, entity: string, id
   if (entity === 'event_settlement') return postEventRecordTx(tx, bookId, 'settlement', id, author);
   if (entity === 'event_category') {
     await tx.run(sql`
-      UPDATE accounts SET name = (SELECT name FROM event_categories WHERE book_id = ${bookId} AND id = ${id})
+      UPDATE accounts SET name = (SELECT name FROM event_categories WHERE book_id = ${bookId} AND id = ${id}),
+        icon = (SELECT icon FROM event_categories WHERE book_id = ${bookId} AND id = ${id})
       WHERE id = (SELECT account_id FROM event_category_accounts WHERE book_id = ${bookId} AND category_id = ${id})
         AND EXISTS (SELECT 1 FROM event_categories WHERE book_id = ${bookId} AND id = ${id})`);
   }

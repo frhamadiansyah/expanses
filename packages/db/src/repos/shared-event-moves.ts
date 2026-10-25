@@ -1,4 +1,4 @@
-import { convertMinor, expenseInEvent, rateString, SharedEventError, splitJsonOf, uuidv7 } from '@expanses/core';
+import { convertMinor, eventCategoryIcon, expenseInEvent, rateString, SharedEventError, splitJsonOf, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -92,7 +92,7 @@ async function eventCategoryNamedTx(tx: Db, book: EventBookRow, name: string, ic
   await withCapture(tx, { entity: 'event_category', id, bookId: book.bookId }, () =>
     tx.run(sql`
       INSERT INTO event_categories (book_id, id, name, icon, sort_order, archived_at)
-      VALUES (${book.bookId}, ${id}, ${name}, ${icon}, (SELECT coalesce(max(sort_order), 0) + 1 FROM event_categories WHERE book_id = ${book.bookId}), NULL)`),
+      VALUES (${book.bookId}, ${id}, ${name}, ${icon ?? eventCategoryIcon(name)}, (SELECT coalesce(max(sort_order), 0) + 1 FROM event_categories WHERE book_id = ${book.bookId}), NULL)`),
   );
   return id;
 }
