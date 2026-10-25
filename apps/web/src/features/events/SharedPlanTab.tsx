@@ -1,7 +1,7 @@
 import { formatMinor, parseMajor } from '@expanses/core';
 import { ownerScope, saveSharedItem, type SharedEventView } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
@@ -17,7 +17,7 @@ import { pageLocks } from './shared-view';
  * price, what bought it (the tick), Buy it now, and Remove — so a mistyped price or an item bought without Buy it now
  * is put right on every phone (I10).
  */
-export function SharedPlanTab({ view }: { view: SharedEventView }) {
+export function SharedPlanTab({ view, nameBox }: { view: SharedEventView; nameBox: ReactNode }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
@@ -46,8 +46,10 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
   return (
     <>
       <ErrorBox error={plan.error} />
+      {items.length === 0 ? nameBox : null}
       {items.length > 0 ? (
         <Panel header="Plan" testId="shared-plan-card">
+          {nameBox}
           <div className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(summary.plannedMinor, view.currency)}</div>
           <div className="pb-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
             {`planned · ${formatMinor(view.spentMinor, view.currency)} spent · ${formatMinor(summary.leftMinor, view.currency)} left`}

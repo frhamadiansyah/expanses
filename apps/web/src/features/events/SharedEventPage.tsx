@@ -16,7 +16,7 @@ import { SettlementSheet } from './SettlementSheet';
 import { SettleUpSheet } from './SettleUpSheet';
 import { SharedPlanTab } from './SharedPlanTab';
 import { useFetchEventRates } from './shared-queries';
-import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, shareLine, signedBalance, spendingSlices, waitingLine } from './shared-view';
+import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, waitingLine } from './shared-view';
 import { TakeOverSheet } from './TakeOverSheet';
 
 const TABS: readonly Segment[] = [
@@ -26,8 +26,21 @@ const TABS: readonly Segment[] = [
 ];
 
 /**
- * A shared event (shared events §6), laid out as a private one is: the dates and currency under the title, the tabs Spending,
- * Balances and Plan above a chart panel — the ring by category with the total and this person's share in its middle — and
+ * The event's name in a rounded box at the top of the first panel under the tabs, drawn as Cashflow's month box is but display
+ * only: no arrows, nothing to tap. It is an h2 (the page's h1 is the dates in the bar), so a screen reader still finds the name as a heading;
+ * a long one shortens with an ellipsis.
+ */
+export function EventNameBox({ name }: { name: string }) {
+  return (
+    <div className="mb-[10px] flex justify-center" data-testid="shared-event-name">
+      <h2 className="max-w-full truncate rounded-full bg-[var(--ph-fill)] px-3 py-[6px] text-[14px] leading-[20px] font-semibold text-[var(--ph-ink)]">{name}</h2>
+    </div>
+  );
+}
+
+/**
+ * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the top of the chart panel, the tabs Spending,
+ * Balances and Plan above a chart panel — the ring by category with the total in its middle — and
  * the records by day below it. The ⋯ menu (People, Done, Leave) is `menu`'s, so this page reads the same
  * on every phone whatever its person may do.
  *
@@ -97,8 +110,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
 
   return (
     <div className={SCREEN} data-testid="shared-event">
-      <PushedTitle title={view.name} back="Events" backTo="/events" actions={actions} />
-      <p className="-mt-[8px] mb-[14px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{`${eventDates(view)} · ${view.currency}`}</p>
+      <PushedTitle title={eventDates(view)} back="Events" backTo="/events" actions={actions} />
       <ErrorBox error={error} />
       {locked ? null : <FinishSharing view={view} />}
       {waiting && !readOnly ? (
@@ -112,6 +124,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
       {tab === 'spending' ? (
         <>
           <Panel testId="shared-event-total">
+            <EventNameBox name={view.name} />
             {slices.length > 0 ? (
               chartFrame(
                 <Donut
@@ -119,14 +132,12 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                   totalMinor={whole}
                   middle={formatMinor(view.spentMinor, view.currency)}
                   label="Total spent"
-                  under={shareLine(view)}
                 />,
               )
             ) : (
               <div className="flex flex-col items-center py-[10px]">
                 <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Total spent</span>
                 <span className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(view.spentMinor, view.currency)}</span>
-                <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{shareLine(view)}</span>
               </div>
             )}
             {showRows && slices.length > 0 ? (
@@ -212,6 +223,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
             </InsetGroup>
           ) : null}
           <Panel header="Net balance" testId="shared-balance-bars">
+            <EventNameBox name={view.name} />
             <div className="flex flex-col gap-[10px]">
               {bars.map((bar) => (
                 <div key={bar.personId} className="flex items-center gap-[10px]" data-testid="shared-balance-row">
@@ -246,7 +258,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           </InsetGroup>
         </>
       ) : null}
-      {tab === 'plan' ? <SharedPlanTab view={view} /> : null}
+      {tab === 'plan' ? <SharedPlanTab view={view} nameBox={<EventNameBox name={view.name} />} /> : null}
       {opened ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
       {settling ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
       {takingOver ? <TakeOverSheet view={view} onClose={() => setTakingOver(false)} /> : null}

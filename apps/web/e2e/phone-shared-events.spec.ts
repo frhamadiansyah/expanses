@@ -65,11 +65,12 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await openTrip(rina);
   await corner(rina, 'Add spending');
   await recordSharedSpend(rina, { note: 'Fish dinner', amount: '90', currency: 'EUR', paidWith: 'Euro wallet' });
-  // The page is a private event's: the tabs sit above the chart panel, whose middle says the total and Rina's own share.
+  // The page is a private event's: the tabs sit above the chart panel, whose middle says the total; the event's name is in a box at its top and the bar's title is the dates.
   const total = rina.getByTestId('shared-event-total');
   await expect(total).toContainText(/Total spent/);
   await expect(total).toContainText(/2[.,]835/);
-  await expect(total).toContainText(/Rina's share .*945/);
+  await expect(total).not.toContainText(/share/);
+  await expect(total.getByRole('heading', { name: 'Coast week' })).toBeVisible();
   const tabsBox = (await rina.getByTestId('shared-event-tabs').boundingBox())!;
   const totalBox = (await total.boundingBox())!;
   expect(tabsBox.y + tabsBox.height).toBeLessThanOrEqual(totalBox.y);
@@ -83,7 +84,6 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await openTrip(andi);
   await eventually(andi, () => expect(spendingRow(andi, 'Fish dinner')).toContainText('Rina paid', { timeout: 1_000 }));
   await expect(spendingRow(andi, 'Fish dinner')).toContainText('share');
-  await expect(andi.getByTestId('shared-event-total')).toContainText("Andi's share");
   await spendingRow(andi, 'Fish dinner').click();
   const locked = sharedCard(andi);
   await expect(locked.getByLabel('Amount', { exact: true })).toBeDisabled();

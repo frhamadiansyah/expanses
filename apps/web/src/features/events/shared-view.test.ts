@@ -7,7 +7,6 @@ import {
   balanceBars,
   dayGroups,
   pickedDays,
-  shareLine,
   signedBalance,
   spendingSlices,
   mineToSettle,
@@ -47,8 +46,7 @@ const expense = {
 };
 
 describe('shared event words', () => {
-  it('reads the header as what was spent and this person’s share', () => {
-    expect(shareLine(view())).toBe(`Rina's share ${formatMinor(420_000, 'TRY')}`);
+  it('puts an apostrophe after a name ending in s', () => {
     expect(possessive('Andis')).toBe("Andis'");
   });
 
