@@ -286,8 +286,9 @@ function MerchantSheet({
       onClose={onClose}
       back={finding ? { label: opened.title, run: () => setFinding(false) } : undefined}
       confirm={finding ? undefined : { label: opened.id || opened.pattern ? 'Save changes' : 'Save merchant', disabled: !outcome || busy, run: () => void confirm() }}
-      tall={finding}
-      expanded={finding}
+      // One height for new, edit and the MCC step alike: the sheet's top edge never moves between them.
+      tall
+      expanded
     >
       {finding && (
         <MccSearch
