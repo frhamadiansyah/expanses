@@ -62,7 +62,8 @@ export function AddCurrencyForm({
   const offered = CURRENCIES.filter((c) => !taken.has(c.code));
   const [currency, setCurrency] = useState('');
   const [balance, setBalance] = useState('');
-  const [openedOn, setOpenedOn] = useState(isoDate());
+  // The currency's opening is dated today: asking for a day made the sheet a form for backdating, which it is not.
+  const openedOn = isoDate();
   const [rate, setRate] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -108,7 +109,6 @@ export function AddCurrencyForm({
             </option>
           ))}
         </SelectRow>
-        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         <TextRow label={`Opening ${code}`} value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="Amount" />
         {code !== ws.baseCurrency && (
           <TextRow
