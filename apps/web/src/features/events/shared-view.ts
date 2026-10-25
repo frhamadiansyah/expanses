@@ -10,11 +10,6 @@ import { keptForSpending } from '../../lib/account-types';
 
 export const possessive = (name: string): string => (name.endsWith('s') ? `${name}'` : `${name}'s`);
 
-/** The line under the total in the ring: this person's own part of it, by name. */
-export function shareLine(view: Pick<SharedEventView, 'myName' | 'myShareMinor' | 'currency'>): string {
-  return `${possessive(view.myName)} share ${formatMinor(view.myShareMinor, view.currency)}`;
-}
-
 /** Whether a record is added up in the figures: not deleted, and readable (I2). */
 const counted = (e: SharedExpenseView): boolean => !e.voided && !e.unreadable;
 

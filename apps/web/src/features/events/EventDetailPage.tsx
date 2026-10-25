@@ -27,6 +27,7 @@ import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
+import { EventNameBox } from './EventNameBox';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { EditEventForm } from './EditEventForm';
 import { PlanCard } from './PlanCard';
@@ -404,18 +405,19 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <PushedTitle title={event?.name ?? 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
+      <PushedTitle title={event ? eventDates(event) : 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}
 
       {event && (
         <Panel testId="event-sheet">
+          <EventNameBox name={event.name} />
           <div className="flex flex-col items-center gap-0.5 pt-1">
             {/* The event's length used to be the gauge's third figure; it belongs with the dates, and the gauge's
                 third place goes to what is still to buy — a figure only the plan has. */}
             <span className="text-[13px] font-semibold text-[var(--ph-ink)]">
-              {eventDates(event)} · {dayCount(event.startsOn, event.endsOn)} {dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}
+              {dayCount(event.startsOn, event.endsOn)} {dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}
             </span>
             <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--ph-ink-3)]">
               <StatusChip status={eventStatus(event, today)} />
