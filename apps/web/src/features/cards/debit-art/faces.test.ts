@@ -1,6 +1,6 @@
 import { INDONESIAN_BANKS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { faceFor, faceNamed, holderLine, prepaidFaceOf, TIERS, tieredKey } from './faces';
+import { faceFor, faceNamed, holderLine, nameBesideMark, prepaidFaceOf, TIERS, tieredKey } from './faces';
 import { FACES } from './faces.generated';
 
 describe('faceNamed: the face a bank or app name finds', () => {
@@ -148,5 +148,18 @@ describe('holderLine', () => {
     expect(holderLine('emoney')).toBe('E-MONEY');
     expect(holderLine('paylater')).toBe('PAYLATER');
     expect(holderLine('debit')).toBeNull();
+  });
+});
+
+describe('nameBesideMark', () => {
+  it('drops the bank a face already prints', () => {
+    expect(nameBesideMark('BCA Xpresi', 'BCA')).toBe('Xpresi');
+    expect(nameBesideMark('bca xpresi', 'BCA')).toBe('xpresi');
+    expect(nameBesideMark('Bank Mandiri Xpresi', 'mandiri')).toBe('Xpresi');
+  });
+  it('keeps a name that is only the bank, or does not start with it', () => {
+    expect(nameBesideMark('BCA', 'BCA')).toBe('BCA');
+    expect(nameBesideMark('Everyday', 'BCA')).toBe('Everyday');
+    expect(nameBesideMark('BCAs savings', 'BCA')).toBe('BCAs savings');
   });
 });

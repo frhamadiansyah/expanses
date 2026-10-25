@@ -1,7 +1,7 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { type ReactNode, useId } from 'react';
 import { cx } from '../../ui';
-import { type FaceRef, holderLine } from './debit-art/faces';
+import { type FaceRef, holderLine, nameBesideMark } from './debit-art/faces';
 import { useFaceArt } from './debit-art/use-face-art';
 import { useProgrammeArt } from './programme-art/use-programme-art';
 
@@ -829,12 +829,14 @@ export function CardFace({
   const product = issuer && name.toLowerCase().startsWith(`${issuer.toLowerCase()} `) ? name.slice(issuer.length + 1) : name;
   // A membership card's band names the programme alone: its mark is the drawing's, top-left, not printed again.
   const bank = membership ? null : faced ? face.mark : drawn ? null : look?.bankMark === undefined ? issuer : look.bankMark;
-  const cardName = drawn || faced ? name : (look?.wordmark ?? product);
+  // A drawn face prints its bank's mark beside the name (the pile's band), so a name opening with the bank is not said twice.
+  const cardName = faced && !membership ? nameBesideMark(name, face.mark) : drawn || faced ? name : (look?.wordmark ?? product);
   /* What a drawn face carries, by what it is; a credit card carries everything its catalogue look says. */
   const chip = faced ? (face.kind === 'debit' ? (art?.chip ?? 'silver') : null) : look?.chip === 'none' ? null : look?.chip === 'silver' ? 'silver' : 'gold';
   const contactless = !faced || face.kind === 'debit' || face.kind === 'emoney';
   const digits = faced ? (face.kind === 'paylater' ? null : face.kind === 'ewallet' ? last4 : (last4 ?? '····')) : (last4 ?? '····');
-  const holder = faced ? (holderLine(face.kind) ?? holderName) : holderName;
+  // A drawn face already carries its bank's mark, so a name that opens with the bank is printed without it.
+  const holder = faced ? (holderLine(face.kind) ?? (holderName ? nameBesideMark(holderName, face.mark) : holderName)) : holderName;
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
   const hidden = behind || band !== undefined;

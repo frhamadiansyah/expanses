@@ -186,3 +186,14 @@ export function holderLine(kind: FaceKind): string | null {
       return null;
   }
 }
+
+/**
+ * A name as a drawn face prints it beside the bank's own mark: "BCA Xpresi" under a face that already says BCA is
+ * "Xpresi", "Bank Mandiri Xpresi" under Mandiri's "Xpresi". A name that is only the bank, or does not start with it, is
+ * printed whole.
+ */
+export function nameBesideMark(name: string, mark: string): string {
+  const trimmed = name.trim();
+  const rest = trimmed.replace(new RegExp(`^(?:bank\\s+)?${mark.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s)\\s+`, 'i'), '');
+  return rest === '' ? trimmed : rest;
+}
