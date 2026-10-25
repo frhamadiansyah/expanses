@@ -1,7 +1,7 @@
 import { formatMinor, type EventPlanItemView } from '@expanses/core';
 import type { SharedEventView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { defaultPart, itemChanges, tickChoices } from './shared-plan';
+import { defaultPart, itemChanges, planSummary, tickChoices } from './shared-plan';
 
 /* An item of the shared plan, opened (D7, I10). Invented figures, in TRY. */
 
@@ -40,5 +40,13 @@ describe('an opened item of the shared plan', () => {
     expect(itemChanges(paid, { ...draft, expenseId: 'e1', part: '1400' }, 'TRY').add).toEqual({ expenseId: 'e1', shareMinor: 140_000 });
     expect(itemChanges(paid, { ...draft, expenseId: 'e2', part: '200' }, 'TRY').add).toEqual({ expenseId: 'e2', shareMinor: 20_000 });
     expect(itemChanges(paid, draft, 'TRY').add).toBeNull();
+  });
+});
+
+describe('plan summary', () => {
+  it('adds the list up and measures what was spent against it', () => {
+    expect(planSummary([{ estimateMinor: 1_200 }, { estimateMinor: 800 }], 500)).toEqual({ plannedMinor: 2_000, leftMinor: 1_500, percent: 25 });
+    expect(planSummary([{ estimateMinor: 100 }], 400)).toEqual({ plannedMinor: 100, leftMinor: 0, percent: 100 });
+    expect(planSummary([], 400)).toEqual({ plannedMinor: 0, leftMinor: 0, percent: 0 });
   });
 });

@@ -5,11 +5,11 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SubmitRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, Panel, SubmitRow, TextRow } from '../../ui/native';
 import { buyTarget } from './buy-item';
 import { SharedItemSheet } from './SharedItemSheet';
 import { useSharedEventPlan } from './shared-queries';
-import { type SharedPlanItem } from './shared-plan';
+import { planSummary, type SharedPlanItem } from './shared-plan';
 import { pageLocks } from './shared-view';
 
 /**
@@ -28,6 +28,7 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
   const [opened, setOpened] = useState<SharedPlanItem | null>(null);
   const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
   const { locked } = pageLocks(view);
+  const summary = planSummary(items, view.spentMinor);
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -45,6 +46,17 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
   return (
     <>
       <ErrorBox error={plan.error} />
+      {items.length > 0 ? (
+        <Panel header="Plan" testId="shared-plan-card">
+          <div className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(summary.plannedMinor, view.currency)}</div>
+          <div className="pb-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
+            {`planned · ${formatMinor(view.spentMinor, view.currency)} spent · ${formatMinor(summary.leftMinor, view.currency)} left`}
+          </div>
+          <div className="h-[10px] overflow-hidden rounded-full bg-[var(--ph-track)]">
+            <div className="h-full rounded-full bg-[var(--ph-tint)]" style={{ width: `${summary.percent}%` }} />
+          </div>
+        </Panel>
+      ) : null}
       <InsetGroup header="To buy">
         {items.map((item) => (
           <InsetRow
