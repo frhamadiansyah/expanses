@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('a merchant added from + shows in Mine, both lists stay tables on a desktop, and a typical code can be ignored and forgotten', async ({ page }) => {
+test('a merchant added from + shows in Custom, both lists stay tables on a desktop, and a typical code can be ignored and forgotten', async ({ page }) => {
   const crashes: string[] = [];
   page.on('pageerror', (e) => crashes.push(String(e)));
   await page.goto('/cards/merchants');

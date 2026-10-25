@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Merchants on a phone: round ‹, search in the title row, + and a row both open the sheet, and a typical code ignored shows in Mine', async ({ page }) => {
+test('Merchants on a phone: round ‹, search in the title row, + and a row both open the sheet, and a typical code ignored shows in Custom', async ({ page }) => {
   const crashes: string[] = [];
   page.on('pageerror', (e) => crashes.push(String(e)));
   await page.goto('/cards/merchants');

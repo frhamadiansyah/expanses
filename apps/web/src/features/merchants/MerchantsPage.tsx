@@ -186,12 +186,12 @@ export function MerchantsPage() {
       <ErrorBox error={error} />
 
       {memory.isSuccess && mine.length === 0 && !query ? (
-        <InsetGroup header="Mine">
+        <InsetGroup header="Custom">
           <InsetRow title="No merchants yet" subtitle="Add one with +, or from a purchase's card details." chevron={false} />
         </InsetGroup>
       ) : own.length > 0 ? (
         <RecordTable
-          header="Mine"
+          header="Custom"
           records={own}
           columns={mineColumns}
           rowTestId={(row) => `merchant-${row.entry.pattern}`}
