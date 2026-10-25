@@ -7,23 +7,56 @@ test('Merchants on a phone: round ‹, search in the title row, + and a row both
   const title = page.getByRole('heading', { name: 'Merchants', exact: true });
   await expect(title).toBeVisible();
 
-  // The way back is the round ‹ at the left of the corner row, with no word beside it; the big title is under that row.
+  // The way back is the round ‹ at the left of the corner row, with no word beside it; the name sits in that same row, as
+  // every subpage's does.
   const back = page.getByRole('main').getByRole('link', { name: 'Wallet', exact: true }).filter({ hasNotText: /\w/ });
   await expect(back).toBeVisible();
   const [backBox, titleBox, plusBox] = [(await back.boundingBox())!, (await title.boundingBox())!, (await page.getByRole('button', { name: 'New merchant' }).boundingBox())!];
   expect(backBox.width).toBeGreaterThanOrEqual(44);
-  expect(titleBox.y).toBeGreaterThanOrEqual(backBox.y + backBox.height);
+  expect(titleBox.y).toBeGreaterThanOrEqual(backBox.y - 1);
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(backBox.y + backBox.height + 1);
   expect(Math.abs(plusBox.y - backBox.y)).toBeLessThanOrEqual(1);
   await expect(page.getByText('‹ Wallet')).toHaveCount(0);
   // No form is open on the page itself.
-  await expect(page.getByLabel('Name in purchases')).toHaveCount(0);
+  await expect(page.getByLabel('Merchant', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('table')).toHaveCount(0);
 
-  // + opens New merchant.
+  // + opens New merchant: Merchant, then one MCC row reading Choose.
   await page.getByRole('button', { name: 'New merchant' }).click();
   const sheet = page.getByRole('dialog', { name: 'New merchant' });
-  await sheet.getByLabel('Name in purchases').fill('Warung Bunda');
-  await sheet.getByLabel('MCC', { exact: true }).fill('5814');
+  await expect(sheet.getByLabel('Merchant', { exact: true })).toHaveAttribute('placeholder', 'Name');
+  await sheet.getByLabel('Merchant', { exact: true }).fill('Warung Bunda');
+  await expect(sheet.getByText(/whole words|purchases? match/)).toHaveCount(0);
+  await expect(sheet.getByText('Find an MCC by name')).toHaveCount(0);
+  const mccRow = sheet.getByRole('button', { name: /^MCC/ });
+  await expect(mccRow).toHaveText(/^MCC\s*Choose/);
+
+  // The row opens a step with ‹ back to the merchant; four digits the list lacks can still be used, with a warning.
+  await mccRow.click();
+  const step = page.getByRole('dialog', { name: 'MCC' });
+  const find = step.getByRole('textbox', { name: 'Find an MCC' });
+  await expect(find).toBeFocused();
+  await find.fill('0001');
+  await step.getByRole('button', { name: /^Use 0001/ }).click();
+  await expect(mccRow).toContainText('0001');
+  await expect(mccRow).toContainText('Not in the MCC list');
+
+  // Digits pick a code directly: typed whole and Enter, or tapped from the codes they start.
+  await mccRow.click();
+  await step.getByRole('textbox', { name: 'Find an MCC' }).fill('5999');
+  await step.getByRole('textbox', { name: 'Find an MCC' }).press('Enter');
+  await expect(mccRow).toContainText('5999');
+  await mccRow.click();
+  await step.getByRole('textbox', { name: 'Find an MCC' }).fill('5814');
+  await step.getByRole('button', { name: /Fast Food Restaurants/ }).click();
+  await expect(mccRow).toContainText('5814');
+  await expect(mccRow).toContainText('Fast Food Restaurants');
+
+  // ‹ goes back without changing the code, and the name typed is still there.
+  await mccRow.click();
+  await step.getByRole('button', { name: 'New merchant' }).click();
+  await expect(sheet.getByLabel('Merchant', { exact: true })).toHaveValue('Warung Bunda');
+  await expect(mccRow).toContainText('5814');
   await sheet.getByRole('button', { name: 'Save merchant' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('merchant-warung bunda')).toContainText('5814 · Fast Food Restaurants · 0 purchases');
@@ -46,7 +79,8 @@ test('Merchants on a phone: round ‹, search in the title row, + and a row both
   // A typical row opens the same sheet under its own name; Use typical code off makes it Ignored, in Mine.
   await page.getByText("McDonald's", { exact: true }).click();
   const mcd = page.getByRole('dialog', { name: "McDonald's" });
-  await expect(mcd.getByLabel('Name in purchases')).toHaveValue('mcdonald');
+  await expect(mcd.getByLabel('Merchant', { exact: true })).toHaveValue('mcdonald');
+  await expect(mcd.getByRole('button', { name: /^MCC/ })).toContainText('5814');
   await mcd.getByLabel('Use typical code').uncheck({ force: true });
   await mcd.getByRole('button', { name: 'Save changes' }).click();
   await expect(mcd).toHaveCount(0);
