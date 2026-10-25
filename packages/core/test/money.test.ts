@@ -22,6 +22,9 @@ describe('currencies', () => {
     // The dong has no minor unit in use: a typed 50000 is 50000, never 500.00.
     expect(currencyInfo('VND').exponent).toBe(0);
     expect(parseMajor('50000', 'VND')).toBe(50000);
+    // The riel's sen is not in use, so it is whole like the rupiah; the Sri Lankan rupee keeps its cents.
+    expect(currencyInfo('KHR').exponent).toBe(0);
+    expect(currencyInfo('LKR').exponent).toBe(2);
   });
   it('rejects unknown codes', () => {
     expect(() => currencyInfo('XXX')).toThrow(UnknownCurrencyError);
