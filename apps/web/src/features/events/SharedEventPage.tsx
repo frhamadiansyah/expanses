@@ -2,10 +2,11 @@ import type { NamedPayment, SharedEventView, SharedSettlementView } from '@expan
 import { useNavigate } from '@tanstack/react-router';
 import { formatMinor } from '@expanses/core';
 import { CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS } from '../categories/CategoryIcon';
 import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
+import { ShareLine } from '../transactions/CategoryLines';
 import { Donut } from '../transactions/Donut';
 import { type CornerAction, InsetGroup, InsetRow, Panel, rowPositions, SCREEN, type Segment, SegmentedControl, PushedTitle } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
@@ -15,7 +16,7 @@ import { SettlementSheet } from './SettlementSheet';
 import { SettleUpSheet } from './SettleUpSheet';
 import { SharedPlanTab } from './SharedPlanTab';
 import { useFetchEventRates } from './shared-queries';
-import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, readOnlyLine, settlementDeletable, settlementRow, shareLine, signedBalance, spendingSlices, waitingLine } from './shared-view';
+import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, shareLine, signedBalance, spendingSlices, waitingLine } from './shared-view';
 import { TakeOverSheet } from './TakeOverSheet';
 
 const TABS: readonly Segment[] = [
@@ -39,6 +40,9 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   const [settling, setSettling] = useState<NamedPayment | null>(null);
   const [opened, setOpened] = useState<SharedSettlementView | null>(null);
   const [takingOver, setTakingOver] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  /* The category rows under the ring, folded away until the ring is tapped — the private event page does the same. */
+  const [showRows, setShowRows] = useState(false);
   const { readOnly, locked } = pageLocks(view);
   useFetchEventRates(view.waiting.some((w) => w.reason === 'no-rate'));
   const waiting = waitingLine(view);
@@ -59,7 +63,34 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   // Settle up is offered on a payment this person pays or receives, or one between two people without the app — §3's
   // writer rule for settlements, which the repository enforces again.
   const slices = spendingSlices(view);
-  const days = dayGroups(view);
+  const days = pickedDays(dayGroups(view), picked);
+  const whole = slices.reduce((sum, slice) => sum + slice.totalMinor, 0);
+  // The ring is the switch for its own rows: one tap shows them, another folds them and drops any category picked.
+  const fold = () => {
+    if (showRows) setPicked(null);
+    setShowRows(!showRows);
+  };
+  const pick = (key: string) => setPicked(picked === key ? null : key);
+  const chartFrame = (content: ReactNode) => (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={fold}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          fold();
+        }
+      }}
+      aria-expanded={showRows}
+      aria-label={showRows ? 'Hide categories' : 'See all categories'}
+      data-testid={showRows ? 'hide-categories' : 'see-categories'}
+      className="block w-full cursor-pointer"
+    >
+      {content}
+    </div>
+  );
+  const colourOf = (key: string) => (key === 'none' ? OTHER_COLOUR : chartColour(key));
   const bars = balanceBars(view);
   const mine = new Set(mineToSettle(view));
   const offerSettle = (p: NamedPayment) => mine.has(p) || !view.people.some((x) => x.hasApp && (x.personId === p.fromPersonId || x.personId === p.toPersonId));
@@ -82,13 +113,15 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
         <>
           <Panel testId="shared-event-total">
             {slices.length > 0 ? (
-              <Donut
-                slices={slices.map((slice) => ({ ...slice, colour: slice.key === 'none' ? OTHER_COLOUR : chartColour(slice.key) }))}
-                totalMinor={slices.reduce((sum, slice) => sum + slice.totalMinor, 0)}
-                middle={formatMinor(view.spentMinor, view.currency)}
-                label="Total spent"
-                under={shareLine(view)}
-              />
+              chartFrame(
+                <Donut
+                  slices={slices.map((slice) => ({ ...slice, colour: colourOf(slice.key) }))}
+                  totalMinor={whole}
+                  middle={formatMinor(view.spentMinor, view.currency)}
+                  label="Total spent"
+                  under={shareLine(view)}
+                />,
+              )
             ) : (
               <div className="flex flex-col items-center py-[10px]">
                 <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Total spent</span>
@@ -96,6 +129,22 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                 <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{shareLine(view)}</span>
               </div>
             )}
+            {showRows && slices.length > 0 ? (
+              <div className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]" data-testid="shared-event-categories">
+                {slices.map((slice) => (
+                  <button
+                    type="button"
+                    key={slice.key}
+                    onClick={() => pick(slice.key)}
+                    aria-pressed={picked === slice.key}
+                    data-testid="event-category-row"
+                    className={`ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left ${picked === slice.key ? 'bg-[var(--ph-fill)]' : ''}`}
+                  >
+                    <ShareLine colour={colourOf(slice.key)} name={slice.label} amountMinor={slice.totalMinor} wholeMinor={whole} currency={view.currency} chevron={false} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </Panel>
           {days.map((day) => {
             const d = new Date(`${day.date}T00:00:00`);
