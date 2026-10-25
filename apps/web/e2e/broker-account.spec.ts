@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, showBalance } from './accounts';
 import { openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
@@ -34,6 +34,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await openDrawers(page);
   await page.getByRole('link', { name: /^Stockbit Sekuritas/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Stockbit Sekuritas' })).toBeVisible();
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
   const held = page.getByTestId('broker-holding');
   await expect(held).toHaveCount(1);
@@ -52,5 +53,6 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
 test('a fund account opened by a walk is called by the broker it names', async ({ page }) => {
   await openAccount(page, { subtype: 'fund', name: 'Mirae Asset Sekuritas', bank: 'Bank Central Asia', balance: '1000000' });
   await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().click();
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('Custodian · Bank Central Asia');
 });

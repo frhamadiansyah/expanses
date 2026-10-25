@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, showBalance } from './accounts';
 
+import { addForm } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 
 test('by thumb: an account page spends from itself, and a pocket goes back to its account', async ({ page }) => {
@@ -12,8 +13,10 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Spend', exact: true }).tap();
-  await expect(page.getByRole('dialog', { name: 'New expense' }).getByRole('button', { name: 'Paid with' })).toContainText('Everyday');
-  await page.getByRole('dialog', { name: 'New expense' }).getByRole('button', { name: 'Close' }).tap();
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
+  await expect(addForm(page).getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
+  await page.goBack();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
 
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
   await walletCard(page, 'Valas Plus').tap();
@@ -37,6 +40,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(count.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await count.getByRole('button', { name: 'Save' }).tap();
   await expect(count).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('887.500');
   await expect(page.getByTestId('account-recent-row').first()).toContainText('Counted cash');
 
@@ -54,6 +58,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await topUp.getByLabel('Amount', { exact: true }).fill('150000');
   await topUp.getByRole('button', { name: 'Save' }).tap();
   await expect(topUp).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('150.000');
 
   await page.goto('/wallet');

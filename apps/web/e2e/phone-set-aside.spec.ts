@@ -1,3 +1,4 @@
+import { showBalance } from './accounts';
 import { expect, test } from '@playwright/test';
 import { goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, textOnWhite, typeAmount } from './set-aside';
 import { saveButton } from './add-transaction';
@@ -30,6 +31,7 @@ test('the laptop on a phone: borrowed from the Emergency fund, and the account p
   await expect((await goalCard(page, 'Umrah 2027')).getByText(/short by/i)).toHaveCount(0);
 
   await openAccountPage(page, 'Jenius');
+  await showBalance(page);
   await expect(page.getByText(/35\.700\.000/).first()).toBeVisible();
   const free = page.getByText(/^-Rp.1\.800\.000$/);
   await expect(free).toBeVisible();

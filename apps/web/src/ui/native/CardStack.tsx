@@ -1,6 +1,6 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { type CSSProperties, Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { CardFace } from '../../features/cards/CardFace';
@@ -128,6 +128,18 @@ export function CardStack({
   // The page's dots choose which plastic card on the account the raised card shows.
   const [shown, setShown] = useState<{ last4: string | null; holderName?: string | null } | null>(null);
   useEffect(() => setShown(null), [raisedKey]);
+  /*
+   * The raised card's back: a page that has one (an account's balance) says it is flippable, and a tap on the card then
+   * turns it over — on a rotation, or on a cross-fade for a reader who asked for less motion — rather than putting it
+   * down (✕ and Escape still do). The back is an element of the card the page draws into, so it is the card's own size.
+   */
+  const [flippable, setFlippable] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [backHost, setBackHost] = useState<HTMLElement | null>(null);
+  const backRef = useCallback((node: HTMLElement | null) => setBackHost(node), []);
+  // Whether a page has a back is that page's to say (it says no as it goes); a card put down is put down face up.
+  useEffect(() => setFlipped(false), [raisedKey]);
+  const still = reducedMotion();
 
   /*
    * A card that changes between its band and its whole face on the way — the covered card raised, the raised card
@@ -357,10 +369,17 @@ export function CardStack({
                       boxShadow: placed.place !== 'raised' && index > 0 && !(hidden && index === (raisedIndex === 0 ? 1 : 0)) ? 'var(--ph-card-edge)' : undefined,
                     }}
                   >
-                    <Face card={drawn} band={turning ? false : covered} scale={scale} />
+                    <CardTurn raised={placed.place === 'raised'} flipped={flipped} still={still} backRef={backRef}>
+                      <Face card={drawn} band={turning ? false : covered} scale={scale} />
+                    </CardTurn>
                     {placed.place === 'raised' ? (
-                      // The raised card is the page's header; tapping it closes it, as in Wallet.
-                      <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
+                      flippable ? (
+                        // A page with a back: the raised card turns over to it, and back to the card.
+                        <button type="button" aria-label={`${name}, ${flipped ? 'show card' : 'show balance'}`} aria-pressed={flipped} className={cx(hit, 'ph-under-dialog')} style={style} onClick={() => setFlipped((was) => !was)} />
+                      ) : (
+                        // The raised card is the page's header; tapping it closes it, as in Wallet.
+                        <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
+                      )
                     ) : card.to ? (
                       <Link to={card.to} params={card.params} aria-label={named} className={hit} style={style} />
                     ) : (
@@ -403,7 +422,7 @@ export function CardStack({
         </div>
       </section>
       {isRaised && (
-        <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown }}>
+        <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown, backHost, flipped, setFlippable }}>
           {/* The page comes up under the raised card once it has all but landed, as a pass's details do in Wallet. */}
           {/* It leaves room at its foot for the pile, so its last rows scroll clear of it. */}
           <div className="ph-card-page-in" style={pile > 0 && PILE_PEEK > 0 ? { paddingBottom: pile + 8 } : undefined}>
@@ -411,6 +430,49 @@ export function CardStack({
           </div>
         </WalletSlotContext.Provider>
       )}
+    </div>
+  );
+}
+
+/** How long the card takes to turn over. */
+const TURN_MS = 400;
+
+/**
+ * A card's two sides: the face the stack draws, and (on the raised card only) a back the open page draws into. Every
+ * card is wrapped alike, so a card keeps its face's element as it is raised. The turn is a rotation about the card's
+ * vertical axis; for a reader who asked for less motion it is a cross-fade. The side turned away is `visibility:
+ * hidden` — switched when the card is edge-on, or at once for a fade — so it is out of the tab order and the
+ * accessibility tree, and what shows is always what is read.
+ */
+function CardTurn({ raised, flipped, still, backRef, children }: { raised: boolean; flipped: boolean; still: boolean; backRef: (node: HTMLElement | null) => void; children: ReactNode }) {
+  const motion = raised ? `${still ? 200 : TURN_MS}ms` : '0ms';
+  const half = still ? 0 : TURN_MS / 2;
+  const side = (shown: boolean): CSSProperties => ({
+    position: 'absolute',
+    inset: 0,
+    backfaceVisibility: 'hidden',
+    // Inherited, never forced visible: a stack hidden behind a sheet stays hidden, and out of its hit-testing.
+    visibility: shown ? 'inherit' : 'hidden',
+    // Shown at once; hidden once the turn has passed the edge.
+    transition: raised ? `visibility 0s linear ${shown ? 0 : half}ms, opacity ${still ? motion : '0ms'} ease` : undefined,
+    opacity: still && !shown ? 0 : 1,
+  });
+  return (
+    <div style={{ position: 'absolute', inset: 0, perspective: raised && !still ? 1200 : undefined }}>
+      <div
+        data-testid="card-turn"
+        data-flipped={flipped ? '' : undefined}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          transformStyle: raised && !still ? 'preserve-3d' : undefined,
+          transition: raised && !still ? `transform ${motion} cubic-bezier(0.4, 0, 0.2, 1)` : undefined,
+          transform: raised && !still && flipped ? 'rotateY(180deg)' : undefined,
+        }}
+      >
+        <div style={side(!flipped)}>{children}</div>
+        {raised && <div ref={backRef} data-testid="card-back" style={{ ...side(flipped), transform: still ? undefined : 'rotateY(180deg)' }} />}
+      </div>
     </div>
   );
 }

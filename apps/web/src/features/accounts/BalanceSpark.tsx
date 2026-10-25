@@ -20,6 +20,7 @@ export function BalanceSpark({
   readable = false,
   ends = ['30 days ago', 'today'],
   throughZero = true,
+  plot = 64,
   className,
 }: {
   /** Oldest day first, ending on today's balance. */
@@ -38,6 +39,8 @@ export function BalanceSpark({
    * never below it, and a line pinned to the top of a range from zero would say nothing of how it moved.
    */
   throughZero?: boolean;
+  /** The plot's height; a card's back, which has less room, draws it shorter. */
+  plot?: number;
   className?: string;
 }) {
   // Drawn at the width it is shown at, so the reading's words and the line are the size they say, as Net worth's are:
@@ -45,7 +48,7 @@ export function BalanceSpark({
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const shown = useShownWidth(box);
   const width = shown ?? 268;
-  const height = 64;
+  const height = plot;
   /* Room under the plot for the crossing's date, and nothing above: the chart starts at its own top. */
   const paper = height + 16;
   const values = series.map((day) => day.minor);

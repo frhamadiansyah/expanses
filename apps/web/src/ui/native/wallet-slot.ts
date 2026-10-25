@@ -13,6 +13,15 @@ export interface WalletSlot {
   height: number;
   /** Which of the account's plastic cards the raised card shows — the page's dots choose it. */
   setShown: (face: { last4: string | null; holderName?: string | null } | null) => void;
+  /**
+   * The back of the raised card, for a page that has something to show on it (an account's balance): the element it
+   * portals into, null until the card has mounted it. A page with no back never touches it.
+   */
+  backHost: HTMLElement | null;
+  /** Whether the card is turned over, to its back. */
+  flipped: boolean;
+  /** A page with a back says so, and a tap on the raised card turns it over instead of putting it down. */
+  setFlippable: (flippable: boolean) => void;
 }
 
 export const WalletSlotContext = createContext<WalletSlot | null>(null);

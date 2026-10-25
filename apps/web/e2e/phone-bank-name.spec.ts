@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openSettings, openWalletAccount, walletCard } from './accounts';
+import { openAccount, openCard, openSettings, openWalletAccount, walletCard, showBalance } from './accounts';
 import { addForm } from './add-transaction';
 
 /** The drawn face of a card on Wallet, by the name the card is shown by. */
@@ -78,6 +78,7 @@ test('electronic money is a kind of its own, with no phone number, drawn in Wall
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(faceOf(page, 'Flazz')).toContainText('E-MONEY');
   await expect(faceOf(page, 'Flazz').getByTestId('card-chip')).toHaveCount(0);
+  await showBalance(page);
   await expect(page.getByText('Electronic money', { exact: false }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Top up' })).toBeVisible();
 

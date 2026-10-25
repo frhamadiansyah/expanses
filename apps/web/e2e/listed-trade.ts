@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openAsset } from './asset-page';
-import { openSettings } from './accounts';
+import { openSettings, showBalance } from './accounts';
 import { openDrawers } from './drawers';
 import { routeYahoo, yahooAnswered } from './listed-prices';
 import { addHoldingFlow } from './securities';
@@ -38,6 +38,7 @@ async function openBrokerPage(page: Page, broker: string) {
 /** What the broker's cash account holds now, on its page. */
 export async function expectBrokerBalance(page: Page, broker: string, figure: string) {
   await openBrokerPage(page, broker);
+  await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText(figure);
 }
 
