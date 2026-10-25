@@ -65,7 +65,7 @@ export function MoreDetails({
   opensSharedEvent?: boolean;
   /** Pictures just attached under Photos, for the form to read a receipt off. */
   onPhotos?: (files: readonly File[]) => void;
-  /** A row of the caller's own drawn first in the same group — a transfer's Fee category — so it reads as one of these. */
+  /** A row of the caller's own drawn first in the same group — a transfer's For goal — so it reads as one of these. */
   lead?: ReactNode;
 }) {
   const { ws } = useApp();

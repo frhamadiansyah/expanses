@@ -223,12 +223,22 @@ export async function taggedMoveOfTx(tx: Db, ws: WorkspaceContext, occurredOn: s
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)));
   const byId = new Map(rows.map((row) => [row.id, row]));
-  const own = lines.filter((line) => byId.get(line.accountId)?.systemKey == null);
+  /*
+   * A fee beside the move (`transferWithFeeLines`) is spending, not part of it: its category's line is set apart and
+   * what left the source is read without it, so the goal follows the transfer alone. Money back into a category is not
+   * a fee: that edit is no longer a transfer.
+   */
+  const fees = lines.filter((line) => byId.get(line.accountId)?.kind === 'expense');
+  if (fees.some((line) => line.amountMinor <= 0)) return null;
+  const feeMinor = fees.reduce((total, line) => total + line.amountMinor, 0);
+  const own = lines.filter((line) => byId.get(line.accountId)?.kind !== 'expense' && byId.get(line.accountId)?.systemKey == null);
   if (own.some((line) => { const kind = byId.get(line.accountId)?.kind; return kind !== 'asset' && kind !== 'liability'; })) return null;
   const out = own.filter((line) => line.amountMinor < 0);
   const into = own.filter((line) => line.amountMinor > 0);
   if (out.length !== 1 || into.length !== 1 || out[0]!.accountId === into[0]!.accountId) return null;
-  return { occurredOn, fromAccountId: out[0]!.accountId, toAccountId: into[0]!.accountId, amountMinor: -out[0]!.amountMinor, landedMinor: into[0]!.amountMinor };
+  const amountMinor = -out[0]!.amountMinor - feeMinor;
+  if (amountMinor <= 0) return null;
+  return { occurredOn, fromAccountId: out[0]!.accountId, toAccountId: into[0]!.accountId, amountMinor, landedMinor: into[0]!.amountMinor };
 }
 
 /**

@@ -236,6 +236,18 @@ describe('what the form adds up to', () => {
     expect(() => formToPost({ ...transfer, moneyId: 'acct-card', goalId: 'goal-1' }, accounts)).toThrow('From and To must differ');
   });
 
+  it('carries a fee on a transfer tagged to a goal, with its category, as the untagged transfer does', () => {
+    const tagged = { ...transfer, moneyId: 'acct-bank', goalId: 'goal-1', amount: '1000000', fee: '2500', feeCategoryId: 'cat-restaurants' };
+    expect(formToPost(tagged, accounts)).toMatchObject({
+      kind: 'transfer-goal',
+      input: { amountMinor: 1_000_000, feeMinor: 2_500, feeCategoryId: 'cat-restaurants', goalId: 'goal-1' },
+    });
+    // No fee typed, no fee sent.
+    const plain = formToPost({ ...tagged, fee: '' }, accounts);
+    expect(plain.kind === 'transfer-goal' && plain.input.feeMinor).toBeFalsy();
+    expect(() => formToPost({ ...tagged, feeCategoryId: '' }, accounts)).toThrow('Choose a category for the fee');
+  });
+
   it('keeps the exclusion, the event and the photos on a transfer tagged to a goal', () => {
     // §4: Photos and Exclude from report appear "always". The untagged branch carried all three; tagging the
     // transfer to a goal used to throw them away without a word.

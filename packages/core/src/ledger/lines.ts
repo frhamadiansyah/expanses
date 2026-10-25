@@ -108,6 +108,33 @@ export function transferLines(p: {
   ];
 }
 
+/**
+ * A same-currency transfer with a fee beside it, as a statement prints it: what left is the transfer and its fee
+ * together — the one line, Rp 1.010.000 — what landed is the transfer alone, and the fee is spending. Paid from a
+ * card, the card's line names the fee's category (`fromIsCard`), so its points are read once on the whole charge, as
+ * the bank reads it, and the fee line is not counted again. One builder for the plain transfer and the transfer for a
+ * goal, so the two cannot post two shapes of the same fee. A fee of 0 is the plain `transferLines`.
+ */
+export function transferWithFeeLines(p: {
+  fromAccountId: string;
+  toAccountId: string;
+  amountMinor: number;
+  feeMinor: number;
+  currency: string;
+  /** Where the fee is spent; needed only when there is one. */
+  feeCategoryId?: string | null;
+  fromIsCard?: boolean;
+}): PostingLine[] {
+  if (!Number.isSafeInteger(p.feeMinor) || p.feeMinor < 0) throw new Error('A fee cannot be below zero');
+  if (p.feeMinor === 0) return transferLines(p);
+  if (!p.feeCategoryId) throw new Error('Choose a category for the fee');
+  return [
+    { accountId: p.toAccountId, amountMinor: p.amountMinor, currency: p.currency },
+    { accountId: p.fromAccountId, amountMinor: -(p.amountMinor + p.feeMinor), currency: p.currency, ...(p.fromIsCard ? { spendCategoryId: p.feeCategoryId } : {}) },
+    { accountId: p.feeCategoryId, amountMinor: p.feeMinor, currency: p.currency },
+  ];
+}
+
 /** Cross-currency movement balanced per currency through the currency-exchange equity account. */
 export function exchangeLines(p: {
   fromAccountId: string;
