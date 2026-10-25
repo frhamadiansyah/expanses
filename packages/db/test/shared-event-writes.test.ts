@@ -213,6 +213,10 @@ describe('the rest of the writes', () => {
     const boats = await saveEventCategory(t.database, t.ws, t.eventId, { name: ' Boats ' });
     await saveEventCategory(t.database, t.ws, t.eventId, { id: boats, name: 'Boat trips', icon: 'ferry' });
     expect(await t.database.db.values(sql`SELECT name, icon, sort_order FROM event_categories WHERE id = ${boats}`)).toEqual([['Boat trips', 'ferry', 1]]);
+    // A category made without an icon wears the Travel set's, by its name; an icon chosen as none stays none.
+    const stay = await saveEventCategory(t.database, t.ws, t.eventId, { name: 'Stay' });
+    const bare = await saveEventCategory(t.database, t.ws, t.eventId, { name: 'Misc', icon: null });
+    expect(await t.database.db.values(sql`SELECT icon FROM event_categories WHERE id IN (${stay}, ${bare}) ORDER BY sort_order`)).toEqual([['bed'], [null]]);
     const id = await recordSharedExpense(t.database, t.ws, t.eventId, t.dinner({ categoryId: boats }));
     await archiveEventCategory(t.database, t.ws, t.eventId, boats);
     await editSharedExpense(t.database, t.ws, t.eventId, id, { note: 'Ferry to the island' });

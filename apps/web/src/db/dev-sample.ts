@@ -26,6 +26,12 @@ export async function loadSample(database: Database): Promise<void> {
   const response = await fetch(await url());
   if (!response.ok) throw new Error(`Could not read the sample file (${response.status})`);
   await database.importBytes(new Uint8Array(await response.arrayBuffer()));
+  // The sample's shared event has no keys on this device: tell the sync service to leave it active (see devSampleLoaded).
+  try {
+    window.localStorage.setItem('expanses.dev-sample-loaded', '1');
+  } catch {
+    // Without storage the event shows as a restored backup does; the rest of the sample is unaffected.
+  }
   window.history.replaceState(null, '', window.location.pathname === '/load-sample' ? '/' : window.location.pathname);
   window.location.reload();
 }

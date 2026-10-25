@@ -1,5 +1,5 @@
 import { findEntry } from '@expanses/catalog';
-import { assetItem, expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
+import { assetItem, eventCategoryIcon, expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
 import {
   addCard,
   addHolding,
@@ -24,6 +24,9 @@ import {
   ownerScope,
   recordSettlement,
   recordSharedExpense,
+  addSharedItemPurchase,
+  saveSharedItem,
+  setSharedItemDone,
   openPocketedAccount,
   payCardPurchases,
   postTransaction,
@@ -529,21 +532,34 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     await database.execScript(`
       INSERT INTO shared_events (book_id, name, starts_on, ends_on, currency, finished_at) VALUES ('sample-lake-book', 'Lake house week', '${sharedStart}', '${sharedEnd}', 'THB', NULL);
       INSERT INTO event_categories (book_id, id, name, icon, sort_order, archived_at) VALUES
-        ('sample-lake-book', 'cat-stay', 'Stay', NULL, 0, NULL),
-        ('sample-lake-book', 'cat-food', 'Food', NULL, 1, NULL),
-        ('sample-lake-book', 'cat-boats', 'Boats and rides', NULL, 2, NULL);
+        ('sample-lake-book', 'cat-stay', 'Stay', '${eventCategoryIcon('Stay')}', 0, NULL),
+        ('sample-lake-book', 'cat-food', 'Food', '${eventCategoryIcon('Food')}', 1, NULL),
+        ('sample-lake-book', 'cat-boats', 'Boats and rides', '${eventCategoryIcon('Boats and rides')}', 2, NULL);
       ${people.map(([id, name, member]) => `INSERT INTO event_people (book_id, id, name, member_id, removed_at) VALUES ('sample-lake-book', '${id}', '${name}', ${member ? `'${member}'` : 'NULL'}, NULL);`).join('\n')}
     `);
     await database.transaction((tx) => openEventBookTx(tx, ownerWs, { bookId: 'sample-lake-book', eventId: sharedEvent, name: 'Lake house week', currency: 'THB' }));
     const all = ['p-maya', 'p-dimas', 'p-lestari', 'p-yoga'];
     const lake = (occurredOn: string, amountMinor: number, payerPersonId: string, split: Parameters<typeof recordSharedExpense>[3]['split'], categoryId: string, note: string) =>
       recordSharedExpense(database, ownerWs, sharedEvent, { occurredOn, amountMinor, currency: 'THB', rateToEvent: '1', payerPersonId, paidFrom: payerPersonId === 'p-maya' ? { accountId: baht.id, chargedMinor: null } : null, split, categoryId, note });
-    await lake(sharedStart, 1_260_000, 'p-yoga', { mode: 'equal', people: all }, 'cat-stay', 'Lake house, whole week');
-    await lake(addDays(sharedStart, 1), 184_000, 'p-maya', { mode: 'equal', people: all }, 'cat-food', 'Market and grill night');
+    const stayId = await lake(sharedStart, 1_260_000, 'p-yoga', { mode: 'equal', people: all }, 'cat-stay', 'Lake house, whole week');
+    const marketId = await lake(addDays(sharedStart, 1), 184_000, 'p-maya', { mode: 'equal', people: all }, 'cat-food', 'Market and grill night');
     await lake(addDays(sharedStart, 2), 96_000, 'p-lestari', { mode: 'equal', people: ['p-maya', 'p-lestari', 'p-yoga'] }, 'cat-food', 'Noodle breakfast');
-    await lake(addDays(sharedStart, 2), 150_000, 'p-maya', { mode: 'amounts', shares: [{ personId: 'p-maya', minor: 30_000 }, { personId: 'p-dimas', minor: 50_000 }, { personId: 'p-lestari', minor: 70_000 }] }, 'cat-boats', 'Longtail boat, two trips');
-    await lake(addDays(sharedStart, 3), 72_000, 'p-yoga', { mode: 'equal', people: ['p-maya', 'p-dimas', 'p-yoga'] }, 'cat-boats', 'Bike hire');
-    await lake(addDays(sharedStart, 3), 128_000, 'p-lestari', { mode: 'equal', people: all }, 'cat-food', 'Seafood by the pier');
+    const boatId = await lake(addDays(sharedStart, 2), 150_000, 'p-maya', { mode: 'amounts', shares: [{ personId: 'p-maya', minor: 30_000 }, { personId: 'p-dimas', minor: 50_000 }, { personId: 'p-lestari', minor: 70_000 }] }, 'cat-boats', 'Longtail boat, two trips');
+    const bikeId = await lake(addDays(sharedStart, 3), 72_000, 'p-yoga', { mode: 'equal', people: ['p-maya', 'p-dimas', 'p-yoga'] }, 'cat-boats', 'Bike hire');
+    const seafoodId = await lake(addDays(sharedStart, 3), 128_000, 'p-lestari', { mode: 'equal', people: all }, 'cat-food', 'Seafood by the pier');
+    // The plan: some of it bought (an item's part of an expense), some bought in parts, some still to buy.
+    const item = (name: string, quantity: number, unitPriceMinor: number, categoryId: string | null) => saveSharedItem(database, ownerWs, sharedEvent, { name, quantity, unitPriceMinor, categoryId, link: null, note: null });
+    const buys = async (itemId: string, parts: [string, number][], done: boolean) => {
+      for (const [expenseId, shareMinor] of parts) await addSharedItemPurchase(database, ownerWs, sharedEvent, itemId, { expenseId, shareMinor });
+      if (done) await setSharedItemDone(database, ownerWs, sharedEvent, itemId, true);
+    };
+    await buys(await item('Lake house for the week', 1, 1_260_000, 'cat-stay'), [[stayId, 1_260_000]], true);
+    await buys(await item('Longtail boat trips', 2, 75_000, 'cat-boats'), [[boatId, 150_000]], true);
+    await buys(await item('Bike hire for four', 4, 18_000, 'cat-boats'), [[bikeId, 72_000]], true);
+    await buys(await item('Market food and the grill night', 1, 300_000, 'cat-food'), [[marketId, 184_000]], false);
+    await buys(await item('Seafood dinners', 2, 130_000, 'cat-food'), [[seafoodId, 128_000]], false);
+    await item('Souvenirs to take home', 4, 25_000, null);
+    await item('Sunscreen and bug spray', 2, 9_500, null);
     // Dimas has the app, so his payment is a record from his phone, not one written here (the app refuses it).
     await database.execScript(`
       INSERT INTO event_expenses (book_id, id, occurred_on, amount_minor, currency, rate_to_event, payer_person_id, payer_member_id, voided_at) VALUES ('sample-lake-book', 'sample-lake-dimas', '${addDays(sharedStart, 1)}', 88000, 'THB', '1', 'p-dimas', 'p-dimas', NULL);
