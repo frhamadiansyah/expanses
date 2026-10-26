@@ -2,9 +2,11 @@ import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
+import { useState } from 'react';
+import { PickerRow } from '../../ui/native';
 import { SwitchRow } from './FormRow';
-import { CategoryOptions } from '../cards/options';
+import { CategoryPicker } from './CategoryPicker';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useSharedBooks } from '../sharing/queries';
@@ -64,6 +66,98 @@ export function otherWorkspaces(
     .filter((other) => other.options.length > 0);
 }
 
+/** One choice in a part's Workspace list: a workspace, or "No workspace" (Not counted) for `book: null`. */
+export interface WorkspaceChoice {
+  key: string;
+  name: string;
+  book: { id: string; name: string; kind: string } | null;
+}
+
+/**
+ * What a part's Workspace chooser lists: the open workspace first, then the others `otherWorkspaces` allows (already
+ * ruled by shared / read-only), and "No workspace" last — only where Not counted is offered, or the part already is it.
+ */
+export function workspaceChoices(
+  open: { id: string; name: string; kind: string } | null,
+  others: readonly OtherWorkspace[],
+  notCountedOffered: boolean,
+  partIsNotCounted = false,
+): WorkspaceChoice[] {
+  return [
+    ...(open ? [{ key: open.id, name: open.name, book: open }] : []),
+    ...others.map((other) => ({ key: other.book.id, name: other.book.name, book: other.book })),
+    ...(notCountedOffered || partIsNotCounted ? [{ key: '', name: 'No workspace', book: null }] : []),
+  ];
+}
+
+/** A part's category chosen in a searchable sheet, with the workspace it is chosen from changed at its top. */
+function PartCategorySheet({
+  value,
+  choices,
+  initial,
+  onPick,
+  onClose,
+}: {
+  value: string;
+  choices: readonly WorkspaceChoice[];
+  /** The key of the workspace the list opens on. */
+  initial: string;
+  onPick: (categoryId: string) => void;
+  onClose: () => void;
+}) {
+  const { ws } = useApp();
+  const [from, setFrom] = useState(initial);
+  const [choosing, setChoosing] = useState(false);
+  const current = choices.find((choice) => choice.key === from && choice.book) ?? choices.find((choice) => choice.book);
+  if (choosing) {
+    return (
+      <Sheet grouped title="Workspace" onClose={() => setChoosing(false)}>
+        <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+          {choices.map((choice) => (
+            <button
+              key={choice.key || 'none'}
+              type="button"
+              aria-current={choice.key === current?.key ? 'true' : undefined}
+              onClick={() => {
+                if (!choice.book) {
+                  // In no workspace there is no list to choose from: the part is Not counted, and the sheet is done.
+                  onPick(NOT_COUNTED);
+                  onClose();
+                  return;
+                }
+                setFrom(choice.key);
+                setChoosing(false);
+              }}
+              className="ph-focus-inset flex min-h-[46px] w-full items-center gap-2 px-[14px] text-left text-[15px] text-[var(--ph-ink)] active:bg-[var(--ph-fill)]"
+            >
+              <span className="min-w-0 flex-1 truncate">{choice.name}</span>
+              <WorkspaceBadge book={choice.book} />
+              {choice.key === current?.key && <Check size={18} aria-hidden className="shrink-0 text-[var(--ph-tint)]" />}
+            </button>
+          ))}
+        </div>
+      </Sheet>
+    );
+  }
+  return (
+    <CategoryPicker
+      kind="expense"
+      lockKind
+      value={value}
+      onPick={onPick}
+      onClose={onClose}
+      bookId={current?.book && current.book.id !== ws.bookId ? current.book.id : undefined}
+      header={
+        choices.length > 1 ? (
+          <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)]">
+            <PickerRow label="Workspace" value={current?.name} onOpen={() => setChoosing(true)} />
+          </div>
+        ) : undefined
+      }
+    />
+  );
+}
+
 /**
  * One bill across several categories — B3a, §4's Split row.
  *
@@ -111,6 +205,8 @@ export function SplitSheet({
    */
   const notCountedOffered = !(ws.bookId && shared.has(ws.bookId));
   // The workspace a row's part is counted in, by name, for its switch: the open one's own categories included.
+  const [picking, setPicking] = useState<number | null>(null);
+  const openBook = books.find((book) => book.id === ws.bookId) ?? null;
   const partName = (categoryId: string) => books.find((book) => book.id === bookOf(categoryId))?.name ?? null;
   return (
     <Sheet grouped title="Split" onClose={onClose}>
@@ -118,38 +214,31 @@ export function SplitSheet({
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
         {splits.map((row, i) => (
           <div key={i} data-testid="split-row">
+            <PickerRow
+              label="Category"
+              testId="split-part-category"
+              value={isNotCountedRow(row) ? 'Not counted' : row.categoryId ? (accounts.find((a) => a.id === row.categoryId)?.name ?? null) : null}
+              placeholder="Select"
+              detail={
+                isNotCountedRow(row) ? (
+                  'No workspace'
+                ) : row.categoryId ? (
+                  <span>
+                    {partName(row.categoryId)}
+                    <WorkspaceBadge book={books.find((book) => book.id === bookOf(row.categoryId)) ?? null} />
+                  </span>
+                ) : undefined
+              }
+              onOpen={() => setPicking(i)}
+            />
             <div className="flex min-h-12 items-center gap-2 pl-[13px]">
-              <select
-                aria-label={`Split ${i + 1} category`}
-                value={row.categoryId}
-                onChange={(e) => setSplits(withSplitCategory(splits, i, e.target.value, bookOf))}
-                className="ph-focus-inset min-w-0 flex-1 appearance-none truncate bg-transparent py-2 text-base text-[var(--ph-ink)] md:text-[15px]"
-              >
-                <CategoryOptions accounts={accounts as AccountRow[]} kind="expense" parentSuffix="(general)" />
-                {others.map((other) => (
-                  <optgroup key={other.book.id} label={other.book.name}>
-                    {other.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-                {/* In no workspace at all: after every workspace's categories, as the last choice there is. */}
-                {(notCountedOffered || isNotCountedRow(row)) && (
-                  <optgroup label="No workspace">
-                    <option value={NOT_COUNTED}>Not counted</option>
-                  </optgroup>
-                )}
-              </select>
-              <WorkspaceBadge book={row.categoryId && !isNotCountedRow(row) ? workspaceOf(row.categoryId) : null} />
               <input
                 aria-label={`Split ${i + 1} amount`}
                 value={row.amount}
                 inputMode="decimal"
                 placeholder="Amount"
                 onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
-                className="ph-focus-inset tabular w-28 shrink-0 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
+                className="ph-focus-inset tabular min-w-0 flex-1 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
               />
               <button
                 type="button"
@@ -204,6 +293,15 @@ export function SplitSheet({
         <p role="alert" className="px-[13px] pt-2 text-[12.5px] leading-4 text-[var(--ph-warn)]">
           {refusal}
         </p>
+      )}
+      {picking !== null && splits[picking] && (
+        <PartCategorySheet
+          value={splits[picking].categoryId}
+          choices={workspaceChoices(openBook, others, notCountedOffered, isNotCountedRow(splits[picking]))}
+          initial={isNotCountedRow(splits[picking]) ? '' : (bookOf(splits[picking].categoryId) ?? ws.bookId ?? '')}
+          onPick={(categoryId) => setSplits(withSplitCategory(splits, picking, categoryId, bookOf))}
+          onClose={() => setPicking(null)}
+        />
       )}
     </Sheet>
   );

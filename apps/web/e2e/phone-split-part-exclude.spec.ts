@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { openSplit } from './split-row';
+import { openSplit, pickPartCategory } from './split-row';
 
 /*
  * One card purchase split across workspaces, a part of it left out of reports (0090). Invented figures: Rp 4.500.000 at
@@ -57,10 +57,10 @@ test('a part Not counted is in no workspace’s Cashflow, while the card owes th
   await withBusiness(page);
   const { form, split } = await startSplit(page);
   await split.getByLabel('Split 1 amount').fill('500000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Food and beverage › Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants', 'Business');
   await split.getByLabel('Split 2 amount').fill('3000000');
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 3 category').selectOption({ label: 'Not counted' });
+  await pickPartCategory(page, 3, '', 'No workspace');
   await split.getByLabel('Split 3 amount').fill('1000000');
   const parts = split.getByTestId('split-row');
   // A workspace's part has its own switch; the part in no workspace has none, and says where it stands instead.
@@ -103,7 +103,7 @@ test('a part excluded from its workspace’s report leaves that Cashflow alone, 
   await withBusiness(page);
   const { form, split } = await startSplit(page);
   await split.getByLabel('Split 1 amount').fill('500000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Food and beverage › Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants', 'Business');
   await split.getByLabel('Split 2 amount').fill('4000000');
   const business = split.getByTestId('split-row').nth(1).getByRole('switch', { name: 'Exclude from report' });
   await business.click();

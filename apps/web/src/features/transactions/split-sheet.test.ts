@@ -1,6 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { otherWorkspaces } from './SplitSheet';
+import { otherWorkspaces, workspaceChoices } from './SplitSheet';
 
 const category = (id: string, name: string, extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind: 'expense', subtype: 'category', name, icon: null, currency: null,
@@ -44,5 +44,31 @@ describe('the other workspaces a split line can be filed in', () => {
     expect(otherWorkspaces(accounts, books, 'home', filed, {}, new Set(['home']), new Set(['home']))).toEqual([]);
     expect(named(otherWorkspaces(accounts, books, 'family', filed, {}, new Set(['home']), new Set(['home'])))).toEqual([['Business', ['Office', 'Office › Paper']]]);
     expect(otherWorkspaces(accounts, books, undefined, filed, {}, new Set())).toEqual([]);
+  });
+});
+
+describe('the workspaces a part’s chooser lists', () => {
+  const open = books[0]!;
+  const others = otherWorkspaces(accounts, books, 'family', filed, {}, new Set(['home']));
+  const names = (list: ReturnType<typeof workspaceChoices>) => list.map((choice) => choice.name);
+
+  it('lists the open workspace first, the others after, and No workspace last', () => {
+    expect(names(workspaceChoices(open, others, true))).toEqual(['Family', 'Business', 'Home', 'No workspace']);
+  });
+
+  it('leaves No workspace out where Not counted is not offered, unless the part already is it', () => {
+    expect(names(workspaceChoices(open, others, false))).toEqual(['Family', 'Business', 'Home']);
+    expect(names(workspaceChoices(open, others, false, true))).toContain('No workspace');
+  });
+
+  it('follows otherWorkspaces’ refusals: from a shared workspace no other shared one is listed', () => {
+    const fromHome = otherWorkspaces(accounts, books, 'home', filed, {}, new Set(['home']));
+    expect(names(workspaceChoices(books[2]!, fromHome, false))).toEqual(['Home', 'Family', 'Business']);
+    const bothShared = otherWorkspaces(accounts, books, 'home', filed, {}, new Set(['home', 'business']));
+    expect(names(workspaceChoices(books[2]!, bothShared, false))).toEqual(['Home', 'Family']);
+  });
+
+  it('is only the open workspace when there is nowhere else', () => {
+    expect(workspaceChoices(open, [], false)).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
-import { openSplit } from './split-row';
+import { openSplit, pickPartCategory } from './split-row';
 import { openWorkspacePage } from './workspace-page';
 
 /*
@@ -88,12 +88,16 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 1, 'Groceries');
   await split.getByLabel('Split 1 amount').fill('830000');
   // A shared workspace offers the private ones' categories, under each one's name.
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Food and beverage › Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants', 'Business');
   await split.getByLabel('Split 2 amount').fill('417000');
-  await expect(split.getByTestId('workspace-badge')).toHaveAttribute('title', 'Business');
+  for (const [n, name] of [[0, 'Home'], [1, 'Business']] as const) {
+    const part = split.getByTestId('split-row').nth(n);
+    await expect(part.getByTestId('workspace-badge')).toHaveAttribute('title', name);
+    await expect(part.getByTestId('split-part-category')).toContainText(name);
+  }
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
