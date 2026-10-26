@@ -3,14 +3,12 @@ import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Check, Shapes } from 'lucide-react';
 import { useState } from 'react';
-import { useApp } from '../../app/context';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
-import { cx, ErrorBox } from '../../ui';
+import { cx } from '../../ui';
 import { SearchPill, SegmentedControl } from '../../ui/native';
 import { CategoryIcon, ICONS } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories, setCategoriesElsewhere } from '../categories/offered';
-import { useCategoryActions } from '../categories/use-category-actions';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useCategoryBooks, useCategoryWorkspaces } from '../workspaces/queries';
 import { RowGlyph } from './FormRow';
@@ -214,11 +212,7 @@ export function CategoryPicker({
   // ⌕ in the header opens the search in the tabs' row, the same as Paid with: no field on the list until asked for.
   const [finding, setFinding] = useState(false);
   const [making, setMaking] = useState(false);
-  // Copy here makes a set of the event's set in the open workspace; the list then reads that copy.
-  const [copiedSet, setCopiedSet] = useState<string | null>(null);
-  const actions = useCategoryActions();
-  const { ws } = useApp();
-  const set = showing === 'expense' ? (copiedSet ?? setId) : null;
+  const set = showing === 'expense' ? setId : null;
   const groups = pickerGroups(accounts, showing, membership, inOpenBook, search, set);
   // An event's set is filed in one workspace's book; opened from another, the list is empty, and says where they are.
   const workspaceOf = useCategoryWorkspaces();
@@ -339,22 +333,6 @@ export function CategoryPicker({
                 : 'No categories in this workspace yet.'}
           </p>
         )}
-        {groups.length === 0 && setElsewhere && ws.bookId && (
-          <div className="mb-3 overflow-hidden rounded-[18px] bg-[var(--ph-surface)]">
-            <button
-              type="button"
-              data-testid="copy-set-here"
-              onClick={async () => {
-                const copy = await actions.copySet(set!, ws.bookId!);
-                if (copy) setCopiedSet(copy.id);
-              }}
-              className="ph-focus-inset flex min-h-[46px] w-full items-center justify-center text-[17px] text-[var(--ph-ink)] active:bg-[var(--ph-fill)]"
-            >
-              Copy here
-            </button>
-          </div>
-        )}
-        <ErrorBox error={actions.error} />
 
         {/* The foot: a way of choosing (split the amount) and the way to the whole tree (renaming, archiving, a
             category's code, the sets), in one box of centred rows. Manage closes the sheet on its way. */}
