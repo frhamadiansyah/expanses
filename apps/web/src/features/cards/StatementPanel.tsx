@@ -230,17 +230,24 @@ export function StatementPanel({
         </span>
       </button>
     ) : (
-    // The label is the box's reach: a 20 px box inside a 44 pt target, as the kit's own switch row keeps it.
-    <label className={cx('flex h-[44px] w-[32px] shrink-0 items-center justify-center', !payable(line) && !line.paidBy && 'invisible')}>
+    // The label is the circle's reach: an 18 px circle inside a 44 pt target, the size of the ✓ a paid-off line wears. The
+    // checkbox is still the real control, laid invisibly under it; what is drawn is an empty ring, filled with a ✓ once chosen.
+    <label className={cx('relative flex h-[44px] w-[32px] shrink-0 items-center justify-center', !payable(line) && !line.paidBy && 'invisible')}>
       <input
         type="checkbox"
-        className="ph-focus h-[20px] w-[20px] accent-[var(--ph-tint)]"
+        className="peer ph-focus absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
         disabled={!payable(line)}
         checked={line.paidBy !== null || selected.has(line.transactionId)}
         onChange={() => toggle(line.transactionId)}
         title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
         aria-label={line.paidBy ? `${line.description}, paid on ${day(line.paidBy.paidOn)}` : `Pay ${line.description}`}
       />
+      <span
+        aria-hidden
+        className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:bg-[var(--ph-ink)] peer-checked:text-[var(--ph-surface)] peer-disabled:opacity-60"
+      >
+        <Check size={11} strokeWidth={3.5} aria-hidden />
+      </span>
     </label>
     );
 
