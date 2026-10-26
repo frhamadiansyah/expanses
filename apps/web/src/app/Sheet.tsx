@@ -39,7 +39,10 @@ export function Sheet({
   back,
   tall = false,
   expanded = false,
+  closeOnly = false,
 }: {
+  /** The saving-sheet header (✕, centred title) without the ✓: the sheet's own last row records, as the listed Buy / Sell. */
+  closeOnly?: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
@@ -299,7 +302,7 @@ export function Sheet({
         {/* The grabber and the header are where the sheet is dragged between its detents, as on iOS. */}
         <div onPointerDown={onDown} className={detents ? 'touch-none' : undefined} data-testid="sheet-drag">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
-        {confirm || back ? (
+        {confirm || back || closeOnly ? (
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"
