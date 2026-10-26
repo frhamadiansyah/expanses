@@ -46,7 +46,7 @@ function Separator({ show }: { show: boolean }) {
 }
 
 /** The ⓘ beside a label, which shows its explanation under the row. */
-function InfoButton({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+export function InfoButton({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
@@ -60,7 +60,7 @@ function InfoButton({ label, open, onToggle }: { label: string; open: boolean; o
   );
 }
 
-const Explained = ({ children }: { children: ReactNode }) => <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{children}</p>;
+export const Explained =({ children }: { children: ReactNode }) => <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{children}</p>;
 
 /**
  * A row typed into: the label (with an ⓘ when it has one) at the left, the figure at the right, and — on a sell — an
