@@ -14,7 +14,7 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
-import { useBillMoney, useMonthlyBills } from './queries';
+import { useBillMoney, useMonthlyBills, useYearlyBills } from './queries';
 import { type DueFee, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
 import { feeDateText } from '../cards/fee-line';
@@ -95,6 +95,7 @@ export function RecurringPage() {
   const from = useFrom();
   const backToCashflow = useBackToCashflow();
   const bills = useMonthlyBills(today);
+  const yearly = useYearlyBills(today);
   const fees = useUpcomingFees(today);
   const [askingFee, setAskingFee] = useState<DueFee | null>(null);
   const accounts = useAccounts().data ?? [];
@@ -273,6 +274,13 @@ export function RecurringPage() {
             }
             onClick={() => setShowSettled(true)}
           />
+        </InsetGroup>
+      )}
+
+      {/* A yearly bill is listed only in the weeks before its date; this keeps all of them reachable the rest of the year. */}
+      {(yearly.data?.length ?? 0) > 0 && (
+        <InsetGroup>
+          <InsetRow testId="yearly-bills-row" title="Yearly bills" value={String(yearly.data!.length)} to="/bills/yearly" search={from} />
         </InsetGroup>
       )}
 

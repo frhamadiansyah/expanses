@@ -6,6 +6,8 @@ import {
   billWindow,
   type BillWindow,
   currentBillMonth,
+  firstYearlyMonth,
+  isOwedMonth,
   expenseLines,
   isoDate,
   monthOf,
@@ -14,6 +16,7 @@ import {
   pausedUntil,
   pauseStart,
   uuidv7,
+  yearlyListed,
 } from '@expanses/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -22,6 +25,7 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
+import { billYearlyMonths, writeBillRepeat } from './bill-repeat';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
@@ -57,6 +61,10 @@ export interface ExpenseTemplateRow {
    * made before: its amount is then in that account's currency.
    */
   currency: string | null;
+  /** 'yearly' for a bill owed once a year, in `repeatMonth`; 'monthly' for every other bill (0099). */
+  repeat: 'monthly' | 'yearly';
+  /** 1-12: the month of the year a yearly bill comes out; null for a monthly bill. */
+  repeatMonth: number | null;
 }
 
 export interface SaveExpenseTemplateInput {
@@ -72,9 +80,18 @@ export interface SaveExpenseTemplateInput {
   startsMonth?: string;
   /** The bill's own currency; null follows the payer. Absent leaves an edited bill's as it was (a new bill follows). */
   currency?: string | null;
+  /** How often it comes out. Absent leaves an edited bill's as it was (a new bill is monthly). */
+  repeat?: 'monthly' | 'yearly';
+  /** 1-12: required for a yearly bill. */
+  repeatMonth?: number | null;
 }
 
-const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: number | null; startsMonth: string }, currency: string | null = null): ExpenseTemplateRow => ({
+const toRow = (
+  row: typeof expenseTemplates.$inferSelect,
+  window?: { payByDay: number | null; startsMonth: string },
+  currency: string | null = null,
+  yearlyMonth: number | null = null,
+): ExpenseTemplateRow => ({
   id: row.id,
   name: row.name,
   categoryAccountId: row.categoryAccountId,
@@ -86,6 +103,8 @@ const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: n
   // An older database has no windows: the month the bill was made is the nearest honest answer.
   startsMonth: window?.startsMonth ?? row.createdAt.slice(0, 7),
   currency,
+  repeat: yearlyMonth === null ? 'monthly' : 'yearly',
+  repeatMonth: yearlyMonth,
 });
 
 async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
@@ -117,6 +136,9 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
   if (input.currency != null && !isSupportedCurrency(input.currency)) {
     throw new RecurringError('CURRENCY', `Unsupported currency "${input.currency}"`);
   }
+  if (input.repeat === 'yearly' && !(Number.isInteger(input.repeatMonth) && input.repeatMonth! >= 1 && input.repeatMonth! <= 12)) {
+    throw new RecurringError('MONTH_REQUIRED', 'Choose the month');
+  }
 
   // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
   return database.transaction(async (tx) => {
@@ -137,6 +159,17 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     }
 
     const id = input.id ?? uuidv7();
+    // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
+    const [before] = await tx
+      .select({ dayOfMonth: expenseTemplates.dayOfMonth })
+      .from(expenseTemplates)
+      .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+    const beforeYearly = (await billYearlyMonths(tx, ws)).get(id) ?? null;
+    // Absent leaves an edited bill as it was; a new bill is monthly.
+    const yearlyMonth: number | null = input.repeat === undefined ? beforeYearly : input.repeat === 'yearly' ? input.repeatMonth! : null;
+    const today = isoDate();
+    const repeatChanged = Boolean(before) && (yearlyMonth !== beforeYearly || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
+    const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : firstYearlyMonth(today, yearlyMonth, input.dayOfMonth));
     await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
       await tx
         .insert(expenseTemplates)
@@ -167,9 +200,11 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       if (await billTablesExist(tx)) {
         await tx
           .insert(billWindows)
-          .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
-          .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
+          .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth })
+          // Changing how often it comes out starts the new schedule from today; any other edit leaves the first month alone.
+          .onConflictDoUpdate({ target: billWindows.templateId, set: repeatChanged ? { payByDay, startsMonth } : { payByDay } });
       }
+      if (input.repeat !== undefined) await writeBillRepeat(tx, ws, id, yearlyMonth);
       // Inside the capture, so a shared workspace sees the currency change with the rest of the bill.
       if (input.currency !== undefined) await writeBillCurrency(tx, ws, id, input.currency);
     });
@@ -196,7 +231,8 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
     : [];
   const byTemplate = new Map(windows.map((w) => [w.templateId, w]));
   const currencies = await billCurrencies(database.db, ws);
-  return rows.map((row) => toRow(row, byTemplate.get(row.id), currencies.get(row.id) ?? null));
+  const yearly = await billYearlyMonths(database.db, ws);
+  return rows.map((row) => toRow(row, byTemplate.get(row.id), currencies.get(row.id) ?? null, yearly.get(row.id) ?? null));
 }
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -248,6 +284,8 @@ export async function committedByCategory(
   const committed: Record<string, number> = {};
   for (const template of templates) {
     if (!template.active || template.amountMinor === null || pausedNow.has(template.id)) continue;
+    // A yearly bill is spoken for only in the month it comes out, and only once it has begun.
+    if (template.repeat === 'yearly' && (template.repeatMonth !== Number(today.slice(5, 7)) || monthOf(today) < template.startsMonth)) continue;
     // No rate reaching the bill's out day leaves it out rather than counting it as the wrong money — and says so
     // in `missing`, so the budget's "… of it is bills" line cannot quietly understate what is already spoken for.
     const outDay = billWindow(monthOf(today), template.dayOfMonth, template.payByDay).opensOn;
@@ -448,7 +486,7 @@ const paidMinorOf = (payment: PaymentFact | undefined) => (payment ? paidFigures
 
 function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
   const settled = settledOf(template, facts);
-  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled };
+  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled, yearlyMonth: template.repeatMonth };
   const { month, ...rest } = monthOfBill(template, facts, currentBillMonth(input), today);
   return {
     ...template,
@@ -468,6 +506,19 @@ function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string):
  * 3 September for August settles August, and September's bill is still to come.
  */
 export async function monthlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
+  // A yearly bill is owed only in its own month: the rest of the year it is not here (see `yearlyBills`), so no total,
+  // budget or list that builds on this one counts it.
+  return (await allBills(database, ws, onDate)).filter((bill) => bill.repeat === 'monthly' || yearlyListed(bill, bill.window, onDate));
+}
+
+/** Every active yearly bill, listed or not, with its next occurrence: the page that keeps them reachable all year. */
+export async function yearlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
+  return (await allBills(database, ws, onDate))
+    .filter((bill) => bill.repeat === 'yearly')
+    .sort((a, b) => a.window.opensOn.localeCompare(b.window.opensOn) || a.name.localeCompare(b.name));
+}
+
+async function allBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
   const templates = (await listExpenseTemplates(database, ws)).filter((template) => template.active);
   const facts = await billFacts(database, ws, templates);
   return templates
@@ -481,15 +532,21 @@ export async function billDetail(database: Database, ws: WorkspaceContext, templ
   if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
   const facts = await billFacts(database, ws, [template]);
   // Paused months ahead are listed too, so the history says which months will not come.
-  const months = new Set<string>([
-    ...(facts.skips.get(template.id) ?? []),
-    ...(facts.pauses.get(template.id) ?? []),
-    ...(facts.payments.get(template.id) ?? []).map((p) => p.billMonth),
-  ]);
-  for (let month = template.startsMonth; month <= monthOf(onDate); month = addMonths(month, 1)) months.add(month);
+  const yearlyMonth = template.repeatMonth;
+  // A yearly bill has a month of history a year, never the eleven it was not owed in (a pause covers those too).
+  const months = new Set<string>(
+    [
+      ...(facts.skips.get(template.id) ?? []),
+      ...(facts.pauses.get(template.id) ?? []),
+      ...(facts.payments.get(template.id) ?? []).map((p) => p.billMonth),
+    ].filter((month) => isOwedMonth(month, yearlyMonth)),
+  );
+  for (let month = template.startsMonth; month <= monthOf(onDate); month = addMonths(month, 1)) {
+    if (isOwedMonth(month, yearlyMonth)) months.add(month);
+  }
   const history = [...months]
     .sort((a, b) => b.localeCompare(a))
-    .slice(0, 12)
+    .slice(0, yearlyMonth === null ? 12 : 6)
     .map((month) => monthOfBill(template, facts, month, onDate));
 
   let bookName: string | null = null;

@@ -72,6 +72,7 @@ import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
+import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
@@ -204,6 +205,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage, validateSearch: budgetSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget/edit', component: EditBudgetsPage, validateSearch: budgetSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: RecurringPage, validateSearch: fromSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/yearly', component: YearlyBillsPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),

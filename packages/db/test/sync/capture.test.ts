@@ -271,6 +271,8 @@ describe('capture: rows edited in place', () => {
           active: 1,
           archivedAt: null,
           currency: null,
+          repeat: null,
+          repeatMonth: null,
           payer: { memberId: 'member-me', label: 'BCA Tahapan' },
         },
       },
@@ -320,6 +322,21 @@ describe('capture: rows edited in place', () => {
     await clearOutbox(database);
     await saveExpenseTemplate(database, ws, { id, name: 'Life cover', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 13_000, dayOfMonth: 5, currency: null });
     expect(await outboxOps(database)).toEqual([{ entity: 'bill', id, op: 'upsert', fields: { currency: null } }]);
+  });
+
+  it('a bill’s yearly repeat travels as two optional fields, and going back to monthly says null', async () => {
+    const { database, ws, bca, groceries } = await sharedHousehold();
+    const id = await saveExpenseTemplate(database, ws, { name: 'Car tax', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 3_000_000, dayOfMonth: 12, startsMonth: '2026-03', repeat: 'yearly', repeatMonth: 3 });
+    const fields = ((await outboxOps(database))[0] as { fields: Record<string, unknown> }).fields;
+    expect(fields.repeat).toBe('yearly');
+    expect(fields.repeatMonth).toBe(3);
+    await clearOutbox(database);
+    // An edit that does not mention the repeat sends nothing about it.
+    await saveExpenseTemplate(database, ws, { id, name: 'Car tax', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 3_100_000, dayOfMonth: 12 });
+    expect(await outboxOps(database)).toEqual([{ entity: 'bill', id, op: 'upsert', fields: { amountMinor: 3_100_000 } }]);
+    await clearOutbox(database);
+    await saveExpenseTemplate(database, ws, { id, name: 'Car tax', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 3_100_000, dayOfMonth: 12, repeat: 'monthly' });
+    expect(((await outboxOps(database)).find((op) => (op as { entity: string }).entity === 'bill') as { fields: Record<string, unknown> }).fields).toMatchObject({ repeat: null, repeatMonth: null });
   });
 
   it('a rolled-back write leaves nothing in the outbox', async () => {
