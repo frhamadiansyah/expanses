@@ -57,7 +57,7 @@ export async function acquiredDates(database: Database, ws: WorkspaceContext): P
 }
 
 /** The account's opening entry, if it has one: the earliest posted transaction against Opening Balances. */
-async function openingOfTx(tx: Tx, ws: WorkspaceContext, accountId: string) {
+export async function openingOfTx(tx: Tx, ws: WorkspaceContext, accountId: string) {
   const equityId = await systemAccountId(tx, ws, 'opening_balance');
   const equityTxs = tx
     .select({ id: entries.transactionId })

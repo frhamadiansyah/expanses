@@ -77,6 +77,7 @@ export type LedgerErrorCode =
   | 'INVALID_EXACT'
   | 'EVENT_POSTING'
   | 'FUND_SWITCH'
+  | 'ASSET_SALE'
   | 'NOT_A_CARD_PURCHASE'
   | 'CARD_NOT_FOUND'
   | 'NOT_ON_CARD';
@@ -548,6 +549,7 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
 async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}, author?: string, door: LedgerDoor = {}): Promise<void> {
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   if (!door.fundSwitch) await guardFundSwitchTx(tx, ws, id, author);
+  if (!door.assetSale) await guardAssetSaleTx(tx, ws, id);
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
@@ -594,6 +596,27 @@ export interface LedgerDoor {
   eventDerivation?: boolean;
   /** The caller is `fund-switch.ts` taking back a switch it wrote, both its trades with it. */
   fundSwitch?: boolean;
+  /** The caller is `asset-sales.ts` taking back a sale it wrote (Undo sale). */
+  assetSale?: boolean;
+}
+
+/** The words every other door says when it meets the money a sale of an asset brought in. */
+export const ASSET_SALE_MESSAGE = 'This is the sale of an asset. Take it back with Undo sale on the asset’s page.';
+
+const salesTableSeen = new WeakSet<object>();
+
+/**
+ * The money a sale brought in (`sellAsset`) is the sale's own: voided or edited from anywhere but Undo sale, the asset
+ * would be left marked sold with nothing paid for it. Every other door is refused.
+ */
+async function guardAssetSaleTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  if (!salesTableSeen.has(tx)) {
+    const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'asset_sales'`);
+    if (table.length === 0) return;
+    salesTableSeen.add(tx);
+  }
+  const sale = await tx.values<[string]>(sql`SELECT id FROM asset_sales WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  if (sale.length > 0) throw new LedgerError('ASSET_SALE', ASSET_SALE_MESSAGE);
 }
 
 /** The words every other door says when it meets a switch between two funds. */

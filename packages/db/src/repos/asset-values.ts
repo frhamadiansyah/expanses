@@ -29,6 +29,7 @@ import { assetProfiles, prices, valuations } from '../schema-assets';
 import { debtProfiles } from '../schema-debts';
 import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { BALANCE_SUBTYPES, type AccountSubtype, pocketParentIds } from './accounts';
+import { soldOnByAccount } from './asset-sales';
 import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
 import { listLoanItems, listLoans, scheduleFor, type LoanTermsRow } from './loans';
@@ -95,7 +96,11 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   // A pocket parent holds nothing, so it is no asset: net worth, the tax report, idle cash and goals all read here.
   // Archived rows are read too, so a parent whose pockets are all archived is still recognised.
   const parents = pocketParentIds(rows);
-  const assetsAccounts = rows.filter((row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id));
+  // A sold asset (0092) is valued no more from the day it was sold; before that day its history stands as it was.
+  const soldOn = await soldOnByAccount(database.db, ws);
+  const assetsAccounts = rows.filter(
+    (row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id) && !((soldOn.get(row.id) ?? '9999-99-99') <= date),
+  );
   if (assetsAccounts.length === 0) return [];
 
   const profiles = await database.db.select().from(assetProfiles).where(eq(assetProfiles.workspaceId, ws.workspaceId));

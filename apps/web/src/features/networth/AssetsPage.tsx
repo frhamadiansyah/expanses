@@ -13,7 +13,7 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits, useTrades } from './queries';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useTrades } from './queries';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
 
 /** The kinds of account whose whole story lives on their own page: money, not things. */
@@ -183,6 +183,9 @@ export function AssetsPage() {
   const navigate = useNavigate();
   const traded = new Set((trades.data ?? []).map((trade) => trade.accountId));
   const [showSold, setShowSold] = useState(false);
+  // Sold and archived assets (0092): folded away until asked for, and counted in nothing on this page.
+  const gone = useGoneAssets();
+  const [showGone, setShowGone] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
   const [picked, setPicked] = useState<string | null>(null);
   // Inside a picked section with more than one kind, the kind picked on its own boxes: the list narrows to that drawer.
@@ -339,6 +342,32 @@ export function AssetsPage() {
             </InsetGroup>
           )}
         </>
+      )}
+
+      {/* A car or a house sold, or an asset archived: each opens its own read-only page. In grey, because none of it is held. */}
+      {(gone.data ?? []).length > 0 && (
+        <InsetGroup>
+          <InsetRow
+            title="Sold and archived"
+            testId="gone-toggle"
+            value={String(gone.data!.length)}
+            chevron={false}
+            onClick={() => setShowGone((open) => !open)}
+          />
+          {showGone &&
+            gone.data!.map((item) => (
+              <InsetRow
+                key={item.accountId}
+                to="/net-worth/assets/$accountId"
+                params={{ accountId: item.accountId }}
+                testId={`gone-row-${item.accountId}`}
+                title={<span className="text-[var(--ph-ink-3)]">{item.name}</span>}
+                subtitle={item.status === 'sold' ? 'Sold' : 'Archived'}
+                value={item.figureMinor === null ? undefined : <Money minor={item.figureMinor} currency={item.currency} />}
+                valueTone="ink-3"
+              />
+            ))}
+        </InsetGroup>
       )}
     </div>
   );

@@ -149,3 +149,23 @@ export const depositEvents = sqliteTable('deposit_events', {
   priorTermStartedOn: text('prior_term_started_on'),
   confirmedAt: text('confirmed_at').notNull(),
 });
+
+/**
+ * The sale of an asset valued by an estimate — a car, a house, land (0092). One row per asset sold; Undo sale deletes it.
+ * The asset leaves net worth and the tax report's year-end list from `soldOn`; the money in is `transactionId`.
+ */
+export const assetSales = sqliteTable('asset_sales', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  accountId: text('account_id').notNull(),
+  soldOn: text('sold_on').notNull(),
+  soldForMinor: integer('sold_for_minor').notNull(),
+  /** Agent commission, notary and tax, taken off what was received. */
+  costsMinor: integer('costs_minor').notNull(),
+  /** The original cost the asset stood at in the ledger on the day, which the gain is measured against. */
+  costMinor: integer('cost_minor').notNull(),
+  cashAccountId: text('cash_account_id').notNull(),
+  transactionId: text('transaction_id').notNull(),
+  goalId: text('goal_id'),
+  createdAt: text('created_at').notNull(),
+});

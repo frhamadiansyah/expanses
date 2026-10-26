@@ -25,7 +25,17 @@ import { spendsFrom } from '../accounts/pockets';
 import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
 import { AcquiredRow, MoneyRow } from './AssetRows';
 import { ValueSheet } from './AssetSheets';
+import { SellSheet } from './SellSheet';
 import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
+
+/** The day an acquired date posts on, or null while it is not one yet (a year half typed). */
+function tryAcquiredDay(parts: AcquiredParts): string | null {
+  try {
+    return acquiredOn(parts, isoDate()).on;
+  } catch {
+    return null;
+  }
+}
 
 /** The kinds of money account, whose own page is on `/accounts` rather than the asset list. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -59,6 +69,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const openings = useOpenings([accountId]);
   const [error, setError] = useState<unknown>(null);
   const [valuing, setValuing] = useState(false);
+  const [selling, setSelling] = useState(false);
   // The original cost as typed while the row is being edited; null shows what is stored.
   const [costDraft, setCostDraft] = useState<string | null>(null);
 
@@ -278,10 +289,21 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       )}
 
       {valuing && value && <ValueSheet accountId={accountId} currency={value.currency} onClose={() => setValuing(false)} />}
+      {selling && value && (
+        <SellSheet
+          asset={{ accountId, name: value.name, currency: value.currency, costMinor: value.costMinor }}
+          acquiredOn={acquired && acquired.year ? tryAcquiredDay(acquired) : null}
+          onClose={() => setSelling(false)}
+          // Sold, the asset has no value row any more: its page now reads Sold.
+          onSold={() => void navigate({ to: '/net-worth/assets/$accountId', params: { accountId } })}
+        />
+      )}
 
       {(value || parentMoney) && (
         <>
           <InsetGroup>
+            {/* Only a thing valued by an estimate is sold from here; a priced holding is sold with Trade. */}
+            {value?.mode === 'snapshot' && <DestructiveRow label="Sell" calm onClick={() => setSelling(true)} />}
             <DestructiveRow
               label="Archive"
               calm

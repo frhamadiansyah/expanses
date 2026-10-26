@@ -7,7 +7,9 @@ import {
   listBooks,
   receivedItems,
   sharingDetail,
+  assetSaleOf,
   assetValuesAt,
+  goneAssets,
   listAccounts,
   netWorthSeries,
   periodFlows,
@@ -48,6 +50,18 @@ export function useAssetValues(date?: string) {
       return withShownNames(values, accounts);
     },
   });
+}
+
+/** The assets that have left the list, sold or archived, for the foot of Assets (0092). */
+export function useGoneAssets() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['gone-assets', ws.workspaceId], queryFn: () => goneAssets(database, ws) });
+}
+
+/** One asset's sale, or null while it is not sold. */
+export function useAssetSale(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['asset-sale', ws.workspaceId, accountId], queryFn: () => assetSaleOf(database, ws, accountId) });
 }
 
 export function useIdleCash(date?: string) {
