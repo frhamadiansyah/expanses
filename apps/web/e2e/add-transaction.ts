@@ -54,6 +54,8 @@ export async function openBuyOrSell(page: Page, kind: 'buy' | 'sell' = 'buy'): P
   await expect(form.getByLabel('What was bought or sold')).toHaveCount(0);
   await form.getByRole('radio', { name: kind === 'sell' ? 'Sell' : 'Buy' }).click();
   await expect(form.getByLabel('What was bought or sold')).toBeVisible();
+  // The holding is chosen by hand too; a spec that names none takes the first one the tab offers.
+  await form.getByLabel('What was bought or sold').selectOption({ index: 1 });
   return form;
 }
 

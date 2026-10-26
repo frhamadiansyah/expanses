@@ -805,28 +805,22 @@ function CardBody({
   const chooseTradeKind = (kind: 'buy' | 'sell') => {
     if (kindPicked && kind === purchase.mode) return;
     const options = kind === 'buy' ? choices.buys : choices.sells;
-    const option = options.find((row) => row.accountId === purchase.accountId) ?? options[0];
-    setNothingToSell(!option);
-    if (!option) return;
+    setNothingToSell(options.length === 0);
+    if (options.length === 0) return;
     setKindPicked(true);
-    setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) });
+    // The holding is chosen by hand; one already chosen stays only if it can be traded this way too.
+    const option = options.find((row) => row.accountId === purchase.accountId);
+    setPurchase(
+      option
+        ? { mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) }
+        : { mode: kind, accountId: '', lotSize: null, useLots: false },
+    );
   };
-  /** The trade rows, opened on the first holding there is to buy — as the Buy / sell tab opened them. */
+  /** The trade rows, opened with no holding chosen: Buy or Sell first, then the holding, both by hand. */
   function startTrade() {
-    const first = choices.buys[0];
-    if (!first) return;
-    set({
-      mode: 'trade',
-      purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
-    });
+    if (!choices.buys[0]) return;
+    set({ mode: 'trade', purchase: emptyPurchaseDraft('', draft.moneyId, isoDate()) });
   }
-  /*
-   * Opened as a trade (Net worth's Trade): the holdings are read after the draft is built, so the first one is
-   * chosen once they arrive, exactly as choosing the tab chose it.
-   */
-  useEffect(() => {
-    if (draft.mode === 'trade' && !draft.purchase.accountId && !initial) startTrade();
-  }, [draft.mode, choices.buys]);
 
   /*
    * B2's Note and Date rows (`CardRows`, shared with a shared event's card). Note is still today's Description — the same field, typed in place — drawn as the
@@ -945,10 +939,13 @@ function CardBody({
               }}
             >
               {/* Only the holdings of the tab on: Buy offers every holding, Sell the ones with units to sell. */}
+              {purchase.accountId === '' && <option value={`${purchase.mode}:`}>Choose…</option>}
               {(purchase.mode === 'buy' ? choices.buys : choices.sells).map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </SelectFormRow>
+            {purchase.accountId !== '' && (
+            <>
             <MoneyFieldRow
               currency={purchaseCurrency}
               flag={currencyFlag(purchaseCurrency)}
@@ -1010,6 +1007,8 @@ function CardBody({
               />
             )}
             <DateRow on={purchase.occurredOn} onChange={(occurredOn) => setPurchase({ occurredOn })} max={isoDate()} />
+            </>
+            )}
           </FormRows>
         ) : (
           <FormRows className="rounded-none">
@@ -1212,7 +1211,7 @@ function CardBody({
         )}
       </div>
 
-      {draft.mode === 'trade' && (!fixedMode || kindPicked) && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
+      {draft.mode === 'trade' && (!fixedMode || (kindPicked && purchase.accountId !== '')) && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
         <FormRows>
           {goals.length > 0 && (
             <SelectFormRow
@@ -1329,6 +1328,7 @@ function CardBody({
         shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
         have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
       */}
+      {fixedMode && draft.mode === 'trade' && (!kindPicked || purchase.accountId === '') ? null : (
       <button
         type="button"
         aria-expanded={detailsOpen}
@@ -1337,6 +1337,7 @@ function CardBody({
       >
         {detailsToggleLabel(detailsOpen)}
       </button>
+      )}
       </fieldset>
 
       {finish?.footer}
@@ -1364,7 +1365,7 @@ function CardBody({
           </button>
           <button
             type="submit"
-            disabled={busy || !setAside.ready || (fixedMode && draft.mode === 'trade' && !kindPicked)}
+            disabled={busy || !setAside.ready || (fixedMode && draft.mode === 'trade' && (!kindPicked || purchase.accountId === ''))}
             className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-ink)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
           >
             Save

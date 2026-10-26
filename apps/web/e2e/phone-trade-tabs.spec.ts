@@ -41,6 +41,11 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Buy' }).click();
   await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
+  // The holding is chosen by hand: until then there is the row for it and nothing else, not even Add more details.
+  await expect(form.getByLabel('What was bought or sold')).toBeVisible();
+  await expect(form.getByLabel('Paid with')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add more details' })).toHaveCount(0);
+  await form.getByLabel('What was bought or sold').selectOption({ index: 1 });
   await expect(form.getByLabel('Paid with')).toBeVisible();
   await expect(form.getByText('A credit card works')).toHaveCount(0);
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
