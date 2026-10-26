@@ -198,7 +198,7 @@ export function BillPage({ billId }: { billId: string }) {
       <InsetGroup>
         <ReadOnlyRow label="Repeats" value="Every month" />
         <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />
-        <ReadOnlyRow label="Pay by" value={bill.payByDay === null ? 'The day it is out' : `The ${ordinal(bill.payByDay)}`} />
+        <ReadOnlyRow label="Due by" value={bill.payByDay === null ? 'The bill date' : `The ${ordinal(bill.payByDay)}`} />
         <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
