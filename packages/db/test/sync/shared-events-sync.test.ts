@@ -1,10 +1,13 @@
-import { uuidv7 } from '@expanses/core';
+import { refundLines, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   addEventPerson,
   createAccount,
   editSharedExpense,
+  listAccounts,
+  moveIntoSharedEvent,
+  postTransaction,
   nativeBalances,
   ownerScope,
   personRefusalTx,
@@ -442,5 +445,65 @@ describe('what apply does with records it cannot post, and the edges between pho
     await expect(s.andi.device.engine.leaveEvent(s.trip.bookId)).rejects.toMatchObject({ code: 'NOT_SETTLED' });
     // Citra is in nothing: the unreadable record does not stand in her way.
     expect(await personRefusalTx(s.andi.device.database.db, book, citra)).toBeNull();
+  });
+});
+
+describe('a refund inside a shared event', () => {
+  it('moved in on one phone, the partner sees the same rows, totals and suggestions; the recorder’s card is credited', async () => {
+    const s = await coastWeek();
+    await dinner(s);
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    const before = await s.view(s.andi);
+    const food = (await listAccounts(s.rina.device.database, ownerScope(s.rina.device.ws))).find((a) => a.name === 'Restaurants')!;
+    const refund = await postTransaction(s.rina.device.database, ownerScope(s.rina.device.ws), {
+      occurredOn: '2026-10-09', description: 'Refund · Fish dinner', lines: refundLines({ categoryAccountId: food.id, paymentAccountId: s.rina.euro, amountMinor: 3_000, currency: 'EUR' }), ratesToBase: { EUR: 17_000 },
+    });
+    const { moved, kept } = await moveIntoSharedEvent(s.rina.device.database, ownerScope(s.rina.device.ws), s.rina.eventId, [refund]);
+    expect(kept).toEqual([]);
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    const [rina, andi] = [await s.view(s.rina), await s.view(s.andi)];
+    // The same records and figures on both phones.
+    expect(andi.expenses).toHaveLength(2);
+    expect(andi.expenses.map((e) => [e.expenseId, e.amountMinor, e.eventAmountMinor, e.unreadable])).toEqual(rina.expenses.map((e) => [e.expenseId, e.amountMinor, e.eventAmountMinor, e.unreadable]));
+    expect(andi.expenses.find((e) => e.expenseId === moved[0]!.expenseId)).toMatchObject({ amountMinor: -3_000, eventAmountMinor: -91_071, note: 'Refund · Fish dinner', myShareMinor: -1_000 });
+    expect(andi.spentMinor).toBe(before.spentMinor - 91_071);
+    expect(andi.myShareMinor).toBe(before.myShareMinor - 30_357);
+    expect(andi.payments).toEqual(rina.payments);
+    expect(andi.people.reduce((sum, p) => sum + p.balanceMinor, 0)).toBe(0);
+    for (const p of [s.rina, s.andi]) {
+      const me = (await s.view(p)).people.find((x) => x.isMe)!;
+      expect(await s.tripBalance(p)).toBe(me.balanceMinor);
+    }
+    // Rina's euro account: charged 9,000 for dinner, 3,000 given back. Andi's phone holds none of it.
+    expect((await nativeBalances(s.rina.device.database, ownerScope(s.rina.device.ws)))[s.rina.euro]).toBe(-6_000);
+    expect((await nativeBalances(s.andi.device.database, ownerScope(s.andi.device.ws)))[s.andi.euro] ?? 0).toBe(0);
+    // Only the recorder changes the refund's money; the partner edits its split.
+    await expect(voidSharedExpense(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, moved[0]!.expenseId)).rejects.toMatchObject({ code: 'PAYER_ONLY' });
+    await editSharedExpense(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, moved[0]!.expenseId, { split: { mode: 'equal', people: [s.rina.person, s.andi.person] } });
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    expect((await s.view(s.rina)).spentMinor).toBe((await s.view(s.andi)).spentMinor);
+    expect((await s.view(s.rina)).expenses.find((e) => e.expenseId === moved[0]!.expenseId)!.myShareMinor).toBe(-1_500);
+  });
+
+  it('a refund after a settle-up leaves every phone with the same balances, summing to zero', async () => {
+    const s = await coastWeek();
+    await dinner(s);
+    await boat(s);
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    const paying = (await s.view(s.andi)).payments.find((p) => p.fromPersonId === s.andi.person)!;
+    await recordSettlement(s.andi.device.database, ownerScope(s.andi.device.ws), s.andi.eventId, {
+      occurredOn: '2026-10-09', fromPersonId: paying.fromPersonId, toPersonId: paying.toPersonId, amountMinor: paying.amountMinor, account: { accountId: s.andi.device.bank, amountMinor: paying.amountMinor * 560 },
+    });
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    const food = (await listAccounts(s.rina.device.database, ownerScope(s.rina.device.ws))).find((a) => a.name === 'Restaurants')!;
+    const refund = await postTransaction(s.rina.device.database, ownerScope(s.rina.device.ws), {
+      occurredOn: '2026-10-10', description: 'Refund · Fish dinner', lines: refundLines({ categoryAccountId: food.id, paymentAccountId: s.rina.euro, amountMinor: 9_000, currency: 'EUR' }), ratesToBase: { EUR: 17_000 },
+    });
+    await moveIntoSharedEvent(s.rina.device.database, ownerScope(s.rina.device.ws), s.rina.eventId, [refund]);
+    await s.trip.settle([s.rina.device, s.andi.device]);
+    const [rina, andi] = [await s.view(s.rina), await s.view(s.andi)];
+    expect(andi.people.map((p) => [p.personId, p.balanceMinor])).toEqual(rina.people.map((p) => [p.personId, p.balanceMinor]));
+    expect(andi.people.reduce((sum, p) => sum + p.balanceMinor, 0)).toBe(0);
+    expect(andi.payments).toEqual(rina.payments);
   });
 });

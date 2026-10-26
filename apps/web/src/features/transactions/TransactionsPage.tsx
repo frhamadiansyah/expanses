@@ -465,7 +465,7 @@ export function TransactionsPage() {
     /*
      * Into a shared event the rows move: they leave this workspace and become this person's own expenses there,
      * keeping their card, MCC, photos and points (§6, D2). It is asked first, in the words the Event row uses, because
-     * a move is not a tag a toast can take back. A row the move keeps (a refund, a split bill, a transfer) stays
+     * a move is not a tag a toast can take back. A row the move keeps (a split bill, a transfer) stays
      * ticked, with the reason, so what is left on screen is exactly what did not go.
      */
     const shared = eventId ? sharedSummaries[eventId] : undefined;
