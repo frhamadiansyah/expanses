@@ -287,7 +287,10 @@ function CardBody({
    * by hand: the note's history only ever fills a category nobody chose, and only follows one it filled itself.
    */
   const prefilled = !!initial || !!finish || !!duplicateOf;
-  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled));
+  // A capture under review (`finish`) with no category yet guesses one from its note, as an add does; anything else that
+  // opened filled counts as chosen.
+  const guessesOnOpen = !initial && !duplicateOf;
+  const categorySource = useRef<CategorySource>(draft.categoryId ? 'hand' : initialCategorySource(prefilled && !guessesOnOpen));
   const latest = useRef(draft);
   latest.current = draft;
   /*
@@ -863,7 +866,7 @@ function CardBody({
    */
   useEffect(() => {
     const typed = draft.description.trim();
-    if (prefilled || !suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
+    if (!guessesOnOpen || !suggestKind || categorySource.current === 'hand' || draft.splits.length > 0) return;
     if (!typed && categorySource.current !== 'auto') return;
     let stale = false;
     const timer = setTimeout(() => {

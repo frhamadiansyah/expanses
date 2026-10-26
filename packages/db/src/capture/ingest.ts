@@ -98,23 +98,29 @@ async function accountFor(tx: Db, source: CaptureSource): Promise<{ id: string; 
  * source learned. Four digits repeat across banks, so two cards ending alike — or none — is no answer, and the
  * source's own account stands. A wallet's row holds its phone number's digits, which are no card's, so it is never one.
  */
-async function cardAccountFor(tx: Db, workspaceId: string, last4: string | null | undefined): Promise<{ id: string; currency: string | null } | null> {
+export async function cardAccountFor(
+  tx: Db,
+  workspaceId: string,
+  last4: string | null | undefined,
+): Promise<{ id: string; currency: string | null; cardId: string | null } | null> {
   if (!last4) return null;
   const rows = await tx
-    .select({ id: accounts.id, currency: accounts.currency })
+    .select({ id: accounts.id, currency: accounts.currency, cardId: cards.id })
     .from(cards)
     .innerJoin(accounts, eq(accounts.id, cards.accountId))
     .where(
       and(eq(cards.workspaceId, workspaceId), eq(cards.last4, last4), isNull(cards.archivedAt), isNull(accounts.archivedAt), ne(accounts.subtype, 'ewallet')),
     );
+  // One card ends so: it is the account and the card on it (a product with cards …1234 and …2345 files on …1234).
   if (rows.length === 1) return rows[0]!;
-  if (rows.length > 1) return null;
+  // Several do: when they are all on one account that is the answer, with no card chosen among them.
+  if (rows.length > 1) return rows.every((row) => row.id === rows[0]!.id) ? { ...rows[0]!, cardId: null } : null;
   // No card ends so: a bank account whose own number does ("rek ****1234", 0080).
   if (!(await numberColumnExists(tx))) return null;
   const numbered = await tx.values<[string, string | null]>(
     sql`SELECT id, currency FROM accounts WHERE workspace_id = ${workspaceId} AND number_last4 = ${last4} AND archived_at IS NULL`,
   );
-  return numbered.length === 1 ? { id: numbered[0]![0], currency: numbered[0]![1] } : null;
+  return numbered.length === 1 ? { id: numbered[0]![0], currency: numbered[0]![1], cardId: null } : null;
 }
 
 /**
@@ -241,6 +247,8 @@ export async function planDraft(
       exactHundredths: exact,
       currency,
       accountId: type === 'topup' ? (card?.id ?? null) : (account?.id ?? null),
+      // The card that paid, when the digits named one: Review opens on it rather than on the card's plain account.
+      cardId: kind === 'expense' && card ? card.cardId : null,
       toAccountId: type === 'topup' ? (learned?.id ?? null) : null,
       categoryAccountId: kind === 'transfer' ? null : await remembered(tx, workspace, description, reading.name?.value ?? null, kind),
       sourceId: source.id,

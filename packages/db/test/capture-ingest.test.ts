@@ -352,6 +352,46 @@ describe('what is not worth a draft', () => {
     expect(draft!.description).toBe('TOKO ROTI CONTOH');
   });
 
+  describe('which card of one account paid', () => {
+    const smsFor = (digits: string, id: string) =>
+      at('10:16', {
+        id,
+        app: 'BANKCONTOH',
+        title: 'BANKCONTOH',
+        body: `Terima kasih utk trx kartu XXXX${digits} tgl 03-09-2026 10:15:00 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000`,
+      });
+
+    it('opens on the card whose digits the message names, not the plain account', async () => {
+      const { database, ws } = await workspace();
+      const product = await createCardAccount(database, ws, { name: 'Prima Gold', subtype: 'credit_card', currency: 'IDR' });
+      await addCard(database, ws, { accountId: product.id, last4: '7391' });
+      const second = await addCard(database, ws, { accountId: product.id, last4: '8420' });
+      await ingestCaptures(database, ws, [smsFor('8420', 'sms-two')], { today: DAY });
+      expect((await listDrafts(database, ws, 'pending'))[0]).toMatchObject({ accountId: product.id, cardId: second });
+    });
+
+    it('keeps the account and no card when the digits name none, or the account only by its number', async () => {
+      const { database, ws, bank } = await workspace();
+      const product = await createCardAccount(database, ws, { name: 'Prima Gold', subtype: 'credit_card', currency: 'IDR' });
+      await addCard(database, ws, { accountId: product.id, last4: '7391' });
+      await setAccountNumberLast4(database, ws, bank.id, '4321');
+      await ingestCaptures(database, ws, [smsFor('4321', 'sms-rek2'), smsFor('0000', 'sms-none')], { today: DAY });
+      const drafts = await listDrafts(database, ws, 'pending');
+      expect(drafts.every((d) => d.cardId === null)).toBe(true);
+      expect(drafts.some((d) => d.accountId === bank.id)).toBe(true);
+    });
+
+    it('names no card when two accounts have one ending alike', async () => {
+      const { database, ws } = await workspace();
+      const one = await createCardAccount(database, ws, { name: 'Prima Gold', subtype: 'credit_card', currency: 'IDR', issuer: 'NUSA' });
+      await addCard(database, ws, { accountId: one.id, last4: '5150' });
+      const other = await createCardAccount(database, ws, { name: 'Other', subtype: 'credit_card', currency: 'IDR', issuer: 'KARANG' });
+      await addCard(database, ws, { accountId: other.id, last4: '5150' });
+      await ingestCaptures(database, ws, [smsFor('5150', 'sms-ambig')], { today: DAY });
+      expect((await listDrafts(database, ws, 'pending'))[0]).toMatchObject({ accountId: null, cardId: null });
+    });
+  });
+
   it('files a bank message on the account whose own number it names, when no card ends so (0080)', async () => {
     const { database, ws, bank } = await workspace();
     await setAccountNumberLast4(database, ws, bank.id, '4321');
