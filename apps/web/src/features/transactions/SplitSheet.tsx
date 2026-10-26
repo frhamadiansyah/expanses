@@ -250,13 +250,13 @@ export function SplitSheet({
               </button>
             </div>
             {/* The part's own Exclude from report (0090), under the row it belongs to: a workspace's part only — a part Not
-                counted is in no report to leave. Rows in one workspace are one part, and switch together. */}
+                counted is in no report to leave. One switch per row, even for two rows in one workspace. */}
             {row.categoryId && !isNotCountedRow(row) && (
               <SwitchRow
                 label="Exclude from report"
                 info={`Out of ${partName(row.categoryId) ?? 'the workspace'}’s chart and budgets. Still counted in the card’s balance, statement and points.`}
                 checked={row.excluded ?? false}
-                onChange={(excluded) => setSplits(withPartExcluded(splits, i, excluded, bookOf))}
+                onChange={(excluded) => setSplits(withPartExcluded(splits, i, excluded))}
               />
             )}
             {isNotCountedRow(row) && (
@@ -299,7 +299,7 @@ export function SplitSheet({
           value={splits[picking].categoryId}
           choices={workspaceChoices(openBook, others, notCountedOffered, isNotCountedRow(splits[picking]))}
           initial={isNotCountedRow(splits[picking]) ? '' : (bookOf(splits[picking].categoryId) ?? ws.bookId ?? '')}
-          onPick={(categoryId) => setSplits(withSplitCategory(splits, picking, categoryId, bookOf))}
+          onPick={(categoryId) => setSplits(withSplitCategory(splits, picking, categoryId))}
           onClose={() => setPicking(null)}
         />
       )}

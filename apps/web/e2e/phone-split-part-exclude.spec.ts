@@ -127,3 +127,47 @@ test('a part excluded from its workspace’s report leaves that Cashflow alone, 
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Visa', '4.500.000');
 });
+
+test('two lines of one workspace switch on their own: Exclude on Groceries leaves Restaurants counted', async ({ page }) => {
+  await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '15' });
+  await page.goto('/transactions');
+  const { form, split } = await startSplit(page);
+  await split.getByLabel('Split 1 amount').fill('300000');
+  await pickPartCategory(page, 2, 'Restaurants');
+  await split.getByLabel('Split 2 amount').fill('200000');
+
+  const parts = split.getByTestId('split-row');
+  const first = parts.nth(0).getByRole('switch', { name: 'Exclude from report' });
+  const second = parts.nth(1).getByRole('switch', { name: 'Exclude from report' });
+  await first.click();
+  await expect(first).toHaveAttribute('aria-checked', 'true');
+  await expect(second).toHaveAttribute('aria-checked', 'false');
+  // The other way round, then back: each switch moves alone.
+  await second.click();
+  await expect(second).toHaveAttribute('aria-checked', 'true');
+  await first.click();
+  await expect(first).toHaveAttribute('aria-checked', 'false');
+  await expect(second).toHaveAttribute('aria-checked', 'true');
+  await second.click();
+  await first.click();
+  await expect(first).toHaveAttribute('aria-checked', 'true');
+  await expect(second).toHaveAttribute('aria-checked', 'false');
+  await split.getByRole('button', { name: 'Close' }).click();
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+
+  // Only Restaurants counts; the row is not marked excluded, since part of it counts.
+  await page.goto('/transactions');
+  await expect(periodTotal(page)).toHaveText('Rp 200.000');
+  await expect(row(page)).not.toContainText('Excluded');
+
+  // The receipt says which line is out; the card owes the whole charge.
+  await row(page).getByRole('button', { name: /^Groceries/ }).click();
+  const receiptParts = page.getByTestId('split-part');
+  await expect(receiptParts).toHaveCount(2);
+  await expect(receiptParts.filter({ hasText: 'Groceries' })).toHaveAttribute('data-excluded', 'true');
+  await expect(receiptParts.filter({ hasText: 'Restaurants' })).not.toHaveAttribute('data-excluded', 'true');
+
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Visa', '500.000');
+});

@@ -99,19 +99,74 @@ export async function writeSplitBooksTx(
   }
 }
 
+const lined = new WeakMap<object, true>();
+
+/** Whether this copy has the per-line Exclude from report (0096). Asked once per handle; only a yes is kept. */
+export async function lineExclusionExists(db: Db): Promise<boolean> {
+  if (lined.get(db)) return true;
+  const rows = await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'transaction_line_excluded'`);
+  if (rows.length > 0) lined.set(db, true);
+  return rows.length > 0;
+}
+
 /**
- * Over an entry's transaction and account: false for a category line of a split purchase's part that is left out of
- * its workspace's reports (0090). Every reader that adds spending up takes it beside `notExcluded`, which leaves out a
- * purchase excluded whole: the part's workspace is the one its category is filed in.
+ * The categories of this purchase's lines left out of their workspace's reports, by whatever says it (0090, 0096): a line
+ * left out on its own, or a line in a workspace whose whole part is. A purchase excluded whole (its transaction_flags
+ * row) is not read here. Empty on a database stopped before both.
+ */
+export async function excludedLinesTx(db: Db, transactionId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (await lineExclusionExists(db)) {
+    const rows = await db.values<[string]>(sql`SELECT account_id FROM transaction_line_excluded WHERE transaction_id = ${transactionId}`);
+    for (const [accountId] of rows) out.add(accountId);
+  }
+  if (await splitExclusionExists(db)) {
+    const rows = await db.values<[string]>(sql`SELECT c.category_account_id FROM book_transaction_splits s
+      JOIN book_categories c ON c.book_id = s.book_id WHERE s.transaction_id = ${transactionId} AND s.excluded = 1`);
+    for (const [accountId] of rows) out.add(accountId);
+  }
+  return out;
+}
+
+/** Every purchase among these, by transaction id, with the categories of the lines left out on their own (0096). */
+export async function lineExclusionsOfMany(db: Db, transactionIds: readonly string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (transactionIds.length === 0 || !(await lineExclusionExists(db))) return out;
+  const rows = await db.values<[string, string]>(sql`SELECT transaction_id, account_id FROM transaction_line_excluded WHERE transaction_id IN ${[...transactionIds]}`);
+  for (const [transactionId, accountId] of rows) (out.get(transactionId) ?? out.set(transactionId, new Set()).get(transactionId)!).add(accountId);
+  return out;
+}
+
+/** Files the lines left out on their own (0096), one row per category; nothing on a database stopped before it. */
+export async function writeLineExclusionsTx(db: Db, workspaceId: string, transactionId: string, accountIds: Iterable<string>): Promise<void> {
+  if (!(await lineExclusionExists(db))) return;
+  for (const accountId of new Set(accountIds)) {
+    await db.run(sql`INSERT OR IGNORE INTO transaction_line_excluded (transaction_id, workspace_id, account_id) VALUES (${transactionId}, ${workspaceId}, ${accountId})`);
+  }
+}
+
+/**
+ * Over an entry's transaction and account: false for a category line left out of its workspace's reports on its own
+ * (0096), or of a split purchase's part that is left out whole (0090). Every reader that adds spending up takes it
+ * beside `notExcluded`, which leaves out a purchase excluded whole: the part's workspace is the one its category is
+ * filed in.
  */
 export function partCounted(transactionId: SQLWrapper, accountId: SQLWrapper): SQL {
   return sql`NOT EXISTS (SELECT 1 FROM book_transaction_splits xs JOIN book_categories xc ON xc.book_id = xs.book_id
     WHERE xs.transaction_id = ${transactionId} AND xs.excluded = 1 AND xc.category_account_id = ${accountId})`;
 }
 
-/** `partCounted` where the column is there (0090); nothing to add on a database stopped before it. */
+/** `partCounted` for a line left out on its own (0096). */
+export function lineCounted(transactionId: SQLWrapper, accountId: SQLWrapper): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM transaction_line_excluded xl WHERE xl.transaction_id = ${transactionId} AND xl.account_id = ${accountId})`;
+}
+
+/** `partCounted` and `lineCounted` where their tables and columns are there; nothing to add on a database stopped before them. */
 export async function partCountedWhere(db: Db, transactionId: SQLWrapper, accountId: SQLWrapper): Promise<SQL[]> {
-  return (await splitExclusionExists(db)) ? [partCounted(transactionId, accountId)] : [];
+  const out: SQL[] = [];
+  if (await splitExclusionExists(db)) out.push(partCounted(transactionId, accountId));
+  if (await lineExclusionExists(db)) out.push(lineCounted(transactionId, accountId));
+  return out;
 }
 
 /**

@@ -266,7 +266,9 @@ export function buildRows(
     const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
-    const baseOf = (kind: 'expense' | 'income') => (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
+    // `counted` leaves out the lines switched to Exclude from report on their own (0096), which the day's total must not add.
+    const baseOf = (kind: 'expense' | 'income', counted = false) =>
+      (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind && !(counted && e.excluded)).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
     return {
       kind: 'tx',
       id: tx.id,
@@ -276,8 +278,8 @@ export function buildRows(
       currency: c.currency,
       baseMinor: type === 'expense' || type === 'income' ? baseOf(type) : 0,
       // A transfer's fee is spending all the same: the day's total counts it, as Cashflow does.
-      spentMinor: type === 'expense' || type === 'debt' || c.feeMinor ? baseOf('expense') : 0,
-      earnedMinor: type === 'income' || type === 'debt' ? baseOf('income') : 0,
+      spentMinor: type === 'expense' || type === 'debt' || c.feeMinor ? baseOf('expense', true) : 0,
+      earnedMinor: type === 'income' || type === 'debt' ? baseOf('income', true) : 0,
       type,
       categoryId,
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,

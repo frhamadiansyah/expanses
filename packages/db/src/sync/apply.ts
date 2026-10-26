@@ -8,7 +8,7 @@ import { activeNetWorthGroup } from '../repos/net-worth-sharing';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists, exactForLinesTx, exactForTransactionTx } from '../repos/exact-column';
 import { markForeignDirtyTx } from '../repos/fx-pending';
-import { bookSplitsExist, excludedSplitBooksTx } from '../repos/book-splits';
+import { bookSplitsExist, excludedLinesTx } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
@@ -562,6 +562,11 @@ async function privatePartsTx(tx: Db, ctx: BookContext, head: string): Promise<P
   return parts.before.length + parts.after.length > 0 ? parts : null;
 }
 
+/** The posting lines' categories among these: how a purchase's excluded lines are named again (0090, 0096). */
+function linesAmong(lines: readonly PostingLine[], among: ReadonlySet<string>): string[] {
+  return [...new Set(lines.map((line) => line.accountId))].filter((accountId) => among.has(accountId));
+}
+
 /** The posting lines' categories filed in one of these workspaces: how a split's excluded parts are named (0090). */
 async function categoriesInBooksTx(tx: Db, lines: readonly PostingLine[], bookIds: ReadonlySet<string>): Promise<string[]> {
   if (bookIds.size === 0) return [];
@@ -626,8 +631,8 @@ async function postRemainderTx(tx: Tx, ctx: BookContext, head: string, parts: Pr
     cardId,
     mcc,
     ...(flags ? { channel: flags[0] as PostTransactionInput['channel'], excludedFromReport: Number(flags[1]) === 1 } : {}),
-    // Each part left out of its workspace's reports stays so (0090).
-    excludedParts: await categoriesInBooksTx(tx, lines, await excludedSplitBooksTx(tx, head)),
+    // Each line left out of its workspace's reports stays so (0090, 0096).
+    excludedParts: linesAmong(lines, await excludedLinesTx(tx, head)),
     acrossBooks: true,
     syncAuthor: author,
   });
@@ -763,14 +768,23 @@ async function ledgerInput(
   // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
   if (cardId !== undefined) input.cardId = cardId;
   if ('channel' in winners) input.channel = state.channel;
-  if ('excluded' in winners) {
+  if ('excluded' in winners || 'excludedLines' in winners) {
+    // Which of the travelling lines are out (0096): the lines the op names, else — an op from a build before it, which
+    // says only `excluded` — every line or none. Both together (a build with it): the lines.
+    const named = 'excludedLines' in winners ? new Set(state.excludedLines ?? []) : null;
     if (kept && head) {
-      // A split here (0090): the flag that travelled is the part in this book's alone. The other parts keep theirs.
-      const off = await excludedSplitBooksTx(tx, head);
-      if (state.excluded === 1) off.add(ctx.bookId);
-      else off.delete(ctx.bookId);
+      // A split here (0090): what travelled is the part in this book's alone. The other parts keep theirs.
+      const mine = new Set(await categoriesInBooksTx(tx, lines, new Set([ctx.bookId])));
+      const off = await excludedLinesTx(tx, head);
+      for (const categoryId of mine) {
+        if (named ? named.has(categoryId) : state.excluded === 1) off.add(categoryId);
+        else off.delete(categoryId);
+      }
       input.excludedFromReport = false;
-      input.excludedParts = await categoriesInBooksTx(tx, lines, off);
+      input.excludedParts = linesAmong(lines, off);
+    } else if (named) {
+      input.excludedFromReport = false;
+      input.excludedParts = linesAmong(lines, named);
     } else {
       // The whole purchase's, as it travelled; a part's flag the head had is not carried over it.
       input.excludedFromReport = state.excluded === 1;

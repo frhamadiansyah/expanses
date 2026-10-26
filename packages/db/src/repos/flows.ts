@@ -12,7 +12,7 @@ import { resolvedCategoryNeeds } from './category-needs';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
-import { splitExclusionExists } from './book-splits';
+import { lineExclusionExists, splitExclusionExists } from './book-splits';
 
 export interface MonthFlow {
   month: string;
@@ -143,8 +143,9 @@ export async function periodFlows(
       : [],
   );
 
-  // One workspace's part of a purchase split across workspaces, marked out of its reports on its own (0090): its
-  // category lines, by transaction. The other parts count; balances, debt and savings below never read this.
+  // One workspace's part of a purchase split across workspaces, marked out of its reports on its own (0090), and a single
+  // line marked out on its own (0096): their category lines, by transaction. The other lines count; balances, debt and
+  // savings below never read this.
   const excludedParts = new Set<string>(
     (await splitExclusionExists(database.db))
       ? (
@@ -158,6 +159,14 @@ export async function periodFlows(
         ).map(([transactionId, accountId]) => `${transactionId}:${accountId}`)
       : [],
   );
+  if (await lineExclusionExists(database.db)) {
+    const lines = await database.db.values<[string, string]>(sql`
+      SELECT l.transaction_id, l.account_id FROM transaction_line_excluded l
+      JOIN transactions t ON t.id = l.transaction_id
+      WHERE t.workspace_id = ${ws.workspaceId}
+        AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`);
+    for (const [transactionId, accountId] of lines) excludedParts.add(`${transactionId}:${accountId}`);
+  }
 
   for (const row of rows) {
     const month = monthOf(row.occurredOn);

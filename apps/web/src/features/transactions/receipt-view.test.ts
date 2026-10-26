@@ -410,6 +410,27 @@ describe('a purchase split across workspaces', () => {
       ['Charged on BCA KrisFlyer ···· 1467', 'Rp 1.350.000'],
     ]);
   });
+
+  it('marks one line of a workspace and not the other, and lists a split in one workspace once a line is out (0096)', () => {
+    const lines = (market.entries as TransactionView['entries']).map((entry) => (entry.accountId === 'cat-groceries' ? { ...entry, excluded: true } : entry));
+    expect(splitParts({ ...market, entries: lines }, withParts).map((part) => [part.categoryName, part.excluded])).toEqual([
+      ['Groceries', true],
+      ['Office supplies', false],
+    ]);
+    // One workspace, two lines: nothing to list until one is out, then each is said.
+    const one = dinner({
+      entries: [
+        { accountId: 'acct-card', accountKind: 'liability', amountMinor: -500_000, amountBaseMinor: -500_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountName: 'Restaurants', accountKind: 'expense', amountMinor: 300_000, amountBaseMinor: 300_000, currency: 'IDR', excluded: true },
+        { accountId: 'cat-groceries', accountName: 'Groceries', accountKind: 'expense', amountMinor: 200_000, amountBaseMinor: 200_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    expect(splitParts(one, withParts).map((part) => [part.categoryName, part.excluded])).toEqual([
+      ['Restaurants', true],
+      ['Groceries', false],
+    ]);
+    expect(splitParts({ ...one, entries: one.entries.map((entry) => ({ ...entry, excluded: undefined })) }, withParts)).toEqual([]);
+  });
 });
 
 describe('a purchase with a part Not counted', () => {
