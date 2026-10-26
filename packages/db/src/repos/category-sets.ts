@@ -14,6 +14,7 @@ import { CategoryDeleteError, deleteCategory } from './category-delete';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
+import { bookSplitsExist } from './book-splits';
 
 export class CategorySetError extends Error {
   constructor(
@@ -330,5 +331,88 @@ export async function copyCategorySet(
       }
     }
     return { id: newSetId, name };
+  }));
+}
+
+/**
+ * Moves a set to another workspace (book) of the same owner, keeping every id: the set and each of its categories are
+ * re-filed (`book_category_sets`, `book_categories`), so the events and plans that name the set, the budgets, the typed
+ * codes and essential marks, and every transaction filed under those categories stay linked. One transaction: all of it
+ * or none.
+ *
+ * What is book-scoped for a set category is exactly those two rows: budgets, bills and event plans reach a book through
+ * their category's `book_categories` row, and events are owner-level, so nothing else needs to travel. A transaction
+ * already in the destination that uses these categories (the state left by moving transactions to a workspace while the
+ * set stayed behind) is healed by the move itself: its categories are now that workspace's.
+ *
+ * A posted transaction still filed in any other workspace under these categories is refused: it would be left reading a
+ * category of a workspace it is not in, which an edit refuses and reports leave out. Move those transactions first.
+ * Refused too: the same workspace, an archived or missing one, and a shared one at either end (sets never sync).
+ */
+export async function moveCategorySet(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { setId: string; toBookId: string },
+): Promise<{ id: string; name: string; moved: number }> {
+  const SHARED = 'A category set cannot be moved into or out of a shared workspace, because sets are not shared';
+  if (await isBookShared(database, input.toBookId)) throw new CategorySetError('SHARED_BOOK', SHARED);
+  return database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {
+    if (!(await hasBooks(tx))) throw new CategorySetError('NO_BOOK', 'This database has no workspaces to move into');
+    const [dest] = await tx
+      .select({ id: books.id })
+      .from(books)
+      .where(and(eq(books.id, input.toBookId), eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)));
+    if (!dest) throw new CategorySetError('NO_DESTINATION', 'That workspace is not here, or is archived');
+    if (await isJoinedBookTx(tx, input.toBookId)) throw new CategorySetError('SHARED_BOOK', SHARED);
+    const [set] = await tx
+      .select({ id: categorySets.id, name: categorySets.name })
+      .from(categorySets)
+      .where(and(eq(categorySets.workspaceId, ws.workspaceId), eq(categorySets.id, input.setId), isNull(categorySets.archivedAt)));
+    if (!set) throw new CategorySetError('NOT_FOUND', 'That set is not in this workspace');
+    const [from] = await tx.select({ bookId: bookCategorySets.bookId }).from(bookCategorySets).where(eq(bookCategorySets.setId, set.id));
+    const fromBookId = from?.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
+    if (fromBookId === input.toBookId) throw new CategorySetError('SAME_BOOK', 'That set is already in this workspace');
+    if (fromBookId && (await isJoinedBookTx(tx, fromBookId))) throw new CategorySetError('SHARED_BOOK', SHARED);
+
+    // Every category of the set, archived ones too: they keep their history, and a half-moved set would split it.
+    const members = (
+      await tx
+        .select({ id: categorySetMembers.categoryAccountId })
+        .from(categorySetMembers)
+        .where(and(eq(categorySetMembers.setId, set.id), eq(categorySetMembers.workspaceId, ws.workspaceId)))
+    ).map((row) => row.id);
+
+    if (members.length > 0) {
+      const inSplits = (await bookSplitsExist(tx))
+        ? sql`OR t.id IN (SELECT transaction_id FROM book_transaction_splits WHERE book_id <> ${input.toBookId})`
+        : sql``;
+      const strays = await tx.values<[string]>(sql`
+        SELECT DISTINCT t.id FROM transactions t
+        JOIN entries e ON e.transaction_id = t.id
+        WHERE t.workspace_id = ${ws.workspaceId} AND t.status <> 'void'
+          AND (e.account_id IN ${members} OR e.spend_category_id IN ${members})
+          AND (t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${input.toBookId}) ${inSplits})`);
+      if (strays.length > 0) {
+        const n = strays.length;
+        throw new CategorySetError(
+          'HAS_TRANSACTIONS',
+          `${n} transaction${n === 1 ? '' : 's'} in another workspace still use${n === 1 ? 's' : ''} this set’s categories. Move ${n === 1 ? 'it' : 'them'} to the new workspace first.`,
+        );
+      }
+      await tx
+        .update(bookCategories)
+        .set({ bookId: input.toBookId })
+        .where(and(eq(bookCategories.workspaceId, ws.workspaceId), inArray(bookCategories.categoryAccountId, members)));
+      // A set category made before it could be filed has no row yet: it is filed now.
+      const filed = new Set(
+        (await tx.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(inArray(bookCategories.categoryAccountId, members))).map((row) => row.id),
+      );
+      for (const id of members) {
+        if (!filed.has(id)) await tx.insert(bookCategories).values({ categoryAccountId: id, workspaceId: ws.workspaceId, bookId: input.toBookId });
+      }
+    }
+    const refiled = await tx.update(bookCategorySets).set({ bookId: input.toBookId }).where(eq(bookCategorySets.setId, set.id)).returning({ id: bookCategorySets.setId });
+    if (refiled.length === 0) await tx.insert(bookCategorySets).values({ setId: set.id, workspaceId: ws.workspaceId, bookId: input.toBookId });
+    return { id: set.id, name: set.name, moved: members.length };
   }));
 }
