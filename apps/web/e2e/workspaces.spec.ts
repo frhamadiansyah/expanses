@@ -305,7 +305,7 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Consulting');
 
   // Archiving asks twice, and the app cannot stay in a workspace that has just been put away.
-  await page.getByRole('button', { name: 'Archive workspace' }).click();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
@@ -317,7 +317,7 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
 
   // Personal stays, and says why in the place it was asked to go.
   await workspaceLine(page, 'Personal').getByTestId('workspace-open').click();
-  await page.getByRole('button', { name: 'Archive workspace' }).click();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
 

@@ -52,7 +52,7 @@ test('Account: switch by the row, open a workspace by its ›, retype it, archiv
   await expect(page.getByRole('button', { name: /^Type/ })).toContainText('Family');
 
   // Archive asks twice, lands back on the page, and the workspace is listed in the same group, muted.
-  await page.getByRole('button', { name: 'Archive workspace' }).click();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);

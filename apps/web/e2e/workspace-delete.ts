@@ -32,7 +32,7 @@ export async function deleteEmpty(page: Page) {
   await expect(page.getByTestId('account-workspace')).toHaveCount(2);
   await openPage(page, 'Warung');
   const del = page.getByTestId('delete-workspace');
-  await expect(del).toHaveText('Delete workspace');
+  await expect(del).toHaveText('Delete');
   await del.click();
   await expect(del).toHaveText('Click again to delete');
   await del.click();
@@ -88,7 +88,7 @@ export async function refusePersonal(page: Page) {
 export async function archiveAndRestore(page: Page) {
   await makeWorkspace(page, 'Kiosk', false);
   await openPage(page, 'Kiosk');
-  await page.getByRole('button', { name: 'Archive workspace' }).click();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(1);

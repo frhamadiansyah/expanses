@@ -207,7 +207,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
             </InsetGroup>
             <InsetGroup wide>
               <DestructiveRow calm testId="restore-workspace" label="Restore" onClick={() => !busy && void restore()} />
-              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete workspace'} onClick={() => !busy && void remove()} />
+              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete'} onClick={() => !busy && void remove()} />
             </InsetGroup>
           </>
         ) : (
@@ -269,8 +269,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
 
             {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
             <InsetGroup wide>
-              <DestructiveRow calm label={armed ? 'Click again to archive' : 'Archive workspace'} onClick={() => !busy && (armed ? void archive() : setArmed(true))} />
-              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete workspace'} onClick={() => !busy && void remove()} />
+              <DestructiveRow calm label={armed ? 'Click again to archive' : 'Archive'} onClick={() => !busy && (armed ? void archive() : setArmed(true))} />
+              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete'} onClick={() => !busy && void remove()} />
             </InsetGroup>
           </>
         )}
