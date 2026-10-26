@@ -5,6 +5,7 @@ import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTr
 import { activeNetWorthGroup, NetWorthError, type ActiveNetWorthGroup } from '../../repos/net-worth-sharing';
 import { bookContextTx, placeholderAccountTx } from '../apply';
 import { withCapture, withCaptureSuspended } from '../capture';
+import { isJointItemTx } from '../../repos/joint-account-rows';
 import { receivedItems } from './summaries';
 
 /*
@@ -38,12 +39,21 @@ export interface MemberTransferInput {
   from: MemberTransferSide;
   to: MemberTransferSide;
   description: string | null;
+  /**
+   * This member's own account when it is NOT shared with the household (0100). Allowed only against a partner's joint
+   * account: the group log then names this side by its owner alone (`PRIVATE_SIDE`), so which account it is stays on
+   * this phone. When the account turns out to be shared, the transfer is the ordinary one between two shared items.
+   */
+  ownAccountId?: string;
 }
+
+/** The item id of a side that is its owner's account kept private: the group log never names the account. */
+export const PRIVATE_SIDE = '';
 
 export type MemberTransferPatch = Partial<{ occurredOn: string; amountMinor: number; description: string | null }>;
 
 /** Why this device posted nothing for a transfer it is a party of. */
-export type UnpostedReason = 'group-inactive' | 'author-not-member' | 'party-not-member' | 'item-not-here' | 'no-rate' | 'malformed';
+export type UnpostedReason = 'group-inactive' | 'not-joint' | 'author-not-member' | 'party-not-member' | 'item-not-here' | 'no-rate' | 'malformed';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -106,11 +116,24 @@ export async function recordMemberTransfer(database: Database, workspaceBookId: 
   const mine = t.from.owner === me ? t.from : t.to;
   const theirs = t.from.owner === me ? t.to : t.from;
   if (!group.members.includes(theirs.owner)) throw new NetWorthError('invalid', 'That person is not in this net-worth group');
-  const own = await ownItemAccount(database.db, groupBookId, me, mine.itemId);
-  if (!own) throw new NetWorthError('item-not-shared', 'This account is not shared with the household. Share it first, or pick another.');
+  let own = await ownItemAccount(database.db, groupBookId, me, mine.itemId);
   const partner = (await receivedItems(database, groupBookId)).find((item) => item.itemId === theirs.itemId && item.owner === theirs.owner);
   if (!partner) throw new NetWorthError('item-not-shared', 'That item is no longer shared. Pick another.');
+  // An own account that is not shared: allowed against a partner's joint account only (0100), kept private in the log.
+  let privateAccount: string | null = null;
+  if (!own && t.ownAccountId) {
+    if (partner.joint !== true) throw new NetWorthError('item-not-shared', 'This account is not shared with the household. Share it first, or pick another.');
+    const [row] = await database.db.values<[string, string | null]>(sql`
+      SELECT id, currency FROM accounts WHERE id = ${t.ownAccountId} AND kind IN ('asset', 'liability') AND archived_at IS NULL
+        AND id NOT IN (SELECT account_id FROM book_member_accounts)`);
+    if (!row) throw new NetWorthError('invalid', 'Pick one of this person’s own accounts');
+    own = { accountId: row[0], currency: row[1] };
+    privateAccount = row[0];
+  }
+  if (!own) throw new NetWorthError('item-not-shared', 'This account is not shared with the household. Share it first, or pick another.');
   if (own.currency !== t.currency || partner.currency !== t.currency) throw new NetWorthError('invalid', `Both accounts must be in ${t.currency}`);
+  const from = t.from.owner === me ? { owner: me, itemId: privateAccount ? PRIVATE_SIDE : t.from.itemId } : t.from;
+  const to = t.to.owner === me ? { owner: me, itemId: privateAccount ? PRIVATE_SIDE : t.to.itemId } : t.to;
 
   const transferId = uuidv7();
   await database.transaction(async (tx) => {
@@ -118,9 +141,10 @@ export async function recordMemberTransfer(database: Database, workspaceBookId: 
       await tx.run(sql`
         INSERT INTO member_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, from_json, to_json, description, void, recorded_by)
         VALUES (${groupBookId}, ${transferId}, ${t.occurredOn}, ${t.amountMinor}, ${t.currency},
-                ${JSON.stringify({ owner: t.from.owner, itemId: t.from.itemId })}, ${JSON.stringify({ owner: t.to.owner, itemId: t.to.itemId })},
+                ${JSON.stringify({ owner: from.owner, itemId: from.itemId })}, ${JSON.stringify({ owner: to.owner, itemId: to.itemId })},
                 ${t.description?.trim() || null}, 0, ${me})`);
     });
+    if (privateAccount) await tx.run(sql`INSERT INTO member_transfer_accounts (book_id, transfer_id, account_id) VALUES (${groupBookId}, ${transferId}, ${privateAccount})`);
     await postTransferSideTx(tx, groupBookId, transferId, me);
   });
   return transferId;
@@ -354,10 +378,22 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
   const side = from.owner === me ? 'from' : 'to';
   const mine = side === 'from' ? from : to;
   const other = side === 'from' ? to.owner : from.owner;
-  const [account] = await tx.values<[string]>(sql`
-    SELECT m.account_id FROM nw_item_map m JOIN accounts a ON a.id = m.account_id
-    WHERE m.item_id = ${mine.itemId} AND m.group_book_id = ${groupBookId} AND a.currency = ${currency}
-      AND a.kind IN ('asset', 'liability') AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
+  const otherSide = side === 'from' ? to : from;
+  let account: [string] | undefined;
+  if (mine.itemId === PRIVATE_SIDE) {
+    // An own account kept private (0100): this phone remembers which one.
+    account = (await tx.values<[string]>(sql`
+      SELECT a.id FROM member_transfer_accounts x JOIN accounts a ON a.id = x.account_id
+      WHERE x.book_id = ${groupBookId} AND x.transfer_id = ${transferId} AND a.currency = ${currency}`))[0];
+  } else {
+    // The other person's side is their private account: the holder takes it only against a joint account (a transfer
+    // already posted keeps following its edits whatever the switch says now).
+    if (otherSide.itemId === PRIVATE_SIDE && !posted && !(await isJointItemTx(tx, me, mine.itemId))) return unposted('not-joint');
+    account = (await tx.values<[string]>(sql`
+      SELECT m.account_id FROM nw_item_map m JOIN accounts a ON a.id = m.account_id
+      WHERE m.item_id = ${mine.itemId} AND m.group_book_id = ${groupBookId} AND a.currency = ${currency}
+        AND a.kind IN ('asset', 'liability') AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`))[0];
+  }
   if (!account) return unposted('item-not-here');
   const ratesToBase: Record<string, number> = {};
   if (currency !== ctx.ws.baseCurrency) {
@@ -367,6 +403,8 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
   }
   const [name] = await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${group.workspaceBookId} AND member_id = ${other}`);
   const who = name?.[0] || 'the partner';
+  // A transfer of a joint account names it on both phones, as the account's rows do.
+  const jointName = (await jointItemNameTx(tx, mine)) ?? (await jointItemNameTx(tx, otherSide));
   const sign = side === 'from' ? -1 : 1;
   const lines: PostingLine[] = [
     { accountId: account[0], amountMinor: sign * amountMinor, currency },
@@ -374,7 +412,7 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
   ];
   const input: PostTransactionInput = {
     occurredOn,
-    description: description?.trim() || (side === 'from' ? `Transfer to ${who}` : `Transfer from ${who}`),
+    description: description?.trim() || `${side === 'from' ? `Transfer to ${who}` : `Transfer from ${who}`}${jointName ? ` · ${jointName}` : ''}`,
     lines,
     ratesToBase,
     syncAuthor: author,
@@ -391,6 +429,18 @@ export async function postTransferSideTx(tx: Tx, groupBookId: string, transferId
     await tx.run(sql`UPDATE member_transfer_postings SET transaction_id = ${id} WHERE book_id = ${groupBookId} AND transfer_id = ${transferId}`);
   });
   await setUnposted(tx, groupBookId, transferId, null);
+}
+
+/** The name of the item a side names when it is a joint account (0097), else null. */
+async function jointItemNameTx(tx: Tx, side: MemberTransferSide): Promise<string | null> {
+  if (side.itemId === PRIVATE_SIDE || !(await isJointItemTx(tx, side.owner, side.itemId))) return null;
+  const [row] = await tx.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${side.itemId} AND owner = ${side.owner} AND removed = 0`);
+  try {
+    const name = (JSON.parse(row![0]) as { name?: unknown }).name;
+    return typeof name === 'string' && name ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Whether a posted side already reads as `input`: its date, note and every line — nothing to replace. */

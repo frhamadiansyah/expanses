@@ -454,6 +454,7 @@ export class CaptureSession {
         return Object.keys(fields).length ? { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields } } : null;
       }
       // Voided, or re-filed with no category line (check #18): it left the book.
+      await rememberLastHeadTx(this.tx, lineageId);
       await this.tx.run(sql`UPDATE sync_lineage SET head_transaction_id = NULL WHERE lineage_id = ${lineageId}`);
       return { bookId: book.bookId, op: { entity: 'purchase', id: lineageId, op: 'upsert', fields: { void: true } } };
     }
@@ -1318,6 +1319,21 @@ export async function captureCardChangingTx(tx: Db, transactionId: string): Prom
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
   if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
+/**
+ * Keeps the transaction a lineage is about to lose as its head (it is being voided), so a joint account's list can still
+ * read the deleted row (0100). Local only; a database from before the table keeps nothing.
+ */
+export async function rememberLastHeadTx(tx: Db, lineageId: string): Promise<void> {
+  try {
+    await tx.run(sql`
+      INSERT INTO sync_lineage_last (lineage_id, transaction_id)
+      SELECT lineage_id, head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId} AND head_transaction_id IS NOT NULL
+      ON CONFLICT (lineage_id) DO UPDATE SET transaction_id = excluded.transaction_id`);
+  } catch {
+    /* a database from before migration 0100 */
+  }
 }
 
 /** The ledger's void door (`markVoidTx`), called before the status changes, so the lineage's before is still readable. */

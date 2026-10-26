@@ -6,7 +6,7 @@ import { useActiveNetWorthGroup, useJointAccount, useOwnJointRows } from './net-
 
 /*
  * A joint account's rows (0097): what the shared workspace recorded against the account, on the holder's page and the
- * partner's alike, each with who recorded it. Rows recorded in any other workspace are not among them.
+ * partner's alike, each with who recorded it, and either person can open and change any of them. Rows recorded in any other workspace are not among them.
  */
 
 const DAY_LABEL = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -20,7 +20,7 @@ export function JointRowsGroup({ rows, me, names }: { rows: readonly JointRow[];
   return (
     <InsetGroup
       header={`Joint account · ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`}
-      info="Rows recorded in the shared workspace against this account, the same on both phones. Only the person who recorded a row can change it."
+      info="Rows recorded in the shared workspace against this account, the same on both phones. Either person can open and change any of them."
     >
       {rows.length === 0 ? <InsetRow title="None yet" chevron={false} /> : null}
       {rows.map((row) => (
@@ -31,7 +31,8 @@ export function JointRowsGroup({ rows, me, names }: { rows: readonly JointRow[];
           subtitle={`${DAY_LABEL(row.occurredOn)} · ${recordedByLabel(row.recordedBy, me, names)}`}
           value={<Money minor={row.amountMinor} currency={row.currency} />}
           valueTone="ink"
-          chevron={false}
+          chevron={row.transactionId !== null}
+          {...(row.transactionId ? { to: '/transactions/$transactionId', params: { transactionId: row.transactionId } } : {})}
         />
       ))}
     </InsetGroup>
