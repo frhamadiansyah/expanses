@@ -62,7 +62,8 @@ async function buy(page: Page, p: { card: string; description: string; category:
   await expect(page.getByText(p.description)).toBeVisible();
 }
 
-const thisCycle = (page: Page) => page.locator('section', { has: page.getByRole('heading', { name: /^This cycle:/ }) });
+// The points page is its own screen: its boxes are the cycle's figures, where they came from, and the links.
+const thisCycle = (page: Page) => page.getByRole('main');
 
 test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with full progress', async ({ page }) => {
   await addCard(page, 'BCA KF Signature');
@@ -94,7 +95,12 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
   // 54 base points plus 54 for spending in SGD; 100 of them transfer in steps of 20 to 50 KrisFlyer miles.
   await expect(cycle.getByText(/540\.000 → 54 points/)).toHaveCount(2);
   await expect(cycle).toContainText('108');
-  await expect(cycle).toContainText('50 KrisFlyer');
+  // What the 108 would transfer to is the programme's, on its own page.
+  await page.getByRole('button', { name: 'BCA UnionPay Card', exact: true }).click();
+  await cardPage(page, 'Settings');
+  await page.getByTestId('points-balance').click();
+  await expect(page.getByText('If transferred')).toBeVisible();
+  await expect(page.getByRole('main')).toContainText('50 KrisFlyer');
 });
 
 test('editing a catalogue rule makes the card customised', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { computeCycleEarn, type CycleBonus, type EarnRule, type SpendLine } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { checkedTotals, describeSuggestion, purchasesOf } from './hint-text';
+import { checkedTotals, describeSuggestion, earnedNothing, purchasesOf } from './hint-text';
 import type { CycleResult } from './useCardPoints';
 
 const line = (transactionId: string, amountMinor: number, over: Partial<SpendLine> = {}): SpendLine => ({
@@ -53,5 +53,25 @@ describe('describeSuggestion', () => {
       /Rp\s20\.000\.000 counted toward the bonus, right at the Rp\s20\.000\.000 threshold for 1\.000 miles/,
     );
     expect(describeSuggestion({ kind: 'rounding', points: -1 }, 'points', 'IDR')).toBe('A difference of 1 points can come from how the bank rounds each purchase.');
+  });
+});
+
+describe('earnedNothing', () => {
+  const matching: EarnRule = { ...base, id: 'dining', match: { mccs: ['5812'] } };
+  it('keeps the purchases no rule matched, and leaves out card fees, refunds and what earned', () => {
+    const lines = [
+      line('earns', 100_000),
+      line('nothing', 50_000, { mcc: '5411', description: 'NOTHING' }),
+      line('fee', 15_000, { cardFee: true, mcc: null, mccSource: null }),
+      line('refund', -20_000, { mcc: '5411' }),
+    ];
+    const earn = computeCycleEarn(lines, [matching], {}, { bonuses: [], cycleEnd: '2026-09-25' });
+    const rows = earnedNothing(purchasesOf(lines), earn.pointsByTransaction);
+    expect(rows.map((row) => row.transactionId)).toEqual(['nothing']);
+  });
+  it('is empty when every purchase earned', () => {
+    const lines = [line('a', 100_000), line('b', 40_000)];
+    const earn = computeCycleEarn(lines, [base], {}, { bonuses: [], cycleEnd: '2026-09-25' });
+    expect(earnedNothing(purchasesOf(lines), earn.pointsByTransaction)).toEqual([]);
   });
 });

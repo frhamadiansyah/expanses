@@ -24,6 +24,14 @@ export function purchasesOf(lines: readonly SpendLine[]): PurchaseRow[] {
 }
 
 /**
+ * The purchases of a cycle that earned nothing: no rule matched, so the points are 0. Card fees never earn, so they are
+ * not among them, and nor is a refund.
+ */
+export function earnedNothing(purchases: readonly PurchaseRow[], pointsByTransaction: Readonly<Record<string, number>>): PurchaseRow[] {
+  return purchases.filter((purchase) => !purchase.cardFee && purchase.amountMinor > 0 && (pointsByTransaction[purchase.transactionId] ?? 0) === 0);
+}
+
+/**
  * Running total for a card that credits per purchase: actuals for checked purchases, estimates for the rest, plus the
  * bonus points credited when recorded or the estimated bonuses otherwise.
  */

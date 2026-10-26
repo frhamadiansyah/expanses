@@ -78,7 +78,7 @@ async function buy(page: Page, p: Purchase) {
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
 }
 
-const thisCycle = (page: Page) => page.locator('section', { has: page.getByRole('heading', { name: /^This cycle:/ }) });
+const thisCycle = (page: Page) => page.getByRole('main');
 // The statements panel lists the same purchases; these tests are about the points list, whose rows say so.
 const purchaseRow = (page: Page, description: string) => page.getByTestId('purchase').filter({ hasText: description });
 

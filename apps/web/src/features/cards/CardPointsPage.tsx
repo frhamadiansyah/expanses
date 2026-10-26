@@ -1,19 +1,18 @@
-import { type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
-import { type AccountRow, backfillCycles, listCycleActuals, recordCycleActual } from '@expanses/db';
+import { type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, previousCycle, type Redemption } from '@expanses/core';
+import { type AccountRow, listCycleActuals, recordCycleActual } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PanelHeader, ReadOnlyRow, TextRow } from '../../ui/native';
-import { BonusProgress } from './BonusProgress';
+import { InsetGroup, InsetRow, PanelHeader, ReadOnlyRow, TextRow, toneClass } from '../../ui/native';
+import { bonusProgressRows } from './BonusProgress';
 import { capMeter } from './cap-meter';
 import { CardScreen, type CardPage, useCardAction, useCardPage } from './card-page';
 import { activeDuring } from './catalog-panel';
 import { describeSuggestion, purchasesOf } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
-import { ActionRow, Capsule, EARLIER, FigureRow, Line, Meter, StepperRow, SubmitRow, SUBTITLE, TextLine } from './rows';
-import { TransferEstimates } from './TransferEstimates';
+import { Capsule, EARLIER, FigureRow, Line, Meter, StepperRow, SubmitRow, SUBTITLE, TextLine } from './rows';
 import { refreshLedger } from './useCardLedger';
 import { type CardPoints, type CycleResult, formatPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
 
@@ -32,41 +31,38 @@ function CycleSummary({
   result,
   rules,
   bonuses,
-  partners,
   unit,
   currency,
   best,
-  title,
-  today,
+  cardId,
 }: {
   result: CycleResult;
   rules: EarnRule[];
   bonuses: CycleBonus[];
-  partners: TransferPartner[];
   unit: string;
   currency: string;
   best: Redemption | null;
-  title: string;
-  today: string;
+  cardId: string;
 }) {
   // Catalogue cards keep earlier terms as dated rules; only those in force during the cycle are relevant here.
   const activeRules = rules.filter((rule) => activeDuring(rule, result.cycle.start, result.cycle.end));
   const spend = result.lines.reduce((s, l) => s + Math.max(0, l.amountMinor), 0);
   const value = pointsValue(result.earn.totalPoints, best);
+  const bonusRows = bonusProgressRows(bonuses, result, unit, currency);
+  const hasSources = activeRules.length > 0 || bonusRows.length > 0 || result.earn.unearnedSpendMinor > 0 || result.earn.cardFeeSpendMinor > 0;
   /*
-   * One section, several groups: the cycle's three figures, then each rule, each bonus and each partner as rows.
-   * The heading names the whole section, so everything the cycle says is found under it.
+   * Two boxes: the cycle's three figures under its dates, then where they came from — each rule, each spend bonus,
+   * and what earned nothing, which opens the purchases that did not earn.
    */
   return (
-    <section className="mb-[18px]">
-      <PanelHeader title={`${title}: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`} />
-      <InsetGroup>
+    <>
+      <InsetGroup header={`${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}>
         <ReadOnlyRow label="Spend" value={formatMinor(spend, currency)} />
         <ReadOnlyRow label={`Projected ${unit}`} value={formatPoints(result.earn.totalPoints)} />
         {value !== null && best && <ReadOnlyRow label="Worth about" value={formatMinor(value, best.currency)} />}
       </InsetGroup>
-      {(activeRules.length > 0 || result.earn.unearnedSpendMinor > 0 || result.earn.cardFeeSpendMinor > 0) && (
-        <InsetGroup header="By rule">
+      {hasSources && (
+        <InsetGroup header="Where they came from">
           {activeRules.map((rule) => {
             const used = result.earn.spendByRule[rule.id] ?? 0;
             const cap = rule.capSpendMinor ? capMeter(used, rule.capSpendMinor) : null;
@@ -83,17 +79,25 @@ function CycleSummary({
               </FigureRow>
             );
           })}
+          {bonusRows}
           {result.earn.unearnedSpendMinor > 0 && (
-            <TextLine tone="warn">{formatMinor(result.earn.unearnedSpendMinor, currency)} earned nothing — no rule matched. Add a base rule?</TextLine>
+            <Line testId="earned-nothing">
+              <Link to="/cards/$cardId/points/purchases" params={{ cardId }} search={{ filter: 'nothing' }} className="ph-focus flex w-full items-center gap-[8px] text-left">
+                <span className={cx('min-w-0 flex-1 text-[14px] leading-[19px]', toneClass('warn'))}>
+                  {formatMinor(result.earn.unearnedSpendMinor, currency)} earned nothing — no rule matched. Add a base rule?
+                </span>
+                <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+                  ›
+                </span>
+              </Link>
+            </Line>
           )}
           {result.earn.cardFeeSpendMinor > 0 && (
             <TextLine tone="ink-3">{formatMinor(result.earn.cardFeeSpendMinor, currency)} in card fees and charges earns no points.</TextLine>
           )}
         </InsetGroup>
       )}
-      <BonusProgress bonuses={bonuses} result={result} unit={unit} currency={currency} />
-      <TransferEstimates partners={partners} points={result.earn.totalPoints} unit={unit} today={today} />
-    </section>
+    </>
   );
 }
 
@@ -112,16 +116,15 @@ function NotEarning({ page }: { page: CardPage }) {
 
 /**
  * This statement's points, on a page of their own: the cycle still open — its spend, its projection and what that is
- * worth, each rule with its cap, the spend bonuses and the transfers — then the purchases and the statement's own
- * figure a tap away, what the annual fee bought, and the catch-up for cycles from before the app.
+ * worth, each rule with its cap and the spend bonuses — then the purchases and the statement's own figure a tap away.
  *
- * What is done with a balance — redeem, convert, set it to the issuer's figure — is the programme's, on its page.
+ * What is done with a balance — redeem, convert, set it to the issuer's figure — and what the points would transfer to
+ * are the programme's, on its page, as is the catch-up for cycles from before the app.
  */
 export function CardPointsPage() {
   const { cardId } = pointsRoute.useParams();
   const { page, gate } = useCardPage(cardId);
-  const { database, ws } = useApp();
-  const { error, run } = useCardAction();
+  const { error } = useCardAction();
   const fallback = `/cards/${cardId}` as const;
   if (!page) {
     return (
@@ -130,16 +133,14 @@ export function CardPointsPage() {
       </CardScreen>
     );
   }
-  const { card, cp, ledger, currency, today } = page;
+  const { card, cp, currency } = page;
   const program = cp.program;
   const purchases = cp.current ? purchasesOf(cp.current.lines).length : 0;
   return (
     <CardScreen title={TITLE} back={card.name} fallback={fallback}>
       <ErrorBox error={error} />
       {!earning(cp) && <NotEarning page={page} />}
-      {program && cp.current && earning(cp) && (
-        <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={program.unit} currency={currency} best={cp.best} today={today} />
-      )}
+      {program && cp.current && earning(cp) && <CycleSummary result={cp.current} rules={cp.rules} bonuses={cp.bonuses} unit={program.unit} currency={currency} best={cp.best} cardId={card.id} />}
       {program && earning(cp) && (cp.current || cp.previous) && (
         <InsetGroup>
           {cp.current && (
@@ -160,12 +161,6 @@ export function CardPointsPage() {
           )}
         </InsetGroup>
       )}
-
-      {program && ledger.data && cp.programme && (
-        <InsetGroup footer="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — set the programme's balance to the one the issuer shows instead.">
-          <ActionRow label="Catch up this card" onClick={() => void run(() => backfillCycles(database, ws, program.id, 24, today))} />
-        </InsetGroup>
-      )}
     </CardScreen>
   );
 }
@@ -173,6 +168,8 @@ export function CardPointsPage() {
 /** Each purchase of this cycle or the last, with what it earned and — when the bank credits per purchase — what it gave. */
 export function CardPurchasesPage() {
   const { cardId } = purchasesRoute.useParams();
+  const { filter } = purchasesRoute.useSearch();
+  const navigate = useNavigate();
   const { page, gate } = useCardPage(cardId);
   const { error, run } = useCardAction();
   const fallback = `/cards/${cardId}/points` as const;
@@ -180,7 +177,7 @@ export function CardPurchasesPage() {
     <CardScreen title="Purchases" back={BACK} fallback={fallback}>
       {gate}
       <ErrorBox error={error} />
-      {page && (earning(page.cp) ? <PurchaseList cp={page.cp} run={run} currency={page.currency} /> : <NotEarning page={page} />)}
+      {page && (earning(page.cp) ? <PurchaseList cp={page.cp} run={run} currency={page.currency} onlyNothing={filter === 'nothing'} onShowAll={() => void navigate({ to: '/cards/$cardId/points/purchases', params: { cardId }, search: {}, replace: true })} /> : <NotEarning page={page} />)}
     </CardScreen>
   );
 }
