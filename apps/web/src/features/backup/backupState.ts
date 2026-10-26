@@ -110,6 +110,8 @@ export function copyReasonWords(reason: SnapshotReason): string {
       return 'Taken before a restore';
     case 'before-start-fresh':
       return 'Taken before starting fresh';
+    case 'before-delete':
+      return 'Taken before deleting a workspace';
     case 'daily':
       return 'The day’s copy';
   }

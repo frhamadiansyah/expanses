@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate } from '@expanses/core';
-import { archiveBook, type BookKind, type BookRow, findRate, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
+import { archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -11,6 +11,7 @@ import { ErrorBox } from '../../ui';
 import { type CornerAction, DestructiveRow, InsetGroup, InsetRow, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useSharedBooks } from '../sharing/queries';
 import { SharingSection } from '../sharing/SharingSection';
+import { DeleteWorkspaceSheet } from './DeleteWorkspaceSheet';
 import { useArchivedBooks, useBooks } from './queries';
 
 export const KIND_LABEL: Record<string, string> = { personal: 'Personal', business: 'Business', family: 'Family', shared: 'Shared' };
@@ -74,6 +75,9 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const [name, setName] = useState(book.name);
   const [currency, setCurrency] = useState(book.baseCurrency);
   const [armed, setArmed] = useState(false);
+  // Delete asks once for an empty workspace (armed) and opens the typed-name sheet for one that holds transactions.
+  const [armedDelete, setArmedDelete] = useState(false);
+  const [deleting, setDeleting] = useState<BookDeletePlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [choosingType, setChoosingType] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -158,6 +162,30 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
       return null;
     });
 
+  // The app cannot stay in a workspace that has just gone: it falls back to Personal, as every other fallback does.
+  const leave = async () => {
+    if (book.id === ws.bookId) {
+      const rest = (books.data ?? []).filter((other) => other.id !== book.id);
+      const next = rest.find((other) => other.kind === 'personal') ?? rest[0];
+      if (next) await switchBook(next.id);
+    }
+    void navigate({ to: '/account' });
+  };
+
+  const remove = () =>
+    run(async () => {
+      if (armedDelete) {
+        await deleteBook(database, ws, book.id);
+        await leave();
+        return null;
+      }
+      const plan = await planBookDelete(database, ws, book.id);
+      if (plan.refusal) throw new BookError(plan.refusalCode ?? 'IN_USE', plan.refusal);
+      if (plan.empty) setArmedDelete(true);
+      else setDeleting(plan);
+      return null;
+    });
+
   const actions: CornerAction[] = isArchived
     ? []
     : [{ key: 'save', label: 'Save name', glyph: <Check size={20} aria-hidden />, disabled: !renamable, run: () => void rename() }];
@@ -178,7 +206,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
               <ReadOnlyRow label="Status" value="Archived" />
             </InsetGroup>
             <InsetGroup wide>
-              <InsetRow testId="restore-workspace" title="Restore" chevron={false} valueTone="tint" onClick={() => !busy && void restore()} className={busy ? 'opacity-40' : undefined} />
+              <DestructiveRow calm testId="restore-workspace" label="Restore" onClick={() => !busy && void restore()} />
+              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete workspace'} onClick={() => !busy && void remove()} />
             </InsetGroup>
           </>
         ) : (
@@ -241,10 +270,12 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
             {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
             <InsetGroup wide>
               <DestructiveRow calm label={armed ? 'Click again to archive' : 'Archive workspace'} onClick={() => !busy && (armed ? void archive() : setArmed(true))} />
+              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete workspace'} onClick={() => !busy && void remove()} />
             </InsetGroup>
           </>
         )}
       </div>
+      {deleting && <DeleteWorkspaceSheet book={book} plan={deleting} onClose={() => setDeleting(null)} onDeleted={leave} />}
       {choosingType && <TypeSheet current={book.kind} onChoose={changeKind} onClose={() => setChoosingType(false)} />}
     </div>
   );

@@ -365,9 +365,14 @@ export function DestructiveRow({
   position,
   muted = false,
   calm = false,
+  disabled = false,
+  testId,
 }: GroupChild & {
   label: string;
   onClick: () => void;
+  /** Cannot be pressed at all (the button is disabled), drawn grey: a confirmation that waits for something typed. */
+  disabled?: boolean;
+  testId?: string;
   /** Drawn in the ordinary ink, not the alarm's: a way out that loses nothing, such as Archive. */
   calm?: boolean;
   /** Not available yet: drawn grey, and still pressed, so the press can say why rather than a line always under it. */
@@ -378,8 +383,10 @@ export function DestructiveRow({
       <Separator show={Boolean(position?.separator)} />
       <button
         type="button"
+        disabled={disabled}
+        data-testid={testId}
         onClick={onClick}
-        className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted ? 'text-[var(--ph-ink-3)]' : calm ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-alarm)]')}
+        className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted || disabled ? 'text-[var(--ph-ink-3)]' : calm ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-alarm)]')}
         style={shell(false)}
       >
         {label}
