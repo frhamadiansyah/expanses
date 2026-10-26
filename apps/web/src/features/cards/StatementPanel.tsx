@@ -317,7 +317,7 @@ export function StatementPanel({
                 {
                   label: line.owedMinor < 0 ? 'Settled' : 'Paid off',
                   name: `Mark ${line.description} already ${settledWord(line)}`,
-                  icon: CircleCheck,
+                  icon: Check,
                   tone: 'primary',
                   disabled: busy,
                   onPress: () => markPaidOff(line),
