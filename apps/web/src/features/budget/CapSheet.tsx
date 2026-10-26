@@ -210,7 +210,7 @@ export function CapSheet({
 
       {row && (
         <InsetGroup>
-          <InsetRow title={<span className="font-normal">Remove budget</span>} chevron={false} onClick={() => void remove()} label="Remove budget" />
+          <InsetRow title="Remove budget" action onClick={() => void remove()} label="Remove budget" />
         </InsetGroup>
       )}
     </Sheet>

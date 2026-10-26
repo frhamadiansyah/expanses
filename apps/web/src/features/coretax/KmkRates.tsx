@@ -93,7 +93,7 @@ export function KmkRates({ taxYear }: { taxYear: number }) {
       {/* One group an action: a save row sharing a group with the fields it saves is a mistap from saving nothing. */}
       {needed.map((currency) => (
         <InsetGroup key={currency}>
-          <InsetRow title="Save" chevron={false} onClick={() => void save(currency)} />
+          <InsetRow title="Save" action onClick={() => void save(currency)} />
         </InsetGroup>
       ))}
 

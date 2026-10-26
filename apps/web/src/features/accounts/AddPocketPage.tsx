@@ -24,7 +24,7 @@ export function AddPocketPage() {
         onAdded={(landing) => void navigate({ to: '/accounts/$accountId', params: { accountId: landing } })}
       />
       <InsetGroup>
-        <InsetRow title="Add pocket" chevron={false} onClick={() => form.current?.requestSubmit()} />
+        <InsetRow title="Add pocket" action onClick={() => form.current?.requestSubmit()} />
       </InsetGroup>
     </div>
   );

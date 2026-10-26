@@ -162,19 +162,15 @@ export function ActionRow({
   position,
   label,
   onClick,
-  icon,
-  quiet = false,
   disabled = false,
 }: GroupChild & { label: string; onClick: () => void; icon?: ReactNode; quiet?: boolean; disabled?: boolean }) {
   return (
     <InsetRow
       position={position}
-      icon={icon}
-      iconColour={icon ? 'var(--ph-tint)' : undefined}
-      title={<span className={quiet ? 'font-normal text-[var(--ph-ink-2)]' : 'text-[var(--ph-tint)]'}>{label}</span>}
+      title={label}
       onClick={onClick}
       disabled={disabled}
-      chevron={false}
+      action
     />
   );
 }

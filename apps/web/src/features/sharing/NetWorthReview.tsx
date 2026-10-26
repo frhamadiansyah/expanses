@@ -62,7 +62,7 @@ export function NetWorthReview({
 
   const button = (
     <InsetGroup wide>
-      <InsetRow testId="net-worth-share" title={busy ? 'Sharing…' : 'Share'} chevron={false} disabled={busy} onClick={() => void share()} />
+      <InsetRow testId="net-worth-share" title={busy ? 'Sharing…' : 'Share'} action disabled={busy} onClick={() => void share()} />
     </InsetGroup>
   );
 

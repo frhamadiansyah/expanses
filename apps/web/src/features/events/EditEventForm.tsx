@@ -69,7 +69,7 @@ export function EditEventForm({
         <SubmitRow label="Save changes" />
       </InsetGroup>
       <InsetGroup>
-        <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Cancel</span>} label="Cancel" onClick={onDone} chevron={false} />
+        <InsetRow title="Cancel" label="Cancel" onClick={onDone} action />
       </InsetGroup>
     </form>
   );

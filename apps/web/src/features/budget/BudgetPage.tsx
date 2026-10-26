@@ -150,7 +150,7 @@ export function BudgetPage() {
 
           <InsetGroup header="Budgeted">
             {view.budgeted.length === 0 ? (
-              <InsetRow title={<span className="font-normal text-[var(--ph-tint)]">Set budgets</span>} chevron={false} onClick={editBudgets} label="Set budgets" />
+              <InsetRow title="Set budgets" action onClick={editBudgets} label="Set budgets" />
             ) : (
               view.budgeted.flatMap((entry, index) => {
                 if (entry.kind === 'line') {

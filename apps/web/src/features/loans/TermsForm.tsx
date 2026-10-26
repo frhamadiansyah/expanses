@@ -177,8 +177,8 @@ export function TermsForm({
       <ErrorBox error={error} />
       {!formId && (
         <InsetGroup>
-          <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
-          <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+          <InsetRow title="Save terms" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+          <InsetRow title="Cancel" action onClick={onDone} />
         </InsetGroup>
       )}
     </form>

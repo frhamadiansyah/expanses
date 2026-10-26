@@ -67,7 +67,7 @@ export function PlanSheet({
             onClick={() => setOpen(plan)}
           />
         ))}
-        <InsetRow title={<span className="text-[var(--ph-tint)]">Add a plan</span>} label="Add a plan" chevron={false} onClick={() => setOpen('new')} />
+        <InsetRow title="Add a plan" label="Add a plan" action onClick={() => setOpen('new')} />
       </InsetGroup>
     </Sheet>
   );

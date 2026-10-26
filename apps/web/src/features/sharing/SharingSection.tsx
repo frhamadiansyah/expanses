@@ -100,7 +100,7 @@ export function SharingSection({ book }: { book: BookRow }) {
           <SubmitRow label="Share" disabled={!name.trim()} />
         </InsetGroup>
         <InsetGroup wide>
-          <InsetRow title="Not now" chevron={false} onClick={() => setFlow(null)} />
+          <InsetRow title="Not now" action onClick={() => setFlow(null)} />
         </InsetGroup>
       </form>
     );
@@ -231,11 +231,9 @@ function Shared({
       ? [
           <InsetRow
             key={`o:${member.memberId}`}
-            className="pl-[28px]"
-            icon={<Crown size={15} aria-hidden />}
             label={`Make ${member.name} an owner`}
             title="Make owner"
-            chevron={false}
+            action
             onClick={() => void run(() => sync.makeOwner(book.id, member.memberId))}
           />,
         ]
@@ -246,11 +244,9 @@ function Shared({
           steering ? (
             <InsetRow
               key={`l:${member.memberId}`}
-              className="pl-[28px]"
-              icon={<Link2 size={15} aria-hidden />}
               label={member.me ? 'Link a device' : `Link a device for ${member.name}`}
               title={member.me ? 'Link a device' : `Link a device for ${member.name}`}
-              chevron={false}
+              action
               onClick={() =>
                 void run(async () =>
                   onInvite({
@@ -290,9 +286,8 @@ function Shared({
         />
         {steering ? (
           <InsetRow
-            icon={<UserPlus size={15} aria-hidden />}
             title="Invite someone"
-            chevron={false}
+            action
             onClick={() => void run(async () => onInvite({ invite: await sync.invite(book.id, me?.name ?? ''), kind: 'someone' }))}
           />
         ) : null}
@@ -474,16 +469,16 @@ function NetWorthSection({ bookId, detail, groupFailing }: { bookId: string; det
         ) : null}
         {pending?.kind === 'waiting' ? <InsetRow testId="net-worth-waiting" icon={<Landmark size={15} aria-hidden />} title={pending.line} chevron={false} /> : null}
         {pending?.kind === 'waiting' && pending.cancellable ? (
-          <InsetRow title="Cancel" chevron={false} disabled={busy} onClick={() => void run(() => sync.cancelNetWorth(bookId, pending.proposalId))} />
+          <InsetRow title="Cancel" action disabled={busy} onClick={() => void run(() => sync.cancelNetWorth(bookId, pending.proposalId))} />
         ) : null}
         {pending?.kind === 'asked' ? <InsetRow testId="net-worth-asked" icon={<Landmark size={15} aria-hidden />} title={pending.line} chevron={false} /> : null}
         {pending?.kind === 'asked' ? (
-          <InsetRow title="Confirm" chevron={false} disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'confirm'))} />
+          <InsetRow title="Confirm" action disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'confirm'))} />
         ) : null}
         {pending?.kind === 'asked' ? (
           <InsetRow
             title="Choose differently"
-            chevron={false}
+            action
             disabled={busy}
             onClick={() =>
               void run(async () => {

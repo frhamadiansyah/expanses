@@ -45,7 +45,7 @@ export function ShareWithHouseholdRow({ accountId }: { accountId: string }) {
         <ErrorBox error={error} />
         <InsetGroup footer={JOINT_LINE}>
           <InsetRow testId="share-with-household" title="Share with Household" value={row.label} chevron={false} />
-          <InsetRow title="Share" chevron={false} onClick={() => void change('total')} />
+          <InsetRow title="Share" action onClick={() => void change('total')} />
         </InsetGroup>
       </>
     );

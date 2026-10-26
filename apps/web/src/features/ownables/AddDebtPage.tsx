@@ -175,7 +175,7 @@ function DebtItemForm({ item }: { item: string }) {
       {household.element}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-        <InsetRow title="Add debt" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Add debt" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
       </InsetGroup>
     </form>
   );
@@ -430,7 +430,7 @@ export function NewCardForm({
         {!embedded && (
           <InsetGroup>
             {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-            <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+            <InsetRow title="Add card" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
           </InsetGroup>
         )}
       </form>

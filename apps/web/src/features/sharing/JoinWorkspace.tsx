@@ -172,7 +172,7 @@ export function JoinWorkspace({
           )}
           {refusal || unusable ? (
             <InsetGroup wide>
-              <InsetRow title="Try another code" chevron={false} onClick={() => {
+              <InsetRow title="Try another code" action onClick={() => {
                   setPreview(null);
                   onPreview?.(null);
                 }} />

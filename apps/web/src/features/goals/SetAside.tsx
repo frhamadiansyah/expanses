@@ -151,7 +151,7 @@ export function SetAsideGroup({ state }: { state: SetAsideState }) {
         {[
           ...state.rows.map((account) => <SetAsideRow key={account.id} state={state} account={account} />),
           ...(state.addable.length > 0
-            ? [<InsetRow key="add" label="Add an account" title={<span className="text-[var(--ph-tint)]">＋ Add an account</span>} chevron={false} onClick={() => setChoosing(true)} />]
+            ? [<InsetRow key="add" label="Add an account" title="＋ Add an account" action onClick={() => setChoosing(true)} />]
             : []),
         ]}
       </InsetGroup>

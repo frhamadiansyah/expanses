@@ -285,13 +285,13 @@ export function ImportPage() {
           <InsetGroup>
             <InsetRow
               title={`Send ${toReview.length} to review`}
-              chevron={false}
+              action
               className={busy || toReview.length === 0 ? 'opacity-40' : undefined}
               onClick={() => !busy && void onSendToReview()}
             />
             <InsetRow
               title={`Import ${toImport.length} rows`}
-              chevron={false}
+              action
               className={busy || toImport.length === 0 ? 'opacity-40' : undefined}
               onClick={() => !busy && void onImport()}
             />

@@ -109,7 +109,7 @@ export function SharedItemSheet({ view, item, onBuy, onClose }: { view: SharedEv
         {/* Done is its own mark: an item paid for in parts stays on the list until nothing more is to be bought. */}
         <InsetRow
           title={item.done ? 'Reopen' : 'Done buying'}
-          chevron={false}
+          action
           onClick={() => void run(() => setSharedItemDone(database, ownerScope(ws), view.eventId, item.id, !item.done))}
         />
       </InsetGroup>

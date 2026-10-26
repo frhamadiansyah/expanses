@@ -87,9 +87,9 @@ export function TradeGoalsSheet({ trade, holding, onDone, onClose }: { trade: Tr
           <GoalParts parts={splitting} onChange={setSplitting} goals={goalOptions} whole={whole} byMoney={holding.byMoney} currency={holding.currency} unitLabel={holding.unitLabel} />
           <InsetGroup>
             <InsetRow
-              title={<span className="text-[var(--ph-tint)]">Save goals</span>}
+              title="Save goals"
               label="Save goals"
-              chevron={false}
+              action
               onClick={() => {
                 try {
                   const parts = partsFromTyped(splitting, whole, holding.byMoney, holding.currency);

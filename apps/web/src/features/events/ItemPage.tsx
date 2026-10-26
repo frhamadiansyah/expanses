@@ -172,7 +172,7 @@ export function ItemPage() {
                       await setEventItemDone(database, ws, item.id, false);
                     })
                   }
-                  chevron={false}
+                  action
                 />
               </InsetGroup>
             )}
@@ -205,7 +205,7 @@ export function ItemPage() {
               <InsetRow
                 title={item.done ? 'Reopen' : 'Done buying'}
                 onClick={() => void run(() => setEventItemDone(database, ws, item.id, !item.done))}
-                chevron={false}
+                action
               />
             </InsetGroup>
 

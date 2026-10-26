@@ -668,7 +668,7 @@ export function CashAccountForm({
       {!embedded && (
         <InsetGroup>
           {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
-          <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+          <InsetRow title="Add account" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
         </InsetGroup>
       )}
     </form>
