@@ -1,5 +1,5 @@
 import { useCouponsAtStart } from '../features/networth/coupons-at-start';
-import { Link, Outlet, useNavigate } from '@tanstack/react-router';
+import { Link, Outlet, useNavigate, useRouter } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
@@ -62,6 +62,7 @@ function ReviewLink() {
 export function Layout() {
   const { workspaceName, ws, database } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
   // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
   // reaches it from more places than a phone does, never fewer.
   const [choosing, setChoosing] = useState(false);
@@ -180,7 +181,14 @@ export function Layout() {
         <>
           {/* Adding is a screen of its own, drawn the way every other subpage is: the form is long enough to scroll,
               and a sheet over the page it was opened from left two screens half-visible at once. */}
-          <TabBar onAdd={() => void navigate({ to: '/transactions/new' })} />
+          <TabBar
+            onAdd={() => {
+              // Always a fresh Add form: from the Trade page the + replaces it (no `mode`, so Expense and its three tabs),
+              // so Back goes where Trade was opened from rather than to a Trade page the person just left.
+              const onTrade = router.state.location.pathname === '/transactions/new';
+              void navigate({ to: '/transactions/new', replace: onTrade });
+            }}
+          />
         </>
       )}
     </div>

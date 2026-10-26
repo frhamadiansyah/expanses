@@ -340,7 +340,7 @@ function fold(
 export function OverviewPage() {
   const { ws } = useApp();
   const today = isoDate();
-  // What there is to buy or sell, for the corner's Buy or sell: the same list the Add form's trade rows offer.
+  // What there is to buy or sell, for the corner's Trade: the same list the Add form's trade rows offer.
   const assetValues = useAssetValues();
   const assetProfiles = useAssetProfiles();
   /*
@@ -411,12 +411,12 @@ export function OverviewPage() {
    * belongs — an old price on a holding's Settings, a due monthly buy on Recurring, under the bills. Buy & sell was the second until
    * it was folded away (owner, 23 Oct): a trade is recorded on its holding's page, and read with the year's figures on
    * Income, behind Assets' corner. Recording one came back here (owner, 24 Oct) as a corner of its own, taken off the
-   * Add form's tabs: Buy or sell opens the Add screen on the very form that tab drew, once there is a holding to trade.
+   * Add form's tabs: Trade opens the Add screen on the very form that tab drew, once there is a holding to trade.
    */
   const canTrade = buyChoices(assetValues.data ?? [], assetProfiles.data ?? []).buys.length > 0;
   const actions: CornerAction[] = [
     ...(canTrade
-      ? [{ key: 'trade', label: 'Buy or sell', glyph: <ChartCandlestick size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
+      ? [{ key: 'trade', label: 'Trade', glyph: <ChartCandlestick size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
       : []),
     /*
      * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the

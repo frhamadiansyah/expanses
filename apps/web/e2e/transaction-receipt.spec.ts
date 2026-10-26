@@ -98,7 +98,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
   await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 

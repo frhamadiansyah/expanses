@@ -8,7 +8,7 @@
  * it to each other — never where the payment is filed). Nothing given, the form opens as the tab bar's ＋ opens it.
  */
 export interface NewTransactionSearch {
-  /** `trade` is Net worth's Buy or sell corner: the trade rows on their own, with no tabs above them. */
+  /** `trade` is Net worth's Trade corner: the trade rows under their own Buy and Sell tabs, not the Add form's three. */
   mode?: 'expense' | 'income' | 'transfer' | 'trade';
   account?: string;
   to?: string;
