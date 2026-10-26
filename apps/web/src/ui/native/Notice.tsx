@@ -1,23 +1,20 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { type ButtonHTMLAttributes, type ReactNode, useState } from 'react';
-import { Sheet } from '../../app/Sheet';
 import { cx } from '../index';
-import { InsetGroup, InsetRow } from './InsetList';
+import { ALERT_ROW, NoticeAlert } from './NoticeAlert';
 import { type NoticeKind, noticeLook } from './notice-look';
 
 /**
  * The one shape every in-app warning, error and notice takes: a single white tappable row, like a Settings row.
  * A 30 px round icon, a bold one-line title, one short grey line and a chevron. Nothing else sits on the row.
  *
- * Tapping opens a half-height sheet with the full text, the primary action and, where the notice can be put
- * away, a "Not now" row in a group of its own. Amber lives only inside the icon, and nothing here is red.
+ * Tapping opens a centred alert with the text, the primary action and a "Not now" row. Amber lives only inside the icon, and nothing here is red.
  */
 export function Notice({
   kind,
   title,
   line,
   body,
-  detail,
   actions,
   children,
   onDismiss,
@@ -29,15 +26,13 @@ export function Notice({
   title: string;
   /** The one short line under the title. */
   line?: string;
-  /** A sentence or two for the sheet. */
+  /** A sentence or two for the alert. */
   body?: ReactNode;
-  /** Longer text, behind a Details button in the sheet. */
-  detail?: ReactNode;
-  /** The sheet's primary action: a `NoticeButton`, or a link drawn with `NOTICE_BUTTON`. */
+  /** The alert's primary action: a `NoticeButton`, or a link drawn with `NOTICE_BUTTON`. */
   actions?: ReactNode;
-  /** Anything else for the sheet, such as an error from the action. */
+  /** Anything else for the alert, such as an error from the action. */
   children?: ReactNode;
-  /** Present when the notice can be put away; it is offered as a row in the sheet, never on the notice itself. */
+  /** Present when the notice can be put away; it is offered as a row in the alert, never on the notice itself. */
   onDismiss?: () => void;
   dismissLabel?: string;
   testId?: string;
@@ -45,7 +40,6 @@ export function Notice({
 }) {
   const look = noticeLook(kind);
   const [open, setOpen] = useState(false);
-  const [more, setMore] = useState(false);
   const icon = (
     <span
       aria-hidden
@@ -77,51 +71,23 @@ export function Notice({
         )}
       </div>
       {open && (
-        <Sheet grouped tall title={title} onClose={() => setOpen(false)}>
-          <div className="space-y-3 px-1 pb-2">
-            <div className="flex items-start gap-[10px] px-1 pt-1">
-              {icon}
-              <div className="min-w-0 flex-1 text-[15px] leading-[20px] text-[var(--ph-ink)]">
-                <p className="font-semibold">{title}</p>
-                {line != null && <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">{line}</p>}
-                {body != null && <div className="mt-2">{body}</div>}
-              </div>
-            </div>
-            {actions != null && <div className="flex flex-col [&>*]:w-full">{actions}</div>}
-            {children}
-            {detail != null && (
-              <div className="rounded-[12px] bg-[var(--ph-surface)]">
-                <button type="button" aria-expanded={more} onClick={() => setMore((was) => !was)} className="flex min-h-11 w-full items-center justify-between px-3 text-left text-[15px] text-[var(--ph-ink)]">
-                  Details
-                  <ChevronRight size={18} aria-hidden className={cx('text-[var(--ph-ink-3)]', more && 'rotate-90')} />
-                </button>
-                {more && <div className="px-3 pb-3 text-[13px] leading-[17px] text-[var(--ph-ink-2)]">{detail}</div>}
-              </div>
-            )}
-            {onDismiss && (
-              <InsetGroup>
-                <InsetRow
-                  title={<span className="block w-full text-center">{dismissLabel}</span>}
-                  chevron={false}
-                  onClick={() => {
-                    setOpen(false);
-                    onDismiss();
-                  }}
-                />
-              </InsetGroup>
-            )}
-          </div>
-        </Sheet>
+        <NoticeAlert title={title} text={
+            <>
+              {line != null && <p>{line}</p>}
+              {body != null && <div className={line != null ? 'mt-1' : ''}>{body}</div>}
+            </>
+          } actions={actions} closeLabel={onDismiss ? dismissLabel : 'Close'} onClose={() => setOpen(false)} onDismiss={onDismiss}>
+          {children}
+        </NoticeAlert>
       )}
     </div>
   );
 }
 
-/** The primary pill's classes, for the one that is a link rather than a button. */
-export const NOTICE_BUTTON =
-  'inline-flex min-h-11 items-center justify-center rounded-[10px] bg-[var(--ph-ink)] px-[14px] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ph-focus)]';
+/** The alert's primary action row: bold ink. Also the classes for the one that is a link. */
+export const NOTICE_BUTTON = cx(ALERT_ROW, 'font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[var(--ph-focus)]');
 
-/** The sheet's primary action: an ink pill, light on a dark page. */
+/** The alert's primary action. */
 export function NoticeButton({ className, type = 'button', ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type={type} className={cx(NOTICE_BUTTON, className)} {...props} />;
 }

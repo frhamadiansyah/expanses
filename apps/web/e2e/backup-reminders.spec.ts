@@ -29,7 +29,7 @@ test('a month without a backup is one press from fixed, and can be put off witho
   // The row opens a sheet; the sheet holds the one action.
   await again.getByRole('button', { name: /No backup in 31 days/ }).click();
   const download = page.waitForEvent('download');
-  await again.getByRole('button', { name: 'Download backup' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Download backup' }).click();
   expect((await download).suggestedFilename()).toMatch(/^expanses-backup-\d{4}-\d{2}-\d{2}\.sqlite3$/);
   await expect(again).toHaveCount(0);
   await expect(page).toHaveURL(/\/transactions/); // fixed in place, no trip to /backup

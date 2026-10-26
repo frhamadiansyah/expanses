@@ -66,15 +66,14 @@ export function AfterUpdateCard() {
 
   const undone = note.kind === 'undone';
   // Which step of a run of updates was at fault is not knowable once they have all been put back, so
-  // the detail names the point the app stops at rather than a culprit it would be guessing.
-  const detail = undone ? `Updates from ${note.version} onwards are being skipped until tried again.` : `Data is at update ${note.version}.`;
+  // the text names the point the app stops at rather than a culprit it would be guessing.
+  const text = undone ? `Updates from ${note.version} onwards are being skipped until tried again.` : `A copy was taken before the update and checked afterwards. Data is at update ${note.version}.`;
   return (
     <Notice
       kind={undone ? 'warning' : 'success'}
       title={note.headline}
       line={note.line}
-      body={note.body}
-      detail={detail}
+      body={text}
       // Every message in the app can be put away, this one included: a card that cannot be dismissed is
       // one the user learns to read past, and while it stands it is covering for the backup reminder.
       onDismiss={dismissUpdateCard}
