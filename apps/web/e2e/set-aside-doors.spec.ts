@@ -51,7 +51,7 @@ async function addCard(page: Page) {
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
-  await expect(page.getByText('Statements')).toBeVisible();
+  await expect(page.getByTestId('statement-range')).toBeVisible();
 }
 
 async function buyOnCard(page: Page, note: string, amount: string, on: string) {

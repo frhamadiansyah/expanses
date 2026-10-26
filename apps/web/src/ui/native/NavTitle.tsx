@@ -40,6 +40,7 @@ export function CornerButton({
   pressed,
   expanded,
   className,
+  testId,
 }: {
   label: string;
   onClick?: () => void;
@@ -55,6 +56,7 @@ export function CornerButton({
   /** The action opens something, and says whether it is open. */
   expanded?: boolean;
   className?: string;
+  testId?: string;
 }) {
   const shell = cx(
     'ph-focus flex shrink-0 items-center justify-center rounded-full',
@@ -64,13 +66,13 @@ export function CornerButton({
   );
   if (to && !disabled) {
     return (
-      <Link to={to} params={params} search={search} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
+      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={shell} style={{ width: 44, height: 44 }}>
         {children}
       </Link>
     );
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} data-testid={testId} className={shell} style={{ width: 44, height: 44 }}>
       {children}
     </button>
   );
@@ -315,6 +317,7 @@ function SectionTitle({
             disabled={action.disabled}
             pressed={action.pressed}
             expanded={action.expanded}
+            testId={action.testId}
           >
             {action.glyph}
           </CornerButton>
@@ -486,6 +489,7 @@ export function PushedTitle({
                   disabled={action.disabled}
                   pressed={action.pressed}
                   expanded={action.expanded}
+                  testId={action.testId}
                 >
                   {action.glyph}
                 </CornerButton>

@@ -117,6 +117,7 @@ export function CardScreen({
   back,
   fallback,
   actions,
+  field,
   children,
 }: {
   title: string;
@@ -125,13 +126,15 @@ export function CardScreen({
   /** Where ‹ goes when the page was opened with nothing behind it: a deep link, a reload. */
   fallback: LinkProps['to'];
   actions?: CornerAction[];
+  /** A search field that takes the whole bar while it is open, ‹ and name with it. */
+  field?: ReactNode;
   children: ReactNode;
 }) {
   const goBack = useBack(fallback);
   return (
     <div className={SCREEN}>
       <div className="mx-auto max-w-5xl">
-        <PushedTitle title={title} back={back} onBack={goBack} actions={actions} />
+        <PushedTitle title={title} back={back} onBack={goBack} actions={actions} field={field} />
         <WideColumn>{children}</WideColumn>
       </div>
     </div>

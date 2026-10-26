@@ -1,5 +1,5 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, listStatementChecks, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
-import { ActionRow, ColumnGroup, EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
+import { ActionRow, ColumnGroup, EARLIER, GlyphButton, Line, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
@@ -50,6 +50,11 @@ export function StatementPanel({
   today,
   points,
   unit = 'points',
+  back,
+  onBack,
+  query,
+  onQuery,
+  onOpened,
 }: {
   card: AccountRow;
   statementDay: number;
@@ -59,14 +64,22 @@ export function StatementPanel({
   /** Points per purchase, when the card has rewards; purchases outside the worked-out cycles show none. */
   points?: Readonly<Record<string, StatementPoints>>;
   unit?: string;
+  /** How many statements back from the current one is on screen. Held by the page, whose title links to the check of it. */
+  back: number;
+  onBack: (back: number | ((was: number) => number)) => void;
+  /** The search over every statement, typed in the title bar's field. */
+  query: string;
+  onQuery: (query: string) => void;
+  /** A search hit was opened: the page puts the field away, the bar back. */
+  onOpened?: () => void;
 }) {
   const { database, ws } = useApp();
   const phone = usePhone();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
-  const [back, setBack] = useState(0);
+  const setBack = onBack;
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
+  const setQuery = onQuery;
   // A bill is settled from money the owner can move — not from a deposit that is locked, nor from a holding.
   const payers = moneyHolders(accounts).filter((a) => canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
   const [fromId, setFromId] = useState('');
@@ -88,12 +101,6 @@ export function StatementPanel({
 
   const currency = card.currency ?? ws.baseCurrency;
   const money = (minor: number) => formatMinor(minor, currency);
-  // The statements checked from screenshots, so a closed cycle that was checked says how it came out.
-  const checks = useQuery({ queryKey: ['statement-checks', ws.workspaceId, card.id], queryFn: () => listStatementChecks(database, ws, card.id) });
-  const checked = cycle.end < today ? checks.data?.find((c) => c.periodStart === cycle.start && c.periodEnd === cycle.end) : undefined;
-  const checkedText = checked
-    ? `Checked · ${checked.status === 'reconciled' ? '✓ Reconciled' : checked.status === 'differs' ? `Differs by ${money(Math.abs(checked.differenceMinor))}` : 'no summary yet'}`
-    : "Compare screenshots of the bank's statement";
   // Back from a check: what it came to, said once.
   const [note] = useState(takeCheckedNote);
   const [noteShown, setNoteShown] = useState(note !== null);
@@ -197,6 +204,7 @@ export function StatementPanel({
     }
     setBack(steps);
     setQuery('');
+    onOpened?.();
   }
   /** A line's amount, signed the way a statement prints it: money back is green and has a minus. */
   const amount = (line: StatementLine) => (
@@ -426,30 +434,23 @@ export function StatementPanel({
     </table>
   );
 
+  const stepper = (
+    <StepperRow
+      testId="statement-range"
+      earlier={{ label: 'Earlier statement', glyph: EARLIER, onClick: () => setBack((b) => b + 1) }}
+      later={{ label: 'Later statement', onClick: () => setBack((b) => Math.max(0, b - 1)) }}
+      laterDisabled={back === 0}
+    >
+      {day(cycle.start)} – {dayYear(cycle.end)}
+    </StepperRow>
+  );
+
   const subtotal = (minor: number) => (minor < 0 ? `−${money(-minor)}` : money(minor));
 
   return (
     <div>
-      <InsetGroup header="Statements">
-        <StepperRow
-          testId="statement-range"
-          earlier={{ label: 'Earlier statement', glyph: EARLIER, onClick: () => setBack((b) => b + 1) }}
-          later={{ label: 'Later statement', onClick: () => setBack((b) => Math.max(0, b - 1)) }}
-          laterDisabled={back === 0}
-        >
-          {day(cycle.start)} – {dayYear(cycle.end)}
-        </StepperRow>
-        <InsetRow
-          testId="check-statement"
-          title="Check statement"
-          subtitle={checkedText}
-          to="/cards/$cardId/check"
-          params={{ cardId: card.id }}
-          search={{ start: cycle.start, end: cycle.end }}
-        />
-      </InsetGroup>
-
-      <SearchField label="Search statements" value={query} onChange={setQuery} placeholder="Search every statement: description, category, card digits or amount" />
+      {/* The stepper is the first row of the band's one box; where there is no band (loading, searching) it is a box alone. */}
+      {(searching || !s) && <InsetGroup>{stepper}</InsetGroup>}
 
       {searching && (
         <div data-testid="statement-search-results">
@@ -484,7 +485,7 @@ export function StatementPanel({
         </div>
       )}
 
-      {!searching && s && <StatementBand statement={s} currency={currency} />}
+      {!searching && s && <StatementBand statement={s} currency={currency} lead={stepper} />}
 
       {searching ? null : lines.length === 0 ? (
         <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">Nothing on this statement.</p>

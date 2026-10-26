@@ -1,5 +1,6 @@
 import { formatMinor } from '@expanses/core';
 import type { CardStatement } from '@expanses/db';
+import type { ReactNode } from 'react';
 import { cx } from '../../ui';
 import { type GroupChild, InsetGroup } from '../../ui/native';
 import { Line } from './rows';
@@ -37,7 +38,7 @@ function FigureLine({
  * the bank prints. What has been paid is hatched out, leaving the upcoming bill as the solid part. The bill used to
  * sit in a black box beside the bar; it is now the group's last row, in the row's own weight.
  */
-export function StatementBand({ statement, currency }: { statement: CardStatement; currency: string }) {
+export function StatementBand({ statement, currency, lead }: { statement: CardStatement; currency: string; /** A row drawn first in the group: the page's date stepper. */ lead?: ReactNode }) {
   const t = statementTotals(statement);
   const money = (minor: number) => formatMinor(minor, currency);
   const share = (minor: number) => (t.wholeMinor > 0 ? (minor / t.wholeMinor) * 100 : 0);
@@ -46,6 +47,7 @@ export function StatementBand({ statement, currency }: { statement: CardStatemen
   return (
     <div data-testid="statement-band">
       <InsetGroup>
+        {lead}
         {t.wholeMinor > 0 && (
           <Line>
             <div

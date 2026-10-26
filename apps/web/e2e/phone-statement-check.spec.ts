@@ -89,7 +89,8 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   // Back on the card, the check says how it came out, and the statement carries it.
   await expect(page.getByRole('status').filter({ hasText: 'August statement checked — ✓ Reconciled' })).toBeVisible();
   await page.getByRole('button', { name: 'Earlier statement' }).click();
-  await expect(page.getByTestId('check-statement')).toContainText('Checked · ✓ Reconciled');
+  await expect(page.getByTestId('check-statement')).toHaveAttribute('aria-label', /^Check statement, checked \d+ \w+, reconciled$/);
+  await expect(page.getByTestId('check-statement-dot')).toBeVisible();
 
   // Cashflow for the year, filtered to the card: the categories the card's money went to, and nothing else.
   await page.goto('/transactions');
