@@ -11,6 +11,7 @@ import { markForeignDirtyTx } from '../repos/fx-pending';
 import { bookSplitsExist, excludedSplitBooksTx } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
+import { isJointItemTx } from '../repos/joint-account-rows';
 import { isRevivable, paidFromOf, projectPurchase, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -820,10 +821,33 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
 export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number; author: string }[]>;
 
+/**
+ * A row on a joint account (0095) is changed by the member who recorded it, and nobody else. Judged from the log's own
+ * facts: the lineage's stored payer and item (or, for a new row, the op's), and the item's `joint` mark in the group log
+ * as this phone holds it. A refusal is a recorded skip, like any other op a member may not write.
+ */
+async function refuseJointRowTx(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, lineage: LineageRow | null, authorDevice: string): Promise<void> {
+  const money = (op.fields as { money?: { paidBy?: unknown; paidFrom?: unknown } }).money;
+  const carried = carriedPaidFrom(money?.paidFrom);
+  // The row as it stands (a change to it) or as it is first written (a new row); an edit may not move it onto a joint
+  // account another member recorded either, so both are judged.
+  const checks: { paidFrom: PaidFrom; paidBy: string }[] = [];
+  if (lineage?.paidFrom) checks.push({ paidFrom: lineage.paidFrom, paidBy: lineage.paidBy });
+  if (carried && typeof money?.paidBy === 'string') checks.push({ paidFrom: carried, paidBy: money.paidBy });
+  if (checks.length === 0) return;
+  const author = await authorMemberOf(tx, ctx.bookId, authorDevice);
+  for (const { paidFrom, paidBy } of checks) {
+    if (author !== paidBy && (await isJointItemTx(tx, paidFrom.owner, paidFrom.itemId))) {
+      throw new AuthorityError('only the member who recorded a row on a joint account may change it');
+    }
+  }
+}
+
 /** §7.2 `applyPurchase`. Returns false when the op had to be held. */
 async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet, authorDevice: string): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id);
   if (lineage && lineage.head === null) return true; // void wins, for ever
+  await refuseJointRowTx(tx, ctx, op, lineage, authorDevice);
   const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
   if (won.size === 0) return true;
   const winners = Object.fromEntries([...won].map(([field, { value }]) => [field, value]));

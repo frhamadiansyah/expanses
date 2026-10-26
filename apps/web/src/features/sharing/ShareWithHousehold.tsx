@@ -1,10 +1,10 @@
-import { activeNetWorthGroup, type ShareSetting, setShareSetting } from '@expanses/db';
+import { activeNetWorthGroup, type ShareSetting, setJointAccount, setShareSetting } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow } from '../../ui/native';
-import { useActiveNetWorthGroup, useShareSetting } from './net-worth-queries';
+import { useActiveNetWorthGroup, useJointAccount, useShareSetting } from './net-worth-queries';
 import { JOINT_LINE, sayNetWorthError, settingOnAdd, shareRowOf } from './net-worth-state';
 
 /*
@@ -19,11 +19,12 @@ const SETTING_LABEL: Record<ShareSetting, string> = { total: 'Balance and one to
  * the item still hidden (D8) reads "Not yet shared" with Share; an item never reviewed reads "Not reviewed" until a
  * setting is chosen; `Don't share` is greyed out while the household files jointly.
  */
-export function ShareWithHouseholdRow({ accountId }: { accountId: string }) {
+export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { accountId: string; /** The account page of a money account: the Joint account switch sits under the share row, once it is shared. */ jointSwitch?: boolean }) {
   const { database } = useApp();
   const invalidate = useInvalidateAll();
   const group = useActiveNetWorthGroup();
   const setting = useShareSetting(accountId);
+  const jointAccount = useJointAccount(accountId);
   const [error, setError] = useState<unknown>(null);
   if (!group.data || setting.isPending) return null;
   const joint = group.data.mode === 'joint';
@@ -33,6 +34,16 @@ export function ShareWithHouseholdRow({ accountId }: { accountId: string }) {
     setError(null);
     try {
       await setShareSetting(database, accountId, next);
+      await invalidate();
+    } catch (failure) {
+      setError(sayNetWorthError(failure));
+    }
+  }
+
+  async function changeJoint(on: boolean) {
+    setError(null);
+    try {
+      await setJointAccount(database, accountId, on);
       await invalidate();
     } catch (failure) {
       setError(sayNetWorthError(failure));
@@ -65,6 +76,14 @@ export function ShareWithHouseholdRow({ accountId }: { accountId: string }) {
             {SETTING_LABEL.hidden}
           </option>
         </SelectRow>
+        {jointSwitch && row.value === 'total' ? (
+          <SwitchRow
+            label="Joint account"
+            checked={jointAccount.data ?? false}
+            onChange={(on) => void changeJoint(on)}
+            info="With it on, the others can record into this account and the rows recorded in the shared workspace show on both phones, each with who recorded it. Only the person who recorded a row can change it. The balance stays on this phone."
+          />
+        ) : null}
       </InsetGroup>
     </>
   );

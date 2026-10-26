@@ -321,6 +321,7 @@ export function PaymentSheet({
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
               <Marked text={item.name} typed={search} />
             </span>
+            {item.joint ? <span className="shrink-0 rounded-full bg-[var(--ph-ink)] px-[7px] py-[1px] text-[11px] font-bold text-[var(--ph-surface)]">Joint</span> : null}
             <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
               {item.currency}
             </span>
