@@ -531,6 +531,14 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await expect(dewi.locator('main')).toContainText('10.000.000');
   await shot(dewi, info, '16b-partner-item');
 
+  // The Assets page lists what Fandri shares, read-only, under his name.
+  await eventually(dewi, async () => {
+    await dewi.goto('/net-worth/assets');
+    const group = dewi.locator('section').filter({ has: dewi.getByText('Shared by Fandri', { exact: true }) });
+    await expect(group).toContainText('Fandri Bank', { timeout: 2_000 });
+  });
+  await shot(dewi, info, '16a-partner-assets');
+
   // With one tax ID the tax report is the household's, and says it holds both people's items. (The accounts here were
   // opened this year, so the only year a report can start for, 2025, holds none of them.)
   await eventually(dewi, async () => {
