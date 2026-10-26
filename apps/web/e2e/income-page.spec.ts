@@ -57,6 +57,8 @@ test('Income keeps to dividends; All trades, off Assets, reads the year’s real
   await expect(tradeRow(page, 'Bought ORI026')).toBeVisible();
   await page.getByRole('button', { name: 'Search trades' }).click();
   await page.getByRole('searchbox', { name: 'Search trades' }).fill('ORI026');
+  // The field takes the whole bar: the way back waits under it until the search is closed.
+  await expect(page.getByRole('link', { name: 'Assets', exact: true })).toHaveCount(0);
   await expect(tradeRow(page, 'Bought ORI026')).toBeVisible();
   await expect(tradeRow(page, 'Bought Antam gold bars')).toHaveCount(0);
   // The round icon says it, not a word: no "opening position" and no units in the second line.

@@ -434,9 +434,18 @@ export function PushedTitle({
   const plan = planCornerActions(actions, max);
   const head = useRef<HTMLElement>(null);
   const folded = useScrolledPast(head, !field);
+  const phone = usePhone();
+  // A field opened here takes the whole bar, the ‹ with it, and stays on top while the page scrolls under it, on the
+  // pinned bar's glass — as Cashflow's search does. Its own ✕ is the way out; the way back is under it again after.
+  const sticky = !!field && phone;
   return (
-    <header ref={head} className="mb-[14px] md:max-w-4xl">
-      {folded && (
+    <header
+      ref={head}
+      className={cx('mb-[14px] md:max-w-4xl', sticky && 'sticky top-0 z-[29] -mx-4 px-4')}
+      style={sticky ? { marginTop: 'calc(-1 * env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' } : undefined}
+    >
+      {sticky && <div aria-hidden className="ph-edge-glass pointer-events-none absolute inset-x-0 top-0 -bottom-5 -z-10" />}
+      {folded && !field && (
         <CompactBar
           title={title}
           back={back}
@@ -451,16 +460,7 @@ export function PushedTitle({
       {/* The same 8 px of air the large title's row has, so a corner sits at the same height on both bars. */}
       <div className="flex items-center gap-[8px]" style={{ paddingTop: 8 }}>
         {field ? (
-          <>
-            {/* A field takes the row rather than the name's column: the way back stays where it is, and the field
-             * ends where every box below it ends. */}
-            <div className="flex shrink-0 items-center">
-              <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
-                <ChevronLeft size={22} aria-hidden />
-              </CornerButton>
-            </div>
-            <div className="min-w-0 flex-1">{field}</div>
-          </>
+          <div className="min-w-0 flex-1">{field}</div>
         ) : (
           <>
             <div className="flex flex-1 items-center">

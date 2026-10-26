@@ -8,6 +8,7 @@ import { useAccounts } from '../../lib/queries';
 import { cx, Money } from '../../ui';
 import { Figure, InsetGroup, InsetRow, type RecordColumn, RecordTable } from '../../ui/native';
 import { useGoals } from '../goals/queries';
+import { useHoldingLinks } from './queries';
 import { useAssetProfiles, useAssetValues, usePositions, useTrades } from '../networth/queries';
 import { DayHeader } from '../transactions/DayHeader';
 import { yearByHolding, yearSum } from './income-year';
@@ -27,6 +28,7 @@ export function useTradeBook() {
   const trades = useTrades();
   const accounts = useAccounts();
   const goals = useGoals();
+  const links = useHoldingLinks();
 
   const holdings = useMemo(
     () =>
@@ -60,6 +62,11 @@ export function useTradeBook() {
     unitLabelOf,
     heldText: (accountId: string) => (unitsHeld(accountId) > 0 ? `${formatUnits(unitsHeld(accountId))} ${unitLabelOf(accountId)}` : 'Sold'),
     cashName: (accountId: string | null) => (accountId ? ((accounts.data ?? []).find((row) => row.id === accountId)?.name ?? null) : null),
+    // Where a holding is kept (its broker), for a trade that moved no cash of its own: an opening position.
+    brokerName: (accountId: string) => {
+      const broker = (links.data ?? []).find((link) => link.accountId === accountId)?.brokerAccountId;
+      return broker ? ((accounts.data ?? []).find((row) => row.id === broker)?.name ?? null) : null;
+    },
     goalName: (goalId: string | null | undefined) => (goalId ? ((goals.data ?? []).find((goal) => goal.id === goalId)?.name ?? null) : null),
   };
 }
@@ -151,7 +158,7 @@ export function TradesSection({ book, query = '' }: { book: TradeBook; query?: s
   const needle = query.trim().toLowerCase();
   const matches = (trade: TradeRow) =>
     needle === '' ||
-    [verbOf(trade), titleOf(trade), book.cashName(trade.cashAccountId), trade.switchedWith ? book.nameOf(trade.switchedWith.accountId) : '']
+    [verbOf(trade), titleOf(trade), book.cashName(trade.cashAccountId), book.brokerName(trade.accountId), trade.switchedWith ? book.nameOf(trade.switchedWith.accountId) : '']
       .join(' ')
       .toLowerCase()
       .includes(needle);
@@ -173,8 +180,8 @@ export function TradesSection({ book, query = '' }: { book: TradeBook; query?: s
               const out = trade.kind === 'buy';
               // A switch moved no cash: it names the other fund instead, and its figure is the fund's own, + in and − out.
               const other = trade.switchedWith ? `${trade.kind === 'buy' ? 'from' : 'into'} ${book.nameOf(trade.switchedWith.accountId)}` : null;
-              // The second line is the broker or account alone (nothing for an opening buy, which moved no cash); the units ride under the amount.
-              const sub = other ?? (trade.cashAccountId === null ? '' : book.cashName(trade.cashAccountId));
+              // The second line is the broker or account alone (an opening buy moved no cash, so it names where the holding is kept); the units ride under the amount.
+              const sub = other ?? book.cashName(trade.cashAccountId) ?? book.brokerName(trade.accountId) ?? '';
               return (
                 <li key={trade.id} data-testid="trade-row">
                   <Link
