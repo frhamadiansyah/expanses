@@ -27,7 +27,7 @@ const TABS: readonly Segment[] = [
 ];
 
 /**
- * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the top of the chart panel, the tabs Spending,
+ * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the top of the Spending panel only, the tabs Spending,
  * Balances and Plan above a chart panel — the ring by category with the total in its middle — and
  * the records by day below it. The ⋯ menu (People, Done, Leave) is `menu`'s, so this page reads the same
  * on every phone whatever its person may do.
@@ -209,7 +209,6 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
             </InsetGroup>
           ) : null}
           <Panel header="Net balance" testId="shared-balance-bars">
-            <EventNameBox name={view.name} />
             <div className="flex flex-col gap-[10px]">
               {bars.map((bar) => (
                 <div key={bar.personId} className="flex items-center gap-[10px]" data-testid="shared-balance-row">
@@ -244,7 +243,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           </InsetGroup>
         </>
       ) : null}
-      {tab === 'plan' ? <SharedPlanTab view={view} nameBox={<EventNameBox name={view.name} />} /> : null}
+      {tab === 'plan' ? <SharedPlanTab view={view} /> : null}
       {opened ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
       {settling ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
       {takingOver ? <TakeOverSheet view={view} onClose={() => setTakingOver(false)} /> : null}
