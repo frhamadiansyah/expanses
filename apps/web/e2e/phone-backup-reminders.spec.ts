@@ -18,13 +18,13 @@ test('the overdue reminder fits a phone, and its buttons can be hit with a thumb
   expect((await banner.getByRole('button', { name: 'Dismiss' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await banner.getByRole('button', { name: /No backup in 31 days/ }).click();
   for (const name of ['Download backup', 'Not now']) {
-    const box = await banner.getByRole('button', { name }).boundingBox();
+    const box = await page.getByRole('alertdialog').getByRole('button', { name }).boundingBox();
     expect(box, `${name} has no box`).not.toBeNull();
     expect(box!.height, `${name} is ${box!.height}px tall`).toBeGreaterThanOrEqual(44);
   }
 
   const download = page.waitForEvent('download');
-  await banner.getByRole('button', { name: 'Download backup' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Download backup' }).click();
   await download;
   await expect(banner).toHaveCount(0);
   await expect(page).toHaveURL(/\/transactions/);

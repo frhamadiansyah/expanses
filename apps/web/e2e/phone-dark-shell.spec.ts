@@ -76,9 +76,10 @@ test('the backup reminder, its button and its ink all move together', async ({ p
    * The button inside it is the shared primitive, so this is the sweep as much as the banner: a `Button` used to
    * be Tailwind's `bg-slate-900 text-white`, which on a dark page is a white slab with dark text on it.
    */
-  const download = banner.getByRole('button', { name: 'Download backup' });
-  expect(await painted(download)).toBe(await tokenColour(page, '--ph-ink'));
-  expect(await inked(download)).toBe(await tokenColour(page, '--ph-surface'));
+  const alert = page.getByRole('alertdialog');
+  const download = alert.getByRole('button', { name: 'Download backup' });
+  expect(await painted(alert)).toBe(await tokenColour(page, '--ph-surface'));
+  expect(await inked(download)).toBe(await tokenColour(page, '--ph-ink'));
 });
 
 test('a screen the decision list left alone follows the reader too', async ({ page }) => {
