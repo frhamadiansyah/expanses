@@ -1,7 +1,7 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Check, Shapes, Split } from 'lucide-react';
+import { Check, Shapes } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -183,7 +183,7 @@ export function CategoryPicker({
   onPick: (categoryId: string) => void;
   onClose: () => void;
   /**
-   * Splitting the amount between several categories, offered as a button in the header beside ＋ and ⌕ while spending
+   * Splitting the amount between several categories, offered as a row in the box at the list's foot, above Manage categories, while spending
    * is shown: the one place a purchase's category is chosen is also where it is chosen several times. Left out where
    * the form cannot carry a split (income, a captured draft, an edit of a shared purchase).
    */
@@ -285,20 +285,6 @@ export function CategoryPicker({
                     setFinding((was) => !was);
                   }}
                 />
-                {/* Split between categories, last before ✕: a way of choosing, kept out of the list's own rows. */}
-                {onSplit && showing === 'expense' && !finding && (
-                  <button
-                    type="button"
-                    onClick={onSplit}
-                    disabled={!!splitRefusal}
-                    aria-label="Split between categories"
-                    aria-description={splitRefusal ?? undefined}
-                    title={splitRefusal ?? 'Split between categories'}
-                    className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] disabled:opacity-40"
-                  >
-                    <Split size={18} strokeWidth={1.7} absoluteStrokeWidth aria-hidden />
-                  </button>
-                )}
               </>
             ),
           })}
@@ -348,15 +334,27 @@ export function CategoryPicker({
           </p>
         )}
 
-        {/* The way to the whole tree — renaming, archiving, a category's code, the sets — at the list's foot, drawn as
-            Add more details is: words in the secondary ink, no box. It closes the sheet on its way. */}
-        <Link
-          to="/categories"
-          onClick={onClose}
-          className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
-        >
-          Manage categories
-        </Link>
+        {/* The foot: a way of choosing (split the amount) and the way to the whole tree (renaming, archiving, a
+            category's code, the sets), in one box of centred rows. Manage closes the sheet on its way. */}
+        {!finding && (
+          <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+            {onSplit && showing === 'expense' && (
+              <button
+                type="button"
+                onClick={onSplit}
+                disabled={!!splitRefusal}
+                aria-description={splitRefusal ?? undefined}
+                title={splitRefusal ?? 'Split between categories'}
+                className="ph-focus-inset flex min-h-[46px] w-full items-center justify-center text-[17px] text-[var(--ph-ink)] active:bg-[var(--ph-fill)] disabled:opacity-40"
+              >
+                Split between categories
+              </button>
+            )}
+            <Link to="/categories" onClick={onClose} className="ph-focus-inset flex min-h-[46px] w-full items-center justify-center text-[17px] text-[var(--ph-ink)] active:bg-[var(--ph-fill)]">
+              Manage categories
+            </Link>
+          </div>
+        )}
 
       </div>
       )}
