@@ -1211,25 +1211,34 @@ function CardBody({
         )}
       </div>
 
+      {draft.mode === 'transfer' && !initial && goals.length > 0 && (
+        <FormRows>
+          <FormRow
+            icon={
+              <RowGlyph>
+                <Target size={15} />
+              </RowGlyph>
+            }
+            label="Goal"
+            value={goals.find((goal) => goal.id === draft.goalId)?.name ?? 'None'}
+            onClick={() => setSheet('goal')}
+          />
+        </FormRows>
+      )}
+
       {draft.mode === 'trade' && (!fixedMode || (kindPicked && purchase.accountId !== '')) && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
         <FormRows>
           {goals.length > 0 && (
-            <SelectFormRow
+            <FormRow
               icon={
                 <RowGlyph>
                   <Target size={15} />
                 </RowGlyph>
               }
-              label={goalRow.label}
-              caption={goalRow.caption}
-              value={purchase.goalId}
-              onChange={(goalId) => setPurchase({ goalId })}
-            >
-              <option value="">No goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>{goal.name}</option>
-              ))}
-            </SelectFormRow>
+              label="Goal"
+              value={goals.find((goal) => goal.id === purchase.goalId)?.name ?? 'None'}
+              onClick={() => setSheet('goal')}
+            />
           )}
           {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
             <>
@@ -1303,22 +1312,6 @@ function CardBody({
             refuses to tag an edit, and a row that cannot be honoured is worse than no row.
           */}
           <MoreDetails
-            lead={
-              draft.mode === 'transfer' && !initial && goals.length > 0 ? (
-                <FormRow
-                  lead="value"
-                  icon={
-                    <RowGlyph>
-                      <Target size={15} />
-                    </RowGlyph>
-                  }
-                  label="For goal"
-                  value={goals.find((goal) => goal.id === draft.goalId)?.name ?? ''}
-                  caption="For goal"
-                  onClick={() => setSheet('goal')}
-                />
-              ) : undefined
-            }
             draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
@@ -1437,11 +1430,10 @@ function CardBody({
       )}
       {sheet === 'goal' && (
         <ChoiceSheet
-          title="For goal"
-          value={draft.goalId}
-          groups={[{ choices: [{ value: '', label: 'No goal', glyph: <Target size={15} /> }, ...goals.map((goal) => ({ value: goal.id, label: goal.name, glyph: <Target size={15} /> }))] }]}
-          footer="Money parked for a goal counts towards it while it waits."
-          onPick={(goalId) => set({ goalId })}
+          title="Goal"
+          value={draft.mode === 'trade' ? purchase.goalId : draft.goalId}
+          groups={[{ choices: [{ value: '', label: 'None', glyph: <Target size={15} /> }, ...goals.map((goal) => ({ value: goal.id, label: goal.name, glyph: <Target size={15} /> }))] }]}
+          onPick={(goalId) => (draft.mode === 'trade' ? setPurchase({ goalId }) : set({ goalId }))}
           onClose={() => setSheet(null)}
         />
       )}

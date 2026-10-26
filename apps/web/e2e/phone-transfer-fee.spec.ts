@@ -51,10 +51,10 @@ test('a transfer for a goal takes a fee on its own row: the account pays both, t
   await form.getByLabel('Note').fill('A to B for Kyoto');
   if (process.env.FEE_ROW_SHOT) await page.screenshot({ path: process.env.FEE_ROW_SHOT });
 
-  // For goal is under Add more details now, and the fee row stays when a goal is chosen.
-  await expect(form.getByRole('button', { name: /^For goal/ })).toHaveCount(0);
+  // Goal is a box of its own under the form (None until one is chosen), and the fee row stays when a goal is chosen.
+  await expect(form.getByRole('button', { name: /^Goal/ })).toContainText('None');
   await chooseGoal(form, 'Kyoto trip');
-  await expect(page.getByRole('region', { name: 'More details' }).getByRole('button', { name: /^For goal/ })).toContainText('Kyoto trip');
+  await expect(form.getByRole('button', { name: /^Goal/ })).toContainText('Kyoto trip');
   await expect(page.getByRole('region', { name: 'More details' }).getByRole('button', { name: 'Fee category' })).toHaveCount(0);
   await expect(feeRow.getByLabel(/^Fee in IDR$/)).toHaveText('2.500');
   await saveButton(form).click();

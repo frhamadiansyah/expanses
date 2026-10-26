@@ -167,7 +167,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
-  await buying.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
+  await chooseGoal(buying, 'University for Aisyah');
   await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
   // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.

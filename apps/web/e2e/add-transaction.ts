@@ -20,12 +20,10 @@ export async function chooseTo(form: Locator, account: string) {
   await form.page().getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: account.replace(/ \([A-Z]{3}\)$/, ''), exact: true }).click();
 }
 
-/** A transfer's For goal, the same way: under Add more details, the row, then the goal. */
+/** A transfer's or a trade's Goal: its own box under the form, a row, then the goal in its sheet. */
 export async function chooseGoal(form: Locator, goal: string) {
-  const more = form.getByRole('button', { name: 'Add more details' });
-  if ((await more.count()) > 0) await more.click();
-  await form.getByRole('button', { name: /^For goal/ }).click();
-  await form.page().getByRole('dialog', { name: 'For goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
+  await form.getByRole('button', { name: /^Goal/ }).click();
+  await form.page().getByRole('dialog', { name: 'Goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
 }
 
 /**
@@ -166,7 +164,7 @@ export async function addPurchase(
   await form.getByLabel(sell ? 'Proceeds into' : 'Paid with').selectOption({ label: trade.paidWith });
   if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);
   if (trade.date) await form.getByLabel('Date').fill(trade.date);
-  if (trade.goal) await form.getByLabel(sell ? 'Sell from goal' : 'For goal').selectOption({ label: trade.goal });
+  if (trade.goal) await chooseGoal(form, trade.goal);
   // Offered only on a credit card, and only when buying — the card's two facts, not the trade's.
   if (trade.pointsCategory) await form.getByLabel('Category for points').selectOption({ label: trade.pointsCategory });
   if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
