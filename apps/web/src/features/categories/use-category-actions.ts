@@ -11,6 +11,7 @@ import {
   deleteCategory,
   deleteCategorySet,
   moveCategory,
+  moveCategorySet,
   renameAccount,
   renameCategorySet,
   saveCategoryMcc,
@@ -91,6 +92,8 @@ export function useCategoryActions() {
       });
       return copy;
     },
+    /** Moves a set, with its categories, to another workspace; resolves true once moved, false when refused (`error`). */
+    moveSet: (setId: string, toBookId: string): Promise<boolean> => run(() => moveCategorySet(database, ws, { setId, toBookId })),
     addToSet: (id: string, name: string) => {
       const category = window.prompt(`New category in ${name}`);
       if (category?.trim()) void run(() => addSetCategory(database, ws, id, category));

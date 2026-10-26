@@ -5,6 +5,7 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { categoryMark } from './CategoryIcon';
 import { useBooks } from '../workspaces/queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
@@ -23,6 +24,8 @@ export function SetsPage() {
   // The other open workspaces a set can be copied into; none, and the row is not offered.
   const others = (useBooks().data ?? []).filter((book) => book.id !== ws.bookId);
   const [copying, setCopying] = useState<{ id: string; name: string } | null>(null);
+  const [moving, setMoving] = useState<{ id: string; name: string } | null>(null);
+  const [asking, setAsking] = useState<{ id: string; name: string; bookId: string; bookName: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   return (
@@ -78,12 +81,63 @@ export function SetsPage() {
                     onClick={() => setCopying({ id: set.id, name: set.name })}
                   />
                 )}
+                {others.length > 0 && (
+                  <InsetRow
+                    title="Move to another workspace"
+                    label={`Move ${set.name} to another workspace`}
+                    action
+                    onClick={() => setMoving({ id: set.id, name: set.name })}
+                  />
+                )}
                 <InsetRow title="Remove set" label={`Remove ${set.name}`} destructive onClick={() => actions.removeSet(set.id, set.name)} />
               </InsetGroup>
             </div>
           );
         })}
       </div>
+      {moving && !asking && (
+        <Sheet title={`Move ${moving.name}`} onClose={() => setMoving(null)}>
+          <div data-testid="move-set-targets" className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+            {others.map((book) => (
+              <button
+                key={book.id}
+                type="button"
+                data-testid="move-set-target"
+                onClick={() => setAsking({ ...moving, bookId: book.id, bookName: book.name })}
+                className="ph-focus-inset flex min-h-[46px] w-full items-center justify-center text-[17px] text-[var(--ph-ink)] active:bg-[var(--ph-fill)]"
+              >
+                {book.name}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+      {asking && (
+        <NoticeAlert
+          title="Move set"
+          text="Its categories, and the events using it, move with it."
+          closeLabel="Not now"
+          onClose={() => {
+            setAsking(null);
+            setMoving(null);
+          }}
+          actions={
+            <button
+              type="button"
+              onClick={async () => {
+                const from = asking;
+                setAsking(null);
+                setMoving(null);
+                setNote(null);
+                if (await actions.moveSet(from.id, from.bookId)) setNote(`Moved to ${from.bookName}`);
+              }}
+              className={`${ALERT_ROW} font-semibold`}
+            >
+              Move
+            </button>
+          }
+        />
+      )}
       {copying && (
         <Sheet title={`Copy ${copying.name}`} onClose={() => setCopying(null)}>
           <div data-testid="copy-set-targets" className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
