@@ -1,5 +1,7 @@
 import { formatMinor } from '@expanses/core';
-import { InsetGroup, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { Search } from 'lucide-react';
+import { useState } from 'react';
+import { InsetGroup, PushedTitle, ReadOnlyRow, SCREEN, SearchPill } from '../../ui/native';
 import { HoldingsTable, TradesSection, useTradeBook } from './IncomeTrades';
 
 /**
@@ -13,11 +15,33 @@ import { HoldingsTable, TradesSection, useTradeBook } from './IncomeTrades';
  */
 export function AllTradesPage() {
   const book = useTradeBook();
+  // Search is a corner, and its field takes the title's place, as Cashflow's does.
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState('');
   const { base, others } = book.realized;
   const realized = `${base > 0 ? '+' : ''}${formatMinor(base, book.ws.baseCurrency)}${others ? ` · ${others}` : ''}`;
   return (
     <div className={SCREEN}>
-      <PushedTitle title="All trades" back="Assets" backTo="/net-worth/assets" />
+      <PushedTitle
+        title="All trades"
+        back="Assets"
+        backTo="/net-worth/assets"
+        actions={[{ key: 'search', label: 'Search trades', glyph: <Search size={20} aria-hidden />, pressed: searching, run: () => setSearching((was) => !was) }]}
+        field={
+          searching ? (
+            <SearchPill
+              value={query}
+              onChange={setQuery}
+              onClose={() => {
+                setQuery('');
+                setSearching(false);
+              }}
+              placeholder="Holding or broker"
+              label="Search trades"
+            />
+          ) : undefined
+        }
+      />
       {book.holdings.length > 0 && (
         <InsetGroup>
           <ReadOnlyRow
@@ -29,7 +53,7 @@ export function AllTradesPage() {
         </InsetGroup>
       )}
       <HoldingsTable book={book} />
-      <TradesSection book={book} />
+      <TradesSection book={book} query={query} />
     </div>
   );
 }

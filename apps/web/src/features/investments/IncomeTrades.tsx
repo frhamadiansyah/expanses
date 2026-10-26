@@ -1,6 +1,7 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate } from '@expanses/core';
 import type { TradeRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Coins, Layers } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -129,48 +130,37 @@ export function HoldingsTable({ book }: { book: TradeBook }) {
  * was, the goal it counts toward and whether a payment was put back in; it opens the holding's page, where its ⋮ edits
  * it, deletes it, and sets its goal or what was reinvested.
  */
-export function TradesSection({ book }: { book: TradeBook }) {
-  const [filter, setFilter] = useState('all');
+export function TradesSection({ book, query = '' }: { book: TradeBook; query?: string }) {
   const all = book.trades.data ?? [];
   if (book.holdings.length === 0) return null;
 
+  // The line says what it is by its round icon; the verb stays in the text for a screen reader and a search.
+  const verbOf = (trade: TradeRow) => (trade.switchedWith ? (trade.kind === 'buy' ? 'Switched into ' : 'Switched out of ') : trade.kind === 'buy' ? 'Bought ' : trade.kind === 'sell' ? 'Sold ' : '');
   const titleOf = (trade: TradeRow) => {
     const name = book.nameOf(trade.accountId);
-    if (trade.switchedWith) return trade.kind === 'buy' ? `Switched into ${name}` : `Switched out of ${name}`;
-    if (trade.kind === 'buy') return `Bought ${name}`;
-    if (trade.kind === 'sell') return `Sold ${name}`;
     if (trade.kind === 'income') return `${book.incomeWordOf(trade.accountId)} ${name}`;
-    return `Units of ${name}`;
+    if (trade.kind === 'unit_change') return `Units of ${name}`;
+    return name;
   };
+  const iconOf = (trade: TradeRow) =>
+    trade.switchedWith ? <ArrowLeftRight size={17} aria-hidden /> : trade.kind === 'buy' ? <ArrowDownLeft size={17} aria-hidden /> : trade.kind === 'sell' ? <ArrowUpRight size={17} aria-hidden /> : trade.kind === 'income' ? <Coins size={17} aria-hidden /> : <Layers size={17} aria-hidden />;
   const unitsLine = (trade: TradeRow) =>
     trade.kind === 'income' ? null : `${trade.kind === 'unit_change' && trade.unitsMicro > 0 ? '+' : ''}${formatUnits(trade.unitsMicro)} ${book.unitLabelOf(trade.accountId)}`;
 
-  // Holdings that have a history, for the chips over it: All, then one each.
-  const traded = book.holdings.filter((holding) => all.some((trade) => trade.accountId === holding.accountId));
-  const shown = [...all].filter((trade) => filter === 'all' || trade.accountId === filter).reverse();
+  // The search narrows by what the line says: the holding, the broker or account it went through, and the other fund of a switch.
+  const needle = query.trim().toLowerCase();
+  const matches = (trade: TradeRow) =>
+    needle === '' ||
+    [verbOf(trade), titleOf(trade), book.cashName(trade.cashAccountId), trade.switchedWith ? book.nameOf(trade.switchedWith.accountId) : '']
+      .join(' ')
+      .toLowerCase()
+      .includes(needle);
+  const shown = [...all].filter(matches).reverse();
   const days = new Map<string, TradeRow[]>();
   for (const trade of shown) days.set(trade.occurredOn, [...(days.get(trade.occurredOn) ?? []), trade]);
 
   return (
     <section aria-label="Trades" data-testid="trade-history">
-      {traded.length > 1 && (
-        <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Show">
-          {[{ accountId: 'all', name: 'All' }, ...traded].map((holding) => (
-            <button
-              key={holding.accountId}
-              type="button"
-              aria-pressed={filter === holding.accountId}
-              onClick={() => setFilter(holding.accountId)}
-              className={cx(
-                'ph-focus shrink-0 rounded-full px-3 py-1.5 text-xs whitespace-nowrap',
-                filter === holding.accountId ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-surface)] text-[var(--ph-ink-2)]',
-              )}
-            >
-              {holding.name}
-            </button>
-          ))}
-        </div>
-      )}
       {[...days].map(([date, list]) => (
         <div key={date} className="mb-3 rounded-[11px] bg-[var(--ph-surface)] px-[14px] pt-3 pb-1">
           <DayHeader date={date} net={0} currency={book.ws.baseCurrency} />
@@ -183,7 +173,8 @@ export function TradesSection({ book }: { book: TradeBook }) {
               const out = trade.kind === 'buy';
               // A switch moved no cash: it names the other fund instead, and its figure is the fund's own, + in and − out.
               const other = trade.switchedWith ? `${trade.kind === 'buy' ? 'from' : 'into'} ${book.nameOf(trade.switchedWith.accountId)}` : null;
-              const sub = [unitsLine(trade), other ?? (trade.cashAccountId === null && trade.kind === 'buy' ? 'opening position' : book.cashName(trade.cashAccountId))].filter(Boolean).join(' · ');
+              // The second line is the broker or account alone (nothing for an opening buy, which moved no cash); the units ride under the amount.
+              const sub = other ?? (trade.cashAccountId === null ? '' : book.cashName(trade.cashAccountId));
               return (
                 <li key={trade.id} data-testid="trade-row">
                   <Link
@@ -191,8 +182,12 @@ export function TradesSection({ book }: { book: TradeBook }) {
                     params={{ accountId: trade.accountId }}
                     className="ph-focus-inset flex min-h-11 w-full items-center gap-3 py-2 text-left"
                   >
+                    <span aria-hidden className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink)]">
+                      {iconOf(trade)}
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">
+                        <span className="sr-only">{verbOf(trade)}</span>
                         {titleOf(trade)}
                         {goal && <span className="ml-1.5 rounded bg-[var(--ph-fill)] px-1.5 text-[11px] font-normal text-[var(--ph-ink-2)]">{goal}</span>}
                         {parts.map((label) => (
@@ -204,10 +199,15 @@ export function TradesSection({ book }: { book: TradeBook }) {
                       </span>
                       {sub && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{sub}</span>}
                     </span>
-                    {trade.kind === 'unit_change' ? null : (
-                      <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', other ? 'text-[var(--ph-ink)]' : out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
-                        {other ? (out ? '+' : '−') : out ? '−' : '+'}
-                        {formatMinor(trade.grossMinor, currency)}
+                    {trade.kind === 'unit_change' ? (
+                      <span className="tabular shrink-0 text-right text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">{unitsLine(trade)}</span>
+                    ) : (
+                      <span className="shrink-0 text-right whitespace-nowrap">
+                        <span className={cx('tabular block text-sm font-semibold', other ? 'text-[var(--ph-ink)]' : out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
+                          {other ? (out ? '+' : '−') : out ? '−' : '+'}
+                          {formatMinor(trade.grossMinor, currency)}
+                        </span>
+                        {unitsLine(trade) && <span className="tabular block text-xs text-[var(--ph-ink-3)]">{unitsLine(trade)}</span>}
                       </span>
                     )}
                   </Link>

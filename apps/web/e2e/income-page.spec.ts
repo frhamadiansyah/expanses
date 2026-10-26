@@ -52,13 +52,15 @@ test('Income keeps to dividends; All trades, off Assets, reads the year’s real
   await page.goto('/net-worth/trades');
   await expect(page).toHaveURL(new RegExp(`${ALL_TRADES}$`));
 
-  // Both purchases are listed, and a chip shows one holding's alone.
+  // Both purchases are listed, and the search shows one holding's alone.
   await expect(tradeRow(page, 'Bought Antam gold bars')).toBeVisible();
   await expect(tradeRow(page, 'Bought ORI026')).toBeVisible();
-  const chips = page.getByRole('group', { name: 'Show' });
-  await chips.getByRole('button', { name: 'ORI026', exact: true }).click();
-  await expect(chips.getByRole('button', { name: 'ORI026', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Search trades' }).click();
+  await page.getByRole('searchbox', { name: 'Search trades' }).fill('ORI026');
+  await expect(tradeRow(page, 'Bought ORI026')).toBeVisible();
   await expect(tradeRow(page, 'Bought Antam gold bars')).toHaveCount(0);
+  // The round icon says it, not a word: no "opening position" and no units in the second line.
+  await expect(page.getByTestId('trade-row').first()).not.toContainText('opening position');
 
   // A line opens its holding's own page, where a trade is changed.
   await tradeRow(page, 'Bought ORI026').click();
