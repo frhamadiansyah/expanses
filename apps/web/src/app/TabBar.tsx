@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { ACCOUNT_TAB, TABS } from './nav';
 
@@ -17,6 +17,17 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
    */
   const cell = 'flex h-12 flex-1 items-center justify-center rounded-full text-[var(--ph-ink-3)] transition-colors';
   const here = 'bg-[var(--ph-fill)] text-[var(--ph-ink)]';
+  /*
+   * Trade is opened from Net worth's corner, as `/transactions/new?mode=trade`. That address is not Cashflow's page, but
+   * the router reads it as under `/transactions`, so the bar is told: Net worth stays the tab on, the tab it came from.
+   */
+  const trading = useRouterState({ select: (s) => s.location.pathname === '/transactions/new' && (s.location.search as { mode?: string }).mode === 'trade' });
+  const tabProps = (to: string) =>
+    to === '/net-worth' && trading
+      ? { className: `${cell} ${here}`, 'aria-current': 'page' as const }
+      : to === '/transactions' && trading
+        ? { className: cell, activeOptions: { exact: true }, activeProps: { className: here, 'aria-current': 'page' as const } }
+        : { className: cell, activeProps: { className: here, 'aria-current': 'page' as const } };
   return (
     <div
       className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3 md:hidden"
@@ -27,7 +38,7 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
         className="pointer-events-auto flex w-full max-w-md items-center gap-1 rounded-full border border-[var(--ph-hair)] bg-[var(--ph-chrome)] p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl"
       >
         {TABS.slice(0, 2).map((tab) => (
-          <Link key={tab.to} to={tab.to} className={cell} aria-label={tab.label} activeProps={{ className: here, 'aria-current': 'page' }}>
+          <Link key={tab.to} to={tab.to} aria-label={tab.label} {...tabProps(tab.to)}>
             <tab.icon size={24} strokeWidth={1.9} aria-hidden />
           </Link>
         ))}
@@ -37,7 +48,7 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
           </span>
         </button>
         {TABS.slice(2).map((tab) => (
-          <Link key={tab.to} to={tab.to} className={cell} aria-label={tab.label} activeProps={{ className: here, 'aria-current': 'page' }}>
+          <Link key={tab.to} to={tab.to} aria-label={tab.label} {...tabProps(tab.to)}>
             <tab.icon size={24} strokeWidth={1.9} aria-hidden />
           </Link>
         ))}

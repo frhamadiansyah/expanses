@@ -128,12 +128,14 @@ export function NewTransactionRoute() {
       ) : (
         <TransactionCard
           full
-          title={buying ? `Buy ${buying.name}` : trading ? 'Buy or sell' : 'New transaction'}
-          label={trading ? 'Buy or sell' : 'Add a transaction'}
+          title={buying ? `Buy ${buying.name}` : trading ? 'Trade' : 'New transaction'}
+          label={trading ? 'Trade' : 'Add a transaction'}
           // Spending into an event is spending: Expense, whatever the address asked.
           mode={opening ? 'expense' : mode}
-          // Net worth's Buy or sell corner: the trade rows alone, since the Add form's tabs no longer offer them.
+          // Net worth's Trade corner: its own Buy / Sell tabs and the trade rows, not the Add form's three tabs.
           fixedMode={trading}
+          // The tab bar's + leaves Trade for the plain Add form, so the card is built afresh rather than keeping the trade draft.
+          key={trading ? 'trade' : 'add'}
           seed={{
             moneyId: account,
             toId: to,

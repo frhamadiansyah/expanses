@@ -47,7 +47,7 @@ test('records a purchase from the transaction window, and it never counts as spe
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
   await page.goto('/transactions');
 
   // The purchase shows as a purchase, not as spending.
@@ -75,7 +75,7 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   await form.getByLabel('MCC').fill('5944');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
   await page.goto('/transactions');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
@@ -98,7 +98,7 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
   const toList = page.getByRole('dialog', { name: 'To', exact: true });
   await expect(toList).toBeVisible();
   await expect(toList).not.toContainText('Antam gold bars');
-  await expect(toList.getByText(/Use Buy or sell on Net worth, so units are counted/)).toBeVisible();
+  await expect(toList.getByText(/Use Trade on Net worth, so units are counted/)).toBeVisible();
   await toList.getByRole('button', { name: 'Close' }).click();
 });
 
@@ -170,7 +170,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await buying.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
   await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
-  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
   await page.goto('/transactions');
   await expect(page.getByText('Bought 100 BBRI')).toBeVisible();
 
@@ -313,7 +313,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 
 /**
  * §4 scopes Photos and Exclude from report to "always", and `extraRows` answers both for a trade — but the card
- * drew "Add more details" inside the expense branch alone, so the Buy or sell tab computed two rows that nothing
+ * drew "Add more details" inside the expense branch alone, so the Trade tab computed two rows that nothing
  * ever drew. A contract note could not be kept with the purchase it belongs to, and `purchaseDraftToInput` had
  * nowhere to take either fact from.
  *
@@ -335,7 +335,7 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Buy or sell goes back to Net worth, where it was opened; the list is read on Cashflow.
+  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
   await page.goto('/transactions');
 
   await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();

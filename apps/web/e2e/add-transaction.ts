@@ -43,14 +43,15 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
 }
 
 /**
- * Buy or sell, as a person opens it now: Net worth's corner, onto the Add screen's trade rows. The Add form's tabs no
- * longer offer it.
+ * Trade, as a person opens it now: Net worth's corner, onto the Add screen's trade rows under their Buy and Sell tabs.
+ * The Add form's tabs no longer offer it. `kind` taps the Sell tab when selling.
  */
-export async function openBuyOrSell(page: Page): Promise<Locator> {
+export async function openBuyOrSell(page: Page, kind: 'buy' | 'sell' = 'buy'): Promise<Locator> {
   await page.goto('/net-worth');
-  await page.getByRole('link', { name: 'Buy or sell' }).first().click();
-  const form = page.getByRole('form', { name: 'Buy or sell' });
+  await page.getByRole('link', { name: 'Trade', exact: true }).first().click();
+  const form = page.getByRole('form', { name: 'Trade' });
   await expect(form.getByLabel('What was bought or sold')).toBeVisible();
+  if (kind === 'sell') await form.getByRole('radio', { name: 'Sell' }).click();
   return form;
 }
 
@@ -125,7 +126,7 @@ export async function addTransfer(
 }
 
 /**
- * Records a purchase or a sale through the Buy or sell tab.
+ * Records a purchase or a sale through Trade's Buy or Sell tab.
  *
  * `what` is the holding's own name — the picker shows it under "Investments ›" when buying and "Sell ›" when
  * selling, and the helper builds that label rather than asking every caller to remember the prefix. None of these
@@ -151,7 +152,7 @@ export async function addPurchase(
   },
 ) {
   const sell = trade.mode === 'sell';
-  const form = await openBuyOrSell(page);
+  const form = await openBuyOrSell(page, trade.mode);
   await form.getByLabel('What was bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
@@ -167,7 +168,7 @@ export async function addPurchase(
   if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Saved, Buy or sell goes back to Net worth; callers read on from Cashflow, where the Add form used to leave them.
+  // Saved, Trade goes back to Net worth; callers read on from Cashflow, where the Add form used to leave them.
   await page.goto('/transactions');
 }
 

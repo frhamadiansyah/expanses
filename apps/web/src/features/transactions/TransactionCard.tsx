@@ -176,7 +176,7 @@ export function TransactionCard(props: {
   mode?: FormMode;
   /** A new transaction's fields, filled in before the form opens: the page it was opened from knows them. */
   seed?: CardSeed;
-  /** Opened for one kind only (Spend, Receive, Transfer on an account): no tabs, the sheet's title says which. */
+  /** Opened for one kind only (Spend, Receive, Transfer on an account, Trade from Net worth): no Add tabs; a trade draws its own Buy / Sell. */
   fixedMode?: boolean;
   /**
    * Save lives in the sheet's header (✕ … ✓) rather than a bar at the card's foot: the form takes this id so the
@@ -775,7 +775,7 @@ function CardBody({
     { key: 'expense', label: 'Expense' },
     { key: 'income', label: 'Income' },
     { key: 'transfer', label: 'Transfer' },
-    // Buy / sell is not a tab any more (owner, 24 Oct): it opens from Net worth's corner, as `mode: 'trade'` with no tabs.
+    // Buy / sell is not a tab any more (owner, 24 Oct): it opens from Net worth's corner, as `mode: 'trade'` with its own Buy and Sell tabs.
   ];
   const chooseMode = (value: FormMode) => {
     if (value === draft.mode) return;
@@ -791,6 +791,16 @@ function CardBody({
     }
     startTrade();
   };
+  /** Trade's Buy / Sell tabs: the kind changes and the holding moves to the first one of that kind, unless the same one can be traded either way. */
+  const [nothingToSell, setNothingToSell] = useState(false);
+  const chooseTradeKind = (kind: 'buy' | 'sell') => {
+    if (kind === purchase.mode) return;
+    const options = kind === 'buy' ? choices.buys : choices.sells;
+    const option = options.find((row) => row.accountId === purchase.accountId) ?? options[0];
+    setNothingToSell(!option);
+    if (!option) return;
+    setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
+  };
   /** The trade rows, opened on the first holding there is to buy — as the Buy / sell tab opened them. */
   function startTrade() {
     const first = choices.buys[0];
@@ -801,7 +811,7 @@ function CardBody({
     });
   }
   /*
-   * Opened as a trade (Net worth's Buy or sell): the holdings are read after the draft is built, so the first one is
+   * Opened as a trade (Net worth's Trade): the holdings are read after the draft is built, so the first one is
    * chosen once they arrive, exactly as choosing the tab chose it.
    */
   useEffect(() => {
@@ -883,6 +893,18 @@ function CardBody({
             <SegmentedControl label="What this is" segments={modes} value={draft.mode} onChange={(key) => chooseMode(key as FormMode)} />
           </div>
         )}
+        {fixedMode && draft.mode === 'trade' && (
+          // Trade's own tabs, the Add form's control in the Add form's place: they set the trade's kind, and the holdings below follow it.
+          <div className="px-3 pt-[10px] pb-[6px]">
+            <SegmentedControl
+              label="Kind of trade"
+              segments={[{ key: 'buy', label: 'Buy' }, { key: 'sell', label: 'Sell' }]}
+              value={purchase.mode}
+              onChange={(key) => chooseTradeKind(key as 'buy' | 'sell')}
+            />
+            {nothingToSell && <RowHint>Nothing held can be sold yet.</RowHint>}
+          </div>
+        )}
         {draft.mode === 'trade' ? (
           /*
            * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
@@ -912,18 +934,10 @@ function CardBody({
                 setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
               }}
             >
-              <optgroup label="Investments">
-                {choices.buys.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </optgroup>
-              {choices.sells.length > 0 && (
-                <optgroup label="Selling">
-                  {choices.sells.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </optgroup>
-              )}
+              {/* Only the holdings of the tab on: Buy offers every holding, Sell the ones with units to sell. */}
+              {(purchase.mode === 'buy' ? choices.buys : choices.sells).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </SelectFormRow>
             <MoneyFieldRow
               currency={purchaseCurrency}
@@ -1255,7 +1269,7 @@ function CardBody({
         before `splitBill` learned to take several people. It is now the With row inside this sheet, where a
         dinner for four can be recorded.
 
-        Outside the tab branch, because Buy or sell has extras too: `extraRows` answers Photos and Exclude for
+        Outside the tab branch, because Trade has extras too: `extraRows` answers Photos and Exclude for
         every mode, and this row used to be drawn in the expense branch alone — so a trade computed two rows
         that nothing drew, and a contract note could not be kept with the purchase it belongs to.
       */}
@@ -1399,7 +1413,7 @@ function CardBody({
               : undefined
           }
           onClose={() => setSheet(null)}
-          footer="Buying a fund, shares or gold? Use Buy or sell on Net worth, so units are counted."
+          footer="Buying a fund, shares or gold? Use Trade on Net worth, so units are counted."
           adding={
             initial
               ? undefined

@@ -280,7 +280,7 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   // The hint that keeps a fund purchase off this tab is under the To list, where the account is chosen.
   await form.getByRole('button', { name: /^To/ }).click();
   const toList = page.getByRole('dialog', { name: 'To', exact: true });
-  await expect(toList.getByText(/Use Buy or sell on Net worth, so units are counted/)).toBeVisible();
+  await expect(toList.getByText(/Use Trade on Net worth, so units are counted/)).toBeVisible();
   await toList.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Cancel' }).click();
 
